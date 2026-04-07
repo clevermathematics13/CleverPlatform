@@ -299,9 +299,9 @@
                     <div id="step1-container" class="print:block">
                         <h4 class="font-bold text-slate-800 mb-3 border-b pb-1">1. The Base Case</h4>
                         <div class="space-y-3 text-slate-700">
-                            <p>To start our domino effect, we must prove the statement is true for the first term: \(n =\) <input type="text" id="s1-n" class="w-10 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1" autocomplete="off">.</p>
+                            <p>To start our domino effect, we must prove the statement is true for the first term: \(n =\) <input type="text" id="s1-n" class="math-input w-10 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1" autocomplete="off">.</p>
                             <p><strong>LHS:</strong> The first odd number is \(2(1)-1 = 1\).</p>
-                            <p><strong>RHS:</strong> Substituting our \(n\) into \(n^2\) gives: <span class="text-xl inline-block align-middle">(</span><input type="text" id="s1-rhs" class="w-10 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1" autocomplete="off"><span class="text-xl inline-block align-middle">)\(^2 = 1\)</span></p>
+                            <p><strong>RHS:</strong> Substituting our \(n\) into \(n^2\) gives: <span class="text-xl inline-block align-middle">(</span><input type="text" id="s1-rhs" class="math-input w-10 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1" autocomplete="off"><span class="text-xl inline-block align-middle">)\(^2 = 1\)</span></p>
                             
                             <button onclick="checkStep1()" id="btn-s1" class="mt-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded text-sm font-semibold transition print:hidden">Check Step 1</button>
                             <p id="s1-hint" class="text-rose-600 text-sm mt-1 hidden font-medium bg-rose-50 p-2 rounded print:hidden"></p>
@@ -316,8 +316,9 @@
                             <p>Assume the statement holds true for some arbitrary rung: \(n = k\).</p>
                             <p>Write the <strong>complete assumption</strong> — what does the RHS of the formula become?</p>
                             <p class="text-center text-lg my-2">
-                                \(\displaystyle\sum_{i=1}^k (2i-1) \;\;=\;\;\) <input type="text" id="s2-assume" class="w-24 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1" autocomplete="off" placeholder="RHS">
+                                \(\displaystyle\sum_{i=1}^k (2i-1) \;\;=\;\;\) <input type="text" id="s2-assume" class="math-input w-24 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1" autocomplete="off" placeholder="RHS">
                             </p>
+                            <div id="s2-assume-preview" class="math-preview"></div>
                             
                             <button onclick="checkStep2()" id="btn-s2" class="mt-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded text-sm font-semibold transition print:hidden">Check Step 2</button>
                             <p id="s2-hint" class="text-rose-600 text-sm mt-1 hidden font-medium bg-rose-50 p-2 rounded print:hidden"></p>
@@ -329,30 +330,34 @@
                     <div id="step3-container" class="hidden print:block opacity-50 print:opacity-100 transition-opacity duration-500">
                         <h4 class="font-bold text-slate-800 mb-3 border-b pb-1">3. The Inductive Step</h4>
                         <div class="space-y-4 text-slate-700">
-                            <p>Now we must prove the formula works for the <i>next</i> integer: \(n =\) <input type="text" id="s3-next" class="w-14 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1" autocomplete="off"></p>
+                            <p>Now we must prove the formula works for the <i>next</i> integer: \(n =\) <input type="text" id="s3-next" class="math-input w-14 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1" autocomplete="off"></p>
                             
                             <div class="bg-slate-50 p-4 rounded border border-slate-200">
                                 <p class="mb-2 text-sm text-slate-500 font-semibold uppercase tracking-wide">Algebraic Proof:</p>
 
                                 <p class="mb-3">Write the <strong>target</strong> — what should the RHS of the formula equal when \(n = k+1\)?</p>
                                 <p class="mb-4 text-lg text-center">
-                                    \(\text{Target} \;\;=\;\;\) <input type="text" id="s3-target" class="w-28 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="?">
+                                    \(\text{Target} \;\;=\;\;\) <input type="text" id="s3-target" class="math-input w-28 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="?">
                                 </p>
+                                <div id="s3-target-preview" class="math-preview"></div>
 
                                 <p class="mb-3">Split the sum. Write the \((k+1)\)-th term of the sequence \(2i - 1\) (i.e., the next term to add):</p>
                                 <p class="mb-4 text-lg text-center">
-                                    \(\displaystyle\sum_{i=1}^{k+1} (2i-1) \;\;=\;\; \displaystyle\sum_{i=1}^k (2i-1) \;\;+\;\;\) <input type="text" id="s3-nextterm" class="w-32 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="next term">
+                                    \(\displaystyle\sum_{i=1}^{k+1} (2i-1) \;\;=\;\; \displaystyle\sum_{i=1}^k (2i-1) \;\;+\;\;\) <input type="text" id="s3-nextterm" class="math-input w-32 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="next term">
                                 </p>
+                                <div id="s3-nextterm-preview" class="math-preview"></div>
                                 
                                 <p class="mb-3"><strong class="text-indigo-600">Crucial Substitution:</strong> Replace \(\displaystyle\sum_{i=1}^k (2i-1)\) using our assumption from Step 2, then <strong>simplify completely</strong>:</p>
                                 <p class="mb-4 text-lg text-center">
-                                    \(\;\;=\;\;\) <input type="text" id="s3-simplified" class="w-44 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="substitute &amp; simplify">
+                                    \(\;\;=\;\;\) <input type="text" id="s3-simplified" class="math-input w-44 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="substitute &amp; simplify">
                                 </p>
+                                <div id="s3-simplified-preview" class="math-preview"></div>
                                 
                                 <p class="mb-3">Factor the quadratic to reach our target:</p>
                                 <p class="mb-2 text-lg text-center">
-                                    \(\;\;=\;\;\) <input type="text" id="s3-factor" class="w-28 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="factor">
+                                    \(\;\;=\;\;\) <input type="text" id="s3-factor" class="math-input w-28 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="factor">
                                 </p>
+                                <div id="s3-factor-preview" class="math-preview"></div>
                             </div>
 
                             <button onclick="checkStep3()" id="btn-s3" class="mt-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 px-4 py-2 rounded text-sm font-semibold transition print:hidden">Check Step 3</button>
@@ -694,6 +699,34 @@
 
         </div>
     </main>
+
+    <!-- Math Notation Keyboard (IBDP Approved Notation) -->
+    <div id="math-keyboard" class="math-keyboard no-print">
+        <span class="kb-label">Notation</span>
+        <button class="math-key" data-insert="²" title="Squared">x²</button>
+        <button class="math-key" data-insert="³" title="Cubed">x³</button>
+        <button class="math-key" data-insert="^" title="Exponent">xⁿ</button>
+        <span class="kb-sep"></span>
+        <button class="math-key" data-insert="(" title="Left bracket">(</button>
+        <button class="math-key" data-insert=")" title="Right bracket">)</button>
+        <button class="math-key" data-insert="+" title="Plus">+</button>
+        <button class="math-key" data-insert="-" title="Minus">−</button>
+        <span class="kb-sep"></span>
+        <span class="kb-label">Variables</span>
+        <button class="math-key" data-insert="k" title="Variable k">k</button>
+        <button class="math-key" data-insert="n" title="Variable n">n</button>
+        <button class="math-key" data-insert="i" title="Index i">i</button>
+        <span class="kb-sep"></span>
+        <span class="kb-label">Constants</span>
+        <button class="math-key" data-insert="1">1</button>
+        <button class="math-key" data-insert="2">2</button>
+        <button class="math-key" data-insert="3">3</button>
+        <button class="math-key" data-insert="4">4</button>
+        <button class="math-key" data-insert="5">5</button>
+        <span class="kb-sep"></span>
+        <button class="math-key" data-action="backspace" title="Delete last character">⌫</button>
+        <button class="math-key" data-action="clear" title="Clear field">AC</button>
+    </div>
 
     <script>
         // Normalize student input: strip spaces, convert Unicode superscripts, lowercase
