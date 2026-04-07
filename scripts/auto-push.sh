@@ -1,56 +1,102 @@
 #!/usr/bin/env bash
+# auto-push — commit & push on every change
+#
+# Modes
+#   poll  (default)  check for changes every --interval seconds
+#   watch            react instantly via inotifywait, then debounce
+#
+# Usage
+#   ./scripts/auto-push.sh                          # poll every 30 s
+#   ./scripts/auto-push.sh --interval 10            # poll every 10 s
+#   ./scripts/auto-push.sh --watch                  # instant, 5 s debounce
+#   ./scripts/auto-push.sh --watch --interval 3     # instant, 3 s debounce
+#   ./scripts/auto-push.sh --branch dev             # push to a different branch
+
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-if ! command -v inotifywait >/dev/null 2>&1; then
-    echo "inotifywait is required but not installed." >&2
-    exit 1
+# ── defaults ────────────────────────────────────────────────────
+mode="poll"
+interval=30
+branch=""
+
+# ── parse flags ─────────────────────────────────────────────────
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --watch|-w)    mode="watch";    shift ;;
+        --interval|-i) interval="$2";   shift 2 ;;
+        --branch|-b)   branch="$2";     shift 2 ;;
+        --help|-h)
+            sed -n '2,/^$/s/^# //p' "$0"; exit 0 ;;
+        *)
+            echo "Unknown flag: $1 (try --help)" >&2; exit 1 ;;
+    esac
+done
+
+branch="${branch:-$(git rev-parse --abbrev-ref HEAD)}"
+
+# ── preflight checks ───────────────────────────────────────────
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { echo "Not inside a git repository." >&2; exit 1; }
+git remote get-url origin >/dev/null 2>&1 \
+    || { echo "Git remote 'origin' is not configured." >&2; exit 1; }
+if [[ "$mode" == "watch" ]] && ! command -v inotifywait >/dev/null 2>&1; then
+    echo "inotifywait not found — falling back to poll mode." >&2
+    mode="poll"
 fi
 
-if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    echo "This script must be run inside a git repository." >&2
-    exit 1
-fi
-
-if ! git remote get-url origin >/dev/null 2>&1; then
-    echo "Git remote 'origin' is not configured." >&2
-    exit 1
-fi
-
-branch="${1:-$(git rev-parse --abbrev-ref HEAD)}"
-debounce_seconds="${AUTO_PUSH_DEBOUNCE_SECONDS:-2}"
-watch_events="close_write,create,delete,move"
-exclude_pattern='(^|/)\.git(/|$)'
-
+# ── commit & push ──────────────────────────────────────────────
 commit_and_push() {
-    if [[ -z "$(git status --porcelain)" ]]; then
-        return
-    fi
+    [[ -z "$(git status --porcelain)" ]] && return 0
 
     git add -A
+    git diff --cached --quiet && return 0
 
-    if git diff --cached --quiet; then
-        return
+    # Build a descriptive message from the staged diff
+    local count changed summary msg
+    changed="$(git diff --cached --name-status)"
+    count="$(echo "$changed" | wc -l)"
+    summary="$(echo "$changed" | awk '{print $NF}' | head -3 | paste -sd', ')"
+
+    if [[ "$count" -eq 1 ]]; then
+        msg="update ${summary}"
+    elif [[ "$count" -le 3 ]]; then
+        msg="update ${count} files: ${summary}"
+    else
+        msg="update ${count} files: ${summary}, ..."
     fi
 
-    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    git commit -m "chore: auto-sync ${timestamp}"
+    git commit -m "$msg"
     git push origin "$branch"
-    echo "Pushed auto-sync commit at ${timestamp}"
+    echo "$(date +%H:%M:%S) ✓ ${msg}"
 }
 
-echo "Watching ${repo_root} for changes. Auto-pushing to origin/${branch} after ${debounce_seconds}s of inactivity."
+# ── banner ──────────────────────────────────────────────────────
+printf '\n  auto-push active\n'
+printf '  mode     %s\n' "$mode"
+printf '  interval %ss\n' "$interval"
+printf '  branch   origin/%s\n' "$branch"
+printf '  stop     Ctrl+C\n\n'
 
-trap 'echo; echo "Stopping auto-push watcher."; exit 0' INT TERM
+trap 'printf "\n  auto-push stopped.\n"; exit 0' INT TERM
 
-while true; do
-    inotifywait -qq -r -e "$watch_events" --exclude "$exclude_pattern" .
-
-    while inotifywait -qq -t "$debounce_seconds" -r -e "$watch_events" --exclude "$exclude_pattern" .; do
-        :
+# ── main loop ───────────────────────────────────────────────────
+if [[ "$mode" == "watch" ]]; then
+    exclude='(^|/)\.git(/|$)'
+    events="close_write,create,delete,move"
+    while true; do
+        inotifywait -qq -r -e "$events" --exclude "$exclude" .
+        # debounce: keep waiting while edits continue
+        while inotifywait -qq -t "$interval" -r -e "$events" --exclude "$exclude" .; do
+            :
+        done
+        commit_and_push
     done
-
-    commit_and_push
-done
+else
+    while true; do
+        sleep "$interval"
+        commit_and_push
+    done
+fi
