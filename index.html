@@ -1037,8 +1037,11 @@
                 return;
             }
             if (!matchesAny(target, ['(k+1)^2', '(1+k)^2'])) {
-                hint.innerHTML = "<strong>Hint 2:</strong> The original RHS is <i>n²</i>. If <i>n = k+1</i>, what does the target become? Write it with parentheses and the exponent.";
-                hint.classList.remove('hidden');
+                getAIHint({
+                    stepName: 'Step 3: Inductive Step — target expression',
+                    stepDesc: 'Write what the RHS should equal when n = k+1. The original formula is n².',
+                    correctAnswer: '(k+1)²'
+                }, document.getElementById('s3-target').value, hint);
                 return;
             }
             // Accept full split: Σ(2i-1,i=1,k)+2(k+1)-1  or  Σ(2i-1,i=1,k)+2k+1
