@@ -743,32 +743,86 @@
     </div>
 
     <script>
-        // Normalize student input: strip spaces, convert Unicode superscripts, lowercase
+        // ── Normalization for answer checking ──────────────────────
         function norm(s) {
             return s.replace(/\s+/g, '')
                      .replace(/²/g, '^2')
                      .replace(/³/g, '^3')
                      .replace(/\*\*/g, '^')
+                     // Normalize sigma shorthand: Σ(expr,i=a,b) → sigma(expr,i=a,b)
+                     .replace(/Σ/gi, 'sigma')
+                     .replace(/−/g, '-')  // unicode minus to hyphen-minus
                      .toLowerCase();
         }
         function matchesAny(input, accepted) {
             return accepted.includes(input);
         }
 
+        // ── Convert student text → KaTeX LaTeX for preview ────────
+        function toLatex(text) {
+            let s = text.trim();
+            if (!s) return '';
+
+            // Handle Σ(expr,i=a,b) → \displaystyle\sum_{i=a}^{b}(expr)
+            s = s.replace(/Σ\(([^,]*),\s*i=([^,]*),\s*([^)]*)\)/gi, function(_, expr, from, to) {
+                to = to.replace(/\^(\w+)/g, '^{$1}').replace(/²/g, '^{2}').replace(/³/g, '^{3}');
+                from = from.replace(/²/g, '^{2}').replace(/³/g, '^{3}');
+                let inner = expr.trim() ? '(' + expr.trim() + ')' : '';
+                return '\\displaystyle\\sum_{i=' + from + '}^{' + to + '}' + inner;
+            });
+
+            // Convert remaining ^ to proper LaTeX
+            s = s.replace(/\^(\d+)/g, '^{$1}');
+            s = s.replace(/²/g, '^{2}');
+            s = s.replace(/³/g, '^{3}');
+            s = s.replace(/−/g, '-');
+            return s;
+        }
+
+        // ── Replace input with polished KaTeX rendering ───────────
+        function polishInput(inputId, latex) {
+            let wrap = document.getElementById(inputId + '-wrap');
+            let rendered = document.getElementById(inputId + '-rendered');
+            if (wrap) wrap.classList.add('hidden');
+            if (rendered) {
+                rendered.classList.remove('hidden');
+                katex.render(latex, rendered, { throwOnError: false, displayMode: false });
+            }
+        }
+
+        // ── Live preview ──────────────────────────────────────────
+        const previewMap = {
+            's2-assume': 's2-assume-preview',
+            's3-target': 's3-target-preview',
+            's3-nextterm': 's3-nextterm-preview',
+            's3-simplified': 's3-simplified-preview',
+            's3-factor': 's3-factor-preview'
+        };
+
+        function updatePreview(inputEl) {
+            let previewId = previewMap[inputEl.id];
+            if (!previewId) return;
+            let previewEl = document.getElementById(previewId);
+            let latex = toLatex(inputEl.value);
+            if (!latex) {
+                previewEl.innerHTML = '<span style="color:#94a3b8;font-size:0.75rem;">live preview</span>';
+                return;
+            }
+            try {
+                katex.render(latex, previewEl, { throwOnError: false, displayMode: false });
+            } catch(e) {
+                previewEl.innerHTML = '<span style="color:#94a3b8;font-size:0.75rem;">...</span>';
+            }
+        }
+
+        // ── Tab switching ─────────────────────────────────────────
         function switchTab(tabName) {
-            // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(el => {
                 el.classList.add('hidden');
             });
-            
-            // Reset button styles
             document.getElementById('btn-worksheet').className = "px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-l-lg hover:bg-slate-100 focus:z-10 focus:ring-2 focus:ring-indigo-500";
             document.getElementById('btn-markscheme').className = "px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-r-lg hover:bg-slate-100 focus:z-10 focus:ring-2 focus:ring-indigo-500";
-            
-            // Show active tab
             document.getElementById('tab-' + tabName).classList.remove('hidden');
-            
-            // Highlight active button
             if (tabName === 'worksheet') {
                 document.getElementById('btn-worksheet').className = "px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-indigo-600 rounded-l-lg hover:bg-indigo-700 focus:z-10 focus:ring-2 focus:ring-indigo-500";
             } else {
@@ -776,7 +830,7 @@
             }
         }
 
-        // Wait for page to fully load before rendering math to fix formatting issues
+        // Wait for page to fully load before rendering math
         document.addEventListener("DOMContentLoaded", function() {
             renderMathInElement(document.body, {
                 delimiters: [
@@ -786,7 +840,7 @@
             });
         });
 
-        // --- Interactive Worksheet Logic ---
+        // ── Step 1: Base Case ─────────────────────────────────────
         function checkStep1() {
             let n = document.getElementById('s1-n').value.trim();
             let rhs = document.getElementById('s1-rhs').value.trim();
@@ -808,9 +862,7 @@
             
             let step2 = document.getElementById('step2-container');
             step2.classList.remove('hidden');
-            // Re-render KaTeX in the newly revealed section
             renderMathInElement(step2, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\(', right: '\\)', display: false}] });
-            
             setTimeout(() => step2.classList.remove('opacity-50'), 50);
             
             document.getElementById('s1-n').disabled = true;
@@ -818,13 +870,19 @@
             document.getElementById('btn-s1').classList.add('hidden'); 
         }
 
+        // ── Step 2: Assumption (full statement) ────────────────────
         function checkStep2() {
             let raw = document.getElementById('s2-assume').value;
             let assume = norm(raw);
             let hint = document.getElementById('s2-hint');
 
-            if (!matchesAny(assume, ['k^2'])) {
-                hint.innerHTML = "<strong>Hint:</strong> The original formula says the sum equals <i>n²</i>. If we replace <i>n</i> with <i>k</i>, what is the full expression?";
+            // Accept: Σ(2i-1,i=1,k)=k^2  (in various forms)
+            let accepted = [
+                'sigma(2i-1,i=1,k)=k^2',
+                'sigma(2i-1,i=1,k)=k^2',
+            ];
+            if (!matchesAny(assume, accepted)) {
+                hint.innerHTML = "<strong>Hint:</strong> Write the entire equation. Use the Σ button for the sum from <i>i=1</i> to <i>k</i>, type the expression <i>2i−1</i> inside, then <i>= k²</i> for the RHS.";
                 hint.classList.remove('hidden');
                 return;
             }
@@ -832,16 +890,19 @@
             hint.classList.add('hidden');
             document.getElementById('s2-success').classList.remove('hidden');
             
+            // Replace input with polished KaTeX
+            polishInput('s2-assume', '\\displaystyle\\sum_{i=1}^{k}(2i-1) = k^{2}');
+            
             let step3 = document.getElementById('step3-container');
             step3.classList.remove('hidden');
             renderMathInElement(step3, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\(', right: '\\)', display: false}] });
-            
             setTimeout(() => step3.classList.remove('opacity-50'), 50);
             
             document.getElementById('s2-assume').disabled = true;
             document.getElementById('btn-s2').classList.add('hidden');
         }
 
+        // ── Step 3: Inductive Step ────────────────────────────────
         function checkStep3() {
             let nxt = norm(document.getElementById('s3-next').value);
             let target = norm(document.getElementById('s3-target').value);
@@ -856,17 +917,25 @@
                 return;
             }
             if (!matchesAny(target, ['(k+1)^2', '(1+k)^2'])) {
-                hint.innerHTML = "<strong>Hint 2:</strong> The original RHS is <i>n²</i>. If <i>n = k+1</i>, what does the target become? Write it as a complete expression with parentheses.";
+                hint.innerHTML = "<strong>Hint 2:</strong> The original RHS is <i>n²</i>. If <i>n = k+1</i>, what does the target become? Write it with parentheses and the exponent.";
                 hint.classList.remove('hidden');
                 return;
             }
-            if (!matchesAny(nextterm, ['2(k+1)-1', '2k+2-1', '2k+1'])) {
-                hint.innerHTML = "<strong>Hint 3:</strong> The sequence formula is (2<i>i</i> − 1). Plug in <i>i = k+1</i> and write the full expression.";
+            // Accept full split: Σ(2i-1,i=1,k)+2(k+1)-1  or  Σ(2i-1,i=1,k)+2k+1
+            let nexttermAccepted = [
+                'sigma(2i-1,i=1,k)+2(k+1)-1',
+                'sigma(2i-1,i=1,k)+2k+2-1',
+                'sigma(2i-1,i=1,k)+2k+1',
+                'sigma(2i-1,i=1,k)+(2(k+1)-1)',
+                'sigma(2i-1,i=1,k)+(2k+1)',
+            ];
+            if (!matchesAny(nextterm, nexttermAccepted)) {
+                hint.innerHTML = "<strong>Hint 3:</strong> Write the sum from i=1 to k using the Σ button, then add the (k+1)-th term: plug <i>i = k+1</i> into <i>2i − 1</i>.";
                 hint.classList.remove('hidden');
                 return;
             }
             if (!matchesAny(simplified, ['k^2+2k+1', '1+2k+k^2', '2k+1+k^2', 'k^2+2k+2-1', 'k^2+2(k+1)-1'])) {
-                hint.innerHTML = "<strong>Hint 4:</strong> Replace the sum-to-<i>k</i> with <i>k²</i> (from our assumption), add the next term, then collect and simplify all the terms into a single expression.";
+                hint.innerHTML = "<strong>Hint 4:</strong> Replace the Σ with <i>k²</i> (from our assumption), add the next term, then collect and simplify into a single expression.";
                 hint.classList.remove('hidden');
                 return;
             }
@@ -879,10 +948,15 @@
             hint.classList.add('hidden');
             document.getElementById('s3-success').classList.remove('hidden');
             
+            // Replace each input with polished KaTeX
+            polishInput('s3-target', '(k+1)^{2}');
+            polishInput('s3-nextterm', '\\displaystyle\\sum_{i=1}^{k}(2i-1) + \\big(2(k+1)-1\\big)');
+            polishInput('s3-simplified', 'k^{2} + 2k + 1');
+            polishInput('s3-factor', '(k+1)^{2}');
+            
             let step4 = document.getElementById('step4-container');
             step4.classList.remove('hidden');
             renderMathInElement(step4, { delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\(', right: '\\)', display: false}] });
-            
             setTimeout(() => step4.classList.remove('opacity-50'), 50);
             
             ['s3-next','s3-target','s3-nextterm','s3-simplified','s3-factor'].forEach(id => document.getElementById(id).disabled = true);
@@ -892,43 +966,6 @@
         // ── Math Keyboard & Live Preview ──────────────────────────
         let activeInput = null;
         const keyboard = document.getElementById('math-keyboard');
-
-        // Map input IDs to their preview containers
-        const previewMap = {
-            's2-assume': 's2-assume-preview',
-            's3-target': 's3-target-preview',
-            's3-nextterm': 's3-nextterm-preview',
-            's3-simplified': 's3-simplified-preview',
-            's3-factor': 's3-factor-preview'
-        };
-
-        // Convert student text to KaTeX-compatible LaTeX for preview
-        function toLatex(text) {
-            let s = text.trim();
-            if (!s) return '';
-            // Replace ^ followed by a single char with ^{char}
-            s = s.replace(/\^(\d+)/g, '^{$1}');
-            // Convert ² and ³ to proper LaTeX
-            s = s.replace(/²/g, '^{2}');
-            s = s.replace(/³/g, '^{3}');
-            return s;
-        }
-
-        function updatePreview(inputEl) {
-            let previewId = previewMap[inputEl.id];
-            if (!previewId) return;
-            let previewEl = document.getElementById(previewId);
-            let latex = toLatex(inputEl.value);
-            if (!latex) {
-                previewEl.innerHTML = '<span style="color:#94a3b8;font-size:0.75rem;">preview</span>';
-                return;
-            }
-            try {
-                katex.render(latex, previewEl, { throwOnError: false, displayMode: false });
-            } catch(e) {
-                previewEl.innerHTML = '<span style="color:#94a3b8;font-size:0.75rem;">...</span>';
-            }
-        }
 
         // Track which input is active
         document.querySelectorAll('input.math-input').forEach(input => {
@@ -957,7 +994,6 @@
             let action = btn.dataset.action;
             let insert = btn.dataset.insert;
             
-            // Keep focus on the input
             activeInput.focus();
             
             if (action === 'backspace') {
@@ -975,7 +1011,13 @@
                 let val = activeInput.value;
                 activeInput.value = val.slice(0, pos) + insert + val.slice(end);
                 let newPos = pos + insert.length;
-                activeInput.setSelectionRange(newPos, newPos);
+                // For sigma inserts, place cursor inside the parentheses (after first ()
+                if (insert.startsWith('Σ(')) {
+                    let openParen = pos + 2; // right after "Σ("
+                    activeInput.setSelectionRange(openParen, openParen);
+                } else {
+                    activeInput.setSelectionRange(newPos, newPos);
+                }
             }
             
             updatePreview(activeInput);
