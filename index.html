@@ -1053,18 +1053,27 @@
                 'sigma(2i-1,i=1,k)+(2k+1)',
             ];
             if (!matchesAny(nextterm, nexttermAccepted)) {
-                hint.innerHTML = "<strong>Hint 3:</strong> Write the sum from i=1 to k using the Σ button, then add the (k+1)-th term: plug <i>i = k+1</i> into <i>2i − 1</i>.";
-                hint.classList.remove('hidden');
+                getAIHint({
+                    stepName: 'Step 3: Inductive Step — split the sum',
+                    stepDesc: 'Write the sum to k+1 as: sum from i=1 to k plus the (k+1)th term. Plug i=k+1 into 2i−1 for the new term.',
+                    correctAnswer: 'Σ(2i−1,i=1,k) + 2(k+1)−1'
+                }, document.getElementById('s3-nextterm').value, hint);
                 return;
             }
             if (!matchesAny(simplified, ['k^2+2k+1', '1+2k+k^2', '2k+1+k^2', 'k^2+2k+2-1', 'k^2+2(k+1)-1'])) {
-                hint.innerHTML = "<strong>Hint 4:</strong> Replace the Σ with <i>k²</i> (from our assumption), add the next term, then collect and simplify into a single expression.";
-                hint.classList.remove('hidden');
+                getAIHint({
+                    stepName: 'Step 3: Inductive Step — simplify',
+                    stepDesc: 'Replace Σ(2i−1,i=1,k) with k² using the assumption, add 2(k+1)−1, and simplify.',
+                    correctAnswer: 'k² + 2k + 1'
+                }, document.getElementById('s3-simplified').value, hint);
                 return;
             }
             if (!matchesAny(factor, ['(k+1)^2', '(1+k)^2'])) {
-                hint.innerHTML = "<strong>Hint 5:</strong> You have <i>k² + 2k + 1</i>. This is a perfect square trinomial — factor it!";
-                hint.classList.remove('hidden');
+                getAIHint({
+                    stepName: 'Step 3: Inductive Step — factor',
+                    stepDesc: 'Factor the expression k² + 2k + 1 to reach the target.',
+                    correctAnswer: '(k+1)²'
+                }, document.getElementById('s3-factor').value, hint);
                 return;
             }
 
