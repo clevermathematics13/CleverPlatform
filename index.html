@@ -60,6 +60,80 @@
             background-image: repeating-linear-gradient(transparent, transparent 31px, #e5e7eb 31px, #e5e7eb 32px);
             background-attachment: local;
         }
+
+        /* Math Keyboard */
+        .math-keyboard {
+            position: sticky;
+            bottom: 0;
+            z-index: 40;
+            background: linear-gradient(to bottom, #eef2ff, #e0e7ff);
+            border-top: 2px solid #818cf8;
+            padding: 0.5rem 0.75rem;
+            display: none;
+            flex-wrap: wrap;
+            gap: 0.35rem;
+            align-items: center;
+            box-shadow: 0 -4px 12px rgba(99, 102, 241, 0.15);
+        }
+        .math-keyboard.active { display: flex; }
+        .math-keyboard .kb-label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6366f1;
+            margin-right: 0.25rem;
+        }
+        .math-keyboard .kb-sep {
+            width: 1px;
+            height: 1.5rem;
+            background: #a5b4fc;
+            margin: 0 0.25rem;
+        }
+        .math-key {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 2.2rem;
+            height: 2rem;
+            padding: 0 0.5rem;
+            border-radius: 0.375rem;
+            border: 1px solid #c7d2fe;
+            background: white;
+            color: #312e81;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            user-select: none;
+            transition: all 0.1s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+        }
+        .math-key:hover { background: #eef2ff; border-color: #818cf8; }
+        .math-key:active { transform: scale(0.95); background: #c7d2fe; }
+        .math-key .katex { font-size: 0.85rem; }
+        
+        /* Live preview */
+        .math-preview {
+            min-height: 1.6rem;
+            font-size: 1.1rem;
+            color: #4338ca;
+            margin-top: 0.15rem;
+            text-align: center;
+        }
+        .math-preview .katex-error { color: #94a3b8; font-size: 0.75rem; }
+        
+        /* Active input highlight */
+        input.math-input:focus {
+            border-color: #6366f1 !important;
+            background: #eef2ff !important;
+        }
+        input.math-input {
+            font-family: 'KaTeX_Main', serif;
+        }
+        @media print {
+            .math-keyboard { display: none !important; }
+            .math-preview { display: none !important; }
+        }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased">
