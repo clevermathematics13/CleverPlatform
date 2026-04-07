@@ -686,11 +686,12 @@
         }
 
         function checkStep2() {
-            let assume = document.getElementById('s2-assume').value.trim().toLowerCase();
+            let raw = document.getElementById('s2-assume').value;
+            let assume = norm(raw);
             let hint = document.getElementById('s2-hint');
 
-            if (assume !== 'k') {
-                hint.innerHTML = "<strong>Hint:</strong> If the original formula is <i>n²</i> for the n-th term, what variable should it be for the k-th term?";
+            if (!matchesAny(assume, ['k^2'])) {
+                hint.innerHTML = "<strong>Hint:</strong> The original formula says the sum equals <i>n²</i>. If we replace <i>n</i> with <i>k</i>, what is the full expression?";
                 hint.classList.remove('hidden');
                 return;
             }
@@ -709,35 +710,35 @@
         }
 
         function checkStep3() {
-            let nxt = document.getElementById('s3-next').value.replace(/\s+/g, '').toLowerCase();
-            let sub = document.getElementById('s3-sub').value.replace(/\s+/g, '').toLowerCase();
-            let assump = document.getElementById('s3-assump').value.trim().toLowerCase();
-            let simp = document.getElementById('s3-simp').value.trim();
-            let fact = document.getElementById('s3-fact').value.replace(/\s+/g, '').toLowerCase();
+            let nxt = norm(document.getElementById('s3-next').value);
+            let target = norm(document.getElementById('s3-target').value);
+            let nextterm = norm(document.getElementById('s3-nextterm').value);
+            let simplified = norm(document.getElementById('s3-simplified').value);
+            let factor = norm(document.getElementById('s3-factor').value);
             let hint = document.getElementById('s3-hint');
 
-            if (nxt !== 'k+1' && nxt !== '1+k') {
+            if (!matchesAny(nxt, ['k+1', '1+k'])) {
                 hint.innerHTML = "<strong>Hint 1:</strong> If we are currently standing on rung <i>k</i>, what is the mathematical expression for the very next rung?";
                 hint.classList.remove('hidden');
                 return;
             }
-            if (sub !== 'k+1' && sub !== '1+k') {
-                hint.innerHTML = "<strong>Hint 2:</strong> In the formula (2i - 1), what expression do we plug in for <i>i</i> to find the very last term of our new sum?";
+            if (!matchesAny(target, ['(k+1)^2', '(1+k)^2'])) {
+                hint.innerHTML = "<strong>Hint 2:</strong> The original RHS is <i>n²</i>. If <i>n = k+1</i>, what does the target become? Write it as a complete expression with parentheses.";
                 hint.classList.remove('hidden');
                 return;
             }
-            if (assump !== 'k') {
-                hint.innerHTML = "<strong>Hint 3:</strong> The Crucial Substitution! Look back at Step 2. What did we assume the sum up to k was equal to?";
+            if (!matchesAny(nextterm, ['2(k+1)-1', '2k+2-1', '2k+1'])) {
+                hint.innerHTML = "<strong>Hint 3:</strong> The sequence formula is (2<i>i</i> − 1). Plug in <i>i = k+1</i> and write the full expression.";
                 hint.classList.remove('hidden');
                 return;
             }
-            if (simp !== '1') {
-                hint.innerHTML = "<strong>Hint 4:</strong> Look at the line above. Just simplify the constant numbers: 2 - 1 = ?";
+            if (!matchesAny(simplified, ['k^2+2k+1', '1+2k+k^2', '2k+1+k^2', 'k^2+2k+2-1', 'k^2+2(k+1)-1'])) {
+                hint.innerHTML = "<strong>Hint 4:</strong> Replace the sum-to-<i>k</i> with <i>k²</i> (from our assumption), add the next term, then collect and simplify all the terms into a single expression.";
                 hint.classList.remove('hidden');
                 return;
             }
-            if (fact !== 'k+1' && fact !== '1+k') {
-                hint.innerHTML = "<strong>Hint 5:</strong> We want to show this equals n² for our new n. What is (k² + 2k + 1) factored perfectly?";
+            if (!matchesAny(factor, ['(k+1)^2', '(1+k)^2'])) {
+                hint.innerHTML = "<strong>Hint 5:</strong> You have <i>k² + 2k + 1</i>. This is a perfect square trinomial — factor it!";
                 hint.classList.remove('hidden');
                 return;
             }
@@ -751,7 +752,7 @@
             
             setTimeout(() => step4.classList.remove('opacity-50'), 50);
             
-            ['s3-next','s3-sub','s3-assump','s3-simp','s3-fact'].forEach(id => document.getElementById(id).disabled = true);
+            ['s3-next','s3-target','s3-nextterm','s3-simplified','s3-factor'].forEach(id => document.getElementById(id).disabled = true);
             document.getElementById('btn-s3').classList.add('hidden');
         }
     </script>
