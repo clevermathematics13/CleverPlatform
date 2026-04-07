@@ -958,13 +958,19 @@
             let hint = document.getElementById('s1-hint');
 
             if (n !== '1') {
-                hint.innerHTML = "<strong>Hint:</strong> The first term in our sequence corresponds to the lowest positive integer. What is it?";
-                hint.classList.remove('hidden');
+                getAIHint({
+                    stepName: 'Step 1: Base Case',
+                    stepDesc: 'Determine which value of n to use for the base case. We need the first positive integer.',
+                    correctAnswer: 'n = 1'
+                }, 'n = ' + n, hint);
                 return;
             }
             if (rhs !== '1') {
-                hint.innerHTML = "<strong>Hint:</strong> What exact value of <i>n</i> did we just say we are checking for the base case?";
-                hint.classList.remove('hidden');
+                getAIHint({
+                    stepName: 'Step 1: Base Case',
+                    stepDesc: 'Substitute n=1 into the RHS formula n\u00b2 to verify the base case.',
+                    correctAnswer: '1 (since 1\u00b2 = 1)'
+                }, 'RHS = ' + rhs, hint);
                 return;
             }
 
@@ -1023,8 +1029,11 @@
             let hint = document.getElementById('s3-hint');
 
             if (!matchesAny(nxt, ['k+1', '1+k'])) {
-                hint.innerHTML = "<strong>Hint 1:</strong> If we are currently standing on rung <i>k</i>, what is the mathematical expression for the very next rung?";
-                hint.classList.remove('hidden');
+                getAIHint({
+                    stepName: 'Step 3: Inductive Step \u2014 next integer',
+                    stepDesc: 'Determine the next integer after k in the induction.',
+                    correctAnswer: 'k+1'
+                }, 'n = ' + document.getElementById('s3-next').value, hint);
                 return;
             }
             if (!matchesAny(target, ['(k+1)^2', '(1+k)^2'])) {
