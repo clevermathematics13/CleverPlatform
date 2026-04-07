@@ -1074,6 +1074,161 @@
             document.getElementById('btn-s3').classList.add('hidden');
         }
 
+        // ── AI Hint & Chat System ─────────────────────────────────
+        const chatMessages = []; // OpenAI format: {role, content}
+        let currentStepContext = null;
+        let aiPending = false;
+
+        function getApiKey() { return localStorage.getItem('clevermath_api_key') || ''; }
+        function setApiKey(key) { localStorage.setItem('clevermath_api_key', key); }
+
+        function openSettings() {
+            document.getElementById('settings-modal').classList.add('open');
+            document.getElementById('api-key-input').value = getApiKey();
+        }
+        function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
+        function saveSettings() {
+            setApiKey(document.getElementById('api-key-input').value.trim());
+            closeSettings();
+        }
+
+        function openChat() {
+            document.getElementById('chat-panel').classList.add('open');
+            document.getElementById('chat-overlay').classList.add('open');
+            scrollChat();
+        }
+        function closeChat() {
+            document.getElementById('chat-panel').classList.remove('open');
+            document.getElementById('chat-overlay').classList.remove('open');
+        }
+        function scrollChat() {
+            const el = document.getElementById('chat-messages');
+            el.scrollTop = el.scrollHeight;
+        }
+
+        function addChatBubble(role, text) {
+            const msgs = document.getElementById('chat-messages');
+            const div = document.createElement('div');
+            div.className = 'chat-msg ' + (role === 'assistant' ? 'ai' : 'student');
+            div.innerHTML = text;
+            msgs.appendChild(div);
+            try {
+                renderMathInElement(div, { delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '\\(', right: '\\)', display: false}
+                ]});
+            } catch(e) {}
+            scrollChat();
+        }
+
+        async function callAI(messages) {
+            const apiKey = getApiKey();
+            if (!apiKey) {
+                openSettings();
+                return 'Please set your OpenAI API key first (click the \u2699 icon in the top bar).';
+            }
+            try {
+                const res = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + apiKey },
+                    body: JSON.stringify({ model: 'gpt-4o-mini', messages: messages, max_tokens: 300, temperature: 0.7 })
+                });
+                if (!res.ok) {
+                    if (res.status === 401) return 'Invalid API key. Please check your key in settings (\u2699).';
+                    const err = await res.json().catch(() => ({}));
+                    return 'API error: ' + (err.error?.message || res.statusText);
+                }
+                const data = await res.json();
+                return data.choices[0].message.content;
+            } catch(e) {
+                return 'Connection error \u2014 please check your internet.';
+            }
+        }
+
+        function buildSystemPrompt(ctx) {
+            return 'You are a Socratic IBDP Mathematics tutor helping a student with a Mathematical Induction proof.\n' +
+                'Problem: Prove that for all n \u2208 \u2124\u207a, \u03a3(2i\u22121, i=1, n) = n\u00b2 (the sum of the first n odd numbers equals n squared).\n\n' +
+                'Current step: ' + ctx.stepName + '\n' +
+                'What the student must do: ' + ctx.stepDesc + '\n' +
+                'The correct answer: ' + ctx.correctAnswer + '\n\n' +
+                'RULES:\n' +
+                '- Analyse EXACTLY what the student typed and identify the SPECIFIC error or misconception.\n' +
+                '- Give a thoughtful hint that guides reflection \u2014 ask questions that lead to insight.\n' +
+                '- NEVER reveal the correct answer or tell them exactly what to type.\n' +
+                '- If they used the wrong variable inside a summation (e.g. k instead of i), point that out gently.\n' +
+                '- If they are close, acknowledge what is right and focus on the specific mistake.\n' +
+                '- Use LaTeX with \\\\( and \\\\) for inline maths.\n' +
+                '- Keep responses to 2-4 sentences. Be warm, encouraging, and precise.';
+        }
+
+        async function getAIHint(stepInfo, studentAnswer, hintEl) {
+            if (aiPending) return;
+            aiPending = true;
+            hintEl.innerHTML = '<span class="flex items-center gap-2"><svg class="animate-spin h-4 w-4 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Analysing your answer\u2026</span>';
+            hintEl.classList.remove('hidden');
+
+            currentStepContext = stepInfo;
+            chatMessages.length = 0;
+            document.getElementById('chat-messages').innerHTML = '';
+
+            const sysMsg = { role: 'system', content: buildSystemPrompt(stepInfo) };
+            const userMsg = { role: 'user', content: 'The student typed: "' + studentAnswer + '"' };
+            chatMessages.push(sysMsg, userMsg);
+
+            const reply = await callAI(chatMessages);
+            chatMessages.push({ role: 'assistant', content: reply });
+
+            // If step was completed while we waited, don't overwrite
+            if (hintEl.classList.contains('hidden')) { aiPending = false; return; }
+
+            hintEl.innerHTML = '<strong>\uD83E\uDD16 AI Tutor:</strong> ' + reply + '<br><button onclick="openChat()" class="mt-2 text-indigo-600 hover:text-indigo-800 text-xs font-semibold underline">\uD83D\uDCAC Discuss further with AI</button>';
+            try {
+                renderMathInElement(hintEl, { delimiters: [
+                    {left: '$$', right: '$$', display: true},
+                    {left: '\\(', right: '\\)', display: false}
+                ]});
+            } catch(e) {}
+
+            addChatBubble('assistant', reply);
+            aiPending = false;
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const text = input.value.trim();
+            if (!text || aiPending) return;
+            aiPending = true;
+            input.value = '';
+
+            // If no conversation yet, add a generic system prompt
+            if (chatMessages.length === 0) {
+                chatMessages.push({
+                    role: 'system',
+                    content: 'You are a friendly IBDP Mathematics tutor helping with Mathematical Induction. The problem is: Prove that for all n \u2208 \u2124\u207a, \u03a3(2i\u22121, i=1, n) = n\u00b2. Use \\\\( and \\\\) for inline LaTeX. Keep responses concise (2-4 sentences). Be Socratic \u2014 guide, don\'t give answers.'
+                });
+            }
+
+            chatMessages.push({ role: 'user', content: text });
+            addChatBubble('user', text);
+
+            const msgs = document.getElementById('chat-messages');
+            const thinking = document.createElement('div');
+            thinking.className = 'chat-msg ai';
+            thinking.id = 'chat-thinking';
+            thinking.innerHTML = '<span class="flex items-center gap-2"><svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Thinking\u2026</span>';
+            msgs.appendChild(thinking);
+            scrollChat();
+
+            const reply = await callAI(chatMessages);
+            chatMessages.push({ role: 'assistant', content: reply });
+
+            const th = document.getElementById('chat-thinking');
+            if (th) th.remove();
+
+            addChatBubble('assistant', reply);
+            aiPending = false;
+        }
+
         // ── Math Keyboard & Live Preview ──────────────────────────
         let activeInput = null;
         const keyboard = document.getElementById('math-keyboard');
