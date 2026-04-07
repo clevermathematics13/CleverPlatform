@@ -622,6 +622,18 @@
     </main>
 
     <script>
+        // Normalize student input: strip spaces, convert Unicode superscripts, lowercase
+        function norm(s) {
+            return s.replace(/\s+/g, '')
+                     .replace(/²/g, '^2')
+                     .replace(/³/g, '^3')
+                     .replace(/\*\*/g, '^')
+                     .toLowerCase();
+        }
+        function matchesAny(input, accepted) {
+            return accepted.includes(input);
+        }
+
         function switchTab(tabName) {
             // Hide all tabs
             document.querySelectorAll('.tab-content').forEach(el => {
