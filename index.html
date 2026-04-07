@@ -259,22 +259,25 @@
                             
                             <div class="bg-slate-50 p-4 rounded border border-slate-200">
                                 <p class="mb-2 text-sm text-slate-500 font-semibold uppercase tracking-wide">Algebraic Proof:</p>
-                                <p class="mb-3">Split the sum into (Sum up to \(k\)) + (The Next Term):</p>
-                                <p class="mb-4 text-lg">
-                                    \(\displaystyle\sum_{i=1}^{k+1} (2i-1) \;\;=\;\; \displaystyle\sum_{i=1}^k (2i-1) \;\;+\;\; \Big(\; 2\big(\)<input type="text" id="s3-sub" class="w-14 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off">\(\big) - 1 \;\Big)\)
+
+                                <p class="mb-3">Write the <strong>target</strong> — what should the RHS of the formula equal when \(n = k+1\)?</p>
+                                <p class="mb-4 text-lg text-center">
+                                    \(\text{Target} \;\;=\;\;\) <input type="text" id="s3-target" class="w-28 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="?">
+                                </p>
+
+                                <p class="mb-3">Split the sum. Write the \((k+1)\)-th term of the sequence \(2i - 1\) (i.e., the next term to add):</p>
+                                <p class="mb-4 text-lg text-center">
+                                    \(\displaystyle\sum_{i=1}^{k+1} (2i-1) \;\;=\;\; \displaystyle\sum_{i=1}^k (2i-1) \;\;+\;\;\) <input type="text" id="s3-nextterm" class="w-32 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="next term">
                                 </p>
                                 
-                                <p class="mb-3"><strong class="text-indigo-600">Crucial Substitution:</strong> Replace the first part using our assumption from Step 2!</p>
-                                <p class="mb-4 text-lg">
-                                    \(\;\;=\;\; \big(\)<input type="text" id="s3-assump" class="w-10 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off">\(\big)^2 \;\;+\;\; 2k + 2 - 1\)
+                                <p class="mb-3"><strong class="text-indigo-600">Crucial Substitution:</strong> Replace \(\displaystyle\sum_{i=1}^k (2i-1)\) using our assumption from Step 2, then <strong>simplify completely</strong>:</p>
+                                <p class="mb-4 text-lg text-center">
+                                    \(\;\;=\;\;\) <input type="text" id="s3-simplified" class="w-44 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="substitute &amp; simplify">
                                 </p>
                                 
-                                <p class="mb-3">Simplify and factor the quadratic perfectly:</p>
-                                <p class="mb-2 text-lg">
-                                    \(\;\;=\;\; k^2 + 2k \;+\) <input type="text" id="s3-simp" class="w-8 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off">
-                                </p>
-                                <p class="mb-2 text-lg">
-                                    \(\;\;=\;\; \big(\)<input type="text" id="s3-fact" class="w-14 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off">\(\big)^2\)
+                                <p class="mb-3">Factor the quadratic to reach our target:</p>
+                                <p class="mb-2 text-lg text-center">
+                                    \(\;\;=\;\;\) <input type="text" id="s3-factor" class="w-28 border-b-2 border-slate-400 bg-transparent text-center focus:outline-none focus:border-indigo-600 font-bold text-indigo-700 mx-1 text-base" autocomplete="off" placeholder="factor">
                                 </p>
                             </div>
 
