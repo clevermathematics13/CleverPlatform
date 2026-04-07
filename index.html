@@ -999,8 +999,11 @@
                 'sigma(2i-1,i=1,k)=k^2',
             ];
             if (!matchesAny(assume, accepted)) {
-                hint.innerHTML = "<strong>Hint:</strong> Write the entire equation. Use the Σ button for the sum from <i>i=1</i> to <i>k</i>, type the expression <i>2i−1</i> inside, then <i>= k²</i> for the RHS.";
-                hint.classList.remove('hidden');
+                getAIHint({
+                    stepName: 'Step 2: Assumption',
+                    stepDesc: 'Write the complete assumption: assume the formula holds for n=k. Write the sum from i=1 to k of (2i-1) equals k squared. The summation index must be i (not k).',
+                    correctAnswer: 'Sigma(2i-1, i=1, k) = k squared'
+                }, raw, hint);
                 return;
             }
 
