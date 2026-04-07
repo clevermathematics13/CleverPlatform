@@ -453,7 +453,7 @@
                     <h2 class="text-xl font-bold text-slate-900">Example 1: Series Summation</h2>
                     <span class="text-sm font-semibold text-slate-400">Page 1</span>
                 </div>
-                <div class="bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
+                <div class="sticky-question bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
                     Prove the sum of the first \(n\) odd numbers is equal to \(n^2\).
                     <div class="mt-2 text-center text-xl">
                         $$\sum_{i=1}^n (2i-1) = n^2$$
@@ -564,7 +564,7 @@
                     <span class="text-sm font-semibold text-slate-400">Page 2</span>
                 </div>
                 
-                <div class="bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200">
+                <div class="sticky-question bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200">
                     <p class="text-base mb-2">Prove that for all \(n \in \mathbb{Z}^+\):</p>
                     <div class="text-xl text-center overflow-x-auto">
                         $$\frac{1}{1 \cdot 2} + \frac{1}{2 \cdot 3} + \frac{1}{3 \cdot 4} + \dots + \frac{1}{n(n+1)} = \frac{n}{n+1}$$
@@ -605,7 +605,10 @@
                 </div>
 
                 <h3 class="font-semibold text-slate-600 mb-1 uppercase tracking-wider text-xs">Workspace</h3>
-                <div class="flex-grow rounded-lg border-2 border-dashed border-slate-300 p-4 workspace-lines workspace"></div>
+                <div class="canvas-workspace" data-canvas-id="ex2">
+                    <div class="canvas-toolbar no-print"></div>
+                    <canvas></canvas>
+                </div>
             </div>
 
             <!-- Page Break: Divisibility Intro & Example 3 -->
@@ -622,14 +625,17 @@
                     <h2 class="text-xl font-bold text-slate-900">Example 3</h2>
                     <span class="text-sm font-semibold text-slate-400">Page 3</span>
                 </div>
-                <div class="bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
+                <div class="sticky-question bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
                     Prove by mathematical induction that for all \(n \in \mathbb{Z}^+\):
                     <div class="mt-2 text-center text-xl font-bold text-indigo-700">
                         $$5^n - 1 \text{ is divisible by } 4$$
                     </div>
                 </div>
                 <h3 class="font-semibold text-slate-600 mb-1 uppercase tracking-wider text-xs">Workspace</h3>
-                <div class="flex-grow rounded-lg border-2 border-dashed border-slate-300 p-4 workspace-lines workspace"></div>
+                <div class="canvas-workspace" data-canvas-id="ex3">
+                    <div class="canvas-toolbar no-print"></div>
+                    <canvas></canvas>
+                </div>
             </div>
 
             <!-- Page Break: Example 4 -->
@@ -638,14 +644,17 @@
                     <h2 class="text-xl font-bold text-slate-900">Example 4</h2>
                     <span class="text-sm font-semibold text-slate-400">Page 4</span>
                 </div>
-                <div class="bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
+                <div class="sticky-question bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
                     Prove by mathematical induction that for all \(n \in \mathbb{Z}^+\):
                     <div class="mt-2 text-center text-xl">
                         $$6^n + 4 \text{ is divisible by } 5$$
                     </div>
                 </div>
                 <h3 class="font-semibold text-slate-600 mb-1 uppercase tracking-wider text-xs">Workspace</h3>
-                <div class="flex-grow rounded-lg border-2 border-dashed border-slate-300 p-4 workspace-lines workspace"></div>
+                <div class="canvas-workspace" data-canvas-id="ex4">
+                    <div class="canvas-toolbar no-print"></div>
+                    <canvas></canvas>
+                </div>
             </div>
 
             <!-- Page Break: Example 5 -->
@@ -654,7 +663,7 @@
                     <h2 class="text-xl font-bold text-slate-900">Example 5 <span class="bg-red-100 text-red-700 text-xs px-2 py-0.5 rounded ml-2 align-middle">Difficult</span></h2>
                     <span class="text-sm font-semibold text-slate-400">Page 5</span>
                 </div>
-                <div class="bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
+                <div class="sticky-question bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
                     Prove by mathematical induction that for all \(n \in \mathbb{Z}^+\):
                     <div class="mt-2 text-center text-xl">
                         $$8^n - 3^n \text{ is divisible by } 5$$
