@@ -874,6 +874,101 @@
             ['s3-next','s3-target','s3-nextterm','s3-simplified','s3-factor'].forEach(id => document.getElementById(id).disabled = true);
             document.getElementById('btn-s3').classList.add('hidden');
         }
+
+        // ── Math Keyboard & Live Preview ──────────────────────────
+        let activeInput = null;
+        const keyboard = document.getElementById('math-keyboard');
+
+        // Map input IDs to their preview containers
+        const previewMap = {
+            's2-assume': 's2-assume-preview',
+            's3-target': 's3-target-preview',
+            's3-nextterm': 's3-nextterm-preview',
+            's3-simplified': 's3-simplified-preview',
+            's3-factor': 's3-factor-preview'
+        };
+
+        // Convert student text to KaTeX-compatible LaTeX for preview
+        function toLatex(text) {
+            let s = text.trim();
+            if (!s) return '';
+            // Replace ^ followed by a single char with ^{char}
+            s = s.replace(/\^(\d+)/g, '^{$1}');
+            // Convert ² and ³ to proper LaTeX
+            s = s.replace(/²/g, '^{2}');
+            s = s.replace(/³/g, '^{3}');
+            return s;
+        }
+
+        function updatePreview(inputEl) {
+            let previewId = previewMap[inputEl.id];
+            if (!previewId) return;
+            let previewEl = document.getElementById(previewId);
+            let latex = toLatex(inputEl.value);
+            if (!latex) {
+                previewEl.innerHTML = '<span style="color:#94a3b8;font-size:0.75rem;">preview</span>';
+                return;
+            }
+            try {
+                katex.render(latex, previewEl, { throwOnError: false, displayMode: false });
+            } catch(e) {
+                previewEl.innerHTML = '<span style="color:#94a3b8;font-size:0.75rem;">...</span>';
+            }
+        }
+
+        // Track which input is active
+        document.querySelectorAll('input.math-input').forEach(input => {
+            input.addEventListener('focus', function() {
+                activeInput = this;
+                keyboard.classList.add('active');
+                updatePreview(this);
+            });
+            input.addEventListener('input', function() {
+                updatePreview(this);
+            });
+        });
+
+        // Hide keyboard when clicking outside inputs (but not on keyboard itself)
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.math-keyboard') && !e.target.classList.contains('math-input')) {
+                keyboard.classList.remove('active');
+            }
+        });
+
+        // Keyboard button actions
+        keyboard.addEventListener('click', function(e) {
+            let btn = e.target.closest('.math-key');
+            if (!btn || !activeInput || activeInput.disabled) return;
+            
+            let action = btn.dataset.action;
+            let insert = btn.dataset.insert;
+            
+            // Keep focus on the input
+            activeInput.focus();
+            
+            if (action === 'backspace') {
+                let pos = activeInput.selectionStart;
+                if (pos > 0) {
+                    let val = activeInput.value;
+                    activeInput.value = val.slice(0, pos - 1) + val.slice(pos);
+                    activeInput.setSelectionRange(pos - 1, pos - 1);
+                }
+            } else if (action === 'clear') {
+                activeInput.value = '';
+            } else if (insert) {
+                let pos = activeInput.selectionStart;
+                let end = activeInput.selectionEnd;
+                let val = activeInput.value;
+                activeInput.value = val.slice(0, pos) + insert + val.slice(end);
+                let newPos = pos + insert.length;
+                activeInput.setSelectionRange(newPos, newPos);
+            }
+            
+            updatePreview(activeInput);
+        });
+
+        // Initialize all previews
+        document.querySelectorAll('input.math-input').forEach(input => updatePreview(input));
     </script>
 </body>
 </html>
