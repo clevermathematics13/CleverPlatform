@@ -1395,6 +1395,213 @@
 
         // Initialize all previews
         document.querySelectorAll('input.math-input').forEach(input => updatePreview(input));
+
+        // ── Canvas Drawing Workspaces ─────────────────────────────
+        (function() {
+            const COLORS = ['#1e293b', '#dc2626', '#2563eb', '#16a34a'];
+            const LINE_WIDTH = 2;
+            const ERASER_WIDTH = 20;
+
+            document.querySelectorAll('.canvas-workspace').forEach(function(wrapper) {
+                const canvasId = wrapper.dataset.canvasId;
+                const canvas = wrapper.querySelector('canvas');
+                const ctx = canvas.getContext('2d');
+                const toolbar = wrapper.querySelector('.canvas-toolbar');
+
+                let drawing = false;
+                let erasing = false;
+                let currentColor = COLORS[0];
+                let paths = []; // stored for redraw: [{color, width, points:[]}]
+                let currentPath = null;
+
+                // Build toolbar buttons
+                COLORS.forEach(function(color, i) {
+                    const btn = document.createElement('button');
+                    btn.className = 'color-swatch' + (i === 0 ? ' active' : '');
+                    btn.style.background = color;
+                    btn.title = 'Pen colour';
+                    btn.addEventListener('click', function() {
+                        erasing = false;
+                        currentColor = color;
+                        toolbar.querySelectorAll('.color-swatch').forEach(function(s) { s.classList.remove('active'); });
+                        btn.classList.add('active');
+                        toolbar.querySelector('[data-action="eraser"]').classList.remove('active');
+                    });
+                    toolbar.appendChild(btn);
+                });
+
+                const eraserBtn = document.createElement('button');
+                eraserBtn.textContent = '⌫';
+                eraserBtn.title = 'Eraser';
+                eraserBtn.dataset.action = 'eraser';
+                eraserBtn.addEventListener('click', function() {
+                    erasing = !erasing;
+                    eraserBtn.classList.toggle('active', erasing);
+                    if (erasing) toolbar.querySelectorAll('.color-swatch').forEach(function(s) { s.classList.remove('active'); });
+                    else {
+                        // Re-highlight current color
+                        toolbar.querySelectorAll('.color-swatch').forEach(function(s) {
+                            if (s.style.background === currentColor) s.classList.add('active');
+                        });
+                    }
+                });
+                toolbar.appendChild(eraserBtn);
+
+                const clearBtn = document.createElement('button');
+                clearBtn.textContent = 'Clear';
+                clearBtn.title = 'Clear canvas';
+                clearBtn.addEventListener('click', function() {
+                    paths = [];
+                    redraw();
+                });
+                toolbar.appendChild(clearBtn);
+
+                const dlBtn = document.createElement('button');
+                dlBtn.textContent = '⬇ Save';
+                dlBtn.title = 'Download as PNG';
+                dlBtn.style.background = '#6366f1';
+                dlBtn.style.color = 'white';
+                dlBtn.style.borderColor = '#6366f1';
+                dlBtn.addEventListener('click', function() {
+                    // Draw on a temp canvas with white background + ruled lines
+                    const tmp = document.createElement('canvas');
+                    tmp.width = canvas.width;
+                    tmp.height = canvas.height;
+                    const tctx = tmp.getContext('2d');
+                    tctx.fillStyle = '#ffffff';
+                    tctx.fillRect(0, 0, tmp.width, tmp.height);
+                    drawRuledLines(tctx, tmp.width, tmp.height);
+                    tctx.drawImage(canvas, 0, 0);
+                    const link = document.createElement('a');
+                    link.download = 'workspace-' + canvasId + '.png';
+                    link.href = tmp.toDataURL('image/png');
+                    link.click();
+                });
+                toolbar.appendChild(dlBtn);
+
+                // Resize canvas to match container size
+                function resize() {
+                    const rect = wrapper.getBoundingClientRect();
+                    const dpr = window.devicePixelRatio || 1;
+                    canvas.width = rect.width * dpr;
+                    canvas.height = rect.height * dpr;
+                    canvas.style.width = rect.width + 'px';
+                    canvas.style.height = rect.height + 'px';
+                    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                    redraw();
+                }
+
+                function drawRuledLines(context, w, h) {
+                    const dpr = window.devicePixelRatio || 1;
+                    const lineGap = 32;
+                    context.save();
+                    context.strokeStyle = '#e5e7eb';
+                    context.lineWidth = 1;
+                    for (let y = lineGap * dpr; y < h; y += lineGap * dpr) {
+                        context.beginPath();
+                        context.moveTo(0, y);
+                        context.lineTo(w, y);
+                        context.stroke();
+                    }
+                    context.restore();
+                }
+
+                function redraw() {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    // Draw ruled lines at display scale
+                    const lineGap = 32;
+                    ctx.save();
+                    ctx.strokeStyle = '#e5e7eb';
+                    ctx.lineWidth = 1;
+                    const h = canvas.height / (window.devicePixelRatio || 1);
+                    for (let y = lineGap; y < h; y += lineGap) {
+                        ctx.beginPath();
+                        ctx.moveTo(0, y);
+                        ctx.lineTo(canvas.width / (window.devicePixelRatio || 1), y);
+                        ctx.stroke();
+                    }
+                    ctx.restore();
+                    // Replay paths
+                    paths.forEach(function(p) {
+                        if (p.points.length < 2) return;
+                        ctx.beginPath();
+                        ctx.strokeStyle = p.color;
+                        ctx.lineWidth = p.width;
+                        ctx.lineCap = 'round';
+                        ctx.lineJoin = 'round';
+                        ctx.globalCompositeOperation = p.eraser ? 'destination-out' : 'source-over';
+                        ctx.moveTo(p.points[0].x, p.points[0].y);
+                        for (let i = 1; i < p.points.length; i++) {
+                            ctx.lineTo(p.points[i].x, p.points[i].y);
+                        }
+                        ctx.stroke();
+                    });
+                    ctx.globalCompositeOperation = 'source-over';
+                }
+
+                function getPos(e) {
+                    const rect = canvas.getBoundingClientRect();
+                    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+                }
+
+                canvas.addEventListener('pointerdown', function(e) {
+                    e.preventDefault();
+                    drawing = true;
+                    const pos = getPos(e);
+                    currentPath = {
+                        color: erasing ? '#ffffff' : currentColor,
+                        width: erasing ? ERASER_WIDTH : (e.pressure && e.pressure > 0 ? Math.max(LINE_WIDTH, e.pressure * 4) : LINE_WIDTH),
+                        eraser: erasing,
+                        points: [pos]
+                    };
+                    paths.push(currentPath);
+                });
+
+                canvas.addEventListener('pointermove', function(e) {
+                    if (!drawing || !currentPath) return;
+                    e.preventDefault();
+                    const pos = getPos(e);
+                    currentPath.points.push(pos);
+                    // Draw incremental segment
+                    const pts = currentPath.points;
+                    ctx.beginPath();
+                    ctx.strokeStyle = currentPath.color;
+                    ctx.lineWidth = erasing ? ERASER_WIDTH : (e.pressure && e.pressure > 0 ? Math.max(LINE_WIDTH, e.pressure * 4) : LINE_WIDTH);
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.globalCompositeOperation = currentPath.eraser ? 'destination-out' : 'source-over';
+                    if (pts.length >= 2) {
+                        ctx.moveTo(pts[pts.length - 2].x, pts[pts.length - 2].y);
+                        ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+                    }
+                    ctx.stroke();
+                    ctx.globalCompositeOperation = 'source-over';
+                });
+
+                canvas.addEventListener('pointerup', function(e) {
+                    drawing = false;
+                    currentPath = null;
+                });
+
+                canvas.addEventListener('pointerleave', function(e) {
+                    drawing = false;
+                    currentPath = null;
+                });
+
+                // Prevent scrolling while drawing
+                canvas.addEventListener('touchstart', function(e) { e.preventDefault(); }, { passive: false });
+                canvas.addEventListener('touchmove', function(e) { e.preventDefault(); }, { passive: false });
+
+                // Initial size + listen for resize
+                window.addEventListener('resize', resize);
+                // Use ResizeObserver for container resize
+                if (typeof ResizeObserver !== 'undefined') {
+                    new ResizeObserver(resize).observe(wrapper);
+                }
+                // Delayed init to ensure layout is settled
+                setTimeout(resize, 100);
+            });
+        })();
     </script>
 </body>
 </html>
