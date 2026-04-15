@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start auto-push watcher",
+      "type": "shell",
+      "command": "./scripts/auto-push.sh",
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
