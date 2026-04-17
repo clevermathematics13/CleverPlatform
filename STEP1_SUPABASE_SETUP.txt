@@ -1,0 +1,852 @@
+================================================================================
+  STEP 1: CONNECT TO LIVE SUPABASE
+  Ultra-Detailed Button-by-Button Setup Guide
+  CleverPlatform
+================================================================================
+
+After completing every sub-step below you will be able to:
+  ✓ Run the app locally at localhost:3000
+  ✓ Log in with Google (your school email)
+  ✓ See the dashboard with the sidebar navigation
+  ✓ Have the database tables ready (shared with MSA Grader)
+
+PREREQUISITE:
+  • Node.js 20 or newer installed on your computer
+  • A web browser (Chrome recommended)
+  • VS Code (or any code editor)
+  • A GitHub account
+  • The CleverPlatform repo cloned to your computer
+    (if not cloned yet, open Terminal and run:
+     git clone https://github.com/clevermathematics13/CleverPlatform.git )
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.1 — CREATE A SUPABASE PROJECT (skip if you already have one)       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+If you are sharing the Supabase project that the MSA Grader already uses,
+skip to STEP 1.2.
+
+  1.  Open your browser.
+  2.  Go to:  https://supabase.com
+  3.  Click the green button "Start your project" (top-right corner).
+  4.  You will see "Sign in to Supabase". Click "Continue with GitHub".
+  5.  GitHub sign-in page appears. Type your GitHub email and password.
+      Click the green "Sign in" button.
+  6.  If prompted "Authorize Supabase", click the green "Authorize supabase"
+      button.
+  7.  You land on the Supabase Dashboard. You'll see "New project" in the
+      center or top area.  Click "New project".
+  8.  A form appears:
+
+        Organization:  Select your org (or "Personal" if you only have one)
+        Name:          Type:  CleverPlatform
+        Database Password:
+                       Click "Generate a password".
+                       IMPORTANT — Click the copy icon next to the password
+                       and paste it into a safe place (e.g. a note on your
+                       phone or a password manager). You cannot see this
+                       password again.
+        Region:        Pick the closest region to you (e.g. "South America
+                       (São Paulo)" or "US East (N. Virginia)")
+        Pricing Plan:  Select "Free" (unless you need a paid plan)
+
+  9.  Click the green "Create new project" button at the bottom.
+  10. Wait approximately 2 minutes. You will see a spinning animation while
+      the project is being set up. Do not close the tab.
+  11. When finished, you will see the project home page with "Project API",
+      "Getting Started", etc.
+
+      YOUR PROJECT IS NOW CREATED.
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.2 — GET YOUR SUPABASE CREDENTIALS (URL + ANON KEY)                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+You need two pieces of text from Supabase:
+  • Project URL      — looks like: https://abcdefghij.supabase.co
+  • anon public key  — looks like: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+HERE IS EXACTLY HOW TO FIND THEM:
+
+  1.  Open your browser.
+  2.  Go to:  https://supabase.com/dashboard
+  3.  You will see a list of your projects. Click on your project name
+      (e.g. "CleverPlatform" or whatever you named it).
+  4.  You are now on the project home page. Look at the LEFT sidebar.
+  5.  At the very BOTTOM of the left sidebar, find the ⚙ gear icon
+      labeled "Project Settings".  Click it.
+  6.  The settings page opens. In the left sidebar you now see sub-sections
+      like "General", "Integrations", etc.
+  7.  Under the "CONFIGURATION" heading in that sidebar, click "API".
+  8.  The API Settings page loads. You will see:
+
+      ┌────────────────────────────────────────────────────────┐
+      │  Project URL                                           │
+      │  https://abcdefghij.supabase.co            [copy icon] │
+      └────────────────────────────────────────────────────────┘
+
+      Click the COPY icon (📋) to the right of the URL.
+      Open a text file or notepad and PASTE it. Label it "URL".
+
+  9.  Scroll down slightly. You will see:
+
+      ┌────────────────────────────────────────────────────────┐
+      │  Project API keys                                      │
+      │                                                        │
+      │  anon  public                                          │
+      │  eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...  [copy icon] │
+      │                                                        │
+      │  service_role  secret  (DO NOT COPY THIS ONE)          │
+      └────────────────────────────────────────────────────────┘
+
+      Click the COPY icon (📋) next to the "anon public" key.
+      Paste it into your notepad. Label it "ANON KEY".
+
+      ⚠ DO NOT copy the "service_role secret" key. That one is dangerous.
+      You only need the "anon public" key.
+
+  10. Keep this notepad open — you need both values in the next step.
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.3 — CREATE THE .env.local FILE                                     ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+The app reads your Supabase credentials from a hidden file called ".env.local".
+This file is NOT uploaded to GitHub (it's in .gitignore) so your keys stay
+private.
+
+  OPTION A — USING VS CODE:
+
+    1.  Open VS Code.
+    2.  Click "File" in the menu bar (top-left).
+    3.  Click "Open Folder..."
+    4.  Navigate to the CleverPlatform folder on your computer.
+        Click "Select Folder" (Windows) or "Open" (Mac).
+    5.  The project loads in VS Code. In the left sidebar (Explorer panel),
+        you should see files like: package.json, README.md, PLATFORM_SPEC.md,
+        .env.local.example, etc.
+    6.  Find the file ".env.local.example" in the file list.
+        Right-click on it.
+    7.  Click "Copy" in the context menu.
+    8.  Right-click in empty space in the file list.
+    9.  Click "Paste".
+    10. VS Code creates a copy called ".env.local - Copy.example" or similar.
+        Right-click on the copied file and click "Rename".
+    11. Type:  .env.local   (exactly that, starting with a dot)
+        Press Enter.
+    12. Double-click on the new ".env.local" file to open it.
+    13. You will see:
+
+        NEXT_PUBLIC_SUPABASE_URL=https://your-project-ref.supabase.co
+        NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+
+    14. Select the text "https://your-project-ref.supabase.co" (everything
+        after the = sign on line 1).
+    15. Paste your real Project URL from the notepad (Ctrl+V / Cmd+V).
+    16. Select the text "your-anon-key-here" (everything after the = sign
+        on line 2).
+    17. Paste your real anon key from the notepad (Ctrl+V / Cmd+V).
+    18. The file should now look like (with your real values):
+
+        NEXT_PUBLIC_SUPABASE_URL=https://abcdefghij.supabase.co
+        NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    19. Press Ctrl+S (Windows) or Cmd+S (Mac) to save.
+
+  OPTION B — USING THE TERMINAL:
+
+    1.  Open Terminal (Mac) or Command Prompt / PowerShell (Windows).
+    2.  Type:  cd path/to/CleverPlatform
+        (Replace "path/to" with wherever you cloned the repo)
+        Press Enter.
+    3.  Type:  cp .env.local.example .env.local
+        Press Enter.
+    4.  Type:  code .env.local
+        Press Enter. (This opens the file in VS Code)
+    5.  Edit the two values as described in Option A steps 14-19.
+    6.  Save with Ctrl+S / Cmd+S.
+
+  ⚠ MAKE SURE:
+    • There are NO spaces around the = sign
+    • There are NO quotes around the values
+    • The file is named exactly ".env.local" (not ".env.local.txt")
+
+  ✅ CORRECT:
+    NEXT_PUBLIC_SUPABASE_URL=https://abcdefghij.supabase.co
+
+  ❌ WRONG:
+    NEXT_PUBLIC_SUPABASE_URL = https://abcdefghij.supabase.co
+    NEXT_PUBLIC_SUPABASE_URL="https://abcdefghij.supabase.co"
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.4 — RUN THE DATABASE MIGRATION (CREATE ALL TABLES)                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+This step creates all the database tables. If you're sharing the Supabase
+project with the MSA Grader, some tables already exist — the script uses
+"IF NOT EXISTS" so nothing will break.
+
+  1.  Open your browser.
+  2.  Go to:  https://supabase.com/dashboard
+  3.  Click on your project name.
+  4.  In the LEFT sidebar, find the icon that looks like a code bracket
+      with a play button — it says "SQL Editor" when you hover.
+      Click "SQL Editor".
+  5.  The SQL Editor page loads. You will see a mostly empty page with a
+      text area in the center.
+  6.  Click the "+ New query" button (top-left area of the editor, or top
+      toolbar). A new blank query tab opens.
+
+  NOW YOU NEED TO COPY THE MIGRATION SQL FILE:
+
+  7.  Go back to VS Code.
+  8.  In the left sidebar, expand the "supabase" folder by clicking the ▶
+      arrow next to it.
+  9.  Expand the "migrations" subfolder.
+  10. Click on the file "001_initial_schema.sql" to open it.
+  11. The file opens in the editor. It starts with:
+      -- CleverPlatform Database Schema
+  12. Press Ctrl+A (Windows) or Cmd+A (Mac) to select ALL the text.
+  13. Press Ctrl+C (Windows) or Cmd+C (Mac) to copy it.
+
+  NOW PASTE AND RUN IT:
+
+  14. Go back to your browser (the Supabase SQL Editor tab).
+  15. Click inside the empty query text area.
+  16. Press Ctrl+V (Windows) or Cmd+V (Mac) to paste the SQL.
+  17. You should see the entire SQL code in the editor, starting with:
+      -- CleverPlatform Database Schema
+      -- Run this in your Supabase SQL editor to create all tables.
+  18. Click the green "Run" button (bottom-right of the editor area).
+      OR press Ctrl+Enter (Windows) or Cmd+Enter (Mac).
+  19. Wait a few seconds. You should see:
+
+      ┌─────────────────────────────────────────┐
+      │  Success. No rows returned               │
+      └─────────────────────────────────────────┘
+
+      If you see an error instead, see TROUBLESHOOTING at the bottom.
+
+  VERIFY THE TABLES WERE CREATED:
+
+  20. In the LEFT sidebar, click the icon that looks like a table/grid —
+      it says "Table Editor" when you hover. Click it.
+  21. In the left panel you should now see a list of tables:
+        assignments
+        box_coordinates
+        courses
+        enrollments
+        exam_questions
+        exams
+        grades
+        lessons
+        parent_links
+        profiles
+        questions
+        student_responses
+        students
+        submissions
+        topics
+  22. Click on "courses".
+  23. You should see 2 rows:
+        IBDP Analysis & Approaches HL       (code: AAHL)
+        IBDP Applications & Interpretation HL (code: AIHL)
+  24. Click on "profiles" (in the left table list).
+  25. You should see 1 row:
+        clevermathematics@gmail.com    (role: admin)
+
+  ✅ If you see all of this, the migration was successful!
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.5 — SET UP GOOGLE OAUTH (so users can "Sign in with Google")      ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+This is the most complex step. You need to do things in TWO places:
+  A) Google Cloud Console — to create OAuth credentials
+  B) Supabase Dashboard — to enter those credentials
+
+IMPORTANT: Write down or copy your Supabase "Project URL" before starting.
+You need it for the redirect URI. It looks like:
+  https://abcdefghij.supabase.co
+Also note just the project ref part: "abcdefghij" (the part before .supabase.co)
+
+────────────────────────────────────────
+PART A: CREATE GOOGLE OAUTH CREDENTIALS
+────────────────────────────────────────
+
+  1.  Open a NEW browser tab.
+  2.  Go to:  https://console.cloud.google.com
+  3.  Sign in with your Google account (clevermathematics@gmail.com).
+      If already signed in, it goes straight to the dashboard.
+  4.  At the very top of the page, next to the "Google Cloud" logo,
+      there is a project selector dropdown. It may say "Select a project"
+      or show a current project name. Click on it.
+  5.  A modal window appears titled "Select a project".
+      Click "NEW PROJECT" (top-right of the modal).
+  6.  A form appears:
+        Project name:  Type:  CleverPlatform
+        Organization:  Leave as default
+        Location:      Leave as default
+  7.  Click the blue "CREATE" button.
+  8.  Wait ~15 seconds. A notification appears: "Create Project:
+      CleverPlatform" — when the spinner completes, click "SELECT PROJECT"
+      in the notification.  (If you miss the notification, click the
+      project dropdown again and click "CleverPlatform".)
+  9.  You're now inside the CleverPlatform project.
+
+  CONFIGURE THE OAUTH CONSENT SCREEN (required before creating credentials):
+
+  10. In the left sidebar, find "APIs & Services". Click on it.
+      If you don't see it, click the ☰ hamburger menu (top-left) first.
+  11. In the sub-menu that expands, click "OAuth consent screen".
+  12. You will see a page asking "User Type":
+        ○ Internal  — only for Google Workspace users
+        ○ External  — any Google account can use it
+      If your school uses Google Workspace and you want ONLY school
+      accounts: Select "Internal".
+      If you want anyone (including clevermathematics@gmail.com) to log in:
+      Select "External".
+      Click "CREATE".
+  13. A form appears:
+        App name:              Type:  CleverPlatform
+        User support email:    Select your email from the dropdown
+        App logo:              Skip (leave blank)
+  14. Scroll ALL the way down. Under "Developer contact information":
+        Email addresses:       Type:  clevermathematics@gmail.com
+  15. Click "SAVE AND CONTINUE" (bottom of the page).
+  16. SCOPES page appears. You don't need to change anything.
+      Click "SAVE AND CONTINUE".
+  17. TEST USERS page appears (only if you chose "External").
+      Click "SAVE AND CONTINUE".
+      (You don't need to add test users — Supabase handles auth.)
+  18. SUMMARY page appears.
+      Click "BACK TO DASHBOARD".
+
+  NOW CREATE THE OAUTH CLIENT ID:
+
+  19. In the left sidebar, click "APIs & Services" again.
+  20. Click "Credentials" in the sub-menu.
+  21. At the top of the page, click "+ CREATE CREDENTIALS".
+      A dropdown appears with options.
+  22. Click "OAuth client ID".
+  23. A form appears:
+        Application type:   Click the dropdown. Select "Web application".
+  24. A new field appears:
+        Name:               Type:  CleverPlatform
+  25. Scroll down. You will see two sections:
+        "Authorized JavaScript origins"
+        "Authorized redirect URIs"
+  26. Under "Authorized redirect URIs", click "+ ADD URI".
+  27. A text field appears. Type EXACTLY:
+
+      https://abcdefghij.supabase.co/auth/v1/callback
+
+      ⚠ Replace "abcdefghij" with YOUR Supabase project ref.
+      ⚠ Make sure it ends with /auth/v1/callback exactly.
+      ⚠ Make sure it starts with https:// (not http://)
+
+  28. Click the blue "CREATE" button at the bottom.
+  29. A popup appears: "OAuth client created"
+      It shows two values:
+
+      ┌─────────────────────────────────────────────────────────┐
+      │  Your Client ID                                         │
+      │  123456789-abcdefg.apps.googleusercontent.com  [copy]   │
+      │                                                         │
+      │  Your Client Secret                                     │
+      │  GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxx             [copy]   │
+      └─────────────────────────────────────────────────────────┘
+
+  30. Click the COPY icon next to "Your Client ID".
+      Paste it into your notepad. Label it "GOOGLE CLIENT ID".
+  31. Click the COPY icon next to "Your Client Secret".
+      Paste it into your notepad. Label it "GOOGLE CLIENT SECRET".
+  32. Click "OK" to close the popup.
+
+      DO NOT close this browser tab yet — you may need to come back.
+
+────────────────────────────────────────
+PART B: ENTER GOOGLE CREDENTIALS IN SUPABASE
+────────────────────────────────────────
+
+  33. Switch to the browser tab with the Supabase Dashboard.
+      (If you closed it, go to https://supabase.com/dashboard and click
+      your project.)
+  34. In the LEFT sidebar, click the icon that looks like a person/key —
+      it says "Authentication" when you hover. Click it.
+  35. At the TOP of the Authentication page, you'll see tabs:
+        Users | Providers | URL Configuration | ...
+      Click "Providers".
+  36. You will see a list of auth providers:
+        Email
+        Phone
+        Apple
+        Azure
+        Bitbucket
+        Discord
+        Facebook
+        GitHub
+        GitLab
+        Google           ← THIS ONE
+        ...
+  37. Find "Google" in the list. Click on it to expand the section.
+  38. You will see a toggle switch: "Enable Sign in with Google"
+      Click the toggle to turn it ON (it should turn green/blue).
+  39. Two text fields appear:
+        Client ID (for oauth):
+        Client Secret (for oauth):
+  40. Click inside the "Client ID (for oauth)" field.
+      Paste your Google Client ID from the notepad (Ctrl+V / Cmd+V).
+      It should look like: 123456789-abcdefg.apps.googleusercontent.com
+  41. Click inside the "Client Secret (for oauth)" field.
+      Paste your Google Client Secret from the notepad (Ctrl+V / Cmd+V).
+      It should look like: GOCSPX-xxxxxxxxxxxxxxxxxxxxxxxxxx
+  42. Below the fields, there is a "Callback URL (for OAuth)" displayed.
+      It should show:
+        https://abcdefghij.supabase.co/auth/v1/callback
+      This MUST match exactly what you entered in Google Cloud Console
+      step 27. If it doesn't match, go back to Google Cloud Console
+      and update the redirect URI.
+  43. Click the green "Save" button.
+
+      ✅ Google OAuth is now enabled!
+
+────────────────────────────────────────
+PART C: CONFIGURE SUPABASE REDIRECT URL
+────────────────────────────────────────
+
+  44. Still on the Authentication page, click the tab "URL Configuration"
+      (next to "Providers" in the top tabs).
+  45. You will see:
+        Site URL:          http://localhost:3000
+      If it says something else, click the "edit" (pencil) icon and
+      change it to:
+        http://localhost:3000
+      Click "Save".
+  46. Under "Redirect URLs", click "Add URL".
+  47. Type:  http://localhost:3000/auth/callback
+      Click "Add URL".
+  48. If you plan to deploy to a live domain later (e.g. Vercel), also add:
+        https://your-domain.vercel.app/auth/callback
+      (You can do this later too.)
+
+      ✅ Redirect URLs are configured!
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.6 — INSTALL DEPENDENCIES AND START THE APP                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  1.  Open Terminal (Mac) or PowerShell/Command Prompt (Windows).
+
+      MAC:    Press Cmd+Space, type "Terminal", press Enter.
+      WINDOWS: Press the Windows key, type "PowerShell", press Enter.
+
+      OR in VS Code: press Ctrl+` (backtick) to open the integrated
+      terminal.
+
+  2.  Navigate to the CleverPlatform folder:
+
+      Type:  cd /path/to/CleverPlatform
+      (Replace "/path/to" with the actual path where you cloned the repo)
+      Press Enter.
+
+      EXAMPLE (Mac):    cd ~/Documents/CleverPlatform
+      EXAMPLE (Windows): cd C:\Users\YourName\Documents\CleverPlatform
+
+  3.  Verify you're in the right folder:
+
+      Type:  ls
+      Press Enter.
+
+      You should see files like: package.json, README.md, src/, etc.
+      If you don't see those, you're in the wrong folder. Use cd to
+      navigate to the correct one.
+
+  4.  Install dependencies:
+
+      Type:  npm install
+      Press Enter.
+
+      Wait about 30-60 seconds. You'll see a progress bar and then:
+        added XXX packages in XXs
+      This installs Next.js, React, Supabase, Tailwind CSS, etc.
+
+  5.  Start the development server:
+
+      Type:  npm run dev
+      Press Enter.
+
+      After a few seconds you will see:
+
+        ▲ Next.js 16.2.4
+        - Local:    http://localhost:3000
+        - Environments: .env.local
+
+      The server is now running. DO NOT close this terminal window.
+      It must stay open while you use the app.
+
+  6.  Open your browser.
+  7.  Type in the address bar:  http://localhost:3000
+      Press Enter.
+
+  8.  You should see the CleverPlatform login page:
+
+      ┌──────────────────────────────────┐
+      │       CleverPlatform             │
+      │  IBDP Mathematics Learning       │
+      │         Platform                 │
+      │                                  │
+      │  STUDENTS & TEACHERS             │
+      │  ┌────────────────────────────┐  │
+      │  │  🔵 Sign in with Google    │  │
+      │  └────────────────────────────┘  │
+      │                                  │
+      │          — or —                  │
+      │                                  │
+      │  PARENT ACCESS                   │
+      │  ┌────────────────────────────┐  │
+      │  │  Email address             │  │
+      │  └────────────────────────────┘  │
+      │  ┌────────────────────────────┐  │
+      │  │  Password                  │  │
+      │  └────────────────────────────┘  │
+      │  ┌────────────────────────────┐  │
+      │  │  Sign In as Parent         │  │
+      │  └────────────────────────────┘  │
+      └──────────────────────────────────┘
+
+      ✅ If you see this page, the app is running correctly!
+
+      If you see a blank white page or an error, see TROUBLESHOOTING below.
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.7 — TEST THE GOOGLE LOGIN                                         ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  1.  On the login page (http://localhost:3000), click the button
+      "Sign in with Google".
+  2.  A Google sign-in popup or redirect appears.
+  3.  Click on your Google account (clevermathematics@gmail.com).
+      If prompted, enter your Google password and click "Next".
+  4.  If you see a "This app isn't verified" warning (because you chose
+      External in the consent screen):
+        Click "Advanced" (small link at the bottom-left).
+        Click "Go to CleverPlatform (unsafe)".
+        Click "Continue".
+      (This warning appears only because the app is in development.
+       It's safe — you built it yourself.)
+  5.  Google authenticates you and redirects back to:
+      http://localhost:3000/auth/callback?code=...
+  6.  The callback page processes the code and redirects you to
+      the dashboard at http://localhost:3000
+  7.  You should now see the DASHBOARD:
+
+      ┌──────────────────────────────────────────────────────────┐
+      │ CleverPlatform  [ADMIN]     clevermathematics@gmail.com  │
+      │                                            Sign out      │
+      ├──────────┬───────────────────────────────────────────────┤
+      │ 📖 Textbook    │                                        │
+      │ 📝 Assignments │  Welcome to CleverPlatform!            │
+      │ ❓ Question Bank│  (or whatever the dashboard shows)    │
+      │ 📋 Exams       │                                        │
+      │ ✏️ Grading      │                                        │
+      │ 📊 Gradebook   │                                        │
+      │ 📈 My Progress │                                        │
+      └──────────┴───────────────────────────────────────────────┘
+
+  8.  CHECK THESE THINGS:
+        ✓ Top bar shows "CleverPlatform" on the left
+        ✓ Your email appears in the top-right: clevermathematics@gmail.com
+        ✓ A role badge shows "ADMIN" (in a small purple/indigo pill)
+        ✓ The left sidebar shows ALL 7 navigation items:
+            📖 Textbook
+            📝 Assignments
+            ❓ Question Bank
+            📋 Exams
+            ✏️ Grading
+            📊 Gradebook
+            📈 My Progress
+        ✓ Clicking each sidebar item shows a placeholder page
+
+  9.  TEST SIGN OUT:
+      Click "Sign out" in the top-right corner.
+      You should be redirected back to the login page.
+
+      ✅ If everything above works, Google login is fully functional!
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.8 — ADD A STUDENT PROFILE FOR TESTING                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+When a student logs in for the first time, they won't have a profile row
+in the database. You need to add one manually (for now — auto-creation
+will be built in Phase 2).
+
+  1.  Open your browser.
+  2.  Go to:  https://supabase.com/dashboard
+  3.  Click on your project.
+  4.  In the LEFT sidebar, click "SQL Editor".
+  5.  Click "+ New query".
+  6.  Type the following SQL (replace the email and name with a real student):
+
+      INSERT INTO profiles (email, name, role)
+      VALUES ('student@amersol.edu.pe', 'Ana García', 'student')
+      ON CONFLICT (email) DO NOTHING;
+
+  7.  Click the green "Run" button.
+  8.  You should see: "Success. 1 row affected"
+      (or "0 rows affected" if the student already existed)
+
+  TO ADD MULTIPLE STUDENTS AT ONCE:
+
+  9.  Click "+ New query" again.
+  10. Type:
+
+      INSERT INTO profiles (email, name, role) VALUES
+        ('student1@amersol.edu.pe', 'María López', 'student'),
+        ('student2@amersol.edu.pe', 'Carlos Ruiz', 'student'),
+        ('student3@amersol.edu.pe', 'Sofía Chen', 'student')
+      ON CONFLICT (email) DO NOTHING;
+
+  11. Click "Run".
+
+  TO TEST AS A STUDENT:
+
+  12. Go to http://localhost:3000
+  13. Click "Sign in with Google".
+  14. Sign in with the student's @amersol.edu.pe Google account.
+      (You'll need the student to do this on their device, or use a
+       test account if you have one.)
+  15. After login, you should see:
+        ✓ "STUDENT" role badge (instead of "ADMIN")
+        ✓ Only 3 sidebar items: Textbook, Assignments, My Progress
+        ✓ The Question Bank, Exams, Grading, and Gradebook items
+          are HIDDEN (only teachers/admins see those)
+
+      ✅ Student login is working!
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STEP 1.9 — VERIFY EVERYTHING IS CONNECTED                                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Final verification checklist. Go through each item:
+
+  IN SUPABASE DASHBOARD:
+
+  1.  Go to https://supabase.com/dashboard → your project → Table Editor.
+  2.  Click "courses" in the table list.
+      ✓ You should see 2 rows: AAHL and AIHL.
+  3.  Click "profiles" in the table list.
+      ✓ You should see at least 1 row: clevermathematics@gmail.com (admin)
+      ✓ You should see any students you added in Step 1.8.
+
+  IF THE MSA GRADER IS CONNECTED TO THIS SAME SUPABASE:
+
+  4.  Click "questions" in the table list.
+      ✓ You should see IB past-paper questions (rows with codes like
+        "22M.1.SL.TZ1.5").
+  5.  Click "students" in the table list.
+      ✓ You should see student names and emails synced from the MSA Grader.
+  6.  Click "exams" in the table list.
+      ✓ You should see exam entries.
+  7.  Click "grades" in the table list.
+      ✓ You should see grading data.
+
+  IN THE APP:
+
+  8.  Go to http://localhost:3000.
+  9.  Log in with Google (clevermathematics@gmail.com).
+  10. Click each sidebar item and confirm the page loads (even if it's
+      just a placeholder):
+        📖 Textbook     → page loads
+        📝 Assignments  → page loads
+        ❓ Question Bank → page loads
+        📋 Exams        → page loads
+        ✏️ Grading       → page loads
+        📊 Gradebook    → page loads
+        📈 My Progress  → page loads
+  11. Click "Sign out" → you go back to the login page.
+  12. The login page does NOT redirect you elsewhere automatically
+      (auth middleware is correctly blocking unauthenticated access).
+
+      ✅ STEP 1 IS COMPLETE! Everything is connected and working.
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  TROUBLESHOOTING — Common Problems and Fixes                               ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: When I run "npm run dev" I see:
+           "Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY"
+  ──────────────────────────────────────────────────────────────────────────
+  CAUSE:   The .env.local file is missing or has wrong values.
+  FIX:
+    1. Open the CleverPlatform folder in VS Code.
+    2. Check that a file called ".env.local" exists (not ".env.local.example").
+    3. Open it and verify both values are filled in (not placeholder text).
+    4. IMPORTANT: Stop the dev server (press Ctrl+C in the terminal).
+    5. Run "npm run dev" again. The server needs to restart to read .env.local.
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: I click "Sign in with Google" but nothing happens.
+  ──────────────────────────────────────────────────────────────────────────
+  CAUSE:   Google OAuth is not enabled in Supabase, or the Client ID/Secret
+           are wrong.
+  FIX:
+    1. Go to Supabase → Authentication → Providers → Google.
+    2. Make sure the toggle is ON (green/blue).
+    3. Make sure Client ID and Client Secret fields are filled in.
+    4. Make sure they're from the CORRECT Google Cloud project.
+    5. Try opening browser DevTools (F12 or Cmd+Opt+I) → Console tab
+       to see if there's an error message.
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: After clicking Google and signing in, I see:
+           "Error 400: redirect_uri_mismatch"
+  ──────────────────────────────────────────────────────────────────────────
+  CAUSE:   The redirect URI in Google Cloud Console doesn't match what
+           Supabase expects.
+  FIX:
+    1. Go to Google Cloud Console → APIs & Services → Credentials.
+    2. Click on your OAuth client (e.g. "CleverPlatform").
+    3. Under "Authorized redirect URIs", check the URI.
+    4. It MUST be:  https://YOUR-REF.supabase.co/auth/v1/callback
+       (with YOUR actual project ref, https, and /auth/v1/callback)
+    5. Compare this EXACTLY with the "Callback URL" shown in
+       Supabase → Authentication → Providers → Google.
+       They must be IDENTICAL — character for character.
+    6. If you fix it, click "Save" in Google Cloud Console.
+    7. Wait 1-2 minutes for the change to take effect.
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: After Google login, I'm redirected to localhost:3000 but I see
+           the login page again (infinite loop).
+  ──────────────────────────────────────────────────────────────────────────
+  CAUSE:   The redirect URL in Supabase is not configured.
+  FIX:
+    1. Go to Supabase → Authentication → URL Configuration.
+    2. Site URL should be:  http://localhost:3000
+    3. Redirect URLs should include:  http://localhost:3000/auth/callback
+    4. If missing, add it (see Step 1.5 Part C above).
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: I can log in, but I see "STUDENT" badge instead of "ADMIN".
+  ──────────────────────────────────────────────────────────────────────────
+  CAUSE:   The admin profile row is missing from the database.
+  FIX:
+    1. Go to Supabase → SQL Editor → New query.
+    2. Run:
+       INSERT INTO profiles (email, name, role) VALUES
+         ('clevermathematics@gmail.com', 'Admin', 'admin')
+       ON CONFLICT (email) DO UPDATE SET role = 'admin';
+    3. Click "Run".
+    4. Sign out and sign back in to the app.
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: Running the migration SQL gives an error:
+           "relation already exists" or "policy already exists"
+  ──────────────────────────────────────────────────────────────────────────
+  CAUSE:   You've already run the migration before. The tables exist.
+  FIX:     This is usually fine — the important tables were created.
+           If you need to re-run cleanly:
+    1. Go to Supabase → SQL Editor → New query.
+    2. To drop and recreate a specific policy that's causing errors, run:
+       DROP POLICY IF EXISTS "policy name here" ON table_name;
+    3. Then re-run the migration.
+    NOTE: Only do this if you understand what you're doing.
+          The "IF NOT EXISTS" clauses should prevent most issues.
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: I see a blank white page at localhost:3000 (no login form).
+  ──────────────────────────────────────────────────────────────────────────
+  CAUSE:   The app failed to build, or there's a JavaScript error.
+  FIX:
+    1. Check the terminal where "npm run dev" is running for red error text.
+    2. Open browser DevTools (F12 or Cmd+Opt+I) → Console tab.
+       Look for red error messages.
+    3. Common fixes:
+       - Run "npm install" again to make sure all packages are installed.
+       - Delete the ".next" folder and restart: rm -rf .next && npm run dev
+       - Check that .env.local exists and has correct values.
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: "npm install" fails with errors.
+  ──────────────────────────────────────────────────────────────────────────
+  FIX:
+    1. Make sure Node.js 20+ is installed:  node --version
+       Should show v20.x.x or higher.
+    2. Try deleting node_modules and package-lock.json:
+       rm -rf node_modules package-lock.json
+       npm install
+    3. If you see permission errors (Mac/Linux):
+       sudo npm install
+
+  ──────────────────────────────────────────────────────────────────────────
+  PROBLEM: "This app isn't verified" warning during Google sign-in.
+  ──────────────────────────────────────────────────────────────────────────
+  CAUSE:   Normal when app is in development/testing mode.
+  FIX:     This is expected.
+    1. Click "Advanced" (bottom-left of the warning page).
+    2. Click "Go to CleverPlatform (unsafe)".
+    3. Click "Continue" to grant permissions.
+    4. This warning goes away after Google verifies your app (only
+       needed if you publish it to the public).
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  STOPPING AND RESTARTING THE APP                                           ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  TO STOP THE APP:
+    1. Go to the terminal where "npm run dev" is running.
+    2. Press Ctrl+C.
+    3. The server stops. localhost:3000 will no longer work.
+
+  TO RESTART THE APP:
+    1. Open Terminal / VS Code terminal.
+    2. Navigate to the CleverPlatform folder.
+    3. Type:  npm run dev
+    4. Press Enter.
+    5. Wait for "Ready" message.
+    6. Open http://localhost:3000 in your browser.
+
+  NOTES:
+    • You do NOT need to run "npm install" again unless package.json changed.
+    • If you edit .env.local, you MUST restart the server (Ctrl+C then
+      npm run dev) for the changes to take effect.
+    • If you edit source code (files in src/), the browser will auto-reload.
+
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  WHAT'S NEXT AFTER STEP 1?                                                ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  Now that the app is running and connected to Supabase:
+
+  STEP 2: Build interactive textbook lesson pages
+    → Template with pre-assessment → content → reflection flow
+    → Checkpoint components with self-checking and hints
+    → Interactive geometry tool embedding
+
+  STEP 3: Build question bank and assignment system
+    → Browse/search IB past-paper questions (from MSA data)
+    → Create assignments, distribute to students
+    → Student submission flow
+
+  STEP 4: Integrate AI grading from MSA project
+    → Connect the grading page to the grades/submissions tables
+    → Teacher review and confirmation UI
+
+  Full roadmap is in PLATFORM_SPEC.md → Section 11.
+
+================================================================================

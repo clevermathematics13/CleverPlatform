@@ -1,6 +1,66 @@
 # CleverPlatform
 
-Interactive text/notebook.
+Interactive educational platform for IB Diploma Programme mathematics courses (AAHL & AIHL).
+
+📄 **[Full Project Specification →](PLATFORM_SPEC.md)** — Living document with all requirements, design decisions, and roadmap.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | [Next.js 16](https://nextjs.org/) (App Router, TypeScript) |
+| CSS | [Tailwind CSS v4](https://tailwindcss.com/) |
+| Database | [Supabase](https://supabase.com/) (PostgreSQL) — shared with MSA Grader |
+| Auth | Supabase Auth (Google OAuth + email/password) |
+| Math Rendering | KaTeX (in lesson pages) |
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 20+
+- A [Supabase](https://supabase.com/) project
+
+### Setup
+
+```bash
+# Install dependencies
+npm install
+
+# Copy environment template and fill in your Supabase credentials
+cp .env.local.example .env.local
+
+# Run the database migration
+# → Copy supabase/migrations/001_initial_schema.sql into your Supabase SQL editor and run it
+
+# Start the development server
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) to see the app.
+
+### Project Structure
+
+```
+src/
+├── app/
+│   ├── (auth)/login/          # Login page (Google SSO + parent email login)
+│   ├── (dashboard)/           # Main app layout with sidebar navigation
+│   │   ├── textbook/          # Interactive textbook pages
+│   │   ├── assignments/       # Student assignments
+│   │   ├── questions/         # Question bank (synced from MSA)
+│   │   ├── exams/             # Exam management
+│   │   ├── grading/           # AI-assisted grading review
+│   │   ├── gradebook/         # Teacher gradebook
+│   │   └── progress/          # Student progress page
+│   └── auth/callback/         # OAuth callback handler
+├── lib/                       # Supabase client utilities
+├── types/                     # TypeScript types (database schema)
+└── middleware.ts              # Auth middleware (protects routes)
+
+public/lessons/                # Static HTML lesson files (legacy)
+supabase/migrations/           # Database migration SQL
+```
 
 ## Auto-push to GitHub
 

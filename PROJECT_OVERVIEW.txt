@@ -1,0 +1,196 @@
+================================================================================
+  CLEVERPLATFORM — PROJECT OVERVIEW
+  What Has Been Built So Far
+  Last updated: 2026-04-17
+================================================================================
+
+1. WHAT IS CLEVERPLATFORM?
+────────────────────────────────────────────────────────────────────────────────
+CleverPlatform is a web-based educational platform for IB Diploma Programme
+mathematics courses (AAHL & AIHL). It is designed for use in class and at home
+by students, teachers, and parents.
+
+It will replace scattered tools with a single platform that includes:
+  • Interactive digital textbook lessons
+  • Past-paper question bank (synced from the MSA Grader project)
+  • Assignments, submissions, and AI-assisted grading
+  • Exam builder
+  • Gradebook and student progress tracking
+  • Parent access portal
+
+
+2. TECH STACK CHOSEN
+────────────────────────────────────────────────────────────────────────────────
+  Layer             Technology              Status
+  ─────             ──────────              ──────
+  Frontend          Next.js 16 (App Router) ✅ Set up
+  Language          TypeScript              ✅ Set up
+  CSS               Tailwind CSS v4         ✅ Set up
+  Database          Supabase (PostgreSQL)   ✅ Schema ready
+  Auth              Supabase Auth           ✅ Code ready
+  Math rendering    KaTeX                   ✅ In legacy lessons
+  File storage      Supabase Storage        🔜 Planned
+  AI services       OpenAI / Claude         🔜 Planned
+  Hosting           Vercel or Netlify       ❓ TBD
+
+  Key packages installed:
+    • next 16.2.4
+    • react 19.2.4
+    • @supabase/supabase-js ^2.103.3
+    • @supabase/ssr ^0.10.2
+    • tailwindcss ^4
+
+
+3. PROJECT STRUCTURE
+────────────────────────────────────────────────────────────────────────────────
+  CleverPlatform/
+  ├── .env.local.example          ← Template for Supabase credentials
+  ├── package.json                ← Dependencies and scripts
+  ├── PLATFORM_SPEC.md            ← Full project specification (living doc)
+  ├── README.md                   ← Quick-start guide
+  │
+  ├── src/
+  │   ├── app/
+  │   │   ├── layout.tsx          ← Root layout
+  │   │   ├── globals.css         ← Global styles
+  │   │   ├── (auth)/login/       ← Login page (Google SSO + parent email)
+  │   │   ├── auth/callback/      ← OAuth callback handler
+  │   │   └── (dashboard)/        ← Main app with sidebar navigation
+  │   │       ├── layout.tsx      ← Dashboard shell (header + sidebar + content)
+  │   │       ├── page.tsx        ← Home/dashboard page
+  │   │       ├── textbook/       ← Interactive textbook (placeholder)
+  │   │       ├── assignments/    ← Student assignments (placeholder)
+  │   │       ├── questions/      ← Question bank from MSA (placeholder)
+  │   │       ├── exams/          ← Exam management (placeholder)
+  │   │       ├── grading/        ← AI grading review (placeholder)
+  │   │       ├── gradebook/      ← Teacher gradebook (placeholder)
+  │   │       └── progress/       ← Student progress (placeholder)
+  │   │
+  │   ├── lib/
+  │   │   ├── supabase-browser.ts ← Browser-side Supabase client
+  │   │   ├── supabase-server.ts  ← Server-side Supabase client
+  │   │   └── supabase-middleware.ts ← Session refresh middleware
+  │   │
+  │   ├── types/
+  │   │   └── database.ts         ← Full TypeScript types for all tables
+  │   │
+  │   └── middleware.ts           ← Auth middleware (protects routes)
+  │
+  ├── public/
+  │   └── lessons/                ← Legacy static HTML lesson files
+  │       ├── mathematical-induction.html
+  │       ├── mathematical-induction-netlify.html
+  │       └── induction-inequalities.html
+  │
+  └── supabase/
+      └── migrations/
+          └── 001_initial_schema.sql  ← Full database schema (MSA + new tables)
+
+
+4. DATABASE SCHEMA
+────────────────────────────────────────────────────────────────────────────────
+The database schema unifies tables from the MSA Grader project with new
+CleverPlatform tables. All tables are defined in:
+  • SQL:  supabase/migrations/001_initial_schema.sql
+  • Types: src/types/database.ts
+
+  [MSA] Existing tables (from MSA_Grader-API_Backend):
+  ────────────────────────────────────────────────────
+    questions          IB past-paper questions (code, year, paper, level, marks)
+    students           Student names and emails
+    exams              Exam metadata (code, date, duration, class)
+    exam_questions     Which questions are on which exam
+    grades             Teacher/AI marks per student per question per exam
+    student_responses  Student self-reported marks
+    box_coordinates    Coordinates for exam question cropping
+
+  [NEW] CleverPlatform tables:
+  ────────────────────────────────────────────────────
+    profiles           User profiles with roles (teacher/student/parent/admin)
+    courses            Courses (AAHL, AIHL)
+    enrollments        Student-course enrollment
+    topics             Topics within a course
+    lessons            Lessons within a topic
+    assignments        Teacher-created assignments
+    submissions        Student submissions with AI + teacher grades
+    parent_links       Parent-student linking via registration codes
+
+  Row-Level Security (RLS) is enabled on ALL tables with policies for:
+    • Students can view their own data
+    • Teachers/admins can view and manage all data
+    • Parents can view their linked student's data
+
+  Seed data included:
+    • Two courses: IBDP AAHL and IBDP AIHL
+    • Admin profile for clevermathematics@gmail.com
+
+
+5. AUTHENTICATION
+────────────────────────────────────────────────────────────────────────────────
+  • Google OAuth (Supabase Auth) for students and teachers
+    - Login restricted to the school domain (amersol.edu.pe)
+    - clevermathematics@gmail.com gets admin access
+  • Email/password login for parents
+  • Auth middleware protects all routes except /login and /lessons/*
+  • OAuth callback handler at /auth/callback
+
+
+6. DASHBOARD LAYOUT
+────────────────────────────────────────────────────────────────────────────────
+  • Top header bar: CleverPlatform logo, user role badge, email, sign out
+  • Left sidebar: Role-based navigation (different items per role)
+  • Mobile-responsive: Collapsible sidebar with overlay
+  • Navigation items:
+      📖 Textbook      — teacher, student, admin
+      📝 Assignments    — teacher, student, admin
+      ❓ Question Bank  — teacher, admin
+      📋 Exams          — teacher, admin
+      ✏️ Grading        — teacher, admin
+      📊 Gradebook      — teacher, admin
+      📈 My Progress    — student, parent, teacher, admin
+
+
+7. WHAT'S NOT DONE YET (NEXT STEPS)
+────────────────────────────────────────────────────────────────────────────────
+  STEP 1: Connect to live Supabase
+    → Copy credentials into .env.local
+    → Run the migration SQL in Supabase
+    → Enable Google OAuth in Supabase dashboard
+    → Test login flow
+
+  STEP 2: Build interactive textbook pages
+
+  STEP 3: Build question bank and assignments
+
+  STEP 4: Integrate AI grading tool from MSA project
+
+  STEP 5: Build gradebook and student progress views
+
+  STEP 6: Parent registration and access
+
+  STEP 7: Polish, test, and deploy
+
+
+8. HOW THE MSA GRADER CONNECTS
+────────────────────────────────────────────────────────────────────────────────
+  The MSA_Grader-API_Backend is a Google Apps Script project that:
+    • Reads IB past-paper questions from Google Sheets
+    • Uses Mathpix OCR to read student handwritten work
+    • Grades student work using a 5-strategy AI engine (SRG_Grader.js)
+    • Syncs all data to Supabase via SupabaseSync.js
+
+  CleverPlatform shares the SAME Supabase database instance:
+    • The MSA Grader writes: questions, exams, grades, student_responses
+    • CleverPlatform reads those tables AND adds its own tables
+    • Both projects use the same Supabase URL and anon key
+
+
+9. COMMANDS
+────────────────────────────────────────────────────────────────────────────────
+  npm install          Install dependencies
+  npm run dev          Start development server (localhost:3000)
+  npm run build        Build for production
+  npm run lint         Run ESLint
+  npm start            Start production server
+
+================================================================================
