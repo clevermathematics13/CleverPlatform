@@ -265,18 +265,19 @@ Each interactive textbook lesson follows a deliberate pedagogical sequence:
 
 ### Planned / Under Consideration
 
-| Layer | Options to Evaluate | Notes |
-|---|---|---|
-| Frontend framework | React, Next.js, or similar | Needed for SPA routing, state management, component reuse |
-| Backend / API | Node.js + Express, Next.js API routes, or serverless functions | Needed for auth, grading, database access |
-| Database | PostgreSQL, Firebase/Firestore, or Supabase | For questions, grades, user data |
-| Authentication | Google OAuth 2.0, Firebase Auth, or NextAuth.js | Must support Google Workspace SSO + custom parent registration |
-| File storage | AWS S3, Google Cloud Storage, or Supabase Storage | For student/teacher uploads |
-| AI services | OpenAI API, Google Gemini, or similar | For AI grading, hints, and responses |
-| Geometry tools | GeoGebra embed, JSXGraph, or custom | For interactive geometry |
-| Hosting | Netlify, Vercel, or similar | Current: Netlify |
+> **Decisions made (2026-04-17):** Next.js + Supabase stack selected and initialized.
 
-> **Decision needed:** Choose the full tech stack before major development begins. See [Open Questions](#12-open-questions--decisions).
+| Layer | Technology | Status |
+|---|---|---|
+| Frontend framework | **Next.js 16** (App Router, TypeScript) | ✅ Set up |
+| CSS framework | **Tailwind CSS v4** | ✅ Set up |
+| Backend / API | **Next.js API routes + Supabase** | ✅ Set up |
+| Database | **Supabase (PostgreSQL)** — shared with MSA Grader project | ✅ Set up |
+| Authentication | **Supabase Auth** (Google OAuth for students/teachers, email/password for parents) | ✅ Set up |
+| File storage | Supabase Storage | 🔜 Planned |
+| AI services | OpenAI API / Anthropic Claude (via MSA Grader) | 🔜 Planned |
+| Geometry tools | GeoGebra embed, JSXGraph, or custom | ❓ Open |
+| Hosting | Vercel or Netlify (current: Netlify) | ❓ Open |
 
 ---
 
@@ -366,11 +367,14 @@ StudentProgress
 
 ### Phase 1 — Foundation
 
-- [ ] Choose and set up tech stack (frontend framework, backend, database, auth)
-- [ ] Set up project structure and build pipeline
-- [ ] Implement authentication (Google SSO for teacher/students, registration code for parents)
-- [ ] Create basic layout/navigation shell
-- [ ] Migrate existing induction lessons into the new framework
+- [x] Choose and set up tech stack (Next.js + Supabase + Tailwind CSS)
+- [x] Set up project structure and build pipeline
+- [x] Create database schema (migration SQL with MSA tables + new platform tables)
+- [x] Implement authentication framework (Google SSO via Supabase Auth, parent email/password)
+- [x] Create basic layout/navigation shell with role-based sidebar
+- [x] Migrate existing induction lessons into /public/lessons/ (preserved as static HTML)
+- [ ] Connect to live Supabase instance (requires SUPABASE_URL and ANON_KEY)
+- [ ] Test Google OAuth login flow end-to-end
 
 ### Phase 2 — Interactive Textbook
 
@@ -414,13 +418,13 @@ StudentProgress
 
 | # | Question | Status | Decision |
 |---|---|---|---|
-| 1 | What frontend framework to use? (React / Next.js / other) | ❓ Open | |
-| 2 | What database to use? (PostgreSQL / Firebase / Supabase) | ❓ Open | |
-| 3 | What AI provider for hints and grading? (OpenAI / Gemini / other) | ❓ Open | |
+| 1 | What frontend framework to use? (React / Next.js / other) | ✅ Resolved | **Next.js 16** with App Router and TypeScript |
+| 2 | What database to use? (PostgreSQL / Firebase / Supabase) | ✅ Resolved | **Supabase** (PostgreSQL) — shared instance with MSA Grader |
+| 3 | What AI provider for hints and grading? (OpenAI / Gemini / other) | ❓ Open | MSA already uses Anthropic Claude for suggestions |
 | 4 | What geometry tool to embed? (GeoGebra / JSXGraph / custom) | ❓ Open | |
-| 5 | How is the existing AI grading tool built? (tech stack, API, deployment) | ❓ Open | Need details to plan integration |
+| 5 | How is the existing AI grading tool built? (tech stack, API, deployment) | ✅ Resolved | **Google Apps Script** (MSA_Grader-API_Backend repo). Uses Mathpix OCR, 5-strategy grading engine (SRG_Grader.js), syncs to Supabase via SupabaseSync.js |
 | 6 | Should the platform support offline mode? | ❓ Open | |
-| 7 | What is the expected number of students? (affects hosting and DB choices) | ❓ Open | |
+| 7 | What is the expected number of students? | ❓ Open | |
 | 8 | Will the Google Workspace domain change require re-authentication of all users? | ❓ Open | |
 | 9 | What file types and size limits for student/teacher uploads? | ❓ Open | |
 | 10 | Export format for gradebook? (CSV, PDF, integration with school SIS?) | ❓ Open | |
@@ -436,6 +440,9 @@ StudentProgress
 | Date | Change | Details |
 |---|---|---|
 | 2026-04-17 | Document created | Initial compilation of all project requirements and specifications |
+| 2026-04-17 | Tech stack chosen | Next.js 16 + Supabase + Tailwind CSS. Project scaffold initialized. |
+| 2026-04-17 | MSA integration begun | Supabase database types mapped from MSA_Grader-API_Backend. Shared Supabase instance connects both projects. |
+| 2026-04-17 | App shell built | Dashboard layout, auth flow, and all module placeholder pages created. Existing lesson HTML files preserved in /public/lessons/. |
 
 ---
 
