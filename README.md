@@ -1,6 +1,8 @@
 # CleverPlatform
 
-Interactive text/notebook.
+Interactive educational platform for IB Diploma Programme mathematics courses (AAHL & AIHL).
+
+📄 **[Full Project Specification →](PLATFORM_SPEC.md)** — Living document with all requirements, design decisions, and roadmap.
 
 ## Auto-push to GitHub
 
