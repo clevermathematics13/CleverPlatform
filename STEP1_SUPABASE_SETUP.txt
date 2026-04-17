@@ -1,0 +1,278 @@
+================================================================================
+  STEP 1: CONNECT TO LIVE SUPABASE — Step-by-Step Instructions
+  CleverPlatform Setup Guide
+================================================================================
+
+This guide walks you through connecting your CleverPlatform app to your
+Supabase database. After completing these steps, you'll be able to:
+  ✓ Run the app locally at localhost:3000
+  ✓ Log in with Google (your school email)
+  ✓ See the dashboard with the sidebar navigation
+  ✓ Have the database tables ready (shared with MSA Grader)
+
+
+================================================================================
+STEP 1.1 — GET YOUR SUPABASE CREDENTIALS
+================================================================================
+
+You need two values from your Supabase project:
+  • Project URL
+  • Anon (public) API key
+
+HOW TO FIND THEM:
+
+  1. Go to https://supabase.com/dashboard
+  2. Select your project (the one used by the MSA Grader)
+  3. In the left sidebar, click "Project Settings" (the gear icon)
+  4. Click "API" under the Configuration section
+  5. You'll see:
+
+     Project URL:    https://xxxxxxxxxx.supabase.co
+     anon public:    eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+  6. Copy both values — you'll need them in the next step.
+
+NOTE: If you don't have a Supabase project yet, create one:
+  1. Go to https://supabase.com
+  2. Click "Start your project"
+  3. Sign in with GitHub
+  4. Create a new project (pick any name, e.g. "CleverPlatform")
+  5. Save the generated database password somewhere safe
+  6. Wait for the project to finish provisioning (~2 minutes)
+
+
+================================================================================
+STEP 1.2 — CREATE YOUR .env.local FILE
+================================================================================
+
+The app reads your credentials from a file called .env.local in the project root.
+This file is NOT committed to Git (it's in .gitignore for security).
+
+  1. Open your terminal
+  2. Navigate to the CleverPlatform project folder
+  3. Run this command:
+
+     cp .env.local.example .env.local
+
+  4. Open the new .env.local file in your editor
+
+  5. Replace the placeholder values with your real credentials:
+
+     NEXT_PUBLIC_SUPABASE_URL=https://xxxxxxxxxx.supabase.co
+     NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+  6. Save the file.
+
+
+================================================================================
+STEP 1.3 — RUN THE DATABASE MIGRATION
+================================================================================
+
+The migration file creates all the tables your app needs. If you're using the
+same Supabase project as the MSA Grader, some tables already exist — the
+migration uses "IF NOT EXISTS" so it won't break anything.
+
+  1. Open the Supabase dashboard: https://supabase.com/dashboard
+  2. Select your project
+  3. In the left sidebar, click "SQL Editor"
+  4. Click "New query"
+  5. Open this file on your computer:
+     supabase/migrations/001_initial_schema.sql
+  6. Copy the ENTIRE contents of that file
+  7. Paste it into the SQL Editor
+  8. Click "Run" (or press Ctrl+Enter / Cmd+Enter)
+
+  You should see: "Success. No rows returned"
+
+  WHAT THIS CREATES:
+  ──────────────────
+  If new (no MSA tables):
+    • questions, students, exams, exam_questions, grades,
+      student_responses, box_coordinates
+  Always creates:
+    • profiles, courses, enrollments, topics, lessons,
+      assignments, submissions, parent_links
+  Also:
+    • Row-Level Security (RLS) policies on all tables
+    • Seed data: two courses (AAHL, AIHL) and your admin profile
+
+
+================================================================================
+STEP 1.4 — ENABLE GOOGLE OAUTH IN SUPABASE
+================================================================================
+
+This lets students and teachers log in with their Google (school) accounts.
+
+  1. Open Supabase dashboard → your project
+  2. In the left sidebar, click "Authentication"
+  3. Click "Providers" in the top tabs
+  4. Find "Google" in the list and click to expand it
+  5. Toggle "Enable Sign in with Google" to ON
+
+  NOW YOU NEED A GOOGLE OAUTH CLIENT:
+
+  6. Go to https://console.cloud.google.com
+  7. Select or create a project (e.g., "CleverPlatform")
+  8. In the left sidebar: APIs & Services → Credentials
+  9. Click "+ CREATE CREDENTIALS" → "OAuth client ID"
+  10. Application type: "Web application"
+  11. Name: "CleverPlatform"
+  12. Under "Authorized redirect URIs", add:
+
+      https://xxxxxxxxxx.supabase.co/auth/v1/callback
+
+      (Replace xxxxxxxxxx with YOUR Supabase project ref)
+
+  13. Click "Create"
+  14. Copy the "Client ID" and "Client secret"
+
+  BACK IN SUPABASE:
+
+  15. Paste the Client ID into the "Client ID" field
+  16. Paste the Client Secret into the "Client Secret" field
+  17. Click "Save"
+
+  OPTIONAL — RESTRICT TO SCHOOL DOMAIN:
+
+  The app already sends hd=amersol.edu.pe when initiating Google login,
+  which hints that only school accounts should be used. To enforce this:
+
+  18. In Google Cloud Console → OAuth consent screen
+  19. Under "User type", select "Internal" (if using Google Workspace)
+      OR leave as "External" and the hd parameter will filter
+
+  NOTE: The login page code is at src/app/(auth)/login/page.tsx
+  The domain restriction is on line ~21: hd: 'amersol.edu.pe'
+  Change this if your school domain changes.
+
+
+================================================================================
+STEP 1.5 — INSTALL DEPENDENCIES AND START THE APP
+================================================================================
+
+  1. Open your terminal
+  2. Navigate to the CleverPlatform folder
+  3. Run:
+
+     npm install
+
+     This installs all packages (Next.js, React, Supabase, Tailwind, etc.)
+
+  4. Start the development server:
+
+     npm run dev
+
+  5. Open your browser to:
+
+     http://localhost:3000
+
+  6. You should see the login page with:
+     • A "Sign in with Google" button (for students/teachers)
+     • An email/password form (for parents)
+
+
+================================================================================
+STEP 1.6 — TEST THE LOGIN FLOW
+================================================================================
+
+  TEST 1: Google Login (Teacher/Admin)
+  ─────────────────────────────────────
+  1. Click "Sign in with Google"
+  2. Sign in with clevermathematics@gmail.com
+  3. You should be redirected to the dashboard
+  4. You should see:
+     • Your email in the top-right
+     • "ADMIN" role badge
+     • All sidebar items visible (Textbook, Assignments, Question Bank, etc.)
+
+  TEST 2: Google Login (Student)
+  ──────────────────────────────
+  1. Sign out (click "Sign out" in the top-right)
+  2. Sign in with a student's @amersol.edu.pe email
+  3. You should see:
+     • "STUDENT" role badge
+     • Only student-relevant sidebar items (Textbook, Assignments, My Progress)
+
+  NOTE: The first time a student logs in, they won't have a profile row in
+  the database yet. You may need to insert one:
+
+     INSERT INTO profiles (email, name, role)
+     VALUES ('student@amersol.edu.pe', 'Student Name', 'student');
+
+  In a future update, we'll auto-create profiles on first login.
+
+
+================================================================================
+STEP 1.7 — VERIFY DATABASE CONNECTION
+================================================================================
+
+  To confirm the app is reading from Supabase:
+
+  1. Go to Supabase dashboard → Table Editor
+  2. Click on the "courses" table
+  3. You should see 2 rows:
+     • IBDP Analysis & Approaches HL (code: AAHL)
+     • IBDP Applications & Interpretation HL (code: AIHL)
+
+  4. Click on the "profiles" table
+  5. You should see at least 1 row:
+     • clevermathematics@gmail.com (role: admin)
+
+  If the MSA Grader has been syncing to this same Supabase project, you
+  should also see data in:
+    • questions — IB past-paper questions
+    • students — student emails and names
+    • exams — exam metadata
+    • grades — grading data
+
+
+================================================================================
+TROUBLESHOOTING
+================================================================================
+
+  PROBLEM: "Missing NEXT_PUBLIC_SUPABASE_URL" error
+  FIX: Make sure .env.local exists and has the correct values.
+       Restart the dev server after creating/editing .env.local.
+
+  PROBLEM: Login button doesn't do anything
+  FIX: Check that Google OAuth is enabled in Supabase dashboard.
+       Check the redirect URI matches your Supabase URL.
+
+  PROBLEM: "Invalid redirect" after Google login
+  FIX: In Google Cloud Console, make sure the authorized redirect URI is:
+       https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback
+
+  PROBLEM: Can see login page but dashboard is blank
+  FIX: Check browser console for errors. The Supabase URL or key may be wrong.
+
+  PROBLEM: "relation does not exist" errors
+  FIX: Run the migration SQL again in the Supabase SQL Editor.
+
+  PROBLEM: User sees only student items after logging in as admin
+  FIX: Make sure clevermathematics@gmail.com has a row in the profiles
+       table with role = 'admin'. The migration should create this.
+
+
+================================================================================
+WHAT'S NEXT AFTER STEP 1?
+================================================================================
+
+  Once you've completed all the sub-steps above and can log in:
+
+  STEP 2: Build interactive textbook lesson pages
+    → Template with pre-assessment → content → reflection flow
+    → Checkpoint components with self-checking and hints
+    → Interactive geometry tool embedding
+
+  STEP 3: Build question bank and assignment system
+    → Browse/search IB past-paper questions (from MSA data)
+    → Create assignments, distribute to students
+    → Student submission flow
+
+  STEP 4: Integrate AI grading from MSA project
+    → Connect the grading page to the grades/submissions tables
+    → Teacher review and confirmation UI
+
+  Full roadmap is in PLATFORM_SPEC.md → Section 11.
+
+================================================================================
