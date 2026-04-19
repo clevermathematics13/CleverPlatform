@@ -27,6 +27,8 @@ export function Heatmap({ cells }: HeatmapProps) {
     ...new Set(cells.map((c) => c.subtopic_code)),
   ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
+  const hiddenSet = new Set(cells.filter((c) => c.hidden).map((c) => c.display_name));
+
   const cellMap = new Map<string, number>();
   for (const c of cells) {
     cellMap.set(`${c.display_name}:${c.subtopic_code}`, c.percentage);
@@ -65,6 +67,7 @@ export function Heatmap({ cells }: HeatmapProps) {
               <tr key={student} className="border-t">
                 <td className="sticky left-0 bg-white px-2 py-1 font-medium whitespace-nowrap">
                   {student}
+                  {hiddenSet.has(student) && <span className="ml-1 text-xs font-normal text-gray-400">(hidden)</span>}
                 </td>
                 {subtopics.map((st) => {
                   const pct = cellMap.get(`${student}:${st}`);

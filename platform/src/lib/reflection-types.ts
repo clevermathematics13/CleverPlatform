@@ -83,4 +83,5 @@ export interface HeatmapCell {
   display_name: string;
   subtopic_code: string;
   percentage: number;
+  hidden: boolean;
 }

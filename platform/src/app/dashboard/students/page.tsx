@@ -15,6 +15,7 @@ export default async function StudentsPage() {
     .select(`
       id,
       created_at,
+      hidden,
       profiles:profile_id ( id, email, display_name, nickname ),
       courses:course_id ( id, name )
     `)
@@ -120,6 +121,7 @@ export default async function StudentsPage() {
                           <div>
                             <p className="text-sm font-medium text-gray-900">
                               {profile?.display_name ?? "Unknown"}
+                              {student.hidden && <span className="ml-1 text-xs font-normal text-gray-400">(hidden)</span>}
                             </p>
                             <p className="text-xs text-gray-500">
                               {profile?.email}

@@ -353,7 +353,7 @@ export async function getClassHeatmap(): Promise<HeatmapCell[]> {
   // Get all students
   const { data: students } = await supabase
     .from("students")
-    .select("profile_id, profiles(display_name)");
+    .select("profile_id, hidden, profiles(display_name)");
 
   if (!students || students.length === 0) return [];
 
@@ -368,6 +368,7 @@ export async function getClassHeatmap(): Promise<HeatmapCell[]> {
         display_name: profile?.display_name ?? "Unknown",
         subtopic_code: m.code,
         percentage: m.percentage,
+        hidden: s.hidden ?? false,
       });
     }
   }
