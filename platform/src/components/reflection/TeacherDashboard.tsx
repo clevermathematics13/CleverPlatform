@@ -32,17 +32,22 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [savedCells, setSavedCells] = useState<Set<CellKey>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Close menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setMenuFor(null);
       }
     };
-    if (menuFor) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    if (menuFor) {
+      document.addEventListener("click", handler);
+    }
+    return () => document.removeEventListener("click", handler);
   }, [menuFor]);
 
   useEffect(() => {
@@ -169,7 +174,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const hiddenCount = data?.rows.filter((r) => r.hidden).length ?? 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" ref={containerRef}>
       <div className="flex items-center gap-4 flex-wrap">
         <label htmlFor="test-select" className="text-sm font-medium">
           Select Test:
@@ -229,13 +234,14 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                     <div className="relative">
                       <button
                         type="button"
-                        onClick={() =>
+                        onClick={(e) => {
+                          e.stopPropagation();
                           setMenuFor(
                             menuFor === row.student_id
                               ? null
                               : row.student_id
-                          )
-                        }
+                          );
+                        }}
                         className="text-left hover:text-blue-600 hover:underline"
                       >
                         {row.display_name}
@@ -247,7 +253,6 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                       </button>
                       {menuFor === row.student_id && (
                         <div
-                          ref={menuRef}
                           className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
                         >
                           <a
