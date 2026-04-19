@@ -58,25 +58,25 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
 
       {data && data.items.length > 0 && (
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-gray-50">
-                <th className="sticky left-0 bg-gray-50 px-2 py-1 text-left">
+                <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-900">
                   Student
                 </th>
                 {data.items.map((item) => (
-                  <th key={item.id} className="px-2 py-1 text-center">
+                  <th key={item.id} className="px-3 py-2 text-center font-semibold text-gray-900">
                     Q{item.question_number}
                     {item.part_label ? item.part_label : ""}
                   </th>
                 ))}
-                <th className="px-2 py-1 text-center">📄</th>
+                <th className="px-3 py-2 text-center font-semibold text-gray-900">📄</th>
               </tr>
             </thead>
             <tbody>
               {data.rows.map((row) => (
                 <tr key={row.student_id} className="border-b">
-                  <td className="sticky left-0 bg-white px-2 py-1 font-medium">
+                  <td className="sticky left-0 bg-white px-3 py-2 font-medium text-gray-900">
                     {row.display_name}
                   </td>
                   {row.items.map((cell, i) => {
@@ -89,7 +89,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                     return (
                       <td
                         key={data.items[i].id}
-                        className={`px-2 py-1 text-center ${
+                        className={`px-3 py-2 text-center text-gray-800 ${
                           diff === null
                             ? ""
                             : diff === 0
@@ -106,11 +106,11 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                       >
                         {hasAny ? (
                           <span>
-                            <span className="font-medium">
+                            <span className="font-semibold text-gray-900">
                               {cell.marks_awarded ?? "—"}
                             </span>
                             {cell.self_marks !== null && (
-                              <span className="text-[10px] text-gray-400 ml-0.5">
+                              <span className="text-xs text-gray-500 ml-0.5">
                                 /
                                 {cell.self_marks}
                                 {diff !== null && diff !== 0 && (
@@ -129,12 +129,12 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                             )}
                           </span>
                         ) : (
-                          <span className="text-gray-300">—</span>
+                          <span className="text-gray-400">—</span>
                         )}
                       </td>
                     );
                   })}
-                  <td className="px-2 py-1 text-center">
+                  <td className="px-3 py-2 text-center">
                     {row.has_upload ? "✅" : "—"}
                   </td>
                 </tr>
