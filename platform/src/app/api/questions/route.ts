@@ -20,7 +20,23 @@ export async function GET(request: NextRequest) {
   const page = parseInt(url.searchParams.get("page") ?? "1") || 1;
   const pageSize = 50;
 
-  // Build query for questions with parts count
+  // If subtopic filter is active, first find matching question IDs
+  let subtopicQuestionIds: string[] | null = null;
+  if (subtopic) {
+    const { data: matchingParts } = await supabase
+      .from("question_parts")
+      .select("question_id")
+      .contains("subtopic_codes", [subtopic]);
+
+    if (matchingParts && matchingParts.length > 0) {
+      subtopicQuestionIds = [...new Set(matchingParts.map((p) => p.question_id))];
+    } else {
+      // No questions have this subtopic — return empty
+      return NextResponse.json({ questions: [], total: 0, page, pageSize });
+    }
+  }
+
+  // Build query for questions with parts
   let query = supabase
     .from("ib_questions")
     .select(
@@ -45,6 +61,9 @@ export async function GET(request: NextRequest) {
   if (timezone) {
     query = query.eq("timezone", timezone);
   }
+  if (subtopicQuestionIds) {
+    query = query.in("id", subtopicQuestionIds);
+  }
 
   const { data: questions, count, error } = await query;
 
@@ -52,16 +71,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // If subtopic filter is set, filter client-side (parts contain subtopic_codes arrays)
-  let filtered = questions ?? [];
-  if (subtopic) {
-    filtered = filtered.filter((q) => {
-      const parts = q.question_parts as { subtopic_codes: string[] }[];
-      return parts.some((p) =>
-        p.subtopic_codes?.some((c: string) => c.startsWith(subtopic))
-      );
-    });
-  }
+  const filtered = questions ?? [];
 
   // Sort parts within each question
   for (const q of filtered) {
@@ -71,7 +81,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     questions: filtered,
-    total: subtopic ? filtered.length : (count ?? 0),
+    total: count ?? 0,
     page,
     pageSize,
   });

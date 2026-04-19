@@ -200,7 +200,7 @@ export function QuestionBankClient() {
               className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
             >
               <option value="">All</option>
-              <option value="AHL">AHL</option>
+              <option value="AHL">HL</option>
               <option value="SL">SL</option>
             </select>
           </div>
@@ -410,7 +410,7 @@ function QuestionRow({
                 : "bg-green-100 text-green-800"
             }`}
           >
-            {question.level}
+            {question.level === "AHL" ? "HL" : question.level}
           </span>
         </td>
         <td className="px-4 py-2 text-center text-sm font-semibold text-gray-800">
