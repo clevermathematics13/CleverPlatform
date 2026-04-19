@@ -54,16 +54,16 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Score Comparison</h3>
+      <h3 className="text-lg font-bold text-blue-900">Score Comparison</h3>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-base">
           <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="px-3 py-2 text-left">Question</th>
-              <th className="px-3 py-2 text-center">Max</th>
-              <th className="px-3 py-2 text-center">Teacher</th>
-              <th className="px-3 py-2 text-center">Self</th>
-              <th className="px-3 py-2 text-center">Diff</th>
+            <tr className="border-b bg-blue-50">
+              <th className="px-3 py-2 text-left font-bold text-blue-900">Question</th>
+              <th className="px-3 py-2 text-center font-bold text-blue-900">Max</th>
+              <th className="px-3 py-2 text-center font-bold text-blue-900">Teacher</th>
+              <th className="px-3 py-2 text-center font-bold text-blue-900">Self</th>
+              <th className="px-3 py-2 text-center font-bold text-blue-900">Diff</th>
             </tr>
           </thead>
           <tbody>
@@ -135,7 +135,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
             })}
           </tbody>
           <tfoot>
-            <tr className="border-t bg-gray-50 font-semibold">
+            <tr className="border-t bg-blue-50 font-bold text-blue-900">
               <td className="px-3 py-2">Total</td>
               <td className="px-3 py-2 text-center">{totalMax}</td>
               <td className="px-3 py-2 text-center">{totalTeacher}</td>

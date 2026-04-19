@@ -144,25 +144,26 @@ export function ReflectionClient({
           </a>
         </div>
       )}
-      <h1 className="text-2xl font-bold mb-2">
+      <h1 className="text-2xl font-extrabold mb-2 text-blue-900 drop-shadow-sm">
         {isViewingStudent
-          ? `${viewStudentName}'s Reflection`
-          : "Reflection"}
+          ? `${viewStudentName}'s Exam Reflection`
+          : "Exam Reflection"}
       </h1>
 
       {/* Test selector */}
       <div className="mb-4 flex items-center gap-3">
-        <label htmlFor="test-selector" className="text-sm font-medium">
+        <label htmlFor="test-selector" className="text-base font-semibold text-blue-900">
           Test:
         </label>
         <select
           id="test-selector"
           value={selectedTestId ?? ""}
           onChange={(e) => handleTestChange(e.target.value)}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm"
+          className="rounded border border-blue-400 px-3 py-1.5 text-base font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
+          disabled={tests.length === 0}
         >
           {tests.map((t) => (
-            <option key={t.id} value={t.id}>
+            <option key={t.id} value={t.id} className="text-blue-900 font-semibold">
               {t.name}
             </option>
           ))}

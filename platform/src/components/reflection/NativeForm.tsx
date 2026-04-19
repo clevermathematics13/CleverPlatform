@@ -42,19 +42,19 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Self-Grade Your Answers</h3>
-      <p className="text-sm text-gray-600">
+      <h3 className="text-lg font-bold text-blue-900">Self-Grade Your Answers</h3>
+      <p className="text-base text-blue-800">
         For each question, enter the marks you think you earned based on the
         mark scheme.
       </p>
 
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-base">
           <thead>
-            <tr className="border-b bg-gray-50">
-              <th className="px-3 py-2 text-left">Question</th>
-              <th className="px-3 py-2 text-center">Max</th>
-              <th className="px-3 py-2 text-center">Your Marks</th>
+            <tr className="border-b bg-blue-50">
+              <th className="px-3 py-2 text-left font-bold text-blue-900">Question</th>
+              <th className="px-3 py-2 text-center font-bold text-blue-900">Max</th>
+              <th className="px-3 py-2 text-center font-bold text-blue-900">Your Marks</th>
             </tr>
           </thead>
           <tbody>

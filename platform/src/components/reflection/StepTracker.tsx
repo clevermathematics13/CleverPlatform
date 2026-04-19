@@ -26,10 +26,12 @@ export function StepTracker({ current }: { current: ReflectionStep }) {
             {step.num < current ? "✓" : step.num}
           </div>
           <span
-            className={`text-sm ${
+            className={`text-base font-bold ${
               step.num === current
-                ? "font-semibold text-gray-900"
-                : "text-gray-500"
+                ? "text-blue-900"
+                : step.num < current
+                  ? "text-green-700"
+                  : "text-gray-500"
             }`}
           >
             {step.label}
