@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Induction with Inequalities</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script>
+    <style>
+        @media print {
+            html, body { background-color: white !important; margin: 0 !important; padding: 0 !important; }
+            .no-print { display: none !important; }
+            .page-break { page-break-after: always !important; break-after: page !important; page-break-inside: avoid !important; display: flex !important; flex-direction: column !important; height: 98vh !important; max-height: 98vh !important; padding: 0 !important; margin: 0 !important; }
+            .workspace { min-height: 0 !important; flex-grow: 1 !important; margin-bottom: 0 !important; }
+        }
+        .workspace-lines {
+            background-image: repeating-linear-gradient(transparent, transparent 31px, #e5e7eb 31px, #e5e7eb 32px);
+            background-attachment: local;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased">
+    <div class="no-print bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex justify-between items-center">
+            <h1 class="text-xl font-bold text-indigo-700 flex items-center gap-2">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
+                Induction: Inequalities
+            </h1>
+            <button onclick="window.print()" class="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                Print / PDF
+            </button>
+        </div>
+    </div>
+    <main class="max-w-5xl mx-auto p-4 md:p-8 print-p-0">
+        <!-- Intro Section -->
+        <div class="page-break mb-12 print:mb-0 py-4 print:py-2 flex flex-col">
+            <div class="border-b-2 border-indigo-500 pb-2 mb-6 print:mb-4">
+                <h1 class="text-3xl font-extrabold text-slate-900 mb-1">Induction with Inequalities</h1>
+                <p class="text-base text-slate-500">Topic: Proofs & Logical Deduction</p>
+            </div>
+            <div class="mb-6">
+                <h2 class="text-xl font-bold mb-2 text-indigo-700">Why Induction for Inequalities?</h2>
+                <p class="text-base leading-relaxed text-slate-700 print:text-sm">
+                    Induction is a powerful tool for proving that an inequality holds for all integers greater than or equal to a certain value. The logic is similar to induction for equations, but the algebra often requires careful estimation and manipulation.
+                </p>
+            </div>
+            <div class="bg-indigo-50 border-l-4 border-indigo-600 p-4 print:p-3 rounded-r-lg mb-8 print:mb-4">
+                <h3 class="text-lg font-bold text-indigo-900 mb-2">The 3-Step Algorithm (for Inequalities)</h3>
+                <ol class="list-decimal list-inside space-y-1 text-sm text-indigo-800 font-medium">
+                    <li><span class="font-bold text-slate-900">Base Case:</span> Prove the inequality is true for the starting value (often $n=1$ or $n=4$).</li>
+                    <li><span class="font-bold text-slate-900">Assumption:</span> Assume the inequality is true for $n=k$.</li>
+                    <li><span class="font-bold text-slate-900">Inductive Step:</span> Use the assumption to prove the inequality for $n=k+1$. <br>
+                        <span class="ml-6 text-xs bg-indigo-200 px-2 py-0.5 rounded text-indigo-900">*This often requires clever algebra or bounding extra terms!*</span>
+                    </li>
+                </ol>
+            </div>
+        </div>
+        <!-- Example 1: Simple Exponential Inequality -->
+        <div class="page-break py-6 print:py-4 flex flex-col min-h-[90vh]">
+            <div class="flex items-center justify-between mb-4 print:mb-2">
+                <h2 class="text-xl font-bold text-slate-900">Example 1: $2^n \geq n+1$ for $n \geq 1$</h2>
+                <span class="text-sm font-semibold text-slate-400">Page 1</span>
+            </div>
+            <div class="bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
+                Prove by induction that for all $n \geq 1$:
+                <div class="mt-2 text-center text-xl">
+                    $$2^n \geq n+1$$
+                </div>
+            </div>
+            <h3 class="font-semibold text-slate-600 mb-1 uppercase tracking-wider text-xs">Workspace</h3>
+            <div class="flex-grow rounded-lg border-2 border-dashed border-slate-300 p-4 workspace-lines workspace"></div>
+        </div>
+        <!-- Example 2: Factorial vs Exponential -->
+        <div class="page-break py-6 print:py-4 flex flex-col min-h-[90vh]">
+            <div class="flex items-center justify-between mb-4 print:mb-2">
+                <h2 class="text-xl font-bold text-slate-900">Example 2: $n! > 2^n$ for $n \geq 4$</h2>
+                <span class="text-sm font-semibold text-slate-400">Page 2</span>
+            </div>
+            <div class="bg-slate-100 p-4 rounded-lg mb-4 print:mb-2 border border-slate-200 text-base">
+                Prove by induction that for all $n \geq 4$:
+                <div class="mt-2 text-center text-xl">
+                    $$n! > 2^n$$
+                </div>
+            </div>
+            <h3 class="font-semibold text-slate-600 mb-1 uppercase tracking-wider text-xs">Workspace</h3>
+            <div class="flex-grow rounded-lg border-2 border-dashed border-slate-300 p-4 workspace-lines workspace"></div>
+        </div>
+        <!-- Add more examples as needed -->
+    </main>
+    <script>
+      document.addEventListener("DOMContentLoaded", function() {
+        renderMathInElement(document.body, {delimiters: [
+          {left: "$$", right: "$$", display: true},
+          {left: "$", right: "$", display: false}
+        ]});
+      });
+    </script>
+</body>
+</html>
