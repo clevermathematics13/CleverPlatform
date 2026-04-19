@@ -100,6 +100,8 @@ function getNavigation(role: string) {
       { href: "/dashboard/courses", label: "Courses", icon: "📚" },
       { href: "/dashboard/questions", label: "Question Bank", icon: "❓" },
       { href: "/dashboard/assignments", label: "Assignments", icon: "📋" },
+      { href: "/dashboard/reflection", label: "Reflection", icon: "🪞" },
+      { href: "/dashboard/mastery", label: "Mastery", icon: "🎯" },
     ];
   }
 
@@ -109,6 +111,8 @@ function getNavigation(role: string) {
       { href: "/dashboard/progress", label: "My Progress", icon: "📈" },
       { href: "/dashboard/textbook", label: "Textbook", icon: "📚" },
       { href: "/dashboard/assignments", label: "My Assignments", icon: "📋" },
+      { href: "/dashboard/reflection", label: "Reflection", icon: "🪞" },
+      { href: "/dashboard/mastery", label: "My Mastery", icon: "🎯" },
     ];
   }
 

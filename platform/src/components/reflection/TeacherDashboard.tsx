@@ -1,0 +1,136 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import type { ReflectionTest, StudentReflectionRow } from "@/lib/reflection-types";
+
+interface TeacherDashboardProps {
+  tests: ReflectionTest[];
+}
+
+interface ClassData {
+  items: {
+    id: string;
+    question_number: number;
+    part_label: string;
+    max_marks: number;
+  }[];
+  rows: StudentReflectionRow[];
+}
+
+export function TeacherDashboard({ tests }: TeacherDashboardProps) {
+  const [selectedTest, setSelectedTest] = useState<string>(
+    tests[0]?.id ?? ""
+  );
+  const [data, setData] = useState<ClassData | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!selectedTest) return;
+    setLoading(true);
+    fetch(`/api/reflection/class-data?testId=${encodeURIComponent(selectedTest)}`)
+      .then((r) => r.json())
+      .then((d: ClassData) => setData(d))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, [selectedTest]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-4">
+        <label htmlFor="test-select" className="text-sm font-medium">
+          Select Test:
+        </label>
+        <select
+          id="test-select"
+          value={selectedTest}
+          onChange={(e) => setSelectedTest(e.target.value)}
+          className="rounded border border-gray-300 px-3 py-1.5 text-sm"
+        >
+          {tests.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {loading && <p className="text-sm text-gray-500">Loading…</p>}
+
+      {data && data.items.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="sticky left-0 bg-gray-50 px-2 py-1 text-left">
+                  Student
+                </th>
+                {data.items.map((item) => (
+                  <th key={item.id} className="px-2 py-1 text-center">
+                    Q{item.question_number + 1}
+                    {item.part_label ? item.part_label : ""}
+                  </th>
+                ))}
+                <th className="px-2 py-1 text-center">📄</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((row) => (
+                <tr key={row.student_id} className="border-b">
+                  <td className="sticky left-0 bg-white px-2 py-1 font-medium">
+                    {row.display_name}
+                  </td>
+                  {row.items.map((cell, i) => {
+                    const diff =
+                      cell.marks_awarded !== null && cell.self_marks !== null
+                        ? cell.self_marks - cell.marks_awarded
+                        : null;
+                    return (
+                      <td
+                        key={data.items[i].id}
+                        className={`px-2 py-1 text-center ${
+                          diff === null
+                            ? ""
+                            : diff === 0
+                              ? "bg-green-50"
+                              : Math.abs(diff) <= 1
+                                ? "bg-yellow-50"
+                                : "bg-red-50"
+                        }`}
+                        title={
+                          cell.marks_awarded !== null
+                            ? `Teacher: ${cell.marks_awarded}, Self: ${cell.self_marks ?? "—"}`
+                            : "No marks"
+                        }
+                      >
+                        {cell.self_marks !== null ? (
+                          <span>
+                            {cell.self_marks}
+                            {diff !== null && diff !== 0 && (
+                              <span className="text-[10px] text-gray-400 ml-0.5">
+                                ({diff > 0 ? "+" : ""}
+                                {diff})
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-2 py-1 text-center">
+                    {row.has_upload ? "✅" : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {data && data.items.length === 0 && (
+        <p className="text-sm text-gray-500">No items found for this test.</p>
+      )}
+    </div>
+  );
+}
