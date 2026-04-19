@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import type { ReflectionTest, StudentReflectionRow } from "@/lib/reflection-types";
 
 interface TeacherDashboardProps {
@@ -17,22 +17,113 @@ interface ClassData {
   rows: StudentReflectionRow[];
 }
 
+/** Key for tracking which cell is being edited */
+type CellKey = `${string}:${string}`; // studentId:testItemId
+
 export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [selectedTest, setSelectedTest] = useState<string>(
     tests[0]?.id ?? ""
   );
   const [data, setData] = useState<ClassData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [editingCell, setEditingCell] = useState<CellKey | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState<CellKey | null>(null);
+  const [savedCells, setSavedCells] = useState<Set<CellKey>>(new Set());
 
   useEffect(() => {
     if (!selectedTest) return;
     setLoading(true);
+    setEditingCell(null);
+    setSavedCells(new Set());
     fetch(`/api/reflection/class-data?testId=${encodeURIComponent(selectedTest)}`)
       .then((r) => r.json())
       .then((d: ClassData) => setData(d))
       .catch(() => setData(null))
       .finally(() => setLoading(false));
   }, [selectedTest]);
+
+  const saveCell = useCallback(
+    async (studentId: string, testItemId: string, newMarks: number) => {
+      const key: CellKey = `${studentId}:${testItemId}`;
+      setSaving(key);
+      try {
+        const res = await fetch("/api/reflection/update-mark", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ testItemId, studentId, newMarks }),
+        });
+        const result = await res.json();
+        if (res.ok) {
+          // Update local data
+          setData((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              rows: prev.rows.map((row) =>
+                row.student_id === studentId
+                  ? {
+                      ...row,
+                      items: row.items.map((cell) =>
+                        cell.test_item_id === testItemId
+                          ? { ...cell, marks_awarded: result.marks_awarded }
+                          : cell
+                      ),
+                    }
+                  : row
+              ),
+            };
+          });
+          setSavedCells((prev) => new Set(prev).add(key));
+          setTimeout(() => {
+            setSavedCells((prev) => {
+              const next = new Set(prev);
+              next.delete(key);
+              return next;
+            });
+          }, 1500);
+        }
+      } finally {
+        setSaving(null);
+        setEditingCell(null);
+      }
+    },
+    []
+  );
+
+  const handleCellClick = (
+    studentId: string,
+    testItemId: string,
+    currentMarks: number | null
+  ) => {
+    const key: CellKey = `${studentId}:${testItemId}`;
+    setEditingCell(key);
+    setEditValue(currentMarks !== null ? String(currentMarks) : "0");
+  };
+
+  const handleCellBlur = (
+    studentId: string,
+    testItemId: string,
+    maxMarks: number
+  ) => {
+    const raw = parseInt(editValue) || 0;
+    const clamped = Math.max(0, Math.min(raw, maxMarks));
+    saveCell(studentId, testItemId, clamped);
+  };
+
+  const handleCellKeyDown = (
+    e: React.KeyboardEvent,
+    studentId: string,
+    testItemId: string,
+    maxMarks: number
+  ) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleCellBlur(studentId, testItemId, maxMarks);
+    } else if (e.key === "Escape") {
+      setEditingCell(null);
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -80,6 +171,11 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                     {row.display_name}
                   </td>
                   {row.items.map((cell, i) => {
+                    const item = data.items[i];
+                    const key: CellKey = `${row.student_id}:${item.id}`;
+                    const isEditing = editingCell === key;
+                    const isSaving = saving === key;
+                    const justSaved = savedCells.has(key);
                     const diff =
                       cell.marks_awarded !== null && cell.self_marks !== null
                         ? cell.self_marks - cell.marks_awarded
@@ -88,23 +184,62 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                       cell.marks_awarded !== null || cell.self_marks !== null;
                     return (
                       <td
-                        key={data.items[i].id}
-                        className={`px-3 py-2 text-center text-gray-800 ${
-                          diff === null
-                            ? ""
-                            : diff === 0
-                              ? "bg-green-50"
-                              : Math.abs(diff) <= 1
-                                ? "bg-yellow-50"
-                                : "bg-red-50"
+                        key={item.id}
+                        className={`px-3 py-2 text-center text-gray-800 cursor-pointer transition-colors ${
+                          justSaved
+                            ? "bg-green-100"
+                            : isSaving
+                              ? "bg-blue-50"
+                              : diff === null
+                                ? "hover:bg-gray-100"
+                                : diff === 0
+                                  ? "bg-green-50 hover:bg-green-100"
+                                  : Math.abs(diff) <= 1
+                                    ? "bg-yellow-50 hover:bg-yellow-100"
+                                    : "bg-red-50 hover:bg-red-100"
                         }`}
                         title={
                           hasAny
-                            ? `Teacher: ${cell.marks_awarded ?? "—"}, Self: ${cell.self_marks ?? "—"}`
-                            : "No marks"
+                            ? `Teacher: ${cell.marks_awarded ?? "—"}, Self: ${cell.self_marks ?? "—"} (click to edit)`
+                            : "Click to enter marks"
+                        }
+                        onClick={() =>
+                          !isEditing &&
+                          handleCellClick(
+                            row.student_id,
+                            item.id,
+                            cell.marks_awarded
+                          )
                         }
                       >
-                        {hasAny ? (
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            min={0}
+                            max={item.max_marks}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={() =>
+                              handleCellBlur(
+                                row.student_id,
+                                item.id,
+                                item.max_marks
+                              )
+                            }
+                            onKeyDown={(e) =>
+                              handleCellKeyDown(
+                                e,
+                                row.student_id,
+                                item.id,
+                                item.max_marks
+                              )
+                            }
+                            className="w-12 rounded border border-blue-400 bg-white px-1 py-0.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
+                        ) : isSaving ? (
+                          <span className="text-blue-500">…</span>
+                        ) : hasAny ? (
                           <span>
                             <span className="font-semibold text-gray-900">
                               {cell.marks_awarded ?? "—"}
