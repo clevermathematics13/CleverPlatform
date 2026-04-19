@@ -230,7 +230,11 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                   key={row.student_id}
                   className={`border-b ${row.hidden ? "opacity-50" : ""}`}
                 >
-                  <td className="sticky left-0 bg-white px-3 py-2 font-medium text-gray-900">
+                  <td
+                    className={`sticky left-0 bg-white px-3 py-2 font-medium text-gray-900 ${
+                      menuFor === row.student_id ? "z-30" : "z-10"
+                    }`}
+                  >
                     <div className="relative">
                       <button
                         type="button"
