@@ -66,7 +66,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                 </th>
                 {data.items.map((item) => (
                   <th key={item.id} className="px-2 py-1 text-center">
-                    Q{item.question_number + 1}
+                    Q{item.question_number}
                     {item.part_label ? item.part_label : ""}
                   </th>
                 ))}
@@ -84,6 +84,8 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                       cell.marks_awarded !== null && cell.self_marks !== null
                         ? cell.self_marks - cell.marks_awarded
                         : null;
+                    const hasAny =
+                      cell.marks_awarded !== null || cell.self_marks !== null;
                     return (
                       <td
                         key={data.items[i].id}
@@ -97,18 +99,32 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                                 : "bg-red-50"
                         }`}
                         title={
-                          cell.marks_awarded !== null
-                            ? `Teacher: ${cell.marks_awarded}, Self: ${cell.self_marks ?? "—"}`
+                          hasAny
+                            ? `Teacher: ${cell.marks_awarded ?? "—"}, Self: ${cell.self_marks ?? "—"}`
                             : "No marks"
                         }
                       >
-                        {cell.self_marks !== null ? (
+                        {hasAny ? (
                           <span>
-                            {cell.self_marks}
-                            {diff !== null && diff !== 0 && (
+                            <span className="font-medium">
+                              {cell.marks_awarded ?? "—"}
+                            </span>
+                            {cell.self_marks !== null && (
                               <span className="text-[10px] text-gray-400 ml-0.5">
-                                ({diff > 0 ? "+" : ""}
-                                {diff})
+                                /
+                                {cell.self_marks}
+                                {diff !== null && diff !== 0 && (
+                                  <span
+                                    className={
+                                      diff > 0
+                                        ? "text-yellow-600"
+                                        : "text-red-500"
+                                    }
+                                  >
+                                    ({diff > 0 ? "+" : ""}
+                                    {diff})
+                                  </span>
+                                )}
                               </span>
                             )}
                           </span>

@@ -61,7 +61,7 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
             {items.map((item) => (
               <tr key={item.test_item_id} className="border-b">
                 <td className="px-3 py-2">
-                  Q{item.question_number + 1}
+                  Q{item.question_number}
                   {item.part_label ? ` (${item.part_label})` : ""}
                 </td>
                 <td className="px-3 py-2 text-center">{item.max_marks}</td>

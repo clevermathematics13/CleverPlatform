@@ -80,7 +80,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
                   className={`border-b ${getDiffClass(item.marks_awarded, self)}`}
                 >
                   <td className="px-3 py-2">
-                    Q{item.question_number + 1}
+                    Q{item.question_number}
                     {item.part_label ? ` (${item.part_label})` : ""}
                   </td>
                   <td className="px-3 py-2 text-center">{item.max_marks}</td>
