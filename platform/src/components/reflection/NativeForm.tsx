@@ -61,8 +61,10 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
             {items.map((item) => (
               <tr key={item.test_item_id} className="border-b">
                 <td className="px-3 py-2">
-                  Q{item.question_number}
-                  {item.part_label ? ` (${item.part_label})` : ""}
+                  <span className="font-bold text-blue-900">Q{item.question_number}</span>
+                  {item.part_label && (
+                    <span className="ml-1 font-bold text-blue-700">({item.part_label})</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-center">{item.max_marks}</td>
                 <td className="px-3 py-2 text-center">
@@ -78,7 +80,7 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
                         item.max_marks
                       )
                     }
-                    className="w-16 rounded border border-gray-300 px-2 py-1 text-center"
+                    className="w-16 rounded border-2 border-blue-400 px-2 py-1 text-center text-blue-900 font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-600"
                   />
                 </td>
               </tr>
