@@ -71,6 +71,7 @@ export interface StudentReflectionRow {
     self_marks: number | null;
   }[];
   has_upload: boolean;
+  hidden: boolean;
 }
 
 /** Step in the reflection workflow */

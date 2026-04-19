@@ -24,6 +24,8 @@ interface ReflectionClientProps {
   initialItems: ReflectionItem[] | null;
   initialUpload: PdfUpload | null;
   isTeacher: boolean;
+  viewStudentId?: string | null;
+  viewStudentName?: string | null;
 }
 
 export function ReflectionClient({
@@ -33,6 +35,8 @@ export function ReflectionClient({
   initialItems,
   initialUpload,
   isTeacher,
+  viewStudentId,
+  viewStudentName,
 }: ReflectionClientProps) {
   const router = useRouter();
   const [items, setItems] = useState<ReflectionItem[]>(initialItems ?? []);
@@ -116,7 +120,7 @@ export function ReflectionClient({
     );
   }
 
-  if (isTeacher) {
+  if (isTeacher && !viewStudentId) {
     return (
       <div className="max-w-6xl">
         <h1 className="text-2xl font-bold mb-4">Reflection Dashboard</h1>
@@ -125,9 +129,26 @@ export function ReflectionClient({
     );
   }
 
+  // Teacher viewing a student, or student viewing own page
+  const isViewingStudent = isTeacher && !!viewStudentId;
+
   return (
     <div className="max-w-4xl">
-      <h1 className="text-2xl font-bold mb-2">Reflection</h1>
+      {isViewingStudent && (
+        <div className="mb-4">
+          <a
+            href="/dashboard/reflection"
+            className="text-sm text-blue-600 hover:underline"
+          >
+            ← Back to dashboard
+          </a>
+        </div>
+      )}
+      <h1 className="text-2xl font-bold mb-2">
+        {isViewingStudent
+          ? `${viewStudentName}'s Reflection`
+          : "Reflection"}
+      </h1>
 
       {/* Test selector */}
       <div className="mb-4 flex items-center gap-3">

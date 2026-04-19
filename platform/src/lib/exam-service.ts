@@ -287,7 +287,7 @@ export async function getClassReflectionData(
   // Get all students in the course
   const { data: students } = await supabase
     .from("students")
-    .select("profile_id, profiles(display_name)")
+    .select("profile_id, hidden, profiles(display_name)")
     .eq("course_id", test.course_id);
 
   if (!students || students.length === 0) return { items, rows: [] };
@@ -338,6 +338,7 @@ export async function getClassReflectionData(
           )?.self_marks ?? null,
       })),
       has_upload: uploadSet.has(s.profile_id),
+      hidden: s.hidden ?? false,
     };
   });
 

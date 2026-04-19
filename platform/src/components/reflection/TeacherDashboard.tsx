@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { ReflectionTest, StudentReflectionRow } from "@/lib/reflection-types";
 
 interface TeacherDashboardProps {
@@ -30,12 +30,27 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState<CellKey | null>(null);
   const [savedCells, setSavedCells] = useState<Set<CellKey>>(new Set());
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [showHidden, setShowHidden] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close menu on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuFor(null);
+      }
+    };
+    if (menuFor) document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuFor]);
 
   useEffect(() => {
     if (!selectedTest) return;
     setLoading(true);
     setEditingCell(null);
     setSavedCells(new Set());
+    setMenuFor(null);
     fetch(`/api/reflection/class-data?testId=${encodeURIComponent(selectedTest)}`)
       .then((r) => r.json())
       .then((d: ClassData) => setData(d))
@@ -125,9 +140,37 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
     }
   };
 
+  const toggleStudent = useCallback(
+    async (studentProfileId: string, hidden: boolean) => {
+      setMenuFor(null);
+      const res = await fetch("/api/reflection/toggle-student", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentProfileId, hidden }),
+      });
+      if (res.ok) {
+        setData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            rows: prev.rows.map((row) =>
+              row.student_id === studentProfileId
+                ? { ...row, hidden }
+                : row
+            ),
+          };
+        });
+      }
+    },
+    []
+  );
+
+  const visibleRows = data?.rows.filter((r) => showHidden || !r.hidden) ?? [];
+  const hiddenCount = data?.rows.filter((r) => r.hidden).length ?? 0;
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 flex-wrap">
         <label htmlFor="test-select" className="text-sm font-medium">
           Select Test:
         </label>
@@ -143,6 +186,18 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             </option>
           ))}
         </select>
+
+        {hiddenCount > 0 && (
+          <label className="flex items-center gap-1.5 text-sm text-gray-600 ml-auto">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => setShowHidden(e.target.checked)}
+              className="rounded"
+            />
+            Show hidden ({hiddenCount})
+          </label>
+        )}
       </div>
 
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
@@ -165,10 +220,54 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
               </tr>
             </thead>
             <tbody>
-              {data.rows.map((row) => (
-                <tr key={row.student_id} className="border-b">
+              {visibleRows.map((row) => (
+                <tr
+                  key={row.student_id}
+                  className={`border-b ${row.hidden ? "opacity-50" : ""}`}
+                >
                   <td className="sticky left-0 bg-white px-3 py-2 font-medium text-gray-900">
-                    {row.display_name}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMenuFor(
+                            menuFor === row.student_id
+                              ? null
+                              : row.student_id
+                          )
+                        }
+                        className="text-left hover:text-blue-600 hover:underline"
+                      >
+                        {row.display_name}
+                        {row.hidden && (
+                          <span className="ml-1 text-xs text-gray-400">
+                            (hidden)
+                          </span>
+                        )}
+                      </button>
+                      {menuFor === row.student_id && (
+                        <div
+                          ref={menuRef}
+                          className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+                        >
+                          <a
+                            href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${row.student_id}`}
+                            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            👤 View student page
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleStudent(row.student_id, !row.hidden)
+                            }
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                          >
+                            {row.hidden ? "👁 Unhide student" : "🙈 Hide student"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </td>
                   {row.items.map((cell, i) => {
                     const item = data.items[i];
