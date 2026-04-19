@@ -47,19 +47,19 @@ export default async function StudentsPage() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Students</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">Students</h1>
+          <p className="mt-1 text-base font-medium text-blue-700">
             Manage student enrollments across courses.
           </p>
         </div>
       </div>
 
       {/* Add Student Form */}
-      <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6">
-        <h2 className="text-lg font-semibold text-gray-900">
+      <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-6">
+        <h2 className="text-xl font-bold text-blue-900">
           Enroll a Student
         </h2>
-        <p className="mt-1 text-sm text-gray-500">
+        <p className="mt-1 text-base text-blue-700">
           Enter a student&apos;s email to invite them to a course.
         </p>
         <AddStudentForm courses={courses ?? []} />
@@ -67,7 +67,7 @@ export default async function StudentsPage() {
 
       {/* Student List */}
       <div className="mt-8">
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className="text-xl font-bold text-blue-900">
           Enrolled Students ({students?.length ?? 0})
         </h2>
 

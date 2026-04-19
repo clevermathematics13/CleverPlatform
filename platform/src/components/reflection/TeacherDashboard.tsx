@@ -176,17 +176,17 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   return (
     <div className="space-y-4" ref={containerRef}>
       <div className="flex items-center gap-4 flex-wrap">
-        <label htmlFor="test-select" className="text-sm font-medium">
+        <label htmlFor="test-select" className="text-base font-semibold text-blue-900">
           Select Test:
         </label>
         <select
           id="test-select"
           value={selectedTest}
           onChange={(e) => setSelectedTest(e.target.value)}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm"
+          className="rounded border border-blue-400 px-3 py-1.5 text-base font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
         >
           {tests.map((t) => (
-            <option key={t.id} value={t.id}>
+            <option key={t.id} value={t.id} className="text-blue-900 font-semibold">
               {t.name}
             </option>
           ))}
@@ -212,16 +212,16 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-gray-50">
-                <th className="sticky left-0 bg-gray-50 px-3 py-2 text-left font-semibold text-gray-900">
+                <th className="sticky left-0 bg-blue-50 px-3 py-2 text-left font-bold text-blue-900">
                   Student
                 </th>
                 {data.items.map((item) => (
-                  <th key={item.id} className="px-3 py-2 text-center font-semibold text-gray-900">
+                  <th key={item.id} className="px-3 py-2 text-center font-bold text-blue-900">
                     Q{item.question_number}
                     {item.part_label ? item.part_label : ""}
                   </th>
                 ))}
-                <th className="px-3 py-2 text-center font-semibold text-gray-900">📄</th>
+                <th className="px-3 py-2 text-center font-bold text-blue-900">📄</th>
               </tr>
             </thead>
             <tbody>

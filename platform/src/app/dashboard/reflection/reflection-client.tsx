@@ -123,7 +123,7 @@ export function ReflectionClient({
   if (isTeacher && !viewStudentId) {
     return (
       <div className="max-w-6xl">
-        <h1 className="text-2xl font-bold mb-4">Reflection Dashboard</h1>
+        <h1 className="text-2xl font-bold mb-4 text-blue-900">Exam Reflection Dashboard</h1>
         <TeacherDashboard tests={tests} />
       </div>
     );
