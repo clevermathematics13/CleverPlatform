@@ -66,7 +66,7 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
                     <span className="ml-1 font-bold text-blue-700">({item.part_label})</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-center">{item.max_marks}</td>
+                <td className="px-3 py-2 text-center font-bold text-blue-900">{item.max_marks}</td>
                 <td className="px-3 py-2 text-center">
                   <input
                     type="number"
