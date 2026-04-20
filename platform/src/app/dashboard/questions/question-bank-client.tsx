@@ -19,7 +19,7 @@ interface Question {
   level: string;
   timezone: string;
   difficulty: number | null;
-  google_doc_id: string | null;
+  google_doc_id: string;
   google_ms_id: string | null;
   question_parts: QuestionPart[];
 }
@@ -44,6 +44,58 @@ const SECTION_NAMES: Record<number, string> = {
   5: "Calculus",
 };
 
+const DEFAULT_COMMAND_TERMS = [
+  "Calculate",
+  "Classify",
+  "Comment",
+  "Compare",
+  "Complete",
+  "Construct",
+  "Copy",
+  "Deduce",
+  "Demonstrate",
+  "Describe",
+  "Determine",
+  "Differentiate",
+  "Distinguish",
+  "Draw",
+  "Estimate",
+  "Evaluate",
+  "Expand",
+  "Explain",
+  "Express",
+  "Factorise",
+  "Find",
+  "Give",
+  "Hence",
+  "Identify",
+  "Integrate",
+  "Interpret",
+  "Investigate",
+  "Justify",
+  "Label",
+  "Let",
+  "List",
+  "Mark",
+  "Measure",
+  "Outline",
+  "Plot",
+  "Predict",
+  "Prove",
+  "Represent",
+  "Show",
+  "Simplify",
+  "Sketch",
+  "Solve",
+  "State",
+  "Suggest",
+  "Trace",
+  "Using",
+  "Verify",
+  "Write",
+  "Write down",
+];
+
 export function QuestionBankClient() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [filters, setFilters] = useState<Filters | null>(null);
@@ -51,6 +103,21 @@ export function QuestionBankClient() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
+  const [customTerms, setCustomTerms] = useState<string[]>([]);
+
+  // All available command terms (built-in + custom)
+  const allCommandTerms = [...DEFAULT_COMMAND_TERMS, ...customTerms].sort(
+    (a, b) => a.localeCompare(b)
+  );
+
+  // Load custom terms from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("custom-command-terms");
+      if (saved) setCustomTerms(JSON.parse(saved));
+    } catch {}
+  }, []);
 
   // Filter state
   const [search, setSearch] = useState("");
@@ -73,6 +140,7 @@ export function QuestionBankClient() {
   // Load questions
   const loadQuestions = useCallback(() => {
     setLoading(true);
+    setError(null);
     const params = new URLSearchParams();
     if (search) params.set("search", search);
     if (session) params.set("session", session);
@@ -85,10 +153,16 @@ export function QuestionBankClient() {
     fetch(`/api/questions?${params}`)
       .then((r) => r.json())
       .then((d) => {
-        setQuestions(d.questions ?? []);
-        setTotal(d.total ?? 0);
+        if (d.error) {
+          setError(d.error);
+          setQuestions([]);
+          setTotal(0);
+        } else {
+          setQuestions(d.questions ?? []);
+          setTotal(d.total ?? 0);
+        }
       })
-      .catch(() => {})
+      .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [search, session, paper, level, timezone, subtopic, page]);
 
@@ -117,6 +191,75 @@ export function QuestionBankClient() {
     setLevel("");
     setTimezone("");
     setSubtopic("");
+  };
+
+  const addCustomTerm = (term: string) => {
+    const trimmed = term.trim();
+    if (!trimmed || allCommandTerms.includes(trimmed)) return;
+    const updated = [...customTerms, trimmed];
+    setCustomTerms(updated);
+    try {
+      localStorage.setItem("custom-command-terms", JSON.stringify(updated));
+    } catch {}
+  };
+
+  const updateCommandTerm = async (partId: string, commandTerm: string | null) => {
+    try {
+      const res = await fetch("/api/questions/command-term", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partId, commandTerm }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
+      setQuestions((prev) =>
+        prev.map((q) => ({
+          ...q,
+          question_parts: q.question_parts.map((p) =>
+            p.id === partId ? { ...p, command_term: data.command_term } : p
+          ),
+        }))
+      );
+    } catch {
+      setError("Failed to update command term");
+    }
+  };
+
+  const updateSubtopics = async (partId: string, codes: string[]) => {
+    // Optimistic update
+    setQuestions((prev) =>
+      prev.map((q) => ({
+        ...q,
+        question_parts: q.question_parts.map((p) =>
+          p.id === partId ? { ...p, subtopic_codes: codes } : p
+        ),
+      }))
+    );
+    try {
+      const res = await fetch("/api/questions/subtopics", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partId, subtopicCodes: codes }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
+      setQuestions((prev) =>
+        prev.map((q) => ({
+          ...q,
+          question_parts: q.question_parts.map((p) =>
+            p.id === partId ? { ...p, subtopic_codes: data.subtopic_codes } : p
+          ),
+        }))
+      );
+    } catch {
+      setError("Failed to update subtopics");
+    }
   };
 
   const totalPages = Math.ceil(total / pageSize);
@@ -261,6 +404,13 @@ export function QuestionBankClient() {
         </div>
       </div>
 
+      {/* Error display */}
+      {error && (
+        <div className="rounded-lg border-2 border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-800">
+          Error: {error}
+        </div>
+      )}
+
       {/* Results header */}
       <div className="flex items-center justify-between">
         <p className="text-base font-bold text-blue-900">
@@ -318,7 +468,7 @@ export function QuestionBankClient() {
                 Marks
               </th>
               <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">
-                Doc
+                Images
               </th>
             </tr>
           </thead>
@@ -330,6 +480,11 @@ export function QuestionBankClient() {
                 expanded={expanded.has(q.id)}
                 onToggle={() => toggleExpand(q.id)}
                 totalMarks={totalMarks(q)}
+                commandTerms={allCommandTerms}
+                onUpdateCommandTerm={updateCommandTerm}
+                onAddCustomTerm={addCustomTerm}
+                availableSubtopics={filters?.subtopics ?? []}
+                onUpdateSubtopics={updateSubtopics}
               />
             ))}
             {!loading && questions.length === 0 && (
@@ -379,14 +534,22 @@ function QuestionRow({
   expanded,
   onToggle,
   totalMarks,
+  commandTerms,
+  onUpdateCommandTerm,
+  onAddCustomTerm,
+  availableSubtopics,
+  onUpdateSubtopics,
 }: {
   question: Question;
   expanded: boolean;
   onToggle: () => void;
   totalMarks: number;
+  commandTerms: string[];
+  onUpdateCommandTerm: (partId: string, commandTerm: string | null) => void;
+  onAddCustomTerm: (term: string) => void;
+  availableSubtopics: Subtopic[];
+  onUpdateSubtopics: (partId: string, codes: string[]) => void;
 }) {
-  const hasDoc = !!question.google_doc_id;
-
   return (
     <>
       <tr
@@ -423,19 +586,30 @@ function QuestionRow({
           {totalMarks}
         </td>
         <td className="px-4 py-2 text-center">
-          {hasDoc ? (
+          <div className="flex items-center justify-center gap-2">
             <a
               href={`https://docs.google.com/document/d/${question.google_doc_id}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-blue-600 hover:underline text-sm font-semibold"
+              className="text-blue-600 hover:underline text-xs font-semibold"
               onClick={(e) => e.stopPropagation()}
+              title="Question images"
             >
-              📄 View
+              📄 Q
             </a>
-          ) : (
-            <span className="text-gray-400 text-sm">—</span>
-          )}
+            {question.google_ms_id && (
+              <a
+                href={`https://docs.google.com/document/d/${question.google_ms_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-green-600 hover:underline text-xs font-semibold"
+                onClick={(e) => e.stopPropagation()}
+                title="Markscheme images"
+              >
+                📝 MS
+              </a>
+            )}
+          </div>
         </td>
       </tr>
       {expanded && question.question_parts.length > 0 && (
@@ -471,24 +645,20 @@ function QuestionRow({
                       <td className="px-2 py-1 text-center font-bold text-blue-900">
                         {part.marks}
                       </td>
-                      <td className="px-2 py-1">
-                        {part.subtopic_codes.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {part.subtopic_codes.map((c) => (
-                              <span
-                                key={c}
-                                className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800"
-                              >
-                                {c}
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400">—</span>
-                        )}
+                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+                        <SubtopicEditor
+                          codes={part.subtopic_codes}
+                          available={availableSubtopics}
+                          onChange={(codes) => onUpdateSubtopics(part.id, codes)}
+                        />
                       </td>
-                      <td className="px-2 py-1 text-sm text-gray-800">
-                        {part.command_term ?? "—"}
+                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+                        <CommandTermSelect
+                          value={part.command_term}
+                          terms={commandTerms}
+                          onChange={(term) => onUpdateCommandTerm(part.id, term)}
+                          onAddCustom={onAddCustomTerm}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -499,5 +669,223 @@ function QuestionRow({
         </tr>
       )}
     </>
+  );
+}
+
+function SubtopicEditor({
+  codes,
+  available,
+  onChange,
+}: {
+  codes: string[];
+  available: Subtopic[];
+  onChange: (codes: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const removeTopic = (code: string) => {
+    onChange(codes.filter((c) => c !== code));
+  };
+
+  const addTopic = (code: string) => {
+    if (!codes.includes(code)) {
+      onChange([...codes, code].sort());
+    }
+    setSearch("");
+    setOpen(false);
+  };
+
+  // Group available by section, filter by search and already-selected
+  const filtered = available.filter(
+    (s) =>
+      !codes.includes(s.code) &&
+      (search === "" ||
+        s.code.toLowerCase().includes(search.toLowerCase()) ||
+        s.descriptor.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const grouped = filtered.reduce(
+    (acc, s) => {
+      if (!acc[s.section]) acc[s.section] = [];
+      acc[s.section].push(s);
+      return acc;
+    },
+    {} as Record<number, Subtopic[]>
+  );
+
+  return (
+    <div className="relative">
+      <div className="flex flex-wrap items-center gap-1">
+        {codes.map((c) => {
+          const sub = available.find((s) => s.code === c);
+          return (
+            <span
+              key={c}
+              className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800"
+              title={sub?.descriptor}
+            >
+              {c}
+              <button
+                type="button"
+                onClick={() => removeTopic(c)}
+                className="ml-0.5 text-blue-500 hover:text-red-600 font-bold leading-none"
+                title="Remove"
+              >
+                ×
+              </button>
+            </span>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="inline-flex items-center rounded-full border border-dashed border-blue-300 px-2 py-0.5 text-xs font-semibold text-blue-600 hover:bg-blue-50"
+        >
+          + Add
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-blue-200 bg-white shadow-lg">
+          <div className="p-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search subtopics..."
+              autoFocus
+              className="w-full rounded border border-blue-300 px-2 py-1 text-xs font-semibold text-blue-900 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto px-1 pb-2">
+            {Object.entries(grouped).length === 0 && (
+              <p className="px-2 py-1 text-xs text-gray-400">No matches</p>
+            )}
+            {Object.entries(grouped)
+              .sort(([a], [b]) => Number(a) - Number(b))
+              .map(([sec, subs]) => (
+                <div key={sec}>
+                  <div className="sticky top-0 bg-white px-2 py-0.5 text-xs font-bold text-gray-500">
+                    {sec}. {SECTION_NAMES[Number(sec)] ?? "Other"}
+                  </div>
+                  {subs.map((s) => (
+                    <button
+                      key={s.code}
+                      type="button"
+                      onClick={() => addTopic(s.code)}
+                      className="block w-full px-3 py-1 text-left text-xs hover:bg-blue-50 rounded"
+                    >
+                      <span className="font-bold text-blue-800">{s.code}</span>{" "}
+                      <span className="text-gray-600">{s.descriptor}</span>
+                    </button>
+                  ))}
+                </div>
+              ))}
+          </div>
+          <div className="border-t border-blue-100 p-1">
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setSearch(""); }}
+              className="w-full rounded px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CommandTermSelect({
+  value,
+  terms,
+  onChange,
+  onAddCustom,
+}: {
+  value: string | null;
+  terms: string[];
+  onChange: (term: string | null) => void;
+  onAddCustom: (term: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [newTerm, setNewTerm] = useState("");
+
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    if (val === "__add__") {
+      setAdding(true);
+      return;
+    }
+    if (val === "__clear__") {
+      onChange(null);
+      return;
+    }
+    onChange(val);
+  };
+
+  const handleAddSubmit = () => {
+    const trimmed = newTerm.trim();
+    if (trimmed) {
+      onAddCustom(trimmed);
+      onChange(trimmed);
+    }
+    setAdding(false);
+    setNewTerm("");
+  };
+
+  if (adding) {
+    return (
+      <div className="flex gap-1">
+        <input
+          type="text"
+          value={newTerm}
+          onChange={(e) => setNewTerm(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleAddSubmit();
+            if (e.key === "Escape") { setAdding(false); setNewTerm(""); }
+          }}
+          placeholder="New term..."
+          autoFocus
+          className="w-28 rounded border border-blue-300 px-2 py-0.5 text-xs font-semibold text-blue-900 bg-white focus:ring-1 focus:ring-blue-500"
+        />
+        <button
+          type="button"
+          onClick={handleAddSubmit}
+          className="rounded bg-blue-600 px-2 py-0.5 text-xs font-bold text-white hover:bg-blue-700"
+        >
+          Add
+        </button>
+        <button
+          type="button"
+          onClick={() => { setAdding(false); setNewTerm(""); }}
+          className="rounded bg-gray-200 px-2 py-0.5 text-xs font-bold text-gray-700 hover:bg-gray-300"
+        >
+          ✕
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <select
+      value={value ?? ""}
+      onChange={handleChange}
+      className={`rounded border px-2 py-0.5 text-xs font-semibold ${
+        value
+          ? "border-green-400 bg-green-50 text-green-800"
+          : "border-gray-300 bg-white text-gray-500"
+      }`}
+    >
+      <option value="">— Select —</option>
+      {value && <option value="__clear__">✕ Clear</option>}
+      {terms.map((t) => (
+        <option key={t} value={t}>
+          {t}
+        </option>
+      ))}
+      <option value="__add__">+ Add custom…</option>
+    </select>
   );
 }

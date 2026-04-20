@@ -40,7 +40,7 @@ export async function saveTokenToCookie(token: object) {
     httpOnly: true,
     sameSite: "lax",
     secure: true,
-    maxAge: 60 * 60, // 1 hour
+    maxAge: 60 * 60 * 24 * 30, // 30 days
   });
 }
 

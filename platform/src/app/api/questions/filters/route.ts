@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 /** GET /api/questions/filters — return distinct sessions, timezones, subtopics for filter dropdowns */
 export async function GET(_request: NextRequest) {
-  const profile = await getProfile();
-  if (profile.role !== "teacher") {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (!profile || profile.role !== "teacher") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-
-  const supabase = await createClient();
 
   const [sessionsRes, subtopicsRes] = await Promise.all([
     supabase
