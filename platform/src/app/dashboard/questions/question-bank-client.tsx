@@ -117,6 +117,14 @@ export function QuestionBankClient() {
   const [questionImages, setQuestionImages] = useState<Record<string, QuestionImage[]>>({});
   const [extracting, setExtracting] = useState<Set<string>>(new Set());
   const [driveConnected, setDriveConnected] = useState(false);
+  const [bulkExtracting, setBulkExtracting] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{
+    completed: number;
+    total: number;
+    currentCode: string;
+    totalImages: number;
+    errors: number;
+  } | null>(null);
 
   // All available command terms (built-in + custom)
   const allCommandTerms = [...DEFAULT_COMMAND_TERMS, ...customTerms].sort(
@@ -258,6 +266,70 @@ export function QuestionBankClient() {
     }
   };
 
+  const extractAllImages = async () => {
+    setBulkExtracting(true);
+    setBulkProgress({ completed: 0, total: 0, currentCode: "", totalImages: 0, errors: 0 });
+    setError(null);
+
+    try {
+      const res = await fetch("/api/questions/extract-all-images", {
+        method: "POST",
+      });
+
+      if (!res.ok && !res.body) {
+        const data = await res.json();
+        setError(data.error ?? "Bulk extraction failed");
+        setBulkExtracting(false);
+        return;
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
+            if (msg.type === "start") {
+              setBulkProgress((p) => ({ ...p!, total: msg.total }));
+            } else if (msg.type === "progress") {
+              setBulkProgress((prev) => ({
+                completed: msg.completed,
+                total: msg.total,
+                currentCode: msg.code,
+                totalImages: (prev?.totalImages ?? 0) + msg.questionImages + msg.msImages,
+                errors: msg.error ? (prev?.errors ?? 0) + 1 : (prev?.errors ?? 0),
+              }));
+            } else if (msg.type === "done") {
+              setBulkProgress({
+                completed: msg.totalQuestions,
+                total: msg.totalQuestions,
+                currentCode: "Done!",
+                totalImages: msg.totalImages,
+                errors: msg.errors,
+              });
+            }
+          } catch {}
+        }
+      }
+
+      setDriveConnected(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bulk extraction failed");
+    } finally {
+      setBulkExtracting(false);
+    }
+  };
+
   const clearFilters = () => {
     setSearch("");
     setSession("");
@@ -353,10 +425,46 @@ export function QuestionBankClient() {
 
   return (
     <div className="space-y-4">
-      {/* Google Drive Connection */}
+      {/* Google Drive Connection & Bulk Extract */}
       {driveConnected ? (
-        <div className="rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-sm font-semibold text-green-800">
-          Google Drive connected — you can now extract images from question docs.
+        <div className="rounded-lg border border-green-300 bg-green-50 px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-green-800">
+              Google Drive connected
+            </span>
+            <button
+              type="button"
+              onClick={extractAllImages}
+              disabled={bulkExtracting}
+              className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {bulkExtracting ? "Extracting…" : "Extract All Images from Docs"}
+            </button>
+          </div>
+          {bulkProgress && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between text-xs text-gray-700 mb-1">
+                <span>
+                  {bulkProgress.completed} / {bulkProgress.total} questions
+                  {bulkProgress.currentCode && ` — ${bulkProgress.currentCode}`}
+                </span>
+                <span>
+                  {bulkProgress.totalImages} images extracted
+                  {bulkProgress.errors > 0 && `, ${bulkProgress.errors} errors`}
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{
+                    width: bulkProgress.total > 0
+                      ? `${(bulkProgress.completed / bulkProgress.total) * 100}%`
+                      : "0%",
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between">
