@@ -276,14 +276,26 @@ export function QuestionBankClient() {
         method: "POST",
       });
 
-      if (!res.ok && !res.body) {
-        const data = await res.json();
-        setError(data.error ?? "Bulk extraction failed");
+      if (!res.ok) {
+        try {
+          const data = await res.json();
+          setError(data.error ?? "Bulk extraction failed");
+        } catch {
+          setError(`Bulk extraction failed (HTTP ${res.status})`);
+        }
         setBulkExtracting(false);
+        setBulkProgress(null);
         return;
       }
 
-      const reader = res.body!.getReader();
+      if (!res.body) {
+        setError("No response stream");
+        setBulkExtracting(false);
+        setBulkProgress(null);
+        return;
+      }
+
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
@@ -318,7 +330,9 @@ export function QuestionBankClient() {
                 errors: msg.errors,
               });
             }
-          } catch {}
+          } catch (parseErr) {
+            console.error("Failed to parse stream line:", line, parseErr);
+          }
         }
       }
 

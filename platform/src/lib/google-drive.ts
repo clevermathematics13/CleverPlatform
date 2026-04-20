@@ -5,7 +5,10 @@ import { cookies } from "next/headers";
 // Classroom OAuth is for the school account (pcleveng@amersol.edu.pe).
 // These are separate Google accounts with separate tokens.
 
-const SCOPES = ["https://www.googleapis.com/auth/drive.readonly"];
+const SCOPES = [
+  "https://www.googleapis.com/auth/drive.readonly",
+  "https://www.googleapis.com/auth/documents.readonly",
+];
 const COOKIE_NAME = "google-drive-token";
 
 function getOAuth2Client(redirectUri?: string) {
