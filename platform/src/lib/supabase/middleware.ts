@@ -40,14 +40,17 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith(route)
   );
 
+  // API routes handle their own auth — don't redirect them to /login
+  const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
+
   // Routes where authenticated users should NOT be redirected away
-  const authFlowRoutes = ["/auth/google-classroom", "/register/nickname"];
+  const authFlowRoutes = ["/auth/google-classroom", "/auth/google-drive", "/register/nickname"];
   const isAuthFlowRoute = authFlowRoutes.some((route) =>
     request.nextUrl.pathname.startsWith(route)
   );
 
-  // Redirect unauthenticated users to login
-  if (!user && !isPublicRoute) {
+  // Redirect unauthenticated users to login (skip for API routes — they return 401)
+  if (!user && !isPublicRoute && !isApiRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirectTo", request.nextUrl.pathname);

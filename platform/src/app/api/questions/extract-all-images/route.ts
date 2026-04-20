@@ -208,53 +208,78 @@ export async function POST(request: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(JSON.stringify(data) + "\n"));
+        try {
+          controller.enqueue(encoder.encode(JSON.stringify(data) + "\n"));
+        } catch (e) {
+          console.error("Stream enqueue failed:", e);
+        }
       };
 
-      send({ type: "start", total: questions.length });
+      try {
+        send({ type: "start", total: questions.length });
 
-      let completed = 0;
-      let totalImages = 0;
-      const errors: { code: string; error: string }[] = [];
+        let completed = 0;
+        let totalImages = 0;
+        const errors: { code: string; error: string }[] = [];
 
-      for (const q of questions) {
-        const result = await extractOneQuestion(supabase, auth, q as {
-          id: string;
-          code: string;
-          google_doc_id: string;
-          google_ms_id: string | null;
-        });
+        for (const q of questions) {
+          try {
+            const result = await extractOneQuestion(supabase, auth, q as {
+              id: string;
+              code: string;
+              google_doc_id: string;
+              google_ms_id: string | null;
+            });
 
-        completed++;
-        totalImages += result.questionImages + result.msImages;
+            completed++;
+            totalImages += result.questionImages + result.msImages;
 
-        if (result.error) {
-          errors.push({ code: result.code, error: result.error });
+            if (result.error) {
+              errors.push({ code: result.code, error: result.error });
+            }
+
+            send({
+              type: "progress",
+              completed,
+              total: questions.length,
+              code: result.code,
+              questionImages: result.questionImages,
+              msImages: result.msImages,
+              error: result.error ?? null,
+            });
+          } catch (questionErr) {
+            completed++;
+            const errMsg = questionErr instanceof Error ? questionErr.message : String(questionErr);
+            errors.push({ code: q.code, error: errMsg });
+            console.error(`Error extracting ${q.code}:`, questionErr);
+            send({
+              type: "progress",
+              completed,
+              total: questions.length,
+              code: q.code,
+              questionImages: 0,
+              msImages: 0,
+              error: errMsg,
+            });
+          }
+
+          // Small delay to avoid rate limiting Google API
+          await new Promise((r) => setTimeout(r, 200));
         }
 
         send({
-          type: "progress",
-          completed,
-          total: questions.length,
-          code: result.code,
-          questionImages: result.questionImages,
-          msImages: result.msImages,
-          error: result.error ?? null,
+          type: "done",
+          totalQuestions: completed,
+          totalImages,
+          errors: errors.length,
+          errorDetails: errors,
         });
-
-        // Small delay to avoid rate limiting Google API
-        await new Promise((r) => setTimeout(r, 200));
+      } catch (e) {
+        console.error("Stream fatal error:", e);
+        send({ type: "error", error: e instanceof Error ? e.message : String(e) });
+      } finally {
+        controller.close();
       }
-
-      send({
-        type: "done",
-        totalQuestions: completed,
-        totalImages,
-        errors: errors.length,
-        errorDetails: errors,
-      });
-
-      controller.close();
     },
   });
 

@@ -274,7 +274,16 @@ export function QuestionBankClient() {
     try {
       const res = await fetch("/api/questions/extract-all-images", {
         method: "POST",
+        redirect: "manual",
       });
+
+      // If redirected (e.g. to login), the user isn't authenticated
+      if (res.type === "opaqueredirect" || res.status === 0) {
+        setError("Session expired. Please refresh the page and try again.");
+        setBulkExtracting(false);
+        setBulkProgress(null);
+        return;
+      }
 
       if (!res.ok) {
         try {
@@ -329,6 +338,8 @@ export function QuestionBankClient() {
                 totalImages: msg.totalImages,
                 errors: msg.errors,
               });
+            } else if (msg.type === "error") {
+              setError(msg.error);
             }
           } catch (parseErr) {
             console.error("Failed to parse stream line:", line, parseErr);
