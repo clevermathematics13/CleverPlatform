@@ -116,6 +116,7 @@ export function QuestionBankClient() {
   const [customTerms, setCustomTerms] = useState<string[]>([]);
   const [questionImages, setQuestionImages] = useState<Record<string, QuestionImage[]>>({});
   const [extracting, setExtracting] = useState<Set<string>>(new Set());
+  const [driveConnected, setDriveConnected] = useState(false);
 
   // All available command terms (built-in + custom)
   const allCommandTerms = [...DEFAULT_COMMAND_TERMS, ...customTerms].sort(
@@ -128,6 +129,20 @@ export function QuestionBankClient() {
       const saved = localStorage.getItem("custom-command-terms");
       if (saved) setCustomTerms(JSON.parse(saved));
     } catch {}
+  }, []);
+
+  // Detect Google Drive connection status from URL params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("drive_connected") === "true") {
+      setDriveConnected(true);
+      // Clean URL
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (params.get("drive_error")) {
+      setError(`Google Drive connection failed: ${params.get("drive_error")}`);
+      window.history.replaceState({}, "", window.location.pathname);
+    }
   }, []);
 
   // Filter state
@@ -222,8 +237,13 @@ export function QuestionBankClient() {
       });
       const data = await res.json();
       if (data.error) {
-        setError(data.error);
+        if (data.error.includes("Google Drive not connected")) {
+          setError("Google Drive not connected. Click 'Connect Google Drive' at the top first.");
+        } else {
+          setError(data.error);
+        }
       } else {
+        setDriveConnected(true);
         // Reload images for this question
         await loadImages(questionId);
       }
@@ -333,6 +353,25 @@ export function QuestionBankClient() {
 
   return (
     <div className="space-y-4">
+      {/* Google Drive Connection */}
+      {driveConnected ? (
+        <div className="rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-sm font-semibold text-green-800">
+          Google Drive connected — you can now extract images from question docs.
+        </div>
+      ) : (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between">
+          <p className="text-sm font-semibold text-amber-800">
+            Connect Google Drive to extract images from question documents.
+          </p>
+          <a
+            href="/api/questions/connect-drive"
+            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700"
+          >
+            Connect Google Drive
+          </a>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
         <div className="flex flex-wrap items-end gap-3">
