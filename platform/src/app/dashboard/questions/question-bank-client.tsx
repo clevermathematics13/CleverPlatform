@@ -11,6 +11,15 @@ interface QuestionPart {
   sort_order: number;
 }
 
+interface QuestionImage {
+  id: string;
+  image_type: "question" | "markscheme";
+  storage_path: string;
+  sort_order: number;
+  alt_text: string | null;
+  url: string | null;
+}
+
 interface Question {
   id: string;
   code: string;
@@ -105,6 +114,8 @@ export function QuestionBankClient() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [customTerms, setCustomTerms] = useState<string[]>([]);
+  const [questionImages, setQuestionImages] = useState<Record<string, QuestionImage[]>>({});
+  const [extracting, setExtracting] = useState<Set<string>>(new Set());
 
   // All available command terms (built-in + custom)
   const allCommandTerms = [...DEFAULT_COMMAND_TERMS, ...customTerms].sort(
@@ -179,9 +190,52 @@ export function QuestionBankClient() {
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else {
+        next.add(id);
+        // Load images when expanding if not already loaded
+        if (!questionImages[id]) {
+          loadImages(id);
+        }
+      }
       return next;
     });
+  };
+
+  const loadImages = async (questionId: string) => {
+    try {
+      const res = await fetch(`/api/questions/images?questionId=${questionId}`);
+      const data = await res.json();
+      if (!data.error) {
+        setQuestionImages((prev) => ({ ...prev, [questionId]: data.images ?? [] }));
+      }
+    } catch {}
+  };
+
+  const extractImages = async (questionId: string) => {
+    setExtracting((prev) => new Set(prev).add(questionId));
+    setError(null);
+    try {
+      const res = await fetch("/api/questions/extract-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+      } else {
+        // Reload images for this question
+        await loadImages(questionId);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Extraction failed");
+    } finally {
+      setExtracting((prev) => {
+        const next = new Set(prev);
+        next.delete(questionId);
+        return next;
+      });
+    }
   };
 
   const clearFilters = () => {
@@ -485,6 +539,9 @@ export function QuestionBankClient() {
                 onAddCustomTerm={addCustomTerm}
                 availableSubtopics={filters?.subtopics ?? []}
                 onUpdateSubtopics={updateSubtopics}
+                images={questionImages[q.id] ?? []}
+                extracting={extracting.has(q.id)}
+                onExtractImages={() => extractImages(q.id)}
               />
             ))}
             {!loading && questions.length === 0 && (
@@ -539,6 +596,9 @@ function QuestionRow({
   onAddCustomTerm,
   availableSubtopics,
   onUpdateSubtopics,
+  images,
+  extracting,
+  onExtractImages,
 }: {
   question: Question;
   expanded: boolean;
@@ -549,6 +609,9 @@ function QuestionRow({
   onAddCustomTerm: (term: string) => void;
   availableSubtopics: Subtopic[];
   onUpdateSubtopics: (partId: string, codes: string[]) => void;
+  images: QuestionImage[];
+  extracting: boolean;
+  onExtractImages: () => void;
 }) {
   return (
     <>
@@ -612,9 +675,10 @@ function QuestionRow({
           </div>
         </td>
       </tr>
-      {expanded && question.question_parts.length > 0 && (
+      {expanded && (
         <tr>
           <td colSpan={8} className="bg-blue-50 px-4 py-3">
+            {question.question_parts.length > 0 && (
             <div className="ml-4">
               <table className="w-full text-sm">
                 <thead>
@@ -664,6 +728,88 @@ function QuestionRow({
                   ))}
                 </tbody>
               </table>
+            </div>
+            )}
+
+            {/* Images Section */}
+            <div className="ml-4 mt-3 border-t border-blue-200 pt-3">
+              <div className="flex items-center gap-3 mb-2">
+                <span className="text-sm font-bold text-blue-900">Extracted Images</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onExtractImages(); }}
+                  disabled={extracting}
+                  className="rounded-lg border border-blue-400 bg-white px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                >
+                  {extracting ? "Extracting…" : images.length > 0 ? "Re-extract" : "Extract from Docs"}
+                </button>
+                {images.length > 0 && (
+                  <span className="text-xs text-gray-500">
+                    {images.filter(i => i.image_type === "question").length} question,{" "}
+                    {images.filter(i => i.image_type === "markscheme").length} markscheme
+                  </span>
+                )}
+              </div>
+
+              {images.length > 0 && (
+                <div className="space-y-2">
+                  {/* Question images */}
+                  {images.filter(i => i.image_type === "question").length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-blue-800 mb-1">Question</p>
+                      <div className="flex flex-wrap gap-2">
+                        {images
+                          .filter(i => i.image_type === "question")
+                          .map((img) => (
+                            <a
+                              key={img.id}
+                              href={img.url ?? "#"}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="block"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={img.url ?? ""}
+                                alt={img.alt_text ?? `Question image ${img.sort_order + 1}`}
+                                className="max-h-40 rounded border border-blue-200 bg-white p-1 hover:border-blue-500 hover:shadow-md transition-all"
+                              />
+                            </a>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Markscheme images */}
+                  {images.filter(i => i.image_type === "markscheme").length > 0 && (
+                    <div>
+                      <p className="text-xs font-semibold text-green-800 mb-1">Markscheme</p>
+                      <div className="flex flex-wrap gap-2">
+                        {images
+                          .filter(i => i.image_type === "markscheme")
+                          .map((img) => (
+                            <a
+                              key={img.id}
+                              href={img.url ?? "#"}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="block"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={img.url ?? ""}
+                                alt={img.alt_text ?? `Markscheme image ${img.sort_order + 1}`}
+                                className="max-h-40 rounded border border-green-200 bg-white p-1 hover:border-green-500 hover:shadow-md transition-all"
+                              />
+                            </a>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </td>
         </tr>

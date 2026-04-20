@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS public.question_images (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Unique constraint for upsert (one image per question+type+order position)
+ALTER TABLE public.question_images
+  ADD CONSTRAINT uq_question_images_type_order UNIQUE (question_id, image_type, sort_order);
+
 CREATE INDEX idx_question_images_question ON public.question_images(question_id);
 CREATE INDEX idx_question_images_part ON public.question_images(part_id) WHERE part_id IS NOT NULL;
 CREATE INDEX idx_question_images_type ON public.question_images(question_id, image_type);
