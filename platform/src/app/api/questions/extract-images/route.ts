@@ -136,6 +136,7 @@ export async function POST(request: NextRequest) {
   }
 
   const auth = getAuthedClient(token);
+
   const results: { type: string; storagePath: string; sortOrder: number }[] = [];
 
   // Extract from question doc
@@ -157,6 +158,16 @@ export async function POST(request: NextRequest) {
         });
 
       if (uploadErr) {
+        if (uploadErr.message?.toLowerCase().includes("bucket not found")) {
+          return NextResponse.json(
+            {
+              error:
+                "Storage bucket 'question-images' was not found. Run migration 013_question_images.sql in the same Supabase project used by NEXT_PUBLIC_SUPABASE_URL.",
+              partial: results,
+            },
+            { status: 500 }
+          );
+        }
         console.error(`Upload failed for ${storagePath}:`, uploadErr);
         continue;
       }
@@ -213,6 +224,16 @@ export async function POST(request: NextRequest) {
           });
 
         if (uploadErr) {
+          if (uploadErr.message?.toLowerCase().includes("bucket not found")) {
+            return NextResponse.json(
+              {
+                error:
+                  "Storage bucket 'question-images' was not found. Run migration 013_question_images.sql in the same Supabase project used by NEXT_PUBLIC_SUPABASE_URL.",
+                partial: results,
+              },
+              { status: 500 }
+            );
+          }
           console.error(`Upload failed for ${storagePath}:`, uploadErr);
           continue;
         }

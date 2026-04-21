@@ -125,6 +125,8 @@ export function QuestionBankClient() {
     totalImages: number;
     errors: number;
   } | null>(null);
+  const [bulkErrors, setBulkErrors] = useState<{ code: string; error: string }[]>([]);
+  const [showErrors, setShowErrors] = useState(false);
 
   // All available command terms (built-in + custom)
   const allCommandTerms = [...DEFAULT_COMMAND_TERMS, ...customTerms].sort(
@@ -269,12 +271,16 @@ export function QuestionBankClient() {
   const extractAllImages = async () => {
     setBulkExtracting(true);
     setBulkProgress({ completed: 0, total: 0, currentCode: "", totalImages: 0, errors: 0 });
+    setBulkErrors([]);
+    setShowErrors(false);
     setError(null);
 
     try {
       const res = await fetch("/api/questions/extract-all-images", {
         method: "POST",
         redirect: "manual",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skipExisting: true }),
       });
 
       // If redirected (e.g. to login), the user isn't authenticated
@@ -330,6 +336,9 @@ export function QuestionBankClient() {
                 totalImages: (prev?.totalImages ?? 0) + msg.questionImages + msg.msImages,
                 errors: msg.error ? (prev?.errors ?? 0) + 1 : (prev?.errors ?? 0),
               }));
+              if (msg.error) {
+                setBulkErrors((prev) => [...prev, { code: msg.code, error: msg.error }]);
+              }
             } else if (msg.type === "done") {
               setBulkProgress({
                 completed: msg.totalQuestions,
@@ -490,6 +499,29 @@ export function QuestionBankClient() {
               </div>
             </div>
           )}
+          {bulkErrors.length > 0 && (
+            <div className="mt-2">
+              <button
+                type="button"
+                onClick={() => setShowErrors((v) => !v)}
+                className="text-xs font-semibold text-red-700 underline"
+              >
+                {showErrors ? "Hide" : "Show"} {bulkErrors.length} error{bulkErrors.length !== 1 ? "s" : ""}
+              </button>
+              {showErrors && (
+                <div className="mt-1 max-h-48 overflow-y-auto rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+                  {bulkErrors.slice(0, 50).map((e, i) => (
+                    <div key={i} className="py-0.5">
+                      <span className="font-bold">{e.code}:</span> {e.error}
+                    </div>
+                  ))}
+                  {bulkErrors.length > 50 && (
+                    <div className="py-1 font-semibold">…and {bulkErrors.length - 50} more</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ) : (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between">
@@ -507,13 +539,14 @@ export function QuestionBankClient() {
 
       {/* Filters */}
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-        <div className="flex flex-wrap items-end gap-3">
+        <div suppressHydrationWarning className="flex flex-wrap items-end gap-3">
           {/* Search */}
           <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-bold text-blue-900 mb-1">
               Search Code
             </label>
             <input
+              suppressHydrationWarning
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -528,6 +561,7 @@ export function QuestionBankClient() {
               Session
             </label>
             <select
+              suppressHydrationWarning
               value={session}
               onChange={(e) => setSession(e.target.value)}
               className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
@@ -547,6 +581,7 @@ export function QuestionBankClient() {
               Paper
             </label>
             <select
+              suppressHydrationWarning
               value={paper}
               onChange={(e) => setPaper(e.target.value)}
               className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
@@ -564,6 +599,7 @@ export function QuestionBankClient() {
               Level
             </label>
             <select
+              suppressHydrationWarning
               value={level}
               onChange={(e) => setLevel(e.target.value)}
               className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
@@ -580,6 +616,7 @@ export function QuestionBankClient() {
               Timezone
             </label>
             <select
+              suppressHydrationWarning
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
               className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
@@ -599,6 +636,7 @@ export function QuestionBankClient() {
               Subtopic
             </label>
             <select
+              suppressHydrationWarning
               value={subtopic}
               onChange={(e) => setSubtopic(e.target.value)}
               className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white w-full"
@@ -621,6 +659,7 @@ export function QuestionBankClient() {
 
           {/* Clear */}
           <button
+            suppressHydrationWarning
             type="button"
             onClick={clearFilters}
             className="rounded-lg border-2 border-blue-400 bg-white px-3 py-1.5 text-sm font-bold text-blue-700 hover:bg-blue-100"

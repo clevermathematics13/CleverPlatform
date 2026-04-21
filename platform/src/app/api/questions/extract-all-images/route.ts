@@ -91,6 +91,14 @@ async function extractOneQuestion(
         .upload(storagePath, buffer, { contentType, upsert: true });
 
       if (uploadErr) {
+        if (uploadErr.message?.toLowerCase().includes("bucket not found")) {
+          return {
+            code: question.code,
+            questionImages: questionCount,
+            msImages: msCount,
+            error: "Storage bucket 'question-images' was not found. Run migration 013_question_images.sql in the same Supabase project used by NEXT_PUBLIC_SUPABASE_URL.",
+          };
+        }
         console.error(`Upload failed ${storagePath}:`, uploadErr);
         continue;
       }
@@ -131,6 +139,14 @@ async function extractOneQuestion(
           .upload(storagePath, buffer, { contentType, upsert: true });
 
         if (uploadErr) {
+          if (uploadErr.message?.toLowerCase().includes("bucket not found")) {
+            return {
+              code: question.code,
+              questionImages: questionCount,
+              msImages: msCount,
+              error: "Storage bucket 'question-images' was not found. Run migration 013_question_images.sql in the same Supabase project used by NEXT_PUBLIC_SUPABASE_URL.",
+            };
+          }
           console.error(`Upload failed ${storagePath}:`, uploadErr);
           continue;
         }
@@ -188,12 +204,29 @@ export async function POST(request: NextRequest) {
 
   const auth = getAuthedClient(token);
 
+  // Optional: skip questions that already have images extracted
+  let skipExisting = false;
+  try {
+    const body = await request.json().catch(() => ({}));
+    skipExisting = body?.skipExisting === true;
+  } catch { /* no body */ }
+
   // Get all questions that have a google_doc_id
-  const { data: questions, error: qErr } = await supabase
+  let { data: questions, error: qErr } = await supabase
     .from("ib_questions")
     .select("id, code, google_doc_id, google_ms_id")
     .not("google_doc_id", "is", null)
     .order("code");
+
+  if (!qErr && questions && skipExisting) {
+    const { data: existing } = await supabase
+      .from("question_images")
+      .select("question_id");
+    if (existing && existing.length > 0) {
+      const doneIds = new Set(existing.map((r: { question_id: string }) => r.question_id));
+      questions = questions.filter((q) => !doneIds.has(q.id));
+    }
+  }
 
   if (qErr) {
     return NextResponse.json({ error: qErr.message }, { status: 500 });
@@ -207,10 +240,14 @@ export async function POST(request: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
+      let streamOpen = true;
+
       const send = (data: Record<string, unknown>) => {
+        if (!streamOpen) return;
         try {
           controller.enqueue(encoder.encode(JSON.stringify(data) + "\n"));
         } catch (e) {
+          streamOpen = false;
           console.error("Stream enqueue failed:", e);
         }
       };
@@ -236,6 +273,12 @@ export async function POST(request: NextRequest) {
 
             if (result.error) {
               errors.push({ code: result.code, error: result.error });
+              console.error(`[extract] ${result.code}: ${result.error}`);
+
+              if (result.error.includes("Storage bucket 'question-images' was not found")) {
+                send({ type: "error", error: result.error });
+                break;
+              }
             }
 
             send({
@@ -278,7 +321,10 @@ export async function POST(request: NextRequest) {
         console.error("Stream fatal error:", e);
         send({ type: "error", error: e instanceof Error ? e.message : String(e) });
       } finally {
-        controller.close();
+        if (streamOpen) {
+          controller.close();
+          streamOpen = false;
+        }
       }
     },
   });
