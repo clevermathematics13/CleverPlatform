@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node -e \"const fs=require('fs');const m='src/middleware.ts';if(!fs.existsSync(m))throw new Error('FATAL: '+m+' is missing.');const c=fs.readFileSync(m,'utf8');if(!/export (async )?function middleware|export default/.test(c))throw new Error('FATAL: '+m+' must export a function named middleware or a default export.');\"",
-    "prebuild": "node -e \"const fs=require('fs');const m='src/middleware.ts';if(!fs.existsSync(m))throw new Error('FATAL: '+m+' is missing.');const c=fs.readFileSync(m,'utf8');if(!/export (async )?function middleware|export default/.test(c))throw new Error('FATAL: '+m+' must export a function named middleware or a default export.');\"",
+    "predev": "node -e \"const fs=require('fs');const m='src/proxy.ts';if(!fs.existsSync(m))throw new Error('FATAL: '+m+' is missing.');const c=fs.readFileSync(m,'utf8');if(!/export (async )?function proxy|export default/.test(c))throw new Error('FATAL: '+m+' must export a function named proxy or a default export.');\"",
+    "prebuild": "node -e \"const fs=require('fs');const m='src/proxy.ts';if(!fs.existsSync(m))throw new Error('FATAL: '+m+' is missing.');const c=fs.readFileSync(m,'utf8');if(!/export (async )?function proxy|export default/.test(c))throw new Error('FATAL: '+m+' must export a function named proxy or a default export.');\"",
     "dev": "NODE_OPTIONS='--max-old-space-size=1536' next dev --webpack",
     "build": "next build",
     "start": "next start",
