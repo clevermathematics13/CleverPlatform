@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   getGoogleAuthUrl,
   isGoogleConnected,
@@ -25,15 +26,18 @@ interface ClassroomStudent {
 export function GoogleClassroomImport({
   courses,
   initialConnected,
+  defaultTargetCourseId,
 }: {
   courses: { id: string; name: string }[];
   initialConnected: boolean;
+  defaultTargetCourseId?: string;
 }) {
+  const router = useRouter();
   const [connected, setConnected] = useState(initialConnected);
   const [gcCourses, setGcCourses] = useState<ClassroomCourse[]>([]);
   const [gcStudents, setGcStudents] = useState<ClassroomStudent[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState("");
-  const [targetCourseId, setTargetCourseId] = useState("");
+  const [targetCourseId, setTargetCourseId] = useState(defaultTargetCourseId ?? "");
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [loadingStudents, setLoadingStudents] = useState(false);
@@ -126,6 +130,9 @@ export function GoogleClassroomImport({
     try {
       const res = await importGoogleStudents(formData);
       setResult(res);
+      if (!res.error) {
+        router.refresh();
+      }
     } finally {
       setImporting(false);
     }
@@ -214,7 +221,7 @@ export function GoogleClassroomImport({
                   <select
                     value={selectedCourseId}
                     onChange={(e) => handleSelectGcCourse(e.target.value)}
-                    className="block w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="block w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="">Select a course...</option>
                     {gcCourses.map((c) => (
@@ -282,7 +289,7 @@ export function GoogleClassroomImport({
                       <select
                         value={targetCourseId}
                         onChange={(e) => setTargetCourseId(e.target.value)}
-                        className="block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="">Select course...</option>
                         {courses.map((c) => (
@@ -320,11 +327,11 @@ export function GoogleClassroomImport({
                   ) : (
                     <>
                       <p>
-                        Invited {result.imported} student
-                        {result.imported !== 1 ? "s" : ""}.
+                        Enrolled {result.imported} student
+                        {result.imported !== 1 ? "s" : ""} as &ldquo;not yet signed in&rdquo;.
                         {(result.skipped ?? 0) > 0 &&
                           ` Skipped ${result.skipped}.`}
-                        {" "}They&apos;ll be auto-enrolled when they log in.
+                        {" "}They&apos;ll be fully activated when they first log in.
                       </p>
                       {result.errors && result.errors.length > 0 && (
                         <ul className="mt-1 list-disc pl-5 text-xs text-amber-700">

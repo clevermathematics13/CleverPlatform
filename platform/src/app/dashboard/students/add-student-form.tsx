@@ -5,8 +5,10 @@ import { addStudent } from "./actions";
 
 export function AddStudentForm({
   courses,
+  defaultCourseId,
 }: {
   courses: { id: string; name: string }[];
+  defaultCourseId?: string;
 }) {
   const [state, formAction, pending] = useActionState(
     async (_prev: { error?: string; success?: boolean } | null, formData: FormData) => {
@@ -16,8 +18,8 @@ export function AddStudentForm({
   );
 
   return (
-    <form action={formAction} className="mt-4 flex flex-wrap items-end gap-4">
-      <div>
+    <form action={formAction} className="mt-4 flex flex-wrap items-end gap-4" suppressHydrationWarning>
+      <div suppressHydrationWarning>
         <label
           htmlFor="email"
           className="block text-sm font-medium text-gray-700"
@@ -31,6 +33,7 @@ export function AddStudentForm({
           required
           placeholder="student@example.com"
           className="mt-1 block w-64 rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          suppressHydrationWarning
         />
       </div>
       <div>
@@ -44,6 +47,7 @@ export function AddStudentForm({
           name="course_id"
           id="course_id"
           required
+          defaultValue={defaultCourseId ?? ""}
           className="mt-1 block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="">Select course...</option>

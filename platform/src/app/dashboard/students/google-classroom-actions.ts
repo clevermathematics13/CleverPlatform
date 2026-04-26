@@ -56,11 +56,20 @@ export async function importGoogleStudents(formData: FormData) {
   let skipped = 0;
   const errors: string[] = [];
 
+  // Look up course name once (used for seating_students)
+  const { data: course } = await supabase
+    .from("courses")
+    .select("name")
+    .eq("id", courseId)
+    .single();
+
+  console.log(`[GC Import] Starting import of ${emails.length} students into course ${courseId} (${course?.name})`);
+
   for (let i = 0; i < emails.length; i++) {
     const email = emails[i];
     const fullName = names[i] || email.split("@")[0];
 
-    // Upsert into invited_students
+    // Upsert into invited_students (auto-register immediately)
     const { error: inviteError } = await supabase
       .from("invited_students")
       .upsert(
@@ -68,11 +77,13 @@ export async function importGoogleStudents(formData: FormData) {
           email,
           full_name: fullName,
           course_id: courseId,
+          registered: true,
         },
         { onConflict: "email,course_id" }
       );
 
     if (inviteError) {
+      console.error(`[GC Import] invited_students upsert failed for ${email}:`, inviteError.message);
       skipped++;
       errors.push(`${email}: ${inviteError.message}`);
       continue;
@@ -94,7 +105,9 @@ export async function importGoogleStudents(formData: FormData) {
         );
 
       if (enrollError) {
-        errors.push(`${email}: invited but enrollment failed — ${enrollError.message}`);
+        skipped++;
+        errors.push(`${email}: enrollment failed — ${enrollError.message}`);
+        continue;
       }
 
       // Mark invitation as registered
@@ -105,10 +118,28 @@ export async function importGoogleStudents(formData: FormData) {
         .eq("course_id", courseId);
     }
 
+    // Sync into seating_students
+    if (course) {
+      await supabase
+        .from("seating_students")
+        .upsert(
+          {
+            student_id: email,
+            name: fullName,
+            class_group: course.name,
+            active: true,
+            notes: "",
+          },
+          { onConflict: "student_id", ignoreDuplicates: true }
+        );
+    }
+
+    console.log(`[GC Import] OK: ${email}`);
     imported++;
   }
 
   revalidatePath("/dashboard/students");
+  console.log(`[GC Import] Done: ${imported} imported, ${skipped} skipped`);
   return {
     success: true,
     imported,

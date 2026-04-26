@@ -15,9 +15,6 @@ function LoginForm() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(redirectTo)}`,
-        queryParams: {
-          hd: "amersol.edu.pe", // Restrict to Google Workspace domain
-        },
       },
     });
   };

@@ -1,0 +1,4 @@
+{
+  "name": "CleverPlatform",
+  "postStartCommand": "npm list -g pm2 --depth=0 2>/dev/null | grep -q pm2 || npm install -g pm2 && (pm2 describe platform 2>/dev/null | grep -q online || pm2 start /workspaces/CleverPlatform/platform/ecosystem.config.js --only platform) && pm2 save"
+}

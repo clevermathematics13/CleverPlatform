@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
+import { isBlockedQuestionImage } from "@/lib/question-image-filter";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 
@@ -83,6 +84,10 @@ async function extractOneQuestion(
     const images = await getDocImages(auth, question.google_doc_id);
     for (let i = 0; i < images.length; i++) {
       const { buffer, contentType } = await downloadImage(auth, images[i].contentUri);
+      if (isBlockedQuestionImage(buffer)) {
+        console.log(`Skipping blocked question image for ${question.code} at question/${String(i + 1).padStart(2, "0")}`);
+        continue;
+      }
       const ext = extensionForType(contentType);
       const storagePath = `${question.code}/question/${String(i + 1).padStart(2, "0")}.${ext}`;
 
@@ -131,6 +136,10 @@ async function extractOneQuestion(
       const images = await getDocImages(auth, question.google_ms_id);
       for (let i = 0; i < images.length; i++) {
         const { buffer, contentType } = await downloadImage(auth, images[i].contentUri);
+        if (isBlockedQuestionImage(buffer)) {
+          console.log(`Skipping blocked markscheme image for ${question.code} at markscheme/${String(i + 1).padStart(2, "0")}`);
+          continue;
+        }
         const ext = extensionForType(contentType);
         const storagePath = `${question.code}/markscheme/${String(i + 1).padStart(2, "0")}.${ext}`;
 
@@ -221,10 +230,22 @@ export async function POST(request: NextRequest) {
   if (!qErr && questions && skipExisting) {
     const { data: existing } = await supabase
       .from("question_images")
-      .select("question_id");
+      .select("question_id, image_type");
     if (existing && existing.length > 0) {
-      const doneIds = new Set(existing.map((r: { question_id: string }) => r.question_id));
-      questions = questions.filter((q) => !doneIds.has(q.id));
+      // Build a map of question_id → set of image_types already loaded
+      const loadedTypes = new Map<string, Set<string>>();
+      for (const r of existing as { question_id: string; image_type: string }[]) {
+        if (!loadedTypes.has(r.question_id)) loadedTypes.set(r.question_id, new Set());
+        loadedTypes.get(r.question_id)!.add(r.image_type);
+      }
+      // Only skip if the question doc images are present AND the markscheme
+      // images are present (or the question has no markscheme doc at all)
+      questions = questions.filter((q) => {
+        const types = loadedTypes.get(q.id);
+        if (!types || !types.has("question")) return true; // question images missing → process
+        if (q.google_ms_id && !types.has("markscheme")) return true; // markscheme missing → process
+        return false; // both complete → skip
+      });
     }
   }
 

@@ -2,6 +2,44 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Auto-start persistent dev server",
+      "type": "shell",
+      "command": "pm2 pid platform | grep -q '[0-9]' || (pm2 resurrect || pm2 start ecosystem.config.js --only platform)",
+      "isBackground": true,
+      "problemMatcher": [],
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
+    },
+    {
+      "label": "Start persistent dev server",
+      "type": "shell",
+      "command": "pm2 pid platform | grep -q '[0-9]' || (pm2 resurrect || pm2 start ecosystem.config.js --only platform)",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Restart persistent dev server",
+      "type": "shell",
+      "command": "pm2 restart platform",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Stop persistent dev server",
+      "type": "shell",
+      "command": "pm2 delete platform || true",
+      "isBackground": false,
+      "problemMatcher": []
+    },
+    {
+      "label": "Show dev server logs",
+      "type": "shell",
+      "command": "pm2 logs platform --lines 50",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
       "label": "Start auto-push watcher",
       "type": "shell",
       "command": "./scripts/auto-push.sh",

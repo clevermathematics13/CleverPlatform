@@ -13,7 +13,7 @@ export async function addStudent(formData: FormData) {
 
   if (!email || !courseId) return { error: "Email and course are required" };
 
-  // Create invitation
+  // Create invitation (auto-register immediately)
   const { error: inviteError } = await supabase
     .from("invited_students")
     .upsert(
@@ -21,6 +21,7 @@ export async function addStudent(formData: FormData) {
         email,
         full_name: email.split("@")[0],
         course_id: courseId,
+        registered: true,
       },
       { onConflict: "email,course_id" }
     );
@@ -68,5 +69,31 @@ export async function removeStudent(formData: FormData) {
   if (!studentId) return;
 
   await supabase.from("students").delete().eq("id", studentId);
+  revalidatePath("/dashboard/students");
+}
+
+export async function updateNickname(formData: FormData) {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const profileId = formData.get("profile_id") as string;
+  const nickname = (formData.get("nickname") as string)?.trim() || null;
+
+  if (!profileId) return;
+
+  await supabase.from("profiles").update({ nickname }).eq("id", profileId);
+  revalidatePath("/dashboard/students");
+}
+
+export async function updateInvitedNickname(formData: FormData) {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const invitedId = formData.get("invited_id") as string;
+  const nickname = (formData.get("nickname") as string)?.trim() || null;
+
+  if (!invitedId) return;
+
+  await supabase.from("invited_students").update({ nickname }).eq("id", invitedId);
   revalidatePath("/dashboard/students");
 }

@@ -30,19 +30,44 @@ export default async function DashboardPage() {
 }
 
 async function TeacherDashboard({ supabase }: { supabase: Awaited<ReturnType<typeof createClient>> }) {
-  const [studentsRes, assignmentsRes, questionsRes, coursesRes] = await Promise.all([
-    supabase.from("students").select("id", { count: "exact", head: true }),
+  const [studentsRes, invitedRes, assignmentsRes, questionsRes, coursesRes] = await Promise.all([
+    supabase.from("students").select(`
+      id,
+      profiles:profile_id ( email )
+    `),
+    supabase
+      .from("invited_students")
+      .select("id, email")
+      .eq("registered", true),
     supabase.from("assignments").select("id", { count: "exact", head: true }).eq("status", "active"),
-    supabase.from("questions").select("id", { count: "exact", head: true }),
+    supabase
+      .from("ib_questions")
+      .select("id", { count: "exact", head: true })
+      .or("google_doc_id.not.is.null,source_pdf_path.not.is.null"),
     supabase.from("courses").select("id", { count: "exact", head: true }),
   ]);
+
+  const enrolledEmails = new Set(
+    (studentsRes.data ?? [])
+      .map((s) => {
+        const profile = s.profiles as unknown as { email: string } | null;
+        return profile?.email ?? "";
+      })
+      .filter(Boolean)
+  );
+
+  const pendingStudents = (invitedRes.data ?? []).filter(
+    (inv) => !enrolledEmails.has(inv.email)
+  );
+
+  const enrolledStudentCount = (studentsRes.data?.length ?? 0) + pendingStudents.length;
 
   return (
     <>
       <DashboardCard
         title="Students"
-        value={String(studentsRes.count ?? 0)}
-        description="Enrolled students"
+        value={String(enrolledStudentCount)}
+        description="Enrolled (including not yet signed in)"
         href="/dashboard/students"
       />
       <DashboardCard

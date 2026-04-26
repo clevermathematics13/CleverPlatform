@@ -3,17 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node -e \"const fs=require('fs');const m='src/middleware.ts';if(!fs.existsSync(m))throw new Error('FATAL: '+m+' is missing.');const c=fs.readFileSync(m,'utf8');if(!/export (async )?function middleware|export default/.test(c))throw new Error('FATAL: '+m+' must export a function named middleware or a default export.');\"",
+    "prebuild": "node -e \"const fs=require('fs');const m='src/middleware.ts';if(!fs.existsSync(m))throw new Error('FATAL: '+m+' is missing.');const c=fs.readFileSync(m,'utf8');if(!/export (async )?function middleware|export default/.test(c))throw new Error('FATAL: '+m+' must export a function named middleware or a default export.');\"",
     "dev": "NODE_OPTIONS='--max-old-space-size=1536' next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
     "@googleapis/classroom": "^11.1.0",
     "@supabase/ssr": "^0.10.2",
+    "@types/katex": "^0.16.8",
+    "@types/qrcode": "^1.5.6",
     "google-auth-library": "^10.6.2",
     "googleapis": "^171.4.0",
+    "html-to-image": "^1.11.13",
+    "katex": "^0.16.45",
     "next": "16.2.4",
+    "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },

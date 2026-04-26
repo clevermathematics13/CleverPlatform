@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
+import { isBlockedQuestionImage } from "@/lib/question-image-filter";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 
@@ -146,6 +147,10 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < questionImages.length; i++) {
       const img = questionImages[i];
       const { buffer, contentType } = await downloadImage(auth, img.contentUri);
+      if (isBlockedQuestionImage(buffer)) {
+        console.log(`Skipping blocked question image for ${question.code} at question/${String(i + 1).padStart(2, "0")}`);
+        continue;
+      }
       const ext = extensionForType(contentType);
       const storagePath = `${question.code}/question/${String(i + 1).padStart(2, "0")}.${ext}`;
 
@@ -213,6 +218,10 @@ export async function POST(request: NextRequest) {
           auth,
           img.contentUri
         );
+        if (isBlockedQuestionImage(buffer)) {
+          console.log(`Skipping blocked markscheme image for ${question.code} at markscheme/${String(i + 1).padStart(2, "0")}`);
+          continue;
+        }
         const ext = extensionForType(contentType);
         const storagePath = `${question.code}/markscheme/${String(i + 1).padStart(2, "0")}.${ext}`;
 

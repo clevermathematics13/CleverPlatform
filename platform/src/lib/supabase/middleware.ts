@@ -43,6 +43,28 @@ export async function updateSession(request: NextRequest) {
   // API routes handle their own auth — don't redirect them to /login
   const isApiRoute = request.nextUrl.pathname.startsWith("/api/");
 
+  // Some providers can return ?code=... on the current route.
+  // Normalize those requests to /auth/callback so the code gets exchanged.
+  // Only applies outside of /auth/* routes — those are OAuth flow routes
+  // that handle their own codes (/auth/google-classroom/callback etc.).
+  const hasOAuthCode = request.nextUrl.searchParams.has("code");
+  const isAnyAuthRoute = request.nextUrl.pathname.startsWith("/auth/");
+  if (hasOAuthCode && !isAnyAuthRoute) {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = "/auth/callback";
+
+    if (!callbackUrl.searchParams.has("next")) {
+      const nextUrl = request.nextUrl.clone();
+      nextUrl.searchParams.delete("code");
+      callbackUrl.searchParams.set(
+        "next",
+        `${nextUrl.pathname}${nextUrl.search ? nextUrl.search : ""}`
+      );
+    }
+
+    return NextResponse.redirect(callbackUrl);
+  }
+
   // Routes where authenticated users should NOT be redirected away
   const authFlowRoutes = ["/auth/google-classroom", "/auth/google-drive", "/register/nickname"];
   const isAuthFlowRoute = authFlowRoutes.some((route) =>

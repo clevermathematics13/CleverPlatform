@@ -87,6 +87,23 @@ export async function GET(request: Request) {
     p_user_email: userEmail,
   });
 
+  // Copy pre-set nickname from invitation to profile (if profile has none)
+  const { data: invitation } = await supabase
+    .from("invited_students")
+    .select("nickname")
+    .eq("email", userEmail)
+    .not("nickname", "is", null)
+    .limit(1)
+    .single();
+
+  if (invitation?.nickname) {
+    await supabase
+      .from("profiles")
+      .update({ nickname: invitation.nickname })
+      .eq("id", user.id)
+      .is("nickname", null);
+  }
+
   // Check if student needs to set nickname
   const { data: currentProfile } = await supabase
     .from("profiles")
