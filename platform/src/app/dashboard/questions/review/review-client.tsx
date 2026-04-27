@@ -404,7 +404,7 @@ export default function ReviewClient({
   initialQuestions: Question[];
 }) {
   const [questions, setQuestions] = useState(initialQuestions);
-  const [filterVerified, setFilterVerified] = useState<"all" | "verified" | "unverified">("all");
+  const [filterVerified, setFilterVerified] = useState<"all" | "verified" | "unverified">("unverified");
   const [codeSearch, setCodeSearch] = useState("");
 
   const handleVerify = useCallback(
