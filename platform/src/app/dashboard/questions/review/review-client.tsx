@@ -17,6 +17,13 @@ interface QuestionPart {
   latex_verified: boolean | null;
 }
 
+interface QuestionImage {
+  id: string;
+  image_type: "question" | "markscheme";
+  sort_order: number;
+  url?: string | null;
+}
+
 interface Question {
   id: string;
   code: string;
@@ -26,6 +33,8 @@ interface Question {
   timezone: string;
   page_image_paths: string[] | null;
   source_pdf_path: string | null;
+  has_question_images: boolean;
+  has_markscheme_images: boolean;
   question_parts: QuestionPart[];
 }
 
@@ -255,6 +264,8 @@ function QuestionReviewCard({
   const [pageIndex, setPageIndex] = useState(0);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState(false);
+  const [allQuestionImages, setAllQuestionImages] = useState<QuestionImage[]>([]);
+  const [imageType, setImageType] = useState<"question" | "markscheme">("question");
   const [verified, setVerifiedState] = useState(
     question.question_parts.every((p) => p.latex_verified)
   );
@@ -263,15 +274,34 @@ function QuestionReviewCard({
   );
 
   const pagePaths = question.page_image_paths ?? [];
+  const hasExtractedImages = question.has_question_images || question.has_markscheme_images;
+  // Filter images client-side by the selected image_type
+  const questionImages = allQuestionImages.filter((img) => img.image_type === imageType);
 
   async function expand() {
     setExpanded(true);
-    if (pagePaths.length > 0 && Object.keys(signedUrls).length === 0) {
+    if (hasExtractedImages && allQuestionImages.length === 0) {
+      setLoadingUrls(true);
+      try {
+        const res = await fetch(`/api/questions/images?questionId=${question.id}`);
+        if (res.ok) {
+          const data = await res.json();
+          setAllQuestionImages(data.images ?? []);
+        }
+      } finally {
+        setLoadingUrls(false);
+      }
+    } else if (pagePaths.length > 0 && Object.keys(signedUrls).length === 0) {
       setLoadingUrls(true);
       const urls = await getSignedUrls(pagePaths);
       setSignedUrls(urls);
       setLoadingUrls(false);
     }
+  }
+
+  function switchImageType(type: "question" | "markscheme") {
+    setImageType(type);
+    setPageIndex(0);
   }
 
   function handleSave(partId: string, field: Field, value: string) {
@@ -288,9 +318,12 @@ function QuestionReviewCard({
     onVerify(question.id, next);
   }
 
-  const currentPageUrl = pagePaths[pageIndex]
-    ? (signedUrls[pagePaths[pageIndex]] ?? null)
-    : null;
+  const currentPageUrl = hasExtractedImages
+    ? (questionImages[pageIndex]?.url ?? null)
+    : pagePaths[pageIndex]
+      ? (signedUrls[pagePaths[pageIndex]] ?? null)
+      : null;
+  const totalPages = hasExtractedImages ? questionImages.length : pagePaths.length;
 
   const allVerified = parts.every((p) => p.latex_verified);
 
@@ -307,6 +340,12 @@ function QuestionReviewCard({
         <span className="text-xs text-gray-400">
           P{question.paper} · {question.level} · {question.timezone}
         </span>
+        {question.has_question_images && (
+          <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">🖼 Q</span>
+        )}
+        {question.has_markscheme_images && (
+          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">🖼 MS</span>
+        )}
         {allVerified && (
           <span className="ml-auto text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
             ✓ All verified
@@ -319,10 +358,25 @@ function QuestionReviewCard({
 
       {expanded && (
         <div className="border-t border-gray-200 grid grid-cols-2 gap-0 min-h-[500px]">
-          {/* Left: PDF page viewer */}
+          {/* Left: image viewer */}
           <div className="border-r border-gray-200 flex flex-col bg-gray-50">
             <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 text-xs text-gray-500">
-              <span>Page {pageIndex + 1} / {pagePaths.length || 1}</span>
+              {hasExtractedImages && (
+                <div className="flex rounded overflow-hidden border border-gray-200">
+                  {(["question", "markscheme"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => { setPageIndex(0); switchImageType(t); }}
+                      className={`px-2 py-0.5 capitalize transition-colors ${
+                        imageType === t ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {t === "question" ? "Q" : "MS"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <span>Image {pageIndex + 1} / {totalPages || 1}</span>
               <div className="ml-auto flex gap-1">
                 <button
                   disabled={pageIndex === 0}
@@ -332,7 +386,7 @@ function QuestionReviewCard({
                   ‹
                 </button>
                 <button
-                  disabled={pageIndex >= pagePaths.length - 1}
+                  disabled={pageIndex >= (totalPages - 1)}
                   onClick={() => setPageIndex((i) => i + 1)}
                   className="px-2 py-1 rounded bg-white border border-gray-200 disabled:opacity-30 hover:bg-gray-50"
                 >
@@ -405,6 +459,7 @@ export default function ReviewClient({
 }) {
   const [questions, setQuestions] = useState(initialQuestions);
   const [filterVerified, setFilterVerified] = useState<"all" | "verified" | "unverified">("unverified");
+  const [filterImages, setFilterImages] = useState(false);
   const [codeSearch, setCodeSearch] = useState("");
 
   const handleVerify = useCallback(
@@ -432,6 +487,7 @@ export default function ReviewClient({
     const allVerified = q.question_parts.every((p) => p.latex_verified);
     if (filterVerified === "verified" && !allVerified) return false;
     if (filterVerified === "unverified" && allVerified) return false;
+    if (filterImages && !q.has_question_images && !q.has_markscheme_images) return false;
     return true;
   });
 
@@ -487,6 +543,16 @@ export default function ReviewClient({
             </button>
           ))}
         </div>
+        <button
+          onClick={() => setFilterImages((v) => !v)}
+          className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
+            filterImages
+              ? "bg-indigo-600 text-white border-indigo-600"
+              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+          }`}
+        >
+          🖼 Has images
+        </button>
         <span className="text-sm text-gray-400 self-center">
           Showing {visible.length} of {questions.length}
         </span>
