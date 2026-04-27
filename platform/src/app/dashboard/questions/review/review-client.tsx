@@ -563,8 +563,7 @@ export default function ReviewClient({
         <div className="text-center py-20 text-gray-400">
           <p className="text-lg">No questions match your filters.</p>
           <p className="text-sm mt-1">
-            Questions appear here after the ingestion pipeline populates{" "}
-            <code>source_pdf_path</code>.
+            Try switching the filter to <strong>All</strong> or turning off <strong>Has images</strong>.
           </p>
         </div>
       ) : (
