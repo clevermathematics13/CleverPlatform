@@ -61,6 +61,19 @@ interface ExamConfig {
   date: string;
 }
 
+interface SavedExam {
+  id: string;
+  name: string;
+  curriculum: "AA" | "AI";
+  level: "HL" | "SL";
+  paper: 1 | 2 | 3;
+  course_id: string | null;
+  exam_date: string | null;
+  questions: TestQueueItem[];
+  created_at: string;
+  updated_at: string;
+}
+
 interface Subtopic {
   code: string;
   descriptor: string;
@@ -174,6 +187,13 @@ export function QuestionBankClient() {
   const [templateEdits, setTemplateEdits] = useState<Record<string, string>>({});
   const [savingSection, setSavingSection] = useState<Set<string>>(new Set());
   const dragIndexRef = useRef<number | null>(null);
+
+  // ── Saved exams state ───────────────────────────────────────────────────────
+  const [savedExams, setSavedExams] = useState<SavedExam[]>([]);
+  const [showSavedExams, setShowSavedExams] = useState(false);
+  const [savingExam, setSavingExam] = useState(false);
+  const [loadingExams, setLoadingExams] = useState(false);
+  const [activeExamId, setActiveExamId] = useState<string | null>(null);
 
   // All available command terms (built-in + custom)
   const allCommandTerms = [...DEFAULT_COMMAND_TERMS, ...customTerms].sort(
@@ -689,6 +709,87 @@ export function QuestionBankClient() {
     setTemplateEdits({});
   };
 
+  // ── Saved exam handlers ─────────────────────────────────────────────────────
+
+  const fetchSavedExams = async () => {
+    setLoadingExams(true);
+    try {
+      const res = await fetch("/api/exams");
+      const data = await res.json();
+      if (data.exams) setSavedExams(data.exams);
+    } catch { /* ignore */ } finally {
+      setLoadingExams(false);
+    }
+  };
+
+  const toggleSavedExams = async () => {
+    if (!showSavedExams && savedExams.length === 0) await fetchSavedExams();
+    setShowSavedExams((v) => !v);
+  };
+
+  const saveExam = async () => {
+    if (!examConfig.name.trim()) {
+      alert("Please enter an exam name before saving.");
+      return;
+    }
+    if (testQueue.length === 0) {
+      alert("Add at least one question before saving.");
+      return;
+    }
+    setSavingExam(true);
+    try {
+      const payload = {
+        name: examConfig.name,
+        curriculum: examConfig.curriculum,
+        level: examConfig.level,
+        paper: examConfig.paper,
+        course_id: examConfig.courseId || null,
+        exam_date: examConfig.date || null,
+        questions: testQueue,
+      };
+      if (activeExamId) {
+        await fetch("/api/exams", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: activeExamId, ...payload }),
+        });
+      } else {
+        const res = await fetch("/api/exams", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (data.id) setActiveExamId(data.id);
+      }
+      // Refresh saved exams list if visible
+      if (showSavedExams) await fetchSavedExams();
+    } catch { /* ignore */ } finally {
+      setSavingExam(false);
+    }
+  };
+
+  const loadExam = (exam: SavedExam) => {
+    setTestQueue(exam.questions);
+    setExamConfig({
+      name: exam.name,
+      curriculum: exam.curriculum,
+      level: exam.level,
+      paper: exam.paper,
+      courseId: exam.course_id ?? "",
+      date: exam.exam_date ?? "",
+    });
+    setActiveExamId(exam.id);
+    setShowSavedExams(false);
+  };
+
+  const deleteExam = async (id: string) => {
+    if (!confirm("Delete this saved exam?")) return;
+    await fetch(`/api/exams?id=${id}`, { method: "DELETE" });
+    setSavedExams((prev) => prev.filter((e) => e.id !== id));
+    if (activeExamId === id) setActiveExamId(null);
+  };
+
   const showSectionsInPanel =
     examConfig.paper !== 3 && examConfig.curriculum === "AA";
 
@@ -1125,12 +1226,21 @@ export function QuestionBankClient() {
           onDragOver={handleDragOver}
           onPreviewTest={() => openPreview("question")}
           onPreviewMS={() => openPreview("markscheme")}
-          onClear={() => setTestQueue([])}
+          onClear={() => { setTestQueue([]); setActiveExamId(null); }}
           onToggleTemplateEditor={() => setShowTemplateEditor((v) => !v)}
           onTemplateEditChange={(key, val) =>
             setTemplateEdits((prev) => ({ ...prev, [key]: val }))
           }
           onSaveTemplates={saveTemplates}
+          savedExams={savedExams}
+          showSavedExams={showSavedExams}
+          savingExam={savingExam}
+          loadingExams={loadingExams}
+          activeExamId={activeExamId}
+          onSaveExam={saveExam}
+          onToggleSavedExams={toggleSavedExams}
+          onLoadExam={loadExam}
+          onDeleteExam={deleteExam}
         />
       )}
     </div>
@@ -1829,6 +1939,15 @@ function TestBuilderPanel({
   onToggleTemplateEditor,
   onTemplateEditChange,
   onSaveTemplates,
+  savedExams,
+  showSavedExams,
+  savingExam,
+  loadingExams,
+  activeExamId,
+  onSaveExam,
+  onToggleSavedExams,
+  onLoadExam,
+  onDeleteExam,
 }: {
   queue: TestQueueItem[];
   examConfig: ExamConfig;
@@ -1849,6 +1968,15 @@ function TestBuilderPanel({
   onToggleTemplateEditor: () => void;
   onTemplateEditChange: (key: string, val: string) => void;
   onSaveTemplates: () => void;
+  savedExams: SavedExam[];
+  showSavedExams: boolean;
+  savingExam: boolean;
+  loadingExams: boolean;
+  activeExamId: string | null;
+  onSaveExam: () => void;
+  onToggleSavedExams: () => void;
+  onLoadExam: (exam: SavedExam) => void;
+  onDeleteExam: (id: string) => void;
 }) {
   // Build section groups for rendering placeholder dividers
   const sectionAItems = showSections ? queue.filter((q) => q.section === "A") : [];
@@ -2074,6 +2202,74 @@ function TestBuilderPanel({
         >
           📝 Preview Mark Scheme
         </button>
+
+        {/* Save / Load row */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onSaveExam}
+            disabled={savingExam || queue.length === 0}
+            className="flex-1 rounded bg-green-600 text-white text-xs font-bold py-1.5 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title={activeExamId ? "Overwrite saved exam" : "Save exam to database"}
+          >
+            {savingExam ? "Saving…" : activeExamId ? "💾 Overwrite" : "💾 Save Exam"}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleSavedExams}
+            className={`flex-1 rounded text-xs font-bold py-1.5 transition-colors border ${
+              showSavedExams
+                ? "bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200"
+                : "border-gray-300 text-gray-600 bg-white hover:bg-gray-100"
+            }`}
+          >
+            📂 {showSavedExams ? "Hide" : "Load Exam"}
+          </button>
+        </div>
+
+        {/* Saved exams list */}
+        {showSavedExams && (
+          <div className="rounded border border-amber-200 bg-amber-50 p-2 space-y-1 max-h-48 overflow-y-auto">
+            <p className="text-xs font-bold text-amber-800 mb-1">Saved Exams</p>
+            {loadingExams && <p className="text-xs text-gray-500">Loading…</p>}
+            {!loadingExams && savedExams.length === 0 && (
+              <p className="text-xs text-gray-500">No saved exams yet.</p>
+            )}
+            {savedExams.map((exam) => (
+              <div
+                key={exam.id}
+                className={`flex items-center gap-1 rounded px-2 py-1 border ${
+                  activeExamId === exam.id
+                    ? "border-green-400 bg-green-50"
+                    : "border-gray-200 bg-white"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate">{exam.name}</p>
+                  <p className="text-xs text-gray-500">
+                    {exam.curriculum}{exam.level} P{exam.paper} · {exam.questions.length}q
+                    {exam.exam_date ? ` · ${exam.exam_date}` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onLoadExam(exam)}
+                  className="rounded bg-indigo-600 text-white text-xs px-1.5 py-0.5 hover:bg-indigo-700 flex-shrink-0"
+                >
+                  Load
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeleteExam(exam.id)}
+                  className="rounded bg-red-100 text-red-600 text-xs px-1.5 py-0.5 hover:bg-red-200 flex-shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2">
           <button
             type="button"
