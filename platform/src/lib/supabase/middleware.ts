@@ -71,19 +71,28 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith(route)
   );
 
+  // Helper: copy Supabase session cookies onto any redirect response so
+  // token refreshes are never silently dropped mid-flow (prevents redirect loops).
+  const withCookies = (response: ReturnType<typeof NextResponse.redirect>) => {
+    supabaseResponse.cookies.getAll().forEach((cookie) => {
+      response.cookies.set(cookie.name, cookie.value);
+    });
+    return response;
+  };
+
   // Redirect unauthenticated users to login (skip for API routes — they return 401)
   if (!user && !isPublicRoute && !isApiRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirectTo", request.nextUrl.pathname);
-    return NextResponse.redirect(url);
+    return withCookies(NextResponse.redirect(url));
   }
 
   // Redirect authenticated users away from login/register
   if (user && isPublicRoute && !isAuthFlowRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    return withCookies(NextResponse.redirect(url));
   }
 
   return supabaseResponse;
