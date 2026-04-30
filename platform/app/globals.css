@@ -27,3 +27,13 @@ input, textarea, select {
 .katex, .katex * {
   color: #111827;
 }
+
+/* Scale display-mode KaTeX to match IB past-paper typeset size (≈12pt on A4) */
+.katex-display {
+  font-size: 1.05em;
+}
+
+/* Tighten display math vertical rhythm to match typeset paper spacing */
+.katex-display > .katex {
+  white-space: normal;
+}

@@ -62,14 +62,21 @@ function renderMath(src: string, displayMode: boolean): string {
   }
 }
 
+// Serif font stack that closely matches IB past-paper typesetting.
+// Applied to text segments so they harmonise with KaTeX's Computer Modern math.
+const IB_TEXT_STYLE: React.CSSProperties = {
+  fontFamily: "'Times New Roman', Times, Georgia, serif",
+  lineHeight: 1.6,
+};
+
 export default function LatexRenderer({ latex, className }: Props) {
   const segments = splitSegments(latex);
 
   return (
-    <span className={`text-gray-900 ${className ?? ""}`}>
+    <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
       {segments.map((seg, i) => {
         if (seg.type === "text") {
-          // Preserve newlines as paragraphs
+          // Preserve newlines as line breaks
           return seg.content.split("\n").map((line, j, arr) => (
             <React.Fragment key={`${i}-${j}`}>
               {line}
@@ -82,7 +89,7 @@ export default function LatexRenderer({ latex, className }: Props) {
           return (
             <span
               key={i}
-              className="block my-2"
+              className="block my-3 overflow-x-auto"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
