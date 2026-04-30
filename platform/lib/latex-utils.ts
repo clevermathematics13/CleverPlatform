@@ -47,12 +47,16 @@ ${body}
  * Keep in sync with the transforms in postProcessMathpixLatex().
  */
 export const IB_LATEX_STYLE_GUIDE = `IB Mathematics past-paper LaTeX conventions (follow exactly):
-- Vectors: ALWAYS use \\boldsymbol{} (bold italic). NEVER use \\mathbf{} (bold upright), \\bm{}, \\vec{} or \\overrightarrow{} for vector variables.
-- Column / row vectors: use \\begin{pmatrix}...\\end{pmatrix} (round brackets). Do NOT use bmatrix.
-- Dot product: use \\cdot
+- Vectors: ALWAYS use \\boldsymbol{} (bold italic). NEVER use \\mathbf{} (bold upright), \\bm{}, \\vec{} or \\overrightarrow{} for vector variables. This applies to EVERY occurrence — in display equations AND inline text (e.g. "where $\\boldsymbol{s}$ is perpendicular to $\\boldsymbol{a}$").
+- Column / row vectors: use \\begin{pmatrix}...\\end{pmatrix} (round brackets, no extra spacing). Do NOT use bmatrix or vmatrix.
+- Dot product (vector · vector): use \\boldsymbol{\\cdot} so the dot matches the weight of the bold vectors. NEVER use \\bullet or \\times for dot product.
+- Scalar × scalar: use \\times or \\cdot as appropriate.
+- Greek letter parameters (λ, μ, etc.) that appear as unknowns in problems: render in regular math italic (just $\\lambda$, not boldsymbol).
+- Displayed equations: use $$ ... $$ or \\[ ... \\]. Place full-width matrix equations in display mode.
 - Multi-part questions: label parts with \\begin{IBPart}...\\end{IBPart} (not \\begin{enumerate})
-- Inline math: wrap in $ ... $; display math in $$ ... $$ or \\[ ... \\]
-- Do NOT include \\documentclass, \\usepackage, \\begin{document} or any preamble — return body LaTeX only.`;
+- Inline math: wrap in $ ... $; do NOT leave math expressions as plain text.
+- Do NOT include \\documentclass, \\usepackage, \\begin{document} or any preamble — return body LaTeX only.
+- Common OCR errors to fix: missing minus signs on negative entries, \\lambda/\\mu confusion, 1 vs l vs I confusion, extra spaces inside \\boldsymbol{}.`;
 
 /**
  * System prompt for Claude when normalising Mathpix-extracted LaTeX to IB style.

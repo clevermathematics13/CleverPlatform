@@ -52,6 +52,9 @@ function renderMath(src: string, displayMode: boolean): string {
         // Safety net: map legacy / OCR-artifact commands to KaTeX-native equivalents
         "\\bm": "\\boldsymbol",
         "\\mathbf": "\\boldsymbol",
+        // IBPart is a custom enumerate environment — KaTeX doesn't know it;
+        // silently ignore the environment tags so content still renders.
+        "\\IBPart": "",
       },
     });
   } catch {
