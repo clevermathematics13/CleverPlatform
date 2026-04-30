@@ -40,3 +40,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 node_modules
+
+# one-off data/script output files
+pending-student-invite-results.json
+pending-students-needing-signin.json

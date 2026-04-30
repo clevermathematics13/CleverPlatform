@@ -229,8 +229,19 @@ def image_to_base64(pil_image):
     pil_image.save(buf, format='PNG')
     return base64.b64encode(buf.getvalue()).decode()
 
+def post_process_mathpix_latex(raw):
+    \"\"\"Apply IB-style post-processing to raw MathPix output.
+
+    Replaces default enumerate environments with the custom IBPart environment
+    so that list labels render with the correct IB hanging-indent style when
+    compiled against the IB LaTeX preamble.
+    \"\"\"
+    raw = raw.replace(r'\\begin{enumerate}', r'\\begin{IBPart}')
+    raw = raw.replace(r'\\end{enumerate}',   r'\\end{IBPart}')
+    return raw
+
 def mathpix_ocr_image(pil_image):
-    \"\"\"OCR a PIL image with MathPix; returns a LaTeX string.\"\"\"
+    \"\"\"OCR a PIL image with MathPix; returns a post-processed LaTeX string.\"\"\"
     headers = {
         'app_id'      : MATHPIX_APP_ID,
         'app_key'     : MATHPIX_APP_KEY,
@@ -243,7 +254,8 @@ def mathpix_ocr_image(pil_image):
     resp = requests.post('https://api.mathpix.com/v3/text', json=data, headers=headers)
     resp.raise_for_status()
     result = resp.json()
-    return result.get('latex_styled', result.get('text', ''))
+    raw = result.get('latex_styled', result.get('text', ''))
+    return post_process_mathpix_latex(raw)
 """))
 
 # ── 7 · Claude structuring ───────────────────────────────────────────────────
