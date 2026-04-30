@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { postProcessMathpixLatex } from "@/lib/latex-utils";
+import { postProcessMathpixLatex, IB_NORMALISE_SYSTEM } from "@/lib/latex-utils";
 import Anthropic from "@anthropic-ai/sdk";
 
 export const maxDuration = 120;
@@ -129,8 +129,8 @@ export async function POST(request: NextRequest) {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const prompt =
       imageType === "markscheme"
-        ? "These are images of an IB Mathematics mark scheme. Extract the complete LaTeX for the solution/mark scheme shown. Return ONLY the LaTeX content, no explanation, no markdown fences. Use standard LaTeX math notation with $ or $$ delimiters."
-        : "These are images of an IB Mathematics exam question. Extract the complete LaTeX for the question shown. Return ONLY the LaTeX content, no explanation, no markdown fences. Use standard LaTeX math notation with $ or $$ delimiters.";
+        ? `These are images of an IB Mathematics mark scheme. Extract the complete LaTeX for the solution/mark scheme shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`
+        : `These are images of an IB Mathematics exam question. Extract the complete LaTeX for the question shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`;
 
     const imageContent = base64Images.map((b64) => ({
       type: "image" as const,
@@ -158,6 +158,48 @@ export async function POST(request: NextRequest) {
       response.content[0].type === "text"
         ? response.content[0].text.trim()
         : "";
+  }
+
+  // ── Claude normalisation pass (Mathpix output only) ───────────────────────
+  // Re-run Claude with the original images + raw Mathpix LaTeX to fix any OCR
+  // errors and normalise to IB formatting conventions.
+  if (USE_MATHPIX && extractedLatex) {
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const normImageContent = base64Images.map((b64) => ({
+        type: "image" as const,
+        source: {
+          type: "base64" as const,
+          media_type: "image/png" as const,
+          data: b64,
+        },
+      }));
+      const normResponse = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2048,
+        system: IB_NORMALISE_SYSTEM,
+        messages: [
+          {
+            role: "user",
+            content: [
+              ...normImageContent,
+              {
+                type: "text" as const,
+                text: `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nApply IB conventions and fix any OCR errors. Return ONLY the corrected LaTeX body.`,
+              },
+            ],
+          },
+        ],
+      });
+      const normalised =
+        normResponse.content[0].type === "text"
+          ? normResponse.content[0].text.trim()
+          : "";
+      if (normalised) extractedLatex = normalised;
+    } catch (normErr) {
+      // Non-fatal: log and continue with Mathpix output
+      console.warn("Claude normalisation pass failed:", normErr);
+    }
   }
 
   // Save to all question_parts for this question

@@ -40,11 +40,51 @@ ${body}
 }
 
 /**
+ * IB Mathematics past-paper LaTeX style conventions.
+ *
+ * Use this string verbatim inside Claude system / user prompts to ensure
+ * generated or corrected LaTeX matches the visual style of IB papers.
+ * Keep in sync with the transforms in postProcessMathpixLatex().
+ */
+export const IB_LATEX_STYLE_GUIDE = `IB Mathematics past-paper LaTeX conventions (follow exactly):
+- Vectors: ALWAYS use \\boldsymbol{} (bold italic). NEVER use \\mathbf{} (bold upright), \\bm{}, \\vec{} or \\overrightarrow{} for vector variables.
+- Column / row vectors: use \\begin{pmatrix}...\\end{pmatrix} (round brackets). Do NOT use bmatrix.
+- Dot product: use \\cdot
+- Multi-part questions: label parts with \\begin{IBPart}...\\end{IBPart} (not \\begin{enumerate})
+- Inline math: wrap in $ ... $; display math in $$ ... $$ or \\[ ... \\]
+- Do NOT include \\documentclass, \\usepackage, \\begin{document} or any preamble — return body LaTeX only.`;
+
+/**
+ * System prompt for Claude when normalising Mathpix-extracted LaTeX to IB style.
+ * Used in the post-Mathpix normalisation pass in /api/questions/ocr-latex.
+ */
+export const IB_NORMALISE_SYSTEM = `You are an expert LaTeX editor for IBDP Mathematics past papers.
+You will receive the raw LaTeX output from the Mathpix OCR engine together with the original question image(s).
+Your task is to normalise the LaTeX to match IB past-paper formatting exactly.
+
+${IB_LATEX_STYLE_GUIDE}
+
+Cross-reference the image carefully to catch any OCR errors (missing signs, incorrect exponents, swapped letters, etc.).
+Return ONLY the corrected LaTeX body — no explanation, no markdown fences, no preamble.`;
+
+/**
+ * System prompt for Claude when making manual corrections to stored LaTeX.
+ * Used in the "Ask Claude" correction input on the question review page.
+ */
+export const IB_CORRECTION_SYSTEM = `You are an expert LaTeX editor for IBDP Mathematics past papers.
+When given a correction instruction, apply it and return ONLY the corrected LaTeX string.
+No explanation, no markdown code fences, no preamble.
+
+${IB_LATEX_STYLE_GUIDE}`;
+
+/**
  * Apply IB-style post-processing to raw MathPix LaTeX output.
  *
- * Currently replaces default enumerate environments with the custom IBPart
- * environment so that list labels render with the correct IB hanging-indent
- * style.
+ * Replaces Mathpix defaults with IB-correct equivalents:
+ *   • enumerate  → IBPart  (hanging-indent part labels)
+ *   • \\mathbf{} → \\boldsymbol{} (bold italic vectors, not bold upright)
+ *   • \\bm{}     → \\boldsymbol{}
+ *   • \\vec{}    → \\boldsymbol{} (IB uses bold notation, not arrow)
  *
  * @param raw  The raw LaTeX string returned by the MathPix API
  * @returns    Post-processed LaTeX string ready for storage / rendering
@@ -52,5 +92,8 @@ ${body}
 export function postProcessMathpixLatex(raw: string): string {
   return raw
     .replaceAll("\\begin{enumerate}", "\\begin{IBPart}")
-    .replaceAll("\\end{enumerate}", "\\end{IBPart}");
+    .replaceAll("\\end{enumerate}", "\\end{IBPart}")
+    .replaceAll("\\mathbf{", "\\boldsymbol{")
+    .replaceAll("\\bm{", "\\boldsymbol{")
+    .replaceAll("\\vec{", "\\boldsymbol{");
 }

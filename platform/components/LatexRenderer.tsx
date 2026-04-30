@@ -48,6 +48,11 @@ function renderMath(src: string, displayMode: boolean): string {
       throwOnError: false,
       strict: false,
       trust: false,
+      macros: {
+        // Safety net: map legacy / OCR-artifact commands to KaTeX-native equivalents
+        "\\bm": "\\boldsymbol",
+        "\\mathbf": "\\boldsymbol",
+      },
     });
   } catch {
     return `<span class="text-red-500 font-mono text-xs">${src}</span>`;

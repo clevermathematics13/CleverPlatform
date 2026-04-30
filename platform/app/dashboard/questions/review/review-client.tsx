@@ -2,6 +2,7 @@
 
 import { useState, useCallback } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
+import { IB_CORRECTION_SYSTEM } from "@/lib/latex-utils";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -123,8 +124,7 @@ function PartEditor({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system:
-            "You are a LaTeX editor for IBDP Mathematics past papers. When given a correction instruction, return ONLY the corrected LaTeX string — no explanation, no markdown code fences, no extra text.",
+          system: IB_CORRECTION_SYSTEM,
           messages,
         }),
       });
