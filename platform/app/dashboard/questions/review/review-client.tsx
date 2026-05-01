@@ -413,7 +413,11 @@ function QuestionReviewCard({
                   {(["question", "markscheme"] as const).map((t) => (
                     <button
                       key={t}
-                      onClick={() => { setPageIndex(0); switchImageType(t); }}
+                      onClick={() => {
+                        setPageIndex(0);
+                        switchImageType(t);
+                        setActiveField(t === "question" ? "content_latex" : "markscheme_latex");
+                      }}
                       className={`px-2 py-0.5 capitalize transition-colors ${
                         imageType === t ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
                       }`}
@@ -465,22 +469,24 @@ function QuestionReviewCard({
               <span className="text-xs font-medium text-gray-600">
                 {parts.length} part{parts.length !== 1 ? "s" : ""}
               </span>
-              {/* Single Q / MS tab bar controlling all parts */}
-              <div className="flex rounded overflow-hidden border border-gray-200 ml-2">
-                {(["content_latex", "markscheme_latex"] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setActiveField(f)}
-                    className={`px-3 py-1 text-xs font-medium transition-colors ${
-                      activeField === f
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    {f === "content_latex" ? "Question" : "Mark Scheme"}
-                  </button>
-                ))}
-              </div>
+              {/* Q/MS is controlled by the image toggle on the left — no duplicate tab here */}
+              {!hasExtractedImages && (
+                <div className="flex rounded overflow-hidden border border-gray-200 ml-2">
+                  {(["content_latex", "markscheme_latex"] as const).map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setActiveField(f)}
+                      className={`px-3 py-1 text-xs font-medium transition-colors ${
+                        activeField === f
+                          ? "bg-blue-600 text-white"
+                          : "bg-white text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {f === "content_latex" ? "Question" : "Mark Scheme"}
+                    </button>
+                  ))}
+                </div>
+              )}
               <button
                 onClick={toggleVerified}
                 className={`ml-auto px-3 py-1.5 rounded text-xs font-medium transition-colors ${
