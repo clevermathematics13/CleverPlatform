@@ -28,9 +28,12 @@ input, textarea, select {
   color: #111827;
 }
 
-/* Scale display-mode KaTeX to match IB past-paper typeset size (≈12pt on A4) */
+/* Scale display-mode KaTeX to match IB past-paper typeset size (≈12pt on A4).
+   Increasing font-size also pushes matrix parentheses over KaTeX's glyph-assembly
+   threshold, so they render with straight vertical sides (matching the IB paper)
+   rather than as a scaled single curved glyph. */
 .katex-display {
-  font-size: 1.05em;
+  font-size: 1.21em;
 }
 
 /* Tighten display math vertical rhythm to match typeset paper spacing */
