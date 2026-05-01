@@ -69,6 +69,25 @@ const IB_TEXT_STYLE: React.CSSProperties = {
   lineHeight: 1.6,
 };
 
+/**
+ * Render a single line of text, handling \hfill by right-aligning everything
+ * after it (used in IB mark schemes to place mark codes like (A1), M1, etc.).
+ */
+function renderTextLine(line: string, key: string | number): React.ReactNode {
+  if (line.includes("\\hfill")) {
+    const hfillIdx = line.indexOf("\\hfill");
+    const before = line.slice(0, hfillIdx).trim();
+    const markCode = line.slice(hfillIdx + 7).trim(); // 7 = "\\hfill".length
+    return (
+      <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+        <span>{before || null}</span>
+        <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>{markCode}</span>
+      </span>
+    );
+  }
+  return line;
+}
+
 export default function LatexRenderer({ latex, className }: Props) {
   const segments = splitSegments(latex);
 
@@ -76,10 +95,10 @@ export default function LatexRenderer({ latex, className }: Props) {
     <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
       {segments.map((seg, i) => {
         if (seg.type === "text") {
-          // Preserve newlines as line breaks
+          // Preserve newlines as line breaks; detect \hfill for mark codes
           return seg.content.split("\n").map((line, j, arr) => (
             <React.Fragment key={`${i}-${j}`}>
-              {line}
+              {renderTextLine(line, `${i}-${j}-line`)}
               {j < arr.length - 1 && <br />}
             </React.Fragment>
           ));

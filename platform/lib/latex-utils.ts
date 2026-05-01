@@ -54,6 +54,7 @@ export const IB_LATEX_STYLE_GUIDE = `IB Mathematics past-paper LaTeX conventions
 - Greek letter parameters (λ, μ, etc.) that appear as unknowns in problems: render in regular math italic (just $\\lambda$, not boldsymbol).
 - Displayed equations: use $$ ... $$ or \\[ ... \\]. Place full-width matrix equations in display mode.
 - Multi-part questions: label parts with \\begin{IBPart}...\\end{IBPart} (not \\begin{enumerate})
+- Mark scheme mark codes: preserve \\hfill before each IB mark code (e.g. "$$...$$\\n\\hfill (A1)"). Place \\hfill OUTSIDE math delimiters, one per line after the equation it annotates. Valid codes: (A1), A1, M1, (M1), AG, R1, N1–N3, ft.
 - Inline math: wrap in $ ... $; do NOT leave math expressions as plain text.
 - Do NOT include \\documentclass, \\usepackage, \\begin{document} or any preamble — return body LaTeX only.
 - Common OCR errors to fix: missing minus signs on negative entries, \\lambda/\\mu confusion, 1 vs l vs I confusion, extra spaces inside \\boldsymbol{}.`;
