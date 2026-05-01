@@ -95,20 +95,25 @@ export default function LatexRenderer({ latex, className }: Props) {
     <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
       {segments.map((seg, i) => {
         if (seg.type === "text") {
-          // Preserve newlines as line breaks; detect \hfill for mark codes
-          return seg.content.split("\n").map((line, j, arr) => (
-            <React.Fragment key={`${i}-${j}`}>
-              {renderTextLine(line, `${i}-${j}-line`)}
-              {j < arr.length - 1 && <br />}
-            </React.Fragment>
-          ));
+          // Split on newlines but skip blank lines to avoid double-spacing
+          // between display equations in mark schemes.
+          const lines = seg.content.split("\n");
+          const nodes: React.ReactNode[] = [];
+          lines.forEach((line, j) => {
+            // Skip blank lines that only exist to separate equations
+            if (line.trim() === "") return;
+            nodes.push(renderTextLine(line, `${i}-${j}-line`));
+            // Add a single line break after non-blank lines (except the last)
+            if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-br`} />);
+          });
+          return <React.Fragment key={i}>{nodes}</React.Fragment>;
         }
         const html = renderMath(seg.content, seg.type === "display");
         if (seg.type === "display") {
           return (
             <span
               key={i}
-              className="block my-3 overflow-x-auto"
+              className="block my-1 overflow-x-auto"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
