@@ -31,9 +31,12 @@ input, textarea, select {
 /* Scale display-mode KaTeX to match IB past-paper typeset size (≈12pt on A4).
    Increasing font-size also pushes matrix parentheses over KaTeX's glyph-assembly
    threshold, so they render with straight vertical sides (matching the IB paper)
-   rather than as a scaled single curved glyph. */
+   rather than as a scaled single curved glyph.
+   margin: 0.3em overrides KaTeX's default margin: 1em 0 which caused excessive
+   spacing between consecutive display equations in mark schemes. */
 .katex-display {
   font-size: 1.21em;
+  margin: 0.3em 0 !important;
 }
 
 /* Tighten display math vertical rhythm to match typeset paper spacing */
