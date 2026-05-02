@@ -263,7 +263,7 @@ function DraftPartsPanel({
       {/* Textarea */}
       <div className="p-3 space-y-2">
         <textarea
-          className="w-full border border-amber-200 rounded-md p-2 font-mono text-xs resize-y min-h-[100px] bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+          className="w-full border border-amber-200 rounded-md p-2 font-mono text-xs resize-y min-h-24 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
           placeholder="Click ⟳ Extract & apply above to populate automatically, or paste/type LaTeX here and use Apply below…"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -394,12 +394,12 @@ function StemEditor({
       <div className="p-4 space-y-3">
         {editing ? (
           <textarea
-            className="w-full border border-indigo-300 rounded-md p-2 font-mono text-sm resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="w-full border border-indigo-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             value={draft[stemField]}
             onChange={(e) => setDraft((d) => ({ ...d, [stemField]: e.target.value }))}
           />
         ) : (
-          <div className="min-h-[60px] text-sm leading-relaxed">
+          <div className="min-h-16 text-sm leading-relaxed">
             {draft[stemField] ? (
               <LatexRenderer latex={draft[stemField]} />
             ) : (
@@ -583,14 +583,14 @@ function PartEditor({
       <div className="p-4 space-y-3">
         {editing ? (
           <textarea
-            className="w-full border border-gray-300 rounded-md p-2 font-mono text-sm resize-y min-h-[120px] focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full border border-gray-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 focus:outline-none focus:ring-2 focus:ring-blue-400"
             value={draft[activeField]}
             onChange={(e) =>
               setDraft((d) => ({ ...d, [activeField]: e.target.value }))
             }
           />
         ) : (
-          <div className="min-h-[60px] text-sm leading-relaxed">
+          <div className="min-h-16 text-sm leading-relaxed">
             {draft[activeField] ? (
               <LatexRenderer latex={draft[activeField]} />
             ) : (
@@ -847,7 +847,7 @@ function QuestionReviewCard({
       </div>
 
       {expanded && (
-        <div className="border-t border-gray-200 grid grid-cols-2 gap-0 min-h-[500px]">
+        <div className="border-t border-gray-200 grid grid-cols-2 gap-0 min-h-96">
           {/* Left: image viewer */}
           <div className="border-r border-gray-200 flex flex-col bg-gray-50">
             {/* Google Doc links */}
