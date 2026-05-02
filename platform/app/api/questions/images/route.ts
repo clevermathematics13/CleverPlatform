@@ -46,3 +46,59 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ images: withUrls });
 }
+
+export async function DELETE(request: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (profile?.role !== "teacher") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const imageId = request.nextUrl.searchParams.get("imageId");
+  if (!imageId) {
+    return NextResponse.json({ error: "imageId is required" }, { status: 400 });
+  }
+
+  // Fetch the record so we know the storage_path
+  const { data: img, error: fetchErr } = await supabase
+    .from("question_images")
+    .select("id, storage_path")
+    .eq("id", imageId)
+    .single();
+
+  if (fetchErr || !img) {
+    return NextResponse.json({ error: "Image not found" }, { status: 404 });
+  }
+
+  // Delete from storage
+  const { error: storageErr } = await supabase.storage
+    .from("question-images")
+    .remove([img.storage_path]);
+
+  if (storageErr) {
+    return NextResponse.json({ error: storageErr.message }, { status: 500 });
+  }
+
+  // Delete the database record
+  const { error: dbErr } = await supabase
+    .from("question_images")
+    .delete()
+    .eq("id", imageId);
+
+  if (dbErr) {
+    return NextResponse.json({ error: dbErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

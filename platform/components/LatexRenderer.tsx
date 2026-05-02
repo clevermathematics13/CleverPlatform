@@ -88,8 +88,30 @@ function renderTextLine(line: string, key: string | number): React.ReactNode {
   return line;
 }
 
+/**
+ * Preprocess raw OCR LaTeX before segment-splitting:
+ *  1. Remove IB-custom environment tags (IBPart, IBSubPart).
+ *  2. Convert standard enumerate/itemize environments to indented plain-text
+ *     so the labels appear naturally without raw \begin / \item noise.
+ */
+function preprocessLatex(src: string): string {
+  // Remove IB-specific env wrappers
+  let out = src.replace(/\\(?:begin|end)\{IB(?:Part|SubPart)\}/g, "");
+
+  // Convert enumerate/itemize content:
+  // \item[(label)] → newline + "label " (label already contains parens like (i), (a))
+  // \item           → newline + "• "
+  out = out.replace(/\\item\[([^\]]*)\]/g, "\n$1\u2002"); // (i), (ii), (a) ...
+  out = out.replace(/\\item(?!\[)/g, "\n\u2022\u2002");    // bullet
+
+  // Strip the container environment tags themselves
+  out = out.replace(/\\(?:begin|end)\{(?:enumerate|itemize)\}/g, "");
+
+  return out;
+}
+
 export default function LatexRenderer({ latex, className }: Props) {
-  const segments = splitSegments(latex);
+  const segments = splitSegments(preprocessLatex(latex));
 
   return (
     <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>

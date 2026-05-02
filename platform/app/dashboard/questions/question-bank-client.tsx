@@ -743,6 +743,15 @@ export function QuestionBankClient() {
     setShowSavedExams((v) => !v);
   };
 
+  // Open ExamBuilder and saved exams panel on mount (client-only to avoid SSR/hydration mismatch
+  // caused by the Dashlane extension injecting child nodes into form elements)
+  useEffect(() => {
+    setTestBuilderOpen(true);
+    setShowSavedExams(true);
+    fetchSavedExams();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const saveExam = async () => {
     if (!examConfig.name.trim()) {
       alert("Please enter an exam name before saving.");
@@ -860,9 +869,9 @@ export function QuestionBankClient() {
     q.question_parts.reduce((sum, p) => sum + p.marks, 0);
 
   return (
-    <div className={`flex gap-4 items-start ${testBuilderOpen ? "pr-0" : ""}`}>
+    <div className={`flex gap-4 items-start ${testBuilderOpen ? "pr-0" : ""}`} suppressHydrationWarning>
       {/* ── Main question bank column ── */}
-      <div className="flex-1 min-w-0 space-y-4">
+      <div className="flex-1 min-w-0 space-y-4" suppressHydrationWarning>
       {!testBuilderOpen && (
         <div>
           <h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">
@@ -1124,6 +1133,7 @@ export function QuestionBankClient() {
                 ? "bg-indigo-600 text-white hover:bg-indigo-700"
                 : "border-2 border-indigo-400 text-indigo-700 bg-white hover:bg-indigo-50"
             }`}
+            suppressHydrationWarning
           >
             🏗 ExamBuilder{testQueue.length > 0 ? ` (${testQueue.length})` : ""}
           </button>
@@ -1484,6 +1494,34 @@ function QuestionRow({
       {expanded && (
         <tr>
           <td colSpan={testBuilderOpen ? 10 : 9} className="bg-blue-50 px-4 py-3">
+            {/* Google Doc links */}
+            {(question.google_doc_id || question.google_ms_id) && (
+              <div className="ml-4 mb-3 flex items-center gap-3">
+                <span className="text-xs font-bold text-blue-900">Source docs:</span>
+                {question.google_doc_id && (
+                  <a
+                    href={`https://docs.google.com/document/d/${question.google_doc_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+                  >
+                    📄 Question Doc
+                  </a>
+                )}
+                {question.google_ms_id && (
+                  <a
+                    href={`https://docs.google.com/document/d/${question.google_ms_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 hover:underline"
+                  >
+                    📝 Markscheme Doc
+                  </a>
+                )}
+              </div>
+            )}
             {question.question_parts.length > 0 && (
             <div className="ml-4">
               <table className="w-full text-sm">
@@ -1890,20 +1928,40 @@ function CommandTermSelect({
   onChange: (term: string | null) => void;
   onAddCustom: (term: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState("");
   const [adding, setAdding] = useState(false);
   const [newTerm, setNewTerm] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    if (val === "__add__") {
-      setAdding(true);
-      return;
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setFilter("");
+      }
     }
-    if (val === "__clear__") {
-      onChange(null);
-      return;
-    }
-    onChange(val);
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const filtered = terms.filter((t) =>
+    t.toLowerCase().includes(filter.toLowerCase())
+  );
+
+  const handleOpen = () => {
+    setOpen(true);
+    setFilter("");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleSelect = (term: string | null) => {
+    onChange(term);
+    setOpen(false);
+    setFilter("");
   };
 
   const handleAddSubmit = () => {
@@ -1914,6 +1972,7 @@ function CommandTermSelect({
     }
     setAdding(false);
     setNewTerm("");
+    setOpen(false);
   };
 
   if (adding) {
@@ -1950,24 +2009,75 @@ function CommandTermSelect({
   }
 
   return (
-    <select
-      value={value ?? ""}
-      onChange={handleChange}
-      className={`rounded border px-2 py-0.5 text-xs font-semibold ${
-        value
-          ? "border-green-400 bg-green-50 text-green-800"
-          : "border-gray-300 bg-white text-gray-500"
-      }`}
-    >
-      <option value="">— Select —</option>
-      {value && <option value="__clear__">✕ Clear</option>}
-      {terms.map((t) => (
-        <option key={t} value={t}>
-          {t}
-        </option>
-      ))}
-      <option value="__add__">+ Add custom…</option>
-    </select>
+    <div ref={containerRef} className="relative inline-block" onClick={(e) => e.stopPropagation()}>
+      {/* Trigger */}
+      <button
+        type="button"
+        onClick={handleOpen}
+        className={`rounded border px-2 py-0.5 text-xs font-semibold text-left ${
+          value
+            ? "border-green-400 bg-green-50 text-green-800"
+            : "border-gray-300 bg-white text-gray-500"
+        }`}
+      >
+        {value ?? "— Select —"} <span className="opacity-50">▾</span>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-48 rounded border border-gray-200 bg-white shadow-lg">
+          {/* Filter input */}
+          <div className="p-1.5 border-b border-gray-100">
+            <input
+              ref={inputRef}
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { setOpen(false); setFilter(""); }
+                if (e.key === "Enter" && filtered.length === 1) handleSelect(filtered[0]);
+              }}
+              placeholder="Type to filter…"
+              className="w-full rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {/* Clear option */}
+            {value && (
+              <button
+                type="button"
+                onClick={() => handleSelect(null)}
+                className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+              >
+                ✕ Clear
+              </button>
+            )}
+            {filtered.length === 0 && (
+              <div className="px-3 py-2 text-xs text-gray-400 italic">No matches</div>
+            )}
+            {filtered.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => handleSelect(t)}
+                className={`w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-blue-50 ${
+                  t === value ? "bg-green-50 text-green-800" : "text-gray-800"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+            {/* Add custom */}
+            <button
+              type="button"
+              onClick={() => { setOpen(false); setAdding(true); }}
+              className="w-full text-left px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 border-t border-gray-100"
+            >
+              + Add custom…
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2104,19 +2214,21 @@ function TestBuilderPanel({
         )}
 
         {/* Exam config form */}
-        <div className="space-y-2">
+        <div className="space-y-2" suppressHydrationWarning>
           <input
             type="text"
             value={examConfig.name}
             onChange={(e) => onConfigChange({ name: e.target.value })}
             placeholder="Exam name (e.g. Mock 2026)"
             className="w-full rounded border border-indigo-300 px-2 py-1 text-sm font-semibold text-indigo-900 bg-white placeholder:text-indigo-300"
+            suppressHydrationWarning
           />
           <div className="flex gap-2">
             <select
               value={examConfig.curriculum}
               onChange={(e) => onConfigChange({ curriculum: e.target.value as "AA" | "AI" })}
               className="flex-1 rounded border border-indigo-300 px-2 py-1 text-xs font-bold text-indigo-900 bg-white"
+              suppressHydrationWarning
             >
               <option value="AA">AA</option>
               <option value="AI">AI</option>
@@ -2125,6 +2237,7 @@ function TestBuilderPanel({
               value={examConfig.level}
               onChange={(e) => onConfigChange({ level: e.target.value as "HL" | "SL" })}
               className="flex-1 rounded border border-indigo-300 px-2 py-1 text-xs font-bold text-indigo-900 bg-white"
+              suppressHydrationWarning
             >
               <option value="HL">HL</option>
               <option value="SL">SL</option>
@@ -2133,6 +2246,7 @@ function TestBuilderPanel({
               value={examConfig.paper}
               onChange={(e) => onConfigChange({ paper: parseInt(e.target.value) as 1 | 2 | 3 })}
               className="flex-1 rounded border border-indigo-300 px-2 py-1 text-xs font-bold text-indigo-900 bg-white"
+              suppressHydrationWarning
             >
               <option value={1}>P1</option>
               <option value={2}>P2</option>
@@ -2150,6 +2264,7 @@ function TestBuilderPanel({
                 ? "border-2 border-red-500 ring-1 ring-red-400"
                 : "border-indigo-300"
             }`}
+            suppressHydrationWarning
           >
             <option value="">— Select class —</option>
             {courses.map((c) => (
@@ -2161,6 +2276,7 @@ function TestBuilderPanel({
             value={examConfig.date}
             onChange={(e) => onConfigChange({ date: e.target.value })}
             className="w-full rounded border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-900 bg-white"
+            suppressHydrationWarning
           />
         </div>
 
@@ -2342,7 +2458,7 @@ function TestBuilderPanel({
           disabled={!canPreview}
           className="w-full rounded-lg bg-indigo-600 text-white font-bold text-sm py-2 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
-          🖨 Preview Test
+          🖨 Preview Exam
         </button>
         <button
           type="button"

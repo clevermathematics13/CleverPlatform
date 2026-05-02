@@ -5,12 +5,21 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export const maxDuration = 120;
 
+type OcrField =
+  | "content_latex"
+  | "markscheme_latex"
+  | "stem_latex"
+  | "stem_markscheme_latex"
+  | "parts_draft_latex"
+  | "parts_draft_markscheme_latex";
+
 // POST /api/questions/ocr-latex
-// Body: { questionId: string, field: "content_latex" | "markscheme_latex" }
+// Body: { questionId: string, field: OcrField }
 //
 // Fetches the stored question_images for the question, runs MathPix (or Claude
-// vision fallback), applies IBPart post-processing, saves the result to all
-// question_parts for that question, and returns the extracted LaTeX.
+// vision fallback), applies IBPart post-processing, then:
+//   - For stem_* / parts_draft_*: saves to ib_questions.
+//   - For content_latex / markscheme_latex: saves to all question_parts (legacy).
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const {
@@ -29,7 +38,7 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as {
     questionId: string;
-    field: "content_latex" | "markscheme_latex";
+    field: OcrField;
   };
   const { questionId, field } = body;
 
@@ -39,13 +48,29 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
 
-  if (!["content_latex", "markscheme_latex"].includes(field))
+  const validFields: OcrField[] = [
+    "content_latex",
+    "markscheme_latex",
+    "stem_latex",
+    "stem_markscheme_latex",
+    "parts_draft_latex",
+    "parts_draft_markscheme_latex",
+  ];
+  if (!validFields.includes(field))
     return NextResponse.json({ error: "Invalid field" }, { status: 400 });
 
-  // Determine image type from field
-  const imageType = field === "content_latex" ? "question" : "markscheme";
+  const isStem = field === "stem_latex" || field === "stem_markscheme_latex";
+  const isDraft = field === "parts_draft_latex" || field === "parts_draft_markscheme_latex";
+  // Both stem and draft fields save to ib_questions rather than question_parts
+  const savesToQuestion = isStem || isDraft;
 
-  // Fetch image records
+  // Determine image type from field
+  const imageType =
+    field === "content_latex" || field === "stem_latex" || field === "parts_draft_latex"
+      ? "question"
+      : "markscheme";
+
+  // Fetch image records from question_images table
   const { data: images, error: imgErr } = await supabase
     .from("question_images")
     .select("id, storage_path, sort_order")
@@ -56,32 +81,65 @@ export async function POST(request: NextRequest) {
   if (imgErr)
     return NextResponse.json({ error: imgErr.message }, { status: 500 });
 
-  if (!images || images.length === 0)
-    return NextResponse.json(
-      { error: `No ${imageType} images found for this question` },
-      { status: 404 }
-    );
-
   // Download each image as base64
   const base64Images: string[] = [];
-  for (const img of images) {
-    const { data: signedData, error: signErr } = await supabase.storage
-      .from("question-images")
-      .createSignedUrl(img.storage_path, 120);
-    if (signErr || !signedData?.signedUrl)
+
+  if (images && images.length > 0) {
+    // Use question_images table (preferred)
+    for (const img of images) {
+      const { data: signedData, error: signErr } = await supabase.storage
+        .from("question-images")
+        .createSignedUrl(img.storage_path, 120);
+      if (signErr || !signedData?.signedUrl)
+        return NextResponse.json(
+          { error: `Failed to sign URL for ${img.storage_path}` },
+          { status: 500 }
+        );
+      const res = await fetch(signedData.signedUrl);
+      if (!res.ok)
+        return NextResponse.json(
+          { error: `Failed to download image: ${res.status}` },
+          { status: 502 }
+        );
+      const buf = await res.arrayBuffer();
+      base64Images.push(Buffer.from(buf).toString("base64"));
+    }
+  } else {
+    // Fallback: use page_image_paths stored on ib_questions
+    const { data: qRow, error: qErr } = await supabase
+      .from("ib_questions")
+      .select("page_image_paths, source_pdf_path")
+      .eq("id", questionId)
+      .single();
+
+    if (qErr)
+      return NextResponse.json({ error: qErr.message }, { status: 500 });
+
+    const paths: string[] = qRow?.page_image_paths ?? [];
+    if (paths.length === 0)
       return NextResponse.json(
-        { error: `Failed to sign URL for ${img.storage_path}` },
-        { status: 500 }
+        { error: "No images found for this question. Please extract question images first." },
+        { status: 404 }
       );
 
-    const res = await fetch(signedData.signedUrl);
-    if (!res.ok)
-      return NextResponse.json(
-        { error: `Failed to download image: ${res.status}` },
-        { status: 502 }
-      );
-    const buf = await res.arrayBuffer();
-    base64Images.push(Buffer.from(buf).toString("base64"));
+    for (const path of paths) {
+      const { data: signedData, error: signErr } = await supabase.storage
+        .from("question-images")
+        .createSignedUrl(path, 120);
+      if (signErr || !signedData?.signedUrl)
+        return NextResponse.json(
+          { error: `Failed to sign URL for ${path}` },
+          { status: 500 }
+        );
+      const res = await fetch(signedData.signedUrl);
+      if (!res.ok)
+        return NextResponse.json(
+          { error: `Failed to download image: ${res.status}` },
+          { status: 502 }
+        );
+      const buf = await res.arrayBuffer();
+      base64Images.push(Buffer.from(buf).toString("base64"));
+    }
   }
 
   // Try MathPix first; fall back to Claude vision
@@ -127,10 +185,74 @@ export async function POST(request: NextRequest) {
   } else {
     // Claude vision fallback
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const prompt =
-      imageType === "markscheme"
-        ? `These are images of an IB Mathematics mark scheme. Extract the complete LaTeX for the solution/mark scheme shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`
-        : `These are images of an IB Mathematics exam question. Extract the complete LaTeX for the question shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`;
+
+    let prompt: string;
+    if (isStem) {
+      const stemType = field === "stem_latex" ? "question" : "mark scheme";
+      prompt = `These are images of an IB Mathematics exam ${stemType}. The question has multiple labelled parts marked (a), (b), (c) etc.
+
+Your task: extract ONLY the introductory stem — the setup/context paragraphs that appear BEFORE the first labelled part (a). The stem typically defines functions, variables, or conditions shared by all parts. It ends immediately before the label "(a)".
+
+DO NOT include:
+- The label "(a)" itself or any subsequent part labels
+- The question text of part (a) or any later part
+- Any mark allocations like [1], [3] etc.
+
+If there is no text before "(a)", return an empty string.
+
+Use $ ... $ for inline math and \\[ ... \\] for display math. Use \\boldsymbol{} for vectors, \\begin{pmatrix} for matrices. Return ONLY the LaTeX body, no explanation, no markdown fences.`;
+    } else if (isDraft) {
+      const draftType = field === "parts_draft_latex" ? "question" : "mark scheme";
+      prompt = `These are images of an IB Mathematics exam ${draftType}. The question has an introductory stem followed by multiple labelled parts (a), (b), (c) etc.
+
+Your task: extract the FULL question content in \\begin{IBPart}...\\end{IBPart} blocks.
+
+CRITICAL RULE — interspersed context paragraphs:
+Any setup/definition paragraph that appears BETWEEN two part labels (e.g. between (a) and (b)) belongs at the TOP of the FOLLOWING part's \\begin{IBPart} block, BEFORE that part's question sentence.
+
+Concrete example of correct output structure:
+---
+[stem text before (a), if any — outside all IBPart blocks]
+
+\\begin{IBPart}
+Write down the value of $\\alpha + \\beta + \\gamma$. \\hfill [1]
+\\end{IBPart}
+
+\\begin{IBPart}
+A function $h(z)$ is defined by $h(z) = 2z^5 - 11z^4 + rz^3 + sz^2 + tz - 20$, where $r, s, t \\in \\mathbb{R}$.
+
+$\\alpha$, $\\beta$ and $\\gamma$ are also roots of the equation $h(z) = 0$.
+
+It is given that $h(z) = 0$ is satisfied by the complex number $z = p + 3\\mathrm{i}$.
+
+Show that $p = 1$. \\hfill [3]
+\\end{IBPart}
+
+\\begin{IBPart}
+It is now given that $h\\!\\left(\\dfrac{1}{2}\\right) = 0$, and $\\alpha, \\beta \\in \\mathbb{Z}^+$, $\\alpha < \\beta$ and $\\gamma \\in \\mathbb{Q}$.
+
+\\begin{enumerate}[label=(\\roman*)]
+  \\item Find the value of the product $\\alpha\\beta$.
+  \\item Write down the value of $\\alpha$ and the value of $\\beta$. \\hfill [3]
+\\end{enumerate}
+\\end{IBPart}
+---
+
+Notice: the h(z) paragraphs appear between labels (a) and (b) in the image, so they go INSIDE the (b) IBPart block FIRST. The "It is now given…" paragraph appears between (b) and (c) in the image, so it goes INSIDE the (c) IBPart block FIRST.
+
+Additional rules:
+- Text BEFORE the first labelled part (a) goes OUTSIDE all \\begin{IBPart} blocks — it is the shared stem
+- If there is no text before part (a), output nothing before the first \\begin{IBPart}
+- Do NOT include the part labels (a), (b), (c) themselves
+- Include sub-parts (i), (ii) within the parent part's \\begin{IBPart} block
+- Include mark allocations as \\hfill [N] at the end of each part's final line
+- Use $ ... $ for inline math and \\[ ... \\] for display math
+- Return ONLY the LaTeX body, no explanation, no markdown fences`;
+    } else if (imageType === "markscheme") {
+      prompt = `These are images of an IB Mathematics mark scheme. Extract the complete LaTeX for the solution/mark scheme shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`;
+    } else {
+      prompt = `These are images of an IB Mathematics exam question. Extract the complete LaTeX for the question shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`;
+    }
 
     const imageContent = base64Images.map((b64) => ({
       type: "image" as const,
@@ -185,7 +307,11 @@ export async function POST(request: NextRequest) {
               ...normImageContent,
               {
                 type: "text" as const,
-                text: `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nApply IB conventions and fix any OCR errors. Return ONLY the corrected LaTeX body.`,
+                text: isStem
+                  ? `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nThis should be ONLY the introductory stem text before the labelled parts (a), (b), (c) etc. Apply IB conventions and fix any OCR errors. Return ONLY the corrected stem LaTeX body.`
+                  : isDraft
+                  ? `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nFormat this as \\begin{IBPart}...\\end{IBPart} blocks. CRITICAL: any setup/definition paragraphs appearing between two part labels in the image belong at the TOP of the FOLLOWING part's \\begin{IBPart} block, BEFORE that part's question sentence. Text before part (a) goes outside all IBPart blocks (the shared stem). Do NOT include part labels (a)/(b)/(c) themselves. Include sub-parts and mark allocations as \\hfill [N]. Apply IB conventions and fix any OCR errors. Return ONLY the corrected LaTeX body.`
+                  : `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nApply IB conventions and fix any OCR errors. Return ONLY the corrected LaTeX body.`,
               },
             ],
           },
@@ -202,23 +328,35 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Save to all question_parts for this question
-  const { data: partRows, error: partErr } = await supabase
-    .from("question_parts")
-    .select("id")
-    .eq("question_id", questionId);
-
-  if (partErr)
-    return NextResponse.json({ error: partErr.message }, { status: 500 });
-
-  if (partRows && partRows.length > 0) {
+  // Save extracted LaTeX to the appropriate table
+  if (savesToQuestion) {
+    // Stem and draft fields save to ib_questions
     const { error: updateErr } = await supabase
-      .from("question_parts")
+      .from("ib_questions")
       .update({ [field]: extractedLatex })
-      .eq("question_id", questionId);
+      .eq("id", questionId);
 
     if (updateErr)
       return NextResponse.json({ error: updateErr.message }, { status: 500 });
+  } else {
+    // Legacy: content_latex / markscheme_latex save to all question_parts
+    const { data: partRows, error: partErr } = await supabase
+      .from("question_parts")
+      .select("id")
+      .eq("question_id", questionId);
+
+    if (partErr)
+      return NextResponse.json({ error: partErr.message }, { status: 500 });
+
+    if (partRows && partRows.length > 0) {
+      const { error: updateErr } = await supabase
+        .from("question_parts")
+        .update({ [field]: extractedLatex })
+        .eq("question_id", questionId);
+
+      if (updateErr)
+        return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    }
   }
 
   return NextResponse.json({

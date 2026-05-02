@@ -1,3 +1,6 @@
 node_modules/
-.vercel
+.next/
+.vercel/
 .env*.local
+_backup/
+supabase/.temp/

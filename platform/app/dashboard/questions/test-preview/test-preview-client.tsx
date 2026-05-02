@@ -409,18 +409,39 @@ export function TestPreviewClient() {
                       minHeight: "240mm",
                     }}
                   >
-                    {/* Question number */}
-                    <p
-                      style={{
-                        fontFamily: "serif",
-                        fontSize: "14pt",
-                        fontWeight: "bold",
-                        marginBottom: "6mm",
-                        color: "#000",
-                      }}
-                    >
-                      {globalNum}.
-                    </p>
+                    {/* Question number + edit link (edit link screen-only, first student only) */}
+                    <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6mm" }}>
+                      <p
+                        style={{
+                          fontFamily: "serif",
+                          fontSize: "14pt",
+                          fontWeight: "bold",
+                          margin: 0,
+                          color: "#000",
+                        }}
+                      >
+                        {globalNum}.
+                      </p>
+                      {sIdx === 0 && (
+                        <a
+                          className="no-print"
+                          href={`/dashboard/questions/review?focus=${q.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            fontSize: "9pt",
+                            color: "#6366f1",
+                            textDecoration: "none",
+                            border: "1px solid #c7d2fe",
+                            borderRadius: "4px",
+                            padding: "1px 6px",
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          ✏️ Edit {q.code}
+                        </a>
+                      )}
+                    </div>
 
                     {/* Question images */}
                     <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
