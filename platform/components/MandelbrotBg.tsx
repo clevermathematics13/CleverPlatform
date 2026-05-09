@@ -13,14 +13,14 @@ precision highp float;
 uniform vec2  u_res;
 uniform float u_time;
 
-const int MAX_ITER = 180;
+const int MAX_ITER = 220;
 
 // Dark purple / crimson palette — maps [0,1] to a deep swirling colour
 vec3 palette(float t) {
-  // base: near-black deep indigo
-  vec3 a = vec3(0.02, 0.00, 0.06);
-  // amplitude: kept low so colours stay very dark
-  vec3 b = vec3(0.22, 0.01, 0.16);
+  // base: almost black purple
+  vec3 a = vec3(0.008, 0.000, 0.025);
+  // amplitude: very low so palette stays dark
+  vec3 b = vec3(0.130, 0.006, 0.090);
   // frequency / phase for purple-crimson variety
   vec3 c = vec3(1.0,  0.7,  1.2);
   vec3 d = vec3(0.00, 0.25, 0.50);
@@ -35,12 +35,12 @@ void main() {
   // Julia parameter orbits slowly near the boundary of the Mandelbrot set
   // Chosen base point: (-0.7269, 0.1889) — classic swirly Julia
   // We add a tiny slow orbit so it appears to breathe / rotate
-  float t = u_time * 0.048;          // 4x faster than before
-  vec2 c = vec2(-0.7269 + 0.018 * cos(t * 0.7),
-                 0.1889 + 0.018 * sin(t * 1.1));
+  float t = u_time * 0.180;          // much faster motion
+  vec2 c = vec2(-0.7269 + 0.030 * cos(t * 0.95),
+                 0.1889 + 0.030 * sin(t * 1.25));
 
-  // Zoom: faster breathing
-  float zoom = 1.35 + 0.18 * sin(t * 0.9);
+  // Zoom: deeper baseline zoom with faster breathing
+  float zoom = 1.95 + 0.24 * sin(t * 1.45);
   vec2 z = uv / zoom;
 
   float iter = 0.0;
@@ -56,14 +56,14 @@ void main() {
     // Inside the set: pure black
     gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
   } else {
-    // Smooth escape + faster colour cycle
+    // Smooth escape + much faster colour cycle
     float smooth_iter = iter - log2(log2(len2)) + 4.0;
     float col = smooth_iter / float(MAX_ITER);
-    // Faster global phase drift
-    col = fract(col * 3.5 + u_time * 0.016);
+    // Much faster global phase drift
+    col = fract(col * 4.7 + u_time * 0.085);
     vec3 rgb = palette(col);
-    // Darken further by squaring the brightness
-    rgb = rgb * rgb;
+    // Heavily darken while preserving highlights
+    rgb = rgb * rgb * rgb;
     gl_FragColor = vec4(rgb, 1.0);
   }
 }
