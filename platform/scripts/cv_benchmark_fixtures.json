@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "description": "Baseline fixtures for deterministic CV extraction regression checks.",
+  "cases": [
+    {
+      "id": "graph_to_latex_baseline_v1",
+      "imagePath": "../../graph_to_latex.png",
+      "required": true,
+      "expected": {
+        "method": "cv_piecewise_fallback_v1",
+        "domain": [-3.5, 4.5],
+        "keyPoints": [
+          [-3.5, 0.5],
+          [-2.5, -1.5],
+          [-1.5, -2.0],
+          [-0.5, -1.0],
+          [0.5, -2.0],
+          [2.5, 0.0],
+          [3.5, -0.5],
+          [4.5, 0.0]
+        ],
+        "warningsContain": [
+          "Using piecewise fallback"
+        ]
+      },
+      "tolerance": {
+        "domain": 0.01,
+        "point": 0.01
+      }
+    }
+  ]
+}

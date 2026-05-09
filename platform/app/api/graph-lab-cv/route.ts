@@ -19,8 +19,18 @@ import { spawnSync } from "child_process";
 import path from "path";
 import os from "os";
 import fs from "fs";
+import { createHash } from "crypto";
 
 export const maxDuration = 30;
+
+const NO_STORE_HEADERS: Record<string, string> = {
+  "Cache-Control": "no-store, no-cache, max-age=0",
+  Pragma: "no-cache",
+};
+
+function jsonNoStore(payload: unknown, status: number) {
+  return NextResponse.json(payload, { status, headers: NO_STORE_HEADERS });
+}
 
 export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
@@ -29,11 +39,14 @@ export async function POST(request: NextRequest) {
   };
 
   const { images } = body;
+  const requestId = request.headers.get("x-request-id")?.trim() || `graph-lab-cv-${Date.now()}`;
+  const requestInputHash = request.headers.get("x-input-hash")?.trim() || "";
+  const serverInputHashSha256 = createHash("sha256").update(images?.[0] ?? "").digest("hex");
 
   if (!images?.length) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "At least one image is required" },
-      { status: 400 }
+      400
     );
   }
 
@@ -43,7 +56,7 @@ export async function POST(request: NextRequest) {
   // Example: GRAPH_LAB_CV_SERVICE_URL=https://cv-service.example.com
   const serviceUrlRaw = process.env.GRAPH_LAB_CV_SERVICE_URL?.trim();
   if (runningOnVercel && !serviceUrlRaw) {
-    return NextResponse.json(
+    return jsonNoStore(
       {
         error: "GRAPH_LAB_CV_SERVICE_URL is not configured",
         warnings: [
@@ -55,6 +68,11 @@ export async function POST(request: NextRequest) {
           "Expected service endpoint is POST /extract.",
         ],
         metadata: {
+          requestTrace: {
+            requestId,
+            requestInputHash,
+            serverInputHashSha256,
+          },
           runtime: {
             node: process.version,
             platform: process.platform,
@@ -63,7 +81,7 @@ export async function POST(request: NextRequest) {
           },
         },
       },
-      { status: 503 }
+      503
     );
   }
 
@@ -78,9 +96,18 @@ export async function POST(request: NextRequest) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 28000);
     try {
+      const cvSecret = process.env.CV_SERVICE_SECRET ?? "";
       const upstream = await fetch(target, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, max-age=0",
+          Pragma: "no-cache",
+          "X-Request-Id": requestId,
+          "X-Input-Sha256": serverInputHashSha256,
+          ...(cvSecret ? { "X-CV-Secret": cvSecret } : {}),
+        },
         body: JSON.stringify({ images, mediaType: body.mediaType }),
         signal: controller.signal,
       });
@@ -97,16 +124,21 @@ export async function POST(request: NextRequest) {
       }
       data.metadata = {
         ...(typeof data.metadata === "object" && data.metadata ? (data.metadata as Record<string, unknown>) : {}),
+        requestTrace: {
+          requestId,
+          requestInputHash,
+          serverInputHashSha256,
+        },
         proxy: {
           target,
           status: upstream.status,
           durationMs: Date.now() - startedAt,
         },
       };
-      return NextResponse.json(data, { status: upstream.status });
+      return jsonNoStore(data, upstream.status);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return NextResponse.json(
+      return jsonNoStore(
         {
           error: "CV extraction proxy failed",
           warnings: [message],
@@ -115,13 +147,18 @@ export async function POST(request: NextRequest) {
             "Service must expose POST /extract with the Graph Lab CV response format.",
           ],
           metadata: {
+            requestTrace: {
+              requestId,
+              requestInputHash,
+              serverInputHashSha256,
+            },
             proxy: {
               target,
               durationMs: Date.now() - startedAt,
             },
           },
         },
-        { status: 502 }
+        502
       );
     } finally {
       clearTimeout(timeout);

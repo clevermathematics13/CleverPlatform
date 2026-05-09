@@ -10,7 +10,9 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "cv:self-test": "/home/codespace/.python/current/bin/python ./scripts/cv_graph_extract.py --self-test"
+    "cv:self-test": "/home/codespace/.python/current/bin/python ./scripts/cv_graph_extract.py --self-test",
+    "cv:benchmark": "python ./scripts/cv_benchmark.py --fixtures ./scripts/cv_benchmark_fixtures.json",
+    "cv:quality-gate": "python ./scripts/cv_benchmark.py --fixtures ./scripts/cv_benchmark_fixtures.json --min-pass-rate 1.0 --min-required-pass-rate 1.0 --fail-on-case"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",

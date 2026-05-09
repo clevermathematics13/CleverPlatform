@@ -34,3 +34,27 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## CV Hardening Checklist
+
+### 1. Benchmark corpus with reproducible scoring
+- [x] Implemented a fixture-driven benchmark harness: `scripts/cv_benchmark.py`
+- [x] Added baseline fixture set: `scripts/cv_benchmark_fixtures.json`
+- [x] Added local benchmark command: `npm run cv:benchmark`
+
+### 2. CI quality gates that block regressions
+- [x] Added GitHub Actions workflow: `.github/workflows/cv-quality-gate.yml`
+- [x] Runs `cv_graph_extract.py --self-test` on every relevant PR/push
+- [x] Enforces benchmark gate (`--fail-on-case`, 100% required pass rate)
+
+### 3. Fail-closed uncertainty policy
+- [ ] Promote low-confidence fallback outputs to explicit manual-review-required responses when QA signals are present.
+
+### 4. Observability and SLOs
+- [ ] Track extraction latency and failure rates with alert thresholds.
+
+### 5. Security and abuse controls
+- [ ] Add payload-size caps, request-rate limits, and audit logging for extractor endpoints.
+
+### 6. Release governance
+- [ ] Require benchmark report artifacts and quality-gate pass before production release.

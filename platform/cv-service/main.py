@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+import os
 import sys
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+CV_SERVICE_SECRET = os.environ.get("CV_SERVICE_SECRET", "")
 
 # Reuse the existing deterministic CV extractor implementation.
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +34,14 @@ def health() -> dict[str, str]:
 
 
 @app.post("/extract")
-def extract(req: ExtractRequest) -> JSONResponse:
+async def extract(request: Request, req: ExtractRequest) -> JSONResponse:
+    request_id = request.headers.get("X-Request-Id", "")
+    upstream_input_sha256 = request.headers.get("X-Input-Sha256", "")
+
+    if CV_SERVICE_SECRET:
+        incoming = request.headers.get("X-CV-Secret", "")
+        if incoming != CV_SERVICE_SECRET:
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
     if not req.images:
         return JSONResponse({"error": "At least one image is required"}, status_code=400)
 
@@ -48,6 +58,15 @@ def extract(req: ExtractRequest) -> JSONResponse:
         )
 
     if result.get("error"):
+        metadata = (result.get("metadata") or {})
+        if isinstance(metadata, dict):
+            metadata = {
+                **metadata,
+                "requestTrace": {
+                    "requestId": request_id,
+                    "upstreamInputSha256": upstream_input_sha256,
+                },
+            }
         return JSONResponse(
             {
                 "error": result.get("error"),
@@ -56,22 +75,33 @@ def extract(req: ExtractRequest) -> JSONResponse:
                 "warnings": ((result.get("metadata") or {}).get("warnings") or []),
                 "feedback": result.get("feedback")
                 or ["Manual review required before accepting extraction output."],
-                "metadata": result.get("metadata") or {},
+                "metadata": metadata,
             },
             status_code=422,
         )
+
+    metadata = (result.get("metadata") or {})
+    if isinstance(metadata, dict):
+        metadata = {
+            **metadata,
+            "requestTrace": {
+                "requestId": request_id,
+                "upstreamInputSha256": upstream_input_sha256,
+            },
+        }
 
     return JSONResponse(
         {
             "graphSpec": result.get("graphSpec"),
             "graphMeta": result.get("graphMeta"),
             "warnings": ((result.get("metadata") or {}).get("warnings") or []),
-            "feedback": [
+            "feedback": result.get("feedback")
+            or [
                 "CV extraction is deterministic and based on actual image data.",
                 "Review the selected curve family, confidence, and domain bounds.",
                 "Fallback piecewise output is used only when family-fit confidence is insufficient.",
             ],
-            "metadata": result.get("metadata") or {},
+            "metadata": metadata,
         },
         status_code=200,
     )

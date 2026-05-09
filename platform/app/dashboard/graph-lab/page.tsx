@@ -34,9 +34,12 @@ interface ExtractFailure {
 interface ExtractRequestContext {
   endpoint: string;
   requestedAt: string;
+  requestId: string;
+  cacheBypassNonce: string;
   imageCount: number;
   firstImageMimeType?: string;
   firstImageBase64Chars: number;
+  firstImageHash: string;
 }
 
 interface ExtractSnapshot {
@@ -84,6 +87,20 @@ function fileToBase64(file: File): Promise<string> {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+function hashStringFNV1a(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function buildRequestId(prefix: string): string {
+  const rand = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now()}-${rand}`;
 }
 
 function formatBound(value: number): string {
@@ -225,6 +242,7 @@ function buildWindowReadout(
 export default function GraphLabPage() {
   const [images, setImages] = useState<Array<{ fileName: string; mimeType: string; b64: string; url: string }>>([]);
   const [imagesRestored, setImagesRestored] = useState(false);
+  const [freshValidationMode, setFreshValidationMode] = useState(true);
   const [questionLatex, setQuestionLatex] = useState("");
   const [msLatex, setMsLatex] = useState("");
 
@@ -246,6 +264,10 @@ export default function GraphLabPage() {
   const dropRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (freshValidationMode) {
+      setImagesRestored(true);
+      return;
+    }
     try {
       const raw = localStorage.getItem(GRAPH_LAB_IMAGES_STORAGE_KEY);
       if (!raw) return;
@@ -267,10 +289,18 @@ export default function GraphLabPage() {
     } finally {
       setImagesRestored(true);
     }
-  }, []);
+  }, [freshValidationMode]);
 
   useEffect(() => {
     if (!imagesRestored) return;
+    if (freshValidationMode) {
+      try {
+        localStorage.removeItem(GRAPH_LAB_IMAGES_STORAGE_KEY);
+      } catch {
+        // Ignore storage quota / browser privacy restrictions.
+      }
+      return;
+    }
     try {
       if (images.length === 0) {
         localStorage.removeItem(GRAPH_LAB_IMAGES_STORAGE_KEY);
@@ -283,7 +313,7 @@ export default function GraphLabPage() {
     } catch {
       // Ignore storage quota / browser privacy restrictions.
     }
-  }, [images, imagesRestored]);
+  }, [images, imagesRestored, freshValidationMode]);
 
   // ── Image selection ──────────────────────────────────────────────────────
   const addFiles = useCallback(async (files: FileList | File[]) => {
@@ -322,12 +352,18 @@ export default function GraphLabPage() {
   // ── Extraction ───────────────────────────────────────────────────────────
   async function runExtract() {
     if (!images.length) return;
+    const requestId = buildRequestId("graph-lab");
+    const cacheBypassNonce = buildRequestId("nonce");
+    const firstImageHash = hashStringFNV1a(images[0]?.b64 ?? "");
     const requestContext: ExtractRequestContext = {
       endpoint: "/api/graph-lab",
       requestedAt: new Date().toISOString(),
+      requestId,
+      cacheBypassNonce,
       imageCount: images.length,
       firstImageMimeType: images[0]?.mimeType,
       firstImageBase64Chars: images[0]?.b64?.length ?? 0,
+      firstImageHash,
     };
     setExtracting(true);
     setExtractError(null);
@@ -337,9 +373,16 @@ export default function GraphLabPage() {
     setResult(null);
     setParseError(null);
     try {
-      const res = await fetch("/api/graph-lab", {
+      const res = await fetch(`/api/graph-lab?nonce=${encodeURIComponent(cacheBypassNonce)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, max-age=0",
+          Pragma: "no-cache",
+          "X-Request-Id": requestId,
+          "X-Input-Hash": firstImageHash,
+        },
         body: JSON.stringify({
           images: images.map((i) => i.b64),
           mediaType: images[0].mimeType === "image/jpeg" ? "image/jpeg" : "image/png",
@@ -421,12 +464,18 @@ export default function GraphLabPage() {
 
   async function runExtractCV() {
     if (!images.length) return;
+    const requestId = buildRequestId("graph-lab-cv");
+    const cacheBypassNonce = buildRequestId("nonce");
+    const firstImageHash = hashStringFNV1a(images[0]?.b64 ?? "");
     const requestContext: ExtractRequestContext = {
       endpoint: "/api/graph-lab-cv",
       requestedAt: new Date().toISOString(),
+      requestId,
+      cacheBypassNonce,
       imageCount: images.length,
       firstImageMimeType: images[0]?.mimeType,
       firstImageBase64Chars: images[0]?.b64?.length ?? 0,
+      firstImageHash,
     };
     setExtracting(true);
     setExtractError(null);
@@ -436,9 +485,16 @@ export default function GraphLabPage() {
     setResult(null);
     setParseError(null);
     try {
-      const res = await fetch("/api/graph-lab-cv", {
+      const res = await fetch(`/api/graph-lab-cv?nonce=${encodeURIComponent(cacheBypassNonce)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, max-age=0",
+          Pragma: "no-cache",
+          "X-Request-Id": requestId,
+          "X-Input-Hash": firstImageHash,
+        },
         body: JSON.stringify({
           images: images.map((i) => i.b64),
           mediaType: images[0].mimeType === "image/jpeg" ? "image/jpeg" : "image/png",
@@ -777,6 +833,15 @@ export default function GraphLabPage() {
 
             {/* Extract button */}
             <div className="flex flex-wrap items-center gap-2">
+              <label className="w-full flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={freshValidationMode}
+                  onChange={(e) => setFreshValidationMode(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                Fresh validation mode (no image restore, no local caching)
+              </label>
               <button
                 type="button"
                 onClick={() => void runExtractCV()}

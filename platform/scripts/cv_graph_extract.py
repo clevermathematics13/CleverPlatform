@@ -141,14 +141,48 @@ def calibrate_axes(gray: np.ndarray) -> AxisCalibration:
         px_per_unit_x = max(1.0, round(v_spacing))
         px_per_unit_y = max(1.0, round(h_spacing))
 
-        # Origin = grid line nearest image centre
+        # Worksheet graph paper is typically square. If detected spacings differ
+        # too much, prefer a shared spacing to avoid y-scale distortions.
+        ratio = max(px_per_unit_x, px_per_unit_y) / max(1.0, min(px_per_unit_x, px_per_unit_y))
+        if ratio > 1.2:
+            shared = float(max(px_per_unit_x, px_per_unit_y))
+            px_per_unit_x = shared
+            px_per_unit_y = shared
+
+        # Origin: prefer longest dark axis lines near image centre.
+        # If unavailable, fall back to nearest grid line.
         cx, cy = w / 2, h / 2
         origin_x_px = int(v_lines[int(np.argmin([abs(vl - cx) for vl in v_lines]))])
         origin_y_px = int(h_lines[int(np.argmin([abs(hl - cy) for hl in h_lines]))])
 
-        # Derive axis range from how many grid lines there are
-        half_x = round(len(v_lines) / 2)
-        half_y = round(len(h_lines) / 2)
+        axis_dark = gray < 110
+        row_dark = axis_dark.sum(axis=1)
+        col_dark = axis_dark.sum(axis=0)
+
+        y_lo, y_hi = int(h * 0.2), int(h * 0.8)
+        x_lo, x_hi = int(w * 0.2), int(w * 0.8)
+
+        if y_hi > y_lo:
+            y_slice = row_dark[y_lo:y_hi]
+            y_idx = int(np.argmax(y_slice)) + y_lo
+            if row_dark[y_idx] >= 0.45 * w:
+                origin_y_px = y_idx
+
+        if x_hi > x_lo:
+            x_slice = col_dark[x_lo:x_hi]
+            x_idx = int(np.argmax(x_slice)) + x_lo
+            if col_dark[x_idx] >= 0.45 * h:
+                origin_x_px = x_idx
+
+        # Derive window extents from origin-to-edge unit counts.
+        # Use the nearer side count to suppress outlier lines from labels/cropping.
+        units_left = int(round((origin_x_px - min(v_lines)) / max(px_per_unit_x, 1e-6)))
+        units_right = int(round((max(v_lines) - origin_x_px) / max(px_per_unit_x, 1e-6)))
+        units_up = int(round((origin_y_px - min(h_lines)) / max(px_per_unit_y, 1e-6)))
+        units_down = int(round((max(h_lines) - origin_y_px) / max(px_per_unit_y, 1e-6)))
+
+        half_x = max(1, int(round((units_left + units_right) / 2.0)))
+        half_y = max(1, int(round((units_up + units_down) / 2.0)))
 
         return AxisCalibration(
             x_min=-half_x, x_max=half_x,
@@ -157,7 +191,12 @@ def calibrate_axes(gray: np.ndarray) -> AxisCalibration:
             px_per_unit_y=px_per_unit_y,
             origin_x_px=origin_x_px,
             origin_y_px=origin_y_px,
-            notes=[f"Grid: {len(v_lines)}v/{len(h_lines)}h lines, {px_per_unit_x:.0f}/{px_per_unit_y:.0f}px/unit"]
+            notes=[
+                f"Grid: {len(v_lines)}v/{len(h_lines)}h lines, {px_per_unit_x:.0f}/{px_per_unit_y:.0f}px/unit",
+                *( [f"Harmonized unit scale (ratio {ratio:.2f} > 1.20) to {px_per_unit_x:.0f}px/unit"] if ratio > 1.2 else [] ),
+                f"Origin px: ({origin_x_px}, {origin_y_px})",
+                f"Window units from origin (L/R/U/D): {units_left}/{units_right}/{units_up}/{units_down}",
+            ]
         )
 
     logger.warning("Insufficient grid lines; using fallback calibration")
@@ -188,6 +227,22 @@ def isolate_graph_line(img_rgb: np.ndarray) -> np.ndarray:
 
     gray = rgb_to_gray(img_rgb)
     dark = gray < 80
+
+    # Remove full-span axis/grid lines before thickness filtering.
+    # These lines dominate per-column sampling and can pull the trace away from
+    # the actual plotted function in monochrome worksheet images.
+    h_img, w_img = dark.shape
+    row_counts = dark.sum(axis=1)
+    col_counts = dark.sum(axis=0)
+    full_row = row_counts > (0.75 * w_img)
+    full_col = col_counts > (0.75 * h_img)
+    if np.any(full_row) or np.any(full_col):
+        dark = dark.copy()
+        if np.any(full_row):
+            dark[full_row, :] = False
+        if np.any(full_col):
+            dark[:, full_col] = False
+
     eroded = binary_erosion(dark, structure=np.ones((3, 3)))
     thick  = binary_dilation(eroded, structure=np.ones((3, 3)))
     if thick.sum() > 50:
@@ -250,13 +305,49 @@ def extract_profile_from_mask(mask: np.ndarray, calib: AxisCalibration) -> Optio
     active = mask > 128
     h_img, w_img = active.shape
 
-    x_cols: List[int] = []
-    y_meds: List[float] = []
-    for x in range(w_img):
-        ys = np.where(active[:, x])[0]
-        if len(ys) > 0:
-            x_cols.append(x)
-            y_meds.append(float(np.median(ys)))
+    def collect_profile(min_run_len: int) -> Tuple[List[int], List[float]]:
+        x_cols_local: List[int] = []
+        y_meds_local: List[float] = []
+        prev_y_local: Optional[float] = None
+        for x in range(w_img):
+            ys = np.where(active[:, x])[0]
+            if len(ys) == 0:
+                continue
+
+            # Build contiguous y-runs so we can follow a consistent stroke when
+            # a column contains multiple dark structures (axes/text/markers).
+            runs: List[np.ndarray] = []
+            start = 0
+            for i in range(1, len(ys)):
+                if ys[i] - ys[i - 1] > 1:
+                    runs.append(ys[start:i])
+                    start = i
+            runs.append(ys[start:])
+
+            centers = [float(np.median(r)) for r in runs]
+            lengths = [len(r) for r in runs]
+            valid_idx = [i for i, ln in enumerate(lengths) if ln >= min_run_len]
+            if not valid_idx:
+                continue
+
+            centers = [centers[i] for i in valid_idx]
+            lengths = [lengths[i] for i in valid_idx]
+            if prev_y_local is None:
+                pick = int(np.argmax(lengths))
+            else:
+                distances = [abs(c - prev_y_local) for c in centers]
+                pick = int(np.argmin(distances))
+
+            y_pick = centers[pick]
+            x_cols_local.append(x)
+            y_meds_local.append(y_pick)
+            prev_y_local = y_pick
+
+        return x_cols_local, y_meds_local
+
+    x_cols, y_meds = collect_profile(min_run_len=2)
+    if len(x_cols) < 12:
+        x_cols, y_meds = collect_profile(min_run_len=1)
 
     if len(x_cols) < 12:
         return None
@@ -343,6 +434,78 @@ def find_vertices_from_mask(mask: np.ndarray, calib: AxisCalibration) -> List[Gr
 
     unique.sort(key=lambda v: v.x)
     return unique
+
+
+def prune_edge_outlier_vertices(vertices: List[GraphVertex], calib: AxisCalibration) -> List[GraphVertex]:
+    if len(vertices) < 4:
+        return vertices
+
+    pruned = sorted(vertices, key=lambda v: v.x)
+    # Drop points outside detected window first.
+    pruned = [v for v in pruned if (calib.x_min - 1e-6) <= v.x <= (calib.x_max + 1e-6)]
+    if len(pruned) < 3:
+        return pruned
+
+    def segment_slopes(vs: List[GraphVertex]) -> np.ndarray:
+        vals: List[float] = []
+        for i in range(len(vs) - 1):
+            dx = vs[i + 1].x - vs[i].x
+            if abs(dx) < 1e-9:
+                continue
+            vals.append(abs((vs[i + 1].y - vs[i].y) / dx))
+        return np.array(vals, dtype=float)
+
+    changed = True
+    while changed and len(pruned) >= 4:
+        changed = False
+        slopes = segment_slopes(pruned)
+        if len(slopes) < 2:
+            break
+        med = float(np.median(slopes))
+        med = max(med, 1e-6)
+
+        first_dx = pruned[1].x - pruned[0].x
+        first_slope = abs((pruned[1].y - pruned[0].y) / first_dx) if abs(first_dx) > 1e-9 else 0.0
+        last_dx = pruned[-1].x - pruned[-2].x
+        last_slope = abs((pruned[-1].y - pruned[-2].y) / last_dx) if abs(last_dx) > 1e-9 else 0.0
+
+        if first_slope >= 1.8 * med and first_slope >= 1.5:
+            pruned = pruned[1:]
+            changed = True
+            continue
+        if last_slope >= 1.8 * med and last_slope >= 1.5:
+            pruned = pruned[:-1]
+            changed = True
+
+    # Remove tiny boundary zig-zag tails that are common from endpoint marker bleed.
+    changed = True
+    while changed and len(pruned) >= 4:
+        changed = False
+
+        # Right boundary tail
+        if pruned[-1].x >= calib.x_max - 0.1:
+            dx1 = pruned[-1].x - pruned[-2].x
+            dx2 = pruned[-2].x - pruned[-3].x
+            if dx1 > 1e-9 and dx2 > 1e-9:
+                s1 = (pruned[-1].y - pruned[-2].y) / dx1
+                s2 = (pruned[-2].y - pruned[-3].y) / dx2
+                if abs(dx1) <= 1.1 and abs(s1) <= 1.0 and (s1 * s2) < 0:
+                    pruned = pruned[:-1]
+                    changed = True
+                    continue
+
+        # Left boundary tail
+        if pruned[0].x <= calib.x_min + 0.1:
+            dx1 = pruned[1].x - pruned[0].x
+            dx2 = pruned[2].x - pruned[1].x
+            if dx1 > 1e-9 and dx2 > 1e-9:
+                s1 = (pruned[1].y - pruned[0].y) / dx1
+                s2 = (pruned[2].y - pruned[1].y) / dx2
+                if abs(dx1) <= 1.1 and abs(s1) <= 1.0 and (s1 * s2) < 0:
+                    pruned = pruned[1:]
+                    changed = True
+
+    return pruned
 
 
 # Backward-compat alias
@@ -572,6 +735,84 @@ def _build_piecewise_response(vertices: List[GraphVertex], segments: List[GraphS
     }
 
 
+def _build_window_domain_feedback(calib: AxisCalibration, domain: List[float], rng: List[float]) -> List[str]:
+    feedback: List[str] = []
+
+    window_x = [float(calib.x_min), float(calib.x_max)]
+    window_y = [float(calib.y_min), float(calib.y_max)]
+    feedback.append(
+        f"Detected window x:[{window_x[0]:.3g}, {window_x[1]:.3g}] y:[{window_y[0]:.3g}, {window_y[1]:.3g}]"
+    )
+    feedback.append(
+        f"Detected function domain:[{domain[0]:.3g}, {domain[1]:.3g}] range:[{rng[0]:.3g}, {rng[1]:.3g}]"
+    )
+
+    x_span = max(1e-6, window_x[1] - window_x[0])
+    y_span = max(1e-6, window_y[1] - window_y[0])
+    domain_span = max(0.0, domain[1] - domain[0])
+    range_span = max(0.0, rng[1] - rng[0])
+
+    domain_coverage = domain_span / x_span
+    range_coverage = range_span / y_span
+    feedback.append(
+        f"Coverage within window: domain {domain_coverage:.0%}, range {range_coverage:.0%}"
+    )
+
+    eps_x = max(0.5, 0.03 * x_span)
+    eps_y = max(0.5, 0.03 * y_span)
+    touches_x_edge = abs(domain[0] - window_x[0]) <= eps_x or abs(domain[1] - window_x[1]) <= eps_x
+    touches_y_edge = abs(rng[0] - window_y[0]) <= eps_y or abs(rng[1] - window_y[1]) <= eps_y
+    if touches_x_edge or touches_y_edge:
+        feedback.append("Detected curve is close to window boundary; verify cropping and axis calibration.")
+
+    return feedback
+
+
+def _assess_piecewise_quality(
+    vertices: List[GraphVertex],
+    segments: List[GraphSegment],
+    calib: AxisCalibration,
+    fit_diag: Dict[str, Any],
+) -> Dict[str, Any]:
+    reasons: List[str] = []
+
+    # Calibration quality signal.
+    raw_ratio = max(calib.px_per_unit_x, calib.px_per_unit_y) / max(1e-6, min(calib.px_per_unit_x, calib.px_per_unit_y))
+    if raw_ratio > 1.2:
+        reasons.append(
+            f"Axis calibration anisotropy detected ({calib.px_per_unit_x:.0f}/{calib.px_per_unit_y:.0f}px per unit)"
+        )
+    if any("Harmonized unit scale" in note for note in (calib.notes or [])):
+        reasons.append("Axis scale was auto-harmonized; verify origin and y-level alignment manually")
+
+    # Geometric quality signals from fallback polyline.
+    if segments:
+        abs_slopes = np.array([abs(s.slope) for s in segments], dtype=float)
+        median_abs_slope = float(np.median(abs_slopes)) if len(abs_slopes) else 0.0
+        max_abs_slope = float(np.max(abs_slopes)) if len(abs_slopes) else 0.0
+        if max_abs_slope >= 2.5 and (median_abs_slope <= 1e-6 or max_abs_slope >= 2.2 * median_abs_slope):
+            reasons.append(
+                f"Steep slope outlier detected (max |m|={max_abs_slope:.2f}, median |m|={median_abs_slope:.2f})"
+            )
+
+    if len(vertices) >= 3:
+        ys = np.array([v.y for v in vertices], dtype=float)
+        y_jumps = np.abs(np.diff(ys))
+        if np.any(y_jumps >= 2.5):
+            reasons.append("Large adjacent y-jump(s) detected; possible endpoint or axis misread")
+
+    fit_margin = float(fit_diag.get("margin", 0.0) or 0.0)
+    if fit_margin < 0.02:
+        reasons.append(f"Family-fit margin extremely small ({fit_margin:.3f})")
+
+    confidence_level = "low" if reasons else "normal"
+    return {
+        "confidence_level": confidence_level,
+        "manual_review_required": confidence_level == "low",
+        "reasons": reasons,
+    }
+
+
 # ── Main extraction pipeline ───────────────────────────────────────────────────
 
 def extract_graph_cv(img_b64: str) -> dict:
@@ -648,6 +889,7 @@ def extract_graph_cv(img_b64: str) -> dict:
                 "feedback": [
                     "Curve-family fit accepted at high confidence.",
                     "Expression is bounded to detected graph domain.",
+                    *_build_window_domain_feedback(calib, [x_min, x_max], [y_min, y_max]),
                 ],
             }
 
@@ -661,6 +903,19 @@ def extract_graph_cv(img_b64: str) -> dict:
                     "warnings": calib.notes + [
                         f"Curve-family fit rejected: {fit_diag.get('reason', 'unknown')}",
                         "Piecewise fallback also detected fewer than 2 vertices",
+                    ],
+                    "fit_candidates": fit_diag.get("candidates", []),
+                },
+            }
+
+        vertices = prune_edge_outlier_vertices(vertices, calib)
+        if len(vertices) < 2:
+            return {
+                "error": "Manual review required: extraction uncertainty gate triggered",
+                "metadata": {
+                    "method": "cv_curve_family_v1",
+                    "warnings": calib.notes + [
+                        "Piecewise fallback lost too many vertices after QA pruning",
                     ],
                     "fit_candidates": fit_diag.get("candidates", []),
                 },
@@ -697,7 +952,11 @@ def extract_graph_cv(img_b64: str) -> dict:
                 ],
             }
 
+        qa = _assess_piecewise_quality(vertices, segments, calib, fit_diag)
         warnings = calib.notes + [f"Curve-family fit rejected: {fit_diag.get('reason', 'unknown')}", "Using piecewise fallback"]
+        if qa.get("manual_review_required"):
+            warnings.extend(["Manual review required: fallback QA flagged low confidence", *qa.get("reasons", [])])
+        window_feedback = _build_window_domain_feedback(calib, fallback["domain"], fallback["range"])
         return {
             "ok": True,
             "graphSpec": fallback["graphSpec"],
@@ -709,12 +968,23 @@ def extract_graph_cv(img_b64: str) -> dict:
                 "fit_candidates": fit_diag.get("candidates", []),
                 "fit_margin": fit_diag.get("margin", 0.0),
                 "calibration": asdict(calib),
+                "qa": qa,
                 "warnings": warnings,
             },
-            "feedback": [
-                "Curve-family fit did not pass confidence threshold.",
-                "Returned piecewise fallback with normal confidence.",
-            ],
+            "feedback": (
+                [
+                    "Curve-family fit did not pass confidence threshold.",
+                    "Returned piecewise fallback with normal confidence.",
+                    *window_feedback,
+                ]
+                if not qa.get("manual_review_required")
+                else [
+                    "Curve-family fit did not pass confidence threshold.",
+                    "Piecewise fallback QA indicates low confidence; manual review is required.",
+                    *window_feedback,
+                    *[f"QA signal: {reason}" for reason in qa.get("reasons", [])],
+                ]
+            ),
         }
 
     except Exception as e:
