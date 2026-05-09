@@ -15,10 +15,11 @@ export default async function DashboardLayout({
   const viewRole = impersonating ?? profile.role;
 
   let impersonatedStudentName: string | null = null;
+  const supabase = await createClient();
+
   if (impersonating === "student") {
     const impersonatedProfileId = await getImpersonatedProfileId();
     if (impersonatedProfileId) {
-      const supabase = await createClient();
       const { data } = await supabase
         .from("profiles")
         .select("display_name, nickname")
@@ -28,6 +29,16 @@ export default async function DashboardLayout({
     }
   }
 
+  // Courses list for the Gradebook submenu (teacher only)
+  let gradebookCourses: { id: string; name: string }[] = [];
+  if (profile.role === "teacher") {
+    const { data } = await supabase
+      .from("courses")
+      .select("id, name")
+      .order("name");
+    gradebookCourses = data ?? [];
+  }
+
   const navigation = getNavigation(viewRole);
   const settingsNavigation = getSettingsNavigation(viewRole);
 
@@ -35,6 +46,7 @@ export default async function DashboardLayout({
     <DashboardShell
       navigation={navigation}
       settingsNavigation={settingsNavigation}
+      gradebookCourses={gradebookCourses}
       profile={{
         role: profile.role,
         display_name: profile.display_name,
@@ -59,6 +71,7 @@ function getNavigation(role: string) {
       { href: "/dashboard/gradebook", label: "Gradebook", icon: "📝" },
       { href: "/dashboard/questions", label: "Question Bank", icon: "❓" },
       { href: "/dashboard/questions/review", label: "LaTeX Review", icon: "🔬" },
+      { href: "/dashboard/graph-lab", label: "Graph Lab", icon: "📈" },
       { href: "/dashboard/assignments", label: "Assignments", icon: "📋" },
       { href: "/dashboard/reflection", label: "Exam Reflection", icon: "🪞" },
       { href: "/dashboard/mastery", label: "Mastery", icon: "🎯" },

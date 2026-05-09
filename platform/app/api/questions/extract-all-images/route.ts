@@ -79,6 +79,13 @@ async function extractOneQuestion(
   let questionCount = 0;
   let msCount = 0;
 
+  const { data: partRows } = await supabase
+    .from("question_parts")
+    .select("id")
+    .eq("question_id", question.id)
+    .order("sort_order", { ascending: true });
+  const partIds = (partRows ?? []).map((p) => p.id as string);
+
   // Extract question doc images
   try {
     const images = await getDocImages(auth, question.google_doc_id);
@@ -111,6 +118,7 @@ async function extractOneQuestion(
       await supabase.from("question_images").upsert(
         {
           question_id: question.id,
+          part_id: partIds[i] ?? null,
           image_type: "question",
           storage_path: storagePath,
           source_google_doc_id: question.google_doc_id,
@@ -134,14 +142,23 @@ async function extractOneQuestion(
   if (question.google_ms_id) {
     try {
       const images = await getDocImages(auth, question.google_ms_id);
+
+      // Delete existing markscheme records for clean re-extraction
+      await supabase
+        .from("question_images")
+        .delete()
+        .eq("question_id", question.id)
+        .eq("image_type", "markscheme");
+
+      let writeIdx = 0;
       for (let i = 0; i < images.length; i++) {
         const { buffer, contentType } = await downloadImage(auth, images[i].contentUri);
         if (isBlockedQuestionImage(buffer)) {
-          console.log(`Skipping blocked markscheme image for ${question.code} at markscheme/${String(i + 1).padStart(2, "0")}`);
+          console.log(`Skipping blocked markscheme image for ${question.code} (raw index ${i})`);
           continue;
         }
         const ext = extensionForType(contentType);
-        const storagePath = `${question.code}/markscheme/${String(i + 1).padStart(2, "0")}.${ext}`;
+        const storagePath = `${question.code}/markscheme/${String(writeIdx + 1).padStart(2, "0")}.${ext}`;
 
         const { error: uploadErr } = await supabase.storage
           .from("question-images")
@@ -160,18 +177,17 @@ async function extractOneQuestion(
           continue;
         }
 
-        await supabase.from("question_images").upsert(
-          {
-            question_id: question.id,
-            image_type: "markscheme",
-            storage_path: storagePath,
-            source_google_doc_id: question.google_ms_id,
-            sort_order: i,
-            alt_text: `Markscheme image ${i + 1} for ${question.code}`,
-          },
-          { onConflict: "question_id,image_type,sort_order" }
-        );
+        await supabase.from("question_images").insert({
+          question_id: question.id,
+          part_id: partIds[writeIdx] ?? null,
+          image_type: "markscheme",
+          storage_path: storagePath,
+          source_google_doc_id: question.google_ms_id,
+          sort_order: writeIdx,
+          alt_text: `Markscheme image ${writeIdx + 1} for ${question.code}`,
+        });
         msCount++;
+        writeIdx++;
       }
     } catch (err) {
       return {
