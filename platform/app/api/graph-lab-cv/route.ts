@@ -37,6 +37,70 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Preferred production path: proxy to dedicated Python CV service.
+  // Example: GRAPH_LAB_CV_SERVICE_URL=https://cv-service.example.com
+  const serviceUrlRaw = process.env.GRAPH_LAB_CV_SERVICE_URL?.trim();
+  if (serviceUrlRaw) {
+    const startedAt = Date.now();
+    const serviceBase = /^https?:\/\//i.test(serviceUrlRaw)
+      ? serviceUrlRaw
+      : `https://${serviceUrlRaw}`;
+    const target = serviceBase.endsWith("/extract")
+      ? serviceBase
+      : `${serviceBase.replace(/\/$/, "")}/extract`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 28000);
+    try {
+      const upstream = await fetch(target, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images, mediaType: body.mediaType }),
+        signal: controller.signal,
+      });
+      const raw = await upstream.text();
+      let data: Record<string, unknown>;
+      try {
+        data = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      } catch {
+        data = {
+          error: "CV service returned invalid JSON",
+          warnings: [raw ? raw.slice(0, 700) : "(empty upstream response)"],
+          feedback: [],
+        };
+      }
+      data.metadata = {
+        ...(typeof data.metadata === "object" && data.metadata ? (data.metadata as Record<string, unknown>) : {}),
+        proxy: {
+          target,
+          status: upstream.status,
+          durationMs: Date.now() - startedAt,
+        },
+      };
+      return NextResponse.json(data, { status: upstream.status });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return NextResponse.json(
+        {
+          error: "CV extraction proxy failed",
+          warnings: [message],
+          feedback: [
+            "Verify GRAPH_LAB_CV_SERVICE_URL points to a reachable Python service.",
+            "Service must expose POST /extract with the Graph Lab CV response format.",
+          ],
+          metadata: {
+            proxy: {
+              target,
+              durationMs: Date.now() - startedAt,
+            },
+          },
+        },
+        { status: 502 }
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   try {
     const startedAt = Date.now();
     // Use the first image for extraction
