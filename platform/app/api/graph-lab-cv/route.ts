@@ -37,9 +37,36 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const runningOnVercel = process.env.VERCEL === "1";
+
   // Preferred production path: proxy to dedicated Python CV service.
   // Example: GRAPH_LAB_CV_SERVICE_URL=https://cv-service.example.com
   const serviceUrlRaw = process.env.GRAPH_LAB_CV_SERVICE_URL?.trim();
+  if (runningOnVercel && !serviceUrlRaw) {
+    return NextResponse.json(
+      {
+        error: "GRAPH_LAB_CV_SERVICE_URL is not configured",
+        warnings: [
+          "This deployment cannot run local Python CV extraction.",
+          "Set GRAPH_LAB_CV_SERVICE_URL to your Python CV service base URL.",
+        ],
+        feedback: [
+          "After setting the environment variable in Vercel, redeploy.",
+          "Expected service endpoint is POST /extract.",
+        ],
+        metadata: {
+          runtime: {
+            node: process.version,
+            platform: process.platform,
+            arch: process.arch,
+            vercel: runningOnVercel,
+          },
+        },
+      },
+      { status: 503 }
+    );
+  }
+
   if (serviceUrlRaw) {
     const startedAt = Date.now();
     const serviceBase = /^https?:\/\//i.test(serviceUrlRaw)
