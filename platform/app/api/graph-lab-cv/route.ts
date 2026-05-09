@@ -57,24 +57,51 @@ export async function POST(request: NextRequest) {
     // Write input payload to avoid shell escaping/argv-size issues with large base64 strings
     fs.writeFileSync(inputFile, JSON.stringify({ image: b64Image }), "utf-8");
 
-    // Prefer configured env python, then explicit codespace python, then python3
-    const pythonCandidates = [
+    // Prefer configured env python, then known absolute paths, then command names.
+    const absoluteCandidates = [
       process.env.GRAPH_LAB_CV_PYTHON,
       process.env.PYTHON,
+      process.env.VIRTUAL_ENV ? path.join(process.env.VIRTUAL_ENV, "bin/python") : undefined,
+      process.env.VIRTUAL_ENV ? path.join(process.env.VIRTUAL_ENV, "bin/python3") : undefined,
+      "/home/codespace/.python/current/bin/python3",
       "/home/codespace/.python/current/bin/python",
-      "python3",
+      "/usr/bin/python3",
+      "/usr/local/bin/python3",
     ].filter((value): value is string => Boolean(value));
 
-    const candidateResolution = pythonCandidates.map((candidate) => ({
-      candidate,
-      exists: candidate.includes("/") ? fs.existsSync(candidate) : true,
-      kind: candidate.includes("/") ? "absolute" : "command",
-    }));
+    const commandCandidates = ["python3", "python"];
+    const pythonCandidates = [...absoluteCandidates, ...commandCandidates];
+
+    const canRun = (candidate: string): { runnable: boolean; reason?: string } => {
+      if (candidate.includes("/")) {
+        return fs.existsSync(candidate)
+          ? { runnable: true }
+          : { runnable: false, reason: "path does not exist" };
+      }
+      const probe = spawnSync(candidate, ["--version"], {
+        env: process.env,
+        encoding: "utf-8",
+        timeout: 2000,
+      });
+      if (probe.error) {
+        return { runnable: false, reason: probe.error.message };
+      }
+      return { runnable: true };
+    };
+
+    const candidateResolution = pythonCandidates.map((candidate) => {
+      const probe = canRun(candidate);
+      return {
+        candidate,
+        kind: candidate.includes("/") ? "absolute" : "command",
+        runnable: probe.runnable,
+        reason: probe.reason,
+      };
+    });
 
     const pythonExec =
-      pythonCandidates.find((candidate) =>
-        candidate.includes("/") ? fs.existsSync(candidate) : true
-      ) || "python3";
+      candidateResolution.find((candidate) => candidate.runnable)?.candidate ||
+      "python3";
 
     const args = [
       scriptPath,
@@ -111,6 +138,7 @@ export async function POST(request: NextRequest) {
       },
       execution: {
         cwd: process.cwd(),
+        pathPreview: (process.env.PATH || "").split(":").slice(0, 12),
         tmpDir,
         scriptPath,
         scriptExists,
