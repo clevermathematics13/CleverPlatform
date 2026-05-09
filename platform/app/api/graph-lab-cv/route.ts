@@ -99,9 +99,66 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const pythonExec =
-      candidateResolution.find((candidate) => candidate.runnable)?.candidate ||
-      "python3";
+    const selectedPython = candidateResolution.find((candidate) => candidate.runnable);
+    const pythonExec = selectedPython?.candidate;
+
+    if (!pythonExec) {
+      try { fs.unlinkSync(inputFile); } catch { /* ignore */ }
+      return NextResponse.json(
+        {
+          error: "CV extraction unavailable: no runnable Python interpreter in server runtime",
+          warnings: [
+            "No runnable Python candidate was found.",
+            "This deployment environment likely does not include Python.",
+            "Use /api/graph-lab fallback extraction or run CV extraction in an environment with Python installed.",
+          ],
+          feedback: [
+            "If using Vercel serverless, Python binaries are typically unavailable in Node runtimes.",
+            "Consider moving CV extraction to a Python-capable service (container/worker) or an Edge/Node fallback pipeline.",
+          ],
+          metadata: {
+            runtime: {
+              node: process.version,
+              platform: process.platform,
+              arch: process.arch,
+            },
+            request: {
+              receivedAt: new Date(startedAt).toISOString(),
+              imageCount: images.length,
+              firstImageBase64Chars: b64Image.length,
+              mediaType: body.mediaType ?? null,
+            },
+            execution: {
+              cwd: process.cwd(),
+              pathPreview: (process.env.PATH || "").split(":").slice(0, 12),
+              tmpDir,
+              scriptPath,
+              scriptExists,
+              pythonSelected: null,
+              pythonCandidates: candidateResolution,
+              args: [
+                scriptPath,
+                "--input-file",
+                inputFile,
+                "--output",
+                outputFile,
+              ],
+              durationMs: Date.now() - startedAt,
+            },
+            processResult: {
+              exitCode: null,
+              signal: null,
+              spawnError: "No runnable Python candidate",
+              stderrPreview: null,
+              stdoutPreview: null,
+              stderrBytes: 0,
+              stdoutBytes: 0,
+            },
+          },
+        },
+        { status: 503 }
+      );
+    }
 
     const args = [
       scriptPath,
