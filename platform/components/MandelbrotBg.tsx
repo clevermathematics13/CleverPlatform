@@ -2,49 +2,76 @@
 
 import { useEffect, useRef } from "react";
 
-const MAX_ITER = 256;
-const CYCLE_SECONDS = 120; // full color cycle takes 120 seconds
+// WebGL fragment shader — animated Julia set, dark purple/crimson palette
+const VERT = `
+attribute vec2 a_pos;
+void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }
+`;
 
-// Precompute escape counts into a flat array once, reuse every frame
-function buildEscapeCounts(width: number, height: number): Float32Array {
-  const counts = new Float32Array(width * height);
-  // Mandelbrot viewport: centered around (-0.65, 0), zoomed to show classic shape
-  const xMin = -2.4;
-  const xMax = 0.85;
-  const yMin = -1.25;
-  const yMax = 1.25;
+const FRAG = `
+precision highp float;
+uniform vec2  u_res;
+uniform float u_time;
 
-  for (let py = 0; py < height; py++) {
-    const ci = yMin + (py / height) * (yMax - yMin);
-    for (let px = 0; px < width; px++) {
-      const cr = xMin + (px / width) * (xMax - xMin);
-      let zr = 0, zi = 0;
-      let iter = 0;
-      while (iter < MAX_ITER && zr * zr + zi * zi <= 4) {
-        const tmp = zr * zr - zi * zi + cr;
-        zi = 2 * zr * zi + ci;
-        zr = tmp;
-        iter++;
-      }
-      // Smooth coloring
-      if (iter < MAX_ITER) {
-        const log2 = Math.log2(zr * zr + zi * zi);
-        counts[py * width + px] = iter + 1 - Math.log2(log2 / 2);
-      } else {
-        counts[py * width + px] = -1; // inside set
-      }
-    }
-  }
-  return counts;
+const int MAX_ITER = 180;
+
+// Dark purple / crimson palette — maps [0,1] to a deep swirling colour
+vec3 palette(float t) {
+  // base: very dark indigo
+  vec3 a = vec3(0.05, 0.00, 0.12);
+  // amplitude: deep crimson to violet
+  vec3 b = vec3(0.42, 0.02, 0.28);
+  // frequency / phase chosen for slow swirl variety
+  vec3 c = vec3(1.0,  0.7,  1.2);
+  vec3 d = vec3(0.00, 0.25, 0.50);
+  return a + b * cos(6.28318 * (c * t + d));
 }
 
-function hslToRgb(h: number, s: number, l: number): [number, number, number] {
-  h = ((h % 360) + 360) % 360;
-  s /= 100; l /= 100;
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
-  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+void main() {
+  // Normalised coords centred at origin, aspect-corrected
+  vec2 uv = (gl_FragCoord.xy / u_res.xy) * 2.0 - 1.0;
+  uv.x *= u_res.x / u_res.y;
+
+  // Julia parameter orbits slowly near the boundary of the Mandelbrot set
+  // Chosen base point: (-0.7269, 0.1889) — classic swirly Julia
+  // We add a tiny slow orbit so it appears to breathe / rotate
+  float t = u_time * 0.012;          // very slow time
+  vec2 c = vec2(-0.7269 + 0.012 * cos(t * 0.7),
+                 0.1889 + 0.012 * sin(t * 1.1));
+
+  // Zoom: gentle inward breathing
+  float zoom = 1.35 + 0.15 * sin(t * 0.4);
+  vec2 z = uv / zoom;
+
+  float iter = 0.0;
+  float len2 = 0.0;
+  for (int i = 0; i < MAX_ITER; i++) {
+    if (len2 > 4.0) break;
+    z = vec2(z.x*z.x - z.y*z.y, 2.0*z.x*z.y) + c;
+    len2 = dot(z, z);
+    iter += 1.0;
+  }
+
+  if (iter >= float(MAX_ITER)) {
+    // Inside the set: near-black deep indigo
+    gl_FragColor = vec4(0.02, 0.00, 0.06, 1.0);
+  } else {
+    // Smooth escape + very slow colour cycle
+    float smooth_iter = iter - log2(log2(len2)) + 4.0;
+    float col = smooth_iter / float(MAX_ITER);
+    // Add a very slow global phase drift for the "swirling" feel
+    col = fract(col * 3.5 + u_time * 0.004);
+    vec3 rgb = palette(col);
+    gl_FragColor = vec4(rgb, 1.0);
+  }
+}
+`;
+
+function compileShader(gl: WebGLRenderingContext, type: number, src: string) {
+  const sh = gl.createShader(type)!;
+  gl.shaderSource(sh, src);
+  gl.compileShader(sh);
+  return sh;
 }
 
 export function MandelbrotBg({ className }: { className?: string }) {
@@ -54,48 +81,59 @@ export function MandelbrotBg({ className }: { className?: string }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const W = 256;
-    const H = 512;
-    canvas.width = W;
-    canvas.height = H;
+    const gl = canvas.getContext("webgl", { antialias: false, alpha: false });
+    if (!gl) return; // fallback: canvas stays black — acceptable
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    const vert = compileShader(gl, gl.VERTEX_SHADER, VERT);
+    const frag = compileShader(gl, gl.FRAGMENT_SHADER, FRAG);
+    const prog = gl.createProgram()!;
+    gl.attachShader(prog, vert);
+    gl.attachShader(prog, frag);
+    gl.linkProgram(prog);
+    gl.useProgram(prog);
 
-    const escapeCounts = buildEscapeCounts(W, H);
-    const imageData = ctx.createImageData(W, H);
-    const data = imageData.data;
+    // Full-screen quad
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, "a_pos");
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
 
-    let animFrame: number;
-    let startTime: number | null = null;
+    const uRes  = gl.getUniformLocation(prog, "u_res");
+    const uTime = gl.getUniformLocation(prog, "u_time");
 
-    function draw(ts: number) {
-      if (startTime === null) startTime = ts;
-      const elapsed = (ts - startTime) / 1000; // seconds
-      // hue offset: full 360° cycle over CYCLE_SECONDS
-      const hueOffset = (elapsed / CYCLE_SECONDS) * 360;
+    let raf: number;
+    const startMs = performance.now();
 
-      for (let i = 0; i < escapeCounts.length; i++) {
-        const v = escapeCounts[i];
-        const idx = i * 4;
-        if (v < 0) {
-          // Inside set: very dark navy
-          data[idx] = 10; data[idx + 1] = 8; data[idx + 2] = 24; data[idx + 3] = 255;
-        } else {
-          // Map smooth count to hue with slow cycling
-          const hue = (hueOffset + (v / MAX_ITER) * 360 * 3) % 360;
-          const sat = 75;
-          const lit = 35 + ((v % 20) / 20) * 25; // subtle lightness variation
-          const [r, g, b] = hslToRgb(hue, sat, lit);
-          data[idx] = r; data[idx + 1] = g; data[idx + 2] = b; data[idx + 3] = 255;
-        }
+    function resize() {
+      const w = canvas!.clientWidth  || 256;
+      const h = canvas!.clientHeight || 512;
+      if (canvas!.width !== w || canvas!.height !== h) {
+        canvas!.width  = w;
+        canvas!.height = h;
+        gl!.viewport(0, 0, w, h);
       }
-      ctx!.putImageData(imageData, 0, 0);
-      animFrame = requestAnimationFrame(draw);
     }
 
-    animFrame = requestAnimationFrame(draw);
-    return () => cancelAnimationFrame(animFrame);
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+    resize();
+
+    function draw() {
+      resize();
+      const elapsed = (performance.now() - startMs) / 1000;
+      gl!.uniform2f(uRes, canvas!.width, canvas!.height);
+      gl!.uniform1f(uTime, elapsed);
+      gl!.drawArrays(gl!.TRIANGLE_STRIP, 0, 4);
+      raf = requestAnimationFrame(draw);
+    }
+    raf = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, []);
 
   return (
@@ -107,7 +145,7 @@ export function MandelbrotBg({ className }: { className?: string }) {
         inset: 0,
         width: "100%",
         height: "100%",
-        objectFit: "cover",
+        display: "block",
         pointerEvents: "none",
       }}
     />

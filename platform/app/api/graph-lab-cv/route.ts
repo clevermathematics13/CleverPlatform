@@ -89,22 +89,23 @@ export async function POST(request: NextRequest) {
 
     // Read and parse output
     if (!fs.existsSync(outputFile)) {
-      try {
-        fs.unlinkSync(inputFile);
-      } catch {
-        // Ignore cleanup errors
-      }
+      try { fs.unlinkSync(inputFile); } catch { /* ignore */ }
+
+      // Surface Python stderr so it appears in the debug packet warnings
+      const debugWarnings: string[] = [];
+      if (stderrText) debugWarnings.push(`Python stderr: ${stderrText}`);
+      if (proc.status !== null && proc.status !== 0)
+        debugWarnings.push(`Exit code: ${proc.status}`);
+      if (proc.signal) debugWarnings.push(`Killed by signal: ${proc.signal}`);
+      if (proc.error) debugWarnings.push(`Spawn error: ${proc.error.message}`);
+      debugWarnings.push(`Python exec: ${pythonExec}`);
+
       return NextResponse.json(
         {
           error: "CV extraction script did not produce output",
-          metadata: {
-            note: "Check logs for Python errors",
-            exitCode: proc.status,
-            signal: proc.signal,
-            pythonExec,
-            spawnError: proc.error?.message,
-            stderr: stderrText || undefined,
-          },
+          warnings: debugWarnings,
+          feedback: [],
+          metadata: { exitCode: proc.status, signal: proc.signal, pythonExec },
         },
         { status: 500 }
       );
