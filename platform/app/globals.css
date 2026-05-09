@@ -91,22 +91,6 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
   margin: 0.3em 0 !important;
 }
 
-/* Opaque sidebar/menu skin with a calm psychedelic gradient blend. */
-.menu-psychedelic-bg {
-  background-color: #151a34;
-  background-image:
-    radial-gradient(circle at 18% 18%, #4c5ca8 0%, #4c5ca8 18%, transparent 52%),
-    radial-gradient(circle at 80% 22%, #2d8f9a 0%, #2d8f9a 16%, transparent 48%),
-    radial-gradient(circle at 42% 78%, #8e4d8d 0%, #8e4d8d 15%, transparent 47%),
-    radial-gradient(circle at 72% 70%, #4d7d5d 0%, #4d7d5d 18%, transparent 50%),
-    linear-gradient(145deg, #13172d 0%, #17203f 52%, #18284d 100%);
-  background-repeat: no-repeat;
-  background-size: 170% 170%;
-  background-position: center;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
 /* Tighten display math vertical rhythm to match typeset paper spacing */
 .katex-display > .katex {
   white-space: normal;

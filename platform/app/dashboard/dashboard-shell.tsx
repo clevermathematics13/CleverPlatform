@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ImpersonateMenu } from "./impersonate-menu";
+import { MandelbrotBg } from "@/components/MandelbrotBg";
 
 interface NavigationItem {
   href: string;
@@ -67,17 +68,19 @@ export function DashboardShell({
 
         {/* Sidebar panel */}
         <aside
-          className={`menu-psychedelic-bg absolute left-0 top-0 h-full flex flex-col border-r border-da-border shadow-xl shadow-black/40 transition-all duration-200 overflow-hidden ${
+          className={`relative left-0 top-0 h-full flex flex-col border-r border-da-border shadow-xl shadow-black/40 transition-all duration-200 overflow-hidden ${
             sidebarVisible ? "w-64 opacity-100" : "w-0 opacity-0"
           }`}
+          style={{ background: "#0a081a" }}
         >
-        <div className="flex h-16 items-center border-b border-da-border px-6">
+          <MandelbrotBg />
+        <div className="relative z-10 flex h-16 items-center border-b border-da-border px-6">
           <Link href="/dashboard" className="text-xl font-bold text-da-accent font-serif tracking-wide">
             CleverPlatform
           </Link>
         </div>
 
-        <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
+        <nav className="relative z-10 flex-1 space-y-1 px-3 py-4 overflow-y-auto">
           {navigation.map((item) => {
             const isGradebook =
               item.label === "Gradebook" &&
@@ -134,7 +137,7 @@ export function DashboardShell({
 
         {/* Settings section */}
         <div
-          className="relative border-t border-da-border flex-shrink-0"
+          className="relative z-10 border-t border-da-border shrink-0"
           onMouseEnter={() => {
             setSettingsHover(true);
             setSettingsOpen(true);
@@ -159,9 +162,11 @@ export function DashboardShell({
 
           {(settingsOpen || settingsHover) && (
             <div
-              className="menu-psychedelic-bg absolute bottom-full left-0 w-64 border border-da-border rounded-t-xl shadow-lg shadow-black/40 px-3 pb-2 pt-1 space-y-0.5 z-50 transition-all duration-200"
+              className="absolute overflow-hidden bottom-full left-0 w-64 border border-da-border rounded-t-xl shadow-lg shadow-black/40 px-3 pb-2 pt-1 space-y-0.5 z-50 transition-all duration-200"
               style={{ minHeight: '16rem', height: 'auto' }} // double the height
             >
+              <MandelbrotBg />
+              <div className="relative z-10">
               {settingsNavigation.map((item) => (
                 <Link
                   key={item.href}
@@ -207,6 +212,7 @@ export function DashboardShell({
                   </button>
                 </form>
               </div>
+              </div>{/* end z-10 wrapper */}
             </div>
           )}
         </div>
