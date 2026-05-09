@@ -17,10 +17,10 @@ const int MAX_ITER = 220;
 
 // Dark purple / crimson palette — maps [0,1] to a deep swirling colour
 vec3 palette(float t) {
-  // base: almost black purple
-  vec3 a = vec3(0.008, 0.000, 0.025);
-  // amplitude: very low so palette stays dark
-  vec3 b = vec3(0.130, 0.006, 0.090);
+  // base: dark purple, but not crushed to black
+  vec3 a = vec3(0.020, 0.002, 0.055);
+  // amplitude: still dark, with enough separation to read motion
+  vec3 b = vec3(0.200, 0.012, 0.140);
   // frequency / phase for purple-crimson variety
   vec3 c = vec3(1.0,  0.7,  1.2);
   vec3 d = vec3(0.00, 0.25, 0.50);
@@ -53,8 +53,8 @@ void main() {
   }
 
   if (iter >= float(MAX_ITER)) {
-    // Inside the set: pure black
-    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+    // Inside the set: near-black violet, not absolute black
+    gl_FragColor = vec4(0.012, 0.000, 0.028, 1.0);
   } else {
     // Smooth escape + much faster colour cycle
     float smooth_iter = iter - log2(log2(len2)) + 4.0;
@@ -62,8 +62,8 @@ void main() {
     // Much faster global phase drift
     col = fract(col * 4.7 + u_time * 0.085);
     vec3 rgb = palette(col);
-    // Heavily darken while preserving highlights
-    rgb = rgb * rgb * rgb;
+    // Darken with less black-crush so details remain visible
+    rgb = rgb * rgb;
     gl_FragColor = vec4(rgb, 1.0);
   }
 }
