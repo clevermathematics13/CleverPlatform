@@ -45,6 +45,31 @@
       "command": "./scripts/auto-push.sh",
       "isBackground": true,
       "problemMatcher": []
+    },
+    {
+      "label": "Vitest watch (auto)",
+      "type": "shell",
+      "command": "npx vitest --reporter=verbose",
+      "isBackground": true,
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": {
+        "owner": "vitest",
+        "fileLocation": ["relative", "${workspaceFolder}"],
+        "pattern": {
+          "regexp": "^\\s+● (.+)$",
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "^\\s*(RUNS|RUN)\\s",
+          "endsPattern": "^\\s*(PASS|FAIL|Tests)\\s"
+        }
+      },
+      "runOptions": {
+        "runOn": "folderOpen"
+      }
     }
   ]
 }

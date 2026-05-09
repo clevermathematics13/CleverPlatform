@@ -1,0 +1,654 @@
+{
+  "stats": {
+    "total_fetched": 40,
+    "downloaded": 40,
+    "download_failed": 0,
+    "classified_graph": 38,
+    "classified_not_graph": 2,
+    "cv_ok": 8,
+    "cv_error": 30,
+    "cv_too_few_vertices": 0,
+    "errors": []
+  },
+  "cv_success_rate": 0.211,
+  "results": [
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_9/markscheme/03.png",
+      "question_id": "20f733ff-bd2a-4640-a897-4db948b1545a",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.98, dark_lines=0.017, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.35
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_9/markscheme/02.png",
+      "question_id": "20f733ff-bd2a-4640-a897-4db948b1545a",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.021, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.22
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_9/markscheme/01.png",
+      "question_id": "20f733ff-bd2a-4640-a897-4db948b1545a",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.99, dark_lines=0.010, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.17
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_8/markscheme/03.png",
+      "question_id": "e3b57d75-766b-4091-94f4-84708b609510",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.95, dark_lines=0.030, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.28
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_8/markscheme/02.png",
+      "question_id": "e3b57d75-766b-4091-94f4-84708b609510",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.026, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.19
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_8/markscheme/01.png",
+      "question_id": "e3b57d75-766b-4091-94f4-84708b609510",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.023, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.28
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_7/markscheme/02.png",
+      "question_id": "253792d8-5328-489a-8e1a-1a3e8d032674",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.025, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 8,
+        "segments": 7,
+        "domain": [
+          -6.5,
+          8.0
+        ],
+        "elapsed_s": 0.12
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_7/markscheme/01.png",
+      "question_id": "253792d8-5328-489a-8e1a-1a3e8d032674",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.024, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 22,
+        "segments": 21,
+        "domain": [
+          -28.5,
+          28.0
+        ],
+        "elapsed_s": 0.11
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_6/markscheme/02.png",
+      "question_id": "19904560-287a-4d54-bf35-b986a13a2512",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.95, dark_lines=0.030, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.21
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_6/markscheme/01.png",
+      "question_id": "19904560-287a-4d54-bf35-b986a13a2512",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.029, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.28
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_11/markscheme/05.png",
+      "question_id": "a2cbba3e-c784-478e-a726-7484306482a7",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.022, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.29
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_11/markscheme/04.png",
+      "question_id": "a2cbba3e-c784-478e-a726-7484306482a7",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.55,
+        "reason": "light_bg=0.96, dark_lines=0.026"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.05
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_11/markscheme/03.png",
+      "question_id": "a2cbba3e-c784-478e-a726-7484306482a7",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.017, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.25
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_11/markscheme/02.png",
+      "question_id": "a2cbba3e-c784-478e-a726-7484306482a7",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.024, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.21
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_11/markscheme/01.png",
+      "question_id": "a2cbba3e-c784-478e-a726-7484306482a7",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.022, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.24
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_10/markscheme/05.png",
+      "question_id": "b36b3453-0350-4d69-8d8b-442ea4202478",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.98, dark_lines=0.010, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 10,
+        "segments": 9,
+        "domain": [
+          -14.5,
+          22.0
+        ],
+        "elapsed_s": 0.14
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_10/markscheme/04.png",
+      "question_id": "b36b3453-0350-4d69-8d8b-442ea4202478",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.021, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 18,
+        "segments": 17,
+        "domain": [
+          -26.0,
+          30.5
+        ],
+        "elapsed_s": 0.14
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_10/markscheme/03.png",
+      "question_id": "b36b3453-0350-4d69-8d8b-442ea4202478",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.98, dark_lines=0.011, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 10,
+        "segments": 9,
+        "domain": [
+          -21.0,
+          42.5
+        ],
+        "elapsed_s": 0.08
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_10/markscheme/02.png",
+      "question_id": "b36b3453-0350-4d69-8d8b-442ea4202478",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.017, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 17,
+        "segments": 16,
+        "domain": [
+          -17.0,
+          29.0
+        ],
+        "elapsed_s": 0.17
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_10/markscheme/01.png",
+      "question_id": "b36b3453-0350-4d69-8d8b-442ea4202478",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.022, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 18,
+        "segments": 17,
+        "domain": [
+          -11.5,
+          15.5
+        ],
+        "elapsed_s": 0.11
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_1/markscheme/01.png",
+      "question_id": "6287542d-93d4-41a0-9670-590c2da4473a",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.027, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.25
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_9/markscheme/02.png",
+      "question_id": "7e98fe07-0501-4208-bf98-4dc2055e179d",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.022, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.18
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_9/markscheme/01.png",
+      "question_id": "7e98fe07-0501-4208-bf98-4dc2055e179d",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.95, dark_lines=0.038, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.36
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_9/question/01.png",
+      "question_id": "7e98fe07-0501-4208-bf98-4dc2055e179d",
+      "image_type": "question",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.024, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.24
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_8/markscheme/03.png",
+      "question_id": "2630c4fb-9713-43ac-b2b5-eae402c17d8c",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.022, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.32
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_8/markscheme/02.png",
+      "question_id": "2630c4fb-9713-43ac-b2b5-eae402c17d8c",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.028, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.27
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_8/markscheme/01.png",
+      "question_id": "2630c4fb-9713-43ac-b2b5-eae402c17d8c",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.017, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.28
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_8/question/02.png",
+      "question_id": "2630c4fb-9713-43ac-b2b5-eae402c17d8c",
+      "image_type": "question",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.55,
+        "reason": "light_bg=0.95, dark_lines=0.028"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.09
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_7/markscheme/03.png",
+      "question_id": "1a5a9543-46fd-4ca3-9c9a-036a9f5d7fd2",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.98, dark_lines=0.018, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.17
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_7/markscheme/02.png",
+      "question_id": "1a5a9543-46fd-4ca3-9c9a-036a9f5d7fd2",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.020, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.22
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_7/markscheme/01.png",
+      "question_id": "1a5a9543-46fd-4ca3-9c9a-036a9f5d7fd2",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.019, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.31
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_7/question/01.png",
+      "question_id": "1a5a9543-46fd-4ca3-9c9a-036a9f5d7fd2",
+      "image_type": "question",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.55,
+        "reason": "light_bg=0.93, dark_lines=0.043"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.07
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_6/markscheme/02.png",
+      "question_id": "84e4ac9e-b10e-4cc8-99be-ac198b10a610",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.029, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.24
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_6/markscheme/01.png",
+      "question_id": "84e4ac9e-b10e-4cc8-99be-ac198b10a610",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.028, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.16
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_6/question/04.png",
+      "question_id": "84e4ac9e-b10e-4cc8-99be-ac198b10a610",
+      "image_type": "question",
+      "classification": {
+        "is_graph": false,
+        "confidence": 0.4,
+        "reason": "light_bg=0.99, square-ish"
+      },
+      "cv_result": {
+        "status": "skipped",
+        "reason": "not_classified_as_graph"
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_6/question/02.png",
+      "question_id": "84e4ac9e-b10e-4cc8-99be-ac198b10a610",
+      "image_type": "question",
+      "classification": {
+        "is_graph": false,
+        "confidence": 0.4,
+        "reason": "light_bg=0.99, square-ish"
+      },
+      "cv_result": {
+        "status": "skipped",
+        "reason": "not_classified_as_graph"
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_6/question/01.png",
+      "question_id": "84e4ac9e-b10e-4cc8-99be-ac198b10a610",
+      "image_type": "question",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.99, dark_lines=0.006, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 12,
+        "segments": 11,
+        "domain": [
+          -37.0,
+          42.5
+        ],
+        "elapsed_s": 0.26
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_5/markscheme/01.png",
+      "question_id": "9ca9b976-fd95-418c-acb3-0fedb7757dba",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.98, dark_lines=0.016, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.21
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_5/question/02.png",
+      "question_id": "9ca9b976-fd95-418c-acb3-0fedb7757dba",
+      "image_type": "question",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.98, dark_lines=0.016, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.19
+      }
+    },
+    {
+      "storage_path": "21N.1.SL.TZ0.S_4/markscheme/01.png",
+      "question_id": "9d8e1f01-306a-4a1a-a739-60e0b095f265",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.95, dark_lines=0.034, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.21
+      }
+    }
+  ]
+}

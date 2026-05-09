@@ -16,6 +16,15 @@ interface TestBuilderConfig {
   date: string;        // ISO date string e.g. "2026-05-12"
 }
 
+interface QuestionPart {
+  id: string;
+  part_label: string;
+  marks: number;
+  subtopic_codes: string[];
+  command_term: string | null;
+  sort_order: number;
+}
+
 interface QuestionImage {
   id: string;
   sort_order: number;
@@ -28,6 +37,7 @@ interface TestQuestion {
   code: string;
   section: "A" | "B" | null;
   curriculum: string[];
+  parts: QuestionPart[];
   images: QuestionImage[];
 }
 
@@ -59,6 +69,29 @@ function studentDisplayName(s: Student): string {
   return s.profiles?.nickname ?? s.profiles?.display_name ?? "Student";
 }
 
+// ─── Module-level exam data cache (survives component re-mounts) ─────────────
+
+interface ExamDataCache {
+  key: string;
+  questions: TestQuestion[];
+  students: Student[];
+  thumbnailUrl: string | null;
+  nameField: NameField | null;
+}
+
+let _examCache: ExamDataCache | null = null;
+
+function cacheKey(config: TestBuilderConfig): string {
+  return JSON.stringify({
+    questionIds: config.questionIds,
+    imageType: config.imageType,
+    courseId: config.courseId,
+    curriculum: config.curriculum,
+    level: config.level,
+    paper: config.paper,
+  });
+}
+
 // ─── QR generation (async per question per student) ──────────────────────────
 
 async function makeQrDataUrl(
@@ -79,36 +112,90 @@ async function makeQrDataUrl(
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function TestPreviewClient() {
-  const [config, setConfig] = useState<TestBuilderConfig | null>(null);
-  const [questions, setQuestions] = useState<TestQuestion[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
-  const [nameField, setNameField] = useState<NameField | null>(null);
-  // qrCodes[studentId][questionCode] = data URL
-  const [qrCodes, setQrCodes] = useState<Record<string, Record<string, string>>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const printTriggered = useRef(false);
-
-  // ── Load config from sessionStorage ────────────────────────────────────────
-  useEffect(() => {
+  // Lazily read config from sessionStorage so it's available immediately on
+  // remount without going through an async effect cycle.
+  const [config, setConfig] = useState<TestBuilderConfig | null>(() => {
     try {
       const raw = sessionStorage.getItem("testBuilderConfig");
-      if (!raw) {
-        setError("No exam configuration found. Please return to the question bank and build a test.");
-        setLoading(false);
-        return;
-      }
-      setConfig(JSON.parse(raw) as TestBuilderConfig);
+      return raw ? (JSON.parse(raw) as TestBuilderConfig) : null;
     } catch {
-      setError("Failed to read exam configuration.");
+      return null;
+    }
+  });
+
+  // Lazily initialise from the module-level cache so remounts are instant.
+  const [questions, setQuestions] = useState<TestQuestion[]>(() => {
+    try {
+      const raw = sessionStorage.getItem("testBuilderConfig");
+      if (!raw) return [];
+      const cfg = JSON.parse(raw) as TestBuilderConfig;
+      return _examCache?.key === cacheKey(cfg) ? _examCache.questions : [];
+    } catch { return []; }
+  });
+  const [students, setStudents] = useState<Student[]>(() => {
+    try {
+      const raw = sessionStorage.getItem("testBuilderConfig");
+      if (!raw) return [];
+      const cfg = JSON.parse(raw) as TestBuilderConfig;
+      return _examCache?.key === cacheKey(cfg) ? _examCache.students : [];
+    } catch { return []; }
+  });
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(() => {
+    try {
+      const raw = sessionStorage.getItem("testBuilderConfig");
+      if (!raw) return null;
+      const cfg = JSON.parse(raw) as TestBuilderConfig;
+      return _examCache?.key === cacheKey(cfg) ? _examCache.thumbnailUrl : null;
+    } catch { return null; }
+  });
+  const [nameField, setNameField] = useState<NameField | null>(() => {
+    try {
+      const raw = sessionStorage.getItem("testBuilderConfig");
+      if (!raw) return null;
+      const cfg = JSON.parse(raw) as TestBuilderConfig;
+      return _examCache?.key === cacheKey(cfg) ? _examCache.nameField : null;
+    } catch { return null; }
+  });
+  const [qrCodes, setQrCodes] = useState<Record<string, Record<string, string>>>({});
+  // Skip the loading screen entirely when the module-level cache already has
+  // data for this config (i.e. the component is remounting, not fresh-loading).
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      const raw = sessionStorage.getItem("testBuilderConfig");
+      if (!raw || !_examCache) return true;
+      const cfg = JSON.parse(raw) as TestBuilderConfig;
+      return _examCache.key !== cacheKey(cfg);
+    } catch { return true; }
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [printMode, setPrintMode] = useState<"general" | "batched">("general");
+  const [openEditors, setOpenEditors] = useState<Set<string>>(new Set());
+  const [tocEditors, setTocEditors] = useState<Set<string>>(new Set());
+  const printTriggered = useRef(false);
+
+  // ── Handle missing config ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!config) {
+      setError("No exam configuration found. Please return to the question bank and build a test.");
       setLoading(false);
     }
-  }, []);
+  }, [config]);
 
   // ── Fetch data once config is loaded ───────────────────────────────────────
   useEffect(() => {
     if (!config) return;
+
+    // If the module-level cache already has data for this config, use it
+    // immediately without hitting the network (covers HMR / remount cases).
+    const key = cacheKey(config);
+    if (_examCache && _examCache.key === key) {
+      setQuestions(_examCache.questions);
+      setStudents(_examCache.students);
+      setThumbnailUrl(_examCache.thumbnailUrl);
+      setNameField(_examCache.nameField);
+      setLoading(false);
+      return;
+    }
 
     async function fetchAll() {
       setLoading(true);
@@ -132,18 +219,28 @@ export function TestPreviewClient() {
 
         if (!questionsRes.ok) throw new Error("Failed to load question images");
         const { questions: qs } = await questionsRes.json();
-        setQuestions(qs ?? []);
-
-        if (studentsRes.ok) {
-          const { students: ss } = await studentsRes.json();
-          setStudents(ss ?? []);
-        }
-
+        const resolvedStudents = studentsRes.ok ? ((await studentsRes.json()).students ?? []) : [];
+        let resolvedThumbnail: string | null = null;
+        let resolvedNameField: NameField | null = null;
         if (coverRes.ok) {
           const { thumbnailUrl: tu, nameField: nf } = await coverRes.json();
-          setThumbnailUrl(tu ?? null);
-          setNameField(nf ?? null);
+          resolvedThumbnail = tu ?? null;
+          resolvedNameField = nf ?? null;
         }
+
+        // Populate the module-level cache for future remounts.
+        _examCache = {
+          key,
+          questions: qs ?? [],
+          students: resolvedStudents,
+          thumbnailUrl: resolvedThumbnail,
+          nameField: resolvedNameField,
+        };
+
+        setQuestions(qs ?? []);
+        setStudents(resolvedStudents);
+        setThumbnailUrl(resolvedThumbnail);
+        setNameField(resolvedNameField);
         // Cover not found = no cover page; we continue without one
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load exam data");
@@ -203,7 +300,7 @@ export function TestPreviewClient() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen text-gray-600">
+      <div className="bg-white text-gray-600" style={{ position: "fixed", inset: 0, overflowY: "auto", zIndex: 100 }}>
         <div className="text-center space-y-3">
           <div className="text-4xl">⏳</div>
           <p className="text-lg font-medium">Building exam preview…</p>
@@ -215,7 +312,7 @@ export function TestPreviewClient() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center min-h-screen text-red-600">
+      <div className="bg-white text-red-600" style={{ position: "fixed", inset: 0, overflowY: "auto", zIndex: 100 }}>
         <div className="text-center space-y-3 max-w-md">
           <div className="text-4xl">⚠️</div>
           <p className="text-lg font-medium">{error}</p>
@@ -233,11 +330,11 @@ export function TestPreviewClient() {
   const examLabel = `${config?.curriculum} ${config?.level} Paper ${config?.paper}`;
 
   return (
-    <>
+    <div style={{ position: "fixed", inset: 0, zIndex: 100, overflow: "hidden", display: "flex", flexDirection: "column", background: "white", color: "#111827" }}>
       {/* ── Print controls (hidden in print) ── */}
       <div
-        className="no-print fixed top-0 left-0 right-0 z-50 bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm"
-        style={{ printColorAdjust: "exact" }}
+        className="no-print"
+        style={{ background: "white", borderBottom: "1px solid #e5e7eb", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", flexShrink: 0, printColorAdjust: "exact" }}
       >
         <div>
           <p className="font-semibold text-gray-800">{config?.examName}</p>
@@ -249,12 +346,31 @@ export function TestPreviewClient() {
         <div className="flex gap-3">
           <button
             onClick={() => {
-              printTriggered.current = true;
+              document.body.classList.remove("print-batched");
+              document.body.classList.add("print-general");
               window.print();
+              document.body.classList.remove("print-general");
             }}
             className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
           >
-            🖨 Print / Save as PDF
+            🖨 Print General Exam
+          </button>
+          <button
+            onClick={() => {
+              document.body.classList.remove("print-general");
+              document.body.classList.add("print-batched");
+              window.print();
+              window.addEventListener("afterprint", () => {
+                document.body.classList.remove("print-batched");
+                setPrintMode("general");
+              }, { once: true });
+              setPrintMode("batched");
+            }}
+            disabled={students.length === 0}
+            className="px-5 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-40"
+            title={students.length === 0 ? "No students in this class" : `Print one copy per student (${students.length}) with QR codes`}
+          >
+            🖨 Print Batched Exam
           </button>
           <button
             onClick={() => window.close()}
@@ -265,249 +381,219 @@ export function TestPreviewClient() {
         </div>
       </div>
 
-      {/* ── Top padding for fixed bar ── */}
-      <div className="no-print" style={{ height: 64 }} />
+      {/* ── Single scrollable body ── */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
 
-      {/* ── Per-student exam blocks ── */}
-      {students.map((student, sIdx) => {
-        const name = studentDisplayName(student);
-        return (
-          <div
-            key={student.id}
-            className="student-block"
-            style={{ breakBefore: sIdx === 0 ? undefined : "page" }}
-          >
-            {/* Cover page */}
-            {thumbnailUrl && (
-              <div
-                className="cover-page"
-                style={{
-                  position: "relative",
-                  width: "210mm",
-                  height: "297mm",
-                  breakAfter: "page",
-                  overflow: "hidden",
-                  margin: "0 auto",
-                }}
-              >
-                {/* Slide thumbnail fills the page */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={thumbnailUrl}
-                  alt="Cover page"
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    objectFit: "fill",
-                  }}
-                />
-                {/* Student name overlaid at the {Name} field position */}
-                {nameField && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: `${nameField.x * 100}%`,
-                      top: `${nameField.y * 100}%`,
-                      width: `${nameField.w * 100}%`,
-                      height: `${nameField.h * 100}%`,
-                      display: "flex",
-                      alignItems: "center",
-                      // Match IB cover font — Times-like serif, moderate size
-                      fontFamily: "serif",
-                      fontSize: "14pt",
-                      fontWeight: "normal",
-                      color: "#000",
-                      overflow: "hidden",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {name}
-                  </div>
-                )}
-                {/* Fallback: name in top-right corner if no field found */}
-                {!nameField && (
-                  <div
-                    style={{
-                      position: "absolute",
-                      top: "8mm",
-                      right: "10mm",
-                      fontFamily: "serif",
-                      fontSize: "13pt",
-                      color: "#000",
-                    }}
-                  >
-                    {name}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Question pages */}
-            {orderedQuestions.map((q, qIdx) => {
-              const globalNum = qIdx + 1;
-              const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
-              const isFirstSectionB =
-                showSections &&
-                q.section === "B" &&
-                (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
-              const qrUrl = qrCodes[student.id]?.[q.code] ?? "";
-
-              return (
-                <div key={q.id}>
-                  {/* Section A placeholder header */}
-                  {isFirstSectionA && (
-                    <div
-                      className="section-header"
-                      style={{
-                        borderTop: "2px solid #000",
-                        padding: "8mm 20mm 4mm",
-                        fontFamily: "serif",
-                        fontSize: "16pt",
-                        fontWeight: "bold",
-                        color: "#000",
-                        textAlign: "center",
-                        breakBefore: sIdx === 0 && qIdx === 0 ? undefined : "page",
-                      }}
-                    >
-                      {/* TODO: Replace with Section A header image when available */}
-                      Section A
-                    </div>
-                  )}
-
-                  {/* Section B placeholder header */}
-                  {isFirstSectionB && (
-                    <div
-                      className="section-header"
-                      style={{
-                        borderTop: "2px solid #000",
-                        padding: "8mm 20mm 4mm",
-                        fontFamily: "serif",
-                        fontSize: "16pt",
-                        fontWeight: "bold",
-                        color: "#000",
-                        textAlign: "center",
-                        breakBefore: "page",
-                      }}
-                    >
-                      {/* TODO: Replace with Section B header image when available */}
-                      Section B
-                    </div>
-                  )}
-
-                  {/* Question page */}
-                  <div
-                    className="question-page"
-                    style={{
-                      padding: "15mm 20mm 10mm",
-                      breakBefore:
-                        isFirstSectionA || isFirstSectionB ? undefined : "page",
-                      breakInside: "avoid",
-                      position: "relative",
-                      minHeight: "240mm",
-                    }}
-                  >
-                    {/* Question number + edit link (edit link screen-only, first student only) */}
-                    <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6mm" }}>
-                      <p
-                        style={{
-                          fontFamily: "serif",
-                          fontSize: "14pt",
-                          fontWeight: "bold",
-                          margin: 0,
-                          color: "#000",
-                        }}
-                      >
-                        {globalNum}.
-                      </p>
-                      {sIdx === 0 && (
-                        <a
-                          className="no-print"
-                          href={`/dashboard/questions/review?focus=${q.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{
-                            fontSize: "9pt",
-                            color: "#6366f1",
-                            textDecoration: "none",
-                            border: "1px solid #c7d2fe",
-                            borderRadius: "4px",
-                            padding: "1px 6px",
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          ✏️ Edit {q.code}
-                        </a>
-                      )}
-                    </div>
-
-                    {/* Question images */}
-                    <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
-                      {q.images.length === 0 ? (
-                        <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>
-                          [No images available for this question]
-                        </p>
-                      ) : (
-                        q.images.map((img) =>
-                          img.url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              key={img.id}
-                              src={img.url}
-                              alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`}
-                              style={{
-                                maxWidth: "170mm",
-                                height: "auto",
-                                display: "block",
-                              }}
-                            />
-                          ) : null
-                        )
-                      )}
-                    </div>
-
-                    {/* QR code — bottom right of the question page */}
-                    {qrUrl && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          bottom: "8mm",
-                          right: "15mm",
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          gap: "1mm",
-                        }}
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={qrUrl}
-                          alt="QR"
-                          style={{ width: 56, height: 56 }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+      {/* ── Table of contents (screen only) ── */}
+      {orderedQuestions.length > 0 && (
+        <div className="no-print" style={{ margin: "0 0 24px" }}>
+          <div style={{ maxWidth: "210mm", margin: "0 auto", padding: "0 20mm" }}>
+          <h2 style={{ fontFamily: "serif", fontSize: "13pt", fontWeight: "bold", color: "#111", marginBottom: "8px", borderBottom: "1px solid #d1d5db", paddingBottom: "4px" }}>
+            Questions — {orderedQuestions.length} total
+          </h2>
+          {/* Header row */}
+          <div style={{ display: "grid", gridTemplateColumns: showSections ? "2.5em 12em 2.5em 1fr" : "2.5em 12em 1fr", gap: "0 8px", fontSize: "9.5pt", fontFamily: "sans-serif", borderBottom: "1px solid #e5e7eb", color: "#6b7280", paddingBottom: "4px", fontWeight: 600 }}>
+            <span>#</span>
+            <span>Code</span>
+            {showSections && <span style={{ textAlign: "center" }}>§</span>}
+            <span>Parts &amp; Subtopics</span>
           </div>
-        );
-      })}
-
-      {/* No students fallback */}
-      {students.length === 0 && !loading && (
-        <div className="no-print flex items-center justify-center min-h-[200px] text-gray-500">
-          <p>No students found for this class. The exam cannot be generated.</p>
+          </div>
+          {orderedQuestions.map((q, qIdx) => (
+            <div key={q.id}>
+              {/* Info row */}
+              <div style={{ maxWidth: "210mm", margin: "0 auto", padding: "0 20mm" }}>
+              <div style={{ display: "grid", gridTemplateColumns: showSections ? "2.5em 12em 2.5em 1fr" : "2.5em 12em 1fr", gap: "0 8px", fontSize: "9.5pt", fontFamily: "sans-serif", borderBottom: tocEditors.has(q.id) ? "none" : "1px solid #f3f4f6", padding: "5px 0", alignItems: "start" }}>
+                <span style={{ fontWeight: "bold", color: "#374151" }}>{qIdx + 1}</span>
+                <span>
+                  <button
+                    onClick={() => setTocEditors((prev) => { const next = new Set(prev); if (next.has(q.id)) next.delete(q.id); else next.add(q.id); return next; })}
+                    style={{ color: "#2563eb", fontFamily: "monospace", fontSize: "8.5pt", background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: tocEditors.has(q.id) ? "underline" : "none" }}
+                  >
+                    {q.code}
+                  </button>
+                </span>
+                {showSections && <span style={{ textAlign: "center", color: "#6b7280" }}>{q.section ?? "—"}</span>}
+                <span>
+                  {q.parts.length === 0 ? (
+                    <span style={{ color: "#9ca3af" }}>—</span>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      {q.parts.map((p) => (
+                        <div key={p.id} style={{ display: "flex", alignItems: "baseline", gap: "6px", flexWrap: "wrap" }}>
+                          <span style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "3px", padding: "0 5px", color: "#1d4ed8", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            {p.part_label || ""} <span style={{ color: "#6b7280" }}>[{p.marks}]</span>
+                          </span>
+                          {p.subtopic_codes.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: "3px" }}>
+                              {p.subtopic_codes.map((code) => (
+                                <span key={code} style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "3px", padding: "0 5px", color: "#15803d", whiteSpace: "nowrap", fontFamily: "monospace", fontSize: "8pt" }}>
+                                  {code}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </span>
+              </div>
+              </div>
+              {/* Inline editor — full width within the fixed overlay */}
+              {tocEditors.has(q.id) && (
+                <div style={{ borderBottom: "1px solid #f3f4f6", padding: "4px 0 12px" }}>
+                  <iframe
+                    src={`/dashboard/questions/review?focus=${q.id}`}
+                    style={{ width: "100%", height: "600px", border: "none", display: "block" }}
+                    title={`Editor for ${q.code}`}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* ── Global print styles ── */}
+      {/* ── General exam — shown on screen; printed by "Print General Exam" ── */}
+      <div className={printMode === "batched" ? "batched-only" : undefined}>
+        {thumbnailUrl && (
+          <div
+            className="cover-page"
+            style={{ position: "relative", width: "210mm", height: "297mm", breakAfter: "page", overflow: "hidden", margin: "0 auto" }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={thumbnailUrl} alt="Cover page" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "fill" }} />
+          </div>
+        )}
+        {orderedQuestions.map((q, qIdx) => {
+          const globalNum = qIdx + 1;
+          const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
+          const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
+          return (
+            <div key={q.id}>
+              {isFirstSectionA && (
+                <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: qIdx === 0 ? undefined : "page" }}>Section A</div>
+              )}
+              {isFirstSectionB && (
+                <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
+              )}
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "15mm 20mm 10mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6mm" }}>
+                  <p style={{ fontFamily: "serif", fontSize: "14pt", fontWeight: "bold", margin: 0, color: "#000" }}>{globalNum}.</p>
+                  <button
+                    className="no-print"
+                    onClick={() => setOpenEditors((prev) => { const next = new Set(prev); if (next.has(q.id)) next.delete(q.id); else next.add(q.id); return next; })}
+                    style={{ fontSize: "9pt", color: "#6366f1", background: "none", border: "1px solid #c7d2fe", borderRadius: "4px", padding: "1px 6px", lineHeight: 1.4, cursor: "pointer" }}
+                  >
+                    ✏️ {openEditors.has(q.id) ? "Close editor" : `Edit ${q.code}`}
+                  </button>
+                </div>
+                {openEditors.has(q.id) && (
+                  <div className="no-print" style={{ marginBottom: "6mm" }}>
+                    <iframe
+                      src={`/dashboard/questions/review?focus=${q.id}`}
+                      style={{ width: "100%", height: "640px", border: "1px solid #e5e7eb", borderRadius: "8px" }}
+                      title={`Editor for ${q.code}`}
+                    />
+                  </div>
+                )}
+                <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
+                  {q.images.length === 0 ? (
+                    <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>[No images available for this question]</p>
+                  ) : (
+                    q.images.map((img) => img.url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "170mm", height: "auto", display: "block" }} />
+                    ) : null)
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Per-student batched blocks — hidden on screen; printed by "Print Batched Exam" ── */}
+      <div className="general-only">
+        {students.map((student, sIdx) => {
+          const name = studentDisplayName(student);
+          return (
+            <div key={student.id} className="student-block" style={{ breakBefore: sIdx === 0 ? undefined : "page" }}>
+              {thumbnailUrl && (
+                <div className="cover-page" style={{ position: "relative", width: "210mm", height: "297mm", breakAfter: "page", overflow: "hidden", margin: "0 auto" }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={thumbnailUrl} alt="Cover page" style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "fill" }} />
+                  {nameField ? (
+                    <div style={{ position: "absolute", left: `${nameField.x * 100}%`, top: `${nameField.y * 100}%`, width: `${nameField.w * 100}%`, height: `${nameField.h * 100}%`, display: "flex", alignItems: "center", fontFamily: "serif", fontSize: "14pt", fontWeight: "normal", color: "#000", overflow: "hidden", whiteSpace: "nowrap" }}>
+                      {name}
+                    </div>
+                  ) : (
+                    <div style={{ position: "absolute", top: "8mm", right: "10mm", fontFamily: "serif", fontSize: "13pt", color: "#000" }}>{name}</div>
+                  )}
+                </div>
+              )}
+              {orderedQuestions.map((q, qIdx) => {
+                const globalNum = qIdx + 1;
+                const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
+                const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
+                const qrUrl = qrCodes[student.id]?.[q.code] ?? "";
+                return (
+                  <div key={q.id}>
+                    {isFirstSectionA && (
+                      <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: sIdx === 0 && qIdx === 0 ? undefined : "page" }}>Section A</div>
+                    )}
+                    {isFirstSectionB && (
+                      <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
+                    )}
+                    <div className="question-page" style={{ padding: "15mm 20mm 10mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm" }}>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6mm" }}>
+                        <p style={{ fontFamily: "serif", fontSize: "14pt", fontWeight: "bold", margin: 0, color: "#000" }}>{globalNum}.</p>
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
+                        {q.images.length === 0 ? (
+                          <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>[No images available for this question]</p>
+                        ) : (
+                          q.images.map((img) => img.url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "170mm", height: "auto", display: "block" }} />
+                          ) : null)
+                        )}
+                      </div>
+                      {qrUrl && (
+                        <div style={{ position: "absolute", bottom: "8mm", right: "15mm", display: "flex", flexDirection: "column", alignItems: "center", gap: "1mm" }}>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={qrUrl} alt="QR" style={{ width: 56, height: 56 }} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+
+      {students.length === 0 && !loading && (
+        <p className="no-print text-center text-gray-400 text-sm mt-8">No students found for this class — batched print unavailable.</p>
+      )}
+
       <style>{`
+        /* Screen: always hide batched blocks */
+        @media screen {
+          .general-only { display: none !important; }
+        }
+
         @media print {
           .no-print { display: none !important; }
+
+          /* General print: hide batched blocks */
+          body.print-general .general-only { display: none !important; }
+          /* Batched print: hide general block */
+          body.print-batched .batched-only { display: none !important; }
+          /* Default (no class set): treat as general */
+          body:not(.print-batched) .general-only { display: none !important; }
 
           @page {
             size: A4;
@@ -536,6 +622,8 @@ export function TestPreviewClient() {
           }
         }
       `}</style>
-    </>
+      </div> {/* end scrollable body */}
+    </div>
   );
 }
+

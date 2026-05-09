@@ -262,7 +262,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
               const id = e.target.value;
               if (id) handleLoadLayout(id);
             }}
-            className="rounded border border-blue-300 px-2 py-1 text-sm text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="rounded border border-blue-300 px-2 py-1 text-sm text-blue-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
             disabled={layoutLoading || layouts.length === 0}
           >
             {layouts.map((l) => (
@@ -288,7 +288,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
             value={layoutName}
             onChange={e => setLayoutName(e.target.value)}
             placeholder="Layout name"
-            className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
             style={{ width: 120 }}
           />
           <button
@@ -304,7 +304,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
           <select
             value={copySource}
             onChange={(e) => setCopySource(e.target.value)}
-            className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
           >
             {ALL_GROUPS.filter((g) => g !== classGroup).map((g) => (
               <option key={g} value={g}>{g}</option>
@@ -368,7 +368,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
                       <select
                         value={cfg.seat_count}
                         onChange={(e) => updateCount(idx, Number(e.target.value) as SeatCount)}
-                        className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
                         <option value={2}>2 seats</option>
                         <option value={3}>3 seats</option>

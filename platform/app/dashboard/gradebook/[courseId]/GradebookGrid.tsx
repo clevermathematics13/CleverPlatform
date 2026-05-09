@@ -1,0 +1,508 @@
+"use client";
+
+import { useState, useCallback } from "react";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type TestItem = {
+  id: string;
+  question_number: number;
+  part_label: string;
+  max_marks: number;
+  sort_order: number;
+};
+
+export type Test = {
+  id: string;
+  name: string;
+  test_date: string | null;
+  total_marks: number;
+  component: "P1" | "P2" | "P3" | "IA" | null;
+  items: TestItem[];
+};
+
+export type Student = {
+  profile_id: string;
+  name: string;
+};
+
+type MarksState = Record<string, Record<string, number | null>>;
+// marks[testItemId][profileId] = marksAwarded | null
+
+// ─── Grade helpers ─────────────────────────────────────────────────────────────
+
+const COMPONENTS = ["P1", "P2", "P3", "IA"] as const;
+
+function pctToGrade(pct: number): number {
+  if (pct >= 80) return 7;
+  if (pct >= 70) return 6;
+  if (pct >= 60) return 5;
+  if (pct >= 50) return 4;
+  if (pct >= 40) return 3;
+  if (pct >= 30) return 2;
+  return 1;
+}
+
+function gradeColor(grade: number | null): string {
+  if (grade === null) return "text-da-muted";
+  if (grade === 7) return "text-emerald-400";
+  if (grade === 6) return "text-green-400";
+  if (grade === 5) return "text-lime-400";
+  if (grade === 4) return "text-yellow-400";
+  if (grade === 3) return "text-orange-400";
+  if (grade === 2) return "text-red-400";
+  return "text-red-600";
+}
+
+function gradeBg(grade: number | null): string {
+  if (grade === null) return "";
+  if (grade === 7) return "bg-emerald-950/30";
+  if (grade === 6) return "bg-green-950/30";
+  if (grade === 5) return "bg-lime-950/30";
+  if (grade === 4) return "bg-yellow-950/30";
+  if (grade === 3) return "bg-orange-950/30";
+  if (grade === 2) return "bg-red-950/30";
+  return "bg-red-950/50";
+}
+
+function computeTestScore(
+  profileId: string,
+  test: Test,
+  marks: MarksState
+): { grade: number | null; earned: number; pct: number | null } {
+  let earned = 0;
+  let hasAny = false;
+  for (const item of test.items) {
+    const m = marks[item.id]?.[profileId];
+    if (m !== null && m !== undefined) {
+      earned += m;
+      hasAny = true;
+    }
+  }
+  if (!hasAny || test.total_marks <= 0) {
+    return { grade: null, earned: 0, pct: null };
+  }
+  const pct = (earned / test.total_marks) * 100;
+  return { grade: pctToGrade(pct), earned, pct };
+}
+
+function computeComponentGrade(
+  profileId: string,
+  component: "P1" | "P2" | "P3" | "IA",
+  tests: Test[],
+  marks: MarksState
+): number | null {
+  const compTests = tests.filter((t) => t.component === component);
+  if (compTests.length === 0) return null;
+  let totalEarned = 0;
+  let totalPossible = 0;
+  let hasAny = false;
+  for (const test of compTests) {
+    const { earned, pct } = computeTestScore(profileId, test, marks);
+    if (pct !== null) {
+      totalEarned += earned;
+      totalPossible += test.total_marks;
+      hasAny = true;
+    }
+  }
+  if (!hasAny || totalPossible === 0) return null;
+  return pctToGrade((totalEarned / totalPossible) * 100);
+}
+
+function computeOverallGrade(
+  profileId: string,
+  tests: Test[],
+  marks: MarksState
+): { grade: number | null; pct: number | null } {
+  let totalEarned = 0;
+  let totalPossible = 0;
+  let hasAny = false;
+  for (const test of tests) {
+    const { earned, pct } = computeTestScore(profileId, test, marks);
+    if (pct !== null) {
+      totalEarned += earned;
+      totalPossible += test.total_marks;
+      hasAny = true;
+    }
+  }
+  if (!hasAny || totalPossible === 0) return { grade: null, pct: null };
+  const pct = (totalEarned / totalPossible) * 100;
+  return { grade: pctToGrade(pct), pct };
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
+
+interface Props {
+  tests: Test[];
+  students: Student[];
+  initialMarks: Record<string, Record<string, number>>;
+}
+
+export function GradebookGrid({ tests, students, initialMarks }: Props) {
+  const [expandedOverall, setExpandedOverall] = useState(false);
+  const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
+
+  // Build mutable marks state from server-provided initial data
+  const [marks, setMarks] = useState<MarksState>(() => {
+    const state: MarksState = {};
+    for (const [itemId, studentMarks] of Object.entries(initialMarks)) {
+      state[itemId] = {};
+      for (const [profileId, m] of Object.entries(studentMarks)) {
+        state[itemId][profileId] = m;
+      }
+    }
+    return state;
+  });
+
+  const [saving, setSaving] = useState<Set<string>>(new Set());
+  const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  const toggleTest = useCallback((testId: string) => {
+    setExpandedTests((prev) => {
+      const next = new Set(prev);
+      if (next.has(testId)) next.delete(testId);
+      else next.add(testId);
+      return next;
+    });
+  }, []);
+
+  const handleChange = useCallback(
+    (itemId: string, profileId: string, raw: string) => {
+      const parsed = raw === "" ? null : parseInt(raw, 10);
+      setMarks((prev) => ({
+        ...prev,
+        [itemId]: {
+          ...(prev[itemId] ?? {}),
+          [profileId]: Number.isNaN(parsed as number) ? null : parsed,
+        },
+      }));
+    },
+    []
+  );
+
+  const handleBlur = useCallback(
+    async (itemId: string, profileId: string, maxMarks: number) => {
+      const key = `${itemId}:${profileId}`;
+      const value = marks[itemId]?.[profileId] ?? null;
+
+      if (value !== null && (value < 0 || value > maxMarks)) {
+        setCellErrors((prev) => ({
+          ...prev,
+          [key]: `0–${maxMarks}`,
+        }));
+        return;
+      }
+      setCellErrors((prev) => {
+        const n = { ...prev };
+        delete n[key];
+        return n;
+      });
+
+      setSaving((prev) => new Set(prev).add(key));
+      try {
+        const res = await fetch("/api/gradebook/marks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            testItemId: itemId,
+            studentId: profileId,
+            marksAwarded: value,
+          }),
+        });
+        if (!res.ok) {
+          const d = (await res.json()) as { error?: string };
+          setCellErrors((prev) => ({
+            ...prev,
+            [key]: d.error ?? "Save failed",
+          }));
+        }
+      } catch {
+        setCellErrors((prev) => ({ ...prev, [key]: "Network error" }));
+      } finally {
+        setSaving((prev) => {
+          const n = new Set(prev);
+          n.delete(key);
+          return n;
+        });
+      }
+    },
+    [marks]
+  );
+
+  // ── Styles ───────────────────────────────────────────────────────────────────
+
+  const thBase =
+    "px-2 py-2 text-center text-xs font-medium text-da-muted bg-da-surface border-b border-da-border whitespace-nowrap select-none";
+  const thBtn = `${thBase} cursor-pointer hover:bg-da-hover hover:text-da-accent transition-colors`;
+  const tdBase = "px-2 py-2 text-center text-sm border-b border-da-border/50";
+
+  // ── Render ───────────────────────────────────────────────────────────────────
+
+  return (
+    <div className="rounded-xl border border-da-border bg-da-surface overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="border-collapse min-w-full text-da-text text-sm">
+          {/* ── Header ─────────────────────────────────────────────────── */}
+          <thead>
+            <tr>
+              {/* Student name */}
+              <th
+                className={`${thBase} text-left sticky left-0 z-20 min-w-[160px] bg-da-surface border-r border-da-border px-4`}
+              >
+                Student
+              </th>
+
+              {/* Overall ← or P1/P2/P3/IA columns */}
+              {expandedOverall ? (
+                COMPONENTS.map((comp, i) => (
+                  <th
+                    key={comp}
+                    className={thBtn}
+                    title="Click any to collapse"
+                    onClick={() => setExpandedOverall(false)}
+                  >
+                    {i === 0 && (
+                      <span className="block text-[10px] text-da-accent/70">
+                        ◂ Overall
+                      </span>
+                    )}
+                    {comp}
+                  </th>
+                ))
+              ) : (
+                <th
+                  className={`${thBtn} min-w-[80px]`}
+                  title="Click to expand into P1, P2, P3, IA"
+                  onClick={() => setExpandedOverall(true)}
+                >
+                  Overall
+                  <span className="block text-[10px] text-da-accent">▸</span>
+                </th>
+              )}
+
+              {/* Test columns */}
+              {tests.map((test) => {
+                const isExp = expandedTests.has(test.id);
+
+                if (isExp) {
+                  if (test.items.length === 0) {
+                    return (
+                      <th
+                        key={test.id}
+                        className={thBtn}
+                        onClick={() => toggleTest(test.id)}
+                      >
+                        {test.name}
+                        <span className="block text-[10px] text-da-accent">
+                          ◂
+                        </span>
+                      </th>
+                    );
+                  }
+                  return test.items.map((item, idx) => (
+                    <th
+                      key={item.id}
+                      className={`${thBtn} min-w-[52px]`}
+                      onClick={idx === 0 ? () => toggleTest(test.id) : undefined}
+                      title={idx === 0 ? "Click to collapse" : undefined}
+                    >
+                      {idx === 0 && (
+                        <span className="block text-[10px] text-da-accent/70 max-w-[100px] truncate">
+                          ◂ {test.name}
+                        </span>
+                      )}
+                      Q{item.question_number}
+                      {item.part_label ? item.part_label : ""}
+                      <span className="block text-[10px] text-da-muted">
+                        /{item.max_marks}
+                      </span>
+                    </th>
+                  ));
+                }
+
+                return (
+                  <th
+                    key={test.id}
+                    className={`${thBtn} min-w-[90px] max-w-[130px]`}
+                    onClick={() => toggleTest(test.id)}
+                    title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nClick to expand`}
+                  >
+                    <span className="block truncate">{test.name}</span>
+                    {test.test_date && (
+                      <span className="block text-[10px] text-da-muted">
+                        {new Date(test.test_date + "T00:00:00").toLocaleDateString(
+                          "en-US",
+                          { month: "short", day: "numeric" }
+                        )}
+                      </span>
+                    )}
+                    <span className="block text-[10px] text-da-accent">▸</span>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+
+          {/* ── Body ───────────────────────────────────────────────────── */}
+          <tbody>
+            {students.length === 0 && (
+              <tr>
+                <td
+                  colSpan={999}
+                  className="px-6 py-10 text-center text-da-muted"
+                >
+                  No students enrolled in this course.
+                </td>
+              </tr>
+            )}
+
+            {students.map((student, rowIdx) => {
+              const evenRow = rowIdx % 2 === 0;
+              const rowBg = evenRow ? "bg-da-surface" : "bg-da-bg/50";
+              const stickyBg = evenRow ? "bg-da-surface" : "bg-[#1b1b33]";
+              const { grade: overallGrade, pct: overallPct } =
+                computeOverallGrade(student.profile_id, tests, marks);
+
+              return (
+                <tr key={student.profile_id} className={rowBg}>
+                  {/* Name */}
+                  <td
+                    className={`${tdBase} text-left sticky left-0 z-10 border-r border-da-border px-4 font-medium ${stickyBg}`}
+                  >
+                    {student.name}
+                  </td>
+
+                  {/* Overall / Components */}
+                  {expandedOverall ? (
+                    COMPONENTS.map((comp) => {
+                      const g = computeComponentGrade(
+                        student.profile_id,
+                        comp as "P1" | "P2" | "P3" | "IA",
+                        tests,
+                        marks
+                      );
+                      return (
+                        <td
+                          key={comp}
+                          className={`${tdBase} font-bold text-base ${gradeColor(g)} ${gradeBg(g)}`}
+                        >
+                          {g ?? "—"}
+                        </td>
+                      );
+                    })
+                  ) : (
+                    <td
+                      className={`${tdBase} font-bold text-lg ${gradeColor(overallGrade)} ${gradeBg(overallGrade)}`}
+                      title={
+                        overallPct !== null
+                          ? `${overallPct.toFixed(1)}%`
+                          : undefined
+                      }
+                    >
+                      {overallGrade ?? "—"}
+                    </td>
+                  )}
+
+                  {/* Test cells */}
+                  {tests.map((test) => {
+                    const isExp = expandedTests.has(test.id);
+
+                    if (isExp) {
+                      if (test.items.length === 0) {
+                        return (
+                          <td key={test.id} className={`${tdBase} text-da-muted`}>
+                            —
+                          </td>
+                        );
+                      }
+                      return test.items.map((item) => {
+                        const cellKey = `${item.id}:${student.profile_id}`;
+                        const val =
+                          marks[item.id]?.[student.profile_id] ??
+                          null;
+                        const isSaving = saving.has(cellKey);
+                        const err = cellErrors[cellKey];
+
+                        return (
+                          <td key={item.id} className={`${tdBase} p-1`}>
+                            <input
+                              type="number"
+                              min={0}
+                              max={item.max_marks}
+                              value={val === null ? "" : val}
+                              onChange={(e) =>
+                                handleChange(
+                                  item.id,
+                                  student.profile_id,
+                                  e.target.value
+                                )
+                              }
+                              onBlur={() =>
+                                handleBlur(
+                                  item.id,
+                                  student.profile_id,
+                                  item.max_marks
+                                )
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter")
+                                  (e.target as HTMLInputElement).blur();
+                              }}
+                              className={[
+                                "w-12 rounded text-center text-sm py-1 bg-da-bg",
+                                "border focus:outline-none focus:ring-1 transition-colors",
+                                err
+                                  ? "border-red-500 focus:ring-red-500"
+                                  : isSaving
+                                  ? "border-da-accent/60 focus:ring-da-accent/40"
+                                  : "border-da-border focus:ring-da-accent/50 focus:border-da-accent",
+                                "text-da-text",
+                              ].join(" ")}
+                              title={err ?? `Max: ${item.max_marks}`}
+                            />
+                          </td>
+                        );
+                      });
+                    }
+
+                    // Collapsed test: show IB grade
+                    const { grade, pct } = computeTestScore(
+                      student.profile_id,
+                      test,
+                      marks
+                    );
+                    return (
+                      <td
+                        key={test.id}
+                        className={`${tdBase} font-semibold text-base ${gradeColor(grade)} ${gradeBg(grade)}`}
+                        title={pct !== null ? `${pct.toFixed(1)}%` : undefined}
+                      >
+                        {grade ?? "—"}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Legend */}
+      <div className="px-4 py-3 border-t border-da-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-da-muted">
+        <span>Click column headers to expand / collapse.</span>
+        <span className="text-da-border">|</span>
+        <span>IB bands (approx.):</span>
+        {([7, 6, 5, 4, 3, 2, 1] as const).map((g) => (
+          <span key={g} className={`font-bold ${gradeColor(g)}`}>
+            {g}
+          </span>
+        ))}
+        <span className="text-da-border">|</span>
+        <span>Hover grade cells for percentage. Enter marks and press Tab/Enter to save.</span>
+      </div>
+    </div>
+  );
+}

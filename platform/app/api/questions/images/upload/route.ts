@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 // POST /api/questions/images/upload
 // Accepts a base64-encoded image, uploads to storage, inserts a question_images row.
-// Body: { questionId: string, imageType: "question"|"markscheme", data: string (base64), mimeType: string }
+// Body: { questionId: string, imageType: "question"|"markscheme", data: string (base64), mimeType: string, partId?: string }
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -19,11 +19,12 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { questionId, imageType, data: base64, mimeType } = body as {
+  const { questionId, imageType, data: base64, mimeType, partId } = body as {
     questionId: string;
     imageType: "question" | "markscheme";
     data: string;
     mimeType: string;
+    partId?: string | null;
   };
 
   if (!questionId || !imageType || !base64) {
@@ -42,6 +43,21 @@ export async function POST(request: NextRequest) {
 
   if (!question) {
     return NextResponse.json({ error: "Question not found" }, { status: 404 });
+  }
+
+  if (partId) {
+    const { data: part } = await supabase
+      .from("question_parts")
+      .select("id, question_id")
+      .eq("id", partId)
+      .single();
+
+    if (!part || part.question_id !== questionId) {
+      return NextResponse.json(
+        { error: "partId must belong to the same question" },
+        { status: 400 }
+      );
+    }
   }
 
   // Get current max sort_order for this question+type to append at the end
@@ -91,11 +107,12 @@ export async function POST(request: NextRequest) {
     .from("question_images")
     .insert({
       question_id: questionId,
+      part_id: partId ?? null,
       image_type: imageType,
       storage_path: storagePath,
       sort_order: nextSortOrder,
     })
-    .select("id, image_type, storage_path, sort_order, alt_text")
+    .select("id, part_id, image_type, storage_path, sort_order, alt_text")
     .single();
 
   if (dbErr || !newRow) {

@@ -83,6 +83,39 @@ No explanation, no markdown code fences, no preamble.
 ${IB_LATEX_STYLE_GUIDE}`;
 
 /**
+ * System prompt for Claude when classifying a new question from OCR output.
+ * Returns structured JSON with part labels, mark counts, command terms, and subtopic suggestions.
+ * Used in the AddQuestionWizard image → OCR → review flow.
+ */
+export const IB_CLASSIFY_SYSTEM = `You are an expert IBDP Mathematics question analyst.
+Given question and mark scheme LaTeX for an IB Mathematics past paper question, analyse the content and return a JSON object.
+
+Count marks by looking for IB mark codes in the mark scheme:
+- M1 or (M1): Method mark — counts as 1 mark
+- A1 or (A1): Accuracy mark — counts as 1 mark
+- R1: Reasoning mark — counts as 1 mark
+- AG: Answer given — does NOT count as a mark
+- ft, N0, N1, N2, N3: do not add to the total
+
+Sum marks per part label, e.g. everything under "(a)" in the mark scheme counts toward part "a".
+
+Identify the mathematical command term for each part from the question text (e.g. Find, Calculate, Show that, Prove that, Hence, Describe, Sketch, Write down, Determine, Solve, etc.).
+
+From the available subtopics list provided, choose up to 3 subtopic codes that best match the mathematical content of each part.
+
+Return ONLY a valid JSON object with NO markdown fences, NO explanation, in exactly this format:
+{
+  "parts": [
+    { "label": "a", "marks": 4, "commandTerm": "Find", "subtopicCodes": ["2.1", "5.1"] },
+    { "label": "b", "marks": 2, "commandTerm": "Hence", "subtopicCodes": ["5.1"] }
+  ]
+}
+
+If sub-parts are nested (e.g. (b)(i), (b)(ii)), use combined labels "bi", "bii" etc.
+The "label" values MUST come from the "Parts detected" list supplied by the user (or infer from the LaTeX if the list is empty).
+If the question has no sub-parts, return a single entry with label "".`;
+
+/**
  * Apply IB-style post-processing to raw MathPix LaTeX output.
  *
  * Replaces Mathpix defaults with IB-correct equivalents:
@@ -95,10 +128,16 @@ ${IB_LATEX_STYLE_GUIDE}`;
  * @returns    Post-processed LaTeX string ready for storage / rendering
  */
 export function postProcessMathpixLatex(raw: string): string {
-  return raw
+  let out = raw
     .replaceAll("\\begin{enumerate}", "\\begin{IBPart}")
     .replaceAll("\\end{enumerate}", "\\end{IBPart}")
     .replaceAll("\\mathbf{", "\\boldsymbol{")
     .replaceAll("\\bm{", "\\boldsymbol{")
     .replaceAll("\\vec{", "\\boldsymbol{");
+
+  // IB mark scheme: "eg" as a standalone word should be "eg.  " (with period + two spaces)
+  // Only replace outside math delimiters — split on $…$ and \\[…\\] segments and apply only to text parts.
+  out = out.replace(/\beg\b(?!\.)/g, "eg.  ");
+
+  return out;
 }

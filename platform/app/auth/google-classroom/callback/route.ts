@@ -46,7 +46,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Classroom token for school account (student rosters)
-    const token = await exchangeCodeForToken(code);
+    const redirectUri = `${base}/auth/google-classroom/callback`;
+    const token = await exchangeCodeForToken(code, redirectUri);
     await saveTokenToCookie(token);
     return NextResponse.redirect(`${base}/dashboard/students?gc_connected=true`);
   } catch {

@@ -2,12 +2,47 @@
 
 import katex from "katex";
 import React from "react";
+import dynamic from "next/dynamic";
+import { type IbGraphSpec, GRAPH_MARKER_RE, decodeGraphSpec } from "./IbGraph";
+
+const IbGraph = dynamic(() => import("./IbGraph"), { ssr: false });
 
 interface Props {
   /** Raw string, may contain \(...\) inline math and \[...\] display math.
    *  Everything outside delimiters is rendered as plain text. */
   latex: string;
   className?: string;
+  graphImageUrl?: string | null;
+  /** When true, strips lines that are purely mark-scheme annotations (A1, M1, Total [N marks])
+   *  from the rendered output. Use for question content displays. */
+  stripMarkAnnotations?: boolean;
+}
+
+const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
+const TABULAR_MARKER_RE = /^\[\[TABULAR_(\d+)\]\]$/;
+const GRAPH_JSON_LINE_RE = /^\[\[GRAPH_JSON:[A-Za-z0-9+/=]+\]\]$/;
+
+// --- Tabular environment support ---
+interface TabularRow { hlineBefore: boolean; cells: string[] }
+interface ParsedTabular { colSpec: string; rows: TabularRow[]; trailingHline: boolean }
+
+function parseTabular(colSpec: string, body: string): ParsedTabular {
+  const rows: TabularRow[] = [];
+  let trailingHline = false;
+  for (const rawRow of body.split(/\\\\/)) {
+    let row = rawRow.trim();
+    const hlineBefore = row.startsWith("\\hline");
+    if (hlineBefore) row = row.slice(6).trim();
+    if (!row) { if (hlineBefore) trailingHline = true; continue; }
+    trailingHline = false;
+    rows.push({ hlineBefore, cells: row.split("&").map((c) => c.trim()) });
+  }
+  return { colSpec, rows, trailingHline };
+}
+
+function parseColSpec(spec: string): { aligns: ("l" | "r" | "c")[]; hasBorders: boolean } {
+  const aligns = (spec.match(/[lrc]/g) ?? []) as ("l" | "r" | "c")[];
+  return { aligns, hasBorders: spec.includes("|") };
 }
 
 // Split a string into alternating text / math segments.
@@ -77,11 +112,16 @@ function renderTextLine(line: string, key: string | number): React.ReactNode {
   if (line.includes("\\hfill")) {
     const hfillIdx = line.indexOf("\\hfill");
     const before = line.slice(0, hfillIdx).trim();
-    const markCode = line.slice(hfillIdx + 7).trim(); // 7 = "\\hfill".length
+    const markCode = line.slice(hfillIdx + 7).trim(); // skip \hfill + trailing space
+    // If the part before \hfill is itself a mark code (e.g. "A1", "(M1)", "N2", "AG"),
+    // group it with the right-side code rather than showing it as left content.
+    const isMarkCode = /^\(?[A-Z]{1,2}\d*\)?$/.test(before);
     return (
       <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-        <span>{before || null}</span>
-        <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>{markCode}</span>
+        <span>{isMarkCode ? null : (before || null)}</span>
+        <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
+          {isMarkCode ? `${before} ${markCode}` : markCode}
+        </span>
       </span>
     );
   }
@@ -110,8 +150,57 @@ function preprocessLatex(src: string): string {
   return out;
 }
 
-export default function LatexRenderer({ latex, className }: Props) {
-  const segments = splitSegments(preprocessLatex(latex));
+export default function LatexRenderer({ latex, className, graphImageUrl, stripMarkAnnotations }: Props) {
+  const MARK_LINE = /^(?:\\hfill\s*)?(?:\s*[\(\[]?(?:A|M|R|N)\d*[\)\]]?\s*)+$|^Total\s+\[\d+\s+marks?\]\s*$|^\[\d+\s+marks?\]\s*$/i;
+  function applyStrip(src: string): string {
+    if (!stripMarkAnnotations) return src;
+    return src.split("\n").filter((line) => { const t = line.trim(); return t === "" || !MARK_LINE.test(t); }).join("\n");
+  }
+  const tabularStore: ParsedTabular[] = [];
+  const preprocessed = preprocessLatex(applyStrip(latex)).replace(
+    /\\begin\{tabular\}\{([^}]*)\}([\s\S]*?)\\end\{tabular\}/g,
+    (_, colSpec: string, body: string) => {
+      const idx = tabularStore.length;
+      tabularStore.push(parseTabular(colSpec, body));
+      return `[[TABULAR_${idx}]]`;
+    }
+  );
+  const segments = splitSegments(preprocessed);
+
+  function renderTabularTable(tabular: ParsedTabular, key: string | number): React.ReactNode {
+    const { aligns, hasBorders } = parseColSpec(tabular.colSpec);
+    const alignMap: Record<string, React.CSSProperties["textAlign"]> = { l: "left", r: "right", c: "center" };
+    const border = hasBorders ? "1px solid #374151" : undefined;
+    return (
+      <table
+        key={key}
+        style={{ borderCollapse: "collapse", margin: "0.5em 0",
+          fontFamily: "'Times New Roman', Times, Georgia, serif", fontSize: "inherit" }}
+      >
+        <tbody>
+          {tabular.rows.map((row, ri) => (
+            <tr key={ri}>
+              {row.cells.map((cell, ci) => (
+                <td
+                  key={ci}
+                  style={{
+                    padding: "3px 10px",
+                    textAlign: alignMap[aligns[ci] ?? "l"] ?? "left",
+                    borderLeft: border,
+                    borderRight: ci === row.cells.length - 1 ? border : undefined,
+                    borderTop: row.hlineBefore ? border : undefined,
+                    borderBottom: tabular.trailingHline && ri === tabular.rows.length - 1 ? border : undefined,
+                  }}
+                >
+                  <LatexRenderer latex={cell} />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
 
   return (
     <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
@@ -122,8 +211,46 @@ export default function LatexRenderer({ latex, className }: Props) {
           const lines = seg.content.split("\n");
           const nodes: React.ReactNode[] = [];
           lines.forEach((line, j) => {
+            const trimmed = line.trim();
+            // Check for tabular marker
+            const tabularMatch = trimmed.match(TABULAR_MARKER_RE);
+            if (tabularMatch) {
+              const idx = parseInt(tabularMatch[1], 10);
+              if (tabularStore[idx]) nodes.push(renderTabularTable(tabularStore[idx], `${i}-${j}-tabular`));
+              return;
+            }
+            // [[GRAPH_JSON:<base64>]] — render an IbGraph component
+            if (GRAPH_JSON_LINE_RE.test(trimmed)) {
+              GRAPH_MARKER_RE.lastIndex = 0;
+              const gm = GRAPH_MARKER_RE.exec(trimmed);
+              if (gm) {
+                const spec: IbGraphSpec | null = decodeGraphSpec(gm[1]);
+                if (spec) {
+                  nodes.push(<IbGraph key={`${i}-${j}-graph-json`} spec={spec} />);
+                  return;
+                }
+              }
+            }
+            if (trimmed === GRAPH_IMAGE_MARKER) {
+              nodes.push(
+                graphImageUrl ? (
+                  <img
+                    key={`${i}-${j}-graph`}
+                    src={graphImageUrl}
+                    alt="Graph image"
+                    className="block my-2 max-w-full h-auto border border-gray-200 rounded"
+                  />
+                ) : (
+                  <span key={`${i}-${j}-graph-placeholder`} className="text-gray-500 italic">
+                    [Graph image]
+                  </span>
+                )
+              );
+              if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-graph-br`} />);
+              return;
+            }
             // Skip blank lines that only exist to separate equations
-            if (line.trim() === "") return;
+            if (trimmed === "") return;
             nodes.push(renderTextLine(line, `${i}-${j}-line`));
             // Add a single line break after non-blank lines (except the last)
             if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-br`} />);

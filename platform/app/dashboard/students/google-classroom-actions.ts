@@ -3,6 +3,7 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import {
   getAuthUrl,
   getTokenFromCookie,
@@ -13,8 +14,31 @@ import {
   type ClassroomStudent,
 } from "@/lib/google-classroom";
 
+function getRequestBaseUrl(forwardedHost: string | null, forwardedProto: string | null, host: string | null): string | null {
+  if (forwardedHost) {
+    return `${forwardedProto || "https"}://${forwardedHost}`;
+  }
+  if (host) {
+    const proto = host.includes("localhost") ? "http" : "https";
+    return `${proto}://${host}`;
+  }
+  return null;
+}
+
 export async function getGoogleAuthUrl(): Promise<string> {
   await requireTeacher();
+
+  const headerStore = await headers();
+  const baseUrl = getRequestBaseUrl(
+    headerStore.get("x-forwarded-host"),
+    headerStore.get("x-forwarded-proto"),
+    headerStore.get("host")
+  );
+
+  if (baseUrl) {
+    return getAuthUrl(`${baseUrl}/auth/google-classroom/callback`);
+  }
+
   return getAuthUrl();
 }
 

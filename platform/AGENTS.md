@@ -42,3 +42,27 @@ These rules apply to **all LaTeX stored in `question_parts.content_latex` and `q
 - Extra spaces inside `\boldsymbol{ a }` → normalise to `\boldsymbol{a}`.
 - `\mathbf{` that Mathpix emits → replace with `\boldsymbol{`.
 
+## Unit Tests
+
+Vitest runs automatically in watch mode via the **"Vitest watch (auto)"** VS Code task (`runOn: folderOpen`). It re-runs affected tests the moment any `.ts` file is saved — no manual trigger needed.
+
+| Test file | Covers |
+|---|---|
+| `app/dashboard/questions/review/split-draft-into-parts.test.ts` | `splitDraftIntoParts()` — IBPart label parsing |
+
+Manual commands when needed:
+```bash
+cd platform && npm test          # single run, exits
+cd platform && npx vitest        # watch mode (same as the auto task)
+```
+
+### When to add a new test
+- You fix a parsing bug → add a regression test that would have caught it.
+- You extract a new **pure function** into its own module → add a `*.test.ts` beside it.
+- Do **not** write unit tests for React components or Next.js API routes.
+
+### Rules
+- Test files live next to the module they cover (same directory).
+- `npm test` must exit 0 on `main` at all times.
+- All tests must pass before merging or shipping a feature.
+

@@ -1,8 +1,69 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import { IB_CORRECTION_SYSTEM } from "@/lib/latex-utils";
+import { splitDraftIntoParts } from "./split-draft-into-parts";
+
+const DEFAULT_COMMAND_TERMS = [
+  "Calculate",
+  "Classify",
+  "Comment",
+  "Compare",
+  "Complete",
+  "Construct",
+  "Copy",
+  "Deduce",
+  "Demonstrate",
+  "Describe",
+  "Determine",
+  "Differentiate",
+  "Distinguish",
+  "Draw",
+  "Estimate",
+  "Evaluate",
+  "Expand",
+  "Explain",
+  "Express",
+  "Factorise",
+  "Find",
+  "Give",
+  "Hence",
+  "Identify",
+  "Integrate",
+  "Interpret",
+  "Investigate",
+  "Justify",
+  "Label",
+  "Let",
+  "List",
+  "Mark",
+  "Measure",
+  "Outline",
+  "Plot",
+  "Predict",
+  "Prove",
+  "Represent",
+  "Show",
+  "Simplify",
+  "Sketch",
+  "Solve",
+  "State",
+  "Suggest",
+  "Trace",
+  "Using",
+  "Verify",
+  "Write down",
+];
+
+function canonicalCommandTerm(value: string | null | undefined): string {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return "";
+  const canonical = DEFAULT_COMMAND_TERMS.find(
+    (term) => term.toLowerCase() === trimmed.toLowerCase(),
+  );
+  return canonical ?? "";
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -23,6 +84,17 @@ interface QuestionImage {
   image_type: "question" | "markscheme";
   sort_order: number;
   url?: string | null;
+}
+
+interface PartMetadataVersion {
+  id: string;
+  part_label: string | null;
+  marks: number | null;
+  command_term: string | null;
+  subtopic_codes: string[] | null;
+  sort_order: number;
+  changed_by: string | null;
+  created_at: string;
 }
 
 interface Question {
@@ -99,64 +171,171 @@ async function setVerified(questionId: string, verified: boolean) {
   });
 }
 
+type PartMetadataPayload = {
+  partLabel: string;
+  marks: number | null;
+  commandTerm: string;
+  subtopicCodes: string[];
+};
+
+async function savePartMetadata(partId: string, payload: PartMetadataPayload): Promise<QuestionPart> {
+  const res = await fetch("/api/questions/part-metadata", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ partId, ...payload }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? "Failed to save metadata");
+  return data.part as QuestionPart;
+}
+
+async function createPartMetadata(questionId: string, payload: PartMetadataPayload): Promise<QuestionPart> {
+  const res = await fetch("/api/questions/part-metadata", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ questionId, ...payload }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? "Failed to create part metadata");
+  return data.part as QuestionPart;
+}
+
+async function listPartMetadataVersions(partId: string): Promise<PartMetadataVersion[]> {
+  const res = await fetch(`/api/questions/part-metadata/revert?partId=${encodeURIComponent(partId)}`);
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? "Failed to load metadata history");
+  return (data.versions ?? []) as PartMetadataVersion[];
+}
+
+async function revertPartMetadata(partId: string, historyId?: string): Promise<QuestionPart> {
+  const res = await fetch("/api/questions/part-metadata/revert", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ partId, historyId }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? "Failed to revert metadata");
+  return data.part as QuestionPart;
+}
+
+// ─── CommandTermCombobox ───────────────────────────────────────────────────────
+function CommandTermCombobox({
+  value,
+  onChange,
+  disabled,
+  options,
+  className,
+  onEnterCommit,
+  "data-part-id": dataPartId,
+  "data-field": dataField,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  options: string[];
+  className?: string;
+  onEnterCommit?: () => void;
+  "data-part-id"?: string;
+  "data-field"?: string;
+}) {
+  const [query, setQuery] = useState(value);
+  const [open, setOpen] = useState(false);
+
+  // Sync display text when value changes externally
+  if (query !== value && !open) setQuery(value);
+
+  const filtered = query.trim()
+    ? options.filter((o) => o.toLowerCase().startsWith(query.trim().toLowerCase()))
+    : options;
+  const topMatch = filtered[0] ?? null;
+
+  function commit(term: string) {
+    onChange(term);
+    setQuery(term);
+    setOpen(false);
+  }
+
+  return (
+    <div className="relative">
+      <input
+        value={query}
+        disabled={disabled}
+        data-part-id={dataPartId}
+        data-field={dataField}
+        placeholder="Term…"
+        autoComplete="off"
+        className={className}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+          if (e.target.value === "") onChange("");
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => {
+          // Delay so onMouseDown on a list item fires first
+          setTimeout(() => {
+            setOpen(false);
+            const match = options.find(
+              (o) => o.toLowerCase() === query.trim().toLowerCase()
+            );
+            if (match) onChange(match);
+            else setQuery(value); // revert if not a valid term
+          }, 120);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Tab") {
+            if (topMatch) commit(topMatch);
+            // allow natural Tab to move focus
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (topMatch) commit(topMatch);
+            onEnterCommit?.();
+          } else if (e.key === "Escape") {
+            setOpen(false);
+            setQuery(value);
+          } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault(); // prevent scroll
+          }
+        }}
+      />
+      {open && filtered.length > 0 && (
+        <ul className="absolute z-50 top-full left-0 right-0 max-h-40 overflow-auto bg-white border border-slate-300 rounded shadow-md text-xs">
+          {filtered.map((term, i) => (
+            <li
+              key={term}
+              onMouseDown={(e) => { e.preventDefault(); commit(term); }}
+              className={`px-2 py-1 cursor-pointer ${i === 0 ? "bg-blue-50 text-blue-700 font-medium" : "hover:bg-slate-100"}`}
+            >
+              {term}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ─── DraftPartsPanel ──────────────────────────────────────────────────────────
 // Staged whole-question extraction: OCR extracts all labelled parts as one
 // block; the "Split & apply" button auto-splits it by (a)/(b)/... labels and
 // populates the stem editor + individual part editors directly.
 
-/**
- * Split raw OCR draft into a stem and per-part segments.
- * Splits on top-level part labels like "(a)", "(b)", "(c)" etc.
- * Everything before the first label → stem.
- * The label itself is stripped from each part's content.
- */
-function splitDraftIntoParts(draft: string, partLabels: string[]): { stem: string; parts: Map<string, string> } {
-  // Strategy 1: split on \begin{IBPart}[letter] or \begin{IBPart}
-  // Everything before the first \begin{IBPart} → stem
-  // Each block between \begin{IBPart}...\end{IBPart} → one part in order
+// splitDraftIntoParts imported from ./split-draft-into-parts
 
-  const IBPART_OPEN_RE = /\\begin\{IBPart\}(?:\[([a-z])\])?/g;
-  const openMatches: { index: number; label: string | null; contentStart: number }[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = IBPART_OPEN_RE.exec(draft)) !== null) {
-    openMatches.push({ index: m.index, label: m[1] ?? null, contentStart: m.index + m[0].length });
-  }
-
-  if (openMatches.length > 0) {
-    // Has \begin{IBPart} structure
-    const stem = draft.slice(0, openMatches[0].index).trim();
-    const parts = new Map<string, string>();
-    for (let i = 0; i < openMatches.length; i++) {
-      const rawContent = i + 1 < openMatches.length
-        ? draft.slice(openMatches[i].contentStart, openMatches[i + 1].index)
-        : draft.slice(openMatches[i].contentStart);
-      const content = rawContent.replace(/\\end\{IBPart\}\s*$/, "").trim();
-      // Use explicit label if present, otherwise map by position to partLabels
-      const label = openMatches[i].label ?? partLabels[i] ?? String.fromCharCode(97 + i);
-      parts.set(label, content);
-    }
-    return { stem, parts };
-  }
-
-  // Strategy 2: plain (a)/(b)/(c) labels at line start
-  const PLAIN_RE = /(^|\n)[ \t]*\(([a-z])\)[ \t]*/g;
-  const plainSplits: { label: string; index: number; matchLen: number }[] = [];
-  while ((m = PLAIN_RE.exec(draft)) !== null) {
-    plainSplits.push({ label: m[2], index: m.index + m[1].length, matchLen: m[0].length - m[1].length });
-  }
-  const stem = (plainSplits.length > 0 ? draft.slice(0, plainSplits[0].index) : draft).trim();
-  const parts = new Map<string, string>();
-  for (let i = 0; i < plainSplits.length; i++) {
-    const contentStart = plainSplits[i].index + plainSplits[i].matchLen;
-    const content = (i + 1 < plainSplits.length
-      ? draft.slice(contentStart, plainSplits[i + 1].index)
-      : draft.slice(contentStart)).trim();
-    parts.set(plainSplits[i].label, content);
-  }
-  return { stem, parts };
+interface DraftPartsPanelHandle {
+  runOcrAndApply: (field?: Field) => void;
 }
 
-function DraftPartsPanel({
+const DraftPartsPanel = forwardRef<DraftPartsPanelHandle, {
+  questionId: string;
+  draftLatex: string | null;
+  draftMarkschemeLatex: string | null;
+  activeField: Field;
+  parts: QuestionPart[];
+  onSave: (field: DraftField, value: string) => void;
+  onApply: (sourceField: Field, stem: string, parts: Map<string, string>) => void;
+  onOcrLoadingChange?: (loading: boolean) => void;
+}>(function DraftPartsPanel({
   questionId,
   draftLatex,
   draftMarkschemeLatex,
@@ -164,15 +343,8 @@ function DraftPartsPanel({
   parts: questionParts,
   onSave,
   onApply,
-}: {
-  questionId: string;
-  draftLatex: string | null;
-  draftMarkschemeLatex: string | null;
-  activeField: Field;
-  parts: QuestionPart[];
-  onSave: (field: DraftField, value: string) => void;
-  onApply: (stem: string, parts: Map<string, string>) => void;
-}) {
+  onOcrLoadingChange,
+}, ref) {
   const draftField: DraftField =
     activeField === "content_latex"
       ? "parts_draft_latex"
@@ -180,9 +352,14 @@ function DraftPartsPanel({
   const [text, setText] = useState(
     activeField === "content_latex" ? (draftLatex ?? "") : (draftMarkschemeLatex ?? "")
   );
-  const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const draftFieldFor = (field: Field): DraftField =>
+    field === "content_latex" ? "parts_draft_latex" : "parts_draft_markscheme_latex";
+
+  const imageTypeFor = (field: Field): "question" | "markscheme" =>
+    field === "content_latex" ? "question" : "markscheme";
 
   // Sync text when activeField changes
   const prevField = useRef(activeField);
@@ -191,14 +368,41 @@ function DraftPartsPanel({
     setText(activeField === "content_latex" ? (draftLatex ?? "") : (draftMarkschemeLatex ?? ""));
   }
 
-  async function runOcrAndApply() {
-    setOcrLoading(true);
+  const runOcrAndApply = useCallback(async (fieldOverride?: Field) => {
+    const sourceField: Field = fieldOverride ?? activeField;
+    const targetDraftField = draftFieldFor(sourceField);
+    const targetImageType = imageTypeFor(sourceField);
+
+    onOcrLoadingChange?.(true);
     setOcrError(null);
     try {
+      // Step 1: Check if images exist for this field (fast check)
+      const checkRes = await fetch("/api/questions/ocr-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId, imageType: targetImageType }),
+      });
+      const checkData = await checkRes.json().catch(() => ({}));
+      if (!checkRes.ok) {
+        setOcrError(checkData.error ?? "Failed to check for images");
+        return;
+      }
+
+      const { hasImages, imageCount } = checkData;
+      if (!hasImages || imageCount === 0) {
+        setOcrError(
+          targetImageType === "markscheme"
+            ? `No mark scheme images found. Run Extract All Images first, or check the Mark Scheme Doc link.`
+            : `No question images found. Run Extract All Images first, or check the Question Doc link.`
+        );
+        return;
+      }
+
+      // Step 2: Run OCR on existing images
       const res = await fetch("/api/questions/ocr-latex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId, field: draftField }),
+        body: JSON.stringify({ questionId, field: targetDraftField }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -207,17 +411,21 @@ function DraftPartsPanel({
       }
       const latex: string = data.latex ?? "";
       setText(latex);
-      onSave(draftField, latex);
+      onSave(targetDraftField, latex);
       // Immediately split and apply
       const partLabels = questionParts.map((p) => p.part_label ?? "");
       const { stem, parts: splitParts } = splitDraftIntoParts(latex, partLabels);
-      onApply(stem, splitParts);
+      onApply(sourceField, stem, splitParts);
     } catch {
       setOcrError("Network error");
     } finally {
-      setOcrLoading(false);
+      onOcrLoadingChange?.(false);
     }
-  }
+  }, [activeField, onApply, onOcrLoadingChange, onSave, questionId, questionParts]);
+
+  useImperativeHandle(ref, () => ({
+    runOcrAndApply,
+  }));
 
   async function copyToClipboard() {
     try {
@@ -227,11 +435,8 @@ function DraftPartsPanel({
     } catch { /* ignore */ }
   }
 
-  function save() {
-    onSave(draftField, text);
-  }
-
   const imageLabel = activeField === "content_latex" ? "question" : "mark scheme";
+  void imageLabel;
 
   return (
     <div className="border border-amber-200 rounded-lg overflow-hidden bg-amber-50/30">
@@ -241,16 +446,6 @@ function DraftPartsPanel({
           Extracted draft
           <span className="text-amber-500 font-normal ml-1 text-xs">(review or edit below, then apply)</span>
         </span>
-        <div className="ml-auto flex items-center gap-2">
-          <button
-            onClick={runOcrAndApply}
-            disabled={ocrLoading}
-            className="px-3 py-1 bg-orange-600 text-white rounded text-xs font-medium hover:bg-orange-700 disabled:opacity-40"
-            title={`Extract all parts from the ${imageLabel} images and apply directly to editors`}
-          >
-            {ocrLoading ? "⏳ Extracting… (may take ~60s)" : "⟳ Extract & apply"}
-          </button>
-        </div>
       </div>
 
       {/* Error banner */}
@@ -263,7 +458,8 @@ function DraftPartsPanel({
       {/* Textarea */}
       <div className="p-3 space-y-2">
         <textarea
-          className="w-full border border-amber-200 rounded-md p-2 font-mono text-xs resize-y min-h-24 bg-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+          name={draftField}
+          className="w-full border border-amber-200 rounded-md p-2 font-mono text-xs resize-y min-h-24 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
           placeholder="Click ⟳ Extract & apply above to populate automatically, or paste/type LaTeX here and use Apply below…"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -287,7 +483,7 @@ function DraftPartsPanel({
             onClick={() => {
               const partLabels = questionParts.map((p) => p.part_label ?? "");
               const { stem, parts: splitParts } = splitDraftIntoParts(text, partLabels);
-              onApply(stem, splitParts);
+              onApply(activeField, stem, splitParts);
             }}
             disabled={!text}
             className="px-3 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 disabled:opacity-40"
@@ -299,7 +495,7 @@ function DraftPartsPanel({
       </div>
     </div>
   );
-}
+});
 
 // ─── StemEditor ─────────────────────────────────────────────────────────────
 
@@ -394,14 +590,15 @@ function StemEditor({
       <div className="p-4 space-y-3">
         {editing ? (
           <textarea
-            className="w-full border border-indigo-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            name={stemField}
+            className="w-full border border-indigo-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             value={draft[stemField]}
             onChange={(e) => setDraft((d) => ({ ...d, [stemField]: e.target.value }))}
           />
         ) : (
           <div className="min-h-16 text-sm leading-relaxed">
             {draft[stemField] ? (
-              <LatexRenderer latex={draft[stemField]} />
+              <LatexRenderer latex={draft[stemField]} graphImageUrl={pageImageUrl} />
             ) : (
               <span className="text-gray-400 italic">No LaTeX content</span>
             )}
@@ -433,18 +630,6 @@ function StemEditor({
               >
                 Edit LaTeX
               </button>
-              {draft[stemField] && (
-                <button
-                  onClick={() => {
-                    setDraft((d) => ({ ...d, [stemField]: "" }));
-                    onSave(stemField, "");
-                  }}
-                  className="px-3 py-1.5 bg-red-100 text-red-600 rounded text-xs font-medium hover:bg-red-200"
-                  title="Clear the stem so it can be re-populated via Split & apply below"
-                >
-                  Clear
-                </button>
-              )}
             </>
           )}
         </div>
@@ -452,12 +637,13 @@ function StemEditor({
         {/* Claude correction row */}
         <div className="flex gap-2 pt-1 border-t border-indigo-100">
           <input
+            name={`claude-instruction-${stemField}`}
             type="text"
             placeholder="Correction for Claude, e.g. 'fix the fraction in line 2'..."
             value={claudeInstruction}
             onChange={(e) => setClaudeInstruction(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runClaude()}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400"
           />
           <button
             onClick={runClaude}
@@ -583,7 +769,8 @@ function PartEditor({
       <div className="p-4 space-y-3">
         {editing ? (
           <textarea
-            className="w-full border border-gray-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            name={`${part.id}-${activeField}`}
+            className="w-full border border-gray-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
             value={draft[activeField]}
             onChange={(e) =>
               setDraft((d) => ({ ...d, [activeField]: e.target.value }))
@@ -592,7 +779,7 @@ function PartEditor({
         ) : (
           <div className="min-h-16 text-sm leading-relaxed">
             {draft[activeField] ? (
-              <LatexRenderer latex={draft[activeField]} />
+              <LatexRenderer latex={draft[activeField]} graphImageUrl={pageImageUrl} />
             ) : (
               <span className="text-gray-400 italic">No LaTeX content</span>
             )}
@@ -629,12 +816,13 @@ function PartEditor({
         {/* Claude correction row */}
         <div className="flex gap-2 pt-1 border-t border-gray-100">
           <input
+            name={`claude-instruction-${part.id}-${activeField}`}
             type="text"
             placeholder="Correction for Claude, e.g. 'fix the fraction in line 2'..."
             value={claudeInstruction}
             onChange={(e) => setClaudeInstruction(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runClaude()}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400"
           />
           <button
             onClick={runClaude}
@@ -664,12 +852,14 @@ function QuestionReviewCard({
 }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const didAutoExpand = useRef(false);
+  const draftPanelRef = useRef<DraftPartsPanelHandle>(null);
   const [expanded, setExpanded] = useState(false);
   const [pageIndex, setPageIndex] = useState(0);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
   const [loadingUrls, setLoadingUrls] = useState(false);
   const [allQuestionImages, setAllQuestionImages] = useState<QuestionImage[]>([]);
   const [imageType, setImageType] = useState<"question" | "markscheme">("question");
+  const [imageZoom, setImageZoom] = useState(100);
   const [activeField, setActiveField] = useState<Field>("content_latex");
   const [verified, setVerifiedState] = useState(
     question.question_parts.every((p) => p.latex_verified)
@@ -677,15 +867,43 @@ function QuestionReviewCard({
   const [parts, setParts] = useState<QuestionPart[]>(
     [...question.question_parts].sort((a, b) => a.sort_order - b.sort_order)
   );
+  const [metadataOpen, setMetadataOpen] = useState(false);
+  const [metadataDrafts, setMetadataDrafts] = useState<Record<string, {
+    partLabel: string;
+    marks: string;
+    commandTerm: string;
+    subtopicCodes: string;
+  }>>({});
+  const [metadataSavingAll, setMetadataSavingAll] = useState(false);
+  const [metadataRevertingAll, setMetadataRevertingAll] = useState(false);
+  const [metadataHistoryLoadingAll, setMetadataHistoryLoadingAll] = useState(false);
+  const [metadataHistoryOpen, setMetadataHistoryOpen] = useState(false);
+  const [metadataHistoryByPart, setMetadataHistoryByPart] = useState<Record<string, PartMetadataVersion[]>>({});
+  const [metadataCreating, setMetadataCreating] = useState(false);
+  const [addPartOpen, setAddPartOpen] = useState(false);
+  const [newMetadataDraft, setNewMetadataDraft] = useState({
+    partLabel: "",
+    marks: "",
+    commandTerm: "",
+    subtopicCodes: "",
+  });
+  const [metadataError, setMetadataError] = useState<string | null>(null);
+  const [insertAfterPartId, setInsertAfterPartId] = useState<string | null>(null);
+  const [insertDraft, setInsertDraft] = useState({ partLabel: "", marks: "", commandTerm: "", subtopicCodes: "" });
+  const [insertCreating, setInsertCreating] = useState(false);
   const [stemLatex, setStemLatex] = useState<string | null>(question.stem_latex ?? null);
   const [stemMarkschemeLatex, setStemMarkschemeLatex] = useState<string | null>(question.stem_markscheme_latex ?? null);
   const [partsDraftLatex, setPartsDraftLatex] = useState<string | null>(question.parts_draft_latex ?? null);
   const [partsDraftMarkschemeLatex, setPartsDraftMarkschemeLatex] = useState<string | null>(question.parts_draft_markscheme_latex ?? null);
+  const [isOcrLoading, setIsOcrLoading] = useState(false);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const pagePaths = question.page_image_paths ?? [];
   const hasExtractedImages = question.has_question_images || question.has_markscheme_images;
   // Filter images client-side by the selected image_type
-  const questionImages = allQuestionImages.filter((img) => img.image_type === imageType);
+  const questionImages = allQuestionImages
+    .filter((img) => img.image_type === imageType)
+    .sort((a, b) => a.sort_order - b.sort_order);
 
   // Auto-expand and scroll when this is the focused question
   useEffect(() => {
@@ -746,10 +964,27 @@ function QuestionReviewCard({
     else setStemMarkschemeLatex(value);
   }
 
+  function clearAllLatexForCurrentField(field: Field) {
+    const stemField: StemField = field === "content_latex" ? "stem_latex" : "stem_markscheme_latex";
+    handleStemSave(stemField, "");
+    parts.forEach((part) => {
+      handleSave(part.id, field, "");
+    });
+  }
+
   function handleDraftSave(field: DraftField, value: string) {
     saveDraftLatex(question.id, field, value);
     if (field === "parts_draft_latex") setPartsDraftLatex(value);
     else setPartsDraftMarkschemeLatex(value);
+  }
+
+  async function copyQuestionCode() {
+    try {
+      await navigator.clipboard.writeText(question.code);
+      setCodeCopied(true);
+      try { sessionStorage.setItem("review-last-copied-code", question.code); } catch { /* ignore */ }
+      setTimeout(() => setCodeCopied(false), 1500);
+    } catch { /* ignore */ }
   }
 
   async function toggleVerified() {
@@ -774,6 +1009,27 @@ function QuestionReviewCard({
     setPageIndex((p) => Math.min(p, Math.max(0, next.length - 1)));
   }
 
+  async function moveCurrentImage(direction: -1 | 1) {
+    const newIndex = pageIndex + direction;
+    if (newIndex < 0 || newIndex >= questionImages.length) return;
+    const a = questionImages[pageIndex];
+    const b = questionImages[newIndex];
+    if (!a || !b) return;
+    // Swap sort_orders optimistically
+    const updated = allQuestionImages.map((img) => {
+      if (img.id === a.id) return { ...img, sort_order: b.sort_order };
+      if (img.id === b.id) return { ...img, sort_order: a.sort_order };
+      return img;
+    });
+    setAllQuestionImages(updated);
+    setPageIndex(newIndex);
+    // Persist
+    await Promise.all([
+      fetch(`/api/questions/images/${a.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sortOrder: b.sort_order }) }),
+      fetch(`/api/questions/images/${b.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sortOrder: a.sort_order }) }),
+    ]);
+  }
+
   const currentPageUrl = hasExtractedImages
     ? (questionImages[pageIndex]?.url ?? null)
     : pagePaths[pageIndex]
@@ -784,22 +1040,309 @@ function QuestionReviewCard({
   const allVerified = parts.every((p) => p.latex_verified);
   const hasContentLatex = parts.some((p) => p.content_latex && p.content_latex.trim().length > 0);
   const hasMSLatex = parts.some((p) => p.markscheme_latex && p.markscheme_latex.trim().length > 0);
+  const hasStemContentLatex = Boolean(stemLatex && stemLatex.trim().length > 0);
+  const hasStemMSLatex = Boolean(stemMarkschemeLatex && stemMarkschemeLatex.trim().length > 0);
+  const hasLabeledParts = parts.some((p) => p.part_label && p.part_label.trim() !== "");
+  const canClearCurrentSideLatex = activeField === "content_latex"
+    ? hasStemContentLatex || hasContentLatex
+    : hasStemMSLatex || hasMSLatex;
+  const visibleParts = hasLabeledParts
+    ? parts.filter((p) => (p.part_label ?? "").trim() !== "")
+    : parts;
+  const commandTermOptions = useMemo(() => DEFAULT_COMMAND_TERMS, []);
+
+  const mergeAndSortParts = useCallback((updater: (prev: QuestionPart[]) => QuestionPart[]) => {
+    setParts((prev) => updater(prev).slice().sort((a, b) => a.sort_order - b.sort_order));
+  }, []);
+
+  function metadataDraftFromPart(part: QuestionPart) {
+    return {
+      partLabel: part.part_label ?? "",
+      marks: part.marks != null ? String(part.marks) : "",
+      commandTerm: canonicalCommandTerm(part.command_term),
+      subtopicCodes: (part.subtopic_codes ?? []).join(", "),
+    };
+  }
+
+  function resetMetadataDraft(partId: string) {
+    const part = parts.find((item) => item.id === partId);
+    if (!part) return;
+    setMetadataDrafts((prev) => ({
+      ...prev,
+      [partId]: metadataDraftFromPart(part),
+    }));
+  }
+
+  function resetNewMetadataDraft() {
+    setNewMetadataDraft({
+      partLabel: "",
+      marks: "",
+      commandTerm: "",
+      subtopicCodes: "",
+    });
+  }
+
+  function setMetadataDraft(
+    partId: string,
+    field: "partLabel" | "marks" | "commandTerm" | "subtopicCodes",
+    value: string,
+  ) {
+    setMetadataDrafts((prev) => {
+      const part = parts.find((item) => item.id === partId);
+      const baseDraft = prev[partId]
+        ?? (part
+          ? metadataDraftFromPart(part)
+          : { partLabel: "", marks: "", commandTerm: "", subtopicCodes: "" });
+
+      return {
+        ...prev,
+        [partId]: {
+          ...baseDraft,
+          [field]: value,
+        },
+      };
+    });
+  }
+
+  function getDraftForPart(existingPart: QuestionPart) {
+    return metadataDrafts[existingPart.id] ?? metadataDraftFromPart(existingPart);
+  }
+
+  function normalizeLabelForCompare(value: string | null | undefined): string {
+    return (value ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/^\(|\)$/g, "");
+  }
+
+  function normalizeMarksForCompare(value: string): number {
+    const parsed = value.trim() === "" ? NaN : Number.parseInt(value, 10);
+    if (Number.isNaN(parsed)) return 1;
+    return Math.max(0, parsed);
+  }
+
+  function normalizeSubtopicsForCompare(value: string): string[] {
+    return value
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  function isMetadataChanged(existingPart: QuestionPart, draft: ReturnType<typeof getDraftForPart>): boolean {
+    const currentLabel = normalizeLabelForCompare(existingPart.part_label);
+    const nextLabel = normalizeLabelForCompare(draft.partLabel);
+
+    const currentMarks = existingPart.marks ?? 1;
+    const nextMarks = normalizeMarksForCompare(draft.marks);
+
+    const currentCommandTerm = canonicalCommandTerm(existingPart.command_term);
+    const nextCommandTerm = canonicalCommandTerm(draft.commandTerm);
+
+    const currentSubtopics = (existingPart.subtopic_codes ?? []).map((s) => s.trim()).filter(Boolean);
+    const nextSubtopics = normalizeSubtopicsForCompare(draft.subtopicCodes);
+
+    return currentLabel !== nextLabel
+      || currentMarks !== nextMarks
+      || currentCommandTerm !== nextCommandTerm
+      || currentSubtopics.join("|") !== nextSubtopics.join("|");
+  }
+
+  async function saveMetadataForQuestion() {
+    setMetadataSavingAll(true);
+    setMetadataError(null);
+    try {
+      const changedParts = parts.filter((existingPart) => {
+        const draft = getDraftForPart(existingPart);
+        return isMetadataChanged(existingPart, draft);
+      });
+
+      if (changedParts.length === 0) {
+        return;
+      }
+
+      const updates = await Promise.all(changedParts.map(async (existingPart) => {
+        const draft = getDraftForPart(existingPart);
+        const parsedMarks = draft.marks.trim() === "" ? null : Number.parseInt(draft.marks, 10);
+        const marks = parsedMarks == null || Number.isNaN(parsedMarks) ? null : parsedMarks;
+        const subtopicCodes = draft.subtopicCodes
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        const updated = await savePartMetadata(existingPart.id, {
+          partLabel: draft.partLabel,
+          marks,
+          commandTerm: canonicalCommandTerm(draft.commandTerm),
+          subtopicCodes,
+        });
+
+        return updated;
+      }));
+
+      const byId = new Map(updates.map((item) => [item.id, item]));
+      mergeAndSortParts((prev) => prev.map((p) => byId.get(p.id) ?? p));
+
+      const refreshedDrafts: Record<string, { partLabel: string; marks: string; commandTerm: string; subtopicCodes: string }> = {};
+      updates.forEach((updated) => {
+        refreshedDrafts[updated.id] = metadataDraftFromPart(updated);
+      });
+      setMetadataDrafts((prev) => ({ ...prev, ...refreshedDrafts }));
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : "Failed to save metadata");
+    } finally {
+      setMetadataSavingAll(false);
+    }
+  }
+
+  async function createMetadataPart() {
+    setMetadataCreating(true);
+    setMetadataError(null);
+    try {
+      const parsedMarks = newMetadataDraft.marks.trim() === ""
+        ? 1
+        : Number.parseInt(newMetadataDraft.marks, 10);
+      const marks = Number.isNaN(parsedMarks) ? 1 : parsedMarks;
+      const subtopicCodes = newMetadataDraft.subtopicCodes
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const created = await createPartMetadata(question.id, {
+        partLabel: newMetadataDraft.partLabel,
+        marks,
+        commandTerm: canonicalCommandTerm(newMetadataDraft.commandTerm),
+        subtopicCodes,
+      });
+
+      mergeAndSortParts((prev) => [...prev, created]);
+      setMetadataDrafts((prev) => ({
+        ...prev,
+        [created.id]: metadataDraftFromPart(created),
+      }));
+      resetNewMetadataDraft();
+      setAddPartOpen(false);
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : "Failed to create metadata part");
+    } finally {
+      setMetadataCreating(false);
+    }
+  }
+
+  async function insertPartAfter() {
+    setInsertCreating(true);
+    setMetadataError(null);
+    try {
+      const parsedMarks = insertDraft.marks.trim() === ""
+        ? 1
+        : Number.parseInt(insertDraft.marks, 10);
+      const marks = Number.isNaN(parsedMarks) ? 1 : parsedMarks;
+      const subtopicCodes = insertDraft.subtopicCodes
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      const created = await createPartMetadata(question.id, {
+        partLabel: insertDraft.partLabel,
+        marks,
+        commandTerm: canonicalCommandTerm(insertDraft.commandTerm),
+        subtopicCodes,
+      });
+
+      mergeAndSortParts((prev) => [...prev, created]);
+      setMetadataDrafts((prev) => ({
+        ...prev,
+        [created.id]: metadataDraftFromPart(created),
+      }));
+      setInsertAfterPartId(null);
+      setInsertDraft({ partLabel: "", marks: "", commandTerm: "", subtopicCodes: "" });
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : "Failed to insert part");
+    } finally {
+      setInsertCreating(false);
+    }
+  }
+
+  function clearMetadataDrafts() {
+    const cleared: Record<string, { partLabel: string; marks: string; commandTerm: string; subtopicCodes: string }> = {};
+    parts.forEach((part) => {
+      cleared[part.id] = {
+        partLabel: "",
+        marks: "",
+        commandTerm: "",
+        subtopicCodes: "",
+      };
+    });
+    setMetadataDrafts(cleared);
+    resetNewMetadataDraft();
+  }
+
+  async function loadMetadataHistoryForQuestion() {
+    setMetadataHistoryLoadingAll(true);
+    setMetadataError(null);
+    try {
+      const entries = await Promise.all(parts.map(async (part) => {
+        const versions = await listPartMetadataVersions(part.id);
+        return [part.id, versions] as const;
+      }));
+
+      const byPart: Record<string, PartMetadataVersion[]> = {};
+      entries.forEach(([partId, versions]) => {
+        byPart[partId] = versions;
+      });
+      setMetadataHistoryByPart(byPart);
+      setMetadataHistoryOpen(true);
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : "Failed to load metadata history");
+    } finally {
+      setMetadataHistoryLoadingAll(false);
+    }
+  }
+
+  async function revertMetadataForQuestion() {
+    setMetadataRevertingAll(true);
+    setMetadataError(null);
+    try {
+      const revertedParts = await Promise.all(parts.map((part) => revertPartMetadata(part.id)));
+      const byId = new Map(revertedParts.map((item) => [item.id, item]));
+      mergeAndSortParts((prev) => prev.map((p) => byId.get(p.id) ?? p));
+
+      const refreshedDrafts: Record<string, { partLabel: string; marks: string; commandTerm: string; subtopicCodes: string }> = {};
+      revertedParts.forEach((part) => {
+        refreshedDrafts[part.id] = metadataDraftFromPart(part);
+      });
+      setMetadataDrafts((prev) => ({ ...prev, ...refreshedDrafts }));
+
+      if (metadataHistoryOpen) {
+        await loadMetadataHistoryForQuestion();
+      }
+    } catch (err) {
+      setMetadataError(err instanceof Error ? err.message : "Failed to revert metadata");
+    } finally {
+      setMetadataRevertingAll(false);
+    }
+  }
 
   return (
     <div ref={cardRef} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
       {/* Header — left 2/3 is info/copy area, right 1/3 collapses */}
       <div className="w-full flex items-center bg-white hover:bg-gray-50 transition-colors text-left divide-x divide-gray-100">
         {/* Left zone: code + badges (copyable, does NOT toggle) */}
-        <div className="flex items-center gap-3 px-5 py-3 flex-1 min-w-0">
+        <div className="flex items-center flex-wrap gap-2 px-5 py-3 flex-1 min-w-0">
           <button
             type="button"
             title="Click to copy code"
-            onClick={async () => {
-              try { await navigator.clipboard.writeText(question.code); } catch { /* ignore */ }
-            }}
+            onClick={copyQuestionCode}
             className="font-mono font-semibold text-sm text-gray-800 hover:text-indigo-600 cursor-copy select-all"
           >
             {question.code}
+          </button>
+          <button
+            type="button"
+            onClick={copyQuestionCode}
+            className="shrink-0 px-2.5 py-0.5 rounded border border-indigo-300 bg-indigo-50 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+            title="Copy code"
+          >
+            {codeCopied ? "Copied" : "Copy code"}
           </button>
           <span className="text-xs text-gray-400">
             P{question.paper} · {question.level} · {question.timezone}
@@ -837,19 +1380,29 @@ function QuestionReviewCard({
           )}
         </div>
         {/* Right zone: collapse toggle (~1/3 width) */}
-        <button
-          type="button"
-          className="flex items-center justify-end gap-2 px-5 py-3 w-1/3 cursor-pointer hover:bg-gray-100 transition-colors text-gray-400 text-xs"
-          onClick={() => (expanded ? setExpanded(false) : expand())}
-        >
-          <span>{expanded ? "collapse ▲" : "expand ▼"}</span>
-        </button>
+        <div className="flex items-center justify-end gap-2 px-5 py-3 w-1/3">
+          <button
+            type="button"
+            onClick={copyQuestionCode}
+            className="shrink-0 px-2.5 py-1 rounded border border-indigo-300 bg-indigo-50 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+            title="Copy code"
+          >
+            {codeCopied ? "Copied" : "Copy code"}
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer hover:bg-gray-100 transition-colors text-gray-400 text-xs px-2 py-1 rounded"
+            onClick={() => (expanded ? setExpanded(false) : expand())}
+          >
+            <span>{expanded ? "collapse ▲" : "expand ▼"}</span>
+          </button>
+        </div>
       </div>
 
       {expanded && (
-        <div className="border-t border-gray-200 grid grid-cols-2 gap-0 min-h-96">
+        <div className="border-t border-gray-200 grid grid-cols-2 gap-0 h-[80vh] min-h-96 overflow-hidden">
           {/* Left: image viewer */}
-          <div className="border-r border-gray-200 flex flex-col bg-gray-50">
+          <div className="border-r border-gray-200 flex flex-col bg-gray-50 h-full min-h-0">
             {/* Google Doc links */}
             {(question.google_doc_id || question.google_ms_id) && (
               <div className="flex items-center gap-3 px-4 py-1.5 border-b border-gray-200 bg-white text-xs">
@@ -898,7 +1451,40 @@ function QuestionReviewCard({
                 </div>
               )}
               <span>Image {pageIndex + 1} / {totalPages || 1}</span>
+              <div className="ml-2 flex items-center gap-1">
+                <button
+                  onClick={() => setImageZoom((z) => Math.max(100, z - 25))}
+                  className="px-2 py-1 rounded bg-white border border-gray-200 hover:bg-gray-50"
+                  title="Zoom out"
+                >
+                  −
+                </button>
+                <span className="min-w-10 text-center text-[11px] text-gray-600">{imageZoom}%</span>
+                <button
+                  onClick={() => setImageZoom((z) => Math.min(500, z + 25))}
+                  className="px-2 py-1 rounded bg-white border border-gray-200 hover:bg-gray-50"
+                  title="Zoom in"
+                >
+                  +
+                </button>
+              </div>
               <div className="ml-auto flex gap-1">
+                {hasExtractedImages && totalPages > 1 && (
+                  <>
+                    <button
+                      disabled={pageIndex === 0}
+                      onClick={() => moveCurrentImage(-1)}
+                      className="px-2 py-1 rounded bg-white border border-gray-200 disabled:opacity-30 hover:bg-gray-50"
+                      title="Move this image earlier"
+                    >↑</button>
+                    <button
+                      disabled={pageIndex >= totalPages - 1}
+                      onClick={() => moveCurrentImage(1)}
+                      className="px-2 py-1 rounded bg-white border border-gray-200 disabled:opacity-30 hover:bg-gray-50"
+                      title="Move this image later"
+                    >↓</button>
+                  </>
+                )}
                 <button
                   disabled={pageIndex === 0}
                   onClick={() => setPageIndex((i) => i - 1)}
@@ -924,7 +1510,8 @@ function QuestionReviewCard({
                   <img
                     src={currentPageUrl}
                     alt={`Page ${pageIndex + 1}`}
-                    className="max-w-full shadow-sm border border-gray-200 rounded"
+                    className="shadow-sm border border-gray-200 rounded"
+                    style={{ width: `${imageZoom}%`, maxWidth: "none" }}
                   />
                   {hasExtractedImages && (
                     <button
@@ -945,11 +1532,18 @@ function QuestionReviewCard({
           </div>
 
           {/* Right: per-part LaTeX editors */}
-          <div className="flex flex-col overflow-auto">
+          <div className="flex flex-col min-h-0 h-full">
             <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-white">
               <span className="text-xs font-medium text-gray-600">
-                {parts.length} part{parts.length !== 1 ? "s" : ""}
+                {visibleParts.length} part{visibleParts.length !== 1 ? "s" : ""}
               </span>
+              <button
+                onClick={() => setMetadataOpen((v) => !v)}
+                className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                title="Edit part metadata for this question"
+              >
+                {metadataOpen ? "Hide metadata" : "Edit metadata"}
+              </button>
               {/* Q/MS is controlled by the image toggle on the left — no duplicate tab here */}
               {!hasExtractedImages && (
                 <div className="flex rounded overflow-hidden border border-gray-200 ml-2">
@@ -969,8 +1563,24 @@ function QuestionReviewCard({
                 </div>
               )}
               <button
+                onClick={() => draftPanelRef.current?.runOcrAndApply()}
+                disabled={isOcrLoading}
+                className="ml-auto px-3 py-1.5 rounded text-xs font-medium bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-40"
+                title="Extract all parts from images and apply to editors"
+              >
+                {isOcrLoading ? "⏳ Extracting…" : "⟳ Extract & apply"}
+              </button>
+              <button
+                onClick={() => clearAllLatexForCurrentField(activeField)}
+                disabled={!canClearCurrentSideLatex}
+                className="px-3 py-1.5 rounded text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-40"
+                title="Clear LaTeX for the current side (stem and all parts)"
+              >
+                Clear LaTeX
+              </button>
+              <button
                 onClick={toggleVerified}
-                className={`ml-auto px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                   verified
                     ? "bg-green-100 text-green-700 hover:bg-green-200"
                     : "bg-gray-100 text-gray-700 hover:bg-gray-200"
@@ -979,48 +1589,356 @@ function QuestionReviewCard({
                 {verified ? "✓ Verified" : "Mark all verified"}
               </button>
             </div>
-            <div className="p-4 space-y-4 overflow-auto">
+            {metadataOpen && (
+              <div className="border-b border-gray-200 bg-slate-50 p-3 space-y-2 max-w-xl">
+                <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_20px] gap-2 text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                  <span>Part</span>
+                  <span>Marks</span>
+                  <span>Command term</span>
+                  <span>Subtopics</span>
+                  <span/>
+                </div>
+                {parts.map((part) => {
+                  const draft = metadataDrafts[part.id] ?? metadataDraftFromPart(part);
+                  const isInsertingAfterThis = insertAfterPartId === part.id;
+                  return (
+                    <div key={`meta-${part.id}`} className="space-y-1.5">
+                      <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_20px] gap-2 items-center">
+                      <input
+                        name={`part-label-${part.id}`}
+                        value={draft.partLabel}
+                        onChange={(e) => setMetadataDraft(part.id, "partLabel", e.target.value)}
+                        disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                        data-part-id={part.id}
+                        data-field="partLabel"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const idx = parts.findIndex((p) => p.id === part.id);
+                            if (idx !== -1 && idx < parts.length - 1) {
+                              (document.querySelector(`[data-part-id="${parts[idx+1].id}"][data-field="partLabel"]`) as HTMLElement)?.focus();
+                            }
+                          }
+                        }}
+                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                      />
+                      <input
+                        name={`part-marks-${part.id}`}
+                        value={draft.marks}
+                        type="number"
+                        min={0}
+                        onChange={(e) => setMetadataDraft(part.id, "marks", e.target.value)}
+                        disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                        data-part-id={part.id}
+                        data-field="marks"
+                        onFocus={(e) => e.target.select()}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            const idx = parts.findIndex((p) => p.id === part.id);
+                            if (idx !== -1 && idx < parts.length - 1) {
+                              (document.querySelector(`[data-part-id="${parts[idx+1].id}"][data-field="marks"]`) as HTMLElement)?.focus();
+                            }
+                          }
+                        }}
+                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                      <CommandTermCombobox
+                        value={draft.commandTerm ?? ""}
+                        onChange={(v) => setMetadataDraft(part.id, "commandTerm", v)}
+                        disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                        options={commandTermOptions}
+                        data-part-id={part.id}
+                        data-field="commandTerm"
+                        onEnterCommit={() => {
+                          const idx = parts.findIndex((p) => p.id === part.id);
+                          if (idx !== -1 && idx < parts.length - 1) {
+                            (document.querySelector(`[data-part-id="${parts[idx+1].id}"][data-field="commandTerm"]`) as HTMLElement)?.focus();
+                          }
+                        }}
+                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                      />
+                      <input
+                        name={`part-subtopics-${part.id}`}
+                        value={draft.subtopicCodes}
+                        onChange={(e) => setMetadataDraft(part.id, "subtopicCodes", e.target.value)}
+                        disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                        data-part-id={part.id}
+                        data-field="subtopics"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || (e.key === "Tab" && !e.shiftKey)) {
+                            const idx = parts.findIndex((p) => p.id === part.id);
+                            if (idx !== -1 && idx < parts.length - 1) {
+                              e.preventDefault();
+                              (document.querySelector(`[data-part-id="${parts[idx+1].id}"][data-field="subtopics"]`) as HTMLElement)?.focus();
+                            }
+                          }
+                        }}
+                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                      />
+                      <button
+                        onClick={() => {
+                          setInsertDraft({ partLabel: "", marks: "", commandTerm: "", subtopicCodes: "" });
+                          setInsertAfterPartId(isInsertingAfterThis ? null : part.id);
+                        }}
+                        disabled={metadataSavingAll || metadataRevertingAll || metadataCreating || insertCreating}
+                        className={`text-xs font-bold rounded w-5 h-5 flex items-center justify-center transition-colors disabled:opacity-30 ${isInsertingAfterThis ? "bg-blue-200 text-blue-700" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"}`}
+                        title="Insert a new part after this row"
+                      >+</button>
+                      </div>
+                      {/* Insert-between row */}
+                      {isInsertingAfterThis ? (
+                        <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_auto] gap-2 pl-3 border-l-2 border-blue-400 bg-blue-50/60 rounded-r py-1.5">
+                          <input
+                            autoFocus
+                            placeholder="Label"
+                            value={insertDraft.partLabel}
+                            onChange={(e) => setInsertDraft((d) => ({ ...d, partLabel: e.target.value }))}
+                            disabled={insertCreating}
+                            className="border border-blue-300 rounded px-2 py-1 text-xs bg-white"
+                          />
+                          <input
+                            placeholder="Marks"
+                            type="number"
+                            min={0}
+                            value={insertDraft.marks}
+                            onChange={(e) => setInsertDraft((d) => ({ ...d, marks: e.target.value }))}
+                            disabled={insertCreating}
+                            onFocus={(e) => e.target.select()}
+                            className="border border-blue-300 rounded px-2 py-1 text-xs bg-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                          />
+                          <CommandTermCombobox
+                            value={insertDraft.commandTerm}
+                            onChange={(v) => setInsertDraft((d) => ({ ...d, commandTerm: v }))}
+                            disabled={insertCreating}
+                            options={commandTermOptions}
+                            className="border border-blue-300 rounded px-2 py-1 text-xs bg-white w-full"
+                          />
+                          <input
+                            placeholder="Subtopics"
+                            value={insertDraft.subtopicCodes}
+                            onChange={(e) => setInsertDraft((d) => ({ ...d, subtopicCodes: e.target.value }))}
+                            disabled={insertCreating}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") { e.preventDefault(); insertPartAfter(); }
+                              if (e.key === "Escape") { setInsertAfterPartId(null); }
+                            }}
+                            className="border border-blue-300 rounded px-2 py-1 text-xs bg-white"
+                          />
+                          <div className="flex gap-1 items-center">
+                            <button
+                              onClick={() => insertPartAfter()}
+                              disabled={insertCreating}
+                              className="px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40"
+                            >
+                              {insertCreating ? "…" : "Insert"}
+                            </button>
+                            <button
+                              onClick={() => setInsertAfterPartId(null)}
+                              disabled={insertCreating}
+                              className="px-2 py-1 text-xs rounded bg-slate-200 text-slate-600 hover:bg-slate-300 disabled:opacity-40"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+
+                {addPartOpen && (
+                  <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_auto] gap-2 pt-1 border-t border-slate-200 items-center">
+                    <input
+                      autoFocus
+                      data-field="new-part-label"
+                      name="new-part-label"
+                      placeholder="Label"
+                      value={newMetadataDraft.partLabel}
+                      onChange={(e) => setNewMetadataDraft((d) => ({ ...d, partLabel: e.target.value }))}
+                      disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                      onKeyDown={(e) => { if (e.key === "Escape") setAddPartOpen(false); }}
+                      className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                    />
+                    <input
+                      name="new-part-marks"
+                      placeholder="Marks"
+                      value={newMetadataDraft.marks}
+                      type="number"
+                      min={0}
+                      onChange={(e) => setNewMetadataDraft((d) => ({ ...d, marks: e.target.value }))}
+                      disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                      onFocus={(e) => e.target.select()}
+                      className="border border-slate-300 rounded px-2 py-1 text-xs bg-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <CommandTermCombobox
+                      value={newMetadataDraft.commandTerm}
+                      onChange={(v) => setNewMetadataDraft((d) => ({ ...d, commandTerm: v }))}
+                      disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                      options={commandTermOptions}
+                      className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                    />
+                    <input
+                      name="new-part-subtopics"
+                      placeholder="Subtopics"
+                      value={newMetadataDraft.subtopicCodes}
+                      onChange={(e) => setNewMetadataDraft((d) => ({ ...d, subtopicCodes: e.target.value }))}
+                      disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); createMetadataPart(); }
+                        if (e.key === "Escape") setAddPartOpen(false);
+                      }}
+                      className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                    />
+                    <button
+                      onClick={() => setAddPartOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 text-xs px-1"
+                      title="Cancel"
+                    >✕</button>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-200">
+                  <button
+                    onClick={() => {
+                      if (addPartOpen) {
+                        createMetadataPart();
+                      } else {
+                        setAddPartOpen(true);
+                      }
+                    }}
+                    disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                    className="px-3 py-1.5 text-xs rounded bg-emerald-700 text-white hover:bg-emerald-800 disabled:opacity-40"
+                    title="Add a new part"
+                  >
+                    {metadataCreating ? "Adding…" : "+ Add part"}
+                  </button>
+                  <button
+                    onClick={saveMetadataForQuestion}
+                    disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                    className="px-3 py-1.5 text-xs rounded bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-40"
+                    title="Save metadata changes for this question"
+                  >
+                    {metadataSavingAll ? "Saving" : "Save to DB"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (metadataHistoryOpen) {
+                        setMetadataHistoryOpen(false);
+                        return;
+                      }
+                      loadMetadataHistoryForQuestion();
+                    }}
+                    disabled={metadataSavingAll || metadataRevertingAll || metadataCreating || metadataHistoryLoadingAll}
+                    className="px-3 py-1.5 text-xs rounded border border-indigo-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40"
+                    title="List previous metadata versions for all parts"
+                  >
+                    {metadataHistoryLoadingAll ? "Loading" : metadataHistoryOpen ? "Hide history" : "History"}
+                  </button>
+                  <button
+                    onClick={revertMetadataForQuestion}
+                    disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                    className="px-3 py-1.5 text-xs rounded border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-40"
+                    title="Revert each part to its previous metadata snapshot"
+                  >
+                    {metadataRevertingAll ? "Reverting" : "Revert DB"}
+                  </button>
+                  <button
+                    onClick={clearMetadataDrafts}
+                    disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
+                    className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                    title="Clear entered metadata in the editor"
+                  >
+                    Clear metadata
+                  </button>
+                </div>
+
+                {metadataHistoryOpen && (
+                  <div className="border border-indigo-200 bg-indigo-50/40 rounded p-2 space-y-2">
+                    {parts.map((part) => {
+                      const versions = metadataHistoryByPart[part.id] ?? [];
+                      return (
+                        <div key={`history-${part.id}`} className="space-y-1">
+                          <div className="text-xs font-semibold text-indigo-900">
+                            Part {(part.part_label ?? "(empty label)").toUpperCase()}
+                          </div>
+                          {versions.length === 0 ? (
+                            <div className="text-xs text-slate-500">No saved versions yet.</div>
+                          ) : (
+                            versions.map((version) => (
+                              <div key={version.id} className="flex items-center gap-2 text-xs bg-white border border-indigo-100 rounded px-2 py-1.5">
+                                <span className="text-slate-500 min-w-32">{new Date(version.created_at).toLocaleString()}</span>
+                                <span className="text-slate-700">{version.part_label || "(empty label)"}</span>
+                                <span className="text-slate-500">[{version.marks ?? 0}]</span>
+                                <span className="text-slate-600 truncate">{version.command_term || "no command term"}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {metadataError && (
+                  <div className="text-xs text-red-600 font-medium">{metadataError}</div>
+                )}
+              </div>
+            )}
+            <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
               {parts.length === 0 ? (
                 <p className="text-gray-400 text-sm italic">No parts found.</p>
               ) : (
                 <>
-                  {/* Show stem editor for multi-part questions (question side only — MS has no stem) */}
-                  {parts.some((p) => p.part_label && p.part_label.trim() !== "") && (
-                    <>
-                      {activeField === "content_latex" && (
-                        <StemEditor
-                          questionId={question.id}
-                          stemLatex={stemLatex}
-                          stemMarkschemeLatex={stemMarkschemeLatex}
-                          pageImageUrl={currentPageUrl}
-                          activeField={activeField}
-                          onSave={handleStemSave}
-                        />
-                      )}
-                      <DraftPartsPanel
-                        questionId={question.id}
-                        draftLatex={partsDraftLatex}
-                        draftMarkschemeLatex={partsDraftMarkschemeLatex}
-                        activeField={activeField}
-                        parts={parts}
-                        onSave={handleDraftSave}
-                        onApply={(stem, splitParts) => {
-                          // Save stem
-                          const stemField: StemField = activeField === "content_latex" ? "stem_latex" : "stem_markscheme_latex";
-                          handleStemSave(stemField, stem);
-                          // Save each matched part
-                          const contentField: Field = activeField === "content_latex" ? "content_latex" : "markscheme_latex";
-                          splitParts.forEach((content, label) => {
-                            const matchedPart = parts.find((p) => p.part_label === label);
-                            if (matchedPart) {
-                              handleSave(matchedPart.id, contentField, content);
-                            }
-                          });
-                        }}
-                      />
-                    </>
+                  {/* Show stem editor only for questions that have labeled parts. */}
+                  <DraftPartsPanel
+                    ref={draftPanelRef}
+                    questionId={question.id}
+                    draftLatex={partsDraftLatex}
+                    draftMarkschemeLatex={partsDraftMarkschemeLatex}
+                    activeField={activeField}
+                    parts={parts}
+                    onSave={handleDraftSave}
+                    onOcrLoadingChange={setIsOcrLoading}
+                      onApply={(sourceField, stem, splitParts) => {
+                      // Always save extracted stem.
+                        const stemField: StemField = sourceField === "content_latex" ? "stem_latex" : "stem_markscheme_latex";
+                      handleStemSave(stemField, stem);
+
+                        const contentField: Field = sourceField === "content_latex" ? "content_latex" : "markscheme_latex";
+
+                      if (hasLabeledParts) {
+                        const normalizeLabel = (raw: string | null | undefined): string => {
+                          if (!raw) return "";
+                          return raw
+                            .trim()
+                            .toLowerCase()
+                            .replace(/[^a-z]/g, "");
+                        };
+                        // Save each matched labeled part.
+                        splitParts.forEach((content, label) => {
+                          const normalizedTarget = normalizeLabel(label);
+                          const matchedPart = parts.find((p) => normalizeLabel(p.part_label) === normalizedTarget);
+                          if (matchedPart) {
+                            handleSave(matchedPart.id, contentField, content);
+                          }
+                        });
+                      } else if (parts.length === 1) {
+                        // No labels: treat the extracted stem as whole-question content so users still get auto-fill.
+                        handleSave(parts[0].id, contentField, stem);
+                      }
+                    }}
+                  />
+                  {activeField === "content_latex" && hasLabeledParts && (
+                    <StemEditor
+                      questionId={question.id}
+                      stemLatex={stemLatex}
+                      stemMarkschemeLatex={stemMarkschemeLatex}
+                      pageImageUrl={currentPageUrl}
+                      activeField={activeField}
+                      onSave={handleStemSave}
+                    />
                   )}
-                  {parts.map((part) => (
+                  {visibleParts.map((part) => (
                     <PartEditor
                       key={part.id}
                       part={part}
@@ -1048,10 +1966,14 @@ function ExtractAllImagesButton() {
   const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
   const [progress, setProgress] = useState<{ completed: number; total: number; currentCode: string; totalImages: number; errors: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<Array<{ code: string; message: string }>>([]);
+  const [showErrorDetails, setShowErrorDetails] = useState(true);
 
   async function run() {
     setStatus("running");
     setError(null);
+    setErrorDetails([]);
+    setShowErrorDetails(true);
     setProgress({ completed: 0, total: 0, currentCode: "Starting…", totalImages: 0, errors: 0 });
 
     try {
@@ -1098,8 +2020,22 @@ function ExtractAllImagesButton() {
                 totalImages: (prev?.totalImages ?? 0) + (msg.questionImages ?? 0) + (msg.msImages ?? 0),
                 errors: msg.error ? (prev?.errors ?? 0) + 1 : (prev?.errors ?? 0),
               }));
+              if (msg.error) {
+                setErrorDetails((prev) => {
+                  const next = [...prev, { code: msg.code ?? "unknown", message: String(msg.error) }];
+                  return next;
+                });
+              }
             } else if (msg.type === "done") {
               setProgress({ completed: msg.totalQuestions, total: msg.totalQuestions, currentCode: "Done", totalImages: msg.totalImages, errors: msg.errors ?? 0 });
+              if (Array.isArray(msg.errorDetails)) {
+                setErrorDetails(
+                  msg.errorDetails.map((item: { code?: unknown; error?: unknown }) => ({
+                    code: typeof item.code === "string" ? item.code : "unknown",
+                    message: typeof item.error === "string" ? item.error : String(item.error ?? "Unknown error"),
+                  }))
+                );
+              }
               setStatus("done");
             } else if (msg.type === "error") {
               setError(msg.error);
@@ -1134,11 +2070,40 @@ function ExtractAllImagesButton() {
         </div>
       </div>
 
-      {error && <p className="text-xs text-red-600 font-medium">⚠ {error}</p>}
+      {(error || (progress?.errors ?? 0) > 0) && (
+        <div className="rounded border border-red-300 bg-red-50 px-2.5 py-2 space-y-1">
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-red-700 font-semibold">
+              ⚠ Errors detected{progress && progress.errors > 0 ? `: ${progress.errors}` : ""}
+            </p>
+            {errorDetails.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowErrorDetails((v) => !v)}
+                className="text-[11px] text-red-700 underline underline-offset-2 hover:text-red-800"
+              >
+                {showErrorDetails ? "Hide details" : `Show details (${errorDetails.length})`}
+              </button>
+            )}
+          </div>
+          {error && <p className="text-xs text-red-600">{error}</p>}
+          {showErrorDetails && errorDetails.length > 0 && (
+            <div className="max-h-48 overflow-auto rounded border border-red-200 bg-white/70 p-2">
+              <ul className="text-xs text-red-700 space-y-1 font-mono">
+                {errorDetails.map((item, idx) => (
+                  <li key={`${item.code}-${idx}`} className="wrap-break-word">
+                    <span className="font-semibold">{item.code}</span>: {item.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {progress && (
         <div className="space-y-1">
-          <div className="flex justify-between text-xs text-green-700">
+          <div className={`flex justify-between text-xs ${(progress.errors ?? 0) > 0 ? "text-red-700" : "text-green-700"}`}>
             <span>{progress.currentCode}</span>
             <span>{progress.completed} / {progress.total} questions · {progress.totalImages} images{progress.errors > 0 ? ` · ${progress.errors} errors` : ""}</span>
           </div>
@@ -1160,6 +2125,29 @@ function SyncDriveDocsButton() {
   const [showDetails, setShowDetails] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [force, setForce] = useState(false);
+  const [debugCode, setDebugCode] = useState(() => {
+    try { return sessionStorage.getItem("review-last-copied-code") || "12M.1.AHL.TZ1.H_5"; } catch { return "12M.1.AHL.TZ1.H_5"; }
+  });
+
+  useEffect(() => {
+    if (!showConfig) return;
+    try {
+      const saved = sessionStorage.getItem("review-last-copied-code");
+      if (saved) setDebugCode(saved);
+    } catch {}
+  }, [showConfig]);
+  const [debugBusy, setDebugBusy] = useState(false);
+  const [debugError, setDebugError] = useState<string | null>(null);
+  const [singleSyncBusy, setSingleSyncBusy] = useState(false);
+  const [singleSyncStatus, setSingleSyncStatus] = useState<string | null>(null);
+  const [debugResult, setDebugResult] = useState<{
+    code: string;
+    db?: { id: string; code: string; google_doc_id?: string | null; google_ms_id?: string | null } | null;
+    questionFolderCount: number;
+    markschemeFolderCount: number;
+    questionMatches: { id: string; name: string; webViewLink?: string; parents?: string[] }[];
+    markschemeMatches: { id: string; name: string; webViewLink?: string; parents?: string[] }[];
+  } | null>(null);
 
   async function run(dryRun: boolean) {
     setStatus(dryRun ? "dryrun" : "syncing");
@@ -1199,6 +2187,108 @@ function SyncDriveDocsButton() {
     }
   }
 
+  async function runSingleCodeDebug() {
+    if (!debugCode.trim()) return;
+    setDebugBusy(true);
+    setDebugError(null);
+    setDebugResult(null);
+
+    try {
+      const res = await fetch("/api/admin/debug-drive-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: debugCode.trim() }),
+      });
+      const raw = await res.text();
+      let data: {
+        error?: string;
+        code?: string;
+        db?: { id: string; code: string; google_doc_id?: string | null; google_ms_id?: string | null } | null;
+        questionFolderCount?: number;
+        markschemeFolderCount?: number;
+        questionMatches?: { id: string; name: string; webViewLink?: string; parents?: string[] }[];
+        markschemeMatches?: { id: string; name: string; webViewLink?: string; parents?: string[] }[];
+      } = {};
+
+      if (raw.trim()) {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          setDebugError(`Debug failed: non-JSON response (HTTP ${res.status})`);
+          return;
+        }
+      }
+
+      if (!res.ok) {
+        setDebugError(data.error ?? `Debug failed (HTTP ${res.status})`);
+        return;
+      }
+
+      setDebugResult({
+        code: data.code ?? debugCode.trim(),
+        db: data.db ?? null,
+        questionFolderCount: data.questionFolderCount ?? 0,
+        markschemeFolderCount: data.markschemeFolderCount ?? 0,
+        questionMatches: data.questionMatches ?? [],
+        markschemeMatches: data.markschemeMatches ?? [],
+      });
+    } catch (e) {
+      setDebugError(String(e));
+    } finally {
+      setDebugBusy(false);
+    }
+  }
+
+  async function runSingleCodeSync() {
+    if (!debugCode.trim()) return;
+    setSingleSyncBusy(true);
+    setSingleSyncStatus(null);
+    setDebugError(null);
+
+    try {
+      const res = await fetch("/api/admin/sync-drive-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: debugCode.trim(), force }),
+      });
+      const raw = await res.text();
+      let data: {
+        error?: string;
+        updated?: Record<string, string>;
+        message?: string;
+      } = {};
+
+      if (raw.trim()) {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          setSingleSyncStatus(`Single-code sync failed: non-JSON response (HTTP ${res.status})`);
+          return;
+        }
+      }
+
+      if (!res.ok) {
+        setSingleSyncStatus(data.error ?? `Single-code sync failed (HTTP ${res.status})`);
+        return;
+      }
+
+      if (data.message === "No updates needed") {
+        setSingleSyncStatus("No updates needed for this code.");
+      } else {
+        const pieces: string[] = [];
+        if (data.updated?.google_doc_id) pieces.push("Q linked");
+        if (data.updated?.google_ms_id) pieces.push("MS linked");
+        setSingleSyncStatus(pieces.length > 0 ? `Updated: ${pieces.join(", ")}` : "Synced.");
+      }
+
+      await runSingleCodeDebug();
+    } catch (e) {
+      setSingleSyncStatus(String(e));
+    } finally {
+      setSingleSyncBusy(false);
+    }
+  }
+
   const busy = status === "dryrun" || status === "syncing";
 
   return (
@@ -1233,6 +2323,7 @@ function SyncDriveDocsButton() {
         <div className="space-y-2">
           <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
             <input
+              name="force-relink"
               type="checkbox"
               checked={force}
               onChange={(e) => setForce(e.target.checked)}
@@ -1240,6 +2331,95 @@ function SyncDriveDocsButton() {
             />
             <span>Force re-link (overwrite existing Doc IDs — use to fix stale/deleted links)</span>
           </label>
+
+          <div className="pt-1 border-t border-blue-100 space-y-1.5">
+            <p className="text-xs text-blue-800 font-medium">Debug one code (no full scan):</p>
+            <div className="flex items-center gap-2">
+              <input
+                name="debug-code"
+                type="text"
+                value={debugCode}
+                onChange={(e) => setDebugCode(e.target.value)}
+                className="flex-1 px-2 py-1 rounded border border-blue-200 text-xs font-mono bg-white"
+                placeholder="e.g. 12M.1.AHL.TZ1.H_5"
+              />
+              <button
+                onClick={runSingleCodeDebug}
+                disabled={debugBusy || singleSyncBusy || !debugCode.trim()}
+                className="px-3 py-1 rounded bg-white border border-blue-300 text-blue-700 text-xs font-medium hover:bg-blue-50 disabled:opacity-40"
+              >
+                {debugBusy ? "Debugging…" : "Debug code"}
+              </button>
+              <button
+                onClick={runSingleCodeSync}
+                disabled={singleSyncBusy || debugBusy || !debugCode.trim()}
+                className="px-3 py-1 rounded bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-40"
+              >
+                {singleSyncBusy ? "Syncing…" : "Sync this code"}
+              </button>
+            </div>
+            {debugError && <p className="text-xs text-red-600 font-medium">⚠ {debugError}</p>}
+            {singleSyncStatus && <p className="text-xs text-blue-700 font-medium">{singleSyncStatus}</p>}
+            {debugResult && (
+              <div className="text-xs text-blue-700 bg-white border border-blue-100 rounded p-2 space-y-1.5">
+                <p>
+                  <span className="font-semibold">Code:</span> <span className="font-mono">{debugResult.code}</span>
+                </p>
+                <p>
+                  <span className="font-semibold">DB:</span>{" "}
+                  {debugResult.db
+                    ? `google_doc_id=${debugResult.db.google_doc_id ?? "null"}, google_ms_id=${debugResult.db.google_ms_id ?? "null"}`
+                    : "No ib_questions row found"}
+                </p>
+                <p>
+                  Q folder tree ({debugResult.questionFolderCount} folders): <strong>{debugResult.questionMatches.length}</strong> match(es)
+                </p>
+                <p>
+                  MS folder tree ({debugResult.markschemeFolderCount} folders): <strong>{debugResult.markschemeMatches.length}</strong> match(es)
+                </p>
+
+                {debugResult.questionMatches.length > 0 && (
+                  <div>
+                    <p className="font-semibold text-blue-800">Question doc matches:</p>
+                    <ul className="max-h-28 overflow-auto font-mono border border-blue-100 rounded p-1 space-y-0.5">
+                      {debugResult.questionMatches.map((m) => (
+                        <li key={`q-${m.id}`}>
+                          {m.webViewLink ? (
+                            <a href={m.webViewLink} target="_blank" rel="noreferrer" className="underline text-blue-600">
+                              {m.name}
+                            </a>
+                          ) : (
+                            <span>{m.name}</span>
+                          )}
+                          <span className="text-gray-500 ml-2">{m.id}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {debugResult.markschemeMatches.length > 0 && (
+                  <div>
+                    <p className="font-semibold text-purple-800">Mark scheme doc matches:</p>
+                    <ul className="max-h-28 overflow-auto font-mono border border-blue-100 rounded p-1 space-y-0.5">
+                      {debugResult.markschemeMatches.map((m) => (
+                        <li key={`ms-${m.id}`}>
+                          {m.webViewLink ? (
+                            <a href={m.webViewLink} target="_blank" rel="noreferrer" className="underline text-blue-600">
+                              {m.name}
+                            </a>
+                          ) : (
+                            <span>{m.name}</span>
+                          )}
+                          <span className="text-gray-500 ml-2">{m.id}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -1251,7 +2431,7 @@ function SyncDriveDocsButton() {
         <div className="text-xs text-blue-700 space-y-1">
           <p>
             Found <strong>{result.found}</strong> docs to link
-            {result.updated > 0 ? `, updated <strong>${result.updated}</strong> questions` : result.found > 0 ? " (dry run — no changes written)" : ""}
+            {result.updated > 0 ? `, updated ${result.updated} questions` : result.found > 0 ? " (dry run — no changes written)" : ""}
             .
           </p>
           {result.found > 0 && (
@@ -1278,6 +2458,8 @@ function SyncDriveDocsButton() {
 
 // ─── ReviewClient ─────────────────────────────────────────────────────────────
 
+const SCROLL_KEY = "review-scroll-y";
+
 export default function ReviewClient({
   initialQuestions,
   focusId,
@@ -1288,6 +2470,28 @@ export default function ReviewClient({
   const [questions, setQuestions] = useState(initialQuestions);
   // When deep-linking to a specific question, show all so the target isn't filtered out
   const [filterVerified, setFilterVerified] = useState<"all" | "verified" | "unverified">(focusId ? "all" : "unverified");
+
+  // Persist and restore scroll position so returning from a linked page keeps position
+  useEffect(() => {
+    if (focusId) return; // let auto-scroll handle focused mode
+    try {
+      const saved = sessionStorage.getItem(SCROLL_KEY);
+      if (saved) {
+        const y = Number(saved);
+        if (Number.isFinite(y) && y > 0) {
+          // wait one frame so the list is rendered before scrolling
+          requestAnimationFrame(() => window.scrollTo({ top: y, behavior: "instant" }));
+        }
+      }
+    } catch { /* ignore private-browsing errors */ }
+
+    const onScroll = () => {
+      try { sessionStorage.setItem(SCROLL_KEY, String(window.scrollY)); } catch { /* ignore */ }
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [filterImages, setFilterImages] = useState(false);
   const [filterNoLatex, setFilterNoLatex] = useState(false);
   const [codeSearch, setCodeSearch] = useState("");
@@ -1363,11 +2567,14 @@ export default function ReviewClient({
       {/* Filters */}
       <div className="flex gap-3 flex-wrap" suppressHydrationWarning>
         <input
+          id="review-code-search"
+          name="reviewCodeSearch"
+          aria-label="Search questions by code"
           type="text"
           placeholder="Search by code…"
           value={codeSearch}
           onChange={(e) => setCodeSearch(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-56 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
           suppressHydrationWarning
         />
         <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">

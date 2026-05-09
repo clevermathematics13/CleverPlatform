@@ -12,10 +12,10 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900">
+      <h1 className="text-2xl font-bold text-da-text font-serif">
         Welcome, {profile.display_name}
       </h1>
-      <p className="mt-1 text-sm text-gray-600">
+      <p className="mt-1 text-sm text-da-muted">
         {getRoleDescription(viewRole)}
       </p>
 
@@ -141,11 +141,11 @@ function DashboardCard({
   return (
     <a
       href={href}
-      className="block rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md"
+      className="block rounded-xl border border-da-border bg-da-surface p-6 shadow-sm shadow-black/30 transition-all hover:shadow-md hover:shadow-black/40 hover:border-da-accent/50 group"
     >
-      <p className="text-sm font-medium text-gray-600">{title}</p>
-      <p className="mt-2 text-3xl font-bold text-gray-900">{value}</p>
-      <p className="mt-1 text-sm text-gray-500">{description}</p>
+      <p className="text-sm font-medium text-da-muted">{title}</p>
+      <p className="mt-2 text-3xl font-bold text-da-accent font-serif">{value}</p>
+      <p className="mt-1 text-sm text-da-muted/70">{description}</p>
     </a>
   );
 }

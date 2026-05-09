@@ -10,16 +10,16 @@ const SCOPES = [
 
 const COOKIE_NAME = "google-classroom-token";
 
-function getOAuth2Client() {
+function getOAuth2Client(redirectUri?: string) {
   return new OAuth2Client(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_REDIRECT_URI
+    redirectUri ?? process.env.GOOGLE_REDIRECT_URI
   );
 }
 
-export function getAuthUrl() {
-  const oauth2Client = getOAuth2Client();
+export function getAuthUrl(redirectUri?: string) {
+  const oauth2Client = getOAuth2Client(redirectUri);
   return oauth2Client.generateAuthUrl({
     access_type: "offline",
     scope: SCOPES,
@@ -27,8 +27,8 @@ export function getAuthUrl() {
   });
 }
 
-export async function exchangeCodeForToken(code: string) {
-  const oauth2Client = getOAuth2Client();
+export async function exchangeCodeForToken(code: string, redirectUri?: string) {
+  const oauth2Client = getOAuth2Client(redirectUri);
   const { tokens } = await oauth2Client.getToken(code);
   return tokens;
 }

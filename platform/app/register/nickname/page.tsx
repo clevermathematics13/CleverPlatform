@@ -90,7 +90,7 @@ export default function NicknamePage() {
               placeholder="e.g. Sali, CJ, Min"
               maxLength={30}
               autoFocus
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
             <p className="mt-1 text-xs text-gray-500">
               This can be your first name, a shortened name, or whatever you&apos;d
@@ -101,7 +101,7 @@ export default function NicknamePage() {
           <button
             type="submit"
             disabled={loading || !nickname.trim()}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+            className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-sm hover:bg-blue-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
           >
             {loading ? "Saving..." : "Continue"}
           </button>

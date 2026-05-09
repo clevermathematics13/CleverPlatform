@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   // Get image records
   const { data: images, error } = await supabase
     .from("question_images")
-    .select("id, image_type, storage_path, sort_order, alt_text")
+    .select("id, part_id, image_type, storage_path, sort_order, alt_text")
     .eq("question_id", questionId)
     .order("image_type")
     .order("sort_order");

@@ -2,8 +2,8 @@
 @import "katex/dist/katex.min.css";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #1a1a2e;
+  --foreground: #f0e6d3;
 }
 
 @theme inline {
@@ -11,20 +11,61 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-serif: var(--font-playfair);
+
+  /* Dark Academia palette */
+  --color-da-bg:      #1a1a2e;
+  --color-da-surface: #1e1e38;
+  --color-da-hover:   #26264a;
+  --color-da-border:  #38385c;
+  --color-da-text:    #f0e6d3;
+  --color-da-muted:   #9e8f7a;
+  --color-da-accent:  #d4a853;
+  --color-da-amber:   #e8c46a;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
 
 input, textarea, select {
-  color: #111827; /* gray-900 — ensures input text is always dark */
+  color: #f0e6d3; /* warm ivory — matches DA foreground */
+  background-color: transparent;
 }
 
-/* Force KaTeX-rendered math to always use dark text, regardless of parent color */
+/* Any input/textarea/select inside a white or light-grey surface gets dark text */
+.bg-white input, .bg-white textarea, .bg-white select,
+.bg-gray-50 input, .bg-gray-50 textarea, .bg-gray-50 select,
+.bg-blue-50 input, .bg-blue-50 textarea, .bg-blue-50 select,
+.bg-indigo-50 input, .bg-indigo-50 textarea, .bg-indigo-50 select {
+  color: #111827;
+}
+
+/* Tailwind text-gray-900 utility should always win over the global rule */
+input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
+  color: #111827 !important;
+}
+
+/* Force KaTeX-rendered math to always use ivory, matching dark academia foreground */
 .katex, .katex * {
+  color: #f0e6d3;
+}
+
+/* Inside white / light surfaces (modals, cards, editor panels), KaTeX must use
+   dark text so it is legible against a white background.
+   This applies equally to Question LaTeX and Markscheme LaTeX columns. */
+.bg-white .katex,
+.bg-white .katex *,
+.bg-gray-50 .katex,
+.bg-gray-50 .katex *,
+.bg-blue-50 .katex,
+.bg-blue-50 .katex *,
+.bg-indigo-50 .katex,
+.bg-indigo-50 .katex *,
+.bg-amber-50 .katex,
+.bg-amber-50 .katex * {
   color: #111827;
 }
 
@@ -34,9 +75,36 @@ input, textarea, select {
    rather than as a scaled single curved glyph.
    margin: 0.3em overrides KaTeX's default margin: 1em 0 which caused excessive
    spacing between consecutive display equations in mark schemes. */
+/* ── Mafs graph canvas — always white, IB-style ──────────────────────────────
+   Mafs declares --mafs-bg: black directly on .MafsView, so parent-div CSS
+   variable overrides are ignored. We must target .MafsView itself here. */
+.MafsView {
+  --mafs-bg: #ffffff !important;
+  --mafs-fg: #374151 !important;
+  --mafs-line-color: #d1d5db !important;
+  --mafs-origin-color: #6b7280 !important;
+  --grid-line-subdivision-color: #e5e7eb !important;
+}
+
 .katex-display {
   font-size: 1.21em;
   margin: 0.3em 0 !important;
+}
+
+/* Opaque sidebar/menu skin with a calm psychedelic gradient blend. */
+.menu-psychedelic-bg {
+  background-color: #151a34;
+  background-image:
+    radial-gradient(circle at 18% 18%, #4c5ca8 0%, #4c5ca8 18%, transparent 52%),
+    radial-gradient(circle at 80% 22%, #2d8f9a 0%, #2d8f9a 16%, transparent 48%),
+    radial-gradient(circle at 42% 78%, #8e4d8d 0%, #8e4d8d 15%, transparent 47%),
+    radial-gradient(circle at 72% 70%, #4d7d5d 0%, #4d7d5d 18%, transparent 50%),
+    linear-gradient(145deg, #13172d 0%, #17203f 52%, #18284d 100%);
+  background-repeat: no-repeat;
+  background-size: 170% 170%;
+  background-position: center;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 /* Tighten display math vertical rhythm to match typeset paper spacing */

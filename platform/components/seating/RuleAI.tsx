@@ -275,7 +275,7 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
           }}
           placeholder={`e.g. "Keep Carlos and Gael apart" or "Put Asha near the window pod"`}
           rows={2}
-          className="flex-1 rounded-lg border border-gray-400 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-purple-600"
+          className="flex-1 rounded-lg border border-gray-400 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 resize-none text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-600"
         />
         <button
           onClick={send}

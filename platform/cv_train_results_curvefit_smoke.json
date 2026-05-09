@@ -1,0 +1,312 @@
+{
+  "stats": {
+    "total_fetched": 12,
+    "downloaded": 12,
+    "download_failed": 0,
+    "classified_graph": 12,
+    "classified_not_graph": 0,
+    "cv_ok": 2,
+    "cv_error": 10,
+    "cv_too_few_vertices": 0,
+    "errors": []
+  },
+  "cv_success_rate": 0.167,
+  "results": [
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_9/markscheme/03.png",
+      "question_id": "20f733ff-bd2a-4640-a897-4db948b1545a",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.98, dark_lines=0.017, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.29,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 17v/24h lines, 22/62px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (45) indicates likely over-segmentation",
+          "High segment count (44) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.653 < 0.72; margin 0.012 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_9/markscheme/02.png",
+      "question_id": "20f733ff-bd2a-4640-a897-4db948b1545a",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.021, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.25,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 29v/22h lines, 18/64px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (56) indicates likely over-segmentation",
+          "High segment count (55) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.596 < 0.72; margin 0.015 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_9/markscheme/01.png",
+      "question_id": "20f733ff-bd2a-4640-a897-4db948b1545a",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.99, dark_lines=0.010, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.16,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 28v/14h lines, 16/48px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (32) indicates likely over-segmentation",
+          "High segment count (31) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.579 < 0.72; margin 0.017 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_8/markscheme/03.png",
+      "question_id": "e3b57d75-766b-4091-94f4-84708b609510",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.95, dark_lines=0.030, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.26,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 31v/43h lines, 26/23px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (48) indicates likely over-segmentation",
+          "High segment count (47) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.646 < 0.72; margin 0.033 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_8/markscheme/02.png",
+      "question_id": "e3b57d75-766b-4091-94f4-84708b609510",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.026, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.19,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 34v/26h lines, 23/31px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (53) indicates likely over-segmentation",
+          "High segment count (51) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.622 < 0.72; margin 0.016 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_8/markscheme/01.png",
+      "question_id": "e3b57d75-766b-4091-94f4-84708b609510",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.023, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.27,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 26v/42h lines, 20/24px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (53) indicates likely over-segmentation",
+          "High segment count (52) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.617 < 0.72; margin 0.012 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_7/markscheme/02.png",
+      "question_id": "253792d8-5328-489a-8e1a-1a3e8d032674",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.025, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 8,
+        "segments": 7,
+        "domain": [
+          -6.5,
+          8.0
+        ],
+        "method": "cv_piecewise_fallback_v1",
+        "selected_family": null,
+        "fit_confidence": null,
+        "elapsed_s": 0.11
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_7/markscheme/01.png",
+      "question_id": "253792d8-5328-489a-8e1a-1a3e8d032674",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.024, square-ish"
+      },
+      "cv_result": {
+        "status": "ok",
+        "vertices": 22,
+        "segments": 21,
+        "domain": [
+          -28.5,
+          28.0
+        ],
+        "method": "cv_piecewise_fallback_v1",
+        "selected_family": null,
+        "fit_confidence": null,
+        "elapsed_s": 0.11
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_6/markscheme/02.png",
+      "question_id": "19904560-287a-4d54-bf35-b986a13a2512",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.95, dark_lines=0.030, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.22,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 32v/33h lines, 22/44px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (37) indicates likely over-segmentation",
+          "High segment count (34) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.587 < 0.72; margin 0.026 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_6/markscheme/01.png",
+      "question_id": "19904560-287a-4d54-bf35-b986a13a2512",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.96, dark_lines=0.029, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.27,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 25v/35h lines, 26/48px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (33) indicates likely over-segmentation",
+          "High segment count (32) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.635 < 0.72; margin 0.009 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_11/markscheme/05.png",
+      "question_id": "a2cbba3e-c784-478e-a726-7484306482a7",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.65,
+        "reason": "light_bg=0.97, dark_lines=0.022, square-ish"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.24,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 26v/38h lines, 19/40px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (40) indicates likely over-segmentation",
+          "High segment count (37) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: confidence 0.615 < 0.72; margin 0.010 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    },
+    {
+      "storage_path": "21N.2.AHL.TZ0.H_11/markscheme/04.png",
+      "question_id": "a2cbba3e-c784-478e-a726-7484306482a7",
+      "image_type": "markscheme",
+      "classification": {
+        "is_graph": true,
+        "confidence": 0.55,
+        "reason": "light_bg=0.96, dark_lines=0.026"
+      },
+      "cv_result": {
+        "status": "error",
+        "error": "Manual review required: extraction uncertainty gate triggered",
+        "elapsed_s": 0.05,
+        "method": "cv_curve_family_v1",
+        "warnings": [
+          "Grid: 66v/9h lines, 12/30px/unit",
+          "Extraction uncertainty gate triggered",
+          "High vertex count (35) indicates likely over-segmentation",
+          "High segment count (34) indicates low-confidence piecewise fallback",
+          "Curve-family fit rejected: margin 0.018 < 0.05"
+        ],
+        "selected_family": null,
+        "fit_confidence": null
+      }
+    }
+  ]
+}

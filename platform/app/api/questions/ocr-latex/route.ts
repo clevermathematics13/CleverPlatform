@@ -13,8 +13,34 @@ type OcrField =
   | "parts_draft_latex"
   | "parts_draft_markscheme_latex";
 
+const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
+
+function looksGraphLike(text: string): boolean {
+  const t = text.toLowerCase();
+  return /(sketch|graph|asymptote|asymptotes|intercept|intercepts|x-axis|y-axis|axes|curve|hyperbola|parabola)/.test(t);
+}
+
 // POST /api/questions/ocr-latex
 // Body: { questionId: string, field: OcrField }
+// Strip lines that are purely mark-scheme annotations (A1, M1, \hfill A1A1A1, Total [N marks]).
+// These creep into question content when the source Google Doc embeds the mark allocation.
+// Applied to question-type OCR only (not markscheme fields).
+function stripMarkAnnotationLines(latex: string): string {
+  // Each line is matched independently. Strip lines that are SOLELY:
+  //   • \hfill mark codes: \hfill A1, \hfill A1A1A1A1, \hfill (A1)(M1)
+  //   • Bare mark codes:   A1A1A1A1, (A1), M1, R1, AG, N2
+  //   • Total annotation:  Total [4 marks], [4 marks]
+  const MARK_LINE = /^(?:\\hfill\s*)?(?:\s*[\(\[]?(?:A|M|R|N)\d*[\)\]]?\s*)+$|^Total\s+\[\d+\s+marks?\]\s*$|^\[\d+\s+marks?\]\s*$/i;
+  return latex
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      return t === "" || !MARK_LINE.test(t);
+    })
+    .join("\n")
+    .trim();
+}
+
 //
 // Fetches the stored question_images for the question, runs MathPix (or Claude
 // vision fallback), applies IBPart post-processing, then:
@@ -148,6 +174,7 @@ export async function POST(request: NextRequest) {
   const USE_MATHPIX = !!(MATHPIX_APP_ID && MATHPIX_APP_KEY);
 
   let extractedLatex: string;
+  let graphDetected = false;
 
   if (USE_MATHPIX) {
     const parts: string[] = [];
@@ -177,9 +204,9 @@ export async function POST(request: NextRequest) {
           { error: `MathPix: ${mpJson.error}` },
           { status: 502 }
         );
-      parts.push(
-        postProcessMathpixLatex(mpJson.latex_styled ?? mpJson.text ?? "")
-      );
+      const cleaned = postProcessMathpixLatex(mpJson.latex_styled ?? mpJson.text ?? "");
+      if (isDraft && looksGraphLike(cleaned)) graphDetected = true;
+      parts.push(cleaned);
     }
     extractedLatex = parts.join("\n\n");
   } else {
@@ -280,6 +307,7 @@ Additional rules:
       response.content[0].type === "text"
         ? response.content[0].text.trim()
         : "";
+    if (isDraft && looksGraphLike(extractedLatex)) graphDetected = true;
   }
 
   // ── Claude normalisation pass (Mathpix output only) ───────────────────────
@@ -326,6 +354,18 @@ Additional rules:
       // Non-fatal: log and continue with Mathpix output
       console.warn("Claude normalisation pass failed:", normErr);
     }
+  }
+
+  // Strip mark-scheme annotation lines from question OCR output.
+  // (Markscheme fields intentionally keep A1/M1 annotations.)
+  if (imageType === "question") {
+    extractedLatex = stripMarkAnnotationLines(extractedLatex);
+  }
+
+  // Ensure draft output includes a graph marker when OCR likely detected a graph.
+  // The UI renderer maps this marker to the currently viewed source image.
+  if (isDraft && graphDetected && !extractedLatex.includes(GRAPH_IMAGE_MARKER)) {
+    extractedLatex = `${extractedLatex.trim()}\n\n${GRAPH_IMAGE_MARKER}`;
   }
 
   // Save extracted LaTeX to the appropriate table

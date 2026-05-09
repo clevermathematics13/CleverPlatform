@@ -51,14 +51,14 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-8 shadow-lg">
+    <div className="flex min-h-screen items-center justify-center bg-da-bg">
+      <div className="w-full max-w-md space-y-8 rounded-xl border border-da-border bg-da-surface p-8 shadow-2xl shadow-black/50">
         {/* Logo / Brand */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+          <h1 className="text-3xl font-bold tracking-tight text-da-accent font-serif">
             CleverPlatform
           </h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-da-muted">
             IBDP Mathematics Learning Platform
           </p>
         </div>
@@ -82,13 +82,13 @@ function LoginForm() {
               type="checkbox"
               checked={staySignedIn}
               onChange={(e) => setStaySignedIn(e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="h-4 w-4 rounded border-da-border text-da-accent focus:ring-da-accent"
             />
-            <span className="text-sm text-gray-600">Stay signed in</span>
+            <span className="text-sm text-da-muted">Stay signed in</span>
           </label>
           <button
             onClick={handleGoogleLogin}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-da-border bg-da-hover px-4 py-3 text-sm font-medium text-da-text shadow-sm transition-colors hover:bg-da-border hover:text-da-amber text-gray-900 focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path
@@ -115,10 +115,10 @@ function LoginForm() {
         {/* Divider */}
         <div className="relative">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-300" />
+            <div className="w-full border-t border-da-border" />
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="bg-white px-2 text-gray-500">
+            <span className="bg-da-surface px-2 text-da-muted">
               Parent access
             </span>
           </div>
@@ -128,7 +128,7 @@ function LoginForm() {
         <div className="text-center">
           <a
             href="/register"
-            className="text-sm font-medium text-blue-600 hover:text-blue-500"
+            className="text-sm font-medium text-da-accent hover:text-da-amber"
           >
             Register as a parent with your access code
           </a>
@@ -143,7 +143,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <div className="text-gray-500">Loading...</div>
+          <div className="text-da-muted">Loading...</div>
         </div>
       }
     >

@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("ib_questions")
     .select(
-      "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, question_parts(id, part_label, marks, subtopic_codes, command_term, sort_order, content_latex, markscheme_latex, latex_verified)",
+      "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, command_term, sort_order, content_latex, markscheme_latex, latex_verified)",
       { count: "exact" }
     )
     .or("google_doc_id.not.is.null,source_pdf_path.not.is.null")
@@ -145,4 +145,100 @@ export async function GET(request: NextRequest) {
     page,
     pageSize,
   });
+}
+
+export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (!profile || profile.role !== "teacher") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  let body: {
+    code?: string;
+    session?: string;
+    paper?: number;
+    level?: string;
+    timezone?: string;
+    curriculum?: string | string[];
+    stemLatex?: string;
+    stemMarkschemeLatex?: string;
+    parts?: {
+      partLabel?: string;
+      marks?: number | null;
+      commandTerm?: string | null;
+      subtopicCodes?: string[];
+      contentLatex?: string;
+      markschemeLatex?: string;
+    }[];
+  };
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const { code, session, paper, level, timezone, curriculum, stemLatex, stemMarkschemeLatex, parts } = body;
+
+  if (!code?.trim()) return NextResponse.json({ error: "Code is required" }, { status: 400 });
+  if (!session?.trim()) return NextResponse.json({ error: "Session is required" }, { status: 400 });
+  if (!paper || ![1, 2, 3].includes(Number(paper))) {
+    return NextResponse.json({ error: "Paper must be 1, 2, or 3" }, { status: 400 });
+  }
+  if (!level || !["AHL", "SL"].includes(level)) {
+    return NextResponse.json({ error: "Level must be AHL or SL" }, { status: 400 });
+  }
+  const curriculaArr = (Array.isArray(curriculum) ? curriculum : [curriculum]).filter(Boolean) as string[];
+  if (!curriculaArr.length || !curriculaArr.every((c) => ["AA", "AI"].includes(c))) {
+    return NextResponse.json({ error: "Curriculum must be AA and/or AI" }, { status: 400 });
+  }
+
+  const { data: question, error: qError } = await supabase
+    .from("ib_questions")
+    .insert({
+      code: code.trim(),
+      session: session.trim(),
+      paper: Number(paper),
+      level,
+      timezone: timezone?.trim() || "TZ0",
+      curriculum: curriculaArr,
+      source_pdf_path: "manual",
+      stem_latex: stemLatex?.trim() || null,
+      stem_markscheme_latex: stemMarkschemeLatex?.trim() || null,
+    })
+    .select("id")
+    .single();
+
+  if (qError) {
+    return NextResponse.json({ error: qError.message }, { status: 500 });
+  }
+
+  if (parts && parts.length > 0) {
+    const partRows = parts.map((p, idx) => ({
+      question_id: question.id,
+      part_label: p.partLabel?.trim() ?? '',
+      marks: p.marks != null ? Number(p.marks) : null,
+      command_term: p.commandTerm || null,
+      subtopic_codes: p.subtopicCodes ?? [],
+      sort_order: idx,
+      content_latex: p.contentLatex?.trim() || null,
+      markscheme_latex: p.markschemeLatex?.trim() || null,
+      latex_verified: false,
+    }));
+
+    const { error: pError } = await supabase.from("question_parts").insert(partRows);
+    if (pError) {
+      return NextResponse.json({ error: pError.message }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ id: question.id }, { status: 201 });
 }

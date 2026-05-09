@@ -342,7 +342,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                                 item.max_marks
                               )
                             }
-                            className="w-12 rounded border border-blue-400 bg-white px-1 py-0.5 text-center text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-12 rounded border border-blue-400 bg-white px-1 py-0.5 text-center text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             autoFocus
                           />
                         ) : isSaving ? (

@@ -50,6 +50,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: qError.message }, { status: 500 });
   }
 
+  // Fetch question_parts for all IDs in one query
+  const { data: allParts } = await supabase
+    .from("question_parts")
+    .select("id, question_id, part_label, marks, subtopic_codes, command_term, sort_order")
+    .in("question_id", questionIds as string[])
+    .order("sort_order", { ascending: true });
+
+  const partsByQuestion = new Map<string, typeof allParts>();
+  for (const part of allParts ?? []) {
+    const existing = partsByQuestion.get(part.question_id) ?? [];
+    existing.push(part);
+    partsByQuestion.set(part.question_id, existing);
+  }
+
   const questionMap = new Map(
     (questionRows ?? []).map((q) => [q.id, q])
   );
@@ -97,6 +111,14 @@ export async function POST(request: NextRequest) {
         code: meta?.code ?? qId,
         section: meta?.section ?? null,
         curriculum: meta?.curriculum ?? ["AA"],
+        parts: (partsByQuestion.get(qId) ?? []).map((p) => ({
+          id: p.id,
+          part_label: p.part_label,
+          marks: p.marks,
+          subtopic_codes: p.subtopic_codes ?? [],
+          command_term: p.command_term ?? null,
+          sort_order: p.sort_order,
+        })),
         images: withUrls,
       };
     })

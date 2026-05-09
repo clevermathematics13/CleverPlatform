@@ -67,7 +67,7 @@ export function DashboardShell({
 
         {/* Sidebar panel */}
         <aside
-          className={`absolute left-0 top-0 h-full flex flex-col border-r border-da-border bg-da-surface shadow-xl shadow-black/40 transition-all duration-200 overflow-hidden ${
+          className={`menu-psychedelic-bg absolute left-0 top-0 h-full flex flex-col border-r border-da-border shadow-xl shadow-black/40 transition-all duration-200 overflow-hidden ${
             sidebarVisible ? "w-64 opacity-100" : "w-0 opacity-0"
           }`}
         >
@@ -159,7 +159,7 @@ export function DashboardShell({
 
           {(settingsOpen || settingsHover) && (
             <div
-              className="absolute bottom-full left-0 w-64 border border-da-border rounded-t-xl bg-da-surface shadow-lg shadow-black/40 px-3 pb-2 pt-1 space-y-0.5 z-50 transition-all duration-200"
+              className="menu-psychedelic-bg absolute bottom-full left-0 w-64 border border-da-border rounded-t-xl shadow-lg shadow-black/40 px-3 pb-2 pt-1 space-y-0.5 z-50 transition-all duration-200"
               style={{ minHeight: '16rem', height: 'auto' }} // double the height
             >
               {settingsNavigation.map((item) => (

@@ -1,6 +1,31 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
+import dynamic from "next/dynamic";
+import LatexRenderer from "@/components/LatexRenderer";
+import { AddQuestionWizard } from "./add-question-wizard";
+import { splitDraftIntoParts } from "./review/split-draft-into-parts";
+import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
+import { encodeGraphSpec, GRAPH_MARKER_RE, EXAMPLE_SPEC, type IbGraphSpec } from "@/components/IbGraph";
+
+const IbGraph = dynamic(() => import("@/components/IbGraph"), { ssr: false });
+
+const GRAPH_ELEMENT_REFERENCE = `Supported element types:
+
+{ "type": "fn",         "expr": "x^2 - 2",          "color": "#1a56db", "dashed": false, "label": "f(x)", "xMin": -3, "xMax": 3 }
+{ "type": "vasymptote", "x": 2,                      "label": "x = 2" }
+{ "type": "hasymptote", "y": -1,                     "label": "y = -1" }
+{ "type": "line",       "expr": "2*x + 1",           "dashed": true,    "label": "tangent" }
+{ "type": "point",      "x": 2, "y": 3,              "label": "(2, 3)", "open": false }
+{ "type": "guide",      "x": 2, "y": 3 }
+{ "type": "shade",      "expr1": "x^2", "expr2": "2*x", "xMin": 0, "xMax": 2, "color": "#1a56db" }
+{ "type": "parametric", "xt": "cos(t)", "yt": "sin(t)", "tMin": 0, "tMax": 6.28, "color": "#e02424" }
+{ "type": "label",      "x": 1, "y": 2,              "text": "A" }
+
+Expr functions: sin cos tan arcsin arccos arctan ln log sqrt abs exp
+Use ^ for powers: x^2, e^(-x), (x+1)^3
+Colors: any CSS hex or named colour`.trim();
 
 interface QuestionPart {
   id: string;
@@ -9,6 +34,9 @@ interface QuestionPart {
   subtopic_codes: string[];
   command_term: string | null;
   sort_order: number;
+  content_latex: string | null;
+  markscheme_latex: string | null;
+  latex_verified: boolean | null;
 }
 
 interface QuestionImage {
@@ -34,6 +62,10 @@ interface Question {
   curriculum: string[];
   has_question_images: boolean;
   has_markscheme_images: boolean;
+  stem_latex: string | null;
+  stem_markscheme_latex: string | null;
+  parts_draft_latex: string | null;
+  parts_draft_markscheme_latex: string | null;
   question_parts: QuestionPart[];
 }
 
@@ -84,6 +116,25 @@ interface Filters {
   sessions: string[];
   timezones: string[];
   subtopics: Subtopic[];
+}
+
+interface GraphExtractFailure {
+  status: number;
+  error: string;
+  warnings: string[];
+  feedback: string[];
+  graphSpec?: IbGraphSpec;
+  graphMeta?: Record<string, unknown>;
+}
+
+interface GraphExtractSnapshot {
+  status: number;
+  ok: boolean;
+  error?: string;
+  warnings: string[];
+  feedback: string[];
+  graphSpec?: IbGraphSpec;
+  graphMeta?: Record<string, unknown>;
 }
 
 const SECTION_NAMES: Record<number, string> = {
@@ -142,11 +193,27 @@ const DEFAULT_COMMAND_TERMS = [
   "Trace",
   "Using",
   "Verify",
-  "Write",
   "Write down",
 ];
 
-export function QuestionBankClient() {
+/**
+ * Scan the question LaTeX for the first IB command term that appears as a
+ * whole word (case-insensitive). Returns the canonical form or null.
+ */
+function detectCommandTerm(latex: string): string | null {
+  if (!latex) return null;
+  // Strip LaTeX commands so we match plain text
+  const plain = latex.replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ").replace(/[${}\\]/g, " ");
+  // Longer terms first so "Write down" beats "Write", "Show that" etc.
+  const sorted = [...DEFAULT_COMMAND_TERMS].sort((a, b) => b.length - a.length);
+  for (const term of sorted) {
+    const re = new RegExp(`\\b${term.replace(/ /g, "\\s+")}\\b`, "i");
+    if (re.test(plain)) return term;
+  }
+  return null;
+}
+
+export function QuestionBankClient({ initialDriveConnected = false }: { initialDriveConnected?: boolean }) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [filters, setFilters] = useState<Filters | null>(null);
   const [total, setTotal] = useState(0);
@@ -159,7 +226,11 @@ export function QuestionBankClient() {
   const [extracting, setExtracting] = useState<Set<string>>(new Set());
   const [deletingImage, setDeletingImage] = useState<Set<string>>(new Set());
   const [uploadingImage, setUploadingImage] = useState<Set<string>>(new Set()); // keyed by questionId
-  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveConnected, setDriveConnected] = useState(initialDriveConnected);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ found: number; updated: number } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ created: number; updated: number; errors?: string[]; debug?: Record<string, unknown> } | null>(null);
   const [bulkExtracting, setBulkExtracting] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{
     completed: number;
@@ -173,6 +244,7 @@ export function QuestionBankClient() {
 
   // ── ExamBuilder state ───────────────────────────────────────────────────────
   const [testBuilderOpen, setTestBuilderOpen] = useState(false);
+  const [addQuestionOpen, setAddQuestionOpen] = useState(false);
   const [testQueue, setTestQueue] = useState<TestQueueItem[]>([]);
   const [examConfig, setExamConfig] = useState<ExamConfig>({
     name: "",
@@ -239,7 +311,7 @@ export function QuestionBankClient() {
   }, []);
 
   // Filter state
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState("25N.1.SL.TZ1.S_1");
   const [searchContent, setSearchContent] = useState(false);
   const [session, setSession] = useState("");
   const [paper, setPaper] = useState("");
@@ -433,6 +505,44 @@ export function QuestionBankClient() {
         next.delete(questionId);
         return next;
       });
+    }
+  };
+
+  const syncDriveLinks = async () => {
+    setSyncing(true);
+    setSyncResult(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/sync-drive-docs", { method: "POST" });
+      const data = await res.json() as { found?: number; updated?: number; error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Sync failed");
+      } else {
+        setSyncResult({ found: data.found ?? 0, updated: data.updated ?? 0 });
+      }
+    } catch {
+      setError("Network error during sync");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const importFromDrive = async () => {
+    setImporting(true);
+    setImportResult(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/import-from-drive", { method: "POST" });
+      const data = await res.json() as { created?: number; updated?: number; error?: string; errors?: string[]; debug?: Record<string, unknown> };
+      if (!res.ok) {
+        setError(data.error ?? "Import failed");
+      } else {
+        setImportResult({ created: data.created ?? 0, updated: data.updated ?? 0, errors: data.errors, debug: data.debug });
+      }
+    } catch {
+      setError("Network error during import");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -885,19 +995,59 @@ export function QuestionBankClient() {
       {/* Google Drive Connection & Bulk Extract */}
       {driveConnected ? (
         <div className="rounded-lg border border-green-300 bg-green-50 px-4 py-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
             <span className="text-sm font-semibold text-green-800">
               Google Drive connected
             </span>
-            <button
-              type="button"
-              onClick={extractAllImages}
-              disabled={bulkExtracting}
-              className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {bulkExtracting ? "Extracting…" : "Extract All Images from Docs"}
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={importFromDrive}
+                disabled={importing || syncing || bulkExtracting}
+                className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+                title="Create DB entries for Drive docs whose question codes are not yet in the database"
+              >
+                {importing ? "Importing…" : "Import Missing from Drive"}
+              </button>
+              <button
+                type="button"
+                onClick={syncDriveLinks}
+                disabled={syncing || bulkExtracting || importing}
+                className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                title="Scan Drive folders and link Google Doc IDs to questions that are missing them"
+              >
+                {syncing ? "Syncing…" : "Sync Doc Links"}
+              </button>
+              <button
+                type="button"
+                onClick={extractAllImages}
+                disabled={bulkExtracting || syncing || importing}
+                className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {bulkExtracting ? "Extracting…" : "Extract All Images from Docs"}
+              </button>
+            </div>
           </div>
+          {importResult && (
+            <div className="mt-1 text-xs text-violet-700">
+              <p>Import complete — {importResult.created} new question{importResult.created !== 1 ? "s" : ""} created, {importResult.updated} doc link{importResult.updated !== 1 ? "s" : ""} updated.</p>
+              {importResult.errors && importResult.errors.length > 0 && (
+                <p className="text-red-600">Errors: {importResult.errors.join("; ")}</p>
+              )}
+              {importResult.debug && (
+                <details className="mt-1">
+                  <summary className="cursor-pointer underline">Debug info</summary>
+                  <pre className="mt-1 max-h-40 overflow-auto rounded bg-violet-50 p-2 text-[10px] text-violet-900 whitespace-pre-wrap">{JSON.stringify(importResult.debug, null, 2)}</pre>
+                </details>
+              )}
+            </div>
+          )}
+          {syncResult && (
+            <p className="mt-1 text-xs text-green-700">
+              Sync complete — {syncResult.found} doc link{syncResult.found !== 1 ? "s" : ""} found,{" "}
+              {syncResult.updated} updated.
+            </p>
+          )}
           {bulkProgress && (
             <div className="mt-2">
               <div className="flex items-center justify-between text-xs text-gray-700 mb-1">
@@ -974,7 +1124,7 @@ export function QuestionBankClient() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={searchContent ? "e.g. \\binom, \\int..." : "e.g. 22M, TZ2, H_10..."}
-                className="w-full rounded border-2 border-blue-300 px-3 py-1.5 text-base font-semibold text-blue-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-600"
+                className="input-dark w-full rounded border-2 border-blue-300 px-3 py-1.5 text-base font-semibold text-blue-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-600"
               />
           </div>
 
@@ -987,7 +1137,7 @@ export function QuestionBankClient() {
               suppressHydrationWarning
               value={session}
               onChange={(e) => setSession(e.target.value)}
-              className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
+              className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
             >
               <option value="">All</option>
               {(filters?.sessions ?? []).map((s) => (
@@ -1007,7 +1157,7 @@ export function QuestionBankClient() {
               suppressHydrationWarning
               value={paper}
               onChange={(e) => setPaper(e.target.value)}
-              className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
+              className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
             >
               <option value="">All</option>
               <option value="1">Paper 1</option>
@@ -1025,7 +1175,7 @@ export function QuestionBankClient() {
               suppressHydrationWarning
               value={level}
               onChange={(e) => setLevel(e.target.value)}
-              className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
+              className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
             >
               <option value="">All</option>
               <option value="AHL">HL</option>
@@ -1042,7 +1192,7 @@ export function QuestionBankClient() {
               suppressHydrationWarning
               value={timezone}
               onChange={(e) => setTimezone(e.target.value)}
-              className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
+              className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"
             >
               <option value="">All</option>
               {(filters?.timezones ?? []).map((tz) => (
@@ -1062,7 +1212,7 @@ export function QuestionBankClient() {
               suppressHydrationWarning
               value={subtopic}
               onChange={(e) => setSubtopic(e.target.value)}
-              className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white w-full"
+              className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white w-full"
             >
               <option value="">All</option>
               {Object.entries(subtopicsBySection).map(([sec, subs]) => (
@@ -1120,6 +1270,14 @@ export function QuestionBankClient() {
           <p className="text-base font-bold text-blue-900">
             {loading ? "Loading…" : `${total} question${total !== 1 ? "s" : ""} found`}
           </p>
+          <button
+            type="button"
+            suppressHydrationWarning
+            onClick={() => setAddQuestionOpen(true)}
+            className="rounded-lg border-2 border-emerald-400 bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50"
+          >
+            + New Question
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -1228,6 +1386,7 @@ export function QuestionBankClient() {
                 onAddToQueue={() => addToQueue(q)}
                 savingSection={savingSection.has(q.id)}
                 onUpdateSection={(section) => updateSection(q.id, section)}
+                onRefresh={loadQuestions}
               />
             ))}
             {!loading && questions.length === 0 && (
@@ -1320,6 +1479,17 @@ export function QuestionBankClient() {
           onClearCourseIdError={() => setCourseIdError(false)}
         />
       )}
+
+      {/* ── Add Question Wizard ── */}
+      {addQuestionOpen && (
+        <AddQuestionWizard
+          availableSubtopics={filters?.subtopics ?? []}
+          commandTerms={allCommandTerms}
+          onAddCustomTerm={addCustomTerm}
+          onClose={() => setAddQuestionOpen(false)}
+          onSaved={loadQuestions}
+        />
+      )}
     </div>
   );
 }
@@ -1348,6 +1518,7 @@ function QuestionRow({
   onAddToQueue,
   savingSection,
   onUpdateSection,
+  onRefresh,
 }: {
   question: Question;
   expanded: boolean;
@@ -1371,8 +1542,1008 @@ function QuestionRow({
   onAddToQueue: () => void;
   savingSection: boolean;
   onUpdateSection: (section: "A" | "B") => void;
+  onRefresh: () => void;
 }) {
   const showSection = question.paper !== 3;
+  const [minimized, setMinimized] = useState(false);
+  const [parts, setParts] = useState<QuestionPart[]>(
+    [...question.question_parts].sort((a, b) => a.sort_order - b.sort_order)
+  );
+  const [latexDrafts, setLatexDrafts] = useState<Record<string, { content_latex: string; markscheme_latex: string }>>(() => {
+    const d: Record<string, { content_latex: string; markscheme_latex: string }> = {};
+    question.question_parts.forEach((p) => {
+      d[p.id] = { content_latex: p.content_latex ?? "", markscheme_latex: p.markscheme_latex ?? "" };
+    });
+    return d;
+  });
+  const [editingLatex, setEditingLatex] = useState<{ partId: string; field: "content_latex" | "markscheme_latex" } | null>(null);
+  const [savingLatex, setSavingLatex] = useState(false);
+  const [extractingLatexField, setExtractingLatexField] = useState<{ partId: string; field: "content_latex" | "markscheme_latex" } | null>(null);
+  const [claudeInstruction, setClaudeInstruction] = useState<Record<string, string>>({}); // key: `${partId}-${field}`
+  const [claudeLoading, setClaudeLoading] = useState<Record<string, boolean>>({});
+
+  // Full-question extraction state
+  const [fullExtractState, setFullExtractState] = useState<"idle" | "confirm" | "running">("idle");
+  const [fullExtractLog, setFullExtractLog] = useState<string[]>([]);
+  const [fullExtractError, setFullExtractError] = useState<string | null>(null);
+
+  // Stem state (no separate edit for each field — share the same edit pattern)
+  const [stemLatex, setStemLatex] = useState(question.stem_latex ?? "");
+  const [stemMsLatex, setStemMsLatex] = useState(question.stem_markscheme_latex ?? "");
+  const [stemDraftQ, setStemDraftQ] = useState(question.stem_latex ?? "");
+  const [stemDraftMS, setStemDraftMS] = useState(question.stem_markscheme_latex ?? "");
+  const [editingStem, setEditingStem] = useState<"stem_latex" | "stem_markscheme_latex" | null>(null);
+  const [savingStem, setSavingStem] = useState(false);
+
+  async function saveStem(field: "stem_latex" | "stem_markscheme_latex") {
+    const value = field === "stem_latex" ? stemDraftQ : stemDraftMS;
+    setSavingStem(true);
+    try {
+      await fetch("/api/questions/stem-update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: question.id, field, value }),
+      });
+      if (field === "stem_latex") setStemLatex(value);
+      else setStemMsLatex(value);
+      setEditingStem(null);
+    } finally {
+      setSavingStem(false);
+    }
+  }
+
+  // Whole-question editor state (used when there are no labelled parts)
+  const _wholeQPart = question.question_parts.find((p) => !p.part_label || p.part_label.trim() === "");
+  const [wholeQDraft, setWholeQDraft] = useState(_wholeQPart?.content_latex ?? "");
+  const [wholeMSDraft, setWholeMSDraft] = useState(_wholeQPart?.markscheme_latex ?? "");
+  const [editingWhole, setEditingWhole] = useState<"q" | "ms" | null>(null);
+  const [savingWhole, setSavingWhole] = useState(false);
+
+  const [unlinkingDoc, setUnlinkingDoc] = useState<"q" | "ms" | null>(null);
+  async function unlinkDoc(field: "q" | "ms") {
+    setUnlinkingDoc(field);
+    try {
+      await fetch("/api/questions/doc-link", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionId: question.id,
+          field: field === "q" ? "google_doc_id" : "google_ms_id",
+          value: null,
+        }),
+      });
+      onRefresh();
+    } finally {
+      setUnlinkingDoc(null);
+    }
+  }
+
+  // ── Clear stem ──────────────────────────────────────────────────────────
+  const [clearingStem, setClearingStem] = useState(false);
+  async function clearStem() {
+    setClearingStem(true);
+    try {
+      await Promise.all([
+        fetch("/api/questions/stem-update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "stem_latex", value: "" }),
+        }),
+        fetch("/api/questions/stem-update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "stem_markscheme_latex", value: "" }),
+        }),
+      ]);
+      setStemLatex("");
+      setStemMsLatex("");
+      setStemDraftQ("");
+      setStemDraftMS("");
+      setEditingStem(null);
+      onRefresh();
+    } finally {
+      setClearingStem(false);
+    }
+  }
+
+  // ── Delete part ─────────────────────────────────────────────────────────
+  const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
+  async function deletePart(partId: string) {
+    setDeletingPartId(partId);
+    try {
+      const res = await fetch(`/api/questions/part-metadata?partId=${encodeURIComponent(partId)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) return;
+      setParts((prev) => prev.filter((p) => p.id !== partId));
+      onRefresh();
+    } finally {
+      setDeletingPartId(null);
+    }
+  }
+
+  // ── Reset as whole question (clear stem + delete all labeled parts) ──────
+  const [resettingWhole, setResettingWhole] = useState(false);
+  async function resetAsWholeQuestion() {
+    setResettingWhole(true);
+    try {
+      // 1. Clear stem fields
+      await Promise.all([
+        fetch("/api/questions/stem-update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "stem_latex", value: "" }),
+        }),
+        fetch("/api/questions/stem-update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "stem_markscheme_latex", value: "" }),
+        }),
+      ]);
+      setStemLatex("");
+      setStemMsLatex("");
+      setStemDraftQ("");
+      setStemDraftMS("");
+      setEditingStem(null);
+
+      // 2. Delete all labeled parts
+      const labeledParts = parts.filter((p) => p.part_label && p.part_label.trim() !== "");
+      await Promise.all(
+        labeledParts.map((p) =>
+          fetch(`/api/questions/part-metadata?partId=${encodeURIComponent(p.id)}`, { method: "DELETE" })
+        )
+      );
+      setParts((prev) => prev.filter((p) => !p.part_label || p.part_label.trim() === ""));
+      onRefresh();
+    } finally {
+      setResettingWhole(false);
+    }
+  }
+
+  // ── Graph editor state ──────────────────────────────────────────────────
+  const [graphEditorOpen, setGraphEditorOpen] = useState(false);
+  const [graphSpecJson, setGraphSpecJson] = useState(() => JSON.stringify(EXAMPLE_SPEC, null, 2));
+  const [graphSavingField, setGraphSavingField] = useState<"stem_latex" | "parts_draft_latex" | null>(null);
+  const [graphParseError, setGraphParseError] = useState<string | null>(null);
+  const [graphExtracting, setGraphExtracting] = useState(false);
+  const [graphExtractError, setGraphExtractError] = useState<string | null>(null);
+  const [graphExtractFailure, setGraphExtractFailure] = useState<GraphExtractFailure | null>(null);
+  const [graphExtractSnapshot, setGraphExtractSnapshot] = useState<GraphExtractSnapshot | null>(null);
+  const [graphFailureCopied, setGraphFailureCopied] = useState(false);
+  const [graphDebugCopied, setGraphDebugCopied] = useState(false);
+  const [graphExtractWarnings, setGraphExtractWarnings] = useState<string[]>([]);
+  const [graphExtractFeedback, setGraphExtractFeedback] = useState<string[]>([]);
+  const [graphSourceImageB64, setGraphSourceImageB64] = useState<string | null>(null);
+  const [graphMeta, setGraphMeta] = useState<Record<string, unknown> | null>(null);
+
+  function formatGraphExtractFailureReport(failure: GraphExtractFailure): string {
+    const lines: string[] = [];
+    lines.push(`Status: ${failure.status}`);
+    lines.push("");
+    lines.push(`Error: ${failure.error}`);
+    lines.push("");
+    lines.push("Warnings");
+    if (failure.warnings.length > 0) {
+      lines.push(...failure.warnings);
+    } else {
+      lines.push("(none)");
+    }
+    lines.push("");
+    lines.push("Improvement feedback");
+    if (failure.feedback.length > 0) {
+      lines.push(...failure.feedback);
+    } else {
+      lines.push("(none)");
+    }
+    if (failure.graphSpec) {
+      lines.push("");
+      lines.push("Returned graphSpec JSON");
+      lines.push(JSON.stringify(failure.graphSpec, null, 2));
+    }
+    if (failure.graphMeta) {
+      lines.push("");
+      lines.push("Returned graphMeta JSON");
+      lines.push(JSON.stringify(failure.graphMeta, null, 2));
+    }
+    return lines.join("\n");
+  }
+
+  function summariseRenderedSegments(spec?: IbGraphSpec): string {
+    if (!spec?.elements?.length) return "(none)";
+    const segmentLines = spec.elements
+      .filter((el): el is Extract<IbGraphSpec["elements"][number], { type: "line" | "fn" }> => el.type === "line" || el.type === "fn")
+      .map((el, idx) => {
+        const left = typeof el.xMin === "number" ? String(el.xMin) : "?";
+        const right = typeof el.xMax === "number" ? String(el.xMax) : "?";
+        return `${idx + 1}. ${el.type} on [${left}, ${right}] => ${el.expr}`;
+      });
+
+    const points = spec.elements
+      .filter((el): el is Extract<IbGraphSpec["elements"][number], { type: "point" }> => el.type === "point")
+      .map((p) => `(${p.x}, ${p.y})${p.open ? " open" : ""}`);
+
+    const lines: string[] = [];
+    lines.push("Segments");
+    lines.push(segmentLines.length > 0 ? segmentLines.join("\n") : "(none)");
+    lines.push("");
+    lines.push("Explicit points");
+    lines.push(points.length > 0 ? points.join(", ") : "(none)");
+    return lines.join("\n");
+  }
+
+  function formatGraphExtractDebugPacket(snapshot: GraphExtractSnapshot): string {
+    const lines: string[] = [];
+    lines.push("Graph extraction debug packet");
+    lines.push(`Question code: ${question.code}`);
+    lines.push(`Question id: ${question.id}`);
+    lines.push(`Extractor status: ${snapshot.status} (${snapshot.ok ? "ok" : "error"})`);
+    lines.push("");
+
+    if (snapshot.error) {
+      lines.push("Extractor error");
+      lines.push(snapshot.error);
+      lines.push("");
+    }
+
+    lines.push("Warnings");
+    if (snapshot.warnings.length > 0) {
+      lines.push(...snapshot.warnings.map((w) => `- ${w}`));
+    } else {
+      lines.push("(none)");
+    }
+
+    lines.push("");
+    lines.push("Improvement feedback");
+    if (snapshot.feedback.length > 0) {
+      lines.push(...snapshot.feedback.map((f) => `- ${f}`));
+    } else {
+      lines.push("(none)");
+    }
+
+    lines.push("");
+    lines.push("Rendered graph summary");
+    lines.push(summariseRenderedSegments(snapshot.graphSpec));
+
+    if (snapshot.graphSpec) {
+      lines.push("");
+      lines.push("Rendered graphSpec JSON");
+      lines.push(JSON.stringify(snapshot.graphSpec, null, 2));
+    }
+
+    if (snapshot.graphMeta) {
+      lines.push("");
+      lines.push("Rendered graphMeta JSON");
+      lines.push(JSON.stringify(snapshot.graphMeta, null, 2));
+    }
+
+    lines.push("");
+    lines.push("Required correction output format");
+    lines.push("Return ONLY JSON with this shape:");
+    lines.push(`{\n  \"graphSpec\": {\n    \"xRange\": [number, number],\n    \"yRange\": [number, number],\n    \"elements\": []\n  },\n  \"graphMeta\": {\n    \"description\": \"...\",\n    \"equations\": [],\n    \"xIntercepts\": [],\n    \"yIntercepts\": [],\n    \"verticalAsymptotes\": [],\n    \"horizontalAsymptotes\": [],\n    \"keyPoints\": [],\n    \"domain\": [number, number],\n    \"markschemeHints\": []\n  },\n  \"warnings\": []\n}`);
+
+    return lines.join("\n");
+  }
+
+  function copyGraphExtractFailureReport() {
+    if (!graphExtractFailure) return;
+    const text = formatGraphExtractFailureReport(graphExtractFailure);
+    void navigator.clipboard.writeText(text).then(() => {
+      setGraphFailureCopied(true);
+      setTimeout(() => setGraphFailureCopied(false), 2000);
+    });
+  }
+
+  function copyGraphExtractDebugPacket() {
+    if (!graphExtractSnapshot) return;
+    const text = formatGraphExtractDebugPacket(graphExtractSnapshot);
+    void navigator.clipboard.writeText(text).then(() => {
+      setGraphDebugCopied(true);
+      setTimeout(() => setGraphDebugCopied(false), 2000);
+    });
+  }
+
+  async function extractGraphFromImage() {
+    setGraphExtracting(true);
+    setGraphExtractError(null);
+    setGraphExtractFailure(null);
+    setGraphExtractSnapshot(null);
+    setGraphDebugCopied(false);
+    setGraphExtractWarnings([]);
+    setGraphExtractFeedback([]);
+    setGraphSourceImageB64(null);
+    setGraphMeta(null);
+    try {
+      const res = await fetch("/api/questions/graph-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: question.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const snapshot: GraphExtractSnapshot = {
+          status: res.status,
+          ok: false,
+          error: data.error ?? "Graph extraction failed",
+          warnings: (data.warnings as string[] | undefined) ?? [],
+          feedback: (data.feedback as string[] | undefined) ?? [],
+          graphSpec: data.graphSpec as IbGraphSpec | undefined,
+          graphMeta: data.graphMeta as Record<string, unknown> | undefined,
+        };
+        setGraphExtractError(snapshot.error ?? "Graph extraction failed");
+        setGraphExtractFailure({
+          status: snapshot.status,
+          error: snapshot.error ?? "Graph extraction failed",
+          warnings: snapshot.warnings,
+          feedback: snapshot.feedback,
+          graphSpec: snapshot.graphSpec,
+          graphMeta: snapshot.graphMeta,
+        });
+        setGraphExtractSnapshot(snapshot);
+        if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+          setGraphExtractWarnings(data.warnings as string[]);
+        }
+        if (Array.isArray(data.feedback) && data.feedback.length > 0) {
+          setGraphExtractFeedback(data.feedback as string[]);
+        }
+        if (data.sourceImageBase64) setGraphSourceImageB64(data.sourceImageBase64 as string);
+        if (data.graphMeta) setGraphMeta(data.graphMeta as Record<string, unknown>);
+        return;
+      }
+
+      const snapshot: GraphExtractSnapshot = {
+        status: res.status,
+        ok: true,
+        warnings: Array.isArray(data.warnings) ? (data.warnings as string[]) : [],
+        feedback: Array.isArray(data.feedback) ? (data.feedback as string[]) : [],
+        graphSpec: data.graphSpec as IbGraphSpec | undefined,
+        graphMeta: data.graphMeta as Record<string, unknown> | undefined,
+      };
+      setGraphExtractSnapshot(snapshot);
+
+      if (data.graphSpec) {
+        setGraphSpecJson(JSON.stringify(data.graphSpec, null, 2));
+        setGraphParseError(null);
+      }
+      if (data.graphMeta) setGraphMeta(data.graphMeta as Record<string, unknown>);
+      if (snapshot.warnings.length > 0) setGraphExtractWarnings(snapshot.warnings);
+      if (snapshot.feedback.length > 0) {
+        setGraphExtractFeedback(snapshot.feedback);
+      } else {
+        setGraphExtractFeedback([
+          "Review each segment endpoint and boundary continuity manually; refine graphSpec if any vertex appears off-grid.",
+        ]);
+      }
+      if (data.sourceImageBase64) setGraphSourceImageB64(data.sourceImageBase64 as string);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Unexpected error";
+      setGraphExtractError(message);
+      setGraphExtractSnapshot({
+        status: 0,
+        ok: false,
+        error: message,
+        warnings: [],
+        feedback: [
+          "Retry extraction, then validate all segment equations from snapped vertex pairs before saving to LaTeX.",
+        ],
+      });
+      setGraphExtractFeedback([
+        "Retry extraction, then validate all segment equations from snapped vertex pairs before saving to LaTeX.",
+      ]);
+    } finally {
+      setGraphExtracting(false);
+    }
+  }
+
+  function parseGraphDraft(): IbGraphSpec | null {
+    try {
+      const parsed = JSON.parse(graphSpecJson) as IbGraphSpec;
+      setGraphParseError(null);
+      return parsed;
+    } catch (e) {
+      setGraphParseError(String(e));
+      return null;
+    }
+  }
+
+  async function saveGraphToField(targetField: "stem_latex" | "parts_draft_latex") {
+    const spec = parseGraphDraft();
+    if (!spec) return;
+    const marker = encodeGraphSpec(spec);
+    // Find the current value of the target field and append or replace the marker
+    const currentValue: string =
+      targetField === "stem_latex"
+        ? (question.stem_latex ?? "")
+        : (question.parts_draft_latex ?? "");
+    // Replace any existing GRAPH_JSON marker or append
+    GRAPH_MARKER_RE.lastIndex = 0;
+    const hasExisting = GRAPH_MARKER_RE.test(currentValue);
+    GRAPH_MARKER_RE.lastIndex = 0;
+    const newValue = hasExisting
+      ? currentValue.replace(GRAPH_MARKER_RE, marker)
+      : `${currentValue.trim()}\n\n${marker}`;
+    setGraphSavingField(targetField);
+    try {
+      await fetch("/api/questions/stem-update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: question.id, field: targetField, value: newValue }),
+      });
+      onRefresh();
+    } finally {
+      setGraphSavingField(null);
+    }
+  }
+
+  async function saveWholeQuestion(field: "q" | "ms") {
+    const value = field === "q" ? wholeQDraft : wholeMSDraft;
+    setSavingWhole(true);
+    try {
+      // Reuse the existing null-label part if one already exists; only create if missing
+      const latexField = field === "q" ? "content_latex" : "markscheme_latex";
+      let partId: string;
+      let existingPart = parts.find((p) => !p.part_label || p.part_label.trim() === "");
+      if (existingPart) {
+        partId = existingPart.id;
+      } else {
+        const createRes = await fetch("/api/questions/part-metadata", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, partLabel: null, marks: null, commandTerm: null, subtopicCodes: [] }),
+        });
+        const createData = await createRes.json() as { part?: QuestionPart; error?: string };
+        if (!createRes.ok || !createData.part) throw new Error(createData.error ?? "Failed to create part");
+        existingPart = { ...createData.part, content_latex: null, markscheme_latex: null, latex_verified: null };
+        partId = existingPart.id;
+      }
+      // Save the LaTeX
+      await fetch("/api/questions/latex-update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partId, field: latexField, value }),
+      });
+      const withLatex = { ...existingPart, [latexField]: value || null };
+      setParts([withLatex]);
+      setLatexDrafts((d) => ({ ...d, [partId]: { ...d[partId], content_latex: d[partId]?.content_latex ?? "", markscheme_latex: d[partId]?.markscheme_latex ?? "", [latexField]: value } }));
+      setEditingWhole(null);
+    } finally {
+      setSavingWhole(false);
+    }
+  }
+
+  const [addPartOpen, setAddPartOpen] = useState(false);
+  const [newPartDraft, setNewPartDraft] = useState({ partLabel: "", marks: "1", commandTerm: "", subtopicCodes: "" });
+  const [pendingParts, setPendingParts] = useState<{ partLabel: string; marks: string; commandTerm: string; subtopicCodes: string }[]>([]);
+  const [committingParts, setCommittingParts] = useState(false);
+  const [addPartError, setAddPartError] = useState<string | null>(null);
+
+  function stagePart() {
+    setPendingParts((prev) => [...prev, { ...newPartDraft }]);
+    setNewPartDraft({ partLabel: "", marks: "1", commandTerm: "", subtopicCodes: "" });
+    setAddPartError(null);
+  }
+
+  function removePending(idx: number) {
+    setPendingParts((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function commitParts() {
+    if (pendingParts.length === 0) return;
+    setCommittingParts(true);
+    setAddPartError(null);
+    const errors: string[] = [];
+    for (const draft of pendingParts) {
+      try {
+        const res = await fetch("/api/questions/part-metadata", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            questionId: question.id,
+            partLabel: draft.partLabel || null,
+            marks: parseInt(draft.marks, 10) || 1,
+            commandTerm: draft.commandTerm || null,
+            subtopicCodes: draft.subtopicCodes.split(",").map((s) => s.trim()).filter(Boolean),
+          }),
+        });
+        const data = await res.json() as { error?: string; part?: QuestionPart };
+        if (!res.ok) { errors.push(data.error ?? "Failed to add part"); continue; }
+        const created = { ...data.part!, content_latex: null, markscheme_latex: null, latex_verified: null };
+        setParts((prev) => [...prev, created].sort((a, b) => a.sort_order - b.sort_order));
+        setLatexDrafts((d) => ({ ...d, [created.id]: { content_latex: "", markscheme_latex: "" } }));
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : "Failed");
+      }
+    }
+    setCommittingParts(false);
+    if (errors.length > 0) {
+      setAddPartError(errors.join("; "));
+    } else {
+      setPendingParts([]);
+      setAddPartOpen(false);
+    }
+  }
+
+  // Determine whether there is any existing LaTeX content (parts or implied stems)
+  function hasExistingContent() {
+    return parts.some(
+      (p) => (p.content_latex && p.content_latex.trim()) || (p.markscheme_latex && p.markscheme_latex.trim())
+    );
+  }
+
+  async function runFullExtract() {
+    setFullExtractState("running");
+    setFullExtractLog([]);
+    setFullExtractError(null);
+    const log: string[] = [];
+    const push = (msg: string) => {
+      log.push(msg);
+      setFullExtractLog([...log]);
+    };
+
+    try {
+      const hasQ = images.some((i) => i.image_type === "question");
+      const hasMS = images.some((i) => i.image_type === "markscheme");
+      let qDraft = "";
+      let msDraft = "";
+
+      // ── Whole-question shortcut (no labelled parts) ─────────────────────
+      // Skip the stem/parts-draft pipeline entirely and go straight to
+      // content_latex / markscheme_latex on the null-label part.
+      if (!hasLabeledParts) {
+        push("Question has no labelled parts — extracting as whole question…");
+
+        // Find or create the null-label part
+        let wholePartId: string;
+        const existingWhole = parts.find((p) => !p.part_label || p.part_label.trim() === "");
+        if (existingWhole) {
+          wholePartId = existingWhole.id;
+        } else {
+          push("Creating whole-question part…");
+          const createRes = await fetch("/api/questions/part-metadata", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              questionId: question.id,
+              partLabel: null,
+              marks: null,
+              commandTerm: null,
+              subtopicCodes: [],
+            }),
+          });
+          if (!createRes.ok) throw new Error("Failed to create whole-question part");
+          const { part: created } = await createRes.json();
+          if (!created?.id) throw new Error("Part creation returned no id");
+          wholePartId = created.id;
+        }
+
+        // OCR question images → content_latex (uses the simple, non-IBPart prompt)
+        if (hasQ) {
+          push("Extracting LaTeX from question images (OCR)…");
+          const res = await fetch("/api/questions/ocr-latex", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ questionId: question.id, field: "content_latex" }),
+          });
+          if (res.ok) {
+            const d = await res.json();
+            qDraft = d.latex ?? "";
+            push(`Question OCR complete (${qDraft.length} chars).`);
+          } else {
+            push("⚠ Question OCR unavailable.");
+          }
+        } else {
+          push("No question images found — skipping question OCR.");
+        }
+
+        // OCR markscheme images → markscheme_latex
+        if (hasMS) {
+          push("Extracting LaTeX from mark scheme images (OCR)…");
+          const res = await fetch("/api/questions/ocr-latex", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ questionId: question.id, field: "markscheme_latex" }),
+          });
+          if (res.ok) {
+            const d = await res.json();
+            msDraft = d.latex ?? "";
+            push(`Mark scheme OCR complete (${msDraft.length} chars).`);
+          } else {
+            push("⚠ Mark scheme OCR unavailable.");
+          }
+        } else {
+          push("No mark scheme images found — skipping MS OCR.");
+        }
+
+        if (!qDraft && !msDraft) throw new Error("No OCR output produced. Make sure images are uploaded.");
+
+        // Save directly to question_parts (not ib_questions stem/draft fields)
+        await Promise.all([
+          qDraft && fetch("/api/questions/latex-update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId: wholePartId, field: "content_latex", value: qDraft }),
+          }),
+          msDraft && fetch("/api/questions/latex-update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId: wholePartId, field: "markscheme_latex", value: msDraft }),
+          }),
+        ]);
+
+        const existingWholeRef = parts.find((p) => !p.part_label || p.part_label.trim() === "");
+        const wholePart: QuestionPart = existingWholeRef
+          ? { ...existingWholeRef, content_latex: qDraft || null, markscheme_latex: msDraft || null }
+          : { id: wholePartId, part_label: "", marks: 0, subtopic_codes: [], command_term: null, sort_order: 0, content_latex: qDraft || null, markscheme_latex: msDraft || null, latex_verified: null };
+        setParts([wholePart]);
+        setLatexDrafts({ [wholePartId]: { content_latex: qDraft, markscheme_latex: msDraft } });
+        setWholeQDraft(qDraft);
+        setWholeMSDraft(msDraft);
+        push("Done! Whole question LaTeX saved.");
+        onRefresh();
+        setTimeout(() => setFullExtractState("idle"), 3000);
+        return;
+      }
+
+      // ── Multi-part path (labelled parts exist or expected) ──────────────
+
+      if (hasQ) {
+        push("Extracting LaTeX from question images (OCR)…");
+        const res = await fetch("/api/questions/ocr-latex", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "parts_draft_latex" }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          qDraft = d.latex ?? "";
+          push(`Question OCR complete (${qDraft.length} chars).`);
+        } else {
+          push("⚠ Question OCR unavailable — using empty draft.");
+        }
+      } else {
+        push("No question images found — skipping question OCR.");
+      }
+
+      if (hasMS) {
+        push("Extracting LaTeX from mark scheme images (OCR)…");
+        const res = await fetch("/api/questions/ocr-latex", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "parts_draft_markscheme_latex" }),
+        });
+        if (res.ok) {
+          const d = await res.json();
+          msDraft = d.latex ?? "";
+          push(`Mark scheme OCR complete (${msDraft.length} chars).`);
+        } else {
+          push("⚠ Mark scheme OCR unavailable — using empty draft.");
+        }
+      } else {
+        push("No mark scheme images found — skipping MS OCR.");
+      }
+
+      if (!qDraft && !msDraft) {
+        throw new Error("No OCR output produced. Make sure images are uploaded.");
+      }
+
+      // Claude classification
+      push("Analysing question structure with Claude…");
+      let claudeParts: { label: string; marks: number; commandTerm: string; subtopicCodes: string[] }[] = [];
+      try {
+        const subtopicList = availableSubtopics.map((s) => `${s.code}: ${s.descriptor}`).join("\n");
+        const labelHint = parts.length > 0 && parts[0].part_label
+          ? parts.map((p) => p.part_label ?? "").join(", ")
+          : "unknown — determine from LaTeX";
+        const clRes = await fetch("/api/claude", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            system: IB_CLASSIFY_SYSTEM,
+            messages: [{
+              role: "user",
+              content: `Question LaTeX:\n\`\`\`\n${qDraft}\n\`\`\`\n\nMark Scheme LaTeX:\n\`\`\`\n${msDraft}\n\`\`\`\n\nAvailable subtopics:\n${subtopicList}\n\nKnown part labels (if any): ${labelHint}`,
+            }],
+          }),
+        });
+        if (clRes.ok) {
+          const data = await clRes.json();
+          const text: string = data?.content?.[0]?.text ?? "";
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) claudeParts = JSON.parse(jsonMatch[0]).parts ?? [];
+          push(`Claude identified ${claudeParts.length} part(s): ${claudeParts.map((p) => p.label || "whole").join(", ")}.`);
+        }
+      } catch {
+        push("⚠ Claude classification failed — part structure inferred from OCR labels.");
+      }
+
+      // Split the drafts (only meaningful for multi-part questions)
+      const finalLabels = claudeParts.length > 0 ? claudeParts.map((p) => p.label) : [];
+      const { stem: stemQ, parts: splitQ } = splitDraftIntoParts(qDraft, finalLabels);
+      const { stem: stemMS, parts: splitMS } = splitDraftIntoParts(msDraft, finalLabels);
+
+      // Whole-question path: no parts identified, OR Claude returned a single entry with empty label
+      const isWholeQuestion = claudeParts.length === 0 || claudeParts.every((p) => !p.label || p.label.trim() === "");
+      if (isWholeQuestion) {
+        const cpMeta = claudeParts[0]; // may be undefined if claudeParts is empty
+        push("No part structure found — treating as whole question…");
+        // Find or create a null-label (whole-question) part
+        let wholePartId: string;
+        const existingWhole = parts.find((p) => !p.part_label || p.part_label.trim() === "");
+        if (existingWhole) {
+          wholePartId = existingWhole.id;
+          // Update metadata from Claude if available
+          if (cpMeta) {
+            const canonicalTermW = DEFAULT_COMMAND_TERMS.find(
+              (t) => t.toLowerCase() === (cpMeta.commandTerm ?? "").toLowerCase()
+            ) ?? null;
+            await fetch("/api/questions/part-metadata", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                partId: wholePartId,
+                marks: typeof cpMeta.marks === "number" ? cpMeta.marks : null,
+                commandTerm: canonicalTermW,
+                subtopicCodes: cpMeta.subtopicCodes ?? [],
+              }),
+            });
+          }
+        } else {
+          const canonicalTermW = DEFAULT_COMMAND_TERMS.find(
+            (t) => t.toLowerCase() === (cpMeta?.commandTerm ?? "").toLowerCase()
+          ) ?? null;
+          const createRes = await fetch("/api/questions/part-metadata", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              questionId: question.id,
+              partLabel: null,
+              marks: typeof cpMeta?.marks === "number" ? cpMeta.marks : null,
+              commandTerm: canonicalTermW,
+              subtopicCodes: cpMeta?.subtopicCodes ?? [],
+            }),
+          });
+          if (!createRes.ok) throw new Error("Failed to create whole-question part");
+          const { part: created } = await createRes.json();
+          if (!created?.id) throw new Error("Part creation returned no id");
+          wholePartId = created.id;
+        }
+        await Promise.all([
+          fetch("/api/questions/latex-update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId: wholePartId, field: "content_latex", value: qDraft }),
+          }),
+          fetch("/api/questions/latex-update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId: wholePartId, field: "markscheme_latex", value: msDraft }),
+          }),
+        ]);
+        const wholePart: QuestionPart = existingWhole
+          ? { ...existingWhole, content_latex: qDraft || null, markscheme_latex: msDraft || null }
+          : { id: wholePartId, part_label: "", marks: 0, subtopic_codes: [], command_term: null, sort_order: 0, content_latex: qDraft || null, markscheme_latex: msDraft || null, latex_verified: null };
+        setParts([wholePart]);
+        setLatexDrafts({ [wholePartId]: { content_latex: qDraft, markscheme_latex: msDraft } });
+        setWholeQDraft(qDraft);
+        setWholeMSDraft(msDraft);
+        push("Done! Whole question LaTeX saved.");
+        onRefresh();
+        setTimeout(() => setFullExtractState("idle"), 3000);
+        return;
+      }
+
+      // Multi-part path: save stem only when there are actual parts
+      push("Saving stems…");
+      await Promise.all([
+        fetch("/api/questions/stem-update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "stem_latex", value: stemQ }),
+        }),
+        fetch("/api/questions/stem-update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "stem_markscheme_latex", value: stemMS }),
+        }),
+      ]);
+      setStemLatex(stemQ);
+      setStemDraftQ(stemQ);
+      setStemMsLatex(stemMS);
+      setStemDraftMS(stemMS);
+
+      // For each Claude-identified part: find existing or create, then save LaTeX
+      push("Saving parts…");
+      const newParts: QuestionPart[] = [];
+      for (const cp of claudeParts) {
+        const existing = parts.find((p) => (p.part_label ?? "").toLowerCase() === cp.label.toLowerCase());
+        let partId: string;
+
+        if (existing) {
+          // Update metadata
+          await fetch("/api/questions/part-metadata", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              partId: existing.id,
+              partLabel: cp.label,
+              marks: cp.marks,
+              commandTerm: cp.commandTerm,
+              subtopicCodes: cp.subtopicCodes,
+            }),
+          });
+          partId = existing.id;
+          newParts.push({
+            ...existing,
+            part_label: cp.label,
+            marks: cp.marks,
+            command_term: cp.commandTerm,
+            subtopic_codes: cp.subtopicCodes,
+            content_latex: splitQ.get(cp.label) ?? null,
+            markscheme_latex: splitMS.get(cp.label) ?? null,
+          });
+        } else {
+          // Create new part
+          // Sanitize commandTerm: API rejects non-canonical terms
+          const canonicalTerm = DEFAULT_COMMAND_TERMS.find(
+            (t) => t.toLowerCase() === (cp.commandTerm ?? "").toLowerCase()
+          ) ?? null;
+          const res = await fetch("/api/questions/part-metadata", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              questionId: question.id,
+              partLabel: cp.label,
+              marks: typeof cp.marks === "number" ? cp.marks : null,
+              commandTerm: canonicalTerm,
+              subtopicCodes: cp.subtopicCodes,
+            }),
+          });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            push(`⚠ Failed to create part ${cp.label || "(whole)"}: ${errData.error ?? res.status}`);
+            continue;
+          }
+          const { part: created } = await res.json();
+          if (!created?.id) { push(`⚠ Part ${cp.label} creation returned no id`); continue; }
+          partId = created.id;
+          newParts.push({
+            ...created,
+            content_latex: splitQ.get(cp.label) ?? null,
+            markscheme_latex: splitMS.get(cp.label) ?? null,
+          });
+        }
+
+        // Save LaTeX for the part
+        await Promise.all([
+          fetch("/api/questions/latex-update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId, field: "content_latex", value: splitQ.get(cp.label) ?? "" }),
+          }),
+          fetch("/api/questions/latex-update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId, field: "markscheme_latex", value: splitMS.get(cp.label) ?? "" }),
+          }),
+        ]);
+      }
+
+      // Update local state — merge: keep any existing parts not touched by extraction,
+      // plus all newly created / updated parts
+      const updatedById: Record<string, QuestionPart> = {};
+      newParts.forEach((p) => { updatedById[p.id] = p; });
+      const mergedParts = parts
+        .map((p) => updatedById[p.id] ?? p)  // update existing in-place
+        .concat(newParts.filter((p) => !parts.some((ep) => ep.id === p.id)));  // add truly new
+      const sortedMerged = mergedParts.sort((a, b) => a.sort_order - b.sort_order);
+      setParts(sortedMerged);
+      const newDrafts: Record<string, { content_latex: string; markscheme_latex: string }> = {};
+      sortedMerged.forEach((p) => {
+        newDrafts[p.id] = {
+          content_latex: p.content_latex ?? "",
+          markscheme_latex: p.markscheme_latex ?? "",
+        };
+      });
+      setLatexDrafts(newDrafts);
+
+      push("Done! All LaTeX extracted and saved.");
+      // Refresh parent question list so data stays in sync
+      onRefresh();
+      setTimeout(() => setFullExtractState("idle"), 3000);
+    } catch (e) {
+      setFullExtractError(e instanceof Error ? e.message : "Unexpected error");
+    }
+  }
+
+  async function extractLatexFromImages(partId: string, field: "content_latex" | "markscheme_latex") {
+    setExtractingLatexField({ partId, field });
+    // Switch to edit mode immediately so the user sees the result land
+    setEditingLatex({ partId, field });
+    try {
+      const draftField = field === "content_latex" ? "parts_draft_latex" : "parts_draft_markscheme_latex";
+      const res = await fetch("/api/questions/ocr-latex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: question.id, field: draftField }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const fullLatex: string = data.latex ?? "";
+      if (!fullLatex) return;
+      // Split by part labels and pick this part's slice
+      const partLabels = parts.map((p) => p.part_label ?? "");
+      const { stem, parts: splitMap } = splitDraftIntoParts(fullLatex, partLabels);
+      const thisPart = parts.find((p) => p.id === partId);
+      const thisLabel = thisPart?.part_label ?? "";
+      // Use the split slice if found, otherwise fall back to stem (single-part question)
+      const extracted = splitMap.get(thisLabel) ?? stem ?? fullLatex;
+      setLatexDrafts((d) => ({
+        ...d,
+        [partId]: { ...d[partId], [field]: extracted },
+      }));
+    } finally {
+      setExtractingLatexField(null);
+    }
+  }
+
+  async function runClaude(partId: string, field: "content_latex" | "markscheme_latex") {
+    const key = `${partId}-${field}`;
+    const instruction = claudeInstruction[key] ?? "";
+    if (!instruction.trim()) return;
+    setClaudeLoading((l) => ({ ...l, [key]: true }));
+    const currentLatex = latexDrafts[partId]?.[field] ?? "";
+    try {
+      const res = await fetch("/api/claude", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system: IB_CORRECTION_SYSTEM,
+          messages: [{
+            role: "user",
+            content: `Here is the current LaTeX for this question part:\n\n\`\`\`\n${currentLatex}\n\`\`\`\n\nInstruction: ${instruction}\n\nReturn ONLY the corrected LaTeX, nothing else.`,
+          }],
+        }),
+      });
+      const data = await res.json();
+      const corrected: string = data?.content?.[0]?.text ?? "";
+      if (corrected) {
+        setLatexDrafts((d) => ({ ...d, [partId]: { ...d[partId], [field]: corrected.trim() } }));
+        setEditingLatex({ partId, field });
+      }
+    } finally {
+      setClaudeLoading((l) => ({ ...l, [key]: false }));
+      setClaudeInstruction((c) => ({ ...c, [key]: "" }));
+    }
+  }
+
+  async function saveLatex(partId: string, field: "content_latex" | "markscheme_latex") {
+    const value = latexDrafts[partId]?.[field] ?? "";
+    setSavingLatex(true);
+    try {
+      const res = await fetch("/api/questions/latex-update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ partId, field, value }),
+      });
+      if (!res.ok) throw new Error("Failed to save");
+      setParts((prev) => prev.map((p) => (p.id === partId ? { ...p, [field]: value || null } : p)));
+      setEditingLatex(null);
+    } finally {
+      setSavingLatex(false);
+    }
+  }
+
+  // Close modal on Escape key
+  useEffect(() => {
+    if (!expanded) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onToggle();
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [expanded, onToggle]);
+
+  // True when the question has at least one part with a letter label (a, b, c…)
+  const hasLabeledParts = parts.some((p) => p.part_label && p.part_label.trim() !== "");
 
   return (
     <>
@@ -1491,139 +2662,993 @@ function QuestionRow({
           </td>
         )}
       </tr>
-      {expanded && (
-        <tr>
-          <td colSpan={testBuilderOpen ? 10 : 9} className="bg-blue-50 px-4 py-3">
-            {/* Google Doc links */}
-            {(question.google_doc_id || question.google_ms_id) && (
-              <div className="ml-4 mb-3 flex items-center gap-3">
-                <span className="text-xs font-bold text-blue-900">Source docs:</span>
-                {question.google_doc_id && (
-                  <a
-                    href={`https://docs.google.com/document/d/${question.google_doc_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
-                  >
-                    📄 Question Doc
-                  </a>
-                )}
-                {question.google_ms_id && (
-                  <a
-                    href={`https://docs.google.com/document/d/${question.google_ms_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 hover:underline"
-                  >
-                    📝 Markscheme Doc
-                  </a>
-                )}
-              </div>
-            )}
-            {question.question_parts.length > 0 && (
-            <div className="ml-4">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-blue-200">
-                    <th className="px-2 py-1 text-left font-bold text-blue-900">
-                      Part
-                    </th>
-                    <th className="px-2 py-1 text-center font-bold text-blue-900">
-                      Marks
-                    </th>
-                    <th className="px-2 py-1 text-left font-bold text-blue-900">
-                      Subtopics
-                    </th>
-                    <th className="px-2 py-1 text-left font-bold text-blue-900">
-                      Command Term
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {question.question_parts.map((part) => (
-                    <tr
-                      key={part.id}
-                      className="border-b border-blue-100 last:border-0"
-                    >
-                      <td className="px-2 py-1 font-bold text-blue-800">
-                        {part.part_label || "(whole)"}
-                      </td>
-                      <td className="px-2 py-1 text-center font-bold text-blue-900">
-                        {part.marks}
-                      </td>
-                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
-                        <SubtopicEditor
-                          codes={part.subtopic_codes}
-                          available={availableSubtopics}
-                          onChange={(codes) => onUpdateSubtopics(part.id, codes)}
-                        />
-                      </td>
-                      <td className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
-                        <CommandTermSelect
-                          value={part.command_term}
-                          terms={commandTerms}
-                          onChange={(term) => onUpdateCommandTerm(part.id, term)}
-                          onAddCustom={onAddCustomTerm}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {expanded && typeof document !== "undefined" && createPortal(
+        minimized ? (
+          /* ── Minimized bar ── */
+          <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-blue-300 shadow-xl px-5 py-2 flex items-center gap-4">
+            <span className="font-mono font-bold text-blue-900 text-sm">{question.code}</span>
+            <span className="text-xs text-gray-500">
+              {question.session} · P{question.paper} · {question.level} · TZ{question.timezone}
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setMinimized(false)}
+                title="Restore editor"
+                className="rounded px-3 py-1.5 text-xs font-bold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors"
+              >
+                ▲ Restore
+              </button>
+              <button
+                type="button"
+                onClick={onToggle}
+                title="Close editor"
+                className="rounded w-7 h-7 flex items-center justify-center text-sm font-bold bg-gray-100 text-gray-700 hover:bg-red-100 hover:text-red-700 transition-colors"
+              >
+                ✕
+              </button>
             </div>
-            )}
-
-            {/* Images Section */}
-            <div className="ml-4 mt-3 border-t border-blue-200 pt-3">
-              <div className="flex items-center gap-3 mb-2">
-                <span className="text-sm font-bold text-blue-900">Images</span>
+          </div>
+        ) : (
+          /* ── Full-screen modal ── */
+          <div className="fixed inset-0 z-50 flex flex-col bg-white overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center gap-4 px-5 py-3 bg-blue-900 text-white shadow-md shrink-0">
+              <span className="font-mono font-bold text-lg">{question.code}</span>
+              <span className="text-sm text-blue-200">
+                {question.session} · P{question.paper} · {question.level} · TZ{question.timezone}
+              </span>
+              <div className="ml-auto flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); onExtractImages(); }}
-                  disabled={extracting}
-                  className="rounded-lg border border-blue-400 bg-white px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                  onClick={() => setMinimized(true)}
+                  title="Minimize"
+                  className="rounded px-3 py-1.5 text-xs font-bold bg-blue-700 hover:bg-blue-600 text-white transition-colors"
                 >
-                  {extracting ? "Extracting…" : images.length > 0 ? "Re-extract" : "Extract from Docs"}
+                  — Minimize
                 </button>
-                {images.length > 0 && (
-                  <span className="text-xs text-gray-500">
-                    {images.filter(i => i.image_type === "question").length} question,{" "}
-                    {images.filter(i => i.image_type === "markscheme").length} markscheme
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-4">
-                <ImageGroup
-                  label="Question"
-                  labelColor="blue"
-                  questionId={question.id}
-                  imageType="question"
-                  images={images.filter(i => i.image_type === "question")}
-                  deletingImageIds={deletingImageIds}
-                  uploading={uploadingImage}
-                  onDelete={onDeleteImage}
-                  onReorder={(orderedIds) => onReorderImages("question", orderedIds)}
-                  onUpload={(file) => onUploadImage("question", file)}
-                />
-                <ImageGroup
-                  label="Markscheme"
-                  labelColor="green"
-                  questionId={question.id}
-                  imageType="markscheme"
-                  images={images.filter(i => i.image_type === "markscheme")}
-                  deletingImageIds={deletingImageIds}
-                  uploading={uploadingImage}
-                  onDelete={onDeleteImage}
-                  onReorder={(orderedIds) => onReorderImages("markscheme", orderedIds)}
-                  onUpload={(file) => onUploadImage("markscheme", file)}
-                />
+                <button
+                  type="button"
+                  onClick={onToggle}
+                  title="Close"
+                  className="rounded px-3 py-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors"
+                >
+                  ✕ Close
+                </button>
               </div>
             </div>
-          </td>
-        </tr>
+            {/* Scrollable content */}
+            <div className="flex-1 overflow-hidden bg-blue-50 flex flex-col gap-6 p-6">
+
+                {/* ── Question metadata ── */}
+                <div className="bg-white rounded-xl border border-blue-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
+                  <span className="text-xs font-bold text-blue-900 uppercase tracking-wide mr-1">Question details</span>
+                  {/* Pills */}
+                  <span className="px-2.5 py-0.5 bg-blue-50 rounded-full text-blue-800 font-semibold text-xs">{question.session}</span>
+                  <span className="px-2.5 py-0.5 bg-blue-50 rounded-full text-blue-800 font-semibold text-xs">Paper {question.paper}</span>
+                  <span className={`px-2.5 py-0.5 rounded-full font-semibold text-xs ${question.level === "AHL" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"}`}>
+                    {question.level === "AHL" ? "HL" : question.level}
+                  </span>
+                  <span className="px-2.5 py-0.5 bg-blue-50 rounded-full text-blue-800 font-semibold text-xs">{question.timezone}</span>
+                  {question.curriculum?.length > 0 && (
+                    <span className="px-2.5 py-0.5 bg-gray-100 rounded-full text-gray-700 font-semibold text-xs">{question.curriculum.join(", ")}</span>
+                  )}
+                  {question.difficulty != null && (
+                    <span className="px-2.5 py-0.5 bg-yellow-50 rounded-full text-yellow-800 font-semibold text-xs">Difficulty {question.difficulty}</span>
+                  )}
+                  {/* Section A/B (only for P1/P2) */}
+                  {showSection && (
+                    <>
+                      <span className="text-xs font-bold text-blue-900 ml-1">Section:</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={savingSection}
+                          onClick={() => onUpdateSection("A")}
+                          className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${
+                            question.section === "A"
+                              ? "bg-blue-600 text-white"
+                              : "bg-gray-100 text-gray-500 hover:bg-blue-100"
+                          }`}
+                        >
+                          A
+                        </button>
+                        <button
+                          type="button"
+                          disabled={savingSection}
+                          onClick={() => onUpdateSection("B")}
+                          className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${
+                            question.section === "B"
+                              ? "bg-orange-500 text-white"
+                              : "bg-gray-100 text-gray-500 hover:bg-orange-100"
+                          }`}
+                        >
+                          B
+                        </button>
+                        {savingSection && <span className="text-xs text-gray-400">Saving…</span>}
+                      </div>
+                    </>
+                  )}
+                  {/* Source docs */}
+                  <div className="flex flex-wrap items-center gap-3 ml-1">
+                    <span className="text-xs font-bold text-blue-900">Source docs:</span>
+                    {question.google_doc_id ? (
+                      <span className="inline-flex items-center gap-1">
+                        <a
+                          href={`https://docs.google.com/document/d/${question.google_doc_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+                        >
+                          📄 Question Doc
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => unlinkDoc("q")}
+                          disabled={unlinkingDoc !== null}
+                          title="Unlink question doc"
+                          className="ml-0.5 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40"
+                        >
+                          {unlinkingDoc === "q" ? "…" : "×"}
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">No question doc linked</span>
+                    )}
+                    {question.google_ms_id ? (
+                      <span className="inline-flex items-center gap-1">
+                        <a
+                          href={`https://docs.google.com/document/d/${question.google_ms_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 hover:underline"
+                        >
+                          📝 Markscheme Doc
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => unlinkDoc("ms")}
+                          disabled={unlinkingDoc !== null}
+                          title="Unlink markscheme doc"
+                          className="ml-0.5 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40"
+                        >
+                          {unlinkingDoc === "ms" ? "…" : "×"}
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400 italic">No markscheme doc linked</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Row 4: Graph Editor ── */}
+                <div className="border-t border-blue-100 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setGraphEditorOpen((o) => !o)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900"
+                  >
+                    <span>{graphEditorOpen ? "▾" : "▸"}</span>
+                    <span>📈 Graph Editor</span>
+                  </button>
+                  {graphEditorOpen && (
+                    <div className="mt-3 space-y-3">
+                      {/* ── Extract from image controls ── */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={extractGraphFromImage}
+                          disabled={graphExtracting || images.filter(i => i.image_type === "question").length === 0}
+                          className="inline-flex items-center gap-1.5 rounded bg-violet-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+                          title={images.filter(i => i.image_type === "question").length === 0 ? "Extract question images first" : ""}
+                        >
+                          {graphExtracting ? "Extracting graph…" : "🔍 Extract Graph from Image"}
+                        </button>
+                        {graphExtractSnapshot && (
+                          <button
+                            type="button"
+                            onClick={copyGraphExtractDebugPacket}
+                            className="inline-flex items-center gap-1 rounded border border-indigo-300 bg-white px-2.5 py-1.5 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50"
+                            title="Copy extracted graph details and required correction output format"
+                          >
+                            {graphDebugCopied ? "✓ Copied" : "Copy Graph Debug Packet"}
+                          </button>
+                        )}
+                        {graphExtracting && (
+                          <span className="text-xs text-violet-600 italic">
+                            Running 2-pass analysis (this may take ~30 s)…
+                          </span>
+                        )}
+                        {graphExtractError && (
+                          <span className="text-xs text-red-600 font-semibold">
+                            {graphExtractError}
+                            {graphExtractFailure?.status === 422 ? " (continuity gate)" : ""}
+                          </span>
+                        )}
+                      </div>
+
+                      {graphExtractFailure && (
+                        <div className="rounded border border-red-200 bg-red-50 px-3 py-2 space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs font-bold text-red-800">
+                              {graphExtractFailure.status === 422
+                                ? "Continuity gate rejected this extraction"
+                                : "Graph extraction failed"}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={copyGraphExtractFailureReport}
+                              className="rounded px-2.5 py-1 text-[11px] font-bold bg-red-600 text-white hover:bg-red-700"
+                            >
+                              {graphFailureCopied ? "✓ Copied" : "Copy Full Failure Report"}
+                            </button>
+                          </div>
+
+                          <details>
+                            <summary className="cursor-pointer text-xs font-bold text-red-800">
+                              Click for details
+                            </summary>
+                          <div className="mt-2 space-y-1">
+                            <p className="text-xs text-red-700"><span className="font-semibold">Status:</span> {graphExtractFailure.status}</p>
+                            <p className="text-xs text-red-700"><span className="font-semibold">Error:</span> {graphExtractFailure.error}</p>
+
+                            {graphExtractFailure.warnings.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-red-800">Warnings</p>
+                                <ul className="list-disc ml-4 space-y-0.5">
+                                  {graphExtractFailure.warnings.map((w, i) => (
+                                    <li key={i} className="text-xs text-red-700">{w}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+
+                            {graphExtractFailure.graphSpec && (
+                              <details>
+                                <summary className="cursor-pointer text-xs font-semibold text-red-800">Returned graphSpec JSON</summary>
+                                <pre className="mt-1 rounded bg-white border border-red-100 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-56 text-red-900">
+                                  {JSON.stringify(graphExtractFailure.graphSpec, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+
+                            {graphExtractFailure.graphMeta && (
+                              <details>
+                                <summary className="cursor-pointer text-xs font-semibold text-red-800">Returned graphMeta JSON</summary>
+                                <pre className="mt-1 rounded bg-white border border-red-100 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-56 text-red-900">
+                                  {JSON.stringify(graphExtractFailure.graphMeta, null, 2)}
+                                </pre>
+                              </details>
+                            )}
+                          </div>
+                          </details>
+                        </div>
+                      )}
+
+                      {/* ── Extraction warnings ── */}
+                      {graphExtractWarnings.length > 0 && (
+                        <div className="rounded border border-yellow-300 bg-yellow-50 px-3 py-2 space-y-1">
+                          <p className="text-xs font-bold text-yellow-800">⚠ Verification notices</p>
+                          {graphExtractWarnings.map((w, i) => (
+                            <p key={i} className="text-xs text-yellow-700">{w}</p>
+                          ))}
+                        </div>
+                      )}
+
+                      {graphExtractFeedback.length > 0 && (
+                        <div className="rounded border border-blue-300 bg-blue-50 px-3 py-2 space-y-1">
+                          <p className="text-xs font-bold text-blue-800">🛠 Suggested improvements (always review)</p>
+                          {graphExtractFeedback.map((tip, i) => (
+                            <p key={i} className="text-xs text-blue-700">{tip}</p>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* ── Graph metadata (from extraction) ── */}
+                      {graphMeta && (
+                        <details className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2">
+                          <summary className="cursor-pointer text-xs font-bold text-indigo-800">📊 Extracted graph metadata</summary>
+                          <div className="mt-2 space-y-1 text-xs text-indigo-900">
+                            {(graphMeta.description as string) && (
+                              <p><span className="font-semibold">Description:</span> {graphMeta.description as string}</p>
+                            )}
+                            {(graphMeta.equations as string[])?.length > 0 && (
+                              <p><span className="font-semibold">Equations:</span> {(graphMeta.equations as string[]).join(", ")}</p>
+                            )}
+                            {(graphMeta.xIntercepts as Array<{x:number;label?:string}>)?.length > 0 && (
+                              <p><span className="font-semibold">x-intercepts:</span> {(graphMeta.xIntercepts as Array<{x:number;label?:string}>).map(p => p.label ?? `(${p.x},0)`).join(", ")}</p>
+                            )}
+                            {(graphMeta.yIntercepts as Array<{y:number;label?:string}>)?.length > 0 && (
+                              <p><span className="font-semibold">y-intercepts:</span> {(graphMeta.yIntercepts as Array<{y:number;label?:string}>).map(p => p.label ?? `(0,${p.y})`).join(", ")}</p>
+                            )}
+                            {(graphMeta.verticalAsymptotes as number[])?.length > 0 && (
+                              <p><span className="font-semibold">Vertical asymptotes:</span> x = {(graphMeta.verticalAsymptotes as number[]).join(", x = ")}</p>
+                            )}
+                            {(graphMeta.horizontalAsymptotes as string[])?.length > 0 && (
+                              <p><span className="font-semibold">Horizontal asymptotes:</span> {(graphMeta.horizontalAsymptotes as string[]).join(", ")}</p>
+                            )}
+                            {(graphMeta.markschemeHints as string[])?.length > 0 && (
+                              <div>
+                                <p className="font-semibold">Mark-scheme hints:</p>
+                                <ul className="list-disc ml-4">
+                                  {(graphMeta.markschemeHints as string[]).map((h, i) => <li key={i}>{h}</li>)}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                      )}
+
+                      {/* ── Main editor + preview grid ── */}
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* Left: JSON spec editor */}
+                        <div className="flex flex-col gap-2">
+                          <p className="text-xs text-gray-500">
+                            Define the graph as JSON.{" "}
+                            <a
+                              href="https://github.com/nicolewhite/algebra.js"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline text-indigo-500"
+                            >
+                              Expressions
+                            </a>{" "}
+                            support: <code className="text-xs bg-gray-100 px-1 rounded">x^2</code>,{" "}
+                            <code className="text-xs bg-gray-100 px-1 rounded">sin(x)</code>,{" "}
+                            <code className="text-xs bg-gray-100 px-1 rounded">ln(x)</code>,{" "}
+                            <code className="text-xs bg-gray-100 px-1 rounded">e^x</code>,{" "}
+                            <code className="text-xs bg-gray-100 px-1 rounded">sqrt(x)</code>, etc.
+                          </p>
+                          <textarea
+                            rows={16}
+                            value={graphSpecJson}
+                            onChange={(e) => { setGraphSpecJson(e.target.value); setGraphParseError(null); }}
+                            spellCheck={false}
+                            className="w-full rounded border border-gray-300 px-2 py-1.5 font-mono text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          />
+                          {graphParseError && (
+                            <p className="text-xs text-red-600">{graphParseError}</p>
+                          )}
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => saveGraphToField("stem_latex")}
+                              disabled={graphSavingField !== null}
+                              className="rounded bg-indigo-600 px-3 py-1 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                            >
+                              {graphSavingField === "stem_latex" ? "Saving…" : "Save → Stem"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => saveGraphToField("parts_draft_latex")}
+                              disabled={graphSavingField !== null}
+                              className="rounded bg-blue-600 px-3 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {graphSavingField === "parts_draft_latex" ? "Saving…" : "Save → Parts Draft"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setGraphSpecJson(JSON.stringify(EXAMPLE_SPEC, null, 2)); setGraphParseError(null); }}
+                              className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                            >
+                              Reset to example
+                            </button>
+                          </div>
+                          <details className="text-xs text-gray-500">
+                            <summary className="cursor-pointer font-semibold text-gray-600">Element reference</summary>
+                            <pre className="mt-1 rounded bg-gray-50 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap">{GRAPH_ELEMENT_REFERENCE}</pre>
+                          </details>
+                        </div>
+
+                        {/* Right: live preview + optional image comparison */}
+                        <div className="flex flex-col gap-3">
+                          <div>
+                            <p className="text-xs font-semibold text-gray-600 mb-1">Live preview (LaTeX-rendered graph)</p>
+                            {(() => {
+                              try {
+                                const spec = JSON.parse(graphSpecJson) as IbGraphSpec;
+                                return <IbGraph spec={spec} />;
+                              } catch {
+                                return <p className="text-xs text-gray-400 italic">Fix JSON to see preview</p>;
+                              }
+                            })()}
+                          </div>
+                          {/* Source image comparison */}
+                          {graphSourceImageB64 && (
+                            <div>
+                              <p className="text-xs font-semibold text-gray-600 mb-1">Original image (for comparison)</p>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={`data:image/png;base64,${graphSourceImageB64}`}
+                                alt="Source question image"
+                                className="w-full rounded border border-gray-200 object-contain bg-white"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── Images + Parts & LaTeX side-by-side ── */}
+                <div className="flex-1 overflow-hidden grid grid-cols-2 gap-6">
+
+                {/* ── Images (left column) ── */}
+                <div className="bg-white rounded-xl border border-blue-200 p-5 overflow-y-auto">
+                  <div className="flex items-center gap-3 mb-3">
+                    <h2 className="text-sm font-bold text-blue-900 uppercase tracking-wide">Images</h2>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onExtractImages(); }}
+                      disabled={extracting}
+                      className="rounded-lg border border-blue-400 bg-white px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                    >
+                      {extracting ? "Extracting…" : images.length > 0 ? "Re-extract" : "Extract from Docs"}
+                    </button>
+                    {images.length > 0 && (
+                      <span className="text-xs text-gray-500">
+                        {images.filter(i => i.image_type === "question").length} question,{" "}
+                        {images.filter(i => i.image_type === "markscheme").length} markscheme
+                      </span>
+                    )}
+                  </div>
+                  <div className="space-y-4">
+                    <ImageGroup
+                      label="Question"
+                      labelColor="blue"
+                      questionId={question.id}
+                      imageType="question"
+                      images={images.filter(i => i.image_type === "question")}
+                      deletingImageIds={deletingImageIds}
+                      uploading={uploadingImage}
+                      onDelete={onDeleteImage}
+                      onReorder={(orderedIds) => onReorderImages("question", orderedIds)}
+                      onUpload={(file) => onUploadImage("question", file)}
+                    />
+                    <ImageGroup
+                      label="Markscheme"
+                      labelColor="green"
+                      questionId={question.id}
+                      imageType="markscheme"
+                      images={images.filter(i => i.image_type === "markscheme")}
+                      deletingImageIds={deletingImageIds}
+                      uploading={uploadingImage}
+                      onDelete={onDeleteImage}
+                      onReorder={(orderedIds) => onReorderImages("markscheme", orderedIds)}
+                      onUpload={(file) => onUploadImage("markscheme", file)}
+                    />
+                  </div>
+                </div>
+
+                {/* ── Parts & LaTeX (right column) ── */}
+                <div className="bg-white rounded-xl border border-blue-200 p-5 overflow-y-auto">
+                  <div className="flex items-center gap-3 mb-4 flex-wrap">
+                    <h2 className="text-sm font-bold text-blue-900 uppercase tracking-wide">
+                      Parts &amp; LaTeX
+                      <span className="ml-2 font-normal text-gray-400 normal-case">({parts.length} part{parts.length !== 1 ? "s" : ""})</span>
+                    </h2>
+                    {/* Full-question Extract LaTeX button */}
+                    {(images.some((i) => i.image_type === "question") || images.some((i) => i.image_type === "markscheme")) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (hasExistingContent()) {
+                            setFullExtractState("confirm");
+                          } else {
+                            void runFullExtract();
+                          }
+                        }}
+                        disabled={fullExtractState === "running"}
+                        className="rounded px-3 py-1.5 text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
+                      >
+                        {fullExtractState === "running" ? (
+                          <><span className="inline-block w-3 h-3 border-2 border-amber-200 border-t-white rounded-full animate-spin" /> Extracting…</>
+                        ) : (
+                          "⟳ Extract LaTeX"
+                        )}
+                      </button>
+                    )}
+                    {/* Reset as whole question — removes stem + all labeled parts */}
+                    {hasLabeledParts && (
+                      <button
+                        type="button"
+                        onClick={() => { if (confirm("Reset as whole question? This will clear the stem and delete ALL labeled parts.")) void resetAsWholeQuestion(); }}
+                        disabled={resettingWhole}
+                        className="rounded px-3 py-1.5 text-xs font-bold border border-red-300 text-red-600 bg-white hover:bg-red-50 disabled:opacity-50 transition-colors"
+                      >
+                        {resettingWhole ? "Resetting…" : "↺ Reset as Whole Question"}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setAddPartOpen(!addPartOpen)}
+                      className="ml-auto rounded px-3 py-1.5 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
+                    >
+                      + Add Part
+                    </button>
+                  </div>
+
+                  {/* Confirm overwrite dialog */}
+                  {fullExtractState === "confirm" && (
+                    <div className="mb-4 rounded-lg border border-orange-300 bg-orange-50 p-4 space-y-3">
+                      <p className="text-sm font-semibold text-orange-800">
+                        ⚠ This question already has LaTeX content. Extracting will <strong>overwrite all existing part and stem LaTeX</strong> with newly extracted data.
+                      </p>
+                      <p className="text-xs text-orange-600">
+                        Part structure will be re-determined from the images. Existing parts not found in the new extraction will be left unchanged.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void runFullExtract()}
+                          className="rounded px-4 py-1.5 text-xs font-bold bg-orange-600 text-white hover:bg-orange-700"
+                        >
+                          Yes, overwrite with extracted LaTeX
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFullExtractState("idle")}
+                          className="rounded px-4 py-1.5 text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Extraction progress / log */}
+                  {(fullExtractState === "running" || (fullExtractLog.length > 0 && fullExtractState === "idle")) && (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-1.5">
+                      {fullExtractLog.map((msg, i) => (
+                        <p key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                          <span className="text-green-500 shrink-0 mt-0.5">✓</span>{msg}
+                        </p>
+                      ))}
+                      {fullExtractState === "running" && (
+                        <p className="text-xs text-amber-700 flex items-center gap-1.5">
+                          <span className="inline-block w-3 h-3 border-2 border-amber-400 border-t-amber-700 rounded-full animate-spin" />
+                          Working…
+                        </p>
+                      )}
+                      {fullExtractError && (
+                        <p className="text-xs text-red-600 font-medium">⚠ {fullExtractError}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Add part form */}
+                  {addPartOpen && (
+                    <div className="mb-5 p-4 bg-blue-50 rounded-lg border border-blue-200 space-y-3">
+                      <h3 className="text-xs font-bold text-blue-900">New Part</h3>
+                      {/* Input row */}
+                      <div className="grid grid-cols-4 gap-3">
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-gray-700">Label</span>
+                          <input
+                            type="text"
+                            value={newPartDraft.partLabel}
+                            onChange={(e) => setNewPartDraft((d) => ({ ...d, partLabel: e.target.value }))}
+                            placeholder="a, b, c…"
+                            className="border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-900 focus:outline-none text-gray-900 focus:ring-2 focus:ring-blue-400"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-gray-700">Marks</span>
+                          <input
+                            type="number"
+                            min={0}
+                            value={newPartDraft.marks}
+                            onChange={(e) => setNewPartDraft((d) => ({ ...d, marks: e.target.value }))}
+                            className="border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-900 focus:outline-none text-gray-900 focus:ring-2 focus:ring-blue-400"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-gray-700">Command Term</span>
+                          <select
+                            value={newPartDraft.commandTerm}
+                            onChange={(e) => setNewPartDraft((d) => ({ ...d, commandTerm: e.target.value }))}
+                            className="border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-900 focus:outline-none text-gray-900 focus:ring-2 focus:ring-blue-400"
+                          >
+                            <option value="">— none —</option>
+                            {DEFAULT_COMMAND_TERMS.map((t) => <option key={t} value={t}>{t}</option>)}
+                          </select>
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-xs font-semibold text-gray-700">Subtopic codes (comma-separated)</span>
+                          <input
+                            type="text"
+                            value={newPartDraft.subtopicCodes}
+                            onChange={(e) => setNewPartDraft((d) => ({ ...d, subtopicCodes: e.target.value }))}
+                            placeholder="5.1.1, 5.1.2…"
+                            className="border border-gray-300 rounded px-2 py-1.5 text-sm text-gray-900 focus:outline-none text-gray-900 focus:ring-2 focus:ring-blue-400"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Add Part button — stages locally, stays open */}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={stagePart}
+                          className="rounded px-3 py-1.5 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                          + Add Part
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setAddPartOpen(false); setPendingParts([]); setAddPartError(null); }}
+                          className="rounded px-3 py-1.5 text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+
+                      {/* Staged parts list */}
+                      {pendingParts.length > 0 && (
+                        <div className="space-y-1.5 pt-2 border-t border-blue-200">
+                          <p className="text-xs font-semibold text-blue-800">Staged ({pendingParts.length}):</p>
+                          {pendingParts.map((p, i) => (
+                            <div key={i} className="flex items-center gap-3 bg-white rounded-lg border border-blue-100 px-3 py-2 text-xs">
+                              <span className="font-bold text-blue-900 w-6">{p.partLabel || "—"}</span>
+                              <span className="text-gray-600">{p.marks} mark{p.marks !== "1" ? "s" : ""}</span>
+                              {p.commandTerm && <span className="text-gray-500">{p.commandTerm}</span>}
+                              {p.subtopicCodes && <span className="text-gray-400">{p.subtopicCodes}</span>}
+                              <button
+                                type="button"
+                                onClick={() => removePending(i)}
+                                className="ml-auto text-red-400 hover:text-red-600 font-bold"
+                              >✕</button>
+                            </div>
+                          ))}
+                          {addPartError && <p className="text-xs text-red-600">{addPartError}</p>}
+                          <button
+                            type="button"
+                            onClick={commitParts}
+                            disabled={committingParts}
+                            className="mt-1 rounded px-4 py-2 text-xs font-bold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                          >
+                            {committingParts ? "Saving…" : `Commit ${pendingParts.length} part${pendingParts.length !== 1 ? "s" : ""} to database`}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── Stem section (only when there are labelled parts) ── */}
+                  {hasLabeledParts && (stemLatex || stemMsLatex || editingStem !== null) && (
+                    <div className="border border-indigo-200 rounded-lg overflow-hidden mb-4">
+                      <div className="bg-indigo-50 px-4 py-2.5 flex items-center gap-3 border-b border-indigo-200">
+                        <span className="font-bold text-sm text-indigo-900">Stem</span>
+                        <div className="flex gap-1 ml-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingStem("stem_latex")}
+                            className={`px-2 py-0.5 rounded text-xs font-medium border ${editingStem === "stem_latex" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50"}`}
+                          >Question</button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingStem("stem_markscheme_latex")}
+                            className={`px-2 py-0.5 rounded text-xs font-medium border ${editingStem === "stem_markscheme_latex" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50"}`}
+                          >Mark Scheme</button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => { if (confirm("Clear both stem fields? This cannot be undone.")) clearStem(); }}
+                          disabled={clearingStem}
+                          className="ml-1 px-2 py-0.5 rounded text-xs font-medium border border-red-300 text-red-600 bg-white hover:bg-red-50 disabled:opacity-50"
+                          title="Clear stem_latex and stem_markscheme_latex from the database"
+                        >{clearingStem ? "Clearing…" : "Clear Stem"}</button>
+                        {editingStem && (
+                          <div className="ml-auto flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => saveStem(editingStem)}
+                              disabled={savingStem}
+                              className="px-3 py-1 rounded text-xs font-bold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                            >{savingStem ? "Saving…" : "Save"}</button>
+                            <button
+                              type="button"
+                              onClick={() => { setEditingStem(null); setStemDraftQ(stemLatex); setStemDraftMS(stemMsLatex); }}
+                              className="px-3 py-1 rounded text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            >Cancel</button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-4 bg-white">
+                        {editingStem === "stem_latex" ? (
+                          <textarea
+                            className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            rows={6}
+                            value={stemDraftQ}
+                            onChange={(e) => setStemDraftQ(e.target.value)}
+                          />
+                        ) : editingStem === "stem_markscheme_latex" ? (
+                          <textarea
+                            className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                            rows={6}
+                            value={stemDraftMS}
+                            onChange={(e) => setStemDraftMS(e.target.value)}
+                          />
+                        ) : (
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">Question stem</p>
+                              {stemLatex
+                                ? <LatexRenderer latex={stemLatex} />
+                                : <p className="text-xs text-gray-400 italic">—</p>}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-gray-500 mb-1">Mark scheme stem</p>
+                              {stemMsLatex
+                                ? <LatexRenderer latex={stemMsLatex} />
+                                : <p className="text-xs text-gray-400 italic">—</p>}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {!hasLabeledParts ? (
+                    /* ── Whole question editor (no labelled parts) ── */
+                    (() => {
+                      const wholePart = parts[0]; // the null-label part, if it exists
+                      return (
+                    <div className="border border-gray-200 rounded-lg overflow-hidden">
+                      {/* Header: command term + subtopics */}
+                      <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 space-y-2" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex flex-wrap items-center gap-4">
+                          {(() => {
+                            const term = wholePart?.command_term || detectCommandTerm(wholeQDraft);
+                            if (term && !wholePart?.command_term && wholePart) {
+                              // Auto-save detected term
+                              onUpdateCommandTerm(wholePart.id, term);
+                              setParts((prev) => prev.map((p) => (p.id === wholePart.id ? { ...p, command_term: term } : p)));
+                            }
+                            return term ? (
+                              <span className="text-base font-bold text-red-600">{term}</span>
+                            ) : null;
+                          })()}
+                          {wholePart && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-semibold text-gray-500">Subtopics:</span>
+                              <SubtopicEditor
+                                codes={wholePart.subtopic_codes}
+                                available={availableSubtopics}
+                                onChange={(codes) => {
+                                  onUpdateSubtopics(wholePart.id, codes);
+                                  setParts((prev) => prev.map((p) => (p.id === wholePart.id ? { ...p, subtopic_codes: codes } : p)));
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                      <div className="divide-y divide-gray-100">
+                        {(["q", "ms"] as const).map((field) => {
+                          const label = field === "q" ? "Question LaTeX" : "Markscheme LaTeX";
+                          const draft = field === "q" ? wholeQDraft : wholeMSDraft;
+                          const setDraft = field === "q" ? setWholeQDraft : setWholeMSDraft;
+                          const isEditing = editingWhole === field;
+                          return (
+                            <div key={field} className="p-4 space-y-3">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-gray-600">{label}</span>
+                                {!isEditing && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingWhole(field)}
+                                    className="rounded px-2 py-0.5 text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                  >Edit</button>
+                                )}
+                                {isEditing && (
+                                  <div className="flex gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => saveWholeQuestion(field)}
+                                      disabled={savingWhole}
+                                      className="rounded px-2 py-0.5 text-xs font-bold bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                                    >{savingWhole ? "Saving…" : "Save"}</button>
+                                    <button
+                                      type="button"
+                                      onClick={() => { setEditingWhole(null); setDraft(""); }}
+                                      className="rounded px-2 py-0.5 text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    >Cancel</button>
+                                  </div>
+                                )}
+                              </div>
+                              {isEditing ? (
+                                <textarea
+                                  className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                  rows={8}
+                                  value={draft}
+                                  onChange={(e) => setDraft(e.target.value)}
+                                  autoFocus
+                                />
+                              ) : draft ? (
+                                <LatexRenderer latex={draft} stripMarkAnnotations={field === "q"} />
+                              ) : (
+                                <p className="text-xs text-gray-400 italic">No LaTeX — click Edit or ⟳ Extract to add</p>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                      );
+                    })()
+                  ) : (
+                    <div className="space-y-4">
+                      {parts.map((part) => {
+                        const partLabel = part.part_label ? `Part ${part.part_label.toUpperCase()}` : "Whole question";
+                        return (
+                          <div key={part.id} className="border border-gray-200 rounded-lg overflow-hidden">
+                            {/* Part header */}
+                            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 space-y-2" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex flex-wrap items-center gap-3">
+                                <span className="font-bold text-sm text-blue-900">{partLabel}</span>
+                                <span className="text-xs text-gray-500 font-medium">[{part.marks} mark{part.marks !== 1 ? "s" : ""}]</span>
+                                {(() => {
+                                  const term = part.command_term || detectCommandTerm(latexDrafts[part.id]?.content_latex ?? part.content_latex ?? "");
+                                  if (term && !part.command_term) {
+                                    onUpdateCommandTerm(part.id, term);
+                                    setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, command_term: term } : p)));
+                                  }
+                                  return term ? (
+                                    <span className="text-base font-bold text-red-600">{term}</span>
+                                  ) : null;
+                                })()}
+                                {part.latex_verified && (
+                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ Verified</span>
+                                )}
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-semibold text-gray-500">Subtopics:</span>
+                                  <SubtopicEditor
+                                    codes={part.subtopic_codes}
+                                    available={availableSubtopics}
+                                    onChange={(codes) => {
+                                      onUpdateSubtopics(part.id, codes);
+                                      setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, subtopic_codes: codes } : p)));
+                                    }}
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => { if (confirm(`Delete ${partLabel}? This cannot be undone.`)) deletePart(part.id); }}
+                                  disabled={deletingPartId === part.id}
+                                  className="ml-auto px-2 py-0.5 rounded text-xs font-medium border border-red-300 text-red-500 bg-white hover:bg-red-50 disabled:opacity-50"
+                                  title="Delete this part from the database"
+                                >{deletingPartId === part.id ? "Deleting…" : "Delete Part"}</button>
+                              </div>
+
+                            </div>
+                            {/* LaTeX editors — stacked: Question on top, MS below */}
+                            <div className="divide-y divide-gray-100">
+                              {(["content_latex", "markscheme_latex"] as const).map((field) => {
+                                const isEditing = editingLatex?.partId === part.id && editingLatex.field === field;
+                                const isExtracting = extractingLatexField?.partId === part.id && extractingLatexField.field === field;
+                                const fieldLabel = field === "content_latex" ? "Question LaTeX" : "Markscheme LaTeX";
+                                const draft = latexDrafts[part.id]?.[field] ?? "";
+                                const saved = part[field] ?? "";
+                                const claudeKey = `${part.id}-${field}`;
+                                const hasImages = field === "content_latex"
+                                  ? images.some((i) => i.image_type === "question")
+                                  : images.some((i) => i.image_type === "markscheme");
+                                return (
+                                  <div key={field} className="p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-semibold text-gray-600">{fieldLabel}</span>
+                                      <div className="flex gap-1 items-center">
+                                        {/* Extract from images button */}
+                                        {hasImages && !isEditing && (
+                                          <button
+                                            type="button"
+                                            onClick={() => extractLatexFromImages(part.id, field)}
+                                            disabled={isExtracting}
+                                            title="Extract LaTeX from uploaded images using OCR"
+                                            className="rounded px-2 py-0.5 text-xs font-bold bg-amber-100 text-amber-800 hover:bg-amber-200 disabled:opacity-50 flex items-center gap-1"
+                                          >
+                                            {isExtracting ? (
+                                              <><span className="inline-block w-3 h-3 border-2 border-amber-400 border-t-amber-700 rounded-full animate-spin" /> Extracting…</>
+                                            ) : (
+                                              "⟳ Extract"
+                                            )}
+                                          </button>
+                                        )}
+                                        {isEditing ? (
+                                          <div className="flex gap-1">
+                                            <button
+                                              type="button"
+                                              onClick={() => saveLatex(part.id, field)}
+                                              disabled={savingLatex}
+                                              className="rounded px-2 py-0.5 text-xs font-bold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                                            >
+                                              {savingLatex ? "Saving…" : "Save"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingLatex(null);
+                                                setLatexDrafts((d) => ({ ...d, [part.id]: { ...d[part.id], [field]: saved } }));
+                                              }}
+                                              className="rounded px-2 py-0.5 text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                            >
+                                              Cancel
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => {
+                                              setEditingLatex({ partId: part.id, field });
+                                              setLatexDrafts((d) => ({ ...d, [part.id]: { ...d[part.id], [field]: saved } }));
+                                            }}
+                                            className="rounded px-2 py-0.5 text-xs font-bold bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                          >
+                                            Edit
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                    {isEditing ? (
+                                      <>
+                                        {isExtracting && (
+                                          <p className="text-xs text-amber-600 italic flex items-center gap-1">
+                                            <span className="inline-block w-3 h-3 border-2 border-amber-400 border-t-amber-700 rounded-full animate-spin" />
+                                            Running OCR on images…
+                                          </p>
+                                        )}
+                                        <textarea
+                                          className="w-full border border-gray-300 rounded p-2 text-xs font-mono resize-y min-h-24 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                          value={draft}
+                                          onChange={(e) => setLatexDrafts((d) => ({ ...d, [part.id]: { ...d[part.id], [field]: e.target.value } }))}
+                                          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void saveLatex(part.id, field); } }}
+                                        />
+                                        {/* Ask Claude correction */}
+                                        <div className="flex gap-2 pt-1 border-t border-gray-100">
+                                          <input
+                                            type="text"
+                                            placeholder="Correction for Claude, e.g. 'fix the fraction in line 2'…"
+                                            value={claudeInstruction[claudeKey] ?? ""}
+                                            onChange={(e) => setClaudeInstruction((c) => ({ ...c, [claudeKey]: e.target.value }))}
+                                            onKeyDown={(e) => e.key === "Enter" && runClaude(part.id, field)}
+                                            className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                                          />
+                                          <button
+                                            type="button"
+                                            onClick={() => runClaude(part.id, field)}
+                                            disabled={claudeLoading[claudeKey] || !(claudeInstruction[claudeKey] ?? "").trim()}
+                                            className="rounded px-2 py-1 text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-40"
+                                          >
+                                            {claudeLoading[claudeKey] ? "…" : "Ask Claude"}
+                                          </button>
+                                        </div>
+                                      </>
+                                    ) : saved ? (
+                                      <div className="text-sm leading-relaxed min-h-8">
+                                        <LatexRenderer latex={saved} stripMarkAnnotations={field === "content_latex"} />
+                                      </div>
+                                    ) : (
+                                      <p className="text-xs text-gray-400 italic">No LaTeX — click Edit or ⟳ Extract to add</p>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                </div>{/* end grid */}
+            </div>
+          </div>
+        ),
+        document.body
       )}
     </>
   );
@@ -1673,6 +3698,29 @@ function ImageGroup({
     }
   };
 
+  const handleClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // Try to read image from clipboard API on click
+    if (navigator.clipboard && "read" in navigator.clipboard) {
+      try {
+        const items = await navigator.clipboard.read();
+        for (const clipItem of items) {
+          const imageType = clipItem.types.find((t) => t.startsWith("image/"));
+          if (imageType) {
+            const blob = await clipItem.getType(imageType);
+            const ext = imageType.split("/")[1] ?? "png";
+            const file = new File([blob], `pasted-image.${ext}`, { type: imageType });
+            onUpload(file);
+            return;
+          }
+        }
+      } catch {
+        // Permission denied or no image — fall through to focus so Ctrl+V works
+      }
+    }
+    (e.currentTarget as HTMLDivElement).focus();
+  };
+
   const handleDragStart = (idx: number) => {
     dragIdx.current = idx;
   };
@@ -1689,7 +3737,6 @@ function ImageGroup({
 
   return (
     <div>
-      {/* Label only shown if there are images or we always want the paste target */}
       <div className="flex items-center gap-2 mb-1">
         <p className={labelClass}>{label}</p>
         {uploading && (
@@ -1698,15 +3745,18 @@ function ImageGroup({
       </div>
 
       <div
-        className={`rounded-lg border-2 border-dashed p-2 min-h-[60px] transition-colors ${
-          labelColor === "blue" ? "border-blue-200 bg-blue-50/30" : "border-green-200 bg-green-50/30"
+        tabIndex={0}
+        className={`rounded-lg border-2 border-dashed p-2 min-h-[60px] transition-colors outline-none focus:ring-2 cursor-pointer ${
+          labelColor === "blue"
+            ? "border-blue-200 bg-blue-50/30 focus:ring-blue-400"
+            : "border-green-200 bg-green-50/30 focus:ring-green-400"
         }`}
         onPaste={handlePaste}
-        onClick={(e) => e.stopPropagation()}
+        onClick={handleClick}
       >
         {images.length === 0 ? (
           <p className="text-xs text-gray-400 text-center py-2">
-            📋 Paste an image from clipboard to add
+            📋 Click to paste image from clipboard
           </p>
         ) : (
           <div className="flex flex-wrap gap-2">
@@ -1842,9 +3892,8 @@ function SubtopicEditor({
             <span
               key={c}
               className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800"
-              title={sub?.descriptor}
             >
-              {c}
+              {c}{sub?.descriptor ? ` ${sub.descriptor}` : ""}
               <button
                 type="button"
                 onClick={() => removeTopic(c)}
@@ -2014,6 +4063,7 @@ function CommandTermSelect({
       <button
         type="button"
         onClick={handleOpen}
+        onFocus={handleOpen}
         className={`rounded border px-2 py-0.5 text-xs font-semibold text-left ${
           value
             ? "border-green-400 bg-green-50 text-green-800"
@@ -2037,7 +4087,7 @@ function CommandTermSelect({
                 if (e.key === "Enter" && filtered.length === 1) handleSelect(filtered[0]);
               }}
               placeholder="Type to filter…"
-              className="w-full rounded border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+              className="w-full rounded border border-gray-300 px-2 py-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
