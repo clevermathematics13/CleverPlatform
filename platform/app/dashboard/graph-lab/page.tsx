@@ -14,6 +14,7 @@ interface ExtractResult {
   graphMeta: Record<string, unknown>;
   warnings: string[];
   feedback: string[];
+  metadata?: Record<string, unknown>;
   pass1Raw?: string;
   pass2Raw?: string;
 }
@@ -25,8 +26,17 @@ interface ExtractFailure {
   feedback: string[];
   graphSpec?: IbGraphSpec;
   graphMeta?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   pass1Raw?: string;
   pass2Raw?: string;
+}
+
+interface ExtractRequestContext {
+  endpoint: string;
+  requestedAt: string;
+  imageCount: number;
+  firstImageMimeType?: string;
+  firstImageBase64Chars: number;
 }
 
 interface ExtractSnapshot {
@@ -37,6 +47,8 @@ interface ExtractSnapshot {
   feedback: string[];
   graphSpec?: IbGraphSpec;
   graphMeta?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+  requestContext?: ExtractRequestContext;
   pass1Raw?: string;
   pass2Raw?: string;
 }
@@ -310,6 +322,13 @@ export default function GraphLabPage() {
   // ── Extraction ───────────────────────────────────────────────────────────
   async function runExtract() {
     if (!images.length) return;
+    const requestContext: ExtractRequestContext = {
+      endpoint: "/api/graph-lab",
+      requestedAt: new Date().toISOString(),
+      imageCount: images.length,
+      firstImageMimeType: images[0]?.mimeType,
+      firstImageBase64Chars: images[0]?.b64?.length ?? 0,
+    };
     setExtracting(true);
     setExtractError(null);
     setExtractFailure(null);
@@ -345,6 +364,7 @@ export default function GraphLabPage() {
           feedback: data.feedback ?? [],
           graphSpec: data.graphSpec,
           graphMeta: data.graphMeta,
+          metadata: data.metadata,
           pass1Raw: data.pass1Raw,
           pass2Raw: data.pass2Raw,
         };
@@ -358,6 +378,8 @@ export default function GraphLabPage() {
           feedback: failure.feedback,
           graphSpec: failure.graphSpec,
           graphMeta: failure.graphMeta,
+          metadata: failure.metadata,
+          requestContext,
           pass1Raw: failure.pass1Raw,
           pass2Raw: failure.pass2Raw,
         });
@@ -375,6 +397,8 @@ export default function GraphLabPage() {
         feedback: Array.isArray(data.feedback) ? data.feedback : [],
         graphSpec: data.graphSpec,
         graphMeta: data.graphMeta,
+        metadata: data.metadata,
+        requestContext,
         pass1Raw: data.pass1Raw,
         pass2Raw: data.pass2Raw,
       });
@@ -388,6 +412,7 @@ export default function GraphLabPage() {
         error: message,
         warnings: [],
         feedback: ["Retry extraction and verify vertices/domains manually before using the graph marker."],
+        requestContext,
       });
     } finally {
       setExtracting(false);
@@ -396,6 +421,13 @@ export default function GraphLabPage() {
 
   async function runExtractCV() {
     if (!images.length) return;
+    const requestContext: ExtractRequestContext = {
+      endpoint: "/api/graph-lab-cv",
+      requestedAt: new Date().toISOString(),
+      imageCount: images.length,
+      firstImageMimeType: images[0]?.mimeType,
+      firstImageBase64Chars: images[0]?.b64?.length ?? 0,
+    };
     setExtracting(true);
     setExtractError(null);
     setExtractFailure(null);
@@ -428,6 +460,7 @@ export default function GraphLabPage() {
           feedback: data.feedback ?? [],
           graphSpec: data.graphSpec,
           graphMeta: data.graphMeta,
+          metadata: data.metadata,
         };
         setExtractError(data.error ?? "CV extraction failed");
         setExtractFailure(failure);
@@ -439,6 +472,8 @@ export default function GraphLabPage() {
           feedback: failure.feedback,
           graphSpec: failure.graphSpec,
           graphMeta: failure.graphMeta,
+          metadata: failure.metadata,
+          requestContext,
         });
         if (failure.graphSpec) {
           setSpecJson(JSON.stringify(failure.graphSpec, null, 2));
@@ -453,6 +488,8 @@ export default function GraphLabPage() {
         feedback: Array.isArray(data.feedback) ? data.feedback : [],
         graphSpec: data.graphSpec,
         graphMeta: data.graphMeta,
+        metadata: data.metadata,
+        requestContext,
       });
       setSpecJson(JSON.stringify(data.graphSpec, null, 2));
     } catch (e) {
@@ -464,6 +501,7 @@ export default function GraphLabPage() {
         error: message,
         warnings: [],
         feedback: ["CV extraction error: check browser console for details"],
+        requestContext,
       });
     } finally {
       setExtracting(false);
@@ -572,6 +610,16 @@ export default function GraphLabPage() {
         { status: snapshot.status, error: snapshot.error, warnings: snapshot.warnings }
       )
     );
+    if (snapshot.requestContext) {
+      lines.push("");
+      lines.push("Request context");
+      lines.push(JSON.stringify(snapshot.requestContext, null, 2));
+    }
+    if (snapshot.metadata) {
+      lines.push("");
+      lines.push("Execution diagnostics");
+      lines.push(JSON.stringify(snapshot.metadata, null, 2));
+    }
     if (snapshot.graphSpec) {
       lines.push("");
       lines.push("Rendered graphSpec JSON");

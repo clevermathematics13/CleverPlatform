@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const startedAt = Date.now();
     // Use the first image for extraction
     const b64Image = images[0];
 
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
       process.cwd(),
       "scripts/cv_graph_extract.py"
     );
+    const scriptExists = fs.existsSync(scriptPath);
 
     // Write input payload to avoid shell escaping/argv-size issues with large base64 strings
     fs.writeFileSync(inputFile, JSON.stringify({ image: b64Image }), "utf-8");
@@ -62,6 +64,12 @@ export async function POST(request: NextRequest) {
       "/home/codespace/.python/current/bin/python",
       "python3",
     ].filter((value): value is string => Boolean(value));
+
+    const candidateResolution = pythonCandidates.map((candidate) => ({
+      candidate,
+      exists: candidate.includes("/") ? fs.existsSync(candidate) : true,
+      kind: candidate.includes("/") ? "absolute" : "command",
+    }));
 
     const pythonExec =
       pythonCandidates.find((candidate) =>
@@ -84,8 +92,43 @@ export async function POST(request: NextRequest) {
       timeout: 25000, // Leave 5s buffer for response time
       maxBuffer: 50 * 1024 * 1024, // 50MB for large results
     });
+    const durationMs = Date.now() - startedAt;
 
     const stderrText = (proc.stderr || "").toString().trim();
+    const stdoutText = (proc.stdout || "").toString().trim();
+
+    const debugMetadata = {
+      runtime: {
+        node: process.version,
+        platform: process.platform,
+        arch: process.arch,
+      },
+      request: {
+        receivedAt: new Date(startedAt).toISOString(),
+        imageCount: images.length,
+        firstImageBase64Chars: b64Image.length,
+        mediaType: body.mediaType ?? null,
+      },
+      execution: {
+        cwd: process.cwd(),
+        tmpDir,
+        scriptPath,
+        scriptExists,
+        pythonSelected: pythonExec,
+        pythonCandidates: candidateResolution,
+        args,
+        durationMs,
+      },
+      processResult: {
+        exitCode: proc.status,
+        signal: proc.signal,
+        spawnError: proc.error?.message ?? null,
+        stderrPreview: stderrText ? stderrText.slice(0, 1500) : null,
+        stdoutPreview: stdoutText ? stdoutText.slice(0, 700) : null,
+        stderrBytes: stderrText.length,
+        stdoutBytes: stdoutText.length,
+      },
+    };
 
     // Read and parse output
     if (!fs.existsSync(outputFile)) {
@@ -105,7 +148,7 @@ export async function POST(request: NextRequest) {
           error: "CV extraction script did not produce output",
           warnings: debugWarnings,
           feedback: [],
-          metadata: { exitCode: proc.status, signal: proc.signal, pythonExec },
+          metadata: debugMetadata,
         },
         { status: 500 }
       );
@@ -132,7 +175,10 @@ export async function POST(request: NextRequest) {
           error: result.error,
           graphSpec: result.graphSpec,
           graphMeta: result.graphMeta,
-          metadata: result.metadata || {},
+          metadata: {
+            ...(result.metadata || {}),
+            debug: debugMetadata,
+          },
           warnings: result.metadata?.warnings || [],
           feedback: result.feedback || ["Manual review required before accepting extraction output."],
         },
@@ -150,7 +196,10 @@ export async function POST(request: NextRequest) {
         "Review the selected curve family, confidence, and domain bounds.",
         "Fallback piecewise output is used only when family-fit confidence is insufficient.",
       ],
-      metadata: result.metadata,
+      metadata: {
+        ...(result.metadata || {}),
+        debug: debugMetadata,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
