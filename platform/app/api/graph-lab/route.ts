@@ -520,7 +520,7 @@ function regenerateGraphMetaFromSpec(spec: IbGraphSpec, previous: GraphMetadata)
     return [
       ya === null ? null : { x: a, y: ya, label: "" },
       yb === null ? null : { x: b, y: yb, label: "" },
-    ].filter((p): p is { x: number; y: number; label?: string } => p !== null);
+    ].filter((p): p is { x: number; y: number; label: string } => p !== null);
   });
 
   const keyPoints = dedupeByKey([...explicitPoints, ...endpointPoints], (p) => `${p.x.toFixed(6)}|${p.y.toFixed(6)}`)

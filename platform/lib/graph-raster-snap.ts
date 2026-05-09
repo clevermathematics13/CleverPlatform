@@ -296,9 +296,11 @@ export async function rasterRefineHorizontalSegmentsFromBase64(
     const el = nextElements[i];
     if ((el.type !== "line" && el.type !== "fn") || typeof el.expr !== "string") continue;
     if (typeof el.xMin !== "number" || typeof el.xMax !== "number" || el.xMax <= el.xMin) continue;
+    const xMin = el.xMin;
+    const xMax = el.xMax;
 
-    const yLeft = evaluateAtX(el.expr, el.xMin);
-    const yRight = evaluateAtX(el.expr, el.xMax);
+    const yLeft = evaluateAtX(el.expr, xMin);
+    const yRight = evaluateAtX(el.expr, xMax);
     if (yLeft === null || yRight === null) continue;
     if (Math.abs(yLeft - yRight) > 0.08) continue;
 
@@ -309,9 +311,9 @@ export async function rasterRefineHorizontalSegmentsFromBase64(
     const candidates = Array.from(new Set([Math.floor(yBase), Math.ceil(yBase), nearestInt]));
     if (candidates.length < 2) continue;
 
-    const sampleCount = Math.max(4, Math.min(8, Math.round((el.xMax - el.xMin) * 2)));
+    const sampleCount = Math.max(4, Math.min(8, Math.round((xMax - xMin) * 2)));
     const sampleXs = Array.from({ length: sampleCount }, (_, k) =>
-      el.xMin! + ((el.xMax! - el.xMin!) * k) / (sampleCount - 1)
+      xMin + ((xMax - xMin) * k) / (sampleCount - 1)
     );
 
     const scoreCandidate = (yCandidate: number): number => {
@@ -342,14 +344,15 @@ export async function rasterRefineHorizontalSegmentsFromBase64(
     if (best.y !== nearestInt) continue;
 
     diagnostics.push(
-      `Raster horizontal refinement: [${el.xMin},${el.xMax}] y ${formatNum(yBase)} -> ${formatNum(best.y)} (gain ${(improvement * 100).toFixed(1)}%)`
+      `Raster horizontal refinement: [${xMin},${xMax}] y ${formatNum(yBase)} -> ${formatNum(best.y)} (gain ${(improvement * 100).toFixed(1)}%)`
     );
 
     nextElements[i] = { ...el, expr: formatNum(best.y) };
     for (let j = 0; j < nextElements.length; j++) {
       const p = nextElements[j];
       if (p.type !== "point") continue;
-      if (p.x < el.xMin - 1e-6 || p.x > el.xMax + 1e-6) continue;
+      if (typeof p.x !== "number" || typeof p.y !== "number") continue;
+      if (p.x < xMin - 1e-6 || p.x > xMax + 1e-6) continue;
       if (Math.abs(p.y - yBase) > 0.8) continue;
       nextElements[j] = { ...p, y: best.y };
     }

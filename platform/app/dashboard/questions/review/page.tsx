@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import ReviewClient from "./review-client";
 
+type ReviewQuestionRow = Parameters<typeof ReviewClient>[0]["initialQuestions"][number];
+
 export default async function ReviewPage({
   searchParams,
 }: {
@@ -57,7 +59,7 @@ export default async function ReviewPage({
   const fullSelectFields =
     "id, code, session, paper, level, timezone, page_image_paths, source_pdf_path, google_doc_id, google_ms_id, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, command_term, sort_order, content_latex, markscheme_latex, latex_verified)";
 
-  const selectFields = stemProbeErr ? coreSelectFields : fullSelectFields;
+  const selectFields: string = stemProbeErr ? coreSelectFields : fullSelectFields;
 
   const excludeImgClause = allImageIds.slice(0, 200).join(",") || "00000000-0000-0000-0000-000000000000";
 
@@ -83,11 +85,18 @@ export default async function ReviewPage({
 
   // Merge: focused question first (guaranteed), then image questions, latex, others; deduplicate
   const seen = new Set<string>();
-  const merged = [...(focusQuestions ?? []), ...(imgQuestions ?? []), ...(latexQuestions ?? []), ...(otherQuestions ?? [])].filter((q) => {
+  const mergedCandidates: unknown[] = [
+    ...(focusQuestions ?? []),
+    ...(imgQuestions ?? []),
+    ...(latexQuestions ?? []),
+    ...(otherQuestions ?? []),
+  ];
+  const merged = mergedCandidates.filter((q) => {
+    if (!q || typeof q !== "object" || !("id" in q) || typeof q.id !== "string") return false;
     if (seen.has(q.id)) return false;
     seen.add(q.id);
     return true;
-  });
+  }) as ReviewQuestionRow[];
 
   // Targeted image-presence lookup for the merged set (avoids Supabase 1000-row default cap)
   const mergedIds = merged.map((q) => q.id);
