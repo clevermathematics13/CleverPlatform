@@ -508,6 +508,48 @@ def prune_edge_outlier_vertices(vertices: List[GraphVertex], calib: AxisCalibrat
     return pruned
 
 
+def stabilize_terminal_plateaus(vertices: List[GraphVertex]) -> List[GraphVertex]:
+    if len(vertices) < 4:
+        return vertices
+
+    stabilized = [GraphVertex(**asdict(v)) for v in vertices]
+
+    # Right terminal: if a short final segment slightly dips after a strong rise,
+    # treat it as noisy endpoint bleed and keep the cap horizontal.
+    a, b, c = stabilized[-3], stabilized[-2], stabilized[-1]
+    dx_prev = b.x - a.x
+    dx_last = c.x - b.x
+    if abs(dx_prev) > 1e-9 and abs(dx_last) > 1e-9:
+        m_prev = (b.y - a.y) / dx_prev
+        m_last = (c.y - b.y) / dx_last
+        if (
+            dx_last <= 1.1
+            and abs(c.y - b.y) <= 0.75
+            and m_prev >= 0.8
+            and -0.75 <= m_last <= 0.15
+            and b.y >= a.y
+        ):
+            c.y = b.y
+
+    # Left terminal: symmetric case for short noisy tail after a strong fall.
+    a, b, c = stabilized[0], stabilized[1], stabilized[2]
+    dx_first = b.x - a.x
+    dx_next = c.x - b.x
+    if abs(dx_first) > 1e-9 and abs(dx_next) > 1e-9:
+        m_first = (b.y - a.y) / dx_first
+        m_next = (c.y - b.y) / dx_next
+        if (
+            dx_first <= 1.1
+            and abs(b.y - a.y) <= 0.75
+            and m_next <= -0.8
+            and -0.15 <= m_first <= 0.75
+            and b.y <= c.y
+        ):
+            a.y = b.y
+
+    return stabilized
+
+
 # Backward-compat alias
 def find_vertices_from_edges(edges: np.ndarray, calib: AxisCalibration) -> List[GraphVertex]:
     return find_vertices_from_mask(edges, calib)
@@ -909,6 +951,7 @@ def extract_graph_cv(img_b64: str) -> dict:
             }
 
         vertices = prune_edge_outlier_vertices(vertices, calib)
+        vertices = stabilize_terminal_plateaus(vertices)
         if len(vertices) < 2:
             return {
                 "error": "Manual review required: extraction uncertainty gate triggered",
