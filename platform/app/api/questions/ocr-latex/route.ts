@@ -17,7 +17,12 @@ const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
 
 function looksGraphLike(text: string): boolean {
   const t = text.toLowerCase();
-  return /(sketch|graph|asymptote|asymptotes|intercept|intercepts|x-axis|y-axis|axes|curve|hyperbola|parabola)/.test(t);
+  // Avoid false positives from generic prose such as "the graph of y=f(x)".
+  // Require stronger plotting/axes/asymptote/intercept signals, or a graph/curve
+  // mention combined with one of those structural signals.
+  const structuralSignals = /(x\s*-?\s*axis|y\s*-?\s*axis|\baxes\b|asymptote|asymptotes|intercepts?|coordinates?|\bplot\b|\bsketch\b|table of values|grid|domain|range)/;
+  const graphWords = /\b(graph|curve)\b/;
+  return structuralSignals.test(t) || (graphWords.test(t) && /(asymptote|intercepts?|coordinates?|x\s*-?\s*axis|y\s*-?\s*axis|\baxes\b|\bplot\b|\bsketch\b|domain|range)/.test(t));
 }
 
 // POST /api/questions/ocr-latex
@@ -364,7 +369,8 @@ Additional rules:
 
   // Ensure draft output includes a graph marker when OCR likely detected a graph.
   // The UI renderer maps this marker to the currently viewed source image.
-  if (isDraft && graphDetected && !extractedLatex.includes(GRAPH_IMAGE_MARKER)) {
+  const graphMarkerInjected = isDraft && graphDetected && !extractedLatex.includes(GRAPH_IMAGE_MARKER);
+  if (graphMarkerInjected) {
     extractedLatex = `${extractedLatex.trim()}\n\n${GRAPH_IMAGE_MARKER}`;
   }
 
@@ -403,5 +409,7 @@ Additional rules:
     latex: extractedLatex,
     engine: USE_MATHPIX ? "mathpix" : "claude",
     imagesProcessed: base64Images.length,
+    graphDetected,
+    graphMarkerInjected,
   });
 }
