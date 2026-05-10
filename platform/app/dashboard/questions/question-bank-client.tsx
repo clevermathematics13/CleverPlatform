@@ -339,6 +339,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [buildingRandom, setBuildingRandom] = useState(false);
   const [randomError, setRandomError] = useState<string | null>(null);
   const [courseIdError, setCourseIdError] = useState(false);
+  const [pendingOpenQuestionId, setPendingOpenQuestionId] = useState<string | null>(null);
 
   // All available command terms (built-in + custom)
   const allCommandTerms = [...DEFAULT_COMMAND_TERMS, ...customTerms].sort(
@@ -447,6 +448,31 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       return next;
     });
   };
+
+  const openQuestionFromQueue = (item: TestQueueItem) => {
+    const visible = questions.find((q) => q.id === item.id);
+    if (visible) {
+      openExpand(item.id);
+      return;
+    }
+    setPendingOpenQuestionId(item.id);
+    setSearch(item.code);
+    setSearchContent(false);
+    setSession("");
+    setPaper("");
+    setLevel("");
+    setTimezone("");
+    setSubtopic("");
+    setPage(1);
+  };
+
+  useEffect(() => {
+    if (!pendingOpenQuestionId || loading) return;
+    const found = questions.find((q) => q.id === pendingOpenQuestionId);
+    if (!found) return;
+    openExpand(found.id);
+    setPendingOpenQuestionId(null);
+  }, [pendingOpenQuestionId, questions, loading]);
 
   const loadImages = async (questionId: string) => {
     try {
@@ -1729,6 +1755,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           onRandomTargetChange={setRandomTargetMinutes}
           onBuildRandom={buildRandomExam}
           onClearCourseIdError={() => setCourseIdError(false)}
+          onOpenQuestionFromQueue={openQuestionFromQueue}
         />
       )}
 
@@ -4791,6 +4818,7 @@ function TestBuilderPanel({
   onRandomTargetChange,
   onBuildRandom,
   onClearCourseIdError,
+  onOpenQuestionFromQueue,
 }: {
   queue: TestQueueItem[];
   examConfig: ExamConfig;
@@ -4828,6 +4856,7 @@ function TestBuilderPanel({
   onRandomTargetChange: (minutes: number) => void;
   onBuildRandom: () => void;
   onClearCourseIdError: () => void;
+  onOpenQuestionFromQueue: (item: TestQueueItem) => void;
 }) {
   // Build section groups for rendering placeholder dividers
   const sectionAItems = showSections ? queue.filter((q) => q.section === "A") : [];
@@ -5035,6 +5064,7 @@ function TestBuilderPanel({
                       item={item}
                       number={globalIdx + 1}
                       showSection={true}
+                      onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
                       onMoveUp={() => onMoveUp(idx)}
@@ -5062,6 +5092,7 @@ function TestBuilderPanel({
                       item={item}
                       number={sectionAItems.length + bIdx + 1}
                       showSection={true}
+                      onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
                       onMoveUp={() => onMoveUp(idx)}
@@ -5080,6 +5111,7 @@ function TestBuilderPanel({
                   item={item}
                   number={sectionAItems.length + sectionBItems.length + uIdx + 1}
                   showSection={true}
+                  onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                   onRemove={() => onRemove(item.id)}
                   onUpdateSection={(s) => onUpdateSection(item.id, s)}
                   onMoveUp={() => onMoveUp(idx)}
@@ -5094,6 +5126,7 @@ function TestBuilderPanel({
               item={item}
               number={idx + 1}
               showSection={false}
+              onOpenQuestion={() => onOpenQuestionFromQueue(item)}
               onRemove={() => onRemove(item.id)}
               onUpdateSection={(s) => onUpdateSection(item.id, s)}
               onMoveUp={() => onMoveUp(idx)}
@@ -5246,6 +5279,7 @@ function QueueRow({
   item,
   number,
   showSection,
+  onOpenQuestion,
   onRemove,
   onUpdateSection,
   onMoveUp,
@@ -5253,6 +5287,7 @@ function QueueRow({
   item: TestQueueItem;
   number: number;
   showSection: boolean;
+  onOpenQuestion: () => void;
   onRemove: () => void;
   onUpdateSection: (section: "A" | "B") => void;
   onMoveUp: () => void;
@@ -5276,7 +5311,14 @@ function QueueRow({
         {number}.
       </span>
       {/* Code */}
-      <span className="flex-1 font-semibold text-gray-800 truncate">{item.code}</span>
+      <button
+        type="button"
+        onClick={onOpenQuestion}
+        className="flex-1 text-left font-semibold text-gray-800 truncate hover:underline"
+        title="Open this question in the editor"
+      >
+        {item.code}
+      </button>
       {/* Marks */}
       <span className="text-xs text-indigo-500 font-semibold flex-shrink-0">{item.marks}m</span>
       {/* Section toggle (P1/P2 AA only) */}
