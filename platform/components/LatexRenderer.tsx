@@ -110,7 +110,6 @@ const IB_TEXT_STYLE: React.CSSProperties = {
  * Render a single line of text, handling \hfill by right-aligning everything
  * after it (used in IB mark schemes to place mark codes like (A1), M1, etc.).
  */
-function renderTextLine(line: string, key: string | number): React.ReactNode {
 function renderWithCommandTermHighlight(
   text: string,
   commandTerm: string | null | undefined,
