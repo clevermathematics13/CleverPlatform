@@ -262,6 +262,48 @@ function detectCommandTerm(latex: string): string | null {
   return null;
 }
 
+function inferFallbackCommandTerm(latex: string): string | null {
+  if (!latex) return null;
+  const plain = latex
+    .replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ")
+    .replace(/[${}\\]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  if (!plain) return null;
+
+  // Common imperative starters seen in IB prompts where exact canonical term
+  // may not appear verbatim (e.g. "Write the integer ..." -> "Write down").
+  if (/^write\b/.test(plain)) return "Write down";
+  if (/^show\b/.test(plain)) return "Show";
+  if (/^find\b/.test(plain)) return "Find";
+  if (/^calculate\b/.test(plain)) return "Calculate";
+  if (/^state\b/.test(plain)) return "State";
+  if (/^determine\b/.test(plain)) return "Determine";
+  if (/^hence\b/.test(plain)) return "Hence";
+  return null;
+}
+
+function chooseCommandTerm(input: {
+  questionLatex: string;
+  markschemeLatex?: string;
+  claudeCommandTerm?: string | null;
+}): string {
+  const fromQuestion = detectCommandTerm(input.questionLatex);
+  if (fromQuestion) return fromQuestion;
+  const fromMarkscheme = detectCommandTerm(input.markschemeLatex ?? "");
+  if (fromMarkscheme) return fromMarkscheme;
+  const canonicalFromClaude = DEFAULT_COMMAND_TERMS.find(
+    (t) => t.toLowerCase() === (input.claudeCommandTerm ?? "").toLowerCase(),
+  );
+  if (canonicalFromClaude) return canonicalFromClaude;
+  const fallbackFromQuestion = inferFallbackCommandTerm(input.questionLatex);
+  if (fallbackFromQuestion) return fallbackFromQuestion;
+  const fallbackFromMarkscheme = inferFallbackCommandTerm(input.markschemeLatex ?? "");
+  if (fallbackFromMarkscheme) return fallbackFromMarkscheme;
+  return "State";
+}
+
 function detectCommandTerms(latex: string): string[] {
   if (!latex) return [];
   const plain = latex.replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ").replace(/[${}\\]/g, " ");
@@ -2739,7 +2781,11 @@ function QuestionRow({
       const isWholeQuestion = finalLabels.length === 0;
       if (isWholeQuestion) {
         const cpMeta = claudeParts[0]; // may be undefined if claudeParts is empty
-        const extractedWholeTerm = detectCommandTerm(qDraft) ?? null;
+        const extractedWholeTerm = chooseCommandTerm({
+          questionLatex: qDraft,
+          markschemeLatex: msDraft,
+          claudeCommandTerm: cpMeta?.commandTerm ?? null,
+        });
         push("No part structure found — treating as whole question…");
         // Find or create a null-label (whole-question) part
         let wholePartId: string;
@@ -2748,25 +2794,19 @@ function QuestionRow({
           wholePartId = existingWhole.id;
           // Update metadata from Claude if available
           if (cpMeta) {
-            const canonicalTermW = DEFAULT_COMMAND_TERMS.find(
-              (t) => t.toLowerCase() === (cpMeta.commandTerm ?? "").toLowerCase()
-            ) ?? null;
             await fetch("/api/questions/part-metadata", {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 partId: wholePartId,
                 marks: typeof cpMeta.marks === "number" ? cpMeta.marks : null,
-                commandTerm: extractedWholeTerm ?? canonicalTermW,
+                commandTerm: extractedWholeTerm,
                 sourceLatex: qDraft,
                 subtopicCodes: cpMeta.subtopicCodes ?? [],
               }),
             });
           }
         } else {
-          const canonicalTermW = DEFAULT_COMMAND_TERMS.find(
-            (t) => t.toLowerCase() === (cpMeta?.commandTerm ?? "").toLowerCase()
-          ) ?? null;
           const createRes = await fetch("/api/questions/part-metadata", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -2774,7 +2814,7 @@ function QuestionRow({
               questionId: question.id,
               partLabel: null,
               marks: typeof cpMeta?.marks === "number" ? cpMeta.marks : null,
-              commandTerm: extractedWholeTerm ?? canonicalTermW,
+              commandTerm: extractedWholeTerm,
               sourceLatex: qDraft,
               subtopicCodes: cpMeta?.subtopicCodes ?? [],
             }),
@@ -2840,9 +2880,11 @@ function QuestionRow({
         let partId: string;
         const splitQForLabel = splitQ.get(label) ?? "";
         const splitMSForLabel = splitMS.get(label) ?? "";
-        const canonicalTerm = detectCommandTerm(splitQForLabel) ?? DEFAULT_COMMAND_TERMS.find(
-          (t) => t.toLowerCase() === (cp?.commandTerm ?? "").toLowerCase()
-        ) ?? null;
+        const canonicalTerm = chooseCommandTerm({
+          questionLatex: splitQForLabel,
+          markschemeLatex: splitMSForLabel,
+          claudeCommandTerm: cp?.commandTerm ?? null,
+        });
         const exceptionFlags = deriveCommandTermFlags({ commandTerm: canonicalTerm, sourceLatex: splitQForLabel });
 
         if (existing) {
