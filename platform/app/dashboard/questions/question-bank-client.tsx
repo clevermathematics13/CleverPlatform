@@ -1848,6 +1848,7 @@ function QuestionRow({
   const [fullExtractState, setFullExtractState] = useState<"idle" | "confirm" | "running">("idle");
   const [fullExtractLog, setFullExtractLog] = useState<string[]>([]);
   const [fullExtractError, setFullExtractError] = useState<string | null>(null);
+  const [fullExtractCopied, setFullExtractCopied] = useState(false);
 
   // Stem state (no separate edit for each field — share the same edit pattern)
   const [stemLatex, setStemLatex] = useState(question.stem_latex ?? "");
@@ -2491,10 +2492,33 @@ function QuestionRow({
     );
   }
 
+  function copyFullExtractDebugOutput() {
+    if (fullExtractLog.length === 0 && !fullExtractError) return;
+    const lines = [
+      "LaTeX extractor debug output",
+      `Captured at: ${new Date().toISOString()}`,
+      `Question code: ${question.code}`,
+      `Question id: ${question.id}`,
+      `Extractor state: ${fullExtractState}`,
+      "",
+      "Progress log",
+      ...(fullExtractLog.length > 0 ? fullExtractLog.map((msg, i) => `${i + 1}. ${msg}`) : ["(empty)"]),
+      "",
+      "Error",
+      fullExtractError ?? "(none)",
+    ];
+
+    void navigator.clipboard.writeText(lines.join("\n")).then(() => {
+      setFullExtractCopied(true);
+      setTimeout(() => setFullExtractCopied(false), 2000);
+    });
+  }
+
   async function runFullExtract() {
     setFullExtractState("running");
     setFullExtractLog([]);
     setFullExtractError(null);
+    setFullExtractCopied(false);
     const log: string[] = [];
     const push = (msg: string) => {
       log.push(msg);
@@ -3856,8 +3880,20 @@ function QuestionRow({
                   )}
 
                   {/* Extraction progress / log */}
-                  {(fullExtractState === "running" || (fullExtractLog.length > 0 && fullExtractState === "idle")) && (
+                  {(fullExtractState === "running" || fullExtractLog.length > 0 || !!fullExtractError) && (
                     <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-1.5">
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold text-amber-900">Extractor debug output</p>
+                        <button
+                          type="button"
+                          onClick={() => copyFullExtractDebugOutput()}
+                          disabled={fullExtractLog.length === 0 && !fullExtractError}
+                          className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                          title="Copy LaTeX extractor progress log and error"
+                        >
+                          {fullExtractCopied ? "✓ Copied" : "📋 Copy Debug Output"}
+                        </button>
+                      </div>
                       {fullExtractLog.map((msg, i) => (
                         <p key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
                           <span className="text-green-500 shrink-0 mt-0.5">✓</span>{msg}
