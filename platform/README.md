@@ -35,6 +35,36 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 
+## Deployment Notes
+
+Vercel deploys the application code only. It does not apply Supabase migrations automatically.
+
+This repository now includes GitHub Actions automation for deploy readiness and migration application:
+
+- `.github/workflows/platform-deploy-readiness.yml` builds the app and checks the target Supabase schema.
+- `.github/workflows/platform-supabase-migrations.yml` applies `platform/supabase/migrations/*.sql` to production when new migrations are pushed to `main`.
+
+Before promoting a deploy that includes question-bank schema changes, apply these migrations in the same Supabase project used by production:
+
+- `platform/supabase/migrations/035_command_term_exception_flags.sql`
+- `platform/supabase/migrations/036_instructional_context_terms.sql`
+- `platform/supabase/migrations/037_separate_command_and_context_terms.sql`
+
+To verify the target database is ready, run:
+
+```bash
+cd platform
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run deploy:check-schema
+```
+
+That probe checks the deploy-critical columns used by the question review and question bank routes, and fails if the production schema is behind the code.
+
+For the migration workflow, configure these GitHub Actions secrets:
+
+- `CLEVERPLATFORM_SUPABASE_DB_URL`
+- `CLEVERPLATFORM_SUPABASE_URL`
+- `CLEVERPLATFORM_SUPABASE_SERVICE_ROLE_KEY`
+
 ## CV Hardening Checklist
 
 ### 1. Benchmark corpus with reproducible scoring

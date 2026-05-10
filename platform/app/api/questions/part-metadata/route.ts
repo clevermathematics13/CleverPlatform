@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
+import {
+  getQuestionPartsSelect,
+  omitInstructionalContextTerms,
+  retryWithoutInstructionalContextTerms,
+} from "@/lib/question-parts-compat";
 
 type Body = {
   partId?: unknown;
@@ -27,6 +32,11 @@ type PartMetadataRow = {
   is_deduce: boolean;
   is_verify: boolean;
 };
+
+type PartMetadataSnapshotRow = Pick<
+  PartMetadataRow,
+  "id" | "question_id" | "part_label" | "marks" | "command_term" | "subtopic_codes" | "sort_order"
+>;
 
 const DEFAULT_COMMAND_TERMS = [
   "Calculate",
@@ -83,7 +93,7 @@ const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, instru
 
 async function snapshotPartMetadata(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  part: PartMetadataRow,
+  part: PartMetadataSnapshotRow,
   changedBy: string,
 ) {
   const { error } = await supabase
@@ -191,7 +201,7 @@ export async function PATCH(request: NextRequest) {
 
   const { data: currentPart, error: currentErr } = await supabase
     .from("question_parts")
-    .select("id, question_id, part_label, marks, command_term, subtopic_codes, sort_order, content_latex, instructional_context_terms, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify")
+    .select("id, question_id, part_label, marks, command_term, subtopic_codes, sort_order, content_latex, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify")
     .eq("id", partId)
     .single();
 
@@ -268,17 +278,23 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "No metadata fields provided" }, { status: 400 });
   }
 
-  const historyErr = await snapshotPartMetadata(supabase, currentPart as PartMetadataRow, user.id);
+  const historyErr = await snapshotPartMetadata(supabase, currentPart as PartMetadataSnapshotRow, user.id);
   if (historyErr) {
     return NextResponse.json({ error: historyErr.message }, { status: 500 });
   }
 
-  const { data, error } = await supabase
-    .from("question_parts")
-    .update(update)
-    .eq("id", partId)
-    .select(PART_SELECT)
-    .single();
+  const { result: updateResult } = await retryWithoutInstructionalContextTerms(
+    async (includeInstructionalContextTerms) =>
+      supabase
+        .from("question_parts")
+        .update(includeInstructionalContextTerms ? update : omitInstructionalContextTerms(update))
+        .eq("id", partId)
+        .select(getQuestionPartsSelect(PART_SELECT, includeInstructionalContextTerms))
+        .single(),
+    (result) => result.error,
+  );
+
+  const { data, error } = updateResult;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -391,26 +407,34 @@ export async function POST(request: NextRequest) {
   const fallbackSort = (existing?.sort_order ?? 0) + 10;
   const sortOrder = sortOrderFromLabel(label, fallbackSort);
 
-  const { data, error } = await supabase
-    .from("question_parts")
-    .insert({
-      question_id: questionId,
-      part_label: label,
-      marks: marksValue,
-      command_term: commandTermValue,
-      ...deriveCommandTermFlags({
-        commandTerm: commandTermValue,
-        sourceLatex: typeof sourceLatex === "string" ? sourceLatex : "",
-      }),
-      instructional_context_terms: deriveInstructionalContextTerms({
-        commandTerm: commandTermValue,
-        sourceLatex: typeof sourceLatex === "string" ? sourceLatex : "",
-      }),
-      subtopic_codes: codes,
-      sort_order: sortOrder,
-    })
-    .select(PART_SELECT)
-    .single();
+  const insertPayload = {
+    question_id: questionId,
+    part_label: label,
+    marks: marksValue,
+    command_term: commandTermValue,
+    ...deriveCommandTermFlags({
+      commandTerm: commandTermValue,
+      sourceLatex: typeof sourceLatex === "string" ? sourceLatex : "",
+    }),
+    instructional_context_terms: deriveInstructionalContextTerms({
+      commandTerm: commandTermValue,
+      sourceLatex: typeof sourceLatex === "string" ? sourceLatex : "",
+    }),
+    subtopic_codes: codes,
+    sort_order: sortOrder,
+  };
+
+  const { result: insertResult } = await retryWithoutInstructionalContextTerms(
+    async (includeInstructionalContextTerms) =>
+      supabase
+        .from("question_parts")
+        .insert(includeInstructionalContextTerms ? insertPayload : omitInstructionalContextTerms(insertPayload))
+        .select(getQuestionPartsSelect(PART_SELECT, includeInstructionalContextTerms))
+        .single(),
+    (result) => result.error,
+  );
+
+  const { data, error } = insertResult;
 
   if (error) {
     if (error.code === "23505") {

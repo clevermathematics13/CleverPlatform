@@ -1,0 +1,47 @@
+name: Platform Deploy Readiness
+
+"on":
+  push:
+    branches: [main]
+    paths:
+      - "platform/**"
+      - ".github/workflows/platform-deploy-readiness.yml"
+  pull_request:
+    paths:
+      - "platform/**"
+      - ".github/workflows/platform-deploy-readiness.yml"
+
+jobs:
+  build-and-schema-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: platform/package-lock.json
+
+      - name: Install platform dependencies
+        working-directory: platform
+        run: npm ci
+
+      - name: Build platform
+        working-directory: platform
+        run: npm run build
+
+      - name: Check production Supabase schema
+        working-directory: platform
+        env:
+          SUPABASE_URL: ${{ secrets.CLEVERPLATFORM_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.CLEVERPLATFORM_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_SERVICE_ROLE_KEY" ]]; then
+            echo "Skipping schema probe because CLEVERPLATFORM_SUPABASE_URL or CLEVERPLATFORM_SUPABASE_SERVICE_ROLE_KEY is not configured."
+            exit 0
+          fi
+          npm run deploy:check-schema

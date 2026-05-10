@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
+import {
+  getQuestionPartsSelect,
+  omitInstructionalContextTerms,
+  retryWithoutInstructionalContextTerms,
+} from "@/lib/question-parts-compat";
+
+const PART_SELECT = "id, command_term, instructional_context_terms, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify";
 
 export async function PATCH(request: NextRequest) {
   const supabase = await createClient();
@@ -43,16 +50,24 @@ export async function PATCH(request: NextRequest) {
 
   const sourceLatex = currentPart.content_latex ?? "";
 
-  const { data: updated, error } = await supabase
-    .from("question_parts")
-    .update({
-      command_term: value,
-      ...deriveCommandTermFlags({ commandTerm: value, sourceLatex }),
-      instructional_context_terms: deriveInstructionalContextTerms({ commandTerm: value, sourceLatex }),
-    })
-    .eq("id", partId)
-    .select("id, command_term, instructional_context_terms, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify")
-    .single();
+  const updatePayload = {
+    command_term: value,
+    ...deriveCommandTermFlags({ commandTerm: value, sourceLatex }),
+    instructional_context_terms: deriveInstructionalContextTerms({ commandTerm: value, sourceLatex }),
+  };
+
+  const { result: updateResult } = await retryWithoutInstructionalContextTerms(
+    async (includeInstructionalContextTerms) =>
+      supabase
+        .from("question_parts")
+        .update(includeInstructionalContextTerms ? updatePayload : omitInstructionalContextTerms(updatePayload))
+        .eq("id", partId)
+        .select(getQuestionPartsSelect(PART_SELECT, includeInstructionalContextTerms))
+        .single(),
+    (result) => result.error,
+  );
+
+  const { data: updated, error } = updateResult;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

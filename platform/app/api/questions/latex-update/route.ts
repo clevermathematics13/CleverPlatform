@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
+import { omitInstructionalContextTerms, retryWithoutInstructionalContextTerms } from "@/lib/question-parts-compat";
 
 // PATCH /api/questions/latex-update
 // Body: { partId: string, field: "content_latex"|"markscheme_latex", value: string }
@@ -54,10 +55,16 @@ export async function PATCH(request: NextRequest) {
     };
   }
 
-  const { error } = await supabase
-    .from("question_parts")
-    .update(updatePayload)
-    .eq("id", partId);
+  const { result: updateResult } = await retryWithoutInstructionalContextTerms(
+    async (includeInstructionalContextTerms) =>
+      supabase
+        .from("question_parts")
+        .update(includeInstructionalContextTerms ? updatePayload : omitInstructionalContextTerms(updatePayload))
+        .eq("id", partId),
+    (result) => result.error,
+  );
+
+  const { error } = updateResult;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

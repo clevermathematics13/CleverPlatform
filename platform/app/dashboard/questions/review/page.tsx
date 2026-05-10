@@ -1,4 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
+import {
+  detectInstructionalContextTermsSupport,
+  getQuestionPartsSelect,
+  retryWithoutInstructionalContextTerms,
+} from "@/lib/question-parts-compat";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import ReviewClient from "./review-client";
@@ -31,8 +36,6 @@ export default async function ReviewPage({
     .select("question_id, image_type")
     .limit(10000);
 
-  const withQImg = new Set((imageRows ?? []).filter((r) => r.image_type === "question").map((r) => r.question_id));
-  const withMSImg = new Set((imageRows ?? []).filter((r) => r.image_type === "markscheme").map((r) => r.question_id));
   const allImageIds = [...new Set((imageRows ?? []).map((r) => r.question_id))];
 
   // Step 1b: get question IDs that have any latex stored in their parts
@@ -59,29 +62,54 @@ export default async function ReviewPage({
   const fullSelectFields =
     "id, code, session, paper, level, timezone, page_image_paths, source_pdf_path, google_doc_id, google_ms_id, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, command_term, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified)";
 
-  const selectFields: string = stemProbeErr ? coreSelectFields : fullSelectFields;
+  const baseSelectFields: string = stemProbeErr ? coreSelectFields : fullSelectFields;
 
   const excludeImgClause = allImageIds.slice(0, 200).join(",") || "00000000-0000-0000-0000-000000000000";
 
-  const [{ data: imgQuestions }, { data: latexQuestions }, { data: otherQuestions }, { data: focusQuestions }] = await Promise.all([
-    allImageIds.length > 0
-      ? supabase.from("ib_questions").select(selectFields).in("id", allImageIds).order("code").limit(200)
-      : Promise.resolve({ data: [] }),
-    withLatexIds.length > 0
-      ? supabase.from("ib_questions").select(selectFields).in("id", withLatexIds).order("code").limit(200)
-      : Promise.resolve({ data: [] }),
-    supabase
-      .from("ib_questions")
-      .select(selectFields)
-      .not("id", "in", `(${excludeImgClause})`)
-      .or("google_doc_id.not.is.null,source_pdf_path.not.is.null")
-      .order("code")
-      .limit(200),
-    // Always fetch the focused question so it's guaranteed to be in the list
-    focusId
-      ? supabase.from("ib_questions").select(selectFields).eq("id", focusId).limit(1)
-      : Promise.resolve({ data: [] }),
-  ]);
+  const includeInstructionalContextTerms = await detectInstructionalContextTermsSupport(async () => {
+    const { error } = await supabase.from("question_parts").select("instructional_context_terms").limit(0);
+    return error;
+  });
+
+  const { result: groupedQuestionsResult } = await retryWithoutInstructionalContextTerms(
+    async (includeInstructionalContextTerms) => {
+      const selectFields = getQuestionPartsSelect(baseSelectFields, includeInstructionalContextTerms);
+
+      const [imgQuestions, latexQuestions, otherQuestions, focusQuestions] = await Promise.all([
+        allImageIds.length > 0
+          ? supabase.from("ib_questions").select(selectFields).in("id", allImageIds).order("code").limit(200)
+          : Promise.resolve({ data: [], error: null }),
+        withLatexIds.length > 0
+          ? supabase.from("ib_questions").select(selectFields).in("id", withLatexIds).order("code").limit(200)
+          : Promise.resolve({ data: [], error: null }),
+        supabase
+          .from("ib_questions")
+          .select(selectFields)
+          .not("id", "in", `(${excludeImgClause})`)
+          .or("google_doc_id.not.is.null,source_pdf_path.not.is.null")
+          .order("code")
+          .limit(200),
+        focusId
+          ? supabase.from("ib_questions").select(selectFields).eq("id", focusId).limit(1)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+
+      return { imgQuestions, latexQuestions, otherQuestions, focusQuestions };
+    },
+    (result) =>
+      result.imgQuestions.error ??
+      result.latexQuestions.error ??
+      result.otherQuestions.error ??
+      result.focusQuestions.error,
+    includeInstructionalContextTerms,
+  );
+
+  const {
+    imgQuestions: { data: imgQuestions },
+    latexQuestions: { data: latexQuestions },
+    otherQuestions: { data: otherQuestions },
+    focusQuestions: { data: focusQuestions },
+  } = groupedQuestionsResult;
 
   // Merge: focused question first (guaranteed), then image questions, latex, others; deduplicate
   const seen = new Set<string>();
