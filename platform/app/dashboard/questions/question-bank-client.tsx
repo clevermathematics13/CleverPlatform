@@ -427,17 +427,23 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     setPage(1);
   }, [search, searchContent, session, paper, level, timezone, subtopic]);
 
-  const toggleExpand = (id: string) => {
+  const openExpand = (id: string) => {
     setExpanded((prev) => {
+      if (prev.has(id)) return prev;
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else {
-        next.add(id);
-        // Load images when expanding if not already loaded
-        if (!questionImages[id]) {
-          loadImages(id);
-        }
+      next.add(id);
+      if (!questionImages[id]) {
+        loadImages(id);
       }
+      return next;
+    });
+  };
+
+  const closeExpand = (id: string) => {
+    setExpanded((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
       return next;
     });
   };
@@ -1608,7 +1614,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 key={q.id}
                 question={q}
                 expanded={expanded.has(q.id)}
-                onToggle={() => toggleExpand(q.id)}
+                onOpen={() => openExpand(q.id)}
+                onClose={() => closeExpand(q.id)}
                 totalMarks={totalMarks(q)}
                 commandTerms={allCommandTerms}
                 onUpdateCommandTerm={updateCommandTerm}
@@ -1743,7 +1750,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 function QuestionRow({
   question,
   expanded,
-  onToggle,
+  onOpen,
+  onClose,
   totalMarks,
   commandTerms,
   onUpdateCommandTerm,
@@ -1771,7 +1779,8 @@ function QuestionRow({
 }: {
   question: Question;
   expanded: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
+  onClose: () => void;
   totalMarks: number;
   commandTerms: string[];
   onUpdateCommandTerm: (partId: string, commandTerm: string | null) => void;
@@ -1808,13 +1817,13 @@ function QuestionRow({
       setShowSectionPrompt(true);
     } else {
       setShowSectionPrompt(false);
-      onToggle();
+      onClose();
     }
   };
 
   const handleRowClick = () => {
     if (!expanded) {
-      onToggle();
+      onOpen();
       return;
     }
     handleClose();
@@ -3122,14 +3131,14 @@ function QuestionRow({
               <div className="flex gap-3">
                 <button
                   type="button"
-                  onClick={() => { onUpdateSection("A"); setShowSectionPrompt(false); onToggle(); }}
+                  onClick={() => { onUpdateSection("A"); setShowSectionPrompt(false); onClose(); }}
                   className="flex-1 rounded-lg bg-blue-600 text-white font-bold py-2 text-sm hover:bg-blue-700 transition-colors"
                 >
                   Section A
                 </button>
                 <button
                   type="button"
-                  onClick={() => { onUpdateSection("B"); setShowSectionPrompt(false); onToggle(); }}
+                  onClick={() => { onUpdateSection("B"); setShowSectionPrompt(false); onClose(); }}
                   className="flex-1 rounded-lg bg-orange-500 text-white font-bold py-2 text-sm hover:bg-orange-600 transition-colors"
                 >
                   Section B
@@ -3137,7 +3146,7 @@ function QuestionRow({
               </div>
               <button
                 type="button"
-                onClick={() => { setShowSectionPrompt(false); onToggle(); }}
+                onClick={() => { setShowSectionPrompt(false); onClose(); }}
                 className="text-xs text-gray-400 hover:text-gray-600 underline text-center"
               >
                 Close without picking
