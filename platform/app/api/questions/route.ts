@@ -131,7 +131,8 @@ export async function GET(request: NextRequest) {
 
   // Sort parts within each question
   for (const q of filtered) {
-    const parts = q.question_parts as { sort_order: number }[];
+    const parts = (q.question_parts ?? []) as { sort_order: number }[];
+    q.question_parts = parts;
     parts.sort((a, b) => a.sort_order - b.sort_order);
   }
 

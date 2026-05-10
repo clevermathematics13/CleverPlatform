@@ -1543,9 +1543,19 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 
       {/* Error display */}
       {error && (
-        <div className="rounded-lg border-2 border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-800">
-          Error: {error}
-        </div>
+          <div className="flex items-start justify-between gap-2 rounded-lg border-2 border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-800">
+            <span>Error: {error}</span>
+            <button
+              type="button"
+              className="shrink-0 rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-200"
+              onClick={() => {
+                const log = `[${new Date().toISOString()}] Error: ${error}`;
+                navigator.clipboard.writeText(log).catch(() => {});
+              }}
+            >
+              Copy
+            </button>
+          </div>
       )}
 
       {/* Results header */}
@@ -1866,7 +1876,7 @@ function QuestionRow({
     handleClose();
   };
   const [parts, setParts] = useState<QuestionPart[]>(
-    [...question.question_parts].sort((a, b) => a.sort_order - b.sort_order)
+    [...(question.question_parts ?? [])].sort((a, b) => a.sort_order - b.sort_order)
   );
   const [latexDrafts, setLatexDrafts] = useState<Record<string, { content_latex: string; markscheme_latex: string }>>(() => {
     const d: Record<string, { content_latex: string; markscheme_latex: string }> = {};
