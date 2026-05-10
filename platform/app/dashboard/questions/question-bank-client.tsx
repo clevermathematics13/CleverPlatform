@@ -355,7 +355,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   }, []);
 
   // Filter state
-  const [search, setSearch] = useState("25N.1.SL.TZ1.S_1");
+  const [search, setSearch] = useState(() => {
+    try { return localStorage.getItem("qbank-search") ?? ""; } catch { return ""; }
+  });
   const [searchContent, setSearchContent] = useState(false);
   const [session, setSession] = useState("");
   const [paper, setPaper] = useState("");
@@ -1325,7 +1327,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 suppressHydrationWarning
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => { setSearch(e.target.value); try { localStorage.setItem("qbank-search", e.target.value); } catch {} }}
                 placeholder={searchContent ? "e.g. \\binom, \\int..." : "e.g. 22M, TZ2, H_10..."}
                 className="input-dark w-full rounded border-2 border-blue-300 px-3 py-1.5 text-base font-semibold text-blue-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-600"
               />
