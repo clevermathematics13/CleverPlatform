@@ -254,6 +254,20 @@ function detectCommandTerm(latex: string): string | null {
   return null;
 }
 
+function detectPartLabels(text: string): string[] {
+  const labels: string[] = [];
+  const seen = new Set<string>();
+  const re = /\(([a-z])\)(?=[\s\n\\$]|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (!seen.has(m[1])) {
+      seen.add(m[1]);
+      labels.push(m[1]);
+    }
+  }
+  return labels;
+}
+
 export function QuestionBankClient({ initialDriveConnected = false }: { initialDriveConnected?: boolean }) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [filters, setFilters] = useState<Filters | null>(null);
@@ -2590,13 +2604,23 @@ function QuestionRow({
         push("⚠ Claude classification failed — part structure inferred from OCR labels.");
       }
 
-      // Split the drafts (only meaningful for multi-part questions)
-      const finalLabels = claudeParts.length > 0 ? claudeParts.map((p) => p.label) : [];
+      const detectedLabels = detectPartLabels(qDraft || msDraft);
+      const claudeLabels = claudeParts.map((p) => (p.label ?? "").trim()).filter(Boolean);
+      const candidateLabels = claudeLabels.length > 0 ? claudeLabels : detectedLabels;
+      const splitProbe = splitDraftIntoParts(qDraft || msDraft, candidateLabels);
+      const inferredLabels = candidateLabels.length > 0 ? candidateLabels : Array.from(splitProbe.parts.keys());
+      const finalLabels = Array.from(new Set(inferredLabels.map((l) => l.trim()).filter(Boolean)));
+
+      if (claudeLabels.length === 0 && finalLabels.length > 0) {
+        push(`Claude returned no labels; inferred ${finalLabels.length} part label(s): ${finalLabels.join(", ")}.`);
+      }
+
+      // Split the drafts using final labels (Claude, OCR-detected, or inferred)
       const { stem: stemQ, parts: splitQ } = splitDraftIntoParts(qDraft, finalLabels);
       const { stem: stemMS, parts: splitMS } = splitDraftIntoParts(msDraft, finalLabels);
 
-      // Whole-question path: no parts identified, OR Claude returned a single entry with empty label
-      const isWholeQuestion = claudeParts.length === 0 || claudeParts.every((p) => !p.label || p.label.trim() === "");
+      // Whole-question path: no labels from Claude/OCR/inference.
+      const isWholeQuestion = finalLabels.length === 0;
       if (isWholeQuestion) {
         const cpMeta = claudeParts[0]; // may be undefined if claudeParts is empty
         push("No part structure found — treating as whole question…");
@@ -2685,12 +2709,18 @@ function QuestionRow({
       setStemMsLatex(stemMS);
       setStemDraftMS(stemMS);
 
-      // For each Claude-identified part: find existing or create, then save LaTeX
+      // For each identified part label: find existing or create, then save LaTeX
       push("Saving parts…");
       const newParts: QuestionPart[] = [];
-      for (const cp of claudeParts) {
-        const existing = parts.find((p) => (p.part_label ?? "").toLowerCase() === cp.label.toLowerCase());
+      for (const label of finalLabels) {
+        const cp = claudeParts.find((p) => (p.label ?? "").toLowerCase() === label.toLowerCase());
+        const existing = parts.find((p) => (p.part_label ?? "").toLowerCase() === label.toLowerCase());
         let partId: string;
+        const splitQForLabel = splitQ.get(label) ?? "";
+        const splitMSForLabel = splitMS.get(label) ?? "";
+        const canonicalTerm = DEFAULT_COMMAND_TERMS.find(
+          (t) => t.toLowerCase() === (cp?.commandTerm ?? "").toLowerCase()
+        ) ?? detectCommandTerm(splitQForLabel) ?? null;
 
         if (existing) {
           // Update metadata
@@ -2699,51 +2729,51 @@ function QuestionRow({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               partId: existing.id,
-              partLabel: cp.label,
-              marks: cp.marks,
-              commandTerm: cp.commandTerm,
-              subtopicCodes: cp.subtopicCodes,
+              partLabel: label,
+              marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
+              commandTerm: canonicalTerm,
+              subtopicCodes: cp?.subtopicCodes ?? existing.subtopic_codes,
             }),
           });
           partId = existing.id;
           newParts.push({
             ...existing,
-            part_label: cp.label,
-            marks: cp.marks,
-            command_term: cp.commandTerm,
-            subtopic_codes: cp.subtopicCodes,
-            content_latex: splitQ.get(cp.label) ?? null,
-            markscheme_latex: splitMS.get(cp.label) ?? null,
+            part_label: label,
+            marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
+            command_term: canonicalTerm,
+            subtopic_codes: cp?.subtopicCodes ?? existing.subtopic_codes,
+            content_latex: splitQForLabel || null,
+            markscheme_latex: splitMSForLabel || null,
           });
         } else {
           // Create new part
-          // Sanitize commandTerm: API rejects non-canonical terms
-          const canonicalTerm = DEFAULT_COMMAND_TERMS.find(
-            (t) => t.toLowerCase() === (cp.commandTerm ?? "").toLowerCase()
-          ) ?? null;
           const res = await fetch("/api/questions/part-metadata", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               questionId: question.id,
-              partLabel: cp.label,
-              marks: typeof cp.marks === "number" ? cp.marks : null,
+              partLabel: label,
+              marks: typeof cp?.marks === "number" ? cp.marks : null,
               commandTerm: canonicalTerm,
-              subtopicCodes: cp.subtopicCodes,
+              subtopicCodes: cp?.subtopicCodes ?? [],
             }),
           });
           if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
-            push(`⚠ Failed to create part ${cp.label || "(whole)"}: ${errData.error ?? res.status}`);
+            push(`⚠ Failed to create part ${label || "(whole)"}: ${errData.error ?? res.status}`);
             continue;
           }
           const { part: created } = await res.json();
-          if (!created?.id) { push(`⚠ Part ${cp.label} creation returned no id`); continue; }
+          if (!created?.id) { push(`⚠ Part ${label} creation returned no id`); continue; }
           partId = created.id;
           newParts.push({
             ...created,
-            content_latex: splitQ.get(cp.label) ?? null,
-            markscheme_latex: splitMS.get(cp.label) ?? null,
+            part_label: label,
+            marks: typeof cp?.marks === "number" ? cp.marks : created.marks,
+            command_term: canonicalTerm,
+            subtopic_codes: cp?.subtopicCodes ?? created.subtopic_codes,
+            content_latex: splitQForLabel || null,
+            markscheme_latex: splitMSForLabel || null,
           });
         }
 
@@ -2752,12 +2782,12 @@ function QuestionRow({
           fetch("/api/questions/latex-update", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ partId, field: "content_latex", value: splitQ.get(cp.label) ?? "" }),
+            body: JSON.stringify({ partId, field: "content_latex", value: splitQForLabel }),
           }),
           fetch("/api/questions/latex-update", {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ partId, field: "markscheme_latex", value: splitMS.get(cp.label) ?? "" }),
+            body: JSON.stringify({ partId, field: "markscheme_latex", value: splitMSForLabel }),
           }),
         ]);
       }
