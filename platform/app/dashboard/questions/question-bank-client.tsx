@@ -1793,8 +1793,17 @@ function QuestionRow({
     if (showSection && question.section === null) {
       setShowSectionPrompt(true);
     } else {
+      setShowSectionPrompt(false);
       onToggle();
     }
+  };
+
+  const handleRowClick = () => {
+    if (!expanded) {
+      onToggle();
+      return;
+    }
+    handleClose();
   };
   const [parts, setParts] = useState<QuestionPart[]>(
     [...question.question_parts].sort((a, b) => a.sort_order - b.sort_order)
@@ -2866,7 +2875,7 @@ function QuestionRow({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [expanded, onToggle]);
+  }, [expanded, handleClose]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -2880,14 +2889,14 @@ function QuestionRow({
     <>
       <tr
         className="cursor-pointer hover:bg-blue-50 transition-colors"
-        onClick={handleClose}
+        onClick={handleRowClick}
       >
         <td className="px-4 py-2">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              handleClose();
+              handleRowClick();
             }}
             className="font-bold text-blue-900 hover:underline"
             title="Open question details"
