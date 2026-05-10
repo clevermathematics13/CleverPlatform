@@ -173,8 +173,15 @@ function renderWithTermHighlights(
   contextTerms: string[]
 ): React.ReactNode {
   const cmd = commandTerm?.trim() ?? "";
+  const cmdAliases = (() => {
+    const n = normalizeComparable(cmd);
+    if (!n) return [] as string[];
+    if (n === "write down") return [cmd, "Write"];
+    if (n === "show") return [cmd, "Show that"];
+    return [cmd];
+  })();
   const cleanedContextTerms = Array.from(new Set(contextTerms.map((t) => t.trim()).filter(Boolean))).filter((t) => normalizeComparable(t) !== normalizeComparable(cmd));
-  const cleanedTerms = [cmd, ...cleanedContextTerms].filter(Boolean).sort((a, b) => b.length - a.length);
+  const cleanedTerms = [...cmdAliases, ...cleanedContextTerms].filter(Boolean).sort((a, b) => b.length - a.length);
   if (cleanedTerms.length === 0) return text;
 
   const escapedTerms = cleanedTerms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"));

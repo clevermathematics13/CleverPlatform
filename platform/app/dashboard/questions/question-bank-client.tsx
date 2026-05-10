@@ -291,16 +291,16 @@ function chooseCommandTerm(input: {
 }): string {
   const fromQuestion = detectCommandTerm(input.questionLatex);
   if (fromQuestion) return fromQuestion;
+  const fallbackFromQuestion = inferFallbackCommandTerm(input.questionLatex);
+  if (fallbackFromQuestion) return fallbackFromQuestion;
   const fromMarkscheme = detectCommandTerm(input.markschemeLatex ?? "");
   if (fromMarkscheme) return fromMarkscheme;
+  const fallbackFromMarkscheme = inferFallbackCommandTerm(input.markschemeLatex ?? "");
+  if (fallbackFromMarkscheme) return fallbackFromMarkscheme;
   const canonicalFromClaude = DEFAULT_COMMAND_TERMS.find(
     (t) => t.toLowerCase() === (input.claudeCommandTerm ?? "").toLowerCase(),
   );
   if (canonicalFromClaude) return canonicalFromClaude;
-  const fallbackFromQuestion = inferFallbackCommandTerm(input.questionLatex);
-  if (fallbackFromQuestion) return fallbackFromQuestion;
-  const fallbackFromMarkscheme = inferFallbackCommandTerm(input.markschemeLatex ?? "");
-  if (fallbackFromMarkscheme) return fallbackFromMarkscheme;
   return "State";
 }
 
