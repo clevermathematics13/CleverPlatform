@@ -8,6 +8,7 @@ import { AddQuestionWizard } from "./add-question-wizard";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
 import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
 import { contextTermHighlightsFromFlags, deriveCommandTermFlags } from "@/lib/command-term-flags";
+import { readJsonSafely } from "@/lib/http-json";
 import { encodeGraphSpec, GRAPH_MARKER_RE, EXAMPLE_SPEC, type IbGraphSpec } from "@/components/IbGraph";
 
 const IbGraph = dynamic(() => import("@/components/IbGraph"), { ssr: false });
@@ -411,14 +412,16 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     params.set("page", String(page));
 
     fetch(`/api/questions?${params}`)
-      .then((r) => r.json())
-      .then((d) => {
+      .then(async (r) => {
+        const text = await r.text();
+        let d: { error?: string; questions?: unknown[]; total?: number } = {};
+        try { d = JSON.parse(text); } catch { setError(`Server error (${r.status}): non-JSON response`); setQuestions([]); setTotal(0); return; }
         if (d.error) {
           setError(d.error);
           setQuestions([]);
           setTotal(0);
         } else {
-          setQuestions(d.questions ?? []);
+          setQuestions((d.questions ?? []) as Parameters<typeof setQuestions>[0]);
           setTotal(d.total ?? 0);
         }
       })
@@ -2614,7 +2617,7 @@ function QuestionRow({
           }),
         });
         if (clRes.ok) {
-          const data = await clRes.json();
+          const data = await readJsonSafely<{ content?: { text?: string }[] }>(clRes);
           const text: string = data?.content?.[0]?.text ?? "";
           const jsonMatch = text.match(/\{[\s\S]*\}/);
           if (jsonMatch) claudeParts = JSON.parse(jsonMatch[0]).parts ?? [];
@@ -2917,7 +2920,7 @@ function QuestionRow({
           }],
         }),
       });
-      const data = await res.json();
+      const data = await readJsonSafely<{ content?: { text?: string }[] }>(res);
       const corrected: string = data?.content?.[0]?.text ?? "";
       if (corrected) {
         setLatexDrafts((d) => ({ ...d, [partId]: { ...d[partId], [field]: corrected.trim() } }));

@@ -16,6 +16,7 @@ type QuestionListRow = {
 };
 
 export async function GET(request: NextRequest) {
+  try {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
@@ -163,6 +164,10 @@ export async function GET(request: NextRequest) {
     page,
     pageSize,
   });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
 }
 
 export async function POST(request: NextRequest) {
