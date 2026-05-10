@@ -1953,6 +1953,64 @@ function QuestionRow({
     }
   }
 
+  const [clearingAllLatex, setClearingAllLatex] = useState(false);
+  async function clearAllLatex() {
+    setClearingAllLatex(true);
+    try {
+      await Promise.all([
+        fetch("/api/questions/stem-update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "stem_latex", value: "" }),
+        }),
+        fetch("/api/questions/stem-update", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "stem_markscheme_latex", value: "" }),
+        }),
+        ...parts.flatMap((p) => [
+          fetch("/api/questions/latex-update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId: p.id, field: "content_latex", value: "" }),
+          }),
+          fetch("/api/questions/latex-update", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId: p.id, field: "markscheme_latex", value: "" }),
+          }),
+        ]),
+      ]);
+
+      setStemLatex("");
+      setStemMsLatex("");
+      setStemDraftQ("");
+      setStemDraftMS("");
+      setEditingStem(null);
+      setWholeQDraft("");
+      setWholeMSDraft("");
+      setEditingWhole(null);
+      setEditingLatex(null);
+      setLatexDrafts((prev) => {
+        const next: Record<string, { content_latex: string; markscheme_latex: string }> = { ...prev };
+        parts.forEach((p) => {
+          next[p.id] = { content_latex: "", markscheme_latex: "" };
+        });
+        return next;
+      });
+      setParts((prev) =>
+        prev.map((p) => ({
+          ...p,
+          content_latex: null,
+          markscheme_latex: null,
+        }))
+      );
+      onRefresh();
+    } finally {
+      setClearingAllLatex(false);
+    }
+  }
+
   // ── Delete part ─────────────────────────────────────────────────────────
   const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
   async function deletePart(partId: string) {
@@ -3732,6 +3790,18 @@ function QuestionRow({
                         {resettingWhole ? "Resetting…" : "↺ Reset as Whole Question"}
                       </button>
                     )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm("Clear all LaTeX for this question? This will erase stem + all part question/markscheme LaTeX and cannot be undone.")) {
+                          void clearAllLatex();
+                        }
+                      }}
+                      disabled={clearingAllLatex || fullExtractState === "running"}
+                      className="rounded px-3 py-1.5 text-xs font-bold border border-red-300 text-red-600 bg-white hover:bg-red-50 disabled:opacity-50 transition-colors"
+                    >
+                      {clearingAllLatex ? "Clearing…" : "🧹 Clear LaTeX"}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setAddPartOpen(!addPartOpen)}
