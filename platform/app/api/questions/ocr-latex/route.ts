@@ -92,6 +92,7 @@ export async function POST(request: NextRequest) {
 
   const isStem = field === "stem_latex" || field === "stem_markscheme_latex";
   const isDraft = field === "parts_draft_latex" || field === "parts_draft_markscheme_latex";
+  const isQuestionDraft = field === "parts_draft_latex";
   // Both stem and draft fields save to ib_questions rather than question_parts
   const savesToQuestion = isStem || isDraft;
 
@@ -210,7 +211,7 @@ export async function POST(request: NextRequest) {
           { status: 502 }
         );
       const cleaned = postProcessMathpixLatex(mpJson.latex_styled ?? mpJson.text ?? "");
-      if (isDraft && looksGraphLike(cleaned)) graphDetected = true;
+      if (isQuestionDraft && looksGraphLike(cleaned)) graphDetected = true;
       parts.push(cleaned);
     }
     extractedLatex = parts.join("\n\n");
@@ -312,7 +313,7 @@ Additional rules:
       response.content[0].type === "text"
         ? response.content[0].text.trim()
         : "";
-    if (isDraft && looksGraphLike(extractedLatex)) graphDetected = true;
+    if (isQuestionDraft && looksGraphLike(extractedLatex)) graphDetected = true;
   }
 
   // ── Claude normalisation pass (Mathpix output only) ───────────────────────
@@ -369,7 +370,7 @@ Additional rules:
 
   // Ensure draft output includes a graph marker when OCR likely detected a graph.
   // The UI renderer maps this marker to the currently viewed source image.
-  const graphMarkerInjected = isDraft && graphDetected && !extractedLatex.includes(GRAPH_IMAGE_MARKER);
+  const graphMarkerInjected = isQuestionDraft && graphDetected && !extractedLatex.includes(GRAPH_IMAGE_MARKER);
   if (graphMarkerInjected) {
     extractedLatex = `${extractedLatex.trim()}\n\n${GRAPH_IMAGE_MARKER}`;
   }
