@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "checkJs": false,
+    "maxNodeModuleJsDepth": 0
+  },
+  "include": [
+    "scripts/**/*.js"
+  ],
+  "exclude": [
+    "**/.git",
+    "**/.venv",
+    "**/node_modules",
+    "**/.next",
+    "**/.vercel",
+    "**/_backup",
+    "**/dist",
+    "**/build",
+    "platform/**",
+    "cerulean-truffle-69e27a.netlify.app/**",
+    "_backup/**"
+  ]
+}

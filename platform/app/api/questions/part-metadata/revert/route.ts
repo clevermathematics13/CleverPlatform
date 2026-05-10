@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
-import {
-  getQuestionPartsSelect,
-  omitInstructionalContextTerms,
-  retryWithoutInstructionalContextTerms,
-} from "@/lib/question-parts-compat";
+import { probeQuestionPartsColumns, stripUnsupportedColumns, omitUnsupportedColumns } from "@/lib/question-parts-compat";
 
 type RevertBody = {
   partId?: unknown;
@@ -132,18 +128,17 @@ export async function POST(request: NextRequest) {
     sort_order: previous.sort_order ?? 0,
   };
 
-  const { result: revertResult } = await retryWithoutInstructionalContextTerms(
-    async (includeInstructionalContextTerms) =>
-      supabase
-        .from("question_parts")
-        .update(includeInstructionalContextTerms ? updatePayload : omitInstructionalContextTerms(updatePayload))
-        .eq("id", partId)
-        .select(getQuestionPartsSelect(PART_SELECT, includeInstructionalContextTerms))
-        .single(),
-    (result) => result.error,
-  );
+  const supportedColumns = await probeQuestionPartsColumns(async (col) => {
+    const { error } = await supabase.from("question_parts").select(col).limit(0);
+    return error;
+  });
 
-  const { data: reverted, error: revertErr } = revertResult;
+  const { data: reverted, error: revertErr } = await supabase
+    .from("question_parts")
+    .update(omitUnsupportedColumns(updatePayload, supportedColumns))
+    .eq("id", partId)
+    .select(stripUnsupportedColumns(PART_SELECT, supportedColumns))
+    .single();
 
   if (revertErr) {
     return NextResponse.json({ error: revertErr.message }, { status: 500 });

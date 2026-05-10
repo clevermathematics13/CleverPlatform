@@ -1,9 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import {
-  detectInstructionalContextTermsSupport,
-  getQuestionPartsSelect,
-  retryWithoutInstructionalContextTerms,
-} from "@/lib/question-parts-compat";
+import { probeQuestionPartsColumns, stripUnsupportedColumns } from "@/lib/question-parts-compat";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import ReviewClient from "./review-client";
@@ -66,58 +62,53 @@ export default async function ReviewPage({
 
   const excludeImgClause = allImageIds.slice(0, 200).join(",") || "00000000-0000-0000-0000-000000000000";
 
-  const includeInstructionalContextTerms = await detectInstructionalContextTermsSupport(async () => {
-    const { error } = await supabase.from("question_parts").select("instructional_context_terms").limit(0);
+  const supportedColumns = await probeQuestionPartsColumns(async (col) => {
+    const { error } = await supabase.from("question_parts").select(col).limit(0);
     return error;
   });
 
-  const { result: groupedQuestionsResult } = await retryWithoutInstructionalContextTerms(
-    async (includeInstructionalContextTerms) => {
-      const selectFields = getQuestionPartsSelect(baseSelectFields, includeInstructionalContextTerms);
+  const selectFields = stripUnsupportedColumns(baseSelectFields, supportedColumns);
 
-      const [imgQuestions, latexQuestions, otherQuestions, focusQuestions] = await Promise.all([
-        allImageIds.length > 0
-          ? supabase.from("ib_questions").select(selectFields).in("id", allImageIds).order("code").limit(200)
-          : Promise.resolve({ data: [], error: null }),
-        withLatexIds.length > 0
-          ? supabase.from("ib_questions").select(selectFields).in("id", withLatexIds).order("code").limit(200)
-          : Promise.resolve({ data: [], error: null }),
-        supabase
-          .from("ib_questions")
-          .select(selectFields)
-          .not("id", "in", `(${excludeImgClause})`)
-          .or("google_doc_id.not.is.null,source_pdf_path.not.is.null")
-          .order("code")
-          .limit(200),
-        focusId
-          ? supabase.from("ib_questions").select(selectFields).eq("id", focusId).limit(1)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
+  const [imgQuestions, latexQuestions, otherQuestions, focusQuestions] = await Promise.all([
+    allImageIds.length > 0
+      ? supabase.from("ib_questions").select(selectFields).in("id", allImageIds).order("code").limit(200)
+      : Promise.resolve({ data: [], error: null }),
+    withLatexIds.length > 0
+      ? supabase.from("ib_questions").select(selectFields).in("id", withLatexIds).order("code").limit(200)
+      : Promise.resolve({ data: [], error: null }),
+    supabase
+      .from("ib_questions")
+      .select(selectFields)
+      .not("id", "in", `(${excludeImgClause})`)
+      .or("google_doc_id.not.is.null,source_pdf_path.not.is.null")
+      .order("code")
+      .limit(200),
+    focusId
+      ? supabase.from("ib_questions").select(selectFields).eq("id", focusId).limit(1)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
 
-      return { imgQuestions, latexQuestions, otherQuestions, focusQuestions };
-    },
-    (result) =>
-      result.imgQuestions.error ??
-      result.latexQuestions.error ??
-      result.otherQuestions.error ??
-      result.focusQuestions.error,
-    includeInstructionalContextTerms,
-  );
+  const groupedQuestionsResult = { imgQuestions, latexQuestions, otherQuestions, focusQuestions };
 
   const {
-    imgQuestions: { data: imgQuestions },
-    latexQuestions: { data: latexQuestions },
-    otherQuestions: { data: otherQuestions },
-    focusQuestions: { data: focusQuestions },
+    imgQuestions: imgQuestionsResult,
+    latexQuestions: latexQuestionsResult,
+    otherQuestions: otherQuestionsResult,
+    focusQuestions: focusQuestionsResult,
   } = groupedQuestionsResult;
+
+  const imgQuestionRows = imgQuestionsResult.data;
+  const latexQuestionRows = latexQuestionsResult.data;
+  const otherQuestionRows = otherQuestionsResult.data;
+  const focusQuestionRows = focusQuestionsResult.data;
 
   // Merge: focused question first (guaranteed), then image questions, latex, others; deduplicate
   const seen = new Set<string>();
   const mergedCandidates: unknown[] = [
-    ...(focusQuestions ?? []),
-    ...(imgQuestions ?? []),
-    ...(latexQuestions ?? []),
-    ...(otherQuestions ?? []),
+    ...(focusQuestionRows ?? []),
+    ...(imgQuestionRows ?? []),
+    ...(latexQuestionRows ?? []),
+    ...(otherQuestionRows ?? []),
   ];
   const merged = mergedCandidates.filter((q) => {
     if (!q || typeof q !== "object" || !("id" in q) || typeof q.id !== "string") return false;

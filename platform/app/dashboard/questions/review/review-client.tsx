@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, forwardRef, useImper
 import LatexRenderer from "@/components/LatexRenderer";
 import { IB_CORRECTION_SYSTEM } from "@/lib/latex-utils";
 import { splitDraftIntoParts } from "./split-draft-into-parts";
+import { playChatCompletionChime } from "@/lib/chat-audio";
 
 const DEFAULT_COMMAND_TERMS = [
   "Calculate",
@@ -564,6 +565,7 @@ function StemEditor({
       const corrected: string = data?.content?.[0]?.text ?? data?.completion ?? "";
       if (corrected) {
         setDraft((d) => ({ ...d, [stemField]: corrected.trim() }));
+        void playChatCompletionChime();
       }
     } finally {
       setClaudeLoading(false);
@@ -733,6 +735,7 @@ function PartEditor({
         data?.content?.[0]?.text ?? data?.completion ?? "";
       if (corrected) {
         setDraft((d) => ({ ...d, [activeField]: corrected.trim() }));
+        void playChatCompletionChime();
       }
     } finally {
       setClaudeLoading(false);

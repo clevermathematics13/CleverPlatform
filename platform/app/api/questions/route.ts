@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
 import {
-  detectInstructionalContextTermsSupport,
-  getQuestionPartsSelect,
-  omitInstructionalContextTerms,
-  retryWithoutInstructionalContextTerms,
+  probeQuestionPartsColumns,
+  stripUnsupportedColumns,
+  omitUnsupportedColumns,
 } from "@/lib/question-parts-compat";
 
 const QUESTIONS_SELECT = "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, command_term, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified)";
@@ -84,52 +83,44 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Build query for questions with parts — show questions that have a Google Doc OR a PDF source
-  const includeInstructionalContextTerms = await detectInstructionalContextTermsSupport(async () => {
-    const { error } = await supabase.from("question_parts").select("instructional_context_terms").limit(0);
+  // Probe once for which optional columns exist in this DB, then use that for all selects.
+  const supportedColumns = await probeQuestionPartsColumns(async (col) => {
+    const { error } = await supabase.from("question_parts").select(col).limit(0);
     return error;
   });
 
-  const { result: questionResult } = await retryWithoutInstructionalContextTerms(
-    async (includeInstructionalContextTerms) => {
-      let query = supabase
-        .from("ib_questions")
-        .select(getQuestionPartsSelect(QUESTIONS_SELECT, includeInstructionalContextTerms), {
-          count: "exact",
-        })
-        .or("google_doc_id.not.is.null,source_pdf_path.not.is.null")
-        .order("code", { ascending: true })
-        .range((page - 1) * pageSize, page * pageSize - 1);
+  const selectStr = stripUnsupportedColumns(QUESTIONS_SELECT, supportedColumns);
 
-      if (search && !searchContent) {
-        query = query.ilike("code", `%${search}%`);
-      }
-      if (session) {
-        query = query.eq("session", session);
-      }
-      if (paper) {
-        query = query.eq("paper", parseInt(paper));
-      }
-      if (level) {
-        query = query.eq("level", level);
-      }
-      if (timezone) {
-        query = query.eq("timezone", timezone);
-      }
-      if (subtopicQuestionIds) {
-        query = query.in("id", subtopicQuestionIds);
-      }
-      if (contentSearchQuestionIds) {
-        query = query.in("id", contentSearchQuestionIds);
-      }
+  let query = supabase
+    .from("ib_questions")
+    .select(selectStr, { count: "exact" })
+    .or("google_doc_id.not.is.null,source_pdf_path.not.is.null")
+    .order("code", { ascending: true })
+    .range((page - 1) * pageSize, page * pageSize - 1);
 
-      return query;
-    },
-    (result) => result.error,
-    includeInstructionalContextTerms,
-  );
+  if (search && !searchContent) {
+    query = query.ilike("code", `%${search}%`);
+  }
+  if (session) {
+    query = query.eq("session", session);
+  }
+  if (paper) {
+    query = query.eq("paper", parseInt(paper));
+  }
+  if (level) {
+    query = query.eq("level", level);
+  }
+  if (timezone) {
+    query = query.eq("timezone", timezone);
+  }
+  if (subtopicQuestionIds) {
+    query = query.in("id", subtopicQuestionIds);
+  }
+  if (contentSearchQuestionIds) {
+    query = query.in("id", contentSearchQuestionIds);
+  }
 
-  const { data: questions, count, error } = questionResult;
+  const { data: questions, count, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -269,17 +260,15 @@ export async function POST(request: NextRequest) {
       latex_verified: false,
     }));
 
-    const { result: insertResult } = await retryWithoutInstructionalContextTerms(
-      async (includeInstructionalContextTerms) =>
-        supabase.from("question_parts").insert(
-          includeInstructionalContextTerms
-            ? partRows
-            : partRows.map((row) => omitInstructionalContextTerms(row)),
-        ),
-      (result) => result.error,
-    );
+    const supportedColumns = await probeQuestionPartsColumns(async (col) => {
+      const { error } = await supabase.from("question_parts").select(col).limit(0);
+      return error;
+    });
 
-    const { error: pError } = insertResult;
+    const { error: pError } = await supabase
+      .from("question_parts")
+      .insert(partRows.map((row) => omitUnsupportedColumns(row, supportedColumns)));
+
     if (pError) {
       return NextResponse.json({ error: pError.message }, { status: 500 });
     }

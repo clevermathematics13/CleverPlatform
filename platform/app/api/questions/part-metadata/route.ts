@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
 import {
-  getQuestionPartsSelect,
-  omitInstructionalContextTerms,
-  retryWithoutInstructionalContextTerms,
+  probeQuestionPartsColumns,
+  stripUnsupportedColumns,
+  omitUnsupportedColumns,
 } from "@/lib/question-parts-compat";
 
 type Body = {
@@ -37,6 +37,10 @@ type PartMetadataSnapshotRow = Pick<
   PartMetadataRow,
   "id" | "question_id" | "part_label" | "marks" | "command_term" | "subtopic_codes" | "sort_order"
 >;
+
+type CurrentPartRow = PartMetadataSnapshotRow & {
+  content_latex: string | null;
+};
 
 const DEFAULT_COMMAND_TERMS = [
   "Calculate",
@@ -199,11 +203,23 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "partId is required" }, { status: 400 });
   }
 
-  const { data: currentPart, error: currentErr } = await supabase
+  const supportedColumns = await probeQuestionPartsColumns(async (col) => {
+    const { error } = await supabase.from("question_parts").select(col).limit(0);
+    return error;
+  });
+
+  const currentSelect = stripUnsupportedColumns(
+    "id, question_id, part_label, marks, command_term, subtopic_codes, sort_order, content_latex, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify",
+    supportedColumns,
+  );
+
+  const { data: currentPartRaw, error: currentErr } = await supabase
     .from("question_parts")
-    .select("id, question_id, part_label, marks, command_term, subtopic_codes, sort_order, content_latex, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify")
+    .select(currentSelect)
     .eq("id", partId)
     .single();
+
+  const currentPart = currentPartRaw as CurrentPartRow | null;
 
   if (currentErr || !currentPart) {
     return NextResponse.json({ error: "Part not found" }, { status: 404 });
@@ -278,23 +294,17 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "No metadata fields provided" }, { status: 400 });
   }
 
-  const historyErr = await snapshotPartMetadata(supabase, currentPart as PartMetadataSnapshotRow, user.id);
+  const historyErr = await snapshotPartMetadata(supabase, currentPart, user.id);
   if (historyErr) {
     return NextResponse.json({ error: historyErr.message }, { status: 500 });
   }
 
-  const { result: updateResult } = await retryWithoutInstructionalContextTerms(
-    async (includeInstructionalContextTerms) =>
-      supabase
-        .from("question_parts")
-        .update(includeInstructionalContextTerms ? update : omitInstructionalContextTerms(update))
-        .eq("id", partId)
-        .select(getQuestionPartsSelect(PART_SELECT, includeInstructionalContextTerms))
-        .single(),
-    (result) => result.error,
-  );
-
-  const { data, error } = updateResult;
+  const { data, error } = await supabase
+    .from("question_parts")
+    .update(omitUnsupportedColumns(update, supportedColumns))
+    .eq("id", partId)
+    .select(stripUnsupportedColumns(PART_SELECT, supportedColumns))
+    .single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -424,28 +434,27 @@ export async function POST(request: NextRequest) {
     sort_order: sortOrder,
   };
 
-  const { result: insertResult } = await retryWithoutInstructionalContextTerms(
-    async (includeInstructionalContextTerms) =>
-      supabase
-        .from("question_parts")
-        .insert(includeInstructionalContextTerms ? insertPayload : omitInstructionalContextTerms(insertPayload))
-        .select(getQuestionPartsSelect(PART_SELECT, includeInstructionalContextTerms))
-        .single(),
-    (result) => result.error,
-  );
+  const supportedColumns = await probeQuestionPartsColumns(async (col) => {
+    const { error } = await supabase.from("question_parts").select(col).limit(0);
+    return error;
+  });
 
-  const { data, error } = insertResult;
+  const { data: insertResult, error: insertError } = await supabase
+    .from("question_parts")
+    .insert(omitUnsupportedColumns(insertPayload, supportedColumns))
+    .select(stripUnsupportedColumns(PART_SELECT, supportedColumns))
+    .single();
 
-  if (error) {
-    if (error.code === "23505") {
+  if (insertError) {
+    if (insertError.code === "23505") {
       const labelText = label ? `'${label}'` : "(empty label)";
       return NextResponse.json(
         { error: `Part label ${labelText} already exists for this question` },
         { status: 409 },
       );
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: insertError.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, part: data });
+  return NextResponse.json({ ok: true, part: insertResult });
 }

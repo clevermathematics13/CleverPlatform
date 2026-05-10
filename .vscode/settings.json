@@ -1,6 +1,28 @@
 {
     "liveServer.settings.multiRootWorkspaceName": "CleverPlatform",
-    "typescript.tsserver.maxTsServerMemory": 2048,
+    "typescript.tsserver.maxTsServerMemory": 4096,
+    "typescript.disableAutomaticTypeAcquisition": true,
+    "files.watcherExclude": {
+        "**/.git/**": true,
+        "**/.venv/**": true,
+        "**/node_modules/**": true,
+        "**/.next/**": true,
+        "**/.vercel/**": true,
+        "**/_backup/**": true,
+        "**/dist/**": true,
+        "**/build/**": true,
+        "**/coverage/**": true
+    },
+    "search.exclude": {
+        "**/node_modules": true,
+        "**/.next": true,
+        "**/_backup": true,
+        "**/.venv": true,
+        "**/.vercel": true,
+        "**/dist": true,
+        "**/build": true,
+        "**/coverage": true
+    },
     "python.analysis.diagnosticMode": "openFilesOnly",
     "python.analysis.indexing": false,
     "python.analysis.exclude": [

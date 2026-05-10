@@ -95,3 +95,22 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
 .katex-display > .katex {
   white-space: normal;
 }
+
+@keyframes menuPsychedelicDrift {
+  0% {
+    transform: translate3d(-1.5%, -1.5%, 0) scale(1.03) rotate(-1.2deg);
+  }
+  50% {
+    transform: translate3d(1.8%, 0.8%, 0) scale(1.08) rotate(1.1deg);
+  }
+  100% {
+    transform: translate3d(-0.8%, 1.6%, 0) scale(1.04) rotate(-0.8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

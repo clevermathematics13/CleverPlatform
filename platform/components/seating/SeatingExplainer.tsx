@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { playChatCompletionChime } from '@/lib/chat-audio';
 import type { Assignment, Rule, Student } from '@/lib/seating-types';
 
 interface Props {
@@ -82,6 +83,7 @@ Please explain why students are seated the way they are, referencing specific po
       const data = await res.json();
       const text: string = data?.content?.[0]?.type === 'text' ? data.content[0].text : '';
       setExplanation(text || 'No explanation returned.');
+      void playChatCompletionChime();
     } catch (e) {
       setError((e as Error).message);
     } finally {

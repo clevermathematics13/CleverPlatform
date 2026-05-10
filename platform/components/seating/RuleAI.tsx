@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { playChatCompletionChime } from '@/lib/chat-audio';
 import type { Rule, Student, Seat } from '@/lib/seating-types';
 
 interface Props {
@@ -152,6 +153,7 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
         : 'No valid rules could be generated for that request.';
 
       setMessages([...newMessages, { role: 'assistant', content: assistantMsg }]);
+      void playChatCompletionChime();
       setSuggested(valid);
     } catch (e) {
       setError((e as Error).message);
