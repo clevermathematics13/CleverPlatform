@@ -18,8 +18,8 @@ interface Props {
   stripMarkAnnotations?: boolean;
   /** Optional single command term to highlight inline in rendered text. */
   highlightCommandTerm?: string | null;
-  /** Optional command-term list to highlight inline in rendered text. */
-  highlightCommandTerms?: string[];
+  /** Optional context/instructional term list to highlight inline in rendered text. */
+  highlightContextTerms?: string[];
 }
 
 const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
@@ -112,11 +112,18 @@ const IB_TEXT_STYLE: React.CSSProperties = {
  * Render a single line of text, handling \hfill by right-aligning everything
  * after it (used in IB mark schemes to place mark codes like (A1), M1, etc.).
  */
-function renderWithCommandTermHighlight(
+function normalizeComparable(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function renderWithTermHighlights(
   text: string,
-  terms: string[]
+  commandTerm: string | null | undefined,
+  contextTerms: string[]
 ): React.ReactNode {
-  const cleanedTerms = Array.from(new Set(terms.map((t) => t.trim()).filter(Boolean))).sort((a, b) => b.length - a.length);
+  const cmd = commandTerm?.trim() ?? "";
+  const cleanedContextTerms = Array.from(new Set(contextTerms.map((t) => t.trim()).filter(Boolean))).filter((t) => normalizeComparable(t) !== normalizeComparable(cmd));
+  const cleanedTerms = [cmd, ...cleanedContextTerms].filter(Boolean).sort((a, b) => b.length - a.length);
   if (cleanedTerms.length === 0) return text;
 
   const escapedTerms = cleanedTerms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+"));
@@ -131,7 +138,13 @@ function renderWithCommandTermHighlight(
       nodes.push(text.slice(last, match.index));
     }
     const token = text.slice(match.index, re.lastIndex);
-    nodes.push(<span key={`ct-${keyIdx++}`} className="font-bold text-blue-600">{token}</span>);
+    const tokenNorm = normalizeComparable(token);
+    const isCommand = !!cmd && tokenNorm === normalizeComparable(cmd);
+    nodes.push(
+      <span key={`ct-${keyIdx++}`} className={isCommand ? "font-bold text-red-600" : "font-bold text-blue-600"}>
+        {token}
+      </span>
+    );
     last = re.lastIndex;
   }
   if (last < text.length) {
@@ -143,7 +156,8 @@ function renderWithCommandTermHighlight(
 function renderTextLine(
   line: string,
   key: string | number,
-  terms: string[]
+  commandTerm: string | null | undefined,
+  contextTerms: string[]
 ): React.ReactNode {
   if (line.includes("\\hfill")) {
     const hfillIdx = line.indexOf("\\hfill");
@@ -154,14 +168,14 @@ function renderTextLine(
     const isMarkCode = /^\(?[A-Z]{1,2}\d*\)?$/.test(before);
     return (
       <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-        <span>{isMarkCode ? null : (before ? renderWithCommandTermHighlight(before, terms) : null)}</span>
+        <span>{isMarkCode ? null : (before ? renderWithTermHighlights(before, commandTerm, contextTerms) : null)}</span>
         <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
           {isMarkCode ? `${before} ${markCode}` : markCode}
         </span>
       </span>
     );
   }
-  return renderWithCommandTermHighlight(line, terms);
+  return renderWithTermHighlights(line, commandTerm, contextTerms);
 }
 
 /**
@@ -186,7 +200,7 @@ function preprocessLatex(src: string): string {
   return out;
 }
 
-export default function LatexRenderer({ latex, className, graphImageUrl, stripMarkAnnotations, highlightCommandTerm, highlightCommandTerms }: Props) {
+export default function LatexRenderer({ latex, className, graphImageUrl, stripMarkAnnotations, highlightCommandTerm, highlightContextTerms }: Props) {
   const MARK_LINE = /^(?:\\hfill\s*)?(?:\s*[\(\[]?(?:A|M|R|N)\d*[\)\]]?\s*)+$|^Total\s+\[\d+\s+marks?\]\s*$|^\[\d+\s+marks?\]\s*$/i;
   function applyStrip(src: string): string {
     if (!stripMarkAnnotations) return src;
@@ -202,10 +216,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
     }
   );
   const segments = splitSegments(preprocessed);
-  const commandTermsToHighlight = [
-    ...(highlightCommandTerms ?? []),
-    highlightCommandTerm ?? "",
-  ].filter(Boolean);
+  const contextTermsToHighlight = (highlightContextTerms ?? []).filter(Boolean);
 
   function renderTabularTable(tabular: ParsedTabular, key: string | number): React.ReactNode {
     const { aligns, hasBorders } = parseColSpec(tabular.colSpec);
@@ -291,7 +302,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
             }
             // Skip blank lines that only exist to separate equations
             if (trimmed === "") return;
-            nodes.push(renderTextLine(line, `${i}-${j}-line`, commandTermsToHighlight));
+            nodes.push(renderTextLine(line, `${i}-${j}-line`, highlightCommandTerm ?? null, contextTermsToHighlight));
             // Add a single line break after non-blank lines (except the last)
             if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-br`} />);
           });

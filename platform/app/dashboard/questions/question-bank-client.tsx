@@ -7,7 +7,7 @@ import LatexRenderer from "@/components/LatexRenderer";
 import { AddQuestionWizard } from "./add-question-wizard";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
 import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
-import { commandTermHighlightsFromFlags, deriveCommandTermFlags } from "@/lib/command-term-flags";
+import { contextTermHighlightsFromFlags, deriveCommandTermFlags } from "@/lib/command-term-flags";
 import { encodeGraphSpec, GRAPH_MARKER_RE, EXAMPLE_SPEC, type IbGraphSpec } from "@/components/IbGraph";
 
 const IbGraph = dynamic(() => import("@/components/IbGraph"), { ssr: false });
@@ -4110,7 +4110,8 @@ function QuestionRow({
                                 <LatexRenderer
                                   latex={draft}
                                   stripMarkAnnotations={field === "q"}
-                                  highlightCommandTerms={field === "q" ? commandTermHighlightsFromFlags(wholePart?.command_term ?? null, wholePart ?? null, wholePart?.instructional_context_terms ?? []) : []}
+                                  highlightCommandTerm={field === "q" ? (wholePart?.command_term ?? null) : null}
+                                  highlightContextTerms={field === "q" ? contextTermHighlightsFromFlags(wholePart ?? null, wholePart?.instructional_context_terms ?? []) : []}
                                 />
                               ) : (
                                 <p className="text-xs text-gray-400 italic">No LaTeX — click Edit or ⟳ Extract to add</p>
@@ -4292,7 +4293,8 @@ function QuestionRow({
                                         <LatexRenderer
                                           latex={saved}
                                           stripMarkAnnotations={field === "content_latex"}
-                                          highlightCommandTerms={field === "content_latex" ? commandTermHighlightsFromFlags(part.command_term ?? null, part, part.instructional_context_terms ?? []) : []}
+                                          highlightCommandTerm={field === "content_latex" ? (part.command_term ?? null) : null}
+                                          highlightContextTerms={field === "content_latex" ? contextTermHighlightsFromFlags(part, part.instructional_context_terms ?? []) : []}
                                         />
                                       </div>
                                     ) : (

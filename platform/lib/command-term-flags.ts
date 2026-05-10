@@ -90,9 +90,8 @@ export function deriveInstructionalContextTerms(input: {
   const combined = `${commandTerm} ${sourceText}`.trim();
 
   const detected = INSTRUCTIONAL_CONTEXT_TERMS.filter((term) => hasTerm(combined, term));
-  const withCommand = commandTerm ? [commandTerm, ...detected] : detected;
   const seen = new Set<string>();
-  return withCommand.filter((term) => {
+  return detected.filter((term) => {
     const key = term.toLowerCase();
     if (seen.has(key)) return false;
     seen.add(key);
@@ -100,13 +99,11 @@ export function deriveInstructionalContextTerms(input: {
   });
 }
 
-export function commandTermHighlightsFromFlags(
-  commandTerm: string | null | undefined,
+export function contextTermHighlightsFromFlags(
   flags: Partial<CommandTermFlags> | null | undefined,
   instructionalContextTerms?: string[] | null,
 ): string[] {
   const terms: string[] = [];
-  if (commandTerm && commandTerm.trim()) terms.push(commandTerm.trim());
   if (instructionalContextTerms && instructionalContextTerms.length > 0) {
     terms.push(...instructionalContextTerms.map((t) => t.trim()).filter(Boolean));
   }
