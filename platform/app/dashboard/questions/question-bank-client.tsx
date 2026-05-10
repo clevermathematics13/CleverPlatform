@@ -2606,13 +2606,18 @@ function QuestionRow({
 
       const detectedLabels = detectPartLabels(qDraft || msDraft);
       const claudeLabels = claudeParts.map((p) => (p.label ?? "").trim()).filter(Boolean);
-      const candidateLabels = claudeLabels.length > 0 ? claudeLabels : detectedLabels;
+      const claudeCountLabels =
+        claudeLabels.length === 0 && claudeParts.length > 1
+          ? Array.from({ length: claudeParts.length }, (_, i) => String.fromCharCode(97 + i))
+          : [];
+      const candidateLabels = claudeLabels.length > 0 ? claudeLabels : (detectedLabels.length > 0 ? detectedLabels : claudeCountLabels);
       const splitProbe = splitDraftIntoParts(qDraft || msDraft, candidateLabels);
       const inferredLabels = candidateLabels.length > 0 ? candidateLabels : Array.from(splitProbe.parts.keys());
       const finalLabels = Array.from(new Set(inferredLabels.map((l) => l.trim()).filter(Boolean)));
 
       if (claudeLabels.length === 0 && finalLabels.length > 0) {
-        push(`Claude returned no labels; inferred ${finalLabels.length} part label(s): ${finalLabels.join(", ")}.`);
+        const source = detectedLabels.length > 0 ? "OCR text" : (claudeCountLabels.length > 0 ? "Claude part count" : "structure inference");
+        push(`Claude returned no labels; inferred ${finalLabels.length} part label(s) from ${source}: ${finalLabels.join(", ")}.`);
       }
 
       // Split the drafts using final labels (Claude, OCR-detected, or inferred)
@@ -2712,8 +2717,10 @@ function QuestionRow({
       // For each identified part label: find existing or create, then save LaTeX
       push("Saving parts…");
       const newParts: QuestionPart[] = [];
-      for (const label of finalLabels) {
-        const cp = claudeParts.find((p) => (p.label ?? "").toLowerCase() === label.toLowerCase());
+      for (const [idx, label] of finalLabels.entries()) {
+        const cpByLabel = claudeParts.find((p) => (p.label ?? "").toLowerCase() === label.toLowerCase());
+        const cpByOrder = claudeLabels.length === 0 && claudeParts.length > 1 ? claudeParts[idx] : undefined;
+        const cp = cpByLabel ?? cpByOrder;
         const existing = parts.find((p) => (p.part_label ?? "").toLowerCase() === label.toLowerCase());
         let partId: string;
         const splitQForLabel = splitQ.get(label) ?? "";
