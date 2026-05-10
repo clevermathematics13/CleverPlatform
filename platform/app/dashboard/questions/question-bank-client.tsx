@@ -262,6 +262,34 @@ function detectCommandTerm(latex: string): string | null {
   return null;
 }
 
+function detectCommandTerms(latex: string): string[] {
+  if (!latex) return [];
+  const plain = latex.replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ").replace(/[${}\\]/g, " ");
+  const sorted = [...DEFAULT_COMMAND_TERMS].sort((a, b) => b.length - a.length);
+  const found: string[] = [];
+  for (const term of sorted) {
+    const re = new RegExp(`\\b${term.replace(/ /g, "\\s+")}\\b`, "i");
+    if (re.test(plain)) found.push(term);
+  }
+  return found;
+}
+
+function mergeHighlightTerms(...groups: Array<string[] | null | undefined>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const group of groups) {
+    for (const term of group ?? []) {
+      const t = term.trim();
+      if (!t) continue;
+      const key = t.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(t);
+    }
+  }
+  return out;
+}
+
 function detectPartLabels(text: string): string[] {
   const labels: string[] = [];
   const seen = new Set<string>();
@@ -4183,7 +4211,10 @@ function QuestionRow({
                                   latex={draft}
                                   stripMarkAnnotations={field === "q"}
                                   highlightCommandTerm={field === "q" ? (wholePart?.command_term ?? null) : null}
-                                  highlightContextTerms={field === "q" ? contextTermHighlightsFromFlags(wholePart ?? null, wholePart?.instructional_context_terms ?? []) : []}
+                                  highlightContextTerms={field === "q" ? mergeHighlightTerms(
+                                    contextTermHighlightsFromFlags(wholePart ?? null, wholePart?.instructional_context_terms ?? []),
+                                    detectCommandTerms(draft),
+                                  ) : []}
                                 />
                               ) : (
                                 <p className="text-xs text-gray-400 italic">No LaTeX — click Edit or ⟳ Extract to add</p>
@@ -4366,7 +4397,10 @@ function QuestionRow({
                                           latex={saved}
                                           stripMarkAnnotations={field === "content_latex"}
                                           highlightCommandTerm={field === "content_latex" ? (part.command_term ?? null) : null}
-                                          highlightContextTerms={field === "content_latex" ? contextTermHighlightsFromFlags(part, part.instructional_context_terms ?? []) : []}
+                                          highlightContextTerms={field === "content_latex" ? mergeHighlightTerms(
+                                            contextTermHighlightsFromFlags(part, part.instructional_context_terms ?? []),
+                                            detectCommandTerms(saved),
+                                          ) : []}
                                         />
                                       </div>
                                     ) : (
