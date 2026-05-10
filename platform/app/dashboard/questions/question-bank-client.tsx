@@ -2858,7 +2858,17 @@ function QuestionRow({
         onClick={handleClose}
       >
         <td className="px-4 py-2">
-          <span className="font-bold text-blue-900">{question.code}</span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleClose();
+            }}
+            className="font-bold text-blue-900 hover:underline"
+            title="Open question details"
+          >
+            {question.code}
+          </button>
         </td>
         <td className="px-4 py-2 text-center text-sm font-semibold text-gray-800">
           {question.session}
