@@ -84,28 +84,60 @@ function extensionForType(contentType: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const startedAt = Date.now();
+  const diagnostics: Record<string, unknown> = {
+    startedAt: new Date().toISOString(),
+    durationMs: 0,
+    phases: {
+      auth: {},
+      lookup: {},
+      questionDoc: {
+        scannedInlineObjects: 0,
+        blockedSkipped: 0,
+        uploaded: 0,
+        uploadFailures: [] as string[],
+      },
+      markschemeDoc: {
+        scannedInlineObjects: 0,
+        blockedSkipped: 0,
+        uploaded: 0,
+        uploadFailures: [] as string[],
+      },
+    },
+    warnings: [] as string[],
+  };
+
+  const finish = () => {
+    diagnostics.durationMs = Date.now() - startedAt;
+    return diagnostics;
+  };
+
   // Auth checks
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    return NextResponse.json({ error: "Not authenticated", diagnostics: finish() }, { status: 401 });
   }
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
     .single();
+  (diagnostics.phases as Record<string, unknown>).auth = {
+    userId: user.id,
+    role: profile?.role ?? null,
+  };
   if (!profile || profile.role !== "teacher") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return NextResponse.json({ error: "Forbidden", diagnostics: finish() }, { status: 403 });
   }
 
   // Google Drive token
   const token = (await getDriveTokenFromCookie()) as Record<string, unknown> | null;
   if (!token) {
     return NextResponse.json(
-      { error: "Google Drive not connected. Please connect first." },
+      { error: "Google Drive not connected. Please connect first.", diagnostics: finish() },
       { status: 401 }
     );
   }
@@ -113,7 +145,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json()) as ExtractRequest;
   if (!body.questionId) {
     return NextResponse.json(
-      { error: "questionId is required" },
+      { error: "questionId is required", diagnostics: finish() },
       { status: 400 }
     );
   }
@@ -126,12 +158,21 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (qErr || !question) {
-    return NextResponse.json({ error: "Question not found" }, { status: 404 });
+    return NextResponse.json({ error: "Question not found", diagnostics: finish() }, { status: 404 });
   }
+
+  (diagnostics.phases as Record<string, unknown>).lookup = {
+    questionId: question.id,
+    code: question.code,
+    hasGoogleDocId: !!question.google_doc_id,
+    hasGoogleMsId: !!question.google_ms_id,
+    googleDocId: question.google_doc_id,
+    googleMsId: question.google_ms_id,
+  };
 
   if (!question.google_doc_id) {
     return NextResponse.json(
-      { error: "No Google Doc linked to this question" },
+      { error: "No Google Doc linked to this question", diagnostics: finish() },
       { status: 400 }
     );
   }
@@ -141,7 +182,10 @@ export async function POST(request: NextRequest) {
   // question images from a doc that is actually the markscheme.
   if (question.google_ms_id && question.google_doc_id === question.google_ms_id) {
     return NextResponse.json(
-      { error: "Question doc and markscheme doc are the same file — question doc link needs to be fixed before extracting images." },
+      {
+        error: "Question doc and markscheme doc are the same file — question doc link needs to be fixed before extracting images.",
+        diagnostics: finish(),
+      },
       { status: 400 }
     );
   }
@@ -154,18 +198,25 @@ export async function POST(request: NextRequest) {
     .eq("question_id", question.id)
     .order("sort_order", { ascending: true });
   const partIds = (partRows ?? []).map((p) => p.id as string);
+  (diagnostics.phases as Record<string, unknown>).lookup = {
+    ...(diagnostics.phases as Record<string, Record<string, unknown>>).lookup,
+    partCount: partIds.length,
+  };
 
   const results: { type: string; storagePath: string; sortOrder: number }[] = [];
 
   // Extract from question doc
   try {
     const questionImages = await getDocImages(auth, question.google_doc_id);
+    (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc.scannedInlineObjects = questionImages.length;
 
     for (let i = 0; i < questionImages.length; i++) {
       const img = questionImages[i];
       const { buffer, contentType } = await downloadImage(auth, img.contentUri);
       if (isBlockedQuestionImage(buffer)) {
         console.log(`Skipping blocked question image for ${question.code} at question/${String(i + 1).padStart(2, "0")}`);
+        const qPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc;
+        qPhase.blockedSkipped = Number(qPhase.blockedSkipped ?? 0) + 1;
         continue;
       }
       const ext = extensionForType(contentType);
@@ -186,11 +237,16 @@ export async function POST(request: NextRequest) {
               error:
                 "Storage bucket 'question-images' was not found. Run migration 013_question_images.sql in the same Supabase project used by NEXT_PUBLIC_SUPABASE_URL.",
               partial: results,
+              diagnostics: finish(),
             },
             { status: 500 }
           );
         }
         console.error(`Upload failed for ${storagePath}:`, uploadErr);
+        const qPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc;
+        const failures = (qPhase.uploadFailures as string[]) ?? [];
+        failures.push(`${storagePath}: ${uploadErr.message}`);
+        qPhase.uploadFailures = failures.slice(-20);
         continue;
       }
 
@@ -213,13 +269,17 @@ export async function POST(request: NextRequest) {
         storagePath,
         sortOrder: i,
       });
+      const qPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc;
+      qPhase.uploaded = Number(qPhase.uploaded ?? 0) + 1;
     }
   } catch (err) {
     console.error("Error extracting question doc images:", err);
+    (diagnostics.warnings as string[]).push(`Question doc extraction failed: ${err instanceof Error ? err.message : String(err)}`);
     return NextResponse.json(
       {
         error: `Failed to extract from question doc: ${err instanceof Error ? err.message : String(err)}`,
         partial: results,
+        diagnostics: finish(),
       },
       { status: 500 }
     );
@@ -229,6 +289,7 @@ export async function POST(request: NextRequest) {
   if (question.google_ms_id) {
     try {
       const msImages = await getDocImages(auth, question.google_ms_id);
+      (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc.scannedInlineObjects = msImages.length;
 
       // Delete all existing markscheme image records so re-extraction is clean
       // (removes any stale rows introduced by previous runs)
@@ -247,6 +308,8 @@ export async function POST(request: NextRequest) {
         );
         if (isBlockedQuestionImage(buffer)) {
           console.log(`Skipping blocked markscheme image for ${question.code} (raw index ${i})`);
+          const msPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc;
+          msPhase.blockedSkipped = Number(msPhase.blockedSkipped ?? 0) + 1;
           continue;
         }
         const ext = extensionForType(contentType);
@@ -266,11 +329,16 @@ export async function POST(request: NextRequest) {
                 error:
                   "Storage bucket 'question-images' was not found. Run migration 013_question_images.sql in the same Supabase project used by NEXT_PUBLIC_SUPABASE_URL.",
                 partial: results,
+                diagnostics: finish(),
               },
               { status: 500 }
             );
           }
           console.error(`Upload failed for ${storagePath}:`, uploadErr);
+          const msPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc;
+          const failures = (msPhase.uploadFailures as string[]) ?? [];
+          failures.push(`${storagePath}: ${uploadErr.message}`);
+          msPhase.uploadFailures = failures.slice(-20);
           continue;
         }
 
@@ -289,10 +357,15 @@ export async function POST(request: NextRequest) {
           storagePath,
           sortOrder: writeIdx,
         });
+        const msPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc;
+        msPhase.uploaded = Number(msPhase.uploaded ?? 0) + 1;
         writeIdx++;
       }
     } catch (err) {
       console.error("Error extracting markscheme doc images:", err);
+      (diagnostics.warnings as string[]).push(
+        `Markscheme extraction failed after question extraction succeeded: ${err instanceof Error ? err.message : String(err)}`
+      );
       // Return partial success — question images were extracted
     }
   }
@@ -302,5 +375,6 @@ export async function POST(request: NextRequest) {
     code: question.code,
     extracted: results.length,
     images: results,
+    diagnostics: finish(),
   });
 }

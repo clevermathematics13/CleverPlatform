@@ -48,6 +48,22 @@ interface QuestionImage {
   url: string | null;
 }
 
+interface GraphImageCrop {
+  id: string;
+  question_id: string;
+  question_image_id: string;
+  part_id: string | null;
+  storage_path: string;
+  crop_bbox: Record<string, unknown> | null;
+  graph_spec: Record<string, unknown> | null;
+  graph_meta: Record<string, unknown> | null;
+  extractor: string | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  url: string | null;
+}
+
 interface Question {
   id: string;
   code: string;
@@ -135,6 +151,31 @@ interface GraphExtractSnapshot {
   feedback: string[];
   graphSpec?: IbGraphSpec;
   graphMeta?: Record<string, unknown>;
+}
+
+interface DocExtractTroubleshooting {
+  capturedAt: string;
+  questionId: string;
+  code: string;
+  googleDocId: string | null;
+  googleMsId: string | null;
+  request: {
+    endpoint: string;
+    method: "POST";
+    payload: Record<string, unknown>;
+  };
+  response: {
+    ok: boolean;
+    status: number;
+    statusText: string;
+    durationMs: number;
+    body?: unknown;
+    parseError?: string;
+  };
+  appContext: {
+    driveConnected: boolean;
+    globalError: string | null;
+  };
 }
 
 const SECTION_NAMES: Record<number, string> = {
@@ -241,6 +282,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   } | null>(null);
   const [bulkErrors, setBulkErrors] = useState<{ code: string; error: string }[]>([]);
   const [showErrors, setShowErrors] = useState(false);
+  const [docExtractTroubleshooting, setDocExtractTroubleshooting] = useState<Record<string, DocExtractTroubleshooting>>({});
+  const [docTroubleshootingCopied, setDocTroubleshootingCopied] = useState<Set<string>>(new Set());
+  const [bulkTroubleshootingCopied, setBulkTroubleshootingCopied] = useState(false);
 
   // ── ExamBuilder state ───────────────────────────────────────────────────────
   const [testBuilderOpen, setTestBuilderOpen] = useState(false);
@@ -393,36 +437,187 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     } catch {}
   };
 
-  const extractImages = async (questionId: string) => {
-    setExtracting((prev) => new Set(prev).add(questionId));
+  const extractImages = async (question: Question) => {
+    const requestStartedAt = Date.now();
+    const endpoint = "/api/questions/extract-images";
+    const payload = { questionId: question.id };
+    setExtracting((prev) => new Set(prev).add(question.id));
     setError(null);
     try {
-      const res = await fetch("/api/questions/extract-images", {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId }),
+        body: JSON.stringify(payload),
       });
-      const data = await res.json();
-      if (data.error) {
-        if (data.error.includes("Google Drive not connected")) {
+      let data: unknown;
+      let parseError: string | undefined;
+      try {
+        data = await res.json();
+      } catch (e) {
+        parseError = e instanceof Error ? e.message : "Failed to parse JSON response";
+      }
+
+      const durationMs = Date.now() - requestStartedAt;
+      const report: DocExtractTroubleshooting = {
+        capturedAt: new Date().toISOString(),
+        questionId: question.id,
+        code: question.code,
+        googleDocId: question.google_doc_id ?? null,
+        googleMsId: question.google_ms_id ?? null,
+        request: {
+          endpoint,
+          method: "POST",
+          payload,
+        },
+        response: {
+          ok: res.ok,
+          status: res.status,
+          statusText: res.statusText,
+          durationMs,
+          body: data,
+          parseError,
+        },
+        appContext: {
+          driveConnected,
+          globalError: error,
+        },
+      };
+      setDocExtractTroubleshooting((prev) => ({ ...prev, [question.id]: report }));
+
+      if (!data || typeof data !== "object") {
+        setError(parseError ?? "Extraction failed: empty response");
+        return;
+      }
+
+      const result = data as { error?: string };
+      if (result.error) {
+        if (result.error.includes("Google Drive not connected")) {
           setError("Google Drive not connected. Click 'Connect Google Drive' at the top first.");
         } else {
-          setError(data.error);
+          setError(result.error);
         }
       } else {
         setDriveConnected(true);
         // Reload images for this question
-        await loadImages(questionId);
+        await loadImages(question.id);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Extraction failed");
+      const durationMs = Date.now() - requestStartedAt;
+      const message = e instanceof Error ? e.message : "Extraction failed";
+      setDocExtractTroubleshooting((prev) => ({
+        ...prev,
+        [question.id]: {
+          capturedAt: new Date().toISOString(),
+          questionId: question.id,
+          code: question.code,
+          googleDocId: question.google_doc_id ?? null,
+          googleMsId: question.google_ms_id ?? null,
+          request: {
+            endpoint,
+            method: "POST",
+            payload,
+          },
+          response: {
+            ok: false,
+            status: 0,
+            statusText: "NETWORK_ERROR",
+            durationMs,
+            body: { error: message },
+          },
+          appContext: {
+            driveConnected,
+            globalError: error,
+          },
+        },
+      }));
+      setError(message);
     } finally {
       setExtracting((prev) => {
         const next = new Set(prev);
-        next.delete(questionId);
+        next.delete(question.id);
         return next;
       });
     }
+  };
+
+  const formatTroubleshooting = (t: DocExtractTroubleshooting): string => {
+    const lines: string[] = [];
+    lines.push("Google Doc extraction troubleshooting report");
+    lines.push(`Captured at: ${t.capturedAt}`);
+    lines.push(`Question code: ${t.code}`);
+    lines.push(`Question id: ${t.questionId}`);
+    lines.push(`Google doc id: ${t.googleDocId ?? "(none)"}`);
+    lines.push(`Google markscheme id: ${t.googleMsId ?? "(none)"}`);
+    lines.push("");
+    lines.push("Request");
+    lines.push(`- Endpoint: ${t.request.endpoint}`);
+    lines.push(`- Method: ${t.request.method}`);
+    lines.push(`- Payload: ${JSON.stringify(t.request.payload)}`);
+    lines.push("");
+    lines.push("Response");
+    lines.push(`- ok: ${t.response.ok}`);
+    lines.push(`- status: ${t.response.status} ${t.response.statusText}`);
+    lines.push(`- durationMs: ${t.response.durationMs}`);
+    if (t.response.parseError) {
+      lines.push(`- parseError: ${t.response.parseError}`);
+    }
+    lines.push("");
+    lines.push("Response body");
+    lines.push(typeof t.response.body === "undefined" ? "(empty)" : JSON.stringify(t.response.body, null, 2));
+    lines.push("");
+    lines.push("App context");
+    lines.push(`- driveConnected (client): ${t.appContext.driveConnected}`);
+    lines.push(`- current global error: ${t.appContext.globalError ?? "(none)"}`);
+    return lines.join("\n");
+  };
+
+  const copyQuestionTroubleshooting = (questionId: string) => {
+    const report = docExtractTroubleshooting[questionId];
+    if (!report) return;
+    const text = formatTroubleshooting(report);
+    void navigator.clipboard.writeText(text).then(() => {
+      setDocTroubleshootingCopied((prev) => {
+        const next = new Set(prev);
+        next.add(questionId);
+        return next;
+      });
+      setTimeout(() => {
+        setDocTroubleshootingCopied((prev) => {
+          const next = new Set(prev);
+          next.delete(questionId);
+          return next;
+        });
+      }, 2000);
+    });
+  };
+
+  const copyBulkTroubleshooting = () => {
+    const text = [
+      "Bulk extract troubleshooting report",
+      `Captured at: ${new Date().toISOString()}`,
+      `driveConnected: ${driveConnected}`,
+      `bulkExtracting: ${bulkExtracting}`,
+      `syncing: ${syncing}`,
+      `importing: ${importing}`,
+      `globalError: ${error ?? "(none)"}`,
+      "",
+      "Bulk progress",
+      JSON.stringify(bulkProgress, null, 2),
+      "",
+      "Bulk errors",
+      JSON.stringify(bulkErrors, null, 2),
+      "",
+      "Import result",
+      JSON.stringify(importResult, null, 2),
+      "",
+      "Sync result",
+      JSON.stringify(syncResult, null, 2),
+    ].join("\n");
+
+    void navigator.clipboard.writeText(text).then(() => {
+      setBulkTroubleshootingCopied(true);
+      setTimeout(() => setBulkTroubleshootingCopied(false), 2000);
+    });
   };
 
   const deleteImage = async (questionId: string, imageId: string) => {
@@ -1026,6 +1221,14 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
               >
                 {bulkExtracting ? "Extracting…" : "Extract All Images from Docs"}
               </button>
+              <button
+                type="button"
+                onClick={copyBulkTroubleshooting}
+                className="rounded-lg border border-slate-400 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-100"
+                title="Copy bulk extraction diagnostics and errors for troubleshooting"
+              >
+                {bulkTroubleshootingCopied ? "✓ Copied" : "Copy Bulk Troubleshooting"}
+              </button>
             </div>
           </div>
           {importResult && (
@@ -1375,7 +1578,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 onUpdateSubtopics={updateSubtopics}
                 images={questionImages[q.id] ?? []}
                 extracting={extracting.has(q.id)}
-                onExtractImages={() => extractImages(q.id)}
+                onExtractImages={() => extractImages(q)}
+                hasTroubleshooting={!!docExtractTroubleshooting[q.id]}
+                troubleshootingCopied={docTroubleshootingCopied.has(q.id)}
+                onCopyTroubleshooting={() => copyQuestionTroubleshooting(q.id)}
                 deletingImageIds={deletingImage}
                 uploadingImage={uploadingImage.has(q.id)}
                 onDeleteImage={(imageId) => deleteImage(q.id, imageId)}
@@ -1508,6 +1714,9 @@ function QuestionRow({
   images,
   extracting,
   onExtractImages,
+  hasTroubleshooting,
+  troubleshootingCopied,
+  onCopyTroubleshooting,
   deletingImageIds,
   uploadingImage,
   onDeleteImage,
@@ -1532,6 +1741,9 @@ function QuestionRow({
   images: QuestionImage[];
   extracting: boolean;
   onExtractImages: () => void;
+  hasTroubleshooting: boolean;
+  troubleshootingCopied: boolean;
+  onCopyTroubleshooting: () => void;
   deletingImageIds: Set<string>;
   uploadingImage: boolean;
   onDeleteImage: (imageId: string) => void;
@@ -1715,6 +1927,48 @@ function QuestionRow({
   const [graphExtractFeedback, setGraphExtractFeedback] = useState<string[]>([]);
   const [graphSourceImageB64, setGraphSourceImageB64] = useState<string | null>(null);
   const [graphMeta, setGraphMeta] = useState<Record<string, unknown> | null>(null);
+  const [graphCrops, setGraphCrops] = useState<GraphImageCrop[]>([]);
+  const [graphCropsLoading, setGraphCropsLoading] = useState(false);
+  const [graphCropsError, setGraphCropsError] = useState<string | null>(null);
+  const [deletingGraphCropIds, setDeletingGraphCropIds] = useState<Set<string>>(new Set());
+
+  const fetchGraphCrops = useCallback(async () => {
+    setGraphCropsLoading(true);
+    setGraphCropsError(null);
+    try {
+      const res = await fetch(`/api/questions/graph-crops?questionId=${encodeURIComponent(question.id)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error ?? "Failed to load graph images");
+      }
+      setGraphCrops(Array.isArray(data.crops) ? (data.crops as GraphImageCrop[]) : []);
+    } catch (e) {
+      setGraphCropsError(e instanceof Error ? e.message : "Failed to load graph images");
+      setGraphCrops([]);
+    } finally {
+      setGraphCropsLoading(false);
+    }
+  }, [question.id]);
+
+  async function deleteGraphCrop(cropId: string) {
+    setDeletingGraphCropIds((prev) => new Set(prev).add(cropId));
+    try {
+      const res = await fetch(`/api/questions/graph-crops/${encodeURIComponent(cropId)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Failed to delete graph image");
+      }
+      setGraphCrops((prev) => prev.filter((crop) => crop.id !== cropId));
+    } catch (e) {
+      setGraphCropsError(e instanceof Error ? e.message : "Failed to delete graph image");
+    } finally {
+      setDeletingGraphCropIds((prev) => {
+        const next = new Set(prev);
+        next.delete(cropId);
+        return next;
+      });
+    }
+  }
 
   function formatGraphExtractFailureReport(failure: GraphExtractFailure): string {
     const lines: string[] = [];
@@ -2542,6 +2796,11 @@ function QuestionRow({
     return () => window.removeEventListener("keydown", handler);
   }, [expanded, onToggle]);
 
+  useEffect(() => {
+    if (!expanded) return;
+    void fetchGraphCrops();
+  }, [expanded, fetchGraphCrops]);
+
   // True when the question has at least one part with a letter label (a, b, c…)
   const hasLabeledParts = parts.some((p) => p.part_label && p.part_label.trim() !== "");
 
@@ -3086,6 +3345,14 @@ function QuestionRow({
                     >
                       {extracting ? "Extracting…" : images.length > 0 ? "Re-extract" : "Extract from Docs"}
                     </button>
+                    <button
+                      type="button"
+                      onClick={hasTroubleshooting ? onCopyTroubleshooting : () => alert("Click \"Extract from Docs\" first to collect diagnostics, then copy.")}
+                      className={`rounded-lg border px-3 py-1 text-xs font-bold transition-colors ${hasTroubleshooting ? "border-amber-400 bg-amber-50 text-amber-800 hover:bg-amber-100" : "border-slate-300 bg-white text-slate-500 hover:bg-slate-50"}`}
+                      title={hasTroubleshooting ? "Copy extract diagnostics for troubleshooting" : "Run Extract from Docs first to collect diagnostics"}
+                    >
+                      {troubleshootingCopied ? "✓ Copied!" : hasTroubleshooting ? "📋 Copy Debug Info" : "📋 Copy Debug Info"}
+                    </button>
                     {images.length > 0 && (
                       <span className="text-xs text-gray-500">
                         {images.filter(i => i.image_type === "question").length} question,{" "}
@@ -3118,6 +3385,70 @@ function QuestionRow({
                       onReorder={(orderedIds) => onReorderImages("markscheme", orderedIds)}
                       onUpload={(file) => onUploadImage("markscheme", file)}
                     />
+
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="text-xs font-semibold text-violet-800 mb-1">Graph Images</p>
+                        <button
+                          type="button"
+                          onClick={() => void fetchGraphCrops()}
+                          disabled={graphCropsLoading}
+                          className="rounded border border-violet-300 bg-white px-2 py-0.5 text-[11px] font-bold text-violet-700 hover:bg-violet-50 disabled:opacity-50"
+                        >
+                          {graphCropsLoading ? "Refreshing…" : "Refresh"}
+                        </button>
+                        <span className="text-xs text-gray-500">{graphCrops.length} saved</span>
+                      </div>
+
+                      {graphCropsError && (
+                        <p className="text-xs text-red-600 mb-2">{graphCropsError}</p>
+                      )}
+
+                      {graphCrops.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">No graph images saved for this question yet.</p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {graphCrops.map((crop, idx) => {
+                            const part = parts.find((p) => p.id === crop.part_id);
+                            const partLabel = part?.part_label?.trim() ? `Part ${part.part_label}` : crop.part_id ? "Part linked" : "No part";
+                            const isDeleting = deletingGraphCropIds.has(crop.id);
+                            return (
+                              <div key={crop.id} className="relative group rounded border border-violet-200 bg-white p-1">
+                                <a
+                                  href={crop.url ?? "#"}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={crop.url ?? ""}
+                                    alt={`Graph crop ${idx + 1}`}
+                                    className={`h-24 w-24 rounded object-cover border border-violet-100 ${isDeleting ? "opacity-40" : ""}`}
+                                  />
+                                </a>
+                                <div className="mt-1 max-w-24 space-y-0.5">
+                                  <p className="truncate text-[10px] font-semibold text-violet-800">{partLabel}</p>
+                                  <p className="truncate text-[10px] text-gray-500">{crop.extractor ?? "manual"}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (confirm("Delete this graph image? This cannot be undone.")) {
+                                      void deleteGraphCrop(crop.id);
+                                    }
+                                  }}
+                                  disabled={isDeleting}
+                                  className="absolute top-1 right-1 hidden group-hover:flex h-5 w-5 items-center justify-center rounded-full bg-red-600 text-[10px] font-bold text-white hover:bg-red-500 disabled:opacity-50"
+                                  title="Delete graph image"
+                                >
+                                  {isDeleting ? "…" : "×"}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
