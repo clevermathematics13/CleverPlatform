@@ -1578,6 +1578,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 onUpdateSubtopics={updateSubtopics}
                 images={questionImages[q.id] ?? []}
                 extracting={extracting.has(q.id)}
+                driveConnected={driveConnected}
                 onExtractImages={() => extractImages(q)}
                 hasTroubleshooting={!!docExtractTroubleshooting[q.id]}
                 troubleshootingCopied={docTroubleshootingCopied.has(q.id)}
@@ -1713,6 +1714,7 @@ function QuestionRow({
   onUpdateSubtopics,
   images,
   extracting,
+  driveConnected,
   onExtractImages,
   hasTroubleshooting,
   troubleshootingCopied,
@@ -1740,6 +1742,7 @@ function QuestionRow({
   onUpdateSubtopics: (partId: string, codes: string[]) => void;
   images: QuestionImage[];
   extracting: boolean;
+  driveConnected: boolean;
   onExtractImages: () => void;
   hasTroubleshooting: boolean;
   troubleshootingCopied: boolean;
@@ -3337,14 +3340,24 @@ function QuestionRow({
                 <div className="bg-white rounded-xl border border-blue-200 p-5 overflow-y-auto">
                   <div className="flex items-center gap-3 mb-3">
                     <h2 className="text-sm font-bold text-blue-900 uppercase tracking-wide">Images</h2>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); onExtractImages(); }}
-                      disabled={extracting}
-                      className="rounded-lg border border-blue-400 bg-white px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-                    >
-                      {extracting ? "Extracting…" : images.length > 0 ? "Re-extract" : "Extract from Docs"}
-                    </button>
+                    {!driveConnected ? (
+                      <a
+                        href="/api/questions/connect-drive"
+                        className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800 hover:bg-amber-100"
+                        title="Google Drive not connected — click to authorize"
+                      >
+                        🔗 Connect Drive to Extract
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onExtractImages(); }}
+                        disabled={extracting}
+                        className="rounded-lg border border-blue-400 bg-white px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                      >
+                        {extracting ? "Extracting…" : images.length > 0 ? "Re-extract" : "Extract from Docs"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={hasTroubleshooting ? onCopyTroubleshooting : () => alert("Click \"Extract from Docs\" first to collect diagnostics, then copy.")}
