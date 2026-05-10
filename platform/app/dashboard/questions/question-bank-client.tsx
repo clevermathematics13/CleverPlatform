@@ -443,6 +443,37 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     const requestStartedAt = Date.now();
     const endpoint = "/api/questions/extract-images";
     const payload = { questionId: question.id };
+    if (question.google_ms_id && question.google_doc_id === question.google_ms_id) {
+      const message = "Question doc and markscheme doc are the same file — question doc link needs to be fixed before extracting images.";
+      setError(message);
+      setDocExtractTroubleshooting((prev) => ({
+        ...prev,
+        [question.id]: {
+          capturedAt: new Date().toISOString(),
+          questionId: question.id,
+          code: question.code,
+          googleDocId: question.google_doc_id ?? null,
+          googleMsId: question.google_ms_id ?? null,
+          request: {
+            endpoint,
+            method: "POST",
+            payload,
+          },
+          response: {
+            ok: false,
+            status: 400,
+            statusText: "CLIENT_PRECHECK_FAILED",
+            durationMs: 0,
+            body: { error: message },
+          },
+          appContext: {
+            driveConnected,
+            globalError: error,
+          },
+        },
+      }));
+      return;
+    }
     setExtracting((prev) => new Set(prev).add(question.id));
     setError(null);
     try {
@@ -1762,6 +1793,7 @@ function QuestionRow({
   onRefresh: () => void;
 }) {
   const showSection = question.paper !== 3;
+  const hasDocLinkConflict = question.google_ms_id !== null && question.google_doc_id === question.google_ms_id;
   const [showSectionPrompt, setShowSectionPrompt] = useState(false);
   const [minimized, setMinimized] = useState(false);
 
@@ -3083,6 +3115,11 @@ function QuestionRow({
                   {/* Source docs */}
                   <div className="flex flex-wrap items-center gap-3 ml-1">
                     <span className="text-xs font-bold text-blue-900">Source docs:</span>
+                    {hasDocLinkConflict && (
+                      <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                        Question doc and markscheme doc are the same file. Fix the question doc link before extracting.
+                      </span>
+                    )}
                     {question.google_doc_id ? (
                       <span className="inline-flex items-center gap-1">
                         <a
@@ -3397,6 +3434,15 @@ function QuestionRow({
                       >
                         🔗 Connect Drive to Extract
                       </a>
+                    ) : hasDocLinkConflict ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800 opacity-90"
+                        title="Question doc and markscheme doc are the same file"
+                      >
+                        Fix doc links first
+                      </button>
                     ) : (
                       <button
                         type="button"
