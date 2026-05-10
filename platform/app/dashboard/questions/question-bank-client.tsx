@@ -4447,6 +4447,16 @@ function ImageGroup({
                   />
                 </a>
 
+                <a
+                  href={img.url ?? "#"}
+                  download
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute bottom-1 left-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded bg-white/95 text-[11px] text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-white"
+                  title="Download image"
+                >
+                  ↓
+                </a>
+
                 {/* Delete button (top-right) */}
                 {confirmingDelete === img.id ? (
                   <div
