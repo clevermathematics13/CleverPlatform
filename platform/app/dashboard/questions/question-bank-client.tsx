@@ -1988,6 +1988,11 @@ function QuestionRow({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ partId: p.id, field: "markscheme_latex", value: "" }),
           }),
+          fetch("/api/questions/command-term", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ partId: p.id, commandTerm: null }),
+          }),
         ]),
       ]);
 
@@ -2012,6 +2017,7 @@ function QuestionRow({
           ...p,
           content_latex: null,
           markscheme_latex: null,
+          command_term: null,
         }))
       );
       onRefresh();
@@ -2695,6 +2701,7 @@ function QuestionRow({
       const isWholeQuestion = finalLabels.length === 0;
       if (isWholeQuestion) {
         const cpMeta = claudeParts[0]; // may be undefined if claudeParts is empty
+        const extractedWholeTerm = detectCommandTerm(qDraft) ?? null;
         push("No part structure found — treating as whole question…");
         // Find or create a null-label (whole-question) part
         let wholePartId: string;
@@ -2712,7 +2719,7 @@ function QuestionRow({
               body: JSON.stringify({
                 partId: wholePartId,
                 marks: typeof cpMeta.marks === "number" ? cpMeta.marks : null,
-                commandTerm: canonicalTermW,
+                commandTerm: extractedWholeTerm ?? canonicalTermW,
                 subtopicCodes: cpMeta.subtopicCodes ?? [],
               }),
             });
@@ -2728,7 +2735,7 @@ function QuestionRow({
               questionId: question.id,
               partLabel: null,
               marks: typeof cpMeta?.marks === "number" ? cpMeta.marks : null,
-              commandTerm: canonicalTermW,
+              commandTerm: extractedWholeTerm ?? canonicalTermW,
               subtopicCodes: cpMeta?.subtopicCodes ?? [],
             }),
           });
@@ -2792,9 +2799,9 @@ function QuestionRow({
         let partId: string;
         const splitQForLabel = splitQ.get(label) ?? "";
         const splitMSForLabel = splitMS.get(label) ?? "";
-        const canonicalTerm = DEFAULT_COMMAND_TERMS.find(
+        const canonicalTerm = detectCommandTerm(splitQForLabel) ?? DEFAULT_COMMAND_TERMS.find(
           (t) => t.toLowerCase() === (cp?.commandTerm ?? "").toLowerCase()
-        ) ?? detectCommandTerm(splitQForLabel) ?? null;
+        ) ?? null;
 
         if (existing) {
           // Update metadata
@@ -4051,12 +4058,10 @@ function QuestionRow({
                       <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 space-y-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex flex-wrap items-center gap-4">
                           {(() => {
-                            const term = wholePart?.command_term || detectCommandTerm(wholeQDraft);
-                            if (term && !wholePart?.command_term && wholePart) {
-                              // Auto-save detected term
-                              onUpdateCommandTerm(wholePart.id, term);
-                              setParts((prev) => prev.map((p) => (p.id === wholePart.id ? { ...p, command_term: term } : p)));
-                            }
+                            const currentLatex = wholeQDraft || wholePart?.content_latex || "";
+                            const term = currentLatex.trim()
+                              ? (detectCommandTerm(currentLatex) ?? wholePart?.command_term ?? null)
+                              : null;
                             return term ? (
                               <span className="text-base font-bold text-red-600">{term}</span>
                             ) : null;
@@ -4142,11 +4147,10 @@ function QuestionRow({
                                 <span className="font-bold text-sm text-blue-900">{partLabel}</span>
                                 <span className="text-xs text-gray-500 font-medium">[{part.marks} mark{part.marks !== 1 ? "s" : ""}]</span>
                                 {(() => {
-                                  const term = part.command_term || detectCommandTerm(latexDrafts[part.id]?.content_latex ?? part.content_latex ?? "");
-                                  if (term && !part.command_term) {
-                                    onUpdateCommandTerm(part.id, term);
-                                    setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, command_term: term } : p)));
-                                  }
+                                  const currentLatex = latexDrafts[part.id]?.content_latex ?? part.content_latex ?? "";
+                                  const term = currentLatex.trim()
+                                    ? (detectCommandTerm(currentLatex) ?? part.command_term ?? null)
+                                    : null;
                                   return term ? (
                                     <span className="text-base font-bold text-red-600">{term}</span>
                                   ) : null;
