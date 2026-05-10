@@ -2949,6 +2949,18 @@ function QuestionRow({
 
   // True when the question has at least one part with a letter label (a, b, c…)
   const hasLabeledParts = parts.some((p) => p.part_label && p.part_label.trim() !== "");
+  const sortedLabeledParts = [...parts]
+    .filter((p) => p.part_label && p.part_label.trim() !== "")
+    .sort((a, b) => a.sort_order - b.sort_order);
+
+  const buildCombinedLatex = (field: "content_latex" | "markscheme_latex") => {
+    const stem = (field === "content_latex" ? stemLatex : stemMsLatex).trim();
+    const partBlocks = sortedLabeledParts
+      .map((p) => (p[field] ?? "").trim())
+      .filter(Boolean)
+      .map((body) => `\\begin{IBPart}\n${body}\n\\end{IBPart}`);
+    return [stem, ...partBlocks].filter(Boolean).join("\n\n").trim();
+  };
 
   return (
     <>
@@ -4104,6 +4116,21 @@ function QuestionRow({
                       ] as const).map((section) => (
                         <div key={section.key} className="space-y-3">
                           <h3 className="text-xs font-bold uppercase tracking-wide text-gray-600">{section.title}</h3>
+                          {(() => {
+                            const combinedLatex = buildCombinedLatex(section.key);
+                            return (
+                              <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4">
+                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                                  Full {section.title} (combined)
+                                </p>
+                                {combinedLatex ? (
+                                  <LatexRenderer latex={combinedLatex} stripMarkAnnotations={section.key === "content_latex"} />
+                                ) : (
+                                  <p className="text-xs text-gray-400 italic">{section.emptyHint}</p>
+                                )}
+                              </div>
+                            );
+                          })()}
                           <div className="space-y-4">
                             {parts.map((part) => {
                               const partLabel = part.part_label ? `Part ${part.part_label.toUpperCase()}` : "Whole question";
