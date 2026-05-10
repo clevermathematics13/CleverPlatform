@@ -1859,6 +1859,40 @@ function QuestionRow({
   const [savingWhole, setSavingWhole] = useState(false);
 
   const [unlinkingDoc, setUnlinkingDoc] = useState<"q" | "ms" | null>(null);
+  const [editingLinks, setEditingLinks] = useState(false);
+  const [linkDraftQ, setLinkDraftQ] = useState(question.google_doc_id ?? "");
+  const [linkDraftMS, setLinkDraftMS] = useState(question.google_ms_id ?? "");
+  const [savingLinks, setSavingLinks] = useState(false);
+
+  function extractDocId(urlOrId: string): string {
+    const m = urlOrId.match(/\/document\/d\/([a-zA-Z0-9_-]+)/);
+    return m ? m[1] : urlOrId.trim();
+  }
+
+  async function saveLinks() {
+    setSavingLinks(true);
+    try {
+      const newDocId = extractDocId(linkDraftQ) || null;
+      const newMsId = extractDocId(linkDraftMS) || null;
+      await Promise.all([
+        fetch("/api/questions/doc-link", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "google_doc_id", value: newDocId }),
+        }),
+        fetch("/api/questions/doc-link", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questionId: question.id, field: "google_ms_id", value: newMsId }),
+        }),
+      ]);
+      setEditingLinks(false);
+      onRefresh();
+    } finally {
+      setSavingLinks(false);
+    }
+  }
+
   async function unlinkDoc(field: "q" | "ms") {
     setUnlinkingDoc(field);
     try {
@@ -3125,56 +3159,108 @@ function QuestionRow({
                   {/* Source docs */}
                   <div className="flex flex-wrap items-center gap-3 ml-1">
                     <span className="text-xs font-bold text-blue-900">Source docs:</span>
-                    {hasDocLinkConflict && (
+                    {hasDocLinkConflict && !editingLinks && (
                       <span className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
                         Question doc and markscheme doc are the same file. Fix the question doc link before extracting.
                       </span>
                     )}
-                    {question.google_doc_id ? (
-                      <span className="inline-flex items-center gap-1">
-                        <a
-                          href={`https://docs.google.com/document/d/${question.google_doc_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
-                        >
-                          📄 Question Doc
-                        </a>
+                    {editingLinks ? (
+                      <div className="flex flex-col gap-2 w-full mt-1">
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-[11px] font-semibold text-blue-700">📄 Question Doc URL or ID</span>
+                          <input
+                            type="text"
+                            value={linkDraftQ}
+                            onChange={(e) => setLinkDraftQ(e.target.value)}
+                            placeholder="https://docs.google.com/document/d/… or doc ID"
+                            className="rounded border border-blue-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 w-full max-w-xl"
+                          />
+                        </label>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-[11px] font-semibold text-green-700">📝 Markscheme Doc URL or ID</span>
+                          <input
+                            type="text"
+                            value={linkDraftMS}
+                            onChange={(e) => setLinkDraftMS(e.target.value)}
+                            placeholder="https://docs.google.com/document/d/… or doc ID (leave blank to unlink)"
+                            className="rounded border border-green-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-green-400 w-full max-w-xl"
+                          />
+                        </label>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={saveLinks}
+                            disabled={savingLinks}
+                            className="rounded bg-blue-600 px-3 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {savingLinks ? "Saving…" : "Save Links"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setEditingLinks(false); setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); }}
+                            disabled={savingLinks}
+                            className="rounded border border-gray-300 px-3 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {question.google_doc_id ? (
+                          <span className="inline-flex items-center gap-1">
+                            <a
+                              href={`https://docs.google.com/document/d/${question.google_doc_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline"
+                            >
+                              📄 Question Doc
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => unlinkDoc("q")}
+                              disabled={unlinkingDoc !== null}
+                              title="Unlink question doc"
+                              className="ml-0.5 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40"
+                            >
+                              {unlinkingDoc === "q" ? "…" : "×"}
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">No question doc linked</span>
+                        )}
+                        {question.google_ms_id ? (
+                          <span className="inline-flex items-center gap-1">
+                            <a
+                              href={`https://docs.google.com/document/d/${question.google_ms_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 hover:underline"
+                            >
+                              📝 Markscheme Doc
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => unlinkDoc("ms")}
+                              disabled={unlinkingDoc !== null}
+                              title="Unlink markscheme doc"
+                              className="ml-0.5 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40"
+                            >
+                              {unlinkingDoc === "ms" ? "…" : "×"}
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400 italic">No markscheme doc linked</span>
+                        )}
                         <button
                           type="button"
-                          onClick={() => unlinkDoc("q")}
-                          disabled={unlinkingDoc !== null}
-                          title="Unlink question doc"
-                          className="ml-0.5 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40"
+                          onClick={() => { setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); setEditingLinks(true); }}
+                          className="inline-flex items-center gap-1 rounded border border-gray-300 bg-white px-2 py-0.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:text-blue-700"
                         >
-                          {unlinkingDoc === "q" ? "…" : "×"}
+                          ✏️ Edit Links
                         </button>
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-400 italic">No question doc linked</span>
-                    )}
-                    {question.google_ms_id ? (
-                      <span className="inline-flex items-center gap-1">
-                        <a
-                          href={`https://docs.google.com/document/d/${question.google_ms_id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs font-semibold text-green-600 hover:underline"
-                        >
-                          📝 Markscheme Doc
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => unlinkDoc("ms")}
-                          disabled={unlinkingDoc !== null}
-                          title="Unlink markscheme doc"
-                          className="ml-0.5 text-xs text-gray-400 hover:text-red-500 disabled:opacity-40"
-                        >
-                          {unlinkingDoc === "ms" ? "…" : "×"}
-                        </button>
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-400 italic">No markscheme doc linked</span>
+                      </>
                     )}
                   </div>
                 </div>
