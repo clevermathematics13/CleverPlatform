@@ -3986,15 +3986,6 @@ function QuestionRow({
                       {/* Header: command term + subtopics */}
                       <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 space-y-2" onClick={(e) => e.stopPropagation()}>
                         <div className="flex flex-wrap items-center gap-4">
-                          {(() => {
-                            const currentLatex = wholeQDraft || wholePart?.content_latex || "";
-                            const term = currentLatex.trim()
-                              ? (detectCommandTerm(currentLatex) ?? wholePart?.command_term ?? null)
-                              : null;
-                            return term ? (
-                              <span className="text-base font-bold text-red-600">{term}</span>
-                            ) : null;
-                          })()}
                           {wholePart && (
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs font-semibold text-gray-500">Subtopics:</span>
@@ -4065,67 +4056,61 @@ function QuestionRow({
                       );
                     })()
                   ) : (
-                    <div className="space-y-4">
-                      {parts.map((part) => {
-                        const partLabel = part.part_label ? `Part ${part.part_label.toUpperCase()}` : "Whole question";
-                        return (
-                          <div key={part.id} className="border border-gray-200 rounded-lg overflow-hidden">
-                            {/* Part header */}
-                            <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 space-y-2" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex flex-wrap items-center gap-3">
-                                <span className="font-bold text-sm text-blue-900">{partLabel}</span>
-                                <span className="text-xs text-gray-500 font-medium">[{part.marks} mark{part.marks !== 1 ? "s" : ""}]</span>
-                                {(() => {
-                                  const currentLatex = latexDrafts[part.id]?.content_latex ?? part.content_latex ?? "";
-                                  const term = currentLatex.trim()
-                                    ? (detectCommandTerm(currentLatex) ?? part.command_term ?? null)
-                                    : null;
-                                  return term ? (
-                                    <span className="text-base font-bold text-red-600">{term}</span>
-                                  ) : null;
-                                })()}
-                                {part.latex_verified && (
-                                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ Verified</span>
-                                )}
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-xs font-semibold text-gray-500">Subtopics:</span>
-                                  <SubtopicEditor
-                                    codes={part.subtopic_codes}
-                                    available={availableSubtopics}
-                                    onChange={(codes) => {
-                                      onUpdateSubtopics(part.id, codes);
-                                      setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, subtopic_codes: codes } : p)));
-                                    }}
-                                  />
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => { if (confirm(`Delete ${partLabel}? This cannot be undone.`)) deletePart(part.id); }}
-                                  disabled={deletingPartId === part.id}
-                                  className="ml-auto px-2 py-0.5 rounded text-xs font-medium border border-red-300 text-red-500 bg-white hover:bg-red-50 disabled:opacity-50"
-                                  title="Delete this part from the database"
-                                >{deletingPartId === part.id ? "Deleting…" : "Delete Part"}</button>
-                              </div>
+                    <div className="space-y-6">
+                      {([
+                        { key: "content_latex", title: "Question", emptyHint: "No question LaTeX — click Edit or ⟳ Extract to add" },
+                        { key: "markscheme_latex", title: "Mark scheme", emptyHint: "No markscheme LaTeX — click Edit or ⟳ Extract to add" },
+                      ] as const).map((section) => (
+                        <div key={section.key} className="space-y-3">
+                          <h3 className="text-xs font-bold uppercase tracking-wide text-gray-600">{section.title}</h3>
+                          <div className="space-y-4">
+                            {parts.map((part) => {
+                              const partLabel = part.part_label ? `Part ${part.part_label.toUpperCase()}` : "Whole question";
+                              const field = section.key;
+                              const isEditing = editingLatex?.partId === part.id && editingLatex.field === field;
+                              const isExtracting = extractingLatexField?.partId === part.id && extractingLatexField.field === field;
+                              const fieldLabel = field === "content_latex" ? "Question LaTeX" : "Markscheme LaTeX";
+                              const draft = latexDrafts[part.id]?.[field] ?? "";
+                              const saved = part[field] ?? "";
+                              const claudeKey = `${part.id}-${field}`;
+                              const hasImages = field === "content_latex"
+                                ? images.some((i) => i.image_type === "question")
+                                : images.some((i) => i.image_type === "markscheme");
 
-                            </div>
-                            {/* LaTeX editors — stacked: Question on top, MS below */}
-                            <div className="divide-y divide-gray-100">
-                              {(["content_latex", "markscheme_latex"] as const).map((field) => {
-                                const isEditing = editingLatex?.partId === part.id && editingLatex.field === field;
-                                const isExtracting = extractingLatexField?.partId === part.id && extractingLatexField.field === field;
-                                const fieldLabel = field === "content_latex" ? "Question LaTeX" : "Markscheme LaTeX";
-                                const draft = latexDrafts[part.id]?.[field] ?? "";
-                                const saved = part[field] ?? "";
-                                const claudeKey = `${part.id}-${field}`;
-                                const hasImages = field === "content_latex"
-                                  ? images.some((i) => i.image_type === "question")
-                                  : images.some((i) => i.image_type === "markscheme");
-                                return (
-                                  <div key={field} className="p-4 space-y-3">
+                              return (
+                                <div key={`${part.id}-${field}`} className="border border-gray-200 rounded-lg overflow-hidden">
+                                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 space-y-2" onClick={(e) => e.stopPropagation()}>
+                                    <div className="flex flex-wrap items-center gap-3">
+                                      <span className="font-bold text-sm text-blue-900">{partLabel}</span>
+                                      <span className="text-xs text-gray-500 font-medium">[{part.marks} mark{part.marks !== 1 ? "s" : ""}]</span>
+                                      {part.latex_verified && (
+                                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ Verified</span>
+                                      )}
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-xs font-semibold text-gray-500">Subtopics:</span>
+                                        <SubtopicEditor
+                                          codes={part.subtopic_codes}
+                                          available={availableSubtopics}
+                                          onChange={(codes) => {
+                                            onUpdateSubtopics(part.id, codes);
+                                            setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, subtopic_codes: codes } : p)));
+                                          }}
+                                        />
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() => { if (confirm(`Delete ${partLabel}? This cannot be undone.`)) deletePart(part.id); }}
+                                        disabled={deletingPartId === part.id}
+                                        className="ml-auto px-2 py-0.5 rounded text-xs font-medium border border-red-300 text-red-500 bg-white hover:bg-red-50 disabled:opacity-50"
+                                        title="Delete this part from the database"
+                                      >{deletingPartId === part.id ? "Deleting…" : "Delete Part"}</button>
+                                    </div>
+                                  </div>
+
+                                  <div className="p-4 space-y-3">
                                     <div className="flex items-center justify-between">
                                       <span className="text-xs font-semibold text-gray-600">{fieldLabel}</span>
                                       <div className="flex gap-1 items-center">
-                                        {/* Extract from images button */}
                                         {hasImages && !isEditing && (
                                           <button
                                             type="button"
@@ -4176,6 +4161,7 @@ function QuestionRow({
                                         )}
                                       </div>
                                     </div>
+
                                     {isEditing ? (
                                       <>
                                         {isExtracting && (
@@ -4190,7 +4176,6 @@ function QuestionRow({
                                           onChange={(e) => setLatexDrafts((d) => ({ ...d, [part.id]: { ...d[part.id], [field]: e.target.value } }))}
                                           onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void saveLatex(part.id, field); } }}
                                         />
-                                        {/* Ask Claude correction */}
                                         <div className="flex gap-2 pt-1 border-t border-gray-100">
                                           <input
                                             type="text"
@@ -4215,15 +4200,15 @@ function QuestionRow({
                                         <LatexRenderer latex={saved} stripMarkAnnotations={field === "content_latex"} />
                                       </div>
                                     ) : (
-                                      <p className="text-xs text-gray-400 italic">No LaTeX — click Edit or ⟳ Extract to add</p>
+                                      <p className="text-xs text-gray-400 italic">{section.emptyHint}</p>
                                     )}
                                   </div>
-                                );
-                              })}
-                            </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
