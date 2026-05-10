@@ -33,6 +33,57 @@ export const INSTRUCTIONAL_CONTEXT_TERMS = [
   "Justify",
 ] as const;
 
+const COMMAND_TERMS = [
+  "Calculate",
+  "Classify",
+  "Comment",
+  "Compare",
+  "Complete",
+  "Construct",
+  "Copy",
+  "Deduce",
+  "Demonstrate",
+  "Describe",
+  "Determine",
+  "Differentiate",
+  "Distinguish",
+  "Draw",
+  "Estimate",
+  "Evaluate",
+  "Expand",
+  "Explain",
+  "Express",
+  "Factorise",
+  "Find",
+  "Give",
+  "Hence",
+  "Identify",
+  "Integrate",
+  "Interpret",
+  "Investigate",
+  "Justify",
+  "Label",
+  "Let",
+  "List",
+  "Mark",
+  "Measure",
+  "Outline",
+  "Plot",
+  "Predict",
+  "Prove",
+  "Represent",
+  "Show",
+  "Simplify",
+  "Sketch",
+  "Solve",
+  "State",
+  "Suggest",
+  "Trace",
+  "Using",
+  "Verify",
+  "Write down",
+] as const;
+
 export const EMPTY_COMMAND_TERM_FLAGS: CommandTermFlags = {
   is_hence: false,
   is_hence_or_otherwise: false,
@@ -89,7 +140,9 @@ export function deriveInstructionalContextTerms(input: {
   const sourceText = sanitizeSourceText(input.sourceLatex ?? "");
   const combined = `${commandTerm} ${sourceText}`.trim();
 
-  const detected = INSTRUCTIONAL_CONTEXT_TERMS.filter((term) => hasTerm(combined, term));
+  const detectedContextTerms = INSTRUCTIONAL_CONTEXT_TERMS.filter((term) => hasTerm(combined, term));
+  const detectedCommandTerms = COMMAND_TERMS.filter((term) => hasTerm(combined, term));
+  const detected = [...detectedCommandTerms, ...detectedContextTerms];
   const seen = new Set<string>();
   return detected.filter((term) => {
     const key = term.toLowerCase();

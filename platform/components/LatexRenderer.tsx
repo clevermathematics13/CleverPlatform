@@ -108,6 +108,57 @@ const IB_TEXT_STYLE: React.CSSProperties = {
   lineHeight: 1.6,
 };
 
+const COMMAND_TERM_SET = new Set([
+  "calculate",
+  "classify",
+  "comment",
+  "compare",
+  "complete",
+  "construct",
+  "copy",
+  "deduce",
+  "demonstrate",
+  "describe",
+  "determine",
+  "differentiate",
+  "distinguish",
+  "draw",
+  "estimate",
+  "evaluate",
+  "expand",
+  "explain",
+  "express",
+  "factorise",
+  "find",
+  "give",
+  "hence",
+  "identify",
+  "integrate",
+  "interpret",
+  "investigate",
+  "justify",
+  "label",
+  "let",
+  "list",
+  "mark",
+  "measure",
+  "outline",
+  "plot",
+  "predict",
+  "prove",
+  "represent",
+  "show",
+  "simplify",
+  "sketch",
+  "solve",
+  "state",
+  "suggest",
+  "trace",
+  "using",
+  "verify",
+  "write down",
+]);
+
 /**
  * Render a single line of text, handling \hfill by right-aligning everything
  * after it (used in IB mark schemes to place mark codes like (A1), M1, etc.).
@@ -139,7 +190,8 @@ function renderWithTermHighlights(
     }
     const token = text.slice(match.index, re.lastIndex);
     const tokenNorm = normalizeComparable(token);
-    const isCommand = !!cmd && tokenNorm === normalizeComparable(cmd);
+    const isCommand =
+      (!!cmd && tokenNorm === normalizeComparable(cmd)) || COMMAND_TERM_SET.has(tokenNorm);
     nodes.push(
       <span key={`ct-${keyIdx++}`} className={isCommand ? "font-bold text-red-600" : "font-bold text-blue-600"}>
         {token}
