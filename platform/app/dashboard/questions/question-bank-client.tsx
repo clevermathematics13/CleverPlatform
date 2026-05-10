@@ -1978,23 +1978,11 @@ function QuestionRow({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ questionId: question.id, field: "stem_markscheme_latex", value: "" }),
         }),
-        ...parts.flatMap((p) => [
-          fetch("/api/questions/latex-update", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ partId: p.id, field: "content_latex", value: "" }),
-          }),
-          fetch("/api/questions/latex-update", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ partId: p.id, field: "markscheme_latex", value: "" }),
-          }),
-          fetch("/api/questions/command-term", {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ partId: p.id, commandTerm: null }),
-          }),
-        ]),
+        ...parts.map((p) =>
+          fetch(`/api/questions/part-metadata?partId=${encodeURIComponent(p.id)}`, {
+            method: "DELETE",
+          })
+        ),
       ]);
 
       setStemLatex("");
@@ -2006,21 +1994,8 @@ function QuestionRow({
       setWholeMSDraft("");
       setEditingWhole(null);
       setEditingLatex(null);
-      setLatexDrafts((prev) => {
-        const next: Record<string, { content_latex: string; markscheme_latex: string }> = { ...prev };
-        parts.forEach((p) => {
-          next[p.id] = { content_latex: "", markscheme_latex: "" };
-        });
-        return next;
-      });
-      setParts((prev) =>
-        prev.map((p) => ({
-          ...p,
-          content_latex: null,
-          markscheme_latex: null,
-          command_term: null,
-        }))
-      );
+      setLatexDrafts({});
+      setParts([]);
       onRefresh();
     } finally {
       setClearingAllLatex(false);
@@ -3751,7 +3726,7 @@ function QuestionRow({
                     <button
                       type="button"
                       onClick={() => {
-                        if (confirm("Clear all LaTeX for this question? This will erase stem + all part question/markscheme LaTeX and cannot be undone.")) {
+                        if (confirm("Clear all LaTeX and delete all parts for this question? This will erase stem + all part LaTeX and remove all parts. This cannot be undone.")) {
                           void clearAllLatex();
                         }
                       }}
@@ -3983,7 +3958,7 @@ function QuestionRow({
                             onChange={(e) => setStemDraftMS(e.target.value)}
                           />
                         ) : (
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-4">
                             <div>
                               <p className="text-xs font-semibold text-gray-500 mb-1">Question stem</p>
                               {stemLatex
