@@ -84,6 +84,8 @@ export function stripUnsupportedColumns(select: string, supported: Set<OptionalC
         }
 
         const fieldName = trimmed.includes(":") ? trimmed.split(":").pop()?.trim() ?? trimmed : trimmed;
+        const isOptionalField = (OPTIONAL_QUESTION_PARTS_COLUMNS as readonly string[]).includes(fieldName);
+        if (!isOptionalField) return trimmed;
         return supported.has(fieldName as OptionalColumn) ? trimmed : null;
       })
       .filter((item): item is string => Boolean(item))
