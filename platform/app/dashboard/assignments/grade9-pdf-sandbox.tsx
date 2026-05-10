@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { readJsonSafely } from "@/lib/http-json";
 
 type DocumentKind = "activity-sheet" | "practice-set" | "investigation";
 
@@ -141,12 +142,14 @@ export function Grade9PdfSandbox() {
         }),
       });
 
+      const data = await readJsonSafely<ClaudeResponse & { error?: string }>(response);
       if (!response.ok) {
-        const data = (await response.json()) as { error?: string };
-        throw new Error(data.error ?? `AI request failed with status ${response.status}`);
+        throw new Error(data?.error ?? `AI request failed with status ${response.status}`);
       }
 
-      const data = (await response.json()) as ClaudeResponse;
+      if (!data) {
+        throw new Error("AI returned an empty response body");
+      }
       const rawText = data.content?.find((block) => block.type === "text")?.text ?? "";
       const json = extractJsonObject(rawText);
       const parsed = JSON.parse(json) as AssignmentDraft;

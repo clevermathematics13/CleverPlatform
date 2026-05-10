@@ -5,6 +5,7 @@ import LatexRenderer from "@/components/LatexRenderer";
 import { IB_CORRECTION_SYSTEM } from "@/lib/latex-utils";
 import { splitDraftIntoParts } from "./split-draft-into-parts";
 import { playChatCompletionChime } from "@/lib/chat-audio";
+import { readJsonSafely } from "@/lib/http-json";
 
 const DEFAULT_COMMAND_TERMS = [
   "Calculate",
@@ -561,7 +562,7 @@ function StemEditor({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ system: IB_CORRECTION_SYSTEM, messages }),
       });
-      const data = await res.json();
+      const data = await readJsonSafely<{ content?: { text?: string }[]; completion?: string }>(res);
       const corrected: string = data?.content?.[0]?.text ?? data?.completion ?? "";
       if (corrected) {
         setDraft((d) => ({ ...d, [stemField]: corrected.trim() }));
@@ -730,7 +731,7 @@ function PartEditor({
           messages,
         }),
       });
-      const data = await res.json();
+      const data = await readJsonSafely<{ content?: { text?: string }[]; completion?: string }>(res);
       const corrected: string =
         data?.content?.[0]?.text ?? data?.completion ?? "";
       if (corrected) {

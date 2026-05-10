@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { playChatCompletionChime } from '@/lib/chat-audio';
+import { readJsonSafely } from '@/lib/http-json';
 import type { Assignment, Rule, Student } from '@/lib/seating-types';
 
 interface Props {
@@ -76,12 +77,11 @@ Please explain why students are seated the way they are, referencing specific po
           messages: [{ role: 'user', content: userMessage }],
         }),
       });
+      const data = await readJsonSafely<{ error?: string; content?: { type?: string; text?: string }[] }>(res);
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || `HTTP ${res.status}`);
+        throw new Error(data?.error || `HTTP ${res.status}`);
       }
-      const data = await res.json();
-      const text: string = data?.content?.[0]?.type === 'text' ? data.content[0].text : '';
+      const text: string = data?.content?.[0]?.type === 'text' ? (data.content[0].text ?? '') : '';
       setExplanation(text || 'No explanation returned.');
       void playChatCompletionChime();
     } catch (e) {

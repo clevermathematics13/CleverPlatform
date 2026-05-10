@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
+import { readJsonSafely } from "@/lib/http-json";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -121,7 +122,10 @@ function WizardStemEditor({
           ],
         }),
       });
-      const data = await res.json();
+      const data = await readJsonSafely<{ content?: { text?: string }[]; error?: string }>(res);
+      if (!res.ok) {
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
+      }
       const corrected: string = data?.content?.[0]?.text ?? "";
       if (corrected) setCurrentDraft(corrected.trim());
     } finally {
@@ -269,7 +273,10 @@ function WizardPartEditor({
           ],
         }),
       });
-      const data = await res.json();
+      const data = await readJsonSafely<{ content?: { text?: string }[]; error?: string }>(res);
+      if (!res.ok) {
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
+      }
       const corrected: string = data?.content?.[0]?.text ?? "";
       if (corrected) setActiveDraft(corrected.trim());
     } finally {
@@ -728,7 +735,7 @@ export function AddQuestionWizard({
           }),
         });
         if (claudeRes.ok) {
-          const data = await claudeRes.json();
+          const data = await readJsonSafely<{ content?: { text?: string }[] }>(claudeRes);
           const text: string = data?.content?.[0]?.text ?? "";
           const jsonMatch = text.match(/\{[\s\S]*\}/);
           if (jsonMatch) {

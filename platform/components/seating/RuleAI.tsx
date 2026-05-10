@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { playChatCompletionChime } from '@/lib/chat-audio';
+import { readJsonSafely } from '@/lib/http-json';
 import type { Rule, Student, Seat } from '@/lib/seating-types';
 
 interface Props {
@@ -132,14 +133,12 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
         }),
       });
 
+      const data = await readJsonSafely<{ error?: string; content?: { type?: string; text?: string }[] }>(res);
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || `HTTP ${res.status}`);
+        throw new Error(data?.error || `HTTP ${res.status}`);
       }
-
-      const data = await res.json();
       const rawText: string =
-        data?.content?.[0]?.type === 'text' ? data.content[0].text : '';
+        data?.content?.[0]?.type === 'text' ? (data.content[0].text ?? '') : '';
 
       // Extract JSON array from response (handles any stray whitespace)
       const match = rawText.match(/\[[\s\S]*\]/);
