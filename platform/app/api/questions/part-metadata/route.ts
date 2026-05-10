@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
 
 type Body = {
   partId?: unknown;
@@ -8,6 +9,7 @@ type Body = {
   marks?: unknown;
   commandTerm?: unknown;
   subtopicCodes?: unknown;
+  sourceLatex?: unknown;
 };
 
 type PartMetadataRow = {
@@ -18,6 +20,12 @@ type PartMetadataRow = {
   command_term: string | null;
   subtopic_codes: string[] | null;
   sort_order: number;
+  instructional_context_terms: string[] | null;
+  is_hence: boolean;
+  is_hence_or_otherwise: boolean;
+  is_using: boolean;
+  is_deduce: boolean;
+  is_verify: boolean;
 };
 
 const DEFAULT_COMMAND_TERMS = [
@@ -71,7 +79,7 @@ const DEFAULT_COMMAND_TERMS = [
   "Write down",
 ] as const;
 
-const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, sort_order, content_latex, markscheme_latex, latex_verified";
+const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
 
 async function snapshotPartMetadata(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -176,14 +184,14 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { partId, partLabel, marks, commandTerm, subtopicCodes } = body;
+  const { partId, partLabel, marks, commandTerm, subtopicCodes, sourceLatex } = body;
   if (typeof partId !== "string" || !partId) {
     return NextResponse.json({ error: "partId is required" }, { status: 400 });
   }
 
   const { data: currentPart, error: currentErr } = await supabase
     .from("question_parts")
-    .select("id, question_id, part_label, marks, command_term, subtopic_codes, sort_order")
+    .select("id, question_id, part_label, marks, command_term, subtopic_codes, sort_order, content_latex, instructional_context_terms, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify")
     .eq("id", partId)
     .single();
 
@@ -238,6 +246,22 @@ export async function PATCH(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: "subtopicCodes must be an array" }, { status: 400 });
     }
+  }
+
+  const sourceText = typeof sourceLatex === "string" ? sourceLatex : "";
+  if (commandTerm !== undefined || sourceText) {
+    const effectiveTerm = (update.command_term as string | null | undefined) ?? currentPart.command_term;
+    const effectiveSource = sourceText || currentPart.content_latex || "";
+    const flags = deriveCommandTermFlags({ commandTerm: effectiveTerm, sourceLatex: effectiveSource });
+    update.is_hence = flags.is_hence;
+    update.is_hence_or_otherwise = flags.is_hence_or_otherwise;
+    update.is_using = flags.is_using;
+    update.is_deduce = flags.is_deduce;
+    update.is_verify = flags.is_verify;
+    update.instructional_context_terms = deriveInstructionalContextTerms({
+      commandTerm: effectiveTerm,
+      sourceLatex: effectiveSource,
+    });
   }
 
   if (Object.keys(update).length === 0) {
@@ -324,7 +348,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { questionId, partLabel, marks, commandTerm, subtopicCodes } = body;
+  const { questionId, partLabel, marks, commandTerm, subtopicCodes, sourceLatex } = body;
   if (typeof questionId !== "string" || !questionId) {
     return NextResponse.json({ error: "questionId is required" }, { status: 400 });
   }
@@ -374,6 +398,14 @@ export async function POST(request: NextRequest) {
       part_label: label,
       marks: marksValue,
       command_term: commandTermValue,
+      ...deriveCommandTermFlags({
+        commandTerm: commandTermValue,
+        sourceLatex: typeof sourceLatex === "string" ? sourceLatex : "",
+      }),
+      instructional_context_terms: deriveInstructionalContextTerms({
+        commandTerm: commandTermValue,
+        sourceLatex: typeof sourceLatex === "string" ? sourceLatex : "",
+      }),
       subtopic_codes: codes,
       sort_order: sortOrder,
     })

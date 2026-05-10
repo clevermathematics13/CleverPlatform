@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
 
 type RevertBody = {
   partId?: unknown;
   historyId?: unknown;
 };
 
-const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, sort_order, content_latex, markscheme_latex, latex_verified";
+const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
 
 type PartMetadataRow = {
   id: string;
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
 
   const { data: currentPart, error: currentErr } = await supabase
     .from("question_parts")
-    .select("id, question_id, part_label, marks, command_term, subtopic_codes, sort_order")
+    .select("id, question_id, part_label, marks, command_term, subtopic_codes, sort_order, content_latex")
     .eq("id", partId)
     .single();
 
@@ -116,6 +117,14 @@ export async function POST(request: NextRequest) {
       part_label: previous.part_label ?? "",
       marks: previous.marks ?? 1,
       command_term: previous.command_term,
+      ...deriveCommandTermFlags({
+        commandTerm: previous.command_term,
+        sourceLatex: currentPart.content_latex ?? "",
+      }),
+      instructional_context_terms: deriveInstructionalContextTerms({
+        commandTerm: previous.command_term,
+        sourceLatex: currentPart.content_latex ?? "",
+      }),
       subtopic_codes: previous.subtopic_codes ?? [],
       sort_order: previous.sort_order ?? 0,
     })

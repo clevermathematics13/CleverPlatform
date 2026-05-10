@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
 
 // PATCH /api/questions/latex-update
 // Body: { partId: string, field: "content_latex"|"markscheme_latex", value: string }
@@ -35,9 +36,27 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid field" }, { status: 400 });
   }
 
+  let updatePayload: Record<string, unknown> = { [field]: value };
+  if (field === "content_latex") {
+    const { data: currentPart, error: fetchErr } = await supabase
+      .from("question_parts")
+      .select("command_term")
+      .eq("id", partId)
+      .single();
+    if (fetchErr || !currentPart) {
+      return NextResponse.json({ error: "Part not found" }, { status: 404 });
+    }
+    const commandTerm = currentPart.command_term;
+    updatePayload = {
+      ...updatePayload,
+      ...deriveCommandTermFlags({ commandTerm, sourceLatex: value }),
+      instructional_context_terms: deriveInstructionalContextTerms({ commandTerm, sourceLatex: value }),
+    };
+  }
+
   const { error } = await supabase
     .from("question_parts")
-    .update({ [field]: value })
+    .update(updatePayload)
     .eq("id", partId);
 
   if (error) {

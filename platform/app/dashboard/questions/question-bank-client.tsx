@@ -7,6 +7,7 @@ import LatexRenderer from "@/components/LatexRenderer";
 import { AddQuestionWizard } from "./add-question-wizard";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
 import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
+import { commandTermHighlightsFromFlags, deriveCommandTermFlags } from "@/lib/command-term-flags";
 import { encodeGraphSpec, GRAPH_MARKER_RE, EXAMPLE_SPEC, type IbGraphSpec } from "@/components/IbGraph";
 
 const IbGraph = dynamic(() => import("@/components/IbGraph"), { ssr: false });
@@ -33,6 +34,12 @@ interface QuestionPart {
   marks: number;
   subtopic_codes: string[];
   command_term: string | null;
+  instructional_context_terms?: string[];
+  is_hence?: boolean;
+  is_hence_or_otherwise?: boolean;
+  is_using?: boolean;
+  is_deduce?: boolean;
+  is_verify?: boolean;
   sort_order: number;
   content_latex: string | null;
   markscheme_latex: string | null;
@@ -950,7 +957,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         prev.map((q) => ({
           ...q,
           question_parts: q.question_parts.map((p) =>
-            p.id === partId ? { ...p, command_term: data.command_term } : p
+            p.id === partId ? { ...p, ...(data.part ?? { command_term: commandTerm }) } : p
           ),
         }))
       );
@@ -2660,6 +2667,7 @@ function QuestionRow({
                 partId: wholePartId,
                 marks: typeof cpMeta.marks === "number" ? cpMeta.marks : null,
                 commandTerm: extractedWholeTerm ?? canonicalTermW,
+                sourceLatex: qDraft,
                 subtopicCodes: cpMeta.subtopicCodes ?? [],
               }),
             });
@@ -2676,6 +2684,7 @@ function QuestionRow({
               partLabel: null,
               marks: typeof cpMeta?.marks === "number" ? cpMeta.marks : null,
               commandTerm: extractedWholeTerm ?? canonicalTermW,
+              sourceLatex: qDraft,
               subtopicCodes: cpMeta?.subtopicCodes ?? [],
             }),
           });
@@ -2742,6 +2751,7 @@ function QuestionRow({
         const canonicalTerm = detectCommandTerm(splitQForLabel) ?? DEFAULT_COMMAND_TERMS.find(
           (t) => t.toLowerCase() === (cp?.commandTerm ?? "").toLowerCase()
         ) ?? null;
+        const exceptionFlags = deriveCommandTermFlags({ commandTerm: canonicalTerm, sourceLatex: splitQForLabel });
 
         if (existing) {
           // Update metadata
@@ -2753,6 +2763,7 @@ function QuestionRow({
               partLabel: label,
               marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
               commandTerm: canonicalTerm,
+              sourceLatex: splitQForLabel,
               subtopicCodes: cp?.subtopicCodes ?? existing.subtopic_codes,
             }),
           });
@@ -2762,6 +2773,7 @@ function QuestionRow({
             part_label: label,
             marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
             command_term: canonicalTerm,
+            ...exceptionFlags,
             subtopic_codes: cp?.subtopicCodes ?? existing.subtopic_codes,
             content_latex: splitQForLabel || null,
             markscheme_latex: splitMSForLabel || null,
@@ -2776,6 +2788,7 @@ function QuestionRow({
               partLabel: label,
               marks: typeof cp?.marks === "number" ? cp.marks : null,
               commandTerm: canonicalTerm,
+              sourceLatex: splitQForLabel,
               subtopicCodes: cp?.subtopicCodes ?? [],
             }),
           });
@@ -2792,6 +2805,7 @@ function QuestionRow({
             part_label: label,
             marks: typeof cp?.marks === "number" ? cp.marks : created.marks,
             command_term: canonicalTerm,
+            ...exceptionFlags,
             subtopic_codes: cp?.subtopicCodes ?? created.subtopic_codes,
             content_latex: splitQForLabel || null,
             markscheme_latex: splitMSForLabel || null,
@@ -4096,7 +4110,7 @@ function QuestionRow({
                                 <LatexRenderer
                                   latex={draft}
                                   stripMarkAnnotations={field === "q"}
-                                  highlightCommandTerm={field === "q" ? (wholePart?.command_term ?? null) : null}
+                                  highlightCommandTerms={field === "q" ? commandTermHighlightsFromFlags(wholePart?.command_term ?? null, wholePart ?? null, wholePart?.instructional_context_terms ?? []) : []}
                                 />
                               ) : (
                                 <p className="text-xs text-gray-400 italic">No LaTeX — click Edit or ⟳ Extract to add</p>
@@ -4278,7 +4292,7 @@ function QuestionRow({
                                         <LatexRenderer
                                           latex={saved}
                                           stripMarkAnnotations={field === "content_latex"}
-                                          highlightCommandTerm={field === "content_latex" ? (part.command_term ?? null) : null}
+                                          highlightCommandTerms={field === "content_latex" ? commandTermHighlightsFromFlags(part.command_term ?? null, part, part.instructional_context_terms ?? []) : []}
                                         />
                                       </div>
                                     ) : (

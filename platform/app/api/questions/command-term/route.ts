@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
 
 export async function PATCH(request: NextRequest) {
   const supabase = await createClient();
@@ -30,14 +31,32 @@ export async function PATCH(request: NextRequest) {
     ? commandTerm.trim()
     : null;
 
-  const { error } = await supabase
+  const { data: currentPart, error: currentErr } = await supabase
     .from("question_parts")
-    .update({ command_term: value })
-    .eq("id", partId);
+    .select("content_latex")
+    .eq("id", partId)
+    .single();
+
+  if (currentErr || !currentPart) {
+    return NextResponse.json({ error: "Part not found" }, { status: 404 });
+  }
+
+  const sourceLatex = currentPart.content_latex ?? "";
+
+  const { data: updated, error } = await supabase
+    .from("question_parts")
+    .update({
+      command_term: value,
+      ...deriveCommandTermFlags({ commandTerm: value, sourceLatex }),
+      instructional_context_terms: deriveInstructionalContextTerms({ commandTerm: value, sourceLatex }),
+    })
+    .eq("id", partId)
+    .select("id, command_term, instructional_context_terms, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify")
+    .single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, command_term: value });
+  return NextResponse.json({ ok: true, part: updated });
 }

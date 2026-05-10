@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient();
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
   let query = supabase
     .from("ib_questions")
     .select(
-      "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, command_term, sort_order, content_latex, markscheme_latex, latex_verified)",
+      "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, command_term, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified)",
       { count: "exact" }
     )
     .or("google_doc_id.not.is.null,source_pdf_path.not.is.null")
@@ -227,6 +228,14 @@ export async function POST(request: NextRequest) {
       part_label: p.partLabel?.trim() ?? '',
       marks: p.marks != null ? Number(p.marks) : null,
       command_term: p.commandTerm || null,
+      ...deriveCommandTermFlags({
+        commandTerm: p.commandTerm || null,
+        sourceLatex: p.contentLatex?.trim() || "",
+      }),
+      instructional_context_terms: deriveInstructionalContextTerms({
+        commandTerm: p.commandTerm || null,
+        sourceLatex: p.contentLatex?.trim() || "",
+      }),
       subtopic_codes: p.subtopicCodes ?? [],
       sort_order: idx,
       content_latex: p.contentLatex?.trim() || null,
