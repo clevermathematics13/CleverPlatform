@@ -1841,8 +1841,18 @@ function QuestionRow({
   const [editingLatex, setEditingLatex] = useState<{ partId: string; field: "content_latex" | "markscheme_latex" } | null>(null);
   const [savingLatex, setSavingLatex] = useState(false);
   const [extractingLatexField, setExtractingLatexField] = useState<{ partId: string; field: "content_latex" | "markscheme_latex" } | null>(null);
+  const [collapsedPartCards, setCollapsedPartCards] = useState<Set<string>>(new Set());
   const [claudeInstruction, setClaudeInstruction] = useState<Record<string, string>>({}); // key: `${partId}-${field}`
   const [claudeLoading, setClaudeLoading] = useState<Record<string, boolean>>({});
+
+  const togglePartCard = (cardKey: string) => {
+    setCollapsedPartCards((prev) => {
+      const next = new Set(prev);
+      if (next.has(cardKey)) next.delete(cardKey);
+      else next.add(cardKey);
+      return next;
+    });
+  };
 
   // Full-question extraction state
   const [fullExtractState, setFullExtractState] = useState<"idle" | "confirm" | "running">("idle");
@@ -4044,7 +4054,11 @@ function QuestionRow({
                                   autoFocus
                                 />
                               ) : draft ? (
-                                <LatexRenderer latex={draft} stripMarkAnnotations={field === "q"} />
+                                <LatexRenderer
+                                  latex={draft}
+                                  stripMarkAnnotations={field === "q"}
+                                  highlightCommandTerm={field === "q" ? (wholePart?.command_term ?? null) : null}
+                                />
                               ) : (
                                 <p className="text-xs text-gray-400 italic">No LaTeX — click Edit or ⟳ Extract to add</p>
                               )}
@@ -4073,6 +4087,8 @@ function QuestionRow({
                               const draft = latexDrafts[part.id]?.[field] ?? "";
                               const saved = part[field] ?? "";
                               const claudeKey = `${part.id}-${field}`;
+                              const cardKey = `${part.id}-${field}`;
+                              const isCollapsed = collapsedPartCards.has(cardKey);
                               const hasImages = field === "content_latex"
                                 ? images.some((i) => i.image_type === "question")
                                 : images.some((i) => i.image_type === "markscheme");
@@ -4081,6 +4097,14 @@ function QuestionRow({
                                 <div key={`${part.id}-${field}`} className="border border-gray-200 rounded-lg overflow-hidden">
                                   <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 space-y-2" onClick={(e) => e.stopPropagation()}>
                                     <div className="flex flex-wrap items-center gap-3">
+                                      <button
+                                        type="button"
+                                        className="text-xs text-gray-500 hover:text-gray-700"
+                                        onClick={() => togglePartCard(cardKey)}
+                                        title={isCollapsed ? "Expand this part" : "Collapse this part"}
+                                      >
+                                        {isCollapsed ? "▸" : "▾"}
+                                      </button>
                                       <span className="font-bold text-sm text-blue-900">{partLabel}</span>
                                       <span className="text-xs text-gray-500 font-medium">[{part.marks} mark{part.marks !== 1 ? "s" : ""}]</span>
                                       {part.latex_verified && (
@@ -4107,7 +4131,7 @@ function QuestionRow({
                                     </div>
                                   </div>
 
-                                  <div className="p-4 space-y-3">
+                                  {!isCollapsed && <div className="p-4 space-y-3">
                                     <div className="flex items-center justify-between">
                                       <span className="text-xs font-semibold text-gray-600">{fieldLabel}</span>
                                       <div className="flex gap-1 items-center">
@@ -4197,12 +4221,16 @@ function QuestionRow({
                                       </>
                                     ) : saved ? (
                                       <div className="text-sm leading-relaxed min-h-8">
-                                        <LatexRenderer latex={saved} stripMarkAnnotations={field === "content_latex"} />
+                                        <LatexRenderer
+                                          latex={saved}
+                                          stripMarkAnnotations={field === "content_latex"}
+                                          highlightCommandTerm={field === "content_latex" ? (part.command_term ?? null) : null}
+                                        />
                                       </div>
                                     ) : (
                                       <p className="text-xs text-gray-400 italic">{section.emptyHint}</p>
                                     )}
-                                  </div>
+                                  </div>}
                                 </div>
                               );
                             })}

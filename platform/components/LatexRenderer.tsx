@@ -16,6 +16,8 @@ interface Props {
   /** When true, strips lines that are purely mark-scheme annotations (A1, M1, Total [N marks])
    *  from the rendered output. Use for question content displays. */
   stripMarkAnnotations?: boolean;
+  /** Optional command term to highlight inline in rendered text (first occurrence only). */
+  highlightCommandTerm?: string | null;
 }
 
 const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
@@ -109,6 +111,34 @@ const IB_TEXT_STYLE: React.CSSProperties = {
  * after it (used in IB mark schemes to place mark codes like (A1), M1, etc.).
  */
 function renderTextLine(line: string, key: string | number): React.ReactNode {
+function renderWithCommandTermHighlight(
+  text: string,
+  commandTerm: string | null | undefined,
+  state: { used: boolean }
+): React.ReactNode {
+  if (!commandTerm || state.used) return text;
+  const escaped = commandTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  const re = new RegExp(`\\b${escaped}\\b`, "i");
+  const match = re.exec(text);
+  if (!match) return text;
+  state.used = true;
+  const start = match.index;
+  const end = start + match[0].length;
+  return (
+    <>
+      {text.slice(0, start)}
+      <span className="font-bold text-red-600">{text.slice(start, end)}</span>
+      {text.slice(end)}
+    </>
+  );
+}
+
+function renderTextLine(
+  line: string,
+  key: string | number,
+  commandTerm: string | null | undefined,
+  highlightState: { used: boolean }
+): React.ReactNode {
   if (line.includes("\\hfill")) {
     const hfillIdx = line.indexOf("\\hfill");
     const before = line.slice(0, hfillIdx).trim();
@@ -118,14 +148,14 @@ function renderTextLine(line: string, key: string | number): React.ReactNode {
     const isMarkCode = /^\(?[A-Z]{1,2}\d*\)?$/.test(before);
     return (
       <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-        <span>{isMarkCode ? null : (before || null)}</span>
+        <span>{isMarkCode ? null : (before ? renderWithCommandTermHighlight(before, commandTerm, highlightState) : null)}</span>
         <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
           {isMarkCode ? `${before} ${markCode}` : markCode}
         </span>
       </span>
     );
   }
-  return line;
+  return renderWithCommandTermHighlight(line, commandTerm, highlightState);
 }
 
 /**
@@ -150,7 +180,7 @@ function preprocessLatex(src: string): string {
   return out;
 }
 
-export default function LatexRenderer({ latex, className, graphImageUrl, stripMarkAnnotations }: Props) {
+export default function LatexRenderer({ latex, className, graphImageUrl, stripMarkAnnotations, highlightCommandTerm }: Props) {
   const MARK_LINE = /^(?:\\hfill\s*)?(?:\s*[\(\[]?(?:A|M|R|N)\d*[\)\]]?\s*)+$|^Total\s+\[\d+\s+marks?\]\s*$|^\[\d+\s+marks?\]\s*$/i;
   function applyStrip(src: string): string {
     if (!stripMarkAnnotations) return src;
@@ -166,6 +196,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
     }
   );
   const segments = splitSegments(preprocessed);
+  const commandTermHighlightState = { used: false };
 
   function renderTabularTable(tabular: ParsedTabular, key: string | number): React.ReactNode {
     const { aligns, hasBorders } = parseColSpec(tabular.colSpec);
@@ -251,7 +282,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
             }
             // Skip blank lines that only exist to separate equations
             if (trimmed === "") return;
-            nodes.push(renderTextLine(line, `${i}-${j}-line`));
+            nodes.push(renderTextLine(line, `${i}-${j}-line`, highlightCommandTerm, commandTermHighlightState));
             // Add a single line break after non-blank lines (except the last)
             if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-br`} />);
           });
