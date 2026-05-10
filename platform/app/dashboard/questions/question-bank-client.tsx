@@ -2801,6 +2801,17 @@ function QuestionRow({
         ]);
       }
 
+      if (finalLabels.length > 0) {
+        const wholeQuestionParts = parts.filter((p) => !p.part_label || p.part_label.trim() === "");
+        if (wholeQuestionParts.length > 0) {
+          await Promise.all(
+            wholeQuestionParts.map((p) =>
+              fetch(`/api/questions/part-metadata?partId=${encodeURIComponent(p.id)}`, { method: "DELETE" })
+            )
+          );
+        }
+      }
+
       // Update local state — merge: keep any existing parts not touched by extraction,
       // plus all newly created / updated parts
       const updatedById: Record<string, QuestionPart> = {};
@@ -2808,7 +2819,10 @@ function QuestionRow({
       const mergedParts = parts
         .map((p) => updatedById[p.id] ?? p)  // update existing in-place
         .concat(newParts.filter((p) => !parts.some((ep) => ep.id === p.id)));  // add truly new
-      const sortedMerged = mergedParts.sort((a, b) => a.sort_order - b.sort_order);
+      const sortedMerged = (finalLabels.length > 0
+        ? mergedParts.filter((p) => p.part_label && p.part_label.trim() !== "")
+        : mergedParts
+      ).sort((a, b) => a.sort_order - b.sort_order);
       setParts(sortedMerged);
       const newDrafts: Record<string, { content_latex: string; markscheme_latex: string }> = {};
       sortedMerged.forEach((p) => {
