@@ -1762,7 +1762,17 @@ function QuestionRow({
   onRefresh: () => void;
 }) {
   const showSection = question.paper !== 3;
+  const [showSectionPrompt, setShowSectionPrompt] = useState(false);
   const [minimized, setMinimized] = useState(false);
+
+  // Guard close: if section is required but not set, show inline prompt instead.
+  const handleClose = () => {
+    if (showSection && question.section === null) {
+      setShowSectionPrompt(true);
+    } else {
+      onToggle();
+    }
+  };
   const [parts, setParts] = useState<QuestionPart[]>(
     [...question.question_parts].sort((a, b) => a.sort_order - b.sort_order)
   );
@@ -2795,7 +2805,7 @@ function QuestionRow({
   useEffect(() => {
     if (!expanded) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onToggle();
+      if (e.key === "Escape") handleClose();
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -2813,7 +2823,7 @@ function QuestionRow({
     <>
       <tr
         className="cursor-pointer hover:bg-blue-50 transition-colors"
-        onClick={onToggle}
+        onClick={handleClose}
       >
         <td className="px-4 py-2">
           <span className="font-bold text-blue-900">{question.code}</span>
@@ -2927,7 +2937,44 @@ function QuestionRow({
         )}
       </tr>
       {expanded && typeof document !== "undefined" && createPortal(
-        minimized ? (
+        <>
+        {/* ── Section prompt overlay ── */}
+        {showSectionPrompt && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-2xl border border-amber-300 p-6 w-80 flex flex-col gap-4">
+              <div>
+                <p className="text-base font-bold text-gray-900 mb-1">Pick a section before closing</p>
+                <p className="text-sm text-gray-500">
+                  <span className="font-mono font-semibold text-blue-800">{question.code}</span> is P{question.paper} — assign it to Section A or B first.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { onUpdateSection("A"); setShowSectionPrompt(false); onToggle(); }}
+                  className="flex-1 rounded-lg bg-blue-600 text-white font-bold py-2 text-sm hover:bg-blue-700 transition-colors"
+                >
+                  Section A
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { onUpdateSection("B"); setShowSectionPrompt(false); onToggle(); }}
+                  className="flex-1 rounded-lg bg-orange-500 text-white font-bold py-2 text-sm hover:bg-orange-600 transition-colors"
+                >
+                  Section B
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowSectionPrompt(false); onToggle(); }}
+                className="text-xs text-gray-400 hover:text-gray-600 underline text-center"
+              >
+                Close without picking
+              </button>
+            </div>
+          </div>
+        )}
+        {minimized ? (
           /* ── Minimized bar ── */
           <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t-2 border-blue-300 shadow-xl px-5 py-2 flex items-center gap-4">
             <span className="font-mono font-bold text-blue-900 text-sm">{question.code}</span>
@@ -2945,7 +2992,7 @@ function QuestionRow({
               </button>
               <button
                 type="button"
-                onClick={onToggle}
+                onClick={handleClose}
                 title="Close editor"
                 className="rounded w-7 h-7 flex items-center justify-center text-sm font-bold bg-gray-100 text-gray-700 hover:bg-red-100 hover:text-red-700 transition-colors"
               >
@@ -2973,7 +3020,7 @@ function QuestionRow({
                 </button>
                 <button
                   type="button"
-                  onClick={onToggle}
+                  onClick={handleClose}
                   title="Close"
                   className="rounded px-3 py-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors"
                 >
@@ -3993,7 +4040,8 @@ function QuestionRow({
                 </div>{/* end grid */}
             </div>
           </div>
-        ),
+        )}
+        </>,
         document.body
       )}
     </>
@@ -4094,7 +4142,7 @@ function ImageGroup({
         tabIndex={0}
         className={`rounded-lg border-2 border-dashed p-2 min-h-[60px] transition-colors outline-none focus:ring-2 cursor-pointer ${
           labelColor === "blue"
-            ? "border-blue-200 bg-blue-50/30 focus:ring-blue-400"
+        }
             : "border-green-200 bg-green-50/30 focus:ring-green-400"
         }`}
         onPaste={handlePaste}

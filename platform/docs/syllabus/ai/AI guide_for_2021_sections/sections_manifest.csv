@@ -1,0 +1,6 @@
+label,kind,start_page,end_page,page_count,pdf_file,ocr_text_file,searchable_text_chars,searchable_text_detected
+TOC and Front Matter,toc,1,5,5,00_toc-and-front-matter.pdf,00_toc-and-front-matter_ocr.txt,8705,True
+Introduction,section,6,27,22,01_introduction.pdf,01_introduction_ocr.txt,56154,True
+Syllabus,section,28,76,49,02_syllabus.pdf,02_syllabus_ocr.txt,108055,True
+Assessment,section,77,94,18,03_assessment.pdf,03_assessment_ocr.txt,46935,True
+Appendices,section,95,101,7,04_appendices.pdf,04_appendices_ocr.txt,9845,True

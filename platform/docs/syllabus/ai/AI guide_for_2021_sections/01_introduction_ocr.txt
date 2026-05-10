@@ -1,0 +1,753 @@
+This publication is intended to guide the planning, teaching and assessment of the subject in schools. 
+Subject teachers are the primary audience, although it is expected that teachers will use the guide to inform 
+students and parents about the subject.
+This guide can be found on the subject page of the programme resource centre at resources.ibo.org, a 
+password-protected IB website designed to support IB teachers. It can also be purchased from the IB store 
+at store.ibo.org
+Additional resources
+Additional publications such as specimen papers and markschemes, teacher support materials, subject 
+reports and grade descriptors can also be found on the programme resource centre. Past examination 
+papers as well as markschemes can be purchased from the IB store.
+Teachers are encouraged to check the programme resource centre for additional resources created or used 
+by other teachers. Teachers can provide details of useful resources, for example websites, books, videos, 
+journals or teaching ideas.
+Acknowledgment
+The IB wishes to thank the educators and associated schools for generously contributing time and 
+resources to the production of this guide.
+First assessment 2021
+Introduction
+Purpose of this document
+1Mathematics: applications and interpretation guide
+
+
+The Diploma Programme is a rigorous pre-university course of study designed for students in the 16-19 age 
+range. It is a broad-based two-year course that aims to encourage students to be knowledgable and 
+inquiring, but also caring and compassionate. There is a strong emphasis on encouraging students to 
+develop intercultural understanding, open-mindedness, and the attitudes necessary for them to respect 
+and evaluate a range of points of view.
+The Diploma Programme model
+The course is presented as six academic areas enclosing a central core (see figure 1). It encourages the 
+concurrent study of a broad range of academic areas. Students study two modern languages (or a modern 
+language and a classical language), a humanities or social science subject, an experimental science, 
+mathematics and one of the creative arts. It is this comprehensive range of subjects that makes the Diploma 
+Programme a demanding course of study designed to prepare students effectively for university entrance. 
+In each of the academic areas students have flexibility in making their choices, which means they can 
+choose subjects that particularly interest them and that they may wish to study further at university.
+Figure 1
+The Diploma Programme model
+Introduction
+The Diploma Programme
+2 Mathematics: applications and interpretation guide
+
+
+Choosing the right combination
+Students are required to choose one subject from each of the six academic areas, although they can, 
+instead of an arts subject, choose two subjects from another area. Normally, three subjects (and not more 
+than four) are taken at higher level (HL), and the others are taken at standard level (SL). The IB recommends 
+240 teaching hours for HL subjects and 150 hours for SL. Subjects at HL are studied in greater depth and 
+breadth than at SL.
+At both levels many skills are developed, especially those of critical thinking and analysis. At the end of the 
+course, students’  abilities are measured by means of external assessment. Many subjects contain some 
+element of coursework assessed by teachers.
+The core of the Diploma Programme model
+All Diploma Programme (DP) students participate in the three course elements that make up the core of the 
+model.
+Theory of knowledge (TOK) is a course that is fundamentally about critical thinking and inquiry into the 
+process of knowing rather than about learning a specific body of knowledge. The TOK course examines the 
+nature of knowledge and how we know what we claim to know. It does this by encouraging students to 
+analyse knowledge claims and explore questions about the construction of knowledge. The task of TOK is 
+to emphasize connections between areas of shared knowledge and link them to personal knowledge in 
+such a way that an individual becomes more aware of his or her own perspectives and how they might 
+differ from others.
+Creativity, activity, service (CAS) is at the heart of the Diploma Programme. The emphasis in CAS is on 
+helping students to develop their own identities, in accordance with the ethical principles embodied in the 
+IB mission statement and the IB learner profile. It involves students in a range of activities alongside their 
+academic studies throughout the Diploma Programme. The three strands of CAS are creativity (arts, and 
+other experiences that involve creative thinking), activity (physical exertion contributing to a healthy 
+lifestyle) and service (an unpaid and voluntary exchange that has a learning benefit for the student). 
+Possibly, more than any other component in the Diploma Programme, CAS contributes to the IB’s  mission 
+to create a better and more peaceful world through intercultural understanding and respect.
+The extended essay, including the world studies extended essay, offers the opportunity for IB students to 
+investigate a topic of special interest, in the form of a 4,000-word piece of independent research. The area 
+of research undertaken is chosen from one of the students’ six Diploma Programme subjects, or in the case 
+of the inter-disciplinary World Studies essay, two subjects, and acquaints them with the independent 
+research and writing skills expected at university. This leads to a major piece of formally-presented, 
+structured writing, in which ideas and findings are communicated in a reasoned and coherent manner, 
+appropriate to the subject or subjects chosen. It is intended to promote high-level research and writing 
+skills, intellectual discovery and creativity. An authentic learning experience, it provides students with an 
+opportunity to engage in personal research on a topic of choice, under the guidance of a supervisor.
+Approaches to teaching and approaches to 
+learning
+Approaches to teaching and learning across the Diploma Programme refers to deliberate strategies, skills 
+and attitudes which permeate the teaching and learning environment. These approaches and tools, 
+intrinsically linked with the learner profile attributes, enhance student learning and assist student 
+preparation for the Diploma Programme assessment and beyond. The aims of approaches to teaching and 
+learning in the Diploma Programme are to:
+• empower teachers as teachers of learners as well as teachers of content
+• empower teachers to create clearer strategies for facilitating learning experiences in which students 
+are more meaningfully engaged in structured inquiry and greater critical and creative thinking
+The Diploma Programme
+3Mathematics: applications and interpretation guide
+
+
+• promote both the aims of individual subjects (making them more than course aspirations) and linking 
+previously isolated knowledge (concurrency of learning)
+• encourage students to develop an explicit variety of skills that will equip them to continue to be 
+actively engaged in learning after they leave school, and to help them not only obtain university 
+admission through better grades but also prepare for success during tertiary education and beyond
+• enhance further the coherence and relevance of the students’ Diploma Programme experience
+• allow schools to identify the distinctive nature of an IB Diploma Programme education, with its blend 
+of idealism and practicality.
+The five approaches to learning (developing thinking skills, social skills, communication skills, self-
+management skills and research skills) along with the six approaches to teaching (teaching that is inquiry-
+based, conceptually-focused, contextualized, collaborative, differentiated and informed by assessment) 
+encompass the key values and principles that underpin IB pedagogy.
+The IB mission statement and the IB learner profile
+The Diploma Programme aims to develop in students the knowledge, skills and attitudes they will need to 
+fulfill the aims of the IB, as expressed in the organization’s  mission statement and the learner profile. 
+Teaching and learning in the Diploma Programme represent the reality in daily practice of the 
+organization’s educational philosophy.
+Academic honesty
+Academic honesty in the Diploma Programme is a set of values and behaviours informed by the attributes 
+of the learner profile. In teaching, learning and assessment, academic honesty serves to promote personal 
+integrity, engender respect for the integrity of others and their work, and ensure that all students have an 
+equal opportunity to demonstrate the knowledge and skills they acquire during their studies.
+All coursework—including  work submitted for assessment—is  to be authentic, based on the student’s 
+individual and original ideas with the ideas and work of others fully acknowledged. Assessment tasks that 
+require teachers to provide guidance to students or that require students to work collaboratively must be 
+completed in full compliance with the detailed guidelines provided by the IB for the relevant subjects.
+For further information on academic honesty in the IB and the Diploma Programme, please consult the IB 
+publications Academic honesty in the IB educational context, Effective citing and referencing, The Diploma 
+Programme: From principles into practice and General regulations: Diploma Programme. Specific information 
+regarding academic honesty as it pertains to external and internal assessment components of this Diploma 
+Programme subject can be found in this guide.
+Acknowledging the ideas or work of another 
+person
+Coordinators and teachers are reminded that candidates must acknowledge all sources used in work 
+submitted for assessment. The following is intended as a clarification of this requirement.
+Diploma Programme candidates submit work for assessment in a variety of media that may include audio-
+visual material, text, graphs, images and/or data published in print or electronic sources. If a candidate uses 
+the work or ideas of another person, the candidate must acknowledge the source using a standard style of 
+referencing in a consistent manner. A candidate’s  failure to acknowledge a source will be investigated by 
+the IB as a potential breach of regulations that may result in a penalty imposed by the IB final award 
+committee.
+The IB does not prescribe which style(s) of referencing or in-text citation should be used by candidates; this 
+is left to the discretion of appropriate faculty/staff in the candidate’s  school. The wide range of subjects, 
+three response languages and the diversity of referencing styles make it impractical and restrictive to insist 
+on particular styles. In practice, certain styles may prove most commonly used, but schools are free to 
+The Diploma Programme
+4 Mathematics: applications and interpretation guide
+
+
+choose a style that is appropriate for the subject concerned and the language in which candidates’  work is 
+written. Regardless of the reference style adopted by the school for a given subject, it is expected that the 
+minimum information given includes: name of author, date of publication, title of source, and page 
+numbers as applicable.
+Candidates are expected to use a standard style and use it consistently so that credit is given to all sources 
+used, including sources that have been paraphrased or summarized. When writing text, candidates must 
+clearly distinguish between their words and those of others by the use of quotation marks (or other 
+method, such as indentation) followed by an appropriate citation that denotes an entry in the bibliography. 
+If an electronic source is cited, the date of access must be indicated. Candidates are not expected to show 
+faultless expertise in referencing, but are expected to demonstrate that all sources have been 
+acknowledged. Candidates must be advised that audio-visual material, text, graphs, images and/or data 
+published in print or in electronic sources that is not their own must also attribute the source. Again, an 
+appropriate style of referencing/citation must be used.
+Learning diversity and learning support 
+requirements
+Schools must ensure that equal access arrangements and reasonable adjustments are provided to 
+candidates with learning support requirements that are in line with the IB documents Access and inclusion 
+policy and Learning diversity and inclusion in IB programmes.
+The documents Meeting student learning diversity in the classroom and The IB guide to inclusive education: a 
+resource for whole school development are available to support schools in the ongoing process of increasing 
+access and engagement by removing barriers to learning.
+The Diploma Programme
+5Mathematics: applications and interpretation guide
+
+
+Introduction
+Mathematics has been described as the study of structure, order and relation that has evolved from the 
+practices of counting, measuring and describing objects. Mathematics provides a unique language to 
+describe, explore and communicate the nature of the world we live in as well as being a constantly building 
+body of knowledge and truth in itself that is distinctive in its certainty. These two aspects of mathematics, a 
+discipline that is studied for its intrinsic pleasure and a means to explore and understand the world we live 
+in, are both separate yet closely linked.
+Mathematics is driven by abstract concepts and generalization. This mathematics is drawn out of ideas, and 
+develops through linking these ideas and developing new ones. These mathematical ideas may have no 
+immediate practical application. Doing such mathematics is about digging deeper to increase 
+mathematical knowledge and truth. The new knowledge is presented in the form of theorems that have 
+been built from axioms and logical mathematical arguments and a theorem is only accepted as true when it 
+has been proven. The body of knowledge that makes up mathematics is not fixed; it has grown during 
+human history and is growing at an increasing rate.
+The side of mathematics that is based on describing our world and solving practical problems is often 
+carried out in the context of another area of study. Mathematics is used in a diverse range of disciplines as 
+both a language and a tool to explore the universe; alongside this its applications include analyzing trends, 
+making predictions, quantifying risk, exploring relationships and interdependence.
+While these two different facets of mathematics may seem separate, they are often deeply connected. 
+When mathematics is developed, history has taught us that a seemingly obscure, abstract mathematical 
+theorem or fact may in time be highly significant. On the other hand, much mathematics is developed in 
+response to the needs of other disciplines.
+The two mathematics courses available to Diploma Programme (DP) students express both the differences 
+that exist in mathematics described above and the connections between them. These two courses might 
+approach mathematics from different perspectives, but they are connected by the same mathematical 
+body of knowledge, ways of thinking and approaches to problems. The differences in the courses may also 
+be related to the types of tools, for instance technology, that are used to solve abstract or practical 
+problems. The next section will describe in more detail the two available courses.
+Summary of courses available
+Individual students have different needs, aspirations, interests and abilities. For this reason there are two 
+different subjects in mathematics, each available at SL and HL These courses are designed for different 
+types of students: those who wish to study mathematics as a subject in its own right or to pursue their 
+interests in areas related to mathematics, and those who wish to gain understanding and competence in 
+how mathematics relates to the real world and to other subjects. Each course is designed to meet the needs 
+of a particular group of students. Mathematics: analysis and approaches and Mathematics: applications and 
+interpretation are both offered at SL and HL. Therefore, great care should be taken to select the course and 
+level that is most appropriate for an individual student.
+In making this selection, individual students should be advised to take into account the following factors:
+• their own abilities in mathematics and the type of mathematics in which they can be successful
+• their own interest in mathematics and those particular areas of the subject that may hold the most 
+interest for them
+• their other choices of subjects within the framework of the DP or Career-related Programme (CP)
+Introduction
+Nature of Mathematics
+6 Mathematics: applications and interpretation guide
+
+
+• their academic plans, in particular the subjects they wish to study in the future
+• their choice of career.
+Teachers are expected to assist with the selection process and to offer advice to students.
+The nature of IB mathematics courses
+Figure 2
+The mathematics model
+The structure of IB DP mathematics courses, with two different routes to choose from, recognizes the two 
+different aspects of mathematics discussed in the introduction.
+Mathematics: analysis and approaches is for students who enjoy developing their mathematics to become 
+fluent in the construction of mathematical arguments and develop strong skills in mathematical thinking. 
+They will also be fascinated by exploring real and abstract applications of these ideas, with and without 
+technology. Students who take Mathematics: analysis and approaches will be those who enjoy the thrill of 
+mathematical problem solving and generalization.
+Mathematics: applications and interpretation is for students who are interested in developing their 
+mathematics for describing our world and solving practical problems. They will also be interested in 
+harnessing the power of technology alongside exploring mathematical models. Students who take 
+Mathematics: applications and interpretation will be those who enjoy mathematics best when seen in a 
+practical context.
+Both subjects are offered at higher level and SL. There are many elements common to both subjects 
+although the approaches may be different. Both subjects will prepare students with the mathematics 
+needed for a range of further educational courses corresponding to the two approaches to mathematics set 
+out above.
+Nature of Mathematics
+7Mathematics: applications and interpretation guide
+
+
+Mathematics: analysis and approaches
+This course recognizes the need for analytical expertise in a world where innovation is increasingly 
+dependent on a deep understanding of mathematics. This course includes topics that are both traditionally 
+part of a pre-university mathematics course (for example, functions, trigonometry, calculus) as well as topics 
+that are amenable to investigation, conjecture and proof, for instance the study of sequences and series at 
+both SL and HL, and proof by induction at HL.
+The course allows the use of technology, as fluency in relevant mathematical software and hand-held 
+technology is important regardless of choice of course. However, Mathematics: analysis and approaches 
+has a strong emphasis on the ability to construct, communicate and justify correct mathematical 
+arguments.
+Mathematics: analysis and approaches: Distinction between SL and 
+HL
+Students who choose Mathematics: analysis and approaches at SL or HL should be comfortable in the 
+manipulation of algebraic expressions and enjoy the recognition of patterns and understand the 
+mathematical generalization of these patterns. Students who wish to take Mathematics: analysis and 
+approaches at higher level will have strong algebraic skills and the ability to understand simple proof. They 
+will be students who enjoy spending time with problems and get pleasure and satisfaction from solving 
+challenging problems.
+Mathematics: applications and interpretation
+This course recognizes the increasing role that mathematics and technology play in a diverse range of fields 
+in a data-rich world. As such, it emphasizes the meaning of mathematics in context by focusing on topics 
+that are often used as applications or in mathematical modelling. To give this understanding a firm base, 
+this course also includes topics that are traditionally part of a pre-university mathematics course such as 
+calculus and statistics.
+The course makes extensive use of technology to allow students to explore and construct mathematical 
+models. Mathematics: applications and interpretation will develop mathematical thinking, often in the 
+context of a practical problem and using technology to justify conjectures.
+Mathematics: applications and interpretation: Distinction between 
+SL and HL
+Students who choose Mathematics: applications and interpretation at SL or HL should enjoy seeing 
+mathematics used in real-world contexts and to solve real-world problems. Students who wish to take 
+Mathematics: applications and interpretation at higher level will have good algebraic skills and experience 
+of solving real-world problems. They will be students who get pleasure and satisfaction when exploring 
+challenging problems and who are comfortable to undertake this exploration using technology.
+Mathematics and theory of knowledge
+The relationship between each subject and theory of knowledge (TOK) is important and fundamental to the 
+DP. The theory of knowledge course provides an opportunity for students to reflect on questions about 
+how knowledge is produced and shared, both in mathematics and also across different areas of knowledge. 
+It encourages students to reflect on their assumptions and biases, helping them to become more aware of 
+their own perspective and the perspectives of others and to become “inquiring, knowledgeable and caring 
+young people” (IB mission statement).
+As part of their theory of knowledge course, students are encouraged to explore tensions relating to 
+knowledge in mathematics. As an area of knowledge, mathematics seems to supply a certainty perhaps 
+impossible in other disciplines and in many instances provides us with tools to debate these certainties. 
+This may be related to the “purity” of the subject, something that can sometimes make it seem divorced 
+Nature of Mathematics
+8 Mathematics: applications and interpretation guide
+
+
+from reality. Yet mathematics has also provided important knowledge about the world and the use of 
+mathematics in science and technology has been one of the driving forces for scientific advances.
+Despite all its undoubted power for understanding and change, mathematics is in the end a puzzling 
+phenomenon. A fundamental question for all knowers is whether mathematical knowledge really exists 
+independently of our thinking about it. Is it there, “waiting to be discovered”, or is it a human creation? 
+Indeed, the philosophy of mathematics is an area of study in its own right.
+Students’  attention should be drawn to questions relating theory of knowledge (TOK) and mathematics, 
+and they should also be encouraged to raise such questions themselves in both their mathematics and TOK 
+classes. Examples of issues relating to TOK are given in the “Connections” sections of the syllabus. Further 
+suggestions for making links to TOK can also be found in the mathematics section of the Theory of 
+knowledge guide.
+Mathematics and international-mindedness
+International-mindedness is a complex and multi-faceted concept that refers to a way of thinking, being 
+and acting characterized by an openness to the world and a recognition of our deep interconnectedness to 
+others.
+Despite recent advances in the development of information and communication technologies, the global 
+exchange of mathematical information and ideas is not a new phenomenon and has been essential to the 
+progress of mathematics. Indeed, many of the foundations of modern mathematics were laid many 
+centuries ago by diverse civilisations – Arabic, Greek, Indian and Chinese among others.
+Mathematics can in some ways be seen as an international language and, apart from slightly differing 
+notation, mathematicians from around the world can communicate effectively within their field. 
+Mathematics can transcend politics, religion and nationality, and throughout history great civilizations have 
+owed their success in part to their mathematicians being able to create and maintain complex social and 
+architectural structures. Politics has dominated the development of mathematics, to develop ballistics, 
+navigation and trade, and land ownership, often influenced by governments and leaders. Many early 
+mathematicians were political and military advisers and today mathematicians are integral members of 
+teams who advise governments on where money and resources should be allocated.
+Science and technology are of significant importance in today’s  world. As the language of science, 
+mathematics is an essential component of most technological innovation and underpins developments in 
+science and technology, although the contribution of mathematics may not always be visible. Examples of 
+this include the role of the binary number system, matrix algebra, network theory and probability theory in 
+the digital revolution, or the use of mathematical simulations to predict future climate change or spread of 
+disease. These examples highlight the key role mathematics can play in transforming the world around us.
+One way of fostering international-mindedness is to provide opportunities for inquiry into a range of local 
+and global issues and ideas. Many international organisations and bodies now exist to promote 
+mathematics, and students are encouraged to access the resources and often-extensive websites of such 
+mathematical organisations. This can enhance their appreciation of the international dimension of 
+mathematics, as well as providing opportunities to engage with global issues surrounding the subject.
+Examples of links relating to international-mindedness are given in the “Connections” sections of the 
+syllabus.
+Mathematics and creativity, activity, service
+CAS experiences can be associated with each of the subject groups of the DP.
+CAS and mathematics can complement each other in a number of ways. Mathematical knowledge provides 
+an important key to understanding the world in which we live, and the mathematical skills and techniques 
+students learn in the mathematics courses will allow them to evaluate the world around them which will 
+help them to develop, plan and deliver CAS experiences or projects.
+An important aspect of the mathematics courses is that students develop the ability to systematically 
+analyse situations and can recognize the impact that mathematics can have on the world around them. An 
+Nature of Mathematics
+9Mathematics: applications and interpretation guide
+
+
+awareness of how mathematics can be used to represent the truth enables students to reflect critically on 
+the information that societies are given or generate, and how this influences the allocation of resources or 
+the choices that people make. This systematic analysis and critical reflection when problem solving may be 
+inspiring springboards for CAS projects.
+Students may also draw on their CAS experiences to enrich their involvement in mathematics both within 
+and outside the classroom, and mathematics teachers can assist students in making links between their 
+subjects and students’  CAS experiences where appropriate. Purposeful discussion about real CAS 
+experiences and projects will help students to make these links.
+The challenge and enjoyment of CAS can often have a profound effect on mathematics students, who 
+might choose, for example, to engage with CAS in the following ways:
+• plan, write and implement a “mathematics scavenger hunt” where younger students tour the school 
+answering interesting mathematics questions as part of their introduction to a new school
+• as a CAS project students could plan and carry out a survey, create a database and analyse the results, 
+and make suggestions to resolve a problem in the students’ local area. This might be, for example, 
+surveying the availability of fresh fruit and vegetables within a community, preparing an action plan 
+with suggestions of how to increase availability or access, and presenting this to a local charity or 
+community group
+• taking an element of world culture that interests students and designing a miniature Earth (if the 
+world were 100 people) to express the trend(s) numerically.
+It is important to note that a CAS experience can be a single event or may be an extended series of events. 
+However, CAS experiences must be distinct from, and may not be included or used in, the student’s 
+Diploma course requirements.
+Additional suggestions on the links between DP subjects and CAS can be found in the Creativity, activity, 
+service teacher support material.
+Prior learning
+It is expected that most students embarking on a DP mathematics course will have studied mathematics for 
+at least 10 years. There will be a great variety of topics studied, and differing approaches to teaching and 
+learning. Thus, students will have a wide variety of skills and knowledge when they start their mathematics 
+course. Most will have some background in arithmetic, algebra, geometry, trigonometry, probability and 
+statistics. Some will be familiar with an inquiry approach, and may have had an opportunity to complete an 
+extended piece of work in mathematics.
+At the beginning of the syllabus section there is a list of topics that are considered to be prior learning for 
+the mathematics courses. It is recognized that this may contain topics that are unfamiliar to some students, 
+but it is anticipated that there may be other topics in the syllabus itself which these students have already 
+encountered. Teachers should be informed by their assessment of students’ prior learning to help plan their 
+teaching so that topics mentioned that are unfamiliar to their students can be incorporated.
+Links to the Middle Years Programme
+The MYP mathematics framework is designed to prepare students for the study of DP mathematics courses. 
+As students progress from the MYP to the DP or the Career-related Programme (CP) they continue to 
+develop their mathematics skills and knowledge, which will then allow them to go on to study a wide range 
+of topics. Inquiry-based learning is central to mathematics courses in both MYP and the DP, providing 
+students with opportunities to independently and collaboratively investigate, problem solve and 
+communicate their mathematics with an increasing level of sophistication.
+MYP mathematics courses are concept-driven, aimed at helping the learner to construct meaning through 
+improved critical thinking and the transfer of knowledge. The MYP courses use a framework of key concepts 
+with which the concepts in the DP mathematics courses are aligned. These concepts are broad, organizing, 
+powerful ideas that have relevance within the subject but also transcend it, having relevance in other 
+Nature of Mathematics
+10 Mathematics: applications and interpretation guide
+
+
+subject groups. The fundamental concepts of MYP mathematics provide a very useful foundation for 
+students following DP mathematics courses.
+The aims of the MYP mathematics courses align very closely with those of the DP mathematics courses. The 
+prior learning topics for the DP mathematics courses have been written in conjunction with the MYP 
+mathematics guide.
+The MYP mathematics assessment objectives and criteria have been developed with both the internal and 
+external assessment requirements of the DP in mind. MYP mathematics students are required to practise 
+and develop their investigation skills, one of the MYP four assessment objectives, giving an important 
+foundation for the internal assessment component of the DP mathematics courses. The MYP assessment 
+objective of thinking critically also corresponds to the higher-order assessment objectives of 
+communication and interpretation, and of reasoning that are expected from a DP mathematics student.
+MYP and DP mathematics courses emphasized the use of technology as a powerful tool for learning, 
+applying and communicating mathematics.
+Where students in the MYP may select either standard or extended mathematics, at DP there are two 
+mathematics subjects both available at SL and HL. MYP students enrolled in extended mathematics 
+generally elect to take one of the HL mathematics courses in the DP. Students in MYP standard 
+mathematics should seek the recommendation of their teacher when deciding which SL or HL course they 
+are best suited to pursue.
+Figure 3
+The IB continuum pathways to DP courses in mathematics
+Links to the Career-related Programme
+In the IB Career-related Programme (CP) students study at least two DP subjects, a core consisting of four 
+components and a career-related study, which is determined by the local context and aligned with student 
+needs. The CP has been designed to add value to the student’s  career-related studies. This provides the 
+context for the choice of DP courses. Courses can be chosen from any group of the DP. It is also possible to 
+study more than one course from the same group (for example, visual arts and film).
+Nature of Mathematics
+11Mathematics: applications and interpretation guide
+
+
+Mathematics may be a beneficial choice for CP students considering careers in, for example, finance, 
+planning, healthcare systems or coding, tourism industries, the technology industry, social informatics, or 
+urban planning. Mathematics helps students to understand the value of systematic approaches, how to 
+analyse complex real-world contexts, how to communicate this concisely and precisely and understand the 
+implications of conclusions.
+Mathematics encourages the development of strong written, verbal, and graphical communication skills; 
+critical and complex thinking; and moral and ethical considerations influenced by mathematics that will 
+assist students in preparing for the future global workplace. This in turn fosters the IB learner profile 
+attributes that are transferable to the entire CP, providing relevance and support for the student’s learning.
+For the CP students, DP courses can be studied at SL or HL. Schools can explore opportunities to integrate 
+CP students with DP students.
+Nature of Mathematics
+12 Mathematics: applications and interpretation guide
+
+
+Conceptual understanding
+Concepts are broad, powerful, organizing ideas, the significance of which goes beyond particular origins, 
+subject matter or place in time. Concepts represent the vehicle for students’ inquiry into issues and ideas of 
+personal, local and global significance, providing the means by which they can explore the essence of 
+mathematics.
+Concepts play an important role in mathematics, helping students and teachers to think with increasing 
+complexity as they organize and relate facts and topics. Students use conceptual understandings as they 
+solve problems, analyse issues and evaluate decisions that can have an impact on themselves, their 
+communities and the wider world.
+In DP mathematics courses, conceptual understandings are key to promoting deep learning. The course 
+identifies twelve fundamental concepts which relate with varying emphasis to each of the five topics. 
+Teachers may identify and develop additional concepts to meet local circumstances and national or state 
+curriculum requirements. Teachers can use these concepts to develop connections throughout the 
+curriculum.
+Each topic in this guide begins by stating the essential understanding of the topic and highlighting relevant 
+concepts fundamental to the topic. This is followed by suggested conceptual understandings relevant to 
+the content within the topic, although this list is not intended to be prescriptive or exhaustive.
+The concepts
+Concepts promote the development of a broad, balanced, conceptual and connected curriculum. They 
+represent big ideas that are relevant and facilitate connections within topics, across topics and also to other 
+subjects within the DP.
+The twelve concepts identified below support conceptual understanding, can inform units of work and can 
+help to organize teaching and learning. Explanations of each of these concepts in a mathematical context 
+have also been provided.
+Approximation This concept refers to a quantity or a representation which is nearly but not exactly 
+correct.
+Change This concept refers to a variation in size, amount or behaviour.
+Equivalence This concept refers to the state of being identically equal or interchangeable, applied 
+to statements, quantities or expressions.
+Generalization This concept refers to a general statement made on the basis of specific examples.
+Modelling This concept refers to the way in which mathematics can be used to represent the real 
+world.
+Patterns This concept refers to the underlying order, regularity or predictability of the elements 
+of a mathematical system.
+Quantity This concept refers to an amount or number.
+Relationships This concept refers to the connection between quantities, properties or concepts; 
+these connections may be expressed as models, rules or statements. Relationships 
+provide opportunities for students to explore patterns in the world around them.
+Introduction
+Approaches to the teaching and learning of 
+mathematics: applications and interpretation
+13Mathematics: applications and interpretation guide
+
+
+Representation This concept refers to using words, formulae, diagrams, tables, charts, graphs and 
+models to represent mathematical information.
+Space This concept refers to the frame of geometrical dimensions describing an entity.
+Systems This concept refers to groups of interrelated elements.
+Validity This concept refers to using well-founded, logical mathematics to come to a true and 
+accurate conclusion or a reasonable interpretation of results.
+Mathematical inquiry
+Approaches to teaching and learning in the DP refer to deliberate strategies, skills and attitudes that 
+permeate the teaching and learning environment. These approaches and tools are intrinsically linked to the 
+IB learner profile, which encourages learning by experimentation, questioning and discovery.
+In the IB classroom, students should regularly learn mathematics by being active participants in learning 
+activities. Teachers should therefore provide students with regular opportunities to learn through 
+mathematical inquiry, by making frequent use of strategies which stimulate students’  critical thinking and 
+problem-solving skills.
+Figure 4
+The cycle of mathematical inquiry
+Approaches to the teaching and learning of mathematics: applications and interpretation
+14 Mathematics: applications and interpretation guide
+
+
+Mathematical modelling
+Mathematical modelling is an important technique used in problem solving, to make sense of the real 
+world. It is often used to help us better understand a situation, to check the effects of change or to inform 
+decision-making. Engaging students in the mathematical modelling process provides them with such 
+opportunities. It is one of the most useful mathematical skills that students will need to be successful in 
+many non-mathematical as well as mathematical courses and careers.
+The mathematical modelling process begins with consideration of a situation that exists in the real world 
+and is not usually artificially created. At this stage assumptions sometimes have to be made in order to 
+simplify the situation to allow modelling to take place. There is often a fine balance needed between the 
+simplicity and the accuracy of the model.
+The first stage involves choosing or fitting a suitable mathematical representation to the context. This 
+representation is tested to evaluate whether or not it returns expected results. The testing stage allows the 
+results returned by the model to be reflected upon and adaptations to be made to the model if necessary. 
+Once a satisfactory model is established it can be applied or used to explain a situation, check the effects of 
+change or to inform decision-making.
+The process of mathematical modelling requires critical reflection throughout the process.
+More advice and guidance on the process of mathematical modelling is given in the teacher support 
+material. The cycle of mathematical modelling is illustrated below.
+Figure 5
+The cycle of mathematical modelling
+Approaches to the teaching and learning of mathematics: applications and interpretation
+15Mathematics: applications and interpretation guide
+
+
+Use of technology
+The use of technology is an integral part of DP mathematics courses. Developing an appreciation of how 
+developments in technology and mathematics have influenced each other is one of the aims of the courses 
+and using technology accurately, appropriately and efficiently both to explore new ideas and to solve 
+problems is one of the assessment objectives. Learning how to use different forms of technology is an 
+important skill in mathematics and time has been allowed in each topic of the syllabus and through the 
+“toolkit” in order to do this.
+Technology is a powerful tool in mathematics and in recent years increased student and teacher access to 
+this technology has supported and advanced the teaching and learning of mathematics. Discerning use of 
+technology can make more mathematics accessible and motivating to a greater number of students.
+Teachers can use technology to support and enhance student understanding in many ways including:
+• to bring out teaching points
+• to address misconceptions
+• to aid visualization
+• to enhance understanding of concepts that would otherwise be restricted by lengthy numerical 
+calculations or algebraic manipulation
+• to support students in making conjectures and checking generalizations
+• to explicitly make the links between different mathematical representations or approaches.
+Students can also use technology to engage with the learning process in many ways including the 
+following:
+• to develop and enhance their own personal conceptual understanding
+• to search for patterns
+• to test conjectures or generalizations
+• to justify interpretations
+• to collaborate on project based work
+• to help organize and analyse data.
+In the classroom teachers and students can use technology, working individually or collaboratively, to 
+explore mathematical concepts. The key to successful learning of mathematics with technology is the fine 
+balance between the teacher and student use of technology, with carefully chosen use of technology to 
+support the understanding and the communication of the mathematics itself.
+Many topics within the DP mathematics courses lend themselves to the use of technology. Graphical 
+calculators, dynamic graphing software, spreadsheets, simulations, apps, dynamic geometry software and 
+interactive whiteboard software are just a few of the many kinds of technology available to support the 
+teaching and learning of mathematics.
+Within the guide the term “technology” is used for any form of calculator, hardware or software that may be 
+available in the classroom. The terms “analysis” and “analytic approach” are generally used in the guide to 
+indicate an algebraic approach that may not require the use of technology. It is important to note there will 
+be restrictions on which technology may be used in examinations, which will be detailed in relevant 
+documents.
+As teachers tie together the unifying themes of mathematical inquiry, mathematical modelling and the 
+use of technology, they should begin by providing substantial guidance and then gradually encourage 
+students to become more independent as inquirers and thinkers. DP students should learn to become 
+strong communicators through the language of mathematics. Teachers should create a learning 
+environment in which students are comfortable as risk takers and inquiry, conceptual understanding, 
+collaboration and use of technology feature prominently.
+Approaches to the teaching and learning of mathematics: applications and interpretation
+16 Mathematics: applications and interpretation guide
+
+
+For further information on “Approaches to teaching and learning in the Diploma Programme”, please refer 
+to the publication The Diploma Programme: From principles into practice. To support teachers, a variety of 
+resources can be found on the programme resource centre and details of workshops for professional 
+development are available on the public website.
+Format of the syllabus
+The format of the syllabus section of the mathematics guides is the same for each subject and each level. 
+This structure gives prominence and focus to the aspects of teaching and learning, including conceptual 
+understandings, content and enrichment.
+There are five topics and within these topics there are sub-topics. The five topics are:
+• number and algebra
+• functions
+• geometry and trigonometry
+• probability and statistics
+• calculus
+Each topic begins with a section on conceptual understandings. Details are given of which of the twelve key 
+concepts could be used to relate to the topic. Essential understandings give details of the overall aims of 
+the topic and then content-specific conceptual understandings give specific details of the aims and 
+purpose of the topic and sub-topics.
+Each topic begins with SL content which is common to both Mathematics: analysis and approaches and to 
+Mathematics: applications and interpretation.
+Each topic has SL content followed by advanced higher level (AHL) content. Teachers should ensure that 
+they cover all SL content with SL students, and all SL and AHL content with HL students. The topics are 
+structured so that an informal introduction in the common content may be formalized in the SL content 
+and then extended further in the AHL content. For example the extension of the set of numbers for which 
+something is defined could be integers in the common content, positive real numbers in the SL content 
+and all real and complex numbers in the AHL content.
+The content of all five topics at the appropriate level must be taught, however not necessarily in the order 
+in which they appear in the guide. Teachers are expected to construct a course of study that addresses the 
+needs of their students and includes, where necessary, the topics noted in prior learning. Guidance on 
+structuring a course is given in the teacher support material.
+Each topic has three sections:
+Content: The column on the left contains details of the sub-topics to be covered.
+Guidance, clarification and syllabus links: The column on the right contains more detailed information 
+on specific sub-topics listed in the content column. This clarifies the content for the examination and 
+highlights where sub-topics relate to other sub-topics within the syllabus.
+Connections: Each topic also contains a short section that provides suggestions for further discussion, 
+including real-life examples and ideas for further investigation.
+These suggestions are only a guide and are not exhaustive. A downloadable version of these sections is also 
+available, so that additional connections can be added to the ones already suggested by the IB. Potential 
+areas for connections include:
+• Other contexts: Real-life examples
+• Links to other subjects: Suggested links to other subjects within the DP. Note that these are correct 
+for the current (2019) published versions of the guides
+• Aim: Links to the aims of the course
+• International-mindedness: Suggestions for discussions
+• TOK: Suggestions for discussions
+• Links to TSM: Links to the teacher support materials (TSM) in the “in practice” section of the website
+Approaches to the teaching and learning of mathematics: applications and interpretation
+17Mathematics: applications and interpretation guide
+
+
+• Link to specimen paper: Links to specific questions exemplifying how topics might be examined
+• Use of technology: Suggestions as to how technology can be used in the classroom to enhance 
+understanding
+• Links to websites: Suggested websites for use in teaching or learning activities
+• Enrichment: Suggestions for further discussions that may reinforce understanding.
+Planning your course
+The syllabus as provided in the subject guide is not intended to be a teaching order. Instead it provides 
+detail of what must be covered by the end of the course. A school should develop a scheme of work that 
+best works for its own students. For example, the scheme of work could be developed to match available 
+resources, to take into account prior learning and experience, or in conjunction with other local 
+requirements.
+HL teachers may choose to teach the SL content and AHL content at the same time or teach them in a spiral 
+fashion, by teaching the SL content first and revisiting these topics through the delivery of the AHL topics 
+after this.
+However the course is planned, adequate time must be provided for examination revision. Time must also 
+be given to students to reflect on their learning experience and their growth as learners.
+Time allocation
+The recommended teaching time for HL courses is 240 hours and for SL courses is 150 hours. For 
+mathematics courses at both SL and HL, it is expected that 30 hours will be spent on developing inquiry, 
+modelling and investigation skills. This includes up to 15 hours for work on the internal assessment which is 
+called the exploration. The time allocations given in this guide are approximate, and are intended to 
+suggest how the remaining 210 hours for HL and 120 hours for SL allowed for the teaching of the syllabus 
+might be allocated. The exact time spent on each topic depends on a number of factors, including the 
+background knowledge and level of preparedness of each student. Teachers should therefore adjust these 
+timings to correspond to the needs of their students.
+The Toolkit
+Time has been allocated within the teaching hours for students to undertake the types of activities that 
+mathematicians in the real world undertake and to allow students time to develop the skill of thinking like a 
+mathematician–in other words providing students with a mathematical toolkit which will allow them to 
+approach any type of mathematical problem. Underpinning this are the six pedagogical approaches to 
+teaching and the five approaches to learning which support all IB programmes. This time gives students 
+opportunities in the classroom for undertaking an inquiry-based approach and focusing on conceptual 
+understanding of the content, developing their awareness of mathematics in local and global contexts, 
+gives them opportunities for teamwork and collaboration as well as time to reflect upon their own learning 
+of mathematics.
+Students should be encouraged to actively identify skills that they might add to their personal mathematics 
+toolkit. Teachers are encouraged to make explicit where these skills might transfer across areas of 
+mathematics content and allow students to reflect upon where these skills transfer to other subjects the 
+student is studying.
+The teacher support material (TSM) contains a section referred to as the “toolkit”. This section contains ideas 
+and resources that teachers can use with their students to encourage the development of mathematical 
+thinking skills. These resources have been developed by teachers for use in their own classrooms and are 
+not exhaustive.
+Approaches to the teaching and learning of mathematics: applications and interpretation
+18 Mathematics: applications and interpretation guide
+
+
+Formulae and the formula booklet
+Formulae are only included in this guide document where there may be some ambiguity. All formulae 
+required for the course are in the mathematics formula booklet.
+From the beginning of the course it is recommended that teachers ensure students are familiar with the 
+contents of the formula booklet by either giving students a printed copy or making an electronic copy 
+available to them.
+Each student is required to have access to a clean copy of the formula booklet during the examination. For 
+each examination, it is the responsibility of the school to download a copy of the formula booklet from IBIS 
+or the programme resource centre, check that there are no printing errors, and ensure that there are 
+sufficient copies available for all students.
+Command terms and notation list
+Teachers and students need to be familiar with the IB notation list and the command terms, as these will be 
+used without explanation in the examination papers. The “Glossary of command terms” and “Notation list” 
+appear as appendices in this guide.
+Approaches to the teaching and learning of mathematics: applications and interpretation
+19Mathematics: applications and interpretation guide
+
+
+The aims of all DP mathematics courses are to enable students to:
+1. develop a curiosity and enjoyment of mathematics, and appreciate its elegance and power
+2. develop an understanding of the concepts, principles and nature of mathematics
+3. communicate mathematics clearly, concisely and confidently in a variety of contexts
+4. develop logical and creative thinking, and patience and persistence in problem solving to instil 
+confidence in using mathematics
+5. employ and refine their powers of abstraction and generalization
+6. take action to apply and transfer skills to alternative situations, to other areas of knowledge and to 
+future developments in their local and global communities
+7. appreciate how developments in technology and mathematics influence each other
+8. appreciate the moral, social and ethical questions arising from the work of mathematicians and the 
+applications of mathematics
+9. appreciate the universality of mathematics and its multicultural, international and historical 
+perspectives
+10. appreciate the contribution of mathematics to other disciplines, and as a particular “area of 
+knowledge” in the TOK course
+11. develop the ability to reflect critically upon their own work and the work of others
+12. independently and collaboratively extend their understanding of mathematics.
+Introduction
+Aims
+20 Mathematics: applications and interpretation guide
+
+
+Problem solving is central to learning mathematics and involves the acquisition of mathematical skills and 
+concepts in a wide range of situations, including non-routine, open-ended and real-world problems. Having 
+followed a DP mathematics course, students will be expected to demonstrate the following:
+1. Knowledge and understanding: Recall, select and use their knowledge of mathematical facts, 
+concepts and techniques in a variety of familiar and unfamiliar contexts.
+2. Problem solving: Recall, select and use their knowledge of mathematical skills, results and models in 
+both abstract and real-world contexts to solve problems.
+3. Communication and interpretation: Transform common realistic contexts into mathematics; 
+comment on the context; sketch or draw mathematical diagrams, graphs or constructions both on 
+paper and using technology; record methods, solutions and conclusions using standardized notation; 
+use appropriate notation and terminology.
+4. Technology: Use technology accurately, appropriately and efficiently both to explore new ideas and 
+to solve problems.
+5. Reasoning: Construct mathematical arguments through use of precise statements, logical deduction 
+and inference and by the manipulation of mathematical expressions.
+6. Inquiry approaches: Investigate unfamiliar situations, both abstract and from the real world, 
+involving organizing and analyzing information, making conjectures, drawing conclusions, and testing 
+their validity.
+Introduction
+Assessment objectives
+21Mathematics: applications and interpretation guide
+
+
+Assessment objectives Paper 1
+%
+Paper 2
+%
+Paper 3
+%
+HL only
+Exploration
+%
+Knowledge and understanding 20-30 20-30 10-20 5-15
+Problem solving 20-30 20-30 20-30 5-20
+Communication and interpretation 20-30 20-30 20-30 15-25
+Technology 20-35 20-35 10-30 10-20
+Reasoning 5-15 10-20 10-20 5-25
+Inquiry approaches 5-15 5-20 15-30 25-35
+Introduction
+Assessment objectives in practice
+22 Mathematics: applications and interpretation guide

@@ -1,0 +1,2143 @@
+Syllabus component Suggested teaching hours
+SL HL
+Topic 1—Number and algebra 19 39
+Topic 2—Functions 21 32
+Topic 3— Geometry and trigonometry 25 51
+Topic 4—Statistics and probability 27 33
+Topic 5 —Calculus 28 55
+The toolkit and the mathematical exploration
+Investigative, problem-solving and modelling skills 
+development leading to an individual exploration. The 
+exploration is a piece of written work that involves 
+investigating an area of mathematics.
+30 30
+Total teaching hours 150 240
+All topics are compulsory. Students must study all the sub-topics in each of the topics in the syllabus as 
+listed in this guide. Students are also required to be familiar with the topics listed as prior learning.
+Syllabus
+Syllabus outline
+23Mathematics: analysis and approaches guide
+
+
+Prior to starting a DP mathematics course students have extensive previous mathematical experiences, but 
+these will vary. It is expected that mathematics students will be familiar with the following topics before 
+they take the examinations because questions assume knowledge of them. Teachers must therefore ensure 
+that any topics listed here that are unknown to their students at the start of the course are included at an 
+early stage. Teachers should also take into account the existing mathematical knowledge of their students 
+to design an appropriate course of study for mathematics. This table lists the knowledge, together with the 
+syllabus content, that is essential for successful completion of the mathematics course.
+Number and algebra
+• Number systems: natural numbers ℕ; integers, ℤ; rationals, ℚ, and irrationals; real numbers, ℝ
+• SI (Système International) units for mass, time, length, area and volume and their derived units, eg. 
+speed
+• Rounding, decimal approximations and significant figures, including appreciation of errors
+• Definition and elementary treatment of absolute value (modulus), a
+• Use of addition, subtraction, multiplication and division using integers, decimals and fractions, 
+including order of operations
+• Prime numbers, factors (divisors) and multiples
+• Greatest common factor (divisor) and least common multiples (HL only)
+• Simple applications of ratio, percentage and proportion
+• Manipulation of algebraic expressions, including factorization and expansion
+• Rearranging formulae
+• Calculating the numerical value of expressions by substitution
+• Evaluating exponential expressions with simple positive exponents
+• Evaluating exponential expressions with rational exponents (HL only)
+• Use of inequalities, < , ≤ , > , ≥ , intervals on the real number line
+• Simplification of simple expressions involving roots (surds or radicals)
+• Rationalising the denominator (HL only)
+• Expression of numbers in the form a× 10k, 1 ≤ a < 10, k∈ℤ
+• Familiarity with commonly accepted world currencies
+• Solution of linear equations and inequalities
+• Solution of quadratic equations and inequalities with rational coefficients (HL only)
+• Solving systems of linear equations in two variables
+• Concept and basic notation of sets. Operations on sets: union and intersection
+• Addition and subtraction of algebraic fractions (HL only).
+Functions
+• Graphing linear and quadratic functions using technology
+• Mappings of the elements of one set to another. Illustration by means of sets of ordered pairs, tables, 
+diagrams and graphs.
+Syllabus
+Prior learning topics
+24 Mathematics: analysis and approaches guide
+
+
+Geometry and trigonometry
+• Pythagoras’ theorem and its converse
+• Mid-point of a line segment and the distance between two points in the Cartesian plane
+• Geometric concepts: point, line, plane, angle
+• Angle measurement in degrees, compass directions
+• The triangle sum theorem
+• Right-angle trigonometry, including simple applications for solving triangles
+• Three-figure bearings
+• Simple geometric transformations: translation, reflection, rotation, enlargement
+• The circle, its centre and radius, area and circumference. The terms diameter, arc, sector, chord, 
+tangent and segment
+• Perimeter and area of plane figures. Properties of triangles and quadrilaterals, including 
+parallelograms, rhombuses, rectangles, squares, kites and trapezoids; compound shapes
+• Familiarity with three-dimensional shapes (prisms, pyramids, spheres, cylinders and cones)
+• Volumes and surface areas of cuboids, prisms, cylinders, and compound three-dimensional shapes
+Statistics and probability
+• The collection of data and its representation in bar charts, pie charts, pictograms, and line graphs
+• Obtaining simple statistics from discrete data, including mean, median, mode, range
+• Calculating probabilities of simple events
+• Venn diagrams for sorting data
+• Tree diagrams
+Calculus
+Speed   =   distance
+time
+Prior learning topics
+25Mathematics: analysis and approaches guide
+
+
+Topic 1: Number and algebra
+Concepts
+Essential understandings:
+Number and algebra allow us to represent patterns, show equivalencies and make generalizations which 
+enable us to model real-world situations. Algebra is an abstraction of numerical concepts and employs 
+variables which allow us to solve mathematical problems. 
+Suggested concepts embedded in this topic:
+Generalization, representation, modelling, equivalence, patterns, quantity
+AHL: Validity, systems.
+Content-specific conceptual understandings:
+• Modelling real-life situations with the structure of arithmetic and geometric sequences and series 
+allows for prediction, analysis and interpretation.
+• Different representations of numbers enable equivalent quantities to be compared and used in 
+calculations with ease to an appropriate degree of accuracy.
+• Numbers and formulae can appear in different, but equivalent, forms, or representations, which can 
+help us to establish identities.
+• Formulae are a generalization made on the basis of specific examples, which can then be extended to 
+new examples.
+• Logarithm laws provide the means to find inverses of exponential functions which model real-life 
+situations.
+• Patterns in numbers inform the development of algebraic tools that can be applied to find unknowns.
+• The binomial theorem is a generalization which provides an efficient method for expanding binomial 
+expressions.
+AHL
+• Proof serves to validate mathematical formulae and the equivalence of identities.
+• Representing partial fractions and complex numbers in different forms allows us to easily carry out 
+seemingly difficult calculations.
+• The solution for systems of equations can be carried out by a variety of equivalent algebraic and 
+graphical methods.
+SL content
+Recommended teaching hours: 19
+The aim of the SL content of the number and algebra topic is to introduce students to numerical concepts 
+and techniques which, combined with an introduction to arithmetic and geometric sequences and series, 
+can be used for financial and other applications. Students will also be introduced to the formal concept of 
+proof.
+Sections SL1.1 to SL1.5 are content common to Mathematics: analysis and approaches and Mathematics: 
+applications and interpretation.
+Syllabus
+Syllabus content
+26 Mathematics: analysis and approaches guide
+
+
+SL 1.1
+Content Guidance, clarification and syllabus links
+Operations with numbers in the form a× 10k where 
+1 ≤ a < 10 and k is an integer.
+Calculator or computer notation is not acceptable. 
+For example, 5.2E30 is not acceptable and should be 
+written as 5.2 × 1030.
+Connections
+Other contexts: Very large and very small numbers, for example astronomical distances, sub-atomic 
+particles in physics, global financial figures
+Links to other subjects: Chemistry (Avogadro’s  number); physics (order of magnitude); biology 
+(microscopic measurements); sciences group subjects (uncertainty and precision of measurement)
+International-mindedness: The history of number from Sumerians and its development to the present 
+Arabic system
+TOK: Do the names that we give things impact how we understand them? For instance, what is the impact 
+of the fact that some large numbers are named, such as the googol and the googolplex, while others are 
+represented in this form?
+Download connections template
+SL 1.2
+Content Guidance, clarification and syllabus links
+Arithmetic sequences and series.
+Use of the formulae for the nth term and the sum of 
+the first n terms of the sequence.
+Use of sigma notation for sums of arithmetic 
+sequences.
+Spreadsheets, GDCs and graphing software may be 
+used to generate and display sequences in several 
+ways.
+If technology is used in examinations, students will 
+be expected to identify the first term and the 
+common difference.
+Applications. Examples include simple interest over a number of 
+years.
+Analysis, interpretation and prediction where a 
+model is not perfectly arithmetic in real life.
+Students will need to approximate common 
+differences.
+Connections
+International-mindedness: The chess legend (Sissa ibn Dahir); Aryabhatta is sometimes considered the 
+“father of algebra”–compare with alKhawarizmi; the use of several alphabets in mathematical notation (for 
+example the use of capital sigma for the sum).
+TOK: Is all knowledge concerned with identification and use of patterns? Consider Fibonacci numbers and 
+connections with the golden ratio.
+Download connections template
+SL 1.3
+Content Guidance, clarification and syllabus links
+Geometric sequences and series.
+Use of the formulae for the n th term and the sum of 
+the first n terms of the sequence.
+Spreadsheets, GDCs and graphing software may be 
+used to generate and display sequences in several 
+ways.
+Syllabus content
+27Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Use of sigma notation for the sums of geometric 
+sequences.
+If technology is used in examinations, students will 
+be expected to identify the first term and the ratio.
+Link to: models/functions in topic 2 and regression 
+in topic 4.
+Applications. Examples include the spread of disease, salary 
+increase and decrease and population growth.
+Connections
+Links to other subjects: Radioactive decay, nuclear physics, charging and discharging capacitors (physics).
+TOK: How do mathematicians reconcile the fact that some conclusions seem to conflict with our intuitions? 
+Consider for instance that a finite area can be bounded by an infinite perimeter.
+Download connections template
+SL 1.4
+Content Guidance, clarification and syllabus links
+Financial applications of geometric sequences and 
+series:
+• compound interest
+• annual depreciation.
+Examination questions may require the use of 
+technology, including built-in financial packages.
+The concept of simple interest may be used as an 
+introduction to compound interest.
+Calculate the real value of an investment with an 
+interest rate and an inflation rate.
+In examinations, questions that ask students to 
+derive the formula will not be set.
+Compound interest can be calculated yearly, half-
+yearly, quarterly or monthly.
+Link to: exponential models/functions in topic 2.
+Connections
+Other contexts: Loans.
+Links to other subjects: Loans and repayments (economics and business management).
+Aim 8: Ethical perceptions of borrowing and lending money.
+International-mindedness: Do all societies view investment and interest in the same way?
+TOK: How have technological advances affected the nature and practice of mathematics? Consider the use 
+of financial packages for instance.
+Enrichment: The concept of e can be introduced through continuous compounding, (1 + 1
+n )
+n
+→ e , as 
+n → ∞ , however this will not be examined.
+Download connections template
+SL 1.5
+Content Guidance, clarification and syllabus links
+Laws of exponents with integer exponents. Examples:
+Syllabus content
+28 Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+53 × 5−6 = 5 −3 , 64 ÷ 63 = 6, (23)−4 = 2 −12 , 
+(2x)4 = 16 x4, 2x−3 = 2
+x3 .
+Introduction to logarithms with base 10 and e.
+Numerical evaluation of logarithms using 
+technology.
+Awareness that ax=b is equivalent to logab = x, 
+that b> 0, and logex = ln x.
+Connections
+Other contexts: Richter scale and decibel scale.
+Links to other subjects: Calculation of pH and buffer solutions (chemistry)
+TOK: Is mathematics invented or discovered? For instance, consider the number e or logarithms–did they 
+already exist before man defined them? (This topic is an opportunity for teachers to generate reflection on 
+“the nature of mathematics”).
+Download connections template
+SL 1.6
+Content Guidance, clarification and syllabus links
+Simple deductive proof, numerical and algebraic; 
+how to lay out a left-hand side to right-hand side 
+(LHS to RHS) proof.
+The symbols and notation for equality and identity.
+Example: Show that 1
+4 + 1
+12 = 1
+3 . Show that the 
+algebraic generalisation of this is 
+1
+m + 1 + 1
+m2 + m ≡ 1
+m
+LHS to RHS proofs require students to begin with 
+the left-hand side expression and transform this 
+using known algebraic steps into the expression on 
+the right-hand side (or vice versa).
+Example: Show that (x − 3) 2 + 5 ≡ x2 − 6 x + 14.
+Students will be expected to show how they can 
+check a result including a check of their own results.
+Connections
+TOK: Is mathematical reasoning different from scientific reasoning, or reasoning in other Areas of 
+Knowledge?
+Download connections template
+SL 1.7
+Content Guidance, clarification and syllabus links
+Laws of exponents with rational exponents. a
+1
+m = a
+m
+, if m is even this refers to the positive root. 
+For example: 1634= 8.
+Laws of logarithms.
+logaxy = log ax + logay
+loga
+x
+y = log ax − log ay
+y = ax ⇔ x = log ay; logaa = 1 , loga1 = 0 ,
+a,   y   ∈   ℕ,   x   ∈   ℤ
+Link to: introduction to logarithms (SL1.5)
+Syllabus content
+29Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+logaxm = mlogax
+for a,   x,   y > 0
+Examples: 3
+4 = log 168, log32 = 5log2
+log24 = log8 + log3
+log3
+10
+4 = log 310 − log 34
+log435 = 5log 43
+Link to: logarithmic and exponential graphs (SL2.9)
+Change of base of a logarithm.
+logax = logbx
+logba , for a,   b,   x > 0 Examples: 
+log47 = ln7
+ln4
+log25125 = log5125
+log525   ( = 3
+2 )
+Solving exponential equations, including using 
+logarithms. Examples: ( 1
+3 )
+x
+= 9 x + 1, 2x − 1 = 10.
+Link to: using logarithmic and exponential graphs 
+(SL2.9).
+Connections
+Links to other subjects: pH, buffer calculations and finding activation energy from experimental data 
+(chemistry).
+TOK: How have seminal advances, such as the development of logarithms, changed the way in which 
+mathematicians understand the world and the nature of mathematics?
+Download connections template
+SL 1.8
+Content Guidance, clarification and syllabus links
+Sum of infinite convergent geometric sequences. Use of |r| < 1 and modulus notation.
+Link to: geometric sequences and series (SL1.3).
+Connections
+TOK: Is it possible to know about things of which we can have no experience, such as infinity?
+Download connections template
+SL 1.9
+Content Guidance, clarification and syllabus links
+The binomial theorem:
+expansion of (a + b)n, n ∈ ℕ.
+Counting principles may be used in the 
+development of the theorem.
+Use of Pascal’s triangle and Cnr. Crn should be found using both the formula and 
+technology.
+Example: Find r when Cr
+6 = 20, using a table of 
+values generated with technology.
+Syllabus content
+30 Mathematics: analysis and approaches guide
+
+
+Connections
+Aim 8: Ethics in mathematics–Pascal’s  triangle. Attributing the origin of a mathematical discovery to the 
+wrong mathematician.
+International-mindedness: The properties of “Pascal’s triangle” have been known in a number of different 
+cultures long before Pascal. (for example the Chinese mathematician Yang Hui).
+TOK: How have notable individuals shaped the development of mathematics as an area of knowledge? 
+Consider Pascal and “his” triangle.
+Download connections template
+AHL content
+Recommended teaching hours: 20
+The aim of the AHL content in the number and algebra topic is to extend and build upon the aims, concepts 
+and skills from the SL content. It introduces students to some important techniques for expansion, 
+simplification and solution of equations. Complex numbers are introduced and students will extend their 
+knowledge of formal proof to proof by mathematical induction, proof by contradiction and proof by 
+counterexample.
+AHL 1.10
+Content Guidance, clarification and syllabus links
+Counting principles, including permutations and 
+combinations.
+Not required: Permutations where some objects are 
+identical. Circular arrangements.
+Extension of the binomial theorem to fractional and 
+negative indices, ie (a + b)n,   n ∈ ℚ.
+(a + b)n = ( a(1 + b
+a ))
+n
+= an(1 + b
+a )
+n
+, n∈ℚ
+Link to: power series expansions (AHL5.19)
+Not required: Proof of binomial theorem.
+Connections
+Other contexts: Finding approximations to 2
+Aim 8: How many different tickets are possible in a lottery? What does this tell us about the ethics of selling 
+lottery tickets to those who do not understand the implications of these large numbers?
+International-mindedness: The properties of “Pascal’s triangle” have been known in a number of different 
+cultures long before Pascal (for example the Chinese mathematician Yang Hui).
+TOK: What counts as understanding in mathematics? Is it more than just getting the right answer?
+Download connections template
+AHL 1.11
+Content Guidance, clarification and syllabus links
+Partial fractions. Maximum of two distinct linear terms in the 
+denominator, with degree of numerator less than 
+the degree of the denominator.
+Example: 2x + 1
+x2 + x − 2 ≡ 1
+(x − 1) + 1
+(x + 2) .
+Link to: use of partial fractions to rearrange the 
+integrand (AHL5.15).
+Syllabus content
+31Mathematics: analysis and approaches guide
+
+
+Connections
+Download connections template
+AHL 1.12
+Content Guidance, clarification and syllabus links
+Complex numbers: the number i, where i2 = − 1 .
+Cartesian form z = a + bi; the terms real part, 
+imaginary part, conjugate, modulus and argument.
+The complex plane. The complex plane is also known as the Argand 
+diagram.
+Link to: vectors (AHL3.12).
+Connections
+Other contexts: Concepts in electrical engineering— impedance as a combination of resistance and 
+reactance, also apparent power as a combination of real and reactive powers. These combinations take the 
+form a+bi.
+TOK: How does language shape knowledge? For example, do the words “imaginary” and “complex” make 
+the concepts more difficult than if they had different names?
+Download connections template
+AHL 1.13
+Content Guidance, clarification and syllabus links
+Modulus–argument (polar) form:
+z = r(cosθ + isinθ) = rcisθ.
+Euler form:
+z=reiθ
+Sums, products and quotients in Cartesian, polar or 
+Euler forms and their geometric interpretation.
+The ability to convert between Cartesian, modulus-
+argument (polar) and Euler form is expected.
+Connections
+Other contexts: Concepts in electrical engineering–phase angle/shift, power factor and apparent power as 
+a complex quantity in polar form.
+TOK: Why might it be said that eiπ + 1 = 0  is beautiful? What is the place of beauty and elegance in 
+mathematics? What about the place of creativity?
+Download connections template
+AHL 1.14
+Content Guidance, clarification and syllabus links
+Complex conjugate roots of quadratic and 
+polynomial equations with real coefficients.
+Complex roots occur in conjugate pairs.
+De Moivre’s theorem and its extension to rational 
+exponents.
+Includes proof by induction for the case where 
+n∈ℤ+; awareness that it is true for n∈ℝ.
+Syllabus content
+32 Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Powers and roots of complex numbers. Link to: sum and product of roots of polynomial 
+equations (AHL 2.12), compound angle identities 
+(AHL 3.10).
+Connections
+TOK: Could we ever reach a point where everything important in a mathematical sense is known? Reflect 
+on the creation of complex numbers before their applications were known.
+Enrichment: Can De Moivre’s theorem be extended to all n?
+Download connections template
+AHL 1.15
+Content Guidance, clarification and syllabus links
+Proof by mathematical induction. Proof should be incorporated throughout the course 
+where appropriate.
+Mathematical induction links specifically to a wide 
+variety of topics, for example complex numbers, 
+differentiation, sums of sequences and divisibility.
+Proof by contradiction. Examples: Irrationality of 3; irrationality of the 
+cube root of 5; Euclid’s proof of an infinite number of 
+prime numbers; if a is a rational number and b is an 
+irrational number, then a+b is an irrational number.
+Use of a counterexample to show that a statement is 
+not always true.
+Example: Consider the set P of numbers of the form 
+n2 + 41n + 41, n ∈ ℕ, show that not all elements of 
+P are prime.
+Example: Show that the following statement is not 
+always true: there are no positive integer solutions 
+to the equation x2 + y2 = 10.
+It is not sufficient to state the counterexample alone. 
+Students must explain why their example is a 
+counterexample.
+Connections
+Other contexts: The Four-colour theorem
+International-mindedness: How did the Pythagoreans find out that 2 is irrational?
+TOK: What is the role of the mathematical community in determining the validity of a mathematical proof? 
+Do proofs provide us with completely certain knowledge? What is the difference between the inductive 
+method in science and proof by induction in mathematics?
+Download connections template
+AHL 1.16
+Content Guidance, clarification and syllabus links
+Solutions of systems of linear equations (a 
+maximum of three equations in three unknowns), 
+These systems should be solved using both 
+algebraic and technological methods, for example 
+row reduction or matrices.
+Syllabus content
+33Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+including cases where there is a unique solution, an 
+infinite number of solutions or no solution.
+Systems which have no solution(s) are inconsistent.
+Finding a general solution for a system with an 
+infinite number of solutions.
+Link to: intersection of lines and planes (AHL 3.18).
+Connections
+TOK: Mathematics, Sense, Perception and Reason: If we can find solutions in higher dimensions can we 
+reason that these spaces exist beyond our sense perception?
+Download connections template
+Topic 2: Functions
+Concepts
+Essential understandings
+Models are depictions of real-life events using expressions, equations or graphs while a function is defined 
+as a relation or expression involving one or more variables. Creating different representations of functions 
+to model the relationships between variables, visually and symbolically as graphs, equations and tables 
+represents different ways to communicate mathematical ideas.
+Suggested concepts embedded in this topic:
+Representation, relationships, space, quantity, equivalence.
+AHL: Systems, patterns.
+Content-specific conceptual understandings:
+• Different representations of functions, symbolically and visually as graphs, equations and tables 
+provide different ways to communicate mathematical relationships.
+• The parameters in a function or equation correspond to geometrical features of a graph and can 
+represent physical quantities in spatial dimensions.
+• Moving between different forms to represent functions allows for deeper understanding and provides 
+different approaches to problem solving.
+• Our spatial frame of reference affects the visible part of a function and by changing this “window” can 
+show more or less of the function to best suit our needs.
+• Equivalent representations of quadratic functions can reveal different characteristics of the same 
+relationship.
+• Functions represent mappings that assign to each value of the independent variable (input) one and 
+only one dependent variable (output).
+AHL
+• Extending results from a specific case to a general form can allow us to apply them to a larger system.
+• Patterns can be identified in behaviours which can give us insight into appropriate strategies to model 
+or solve them.
+• The intersection of a system of equations may be represented graphically and algebraically and 
+represents the solution that satisfies the equations.
+SL content
+Recommended teaching hours: 21
+Syllabus content
+34 Mathematics: analysis and approaches guide
+
+
+The aim of the SL content in the functions topic is to introduce students to the important unifying theme of 
+a function in mathematics and to apply functional methods to a variety of mathematical situations.
+Throughout this topic students should be given the opportunity to use technology, such as graphing 
+packages and graphing calculators to develop and apply their knowledge of functions, rather than using 
+elaborate analytic techniques.
+On examination papers:
+• questions may be set requiring the graphing of functions that do not explicitly appear on the syllabus
+• the domain will be the largest possible domain for which a function is defined unless otherwise stated; 
+this will usually be the real numbers
+Sections SL2.1 to SL2.4 are content common to both Mathematics: analysis and approaches and 
+Mathematics: applications and interpretation.
+SL 2.1
+Content Guidance, clarification and syllabus links
+Different forms of the equation of a straight line.
+Gradient; intercepts.
+Lines with gradients m1 and m2
+Parallel lines m1=m2.
+Perpendicular lines m1 × m2 = − 1 .
+y = mx + c (gradient-intercept form).
+ax + by + d = 0 (general form).
+y − y1 = m(x − x1) (point-gradient form).
+Calculate gradients of inclines such as mountain 
+roads, bridges, etc.
+Connections
+Other contexts: Gradients of mountain roads, gradients of access ramps.
+Links to other subjects: Exchange rates and price and income elasticity, demand and supply curves 
+(economics); graphical analysis in experimental work (sciences group subjects).
+TOK: Descartes showed that geometric problems could be solved algebraically and vice versa. What does 
+this tell us about mathematical representation and mathematical knowledge?
+Download connections template
+SL 2.2
+Content Guidance, clarification and syllabus links
+Concept of a function, domain, range and graph.
+Function notation, for example f (x),   v(t),   C(n).
+The concept of a function as a mathematical model.
+Example: f (x) = 2 − x, the domain is x≤ 2, 
+range is f (x) ≥ 0 .
+A graph is helpful in visualizing the range.
+Informal concept that an inverse function reverses 
+or undoes the effect of a function.
+Inverse function as a reflection in the line y=x, and 
+the notation f−1(x).
+Example: Solving f (x) = 10  is equivalent to finding 
+f−1(10).
+Students should be aware that inverse functions 
+exist for one to one functions; the domain of f−1(x)is 
+equal to the range of f(x).
+Connections
+Other contexts: Temperature and currency conversions.
+Links to other subjects: Currency conversions and cost functions (economics and business management); 
+projectile motion (physics).
+Aim 8: What is the relationship between real-world problems and mathematical models?
+Syllabus content
+35Mathematics: analysis and approaches guide
+
+
+International-mindedness: The development of functions by Rene Descartes (France), Gottfried Wilhelm 
+Leibnitz (Germany) and Leonhard Euler (Switzerland); the notation for functions was developed by a 
+number of different mathematicians in the 17th and 18th centuries–how did the notation we use today 
+become internationally accepted?
+TOK: Do you think mathematics or logic should be classified as a language?
+Download connections template
+SL 2.3
+Content Guidance, clarification and syllabus links
+The graph of a function; its equation y=f(x). Students should be aware of the difference between 
+the command terms “draw” and “sketch”.
+Creating a sketch from information given or a 
+context, including transferring a graph from screen 
+to paper.
+Using technology to graph functions including their 
+sums and differences.
+All axes and key features should be labelled.
+This may include functions not specifically 
+mentioned in topic 2.
+Connections
+Links to other subjects: Sketching and interpreting graphs (sciences group subjects, geography, 
+economics).
+TOK: Does studying the graph of a function contain the same level of mathematical rigour as studying the 
+function algebraically? What are the advantages and disadvantages of having different forms and symbolic 
+language in mathematics?
+Download connections template
+SL 2.4
+Content Guidance, clarification and syllabus links
+Determine key features of graphs. Maximum and minimum values; intercepts; 
+symmetry; vertex; zeros of functions or roots of 
+equations; vertical and horizontal asymptotes using 
+graphing technology.
+Finding the point of intersection of two curves or 
+lines using technology.
+Connections
+Links to other subjects: Identification and interpretation of key features of graphs (sciences group 
+subjects, geography, economics); production possibilities curve model, market equilibrium (economics).
+International-mindedness: Bourbaki group analytical approach versus the Mandlebrot visual approach.
+Use of technology: Graphing technology with sliders to determine the effects of altering parameters and 
+variables.
+Download connections template
+Syllabus content
+36 Mathematics: analysis and approaches guide
+
+
+SL 2.5
+Content Guidance, clarification and syllabus links
+Composite functions. ( f ∘g)(x) = f (g(x))
+Identity function. Finding the inverse function 
+f−1(x).
+( f ∘ f −1 )(x) = ( f −1 ∘ f )(x) = x
+The existence of an inverse for one-to-one functions.
+Link to: concept of inverse function as a reflection in 
+the line y=x (SL 2.2).
+Connections
+TOK: Do you think mathematics or logic should be classified as a language?
+Download connections template
+SL 2.6
+Content Guidance, clarification and syllabus links
+The quadratic function f (x) = ax2 + bx + c: its 
+graph, y -intercept (0,c). Axis of symmetry.
+The form f (x) = a(x − p)(x − q), x- 
+intercepts (p, 0) and (q, 0).
+The form f (x) = a (x − h)2 + k, vertex (h,k).
+A quadratic graph is also called a parabola.
+Link to: transformations (SL 2.11).
+Candidates are expected to be able to change from 
+one form to another.
+Connections
+Links to other subjects: Kinematics, projectile motion and simple harmonic motion (physics).
+TOK: Are there fundamental differences between mathematics and other areas of knowledge? If so, are 
+these differences more than just methodological differences?
+Download connections template
+SL 2.7
+Content Guidance, clarification and syllabus links
+Solution of quadratic equations and inequalities.
+The quadratic formula.
+Using factorization, completing the square (vertex 
+form), and the quadratic formula.
+Solutions may be referred to as roots or zeros.
+The discriminant Δ = b2 − 4 ac and the nature of the 
+roots, that is, two distinct real roots, two equal real 
+roots, no real roots.
+Example: For the equation 3kx2 + 2x + k = 0, find 
+the possible values of k, which will give two distinct 
+real roots, two equal real roots or no real roots.
+Connections
+Links to other subjects: Projectile motion and energy changes in simple harmonic motion (physics); 
+equilibrium equations (chemistry).
+International-mindedness: The Babylonian method of multiplication: ab = (a + b)2 − a2 − b2
+2 . Sulba Sutras 
+in ancient India and the Bakhshali Manuscript contained an algebraic formula for solving quadratic 
+equations.
+Syllabus content
+37Mathematics: analysis and approaches guide
+
+
+TOK: What are the key concepts that provide the building blocks for mathematical knowledge?
+Use of technology: Dynamic graphing software with a slider.
+Enrichment: Deriving the quadratic formula by completing the square.
+Download connections template
+SL 2.8
+Content Guidance, clarification and syllabus links
+The reciprocal function f (x) = 1
+x , x ≠ 0 : its graph 
+and self-inverse nature.
+Rational functions of the form f (x) = ax + b
+cx + d  and 
+their graphs.
+Equations of vertical and horizontal asymptotes.
+Sketches should include all horizontal and vertical 
+asymptotes and any intercepts with the axes.
+Link to: transformations (SL2.11).
+Vertical asymptote: x = − d
+c ;
+Horizontal asymptote: y=ac.
+Connections
+International-mindedness: The development of functions, Rene Descartes (France), Gottfried Wilhelm 
+Leibniz (Germany) and Leonhard Euler (Switzerland).
+TOK: What are the implications of accepting that mathematical knowledge changes over time?
+Download connections template
+SL 2.9
+Content Guidance, clarification and syllabus links
+Exponential functions and their graphs:
+f (x) = ax, a> 0, f (x) = e x
+Logarithmic functions and their graphs:
+f (x) = log ax, x> 0, f (x) = ln x, x> 0.
+Link to: financial applications of geometric 
+sequences and series (SL 1.4).
+Relationships between these functions:
+ax = e xlna; logaax = x, a,   x > 0,   a ≠ 1
+Exponential and logarithmic functions as inverses of 
+each other.
+Connections
+Links to other subjects: Radioactive decay, charging and discharging capacitors (physics); first order 
+reactions and activation energy (chemistry); growth curves (biology).
+Aim 8: The phrase “exponential growth” is used popularly to describe a number of phenomena. Is ths a 
+misleading use of a mathematical term?
+TOK: What role do “models” play in mathematics? Do they play a different role in mathematics compared to 
+their role in other areas of knowledge?
+Download connections template
+Syllabus content
+38 Mathematics: analysis and approaches guide
+
+
+SL 2.10
+Content Guidance, clarification and syllabus links
+Solving equations, both graphically and analytically. Example: e2x − 5e x + 4 = 0  .
+Link to: function graphing skills (SL 2.3).
+Use of technology to solve a variety of equations, 
+including those where there is no appropriate 
+analytic approach.
+Examples: ex = sin x
+x4 + 5x − 6 = 0
+.
+Applications of graphing skills and solving 
+equations that relate to real-life situations.
+Link to: exponential growth (SL 2.9)
+Connections
+Other contexts: Radioactive decay and population growth and decay, compound interest, projectile 
+motion, braking distances.
+Links to other subjects: Radioactive decay (physics); modelling (sciences group subjects); production 
+possibilities curve model (economics).
+TOK: What assumptions do mathematicians make when they apply mathematics to real-life situations?
+Download connections template
+SL 2.11
+Content Guidance, clarification and syllabus links
+Transformations of graphs.
+Translations: y = f (x) + b; y = f (x − a).
+Reflections (in both axes): y = − f (x); y = f ( − x).
+Vertical stretch with scale factor p: y = p f(x).
+Horizontal stretch with scale factor 1q: y = f (qx).
+Students should be aware of the relevance of the 
+order in which transformations are performed.
+Dynamic graphing packages could be used to 
+investigate these transformations.
+Composite transformations. Example: Using y=x2 to sketch y = 3 x2 + 2
+Link to: composite functions (SL2.5).
+Not required at SL: transformations of the form 
+f (ax + b).
+Connections
+Links to other subjects: Shift in supply and demand curves (Economics); induced emf and simple 
+harmonic motion (physics).
+Download connections template
+AHL content
+Recommended teaching hours: 11
+The aim of the AHL functions topic is to extend and build upon the aims, concepts and skills from the SL 
+content. It introduces students to useful techniques for finding and using roots of polynomials, graphing 
+and interpreting rational functions, additional ways to classify functions, solving inequations and solving 
+equations involving modulus notation.
+Syllabus content
+39Mathematics: analysis and approaches guide
+
+
+HL students may be required to use technology to solve equations where there is no appropriate analytic 
+approach.
+AHL 2.12
+Content Guidance, clarification and syllabus links
+Polynomial functions, their graphs and equations; 
+zeros, roots and factors.
+The factor and remainder theorems.
+Sum and product of the roots of polynomial 
+equations. For the polynomial equation: ∑
+r = 0
+n
+arxr = 0,
+the sum is −an− 1an
+the product is ( − 1) na0
+an
+Link to: complex roots of quadratic and polynomial 
+equations (AHL 1.14).
+Connections
+Links to other subjects: Modelling (sciences group subjects)
+TOK: Is it an oversimplification to say that some areas of knowledge give us facts whereas other areas of 
+knowledge give us interpretations?
+Enrichment: Viete’s  theorem in full, “The equation that couldn’t  be solved” quadratic formula reducing a 
+quadratic to a linear, Cardano and Bombelli.
+Download connections template
+AHL 2.13
+Content Guidance, clarification and syllabus links
+Rational functions of the form
+f (x) = ax + b
+cx2 + dx + e , and f (x) = ax2 + bx + c
+dx + e
+The reciprocal function is a particular case.
+Graphs should include all asymptotes (horizontal, 
+vertical and oblique) and any intercepts with axes.
+Dynamic graphing packages could be used to 
+investigate these functions.
+Link to: rational functions (SL 2.8).
+Connections
+International mindedness: Bourbaki group analytical approach versus Mandlebrot visual approach.
+TOK: Does studying the graph of a function contain the same level of mathematical rigour as studying the 
+function algebraically? What are the advantages and disadvantages of having different forms and symbolic 
+language in mathematics?
+Download connections template
+Syllabus content
+40 Mathematics: analysis and approaches guide
+
+
+AHL 2.14
+Content Guidance, clarification and syllabus links
+Odd and even functions. Even: f ( − x) = f (x)
+Odd: f ( − x) = − f (x)
+Includes periodic functions.
+Finding the inverse function, f−1(x),
+including domain restriction.
+Self-inverse functions.
+Connections
+International-mindedness: The notation for functions was developed by a number of different 
+mathematicians in the 17th and 18th centuries. How did the notation we use today become internationally 
+accepted?
+TOK: If systems of notation and measurement are culturally and historically situated, does this mean 
+mathematics cannot be seen as independent of culture?
+Download connections template
+AHL 2.15
+Content Guidance, clarification and syllabus links
+Solutions of g(x) ≥ f (x), both graphically and 
+analytically.
+Graphical or algebraic methods for simple 
+polynomials up to degree 3. Use of technology for 
+these and other functions.
+Connections
+TOK: Are there differences in terms of value that different cultures ascribe to mathematics, or to the relative 
+value that they ascribe to different areas of knowledge?
+Download connections template
+AHL 2.16
+Content Guidance, clarification and syllabus links
+The graphs of the functions, y = | f (x)|
+and 
+y = f (|x|),   y = 1
+f (x) ,   y = f (ax + b),   y = [ f (x)]2.
+Dynamic graphing packages could be used to 
+investigate these transformations.
+Solution of modulus equations and inequalities. Example: |3xarccos(x)| > 1
+Connections
+International-mindedness: The Bourbaki group analytic approach versus Mandlebrot visual approach.
+Download connections template
+Syllabus content
+41Mathematics: analysis and approaches guide
+
+
+Topic 3: Geometry and trigonometry
+Concepts
+Essential understandings:
+Geometry and trigonometry allows us to quantify the physical world, enhancing our spatial awareness in 
+two and three dimensions. This topic provides us with the tools for analysis, measurement and 
+transformation of quantities, movements and relationships.
+Suggested concepts embedded in this topic:
+Generalization, space, relationships, equivalence, representation,
+AHL: Quantity, Modelling.
+Content-specific conceptual understandings:
+• The properties of shapes depend on the dimension they occupy in space.
+• Volume and surface area of shapes are determined by formulae, or general mathematical relationships 
+or rules expressed using symbols or variables.
+• The relationships between the length of the sides and the size of the angles in a triangle can be used 
+to solve many problems involving position, distance, angles and area.
+• Equivalent measurement systems, such as degrees and radians, can be used for angles to facilitate 
+ease of calculation.
+• Different representations of the values of trigonometric relationships, such as exact or approximate, 
+may not be equivalent to one another.
+• The trigonometric functions of angles may be defined on the unit circle, which can visually and 
+algebraically represent the periodic or symmetric nature of their values.
+AHL
+• Position and movement can be modelled in three-dimensional space using vectors.
+• The relationships between algebraic, geometric and vector methods can help us to solve problems 
+and quantify those positions and movements.
+SL content
+Recommended teaching hours: 25
+The aim of the SL content of the geometry and trigonometry topic is to introduce students to geometry in 
+three dimensions and to non right-angled trigonometry. Students will explore the circular functions and 
+use properties and identities to solve problems in abstract and real-life contexts.
+Throughout this topic students should be given the opportunity to use technology such as graphing 
+packages, graphing calculators and dynamic geometry software to develop and apply their knowledge of 
+geometry and trigonometry.
+On examination papers, radian measure should be assumed unless otherwise indicated.
+Sections SL3.1 to SL3.3 are content common to both Mathematics: analysis and approaches and 
+Mathematics: applications and interpretation.
+SL 3.1
+Content Guidance, clarification and syllabus links
+The distance between two points in three-
+dimensional space, and their midpoint.
+In SL examinations, only right-angled trigonometry 
+questions will be set in reference to three-
+dimensional shapes.
+Syllabus content
+42 Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Volume and surface area of three-dimensional solids 
+including right-pyramid, right cone, sphere, 
+hemisphere and combinations of these solids.
+The size of an angle between two intersecting lines 
+or between a line and a plane.
+In problems related to these topics, students should 
+be able to identify relevant right-angled triangles in 
+three-dimensional objects and use them to find 
+unknown lengths and angles.
+Connections
+Other contexts: Architecture and design.
+Links to other subjects: Design technology; volumes of stars and inverse square law (physics).
+TOK: What is an axiomatic system? Are axioms self evident to everybody?
+Download connections template
+SL 3.2
+Content Guidance, clarification and syllabus links
+Use of sine, cosine and tangent ratios to find the 
+sides and angles of right-angled triangles.
+In all areas of this topic, students should be 
+encouraged to sketch well-labelled diagrams to 
+support their solutions.
+Link to: inverse functions (SL2.2) when finding 
+angles.
+The sine rule: a
+sinA = b
+sinB = c
+sinC .
+The cosine rule: c2 = a2 + b2 − 2 abcosC;
+cosC = a2 + b2 − c2
+2ab  .
+Area of a triangle as 1
+2 absinC.
+This section does not include the ambiguous case of 
+the sine rule.
+Connections
+Other contexts: Triangulation, map-making.
+Links to other subjects: Vectors (physics).
+International-mindedness: Diagrams of Pythagoras’  theorem occur in early Chinese and Indian 
+manuscripts. The earliest references to trigonometry are in Indian mathematics; the use of triangulation to 
+find the curvature of the Earth in order to settle a dispute between England and France over Newton’s 
+gravity.
+TOK: Is it ethical that Pythagoras gave his name to a theorem that may not have been his own creation? 
+What criteria might we use to make such a judgment?
+Download connections template
+SL 3.3
+Content Guidance, clarification and syllabus links
+Applications of right and non-right angled 
+trigonometry, including Pythagoras’s theorem.
+Angles of elevation and depression.
+Contexts may include use of bearings.
+Syllabus content
+43Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Construction of labelled diagrams from written 
+statements.
+Connections
+Other contexts: Triangulation, map-making, navigation and radio transmissions. Use of parallax for 
+navigation.
+Links to other subjects: Vectors, scalars, forces and dynamics (physics); field studies (sciences group 
+subjects)
+Aim 8: Who really invented Pythagoras’s theorem?
+Aim 9: In how many ways can you prove Pythagoras’s theorem?
+International-mindedness: The use of triangulation to find the curvature of the Earth in order to settle a 
+dispute between England and France over Newton’s gravity.
+TOK: If the angles of a triangle can add up to less than 180°, 180° or more than 180°, what does this tell us 
+about the nature of mathematical knowledge?
+Download connections template
+SL 3.4
+Content Guidance, clarification and syllabus links
+The circle: radian measure of angles; length of an 
+arc; area of a sector.
+Radian measure may be expressed as exact 
+multiples of π, or decimals.
+Connections
+Links to other subjects: Diffraction patterns and circular motion (physics).
+International-mindedness: Seki Takakazu calculating π to ten decimal places; Hipparchus, Menelaus and 
+Ptolemy; Why are there 360 degrees in a complete turn? Links to Babylonian mathematics.
+TOK: Which is a better measure of angle: radian or degree? What criteria can/do/should mathematicians 
+use to make such decisions?
+Download connections template
+SL 3.5
+Content Guidance, clarification and syllabus links
+Definition of cosθ, sinθ in terms of the unit circle. Includes the relationship between angles in different 
+quadrants.
+Examples: 
+cosx = cos( − x)
+tan(3π − x) = − tan x
+sin(π + x) = − sin x
+Definition of tanθ as sinθcosθ. The equation of a straight line through the origin is 
+y = xtanθ, where θ is the angle formed between the 
+line and positive x-axis.
+Exact values of trigonometric ratios of 0, π6, π4, π3, π2
+and their multiples.
+sin π
+3 = 3
+2 , cos 3π
+4 = − 1
+2 , tan   210° = 3
+3
+Extension of the sine rule to the ambiguous case.
+Syllabus content
+44 Mathematics: analysis and approaches guide
+
+
+Connections
+International-mindedness: The first work to refer explicitly to the sine as a function of an angle is the 
+Aryabhatiya of Aryabhata (ca 510).
+TOK: Trigonometry was developed by successive civilizations and cultures. To what extent is mathematical 
+knowledge embedded in particular traditions or bound to particular cultures? How have key events in the 
+history of mathematics shaped its current form and methods?
+Enrichment: The proof of Pythagoras’ theorem in three dimensions .
+Download connections template
+SL 3.6
+Content Guidance, clarification and syllabus links
+The Pythagorean identity cos2θ + sin2θ = 1.
+Double angle identities for sine and cosine.
+Simple geometrical diagrams and dynamic graphing 
+packages may be used to illustrate the double angle 
+identities (and other trigonometric identities).
+The relationship between trigonometric ratios. Examples:
+Given sinθ, find possible values of tanθ, (without 
+finding θ).
+Given cosx = 3
+4  and x is acute, find sin 2x, (without 
+finding x).
+Connections
+Download connections template
+SL 3.7
+Content Guidance, clarification and syllabus links
+The circular functions sinx, cosx, and tanx; 
+amplitude, their periodic nature, and their graphs
+Composite functions of the form
+f (x) = asin(b(x + c)) + d.
+Trigonometric functions may have domains given in 
+degrees or radians.
+Examples: f (x) = tan( x − π
+4 ),
+f (x) = 2cos(3( x − 4)) + 1 .
+Transformations. Example: y= sinx used to obtain y = 3sin2 x by a 
+stretch of scale factor 3 in the y direction and a 
+stretch of scale factor 12 in the x direction.
+Link to: transformations of graphs (SL2.11).
+Real-life contexts. Examples: height of tide, motion of a Ferris wheel.
+Students should be aware that not all regression 
+technology produces trigonometric functions in the 
+form f (x) = asin (b (x + c)) + d.
+Connections
+Links to other subjects: Simple harmonic motion (physics).
+TOK: Music can be expressed using mathematics. What does this tell us about the relationship between 
+music and mathematics?
+Syllabus content
+45Mathematics: analysis and approaches guide
+
+
+Download connections template
+SL 3.8
+Content Guidance, clarification and syllabus links
+Solving trigonometric equations in a finite interval, 
+both graphically and analytically. Examples: 
+2sinx = 1,   0 ≤ x ≤ 2π
+2sin2x = 3cos x,   0° ≤ x ≤ 180°
+2tan(3(x − 4)) = 1,   − π ≤ x ≤ 3π
+Equations leading to quadratic equations in 
+sinx, cos x  or tanx.
+Examples: 2sin2x + 5cosx + 1 = 0  for 0 ≤ x ≤ 4π ,
+2sinx = cos2 x,   − π ≤ x ≤ π
+Not required: The general solution of trigonometric 
+equations.
+Connections
+Download connections template
+AHL content
+Recommended teaching hours: 26
+The aim of the AHL content in the geometry and trigonometry topic is to extend and build upon the aims, 
+concepts and skills from the SL content. It further explores the circular functions, introduces some 
+important trigonometric identities, and introduces vectors in two and three dimensions. This will facilitate 
+problem-solving involving points, lines and planes.
+On examination papers radian measure should be assumed unless otherwise indicated.
+AHL 3.9
+Content Guidance, clarification and syllabus links
+Definition of the reciprocal trigonometric ratios secθ, 
+cosecθ and cotθ.
+Pythagorean identities: 1 + tan2θ = sec 2θ
+1 + cot2θ = cosec2θ
+The inverse functions f (x) = arcsin x,
+f (x) = arccos x, f (x) = arctan x; their domains and 
+ranges; their graphs.
+Connections
+International-mindedness: The origin of degrees in the mathematics of Mesopotamia and why we use 
+minutes and seconds for time; the origin of the word sine.
+TOK: What is the relationship between concepts and facts? To what extent do the concepts that we use 
+shape the conclusions that we reach?
+Download connections template
+Syllabus content
+46 Mathematics: analysis and approaches guide
+
+
+AHL 3.10
+Content Guidance, clarification and syllabus links
+Compound angle identities.
+Double angle identity for tan.
+Derivation of double angle identities from 
+compound angle identities.
+Link to: De Moivre’s theorem (AHL1.14).
+Connections
+Other contexts: Triangulation used by GPSs (global positioning systems); concepts in electrical 
+engineering including generation of sinusoidal voltage.
+Download connections template
+AHL 3.11
+Content Guidance, clarification and syllabus links
+Relationships between trigonometric functions and 
+the symmetry properties of their graphs.
+sin(π − θ) = sin θ
+cos(π − θ) = − cos θ
+tan(π − θ) = − tan θ
+Link to: the unit circle (SL3.5), odd and even 
+functions (AHL2.14), compound angles (AHL3.10).
+Connections
+Links to other subjects: Simple harmonic motion graphs (physics)
+TOK: Mathematics and knowledge claims: how can there be an infinite number of discrete solutions to an 
+equation?
+Download connections template
+AHL 3.12
+Content Guidance, clarification and syllabus links
+Concept of a vector; position vectors; displacement 
+vectors.
+Representation of vectors using directed line 
+segments.
+Base vectors i,   j,   k.
+Components of a vector:
+v =
+v1
+v2
+v3
+= v1i + v2 j + v3k.
+Algebraic and geometric approaches to the 
+following:
+• the sum and difference of two vectors
+• the zero vector 0, the vector −v
+• multiplication by a scalar, kv, parallel vectors
+Distance between points A and B is the magnitude 
+of AB→
+Syllabus content
+47Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+• magnitude of a vector, |v|; unit vectors, v|v|
+• position vectors OA→ = a,   OB→ = b
+• displacement vector AB→ = b − a
+Proofs of geometrical properties using vectors.
+Connections
+Links to other subjects: Vectors, scalars, forces and dynamics (physics).
+Aim 8: Vectors are used to solve many problems in position location. This can be used to save a lost sailor or 
+destroy a building with a laser-guided bomb.
+TOK: Vectors are used to solve many problems in position location. This can be used to save a lost sailor or 
+destroy a building with a laser-guided bomb. To what extent does possession of knowledge carry with it an 
+ethical obligation?
+Download connections template
+AHL 3.13
+Content Guidance, clarification and syllabus links
+The definition of the scalar product of two vectors.
+The angle between two vectors.
+Perpendicular vectors; parallel vectors.
+Applications of the properties of the scalar product
+v ·w = w ·v;
+u · (v + w) = u ·v + u ·w;
+(kv) ·w = k(v ·w);
+v ·v = v 2.
+v ·w = v w cosθ, where θ is the angle between v and 
+w.
+For non-zero vectors v ·w = 0 is equivalent to the 
+vectors being perpendicular; for parallel vectors 
+|v ⋅w| = | v||w|.
+Connections
+Links to other subjects: Forces and dynamics (physics).
+TOK: The nature of mathematics: why this definition of scalar product?
+Enrichment: Proof of the cosine rule using the dot product.
+Download connections template
+AHL 3.14
+Content Guidance, clarification and syllabus links
+Vector equation of a line in two and three 
+dimensions:
+r = a + λb.
+Relevance of a (position) and b (direction).
+Knowledge of the following forms for equations of 
+lines:
+Parametric form:
+x = x0 + λl, y = y0 + λm, z = z0 + λn.
+Syllabus content
+48 Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Cartesian form:
+x − x0
+l = y − y0
+m = z − z0
+n  .
+The angle between two lines. Using the scalar product of the two direction 
+vectors.
+Simple applications to kinematics. Interpretation of λ as time and b as velocity, with |b|
+representing speed.
+Connections
+Other contexts: Modelling linear motion in three dimensions; navigational devices, for example GPS.
+TOK: Why might it be argued that one form of representation is superior to another? What criteria might a 
+mathematician use in making such an argument?
+Download connections template
+AHL 3.15
+Content Guidance, clarification and syllabus links
+Coincident, parallel, intersecting and skew lines, 
+distinguishing between these cases.
+Points of intersection.
+Skew lines are non-parallel lines that do not 
+intersect in three-dimensional space.
+Connections
+TOK: How can there be an infinite number of discrete solutions to an equation? What does this suggest 
+about the nature of mathematical knowledge and how it compares to knowledge in other disciplines?
+Download connections template
+AHL 3.16
+Content Guidance, clarification and syllabus links
+The definition of the vector product of two vectors. The vector product is also known as the “cross 
+product”.
+v × w = v w sinθn, where θ
+is the angle between v and w, and n is the unit 
+normal vector whose direction is given by the right-
+hand screw rule.
+Properties of the vector product. v × w = − w × v;
+u × (v + w) = u × v + u × w;
+(kv) × w = k(v × w);
+v × v = 0.
+For non-zero vectors v × w = 0 is equivalent to the 
+vectors being parallel.
+Geometric interpretation of |v×w| Use of |v×w| to find the area of a parallelogram 
+(and hence a triangle).
+Syllabus content
+49Mathematics: analysis and approaches guide
+
+
+Connections
+Links to other subjects: Magnetic forces and fields (physics).
+TOK: To what extent is certainty attainable in mathematics? Is certainty attainable, or desirable, in other 
+areas of knowledge?
+Download connections template
+AHL 3.17
+Content Guidance, clarification and syllabus links
+Vector equations of a plane:
+r = a + λb + μc, where b and c are non-parallel 
+vectors within the plane.
+r ·n = a ·n, where n is a normal to the plane and a is 
+the position vector of a point on the plane.
+Cartesian equation of a plane ax + by + cz = d.
+Connections
+Download connections template
+AHL 3.18
+Content Guidance, clarification and syllabus links
+Intersections of: a line with a plane; two planes; 
+three planes.
+Angle between: a line and a plane; two planes.
+Finding intersections by solving equations; 
+geometrical interpretation of solutions.
+Link to: solutions of systems of linear equations 
+(AHL 1.16).
+Connections
+TOK: Mathematics and the knower: are symbolic representations of three-dimensional objects easier to 
+deal with than visual representations? What does this tell us about our knowledge of mathematics in other 
+dimensions?
+Download connections template
+Topic 4: Statistics and probability
+Concepts
+Essential understandings:
+Statistics is concerned with the collection, analysis and interpretation of data and the theory of probability 
+can be used to estimate parameters, discover empirical laws, test hypotheses and predict the occurrence of 
+events. Statistical representations and measures allow us to represent data in many different forms to aid 
+interpretation.
+Probability enables us to quantify the likelihood of events occurring and so evaluate risk. Both statistics and 
+probability provide important representations which enable us to make predictions, valid comparisons and 
+informed decisions. These fields have power and limitations and should be applied with care and critically 
+Syllabus content
+50 Mathematics: analysis and approaches guide
+
+
+questioned to differentiate between the theoretical and the empirical/observed. Probability theory allows 
+us to make informed choices, to evaluate risk, and to make predictions about seemingly random events.
+Suggested concepts embedded in this topic:
+Quantity, validity, approximation, generalization.
+AHL: Change, systems.
+Content-specific conceptual understandings:
+• Organizing, representing, analysing and interpreting data and utilizing different statistical tools 
+facilitates prediction and drawing of conclusions.
+• Different statistical techniques require justification and the identification of their limitations and 
+validity.
+• Approximation in data can approach the truth but may not always achieve it.
+• Some techniques of statistical analysis, such as regression, standardization or formulae, can be applied 
+in a practical context to apply to general cases.
+• Modelling through statistics can be reliable, but may have limitations.
+AHL
+• Properties of probability density functions can be used to identify measure of central tendency such as 
+mean, mode and median.
+• Probability methods such as Bayes theorem can be applied to real-world systems, such as medical 
+studies or economics, to inform decisions and to better understand outcomes.
+SL content
+Recommended teaching hours: 27
+The aim of the SL content in the statistics and probability topic is to introduce students to the important 
+concepts, techniques and representations used in statistics and probability. Students should be given the 
+opportunity to approach this topic in a practical way, to understand why certain techniques are used and to 
+interpret the results. The use of technology such as simulations, spreadsheets, statistics software and 
+statistics apps can greatly enhance this topic.
+It is expected that most of the calculations required will be carried out using technology, but explanations 
+of calculations by hand may enhance understanding. The emphasis is on understanding and interpreting 
+the results obtained, in context.
+In examinations students should be familiar with how to use the statistics functionality of allowed 
+technology.
+At SL the data set will be considered to be the population unless otherwise stated.
+Sections SL4.1 to SL4.9 are content common to both Mathematics: analysis and approaches and 
+Mathematics: applications and interpretation.
+SL 4.1
+Content Guidance, clarification and syllabus links
+Concepts of population, sample, random sample, 
+discrete and continuous data.
+This is designed to cover the key questions that 
+students should ask when they see a data set/
+analysis.
+Reliability of data sources and bias in sampling. Dealing with missing data, errors in the recording of 
+data.
+Interpretation of outliers. Outlier is defined as a data item which is more than 
+1.5 × interquartile range (IQR) from the nearest 
+quartile.
+Syllabus content
+51Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Awareness that, in context, some outliers are a valid 
+part of the sample but some outlying data items 
+may be an error in the sample.
+Link to: box and whisker diagrams (SL4.2) and 
+measures of dispersion (SL4.3).
+Sampling techniques and their effectiveness. Simple random, convenience, systematic, quota and 
+stratified sampling methods.
+Connections
+Links to other subjects: Descriptive statistics and random samples (biology, psychology, sports exercise 
+and health science, environmental systems and societies, geography, economics; business management); 
+research methodologies (psychology).
+Aim 8: Misleading statistics; examples of problems caused by absence of representative samples, for 
+example Google flu predictor, US presidential elections in 1936, Literary Digest v George Gallup, Boston 
+“pot-hole” app.
+International-mindedness: The Kinsey report–famous sampling techniques.
+TOK: Why have mathematics and statistics sometimes been treated as separate subjects? How easy is it to 
+be misled by statistics? Is it ever justifiable to purposely use statistics to mislead others?
+Download connections template
+SL 4.2
+Content Guidance, clarification and syllabus links
+Presentation of data (discrete and continuous): 
+frequency distributions (tables).
+Class intervals will be given as inequalities, without 
+gaps.
+Histograms.
+Cumulative frequency; cumulative frequency 
+graphs; use to find median, quartiles, percentiles, 
+range and interquartile range (IQR).
+Frequency histograms with equal class intervals.
+Not required: Frequency density histograms.
+Production and understanding of box and whisker 
+diagrams.
+Use of box and whisker diagrams to compare two 
+distributions, using symmetry, median, interquartile 
+range or range. Outliers should be indicated with a 
+cross.
+Determining whether the data may be normally 
+distributed by consideration of the symmetry of the 
+box and whiskers.
+Connections
+Links to other subjects: Presentation of data (sciences, individuals and societies).
+International-mindedness: Discussion of the different formulae for the same statistical measure (for 
+example, variance).
+TOK: What is the difference between information and data? Does “data” mean the same thing in different 
+areas of knowledge?
+Download connections template
+Syllabus content
+52 Mathematics: analysis and approaches guide
+
+
+SL 4.3
+Content Guidance, clarification and syllabus links
+Measures of central tendency (mean, median and 
+mode).
+Estimation of mean from grouped data.
+Calculation of mean using formula and technology.
+Students should use mid-interval values to estimate 
+the mean of grouped data.
+Modal class. For equal class intervals only.
+Measures of dispersion (interquartile range, 
+standard deviation and variance).
+Calculation of standard deviation and variance of 
+the sample using only technology, however hand 
+calculations may enhance understanding.
+Variance is the square of the standard deviation.
+Effect of constant changes on the original data. Examples: If three is subtracted from the data items, 
+then the mean is decreased by three, but the 
+standard deviation is unchanged.
+If all the data items are doubled, the mean is 
+doubled and the standard deviation is also doubled.
+Quartiles of discrete data. Using technology. Awareness that different 
+methods for finding quartiles exist and therefore the 
+values obtained using technology and by hand may 
+differ.
+Connections
+Other contexts: Comparing variation and spread in populations, human or natural, for example 
+agricultural crop data, social indicators, reliability and maintenance.
+Links to other subjects: Descriptive statistics (sciences and individuals and societies); consumer price 
+index (economics).
+International-mindedness: The benefits of sharing and analysing data from different countries; discussion 
+of the different formulae for variance.
+TOK: Could mathematics make alternative, equally true, formulae? What does this tell us about 
+mathematical truths? Does the use of statistics lead to an over-emphasis on attributes that can be easily 
+measured over those that cannot?
+Download connections template
+SL 4.4
+Content Guidance, clarification and syllabus links
+Linear correlation of bivariate data.
+Pearson’s product-moment correlation coefficient, r.
+Technology should be used to calculate r. However, 
+hand calculations of r may enhance understanding.
+Critical values of r will be given where appropriate.
+Students should be aware that Pearson’s product 
+moment correlation coefficient (r) is only meaningful 
+for linear relationships.
+Scatter diagrams; lines of best fit, by eye, passing 
+through the mean point.
+Positive, zero, negative; strong, weak, no correlation.
+Students should be able to make the distinction 
+between correlation and causation and know that 
+correlation does not imply causation.
+Equation of the regression line of y on x. Technology should be used to find the equation.
+Syllabus content
+53Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Use of the equation of the regression line for 
+prediction purposes.
+Interpret the meaning of the parameters, a and b, in 
+a linear regression y = ax + b.
+Students should be aware:
+• of the dangers of extrapolation
+• that they cannot always reliably make a 
+prediction of x from a value of y, when using a y
+on x line.
+Connections
+Other contexts: Linear regressions where correlation exists between two variables. Exploring cause and 
+dependence for categorical variables, for example, on what factors might political persuasion depend?
+Links to other subjects: Curves of best fit, correlation and causation (sciences group subjects); scatter 
+graphs (geography).
+Aim 8: The correlation between smoking and lung cancer was “discovered” using mathematics. Science 
+had to justify the cause.
+TOK: Correlation and causation–can we have knowledge of cause and effect relationships given that we 
+can only observe correlation? What factors affect the reliability and validity of mathematical models in 
+describing real-life phenomena?
+Download connections template
+SL 4.5
+Content Guidance, clarification and syllabus links
+Concepts of trial, outcome, equally likely outcomes, 
+relative frequency, sample space (U) and event.
+The probability of an event A is P(A) = n(A)
+n(U) .
+The complementary events A and A′
+(not A).
+Sample spaces can be represented in many ways, for 
+example as a table or a list.
+Experiments using coins, dice, cards and so on, can 
+enhance understanding of the distinction between 
+experimental (relative frequency) and theoretical 
+probability.
+Simulations may be used to enhance this topic.
+Expected number of occurrences. Example: If there are 128 students in a class and the 
+probability of being absent is 0.1, the expected 
+number of absent students is 12.8.
+Connections
+Other contexts: Actuarial studies and the link between probability of life spans and insurance premiums, 
+government planning based on likely projected figures, Monte Carlo methods.
+Links to other subjects: Theoretical genetics and Punnett squares (biology); the position of a particle 
+(physics).
+Aim 8: The ethics of gambling.
+International-mindedness: The St Petersburg paradox; Chebyshev and Pavlovsky (Russian).
+TOK: To what extent are theoretical and experimental probabilities linked? What is the role of emotion in 
+our perception of risk, for example in business, medicine and travel safety?
+Use of technology: Computer simulations may be useful to enhance this topic.
+Download connections template
+Syllabus content
+54 Mathematics: analysis and approaches guide
+
+
+SL 4.6
+Content Guidance, clarification and syllabus links
+Use of Venn diagrams, tree diagrams, sample space 
+diagrams and tables of outcomes to calculate 
+probabilities.
+Combined events: 
+P(A ∪ B) = P( A) + P(B) − P( A ∩ B).
+Mutually exclusive events: P(A ∩ B) = 0 .
+The non-exclusivity of “or”.
+Conditional probability: P(A | B) = P(A ∩ B)
+P(B) . An alternate form of this is:
+P(A ∩ B) = P( B)P(A | B).
+Problems can be solved with the aid of a Venn 
+diagram, tree diagram, sample space diagram or 
+table of outcomes without explicit use of formulae.
+Probabilities with and without replacement.
+Independent events: P(A ∩ B) = P( A)P(B).
+Connections
+Aim 8: The gambling issue: use of probability in casinos. Could or should mathematics help increase 
+incomes in gambling?
+TOK: Can calculation of gambling probabilities be considered an ethical application of mathematics? 
+Should mathematicians be held responsible for unethical applications of their work?
+Download connections template
+SL 4.7
+Content Guidance, clarification and syllabus links
+Concept of discrete random variables and their 
+probability distributions.
+Expected value (mean), for discrete data.
+Applications.
+Probability distributions will be given in the 
+following ways:
+X 1 2 3 4 5
+P(X = x) 0 . 1 0 . 2 0 . 15 0 . 05 0 . 5
+P(X = x) = 1
+18 (4 + x) for x ∈ {1, 2, 3}
+E(X) = 0  indicates a fair game where X represents 
+the gain of a player.
+Connections
+Other contexts: Games of chance.
+Aim 8: Why has it been argued that theories based on the calculable probabilities found in casinos are 
+pernicious when applied to everyday life (for example, economics)?
+TOK: What do we mean by a “fair” game? Is it fair that casinos should make a profit?
+Download connections template
+Syllabus content
+55Mathematics: analysis and approaches guide
+
+
+SL 4.8
+Content Guidance, clarification and syllabus links
+Binomial distribution.
+Mean and variance of the binomial distribution.
+Situations where the binomial distribution is an 
+appropriate model.
+In examinations, binomial probabilities should be 
+found using available technology.
+Not required: Formal proof of mean and variance.
+Link to: expected number of occurrences (SL4.5).
+Connections
+Aim 8: Pascal’s triangle, attributing the origin of a mathematical discovery to the wrong mathematician.
+International-mindedness: The so-called “Pascal’s  triangle” was known to the Chinese mathematician 
+Yang Hui much earlier than Pascal.
+TOK: What criteria can we use to decide between different models?
+Enrichment: Hypothesis testing using the binomial distribution.
+Download connections template
+SL 4.9
+Content Guidance, clarification and syllabus links
+The normal distribution and curve.
+Properties of the normal distribution.
+Diagrammatic representation.
+Awareness of the natural occurrence of the normal 
+distribution.
+Students should be aware that approximately 68% 
+of the data lies between μ±σ, 95% lies between 
+μ± 2σ and 99.7% of the data lies between μ± 3σ.
+Normal probability calculations. Probabilities and values of the variable must be 
+found using technology.
+Inverse normal calculations For inverse normal calculations mean and standard 
+deviation will be given.
+This does not involve transformation to the 
+standardized normal variable z.
+Connections
+Links to other subjects: Normally distributed real-life measurements and descriptive statistics (sciences 
+group subjects, psychology, environmental systems and societies)
+Aim 8: Why might the misuse of the normal distribution lead to dangerous inferences and conclusions?
+International-mindedness: De Moivre’s  derivation of the normal distribution and Quetelet’s  use of it to 
+describe l’homme moyen .
+TOK: To what extent can we trust mathematical models such as the normal distribution? How can we know 
+what to include, and what to exclude, in a model?
+Download connections template
+Syllabus content
+56 Mathematics: analysis and approaches guide
+
+
+SL 4.10
+Content Guidance, clarification and syllabus links
+Equation of the regression line of x on y.
+Use of the equation for prediction purposes. Students should be aware that they cannot always 
+reliably make a prediction of y from a value of x, 
+when using an x on y line.
+Connections
+TOK: Is it possible to have knowledge of the future?
+Download connections template
+SL 4.11
+Content Guidance, clarification and syllabus links
+Formal definition and use of the formulae:
+P(A | B) = P(A ∩ B)
+P(B)  for conditional probabilities, and
+P(A | B) = P( A) = P( A | B′) for independent events.
+An alternate form of this is: P(A ∩ B) = P( B)P(A|B).
+Testing for independence.
+Connections
+Other contexts: Use of probability methods in medical studies to assess risk factors for certain diseases.
+TOK: Given the interdisciplinary nature of many real-world applications of probability, is the division of 
+knowledge into discrete disciplines or areas of knowledge artificial and/or useful?
+Download connections template
+SL 4.12
+Content Guidance, clarification and syllabus links
+Standardization of normal variables (z- values). Probabilities and values of the variable must be 
+found using technology.
+The standardized value (z) gives the number of 
+standard deviations from the mean.
+Inverse normal calculations where mean and 
+standard deviation are unknown.
+Use of z-values to calculate unknown means and 
+standard deviations.
+Connections
+Links to other subjects: The normal distribution (biology); descriptive statistics (psychology).
+Download connections template
+AHL content
+Recommended teaching hours: 6
+The aim of the AHL content in the statistics and probability topic is to extend and build upon the aims, 
+concepts and skills from the SL content. Students are introduced to further conditional probability theory in 
+Syllabus content
+57Mathematics: analysis and approaches guide
+
+
+the form of Bayes Theorem and properties of discrete and continuous random variables are further 
+explored.
+AHL 4.13
+Content Guidance, clarification and syllabus links
+Use of Bayes’ theorem for a maximum of three 
+events.
+Link to: independent events (SL4.6).
+Connections
+Other contexts: Use of probability methods in medical studies to assess risk factors for certain diseases.
+TOK: Does the applicability of knowledge vary across the different areas of knowledge? What would the 
+implications be if the value of all knowledge was measured solely in terms of its applicability?
+Download connections template
+AHL 4.14
+Content Guidance, clarification and syllabus links
+Variance of a discrete random variable. Link to: discrete random variables (SL 4.7)
+Continuous random variables and their probability 
+density functions. 0 ≤ f (x) ≤ 1 , ∫
+−∞
+∞
+f (x)dx = 1 including piecewise 
+functions.
+Mode and median of continuous random variables. For a continuous random variable, a value at which 
+the probability density function has a maximum 
+value is called a mode and for the median: 
+∫
+−∞
+m
+f (x)dx = 1
+2 .
+Mean, variance and standard deviation of both 
+discrete and continuous random variables.
+Use of the notation E(X), E( X2), Var( X),
+where Var(X) = E( X2) − [E( X)]2
+and related formulae.
+Use of E(X) for “fair” games.
+The effect of linear transformations of X. E(aX + b) = aE(X) + b,   Var(aX + b) = a2Var(X)
+Connections
+Other contexts: Other discrete distributions, for example Poisson, may be appropriate for IA/toolkit and 
+further investigation; expected value used in decision making in business, economics and life in general; 
+expected gain to insurance companies.
+TOK: Is mathematics more or less useful than other areas of knowledge for solving problems?
+Enrichment: Is there a relationship between the interquartile range and the standard deviation for a 
+normally distributed data set?
+Download connections template
+Syllabus content
+58 Mathematics: analysis and approaches guide
+
+
+Topic 5: Calculus
+Concepts
+Essential understandings:
+Calculus describes rates of change between two variables and the accumulation of limiting areas. 
+Understanding these rates of change and accumulations allow us to model, interpret and analyze real-
+world problems and situations. Calculus helps us to understand the behaviour of functions and allows us to 
+interpret the features of their graphs.
+Suggested concepts embedded in this topic:
+Change, patterns, relationships, approximation, generalization, space, modelling.
+AHL: Systems, quantity.
+Content-specific conceptual understandings:
+• The derivative may be represented physically as a rate of change and geometrically as the gradient or 
+slope function.
+• Areas under curves can be can be approximated by the sum of the areas of rectangles which may be 
+calculated even more accurately using integration.
+• Examining rates of change close to turning points helps to identify intervals where the function 
+increases/decreases, and identify the concavity of the function.
+• Numerical integration can be used to approximate areas in the physical world.
+• Mathematical modelling can provide effective solutions to real-life problems in optimization by 
+maximizing or minimizing a quantity, such as cost or profit.
+• Derivatives and integrals describe real-world kinematics problems in two and three-dimensional space 
+by examining displacement, velocity and acceleration.
+AHL
+• Some functions may be continuous everywhere but not differentiable everywhere.
+• A finite number of terms of an infinite series can be a general approximation of a function over a 
+limited domain.
+• Limits describe the output of a function as the input approaches a certain value and can represent 
+convergence and divergence.
+• Examining limits of functions at a point can help determine continuity and differentiability at a point.
+SL content
+Recommended teaching hours: 28
+The aim of the SL content in the calculus topic is to introduce students to the concepts and techniques of 
+differential and integral calculus and their applications.
+Throughout this topic students should be given the opportunity to use technology such as graphing 
+packages and graphing calculators to develop and apply their knowledge of calculus.
+Sections SL5.1 to SL5.5 are content common to both Mathematics: analysis and approaches and 
+Mathematics: applications and interpretation.
+SL 5.1
+Content Guidance, clarification and syllabus links
+Introduction to the concept of a limit. Estimation of the value of a limit from a table or 
+graph.
+Syllabus content
+59Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Not required: Formal analytic methods of 
+calculating limits.
+Derivative interpreted as gradient function and as 
+rate of change. Forms of notation: dydx, f′(x), dVdr or dsdt for the first 
+derivative.
+Informal understanding of the gradient of a curve as 
+a limit.
+Connections
+Links to other subjects: Marginal cost, marginal revenue, marginal profit, market structures (economics); 
+kinematics, induced emf and simple harmonic motion (physics); interpreting the gradient of a curve 
+(chemistry)
+Aim 8: The debate over whether Newton or Leibnitz discovered certain calculus concepts; how the Greeks’ 
+distrust of zero meant that Archimedes’ work did not lead to calculus.
+International-mindedness: Attempts by Indian mathematicians (500-1000 CE) to explain division by zero.
+TOK: What value does the knowledge of limits have? Is infinitesimal behaviour applicable to real life? Is 
+intuition a valid way of knowing in mathematics?
+Use of technology: Spreadsheets, dynamic graphing software and GDC should be used to explore ideas of 
+limits, numerically and graphically. Hypotheses can be formed and then tested using technology.
+Download connections template
+SL 5.2
+Content Guidance, clarification and syllabus links
+Increasing and decreasing functions.
+Graphical interpretation of 
+f ′(x) > 0, f ′(x) = 0, f ′(x) < 0.
+Identifying intervals on which functions are 
+increasing ( f ′(x) > 0)  or decreasing ( f ′(x) < 0) .
+Connections
+Download connections template
+SL 5.3
+Content Guidance, clarification and syllabus links
+Derivative of f (x) = axn is f ′(x) = anxn − 1 , n∈ℤ
+The derivative of functions of the form
+f (x) = axn + bxn − 1 . . . .
+where all exponents are integers.
+Connections
+TOK: The seemingly abstract concept of calculus allows us to create mathematical models that permit 
+human feats such as getting a man on the Moon. What does this tell us about the links between 
+mathematical models and reality?
+Download connections template
+Syllabus content
+60 Mathematics: analysis and approaches guide
+
+
+SL 5.4
+Content Guidance, clarification and syllabus links
+Tangents and normals at a given point, and their 
+equations.
+Use of both analytic approaches and technology.
+Connections
+Links to other subjects: Instantaneous velocity and optics, equipotential surfaces (physics); price elasticity 
+(economics).
+TOK: In what ways has technology impacted how knowledge is produced and shared in mathematics? 
+Does technology simply allow us to arrange existing knowledge in new and different ways, or should this 
+arrangement itself be considered knowledge?
+Download connections template
+SL 5.5
+Content Guidance, clarification and syllabus links
+Introduction to integration as anti-differentiation of 
+functions of the form f (x) = axn + bxn − 1 + ....,
+where n ∈ ℤ,   n ≠ − 1
+Students should be aware of the link between anti-
+derivatives, definite integrals and area.
+Anti-differentiation with a boundary condition to 
+determine the constant term. Example: If  dy
+dx = 3 x2 + x and y= 10
+ when x= 1, then y = x3 + 1
+2 x2 + 8.5.
+Definite integrals using technology.
+Area of a region enclosed by a curve y=f(x)
+and the x -axis, where f (x) > 0 .
+Students are expected to first write a correct 
+expression before calculating the area, for example 
+∫
+2
+6
+(3x2 + 4)dx.
+The use of dynamic geometry or graphing software 
+is encouraged in the development of this concept.
+Connections
+Other contexts: Velocity-time graphs
+Links to other subjects: Velocity-time and acceleration-time graphs (physics and sports exercise and 
+health science)
+TOK: Is it possible for an area of knowledge to describe the world without transforming it?
+Download connections template
+SL 5.6
+Content Guidance, clarification and syllabus links
+Derivative of xn (n ∈ ℚ), sinx, cosx, ex and lnx.
+Differentiation of a sum and a multiple of these 
+functions.
+The chain rule for composite functions. Example: f (x) = e (x2 + 2),   f (x) = sin(3 x − 1)
+Syllabus content
+61Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+The product and quotient rules. Link to: composite functions (SL2.5).
+Connections
+Links to other subjects: Uniform circular motion and induced emf (physics).
+TOK: What is the role of convention in mathematics? Is this similar or different to the role of convention in 
+other areas of knowledge?
+Download connections template
+SL 5.7
+Content Guidance, clarification and syllabus links
+The second derivative.
+Graphical behaviour of functions, including the 
+relationship between the graphs of f,f′ and f″.
+Use of both forms of notation, d2ydx2 and f″(x).
+Technology can be used to explore graphs and 
+calculate the derivatives of functions.
+Link to: function graphing skills (SL2.3).
+Connections
+Links to other subjects: Simple harmonic motion (physics).
+Download connections template
+SL 5.8
+Content Guidance, clarification and syllabus links
+Local maximum and minimum points.
+Testing for maximum and minimum.
+Using change of sign of the first derivative or using 
+sign of the second derivative where f ″(x) > 0
+implies a minimum and f ″(x) < 0  implies a 
+maximum.
+Optimization. Examples of optimization may include profit, area 
+and volume.
+Points of inflexion with zero and non-zero gradients. At a point of inflexion, f ″(x) = 0  and changes sign 
+(concavity change), for example f ″(x) = 0  is not a 
+sufficient condition for a point of inflexion for 
+y=x4 at (0, 0).
+Use of the terms “concave-up” for f ″(x) > 0 , and 
+“concave-down” for f ″(x) < 0 .
+Connections
+Other contexts: Profit, area, volume.
+Links to other subjects: Velocity-time graphs, simple harmonic motion graphs and kinematics (physics); 
+allocative efficiency (economics).
+TOK: When mathematicians and historians say that they have explained something, are they using the 
+word “explain” in the same way?
+Download connections template
+Syllabus content
+62 Mathematics: analysis and approaches guide
+
+
+SL 5.9
+Content Guidance, clarification and syllabus links
+Kinematic problems involving displacement s, 
+velocity v, acceleration a and total distance 
+travelled.
+v = ds
+dt ;   a = dv
+dt = d2s
+dt2
+Displacement from t1 to t2 is given by ∫ t1
+t2
+v(t)dt.
+Distance between t1 to t2 is given by ∫ t1
+t2
+|v(t)|dt.
+Speed is the magnitude of velocity.
+Connections
+Links to other subjects: Kinematics (physics).
+International-mindedness: Does the inclusion of kinematics as core mathematics reflect a particular 
+cultural heritage? Who decides what is mathematics?
+TOK: Is mathematics independent of culture? To what extent are we people aware of the impact of culture 
+on what we they believe or know?
+Download connections template
+SL 5.10
+Content Guidance, clarification and syllabus links
+Indefinite integral of xn (n ∈ ℚ), sin x, cos x, 1
+x  and 
+ex.
+∫
+1
+x dx = ln x + C
+The composites of any of these with the linear 
+function ax+b.
+Example: 
+f ′(x) = cos(2 x + 3) ⇒ f (x) = 1
+2 sin(2x + 3) + C
+Integration by inspection (reverse chain rule) or by 
+substitution for expressions of the form:
+∫ kg′(x) f (g(x))dx.
+Examples:
+∫ 2x(x2 + 1)4dx, ∫ 4xsinx2dx, ∫
+sinx
+cosx dx.
+Connections
+Download connections template
+SL 5.11
+Content Guidance, clarification and syllabus links
+Definite integrals, including analytical approach.
+∫
+a
+b
+g′(x)dx = g(b) − g(a).
+The value of some definite integrals can only be 
+found using technology.
+Link to: definite integrals using technology (SL5.5).
+Syllabus content
+63Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Areas of a region enclosed by a curve y=f(x) and 
+the x-axis, where f(x) can be positive or negative, 
+without the use of technology.
+Areas between curves.
+Students are expected to first write a correct 
+expression before calculating the area.
+Technology may be used to enhance understanding 
+of the relationship between integrals and areas.
+Connections
+International-mindedness: Accurate calculation of the volume of a cylinder by Chinese mathematician Liu 
+Hui; Ibn Al Haytham: first mathematician to calculate the integral of a function, in order to find the volume 
+of a paraboloid.
+TOK: Consider f (x) = 1
+x , 1 ≤ x ≤ ∞ . An infinite area sweeps out a finite volume. Can this be reconciled 
+with our intuition? Do emotion and intuition have a role in mathematics?
+Enrichment: Exploring numerical integration techniques such as Simpson’s rule or the trapezoidal rule.
+Download connections template
+AHL content
+Recommended teaching hours: 27
+The aim of the AHL content in the calculus topic is to extend and build upon the aims, concepts and skills 
+from the SL content. Further powerful techniques and useful applications of differential and integral 
+calculus are introduced.
+AHL 5.12
+Content Guidance, clarification and syllabus links
+Informal understanding of continuity and 
+differentiability of a function at a point.
+In examinations, students will not be asked to test 
+for continuity and differentiability.
+Understanding of limits (convergence and 
+divergence).
+Definition of derivative from first principles 
+f ′(x) = lim
+h → 0
+f (x + h) − f (x)
+h .
+Link to: infinite geometric sequences (SL1.8).
+Use of this definition for polynomials only.
+Higher derivatives. Familiarity with the notations dny
+dxn ,   f (n)(x).
+Link to: proof by mathematical induction (AHL 1.15).
+Connections
+Links to other subjects: Theory of the firm (economics).
+International-mindedness: How the Greeks’  distrust of zero meant that Archimedes’  work did not lead to 
+the Calculus; investigate attempts by Indian mathematicians (500-1000AD) to explain division by zero.
+TOK: Does the fact that Leibniz and Newton came across the Calculus at similar times support the 
+argument of Platonists over Constructivists?
+Enrichment: Fundamental theorem of calculus.
+Download connections template
+Syllabus content
+64 Mathematics: analysis and approaches guide
+
+
+AHL 5.13
+Content Guidance, clarification and syllabus links
+The evaluation of limits of the form lim
+x → a
+f (x)
+g(x)  and 
+lim
+x → ∞
+f (x)
+g(x)  using l’Hôpital’s rule or the Maclaurin 
+series.
+The indeterminate forms 00 and ∞∞.
+For example: lim
+θ → 0
+sinθ
+θ = 1 .
+Link to: horizontal asymptotes (SL2.8) .
+Repeated use of l’Hôpital’s rule.
+Connections
+Download connections template
+AHL 5.14
+Content Guidance, clarification and syllabus links
+Implicit differentiation.
+Related rates of change.
+Optimisation problems.
+Appropriate use of the chain rule or implicit 
+differentiation, including cases where the optimum 
+solution is at the end point.
+Connections
+Other contexts: Links between mathematical and physical models.
+TOK: Euler was able to make important advances in mathematical analysis before calculus had been put on 
+a solid theoretical foundation by Cauchy and others. However, some work was not possible until after 
+Cauchy’s  work. What does this suggest about the nature of progress and development in mathematics? 
+How might this be similar/different to the nature of progress and development in other areas of 
+knowledge?
+Download connections template
+AHL 5.15
+Content Guidance, clarification and syllabus links
+Derivatives of tanx,   secx,   cosecx,   cotx,   ax,
+logax, arcsinx, arccosx, arctanx.
+Indefinite integrals of the derivatives of any of the 
+above functions.
+The composites of any of these with a linear 
+function.
+Indefinite integral interpreted as a family of curves.
+Examples: ∫
+1
+x2 + 2x + 5 dx = 1
+2 arctan(x + 1)
+2 + C
+∫ sec2(2x + 5)dx = 1
+2 tan(2x + 5) + C
+Use of partial fractions to rearrange the integrand.
+∫
+1
+x2 + 3x + 2 dx = ln x + 1
+x + 2 + C
+Link to: partial fractions (AHL1.11)
+Connections
+TOK: Can a mathematical statement be true before it has been proven?
+Syllabus content
+65Mathematics: analysis and approaches guide
+
+
+Download connections template
+AHL 5.16
+Content Guidance, clarification and syllabus links
+Integration by substitution. On examination papers, substitutions will be 
+provided if the integral is not of the form 
+∫ kg′(x) f (g(x))dx.
+Link to: integration by substitution (SL5.10).
+Integration by parts. Examples: ∫ xsinxdx,   ∫ lnxdx,   ∫ arcsinxdx
+Repeated integration by parts. Examples:∫ x2exdx and ∫ exsinxdx.
+Connections
+Download connections template
+AHL 5.17
+Content Guidance, clarification and syllabus links
+Area of the region enclosed by a curve and the y-
+axis in a given interval.
+Volumes of revolution about the x-axis or y-axis.
+Connections
+Other contexts: Industrial design.
+Download connections template
+AHL 5.18
+Content Guidance, clarification and syllabus links
+First order differential equations.
+Numerical solution of dy
+dx = f (x, y)
+using Euler’s method.
+xn + 1 = xn + h, where h is a constant.
+Variables separable. Example: the logistic equation 
+dn
+dt = kn(a − n),   a,   k ∈ ℝ
+Link to: partial fractions (AHL1.11) and use of partial 
+fractions to rearrange the integrand (AHL5.15).
+Homogeneous differential equation dy
+dx = f ( y
+x )
+using the substitution y=vx.
+Syllabus content
+66 Mathematics: analysis and approaches guide
+
+
+Content Guidance, clarification and syllabus links
+Solution of y′ +P(x)y = Q(x), using the integrating 
+factor.
+Connections
+Other contexts: Newton’s law of cooling, population growth, carbon dating.
+Links to other subjects: Decay curves (physics); first order reactions (chemistry)
+TOK: Does personal experience play a role in the formation of knowledge claims in mathematics? Does it 
+play a different role in mathematics compared to other areas of knowledge?
+Download connections template
+AHL 5.19
+Content Guidance, clarification and syllabus links
+Maclaurin series to obtain expansions for 
+ex,   sinx,   cosx,   ln(1 + x),   (1 + x)p,
+p∈ℚ.
+Use of simple substitution, products, integration and 
+differentiation to obtain other series.
+Example: for substitution: replace x with x2 to define 
+the Maclaurin series for ex2.
+Example: the expansion of exsinx.
+Maclaurin series developed from differential 
+equations.
+Connections
+International-mindedness: Comparison of the Bourbaki to the Kerala School.
+TOK: Is there always a trade-off between accuracy and simplicity?
+Download connections template
+Syllabus content
+67Mathematics: analysis and approaches guide

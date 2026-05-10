@@ -1,3 +1,15 @@
 {
-  "task.allowAutomaticTasks": "on"
+  "task.allowAutomaticTasks": "on",
+  "python.analysis.diagnosticMode": "openFilesOnly",
+  "python.analysis.indexing": false,
+  "python.analysis.exclude": [
+    "**/.git",
+    "**/.venv",
+    "**/.next",
+    "**/node_modules",
+    "**/.vercel",
+    "**/_backup",
+    "**/dist",
+    "**/build"
+  ]
 }

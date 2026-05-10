@@ -1,0 +1,182 @@
+Command terms for Mathematics: analysis and 
+approaches
+Students should be familiar with the following key terms and phrases used in examination questions, which 
+are to be understood as described below. Although these terms will be used frequently in examination 
+questions, other terms may be used to direct students to present an argument in a specific way.
+Command term Definition
+Calculate Obtain a numerical answer showing the relevant stages in the working.
+Comment Give a judgment based on a given statement or result of a calculation.
+Compare Give an account of the similarities between two (or more) items or 
+situations, referring to both (all) of them throughout.
+Compare and contrast Give an account of similarities and differences between two (or more) items 
+or situations, referring to both (all) of them throughout.
+Construct Display information in a diagrammatic or logical form.
+Contrast Give an account of the differences between two (or more) items or 
+situations, referring to both (all) of them throughout.
+Deduce Reach a conclusion from the information given.
+Demonstrate Make clear by reasoning or evidence, illustrating with examples or practical 
+application.
+Describe Give a detailed account.
+Determine Obtain the only possible answer.
+Differentiate Obtain the derivative of a function.
+Distinguish Make clear the differences between two or more concepts or items.
+Draw Represent by means of a labelled, accurate diagram or graph, using a pencil. 
+A ruler (straight edge) should be used for straight lines. Diagrams should be 
+drawn to scale. Graphs should have points correctly plotted (if appropriate) 
+and joined in a straight line or smooth curve.
+Estimate Obtain an approximate value.
+Explain Give a detailed account including reasons or causes.
+Find Obtain an answer showing relevant stages in the working.
+Hence Use the preceding work to obtain the required result.
+Hence or otherwise It is suggested that the preceding work is used, but other methods could 
+also receive credit.
+Identify Provide an answer from a number of possibilities.
+Integrate Obtain the integral of a function.
+Appendices
+Glossary of command terms
+87Mathematics: analysis and approaches guide
+
+
+Command term Definition
+Interpret Use knowledge and understanding to recognize trends and draw 
+conclusions from given information.
+Investigate Observe, study, or make a detailed and systematic examination, in order to 
+establish facts and reach new conclusions.
+Justify Give valid reasons or evidence to support an answer or conclusion.
+Label Add labels to a diagram.
+List Give a sequence of brief answers with no explanation.
+Plot Mark the position of points on a diagram.
+Predict Give an expected result.
+Prove Use a sequence of logical steps to obtain the required result in a formal way.
+Show Give the steps in a calculation or derivation.
+Show that Obtain the required result (possibly using information given) without the 
+formality of proof. “Show that” questions do not generally require the use of 
+a calculator.
+Sketch Represent by means of a diagram or graph (labelled as appropriate). The 
+sketch should give a general idea of the required shape or relationship, and 
+should include relevant features.
+Solve Obtain the answer(s) using algebraic and/or numerical and/or graphical 
+methods.
+State Give a specific name, value or other brief answer without explanation or 
+calculation.
+Suggest Propose a solution, hypothesis or other possible answer.
+Verify Provide evidence that validates the result.
+Write down Obtain the answer(s), usually by extracting information. Little or no 
+calculation is required. Working does not need to be shown.
+Glossary of command terms
+88 Mathematics: analysis and approaches guide
+
+
+There are various systems of notation in use, and the IB has chosen to adopt a system based on the 
+recommendations of the International Organization for Standardization (ISO). This notation is used in the 
+examination papers for this course without explanation. If forms of notation other than those listed in this 
+guide are used on a particular examination paper, they are defined within the question in which they 
+appear.
+Because students are required to recognize, though not necessarily use, IB notation in examinations, it is 
+recommended that teachers introduce students to this notation at the earliest opportunity. Students are 
+not allowed access to information about this notation in the examinations.
+Students must always use correct mathematical notation, not calculator notation.
+SL and HL
+ℕthe set of positive integers and zero, {0, 1, 2, 3, ...}
+ℤthe set of integers, {0, ± 1, ± 2, ± 3, ...}
+ℤ+ the set of positive integers, {1, 2, 3, ...}
+ℚthe set of rational numbers
+ℚ+ the set of positive rational numbers, {x | x ∈ ℚ, x > 0}
+ℝthe set of real numbers
+ℝ+ the set of positive real numbers, {x | x ∈ ℝ, x > 0}
+{x1,   x2,   . . . } the set with elements x1, x2, ...
+n(A) the number of elements in the finite set A
+{x |       } the set of all x such that
+∈is an element of
+∉is not an element of
+∅the empty (null) set
+Uthe universal set
+∪union
+∩intersection
+A′the complement of the set Aa12, aa to the power 12, square root of a (if a≥ 0 then a≥ 0)
+a1n, ana to the power of 1n, nth root of a (if a≥ 0 then an≥ 0)
+a− n = 1
+an
+a to the power of −n, reciprocal of anxthe modulus or absolute value of x, that is {  x   for x ≥ 0,  x ∈ ℝ
+− x   for x < 0,  x ∈ ℝ
+Appendices
+Notation list
+89Mathematics: analysis and approaches guide
+
+
+≡identity
+≈is approximately equal to
+> is greater than
+≥is greater than or equal to
+< is less than
+≤is less than or equal to
+≯is not greater than
+≮is not less than
+⇒implies
+⇔implies and is implied by
+unthe nth term of a sequence or series
+dthe common difference of an arithmetic sequence
+rthe common ratio of a geometric sequence
+Snthe sum of the first n terms of a sequence, u1 + u2 + ... + un
+S∞the sum to infinity of a sequence, u1 + u2 + ...
+∑i= 1nui
+u1 + u2 + . . . + un
+n!n(n − 1)( n − 2) . . . 3 × 2 × 1
+nCr n!
+r!(n − r)!
+∆the discriminant of a quadratic equation, Δ = b2 − 4 ac
+f(x) the image of x under the function ff−1 the inverse function of the function ff∘g the composite function of f and gdydx
+the derivative of y with respect to xf′(x) the derivative of f(x) with respect to xd2ydx2
+the second derivative of y with respect to xf′′(x) the second derivative of f(x) with respect to x∫ydx the indefinite integral of y with respect to x∫abydx
+the definite integral of y with respect to x between the limits 
+x=a and x=bex the exponential function of xlogax the logarithm to the base a of xlnx the natural logarithm of x, logex
+sin, cos, tan the circular functions
+A(x,y) the point A in the plane with Cartesian coordinates x and y
+Notation list
+90 Mathematics: analysis and approaches guide
+
+
+[AB]the line segment with end points A and BABthe length of [AB](AB)the line containing points A and BA^ the angle at ACA^B the angle between [CA] and [AB]∆ ABCthe triangle whose vertices are A, B and CP(A) probability of event AP(A′) probability of the event “not A”
+P(A|B) probability of the event A given B
+x1,   x2,   . . . observations
+f 1,   f 2,   . . . frequencies with which the observations x1, x2, ...  occur
+E(X) the expected value of the random variable Xμpopulation mean
+σ2population variance
+σpopulation standard deviation
+x¯ the sample mean of a set {x1, x2, ..., xn} of observations
+P(X = x) the probability that the random variable X takes the value xB(n,p) binomial distribution with parameters n and pN(μ,σ2) normal distribution with mean μ and variance σ2
+X~B(n, p) the random variable X has a binomial distribution with 
+parameters n and p
+X~N(μ, σ2) the random variable X has a normal distribution with mean μ
+and variance σ2rPearson’s product-moment correlation coefficient
+AHL only
+ℂthe set of complex numbers, {a + bi | a , b ∈ ℝ}
+i −1 where i2 = − 1
+za complex number
+z*the complex conjugate of zzthe modulus of zargz the argument of zRez the real part of zImz the imaginary part of zcisθ cosθ + isinθ
+eiθEuler/exponential form of a complex number
+Notation list
+91Mathematics: analysis and approaches guide
+
+
+Prn n!(n−r)!⇐is implied by
+[a,b] the closed interval a ≤ x ≤ b
+]a,b[ the open interval a < x < b
+f : A → B f is a function under which each element of a set A has an 
+image in set B.
+lim
+x → a
+f (x) the limit of f(x) as x tends to adnydxn
+the nth derivative of y with respect to xf(n)(x) the nth derivative of f(x) with respect to x
+arcsin,   sin−1
+arccos,   cos−1
+arctan,   tan−1
+the inverse circular functions
+cosec, sec, cot the reciprocal circular functions
+vthe vector v→ABthe vector represented in magnitude and direction by the 
+directed line segment from A to Bathe position vector OA→
+i,   j,   k unit vectors in the directions of the Cartesian coordinate axes
+athe magnitude of aAB→ the magnitude of AB→v·w the scalar product of v and wv×w the vector product of v and wf(x) the probability density function of the continuous random 
+variable XVar(X) the variance of the random variable X
+Notation list
+92 Mathematics: analysis and approaches guide

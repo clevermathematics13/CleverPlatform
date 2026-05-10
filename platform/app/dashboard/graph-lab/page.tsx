@@ -68,6 +68,13 @@ interface GraphMetaLite {
   markschemeHints?: string[];
 }
 
+interface QuestionLookup {
+  id: string;
+  code: string;
+  stem_latex: string | null;
+  parts_draft_latex: string | null;
+}
+
 interface WindowConfidenceContext {
   status?: number;
   error?: string;
@@ -260,6 +267,14 @@ export default function GraphLabPage() {
   const [copied, setCopied] = useState(false);
   const [showPass1, setShowPass1] = useState(false);
   const [showPass2, setShowPass2] = useState(false);
+  const [linkQuery, setLinkQuery] = useState("");
+  const [linkedQuestion, setLinkedQuestion] = useState<QuestionLookup | null>(null);
+  const [linkField, setLinkField] = useState<"stem_latex" | "parts_draft_latex">("stem_latex");
+  const [linkWithAttachment, setLinkWithAttachment] = useState(true);
+  const [findingQuestion, setFindingQuestion] = useState(false);
+  const [linkingQuestion, setLinkingQuestion] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
+  const [linkStatus, setLinkStatus] = useState<string | null>(null);
 
   const dropRef = useRef<HTMLDivElement>(null);
 
@@ -715,6 +730,153 @@ export default function GraphLabPage() {
     });
   }
 
+  async function findQuestionForLinking() {
+    const query = linkQuery.trim();
+    if (!query) {
+      setLinkError("Enter a question code or question id.");
+      setLinkStatus(null);
+      return;
+    }
+
+    setFindingQuestion(true);
+    setLinkError(null);
+    setLinkStatus(null);
+    try {
+      const res = await fetch(`/api/questions?search=${encodeURIComponent(query)}&page=1`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Question lookup failed");
+
+      const rows = Array.isArray(data.questions) ? (data.questions as QuestionLookup[]) : [];
+      if (rows.length === 0) throw new Error("No question found for that code/id.");
+
+      const normalized = query.toLowerCase();
+      const exact = rows.find(
+        (q) => q.code.toLowerCase() === normalized || q.id.toLowerCase() === normalized
+      );
+      const chosen = exact ?? rows[0];
+      setLinkedQuestion(chosen);
+      setLinkStatus(`Selected ${chosen.code}`);
+    } catch (e) {
+      setLinkedQuestion(null);
+      setLinkError(e instanceof Error ? e.message : "Question lookup failed");
+    } finally {
+      setFindingQuestion(false);
+    }
+  }
+
+  async function linkGraphToQuestion() {
+    if (!spec) {
+      setLinkError("No valid graph spec to link. Extract or fix the JSON first.");
+      setLinkStatus(null);
+      return;
+    }
+    if (!linkedQuestion) {
+      setLinkError("Pick a question first.");
+      setLinkStatus(null);
+      return;
+    }
+
+    setLinkingQuestion(true);
+    setLinkError(null);
+    setLinkStatus(null);
+    const markerRegex = /\[\[GRAPH_JSON:[A-Za-z0-9+/=]+\]\]/g;
+    const marker = encodeGraphSpec(spec);
+
+    try {
+      const currentValue = (linkField === "stem_latex"
+        ? linkedQuestion.stem_latex
+        : linkedQuestion.parts_draft_latex) ?? "";
+      markerRegex.lastIndex = 0;
+      const hasExisting = markerRegex.test(currentValue);
+      markerRegex.lastIndex = 0;
+      const nextValue = hasExisting
+        ? currentValue.replace(markerRegex, marker)
+        : `${currentValue.trim()}\n\n${marker}`.trim();
+
+      const patchRes = await fetch("/api/questions/stem-update", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionId: linkedQuestion.id,
+          field: linkField,
+          value: nextValue,
+        }),
+      });
+      const patchData = await patchRes.json().catch(() => ({}));
+      if (!patchRes.ok) throw new Error(patchData.error ?? "Failed to save graph marker to question");
+
+      const updatedQuestion: QuestionLookup = {
+        ...linkedQuestion,
+        [linkField]: nextValue,
+      };
+      setLinkedQuestion(updatedQuestion);
+
+      if (!linkWithAttachment) {
+        setLinkStatus(`Linked marker to ${updatedQuestion.code} (${linkField}).`);
+        return;
+      }
+
+      if (images.length === 0) {
+        throw new Error("Attach at least one image in Graph Lab before creating a graph attachment.");
+      }
+
+      let questionImageId: string | null = null;
+      const existingRes = await fetch(`/api/questions/images?questionId=${encodeURIComponent(updatedQuestion.id)}`);
+      const existingData = await existingRes.json().catch(() => ({}));
+      if (existingRes.ok) {
+        const existingRows = Array.isArray(existingData.images)
+          ? (existingData.images as Array<{ id: string; image_type: "question" | "markscheme" }> )
+          : [];
+        const preferred = existingRows.find((row) => row.image_type === "question") ?? existingRows[0];
+        questionImageId = preferred?.id ?? null;
+      }
+
+      if (!questionImageId) {
+        const first = images[0];
+        const uploadRes = await fetch("/api/questions/images/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            questionId: updatedQuestion.id,
+            imageType: "question",
+            data: first.b64,
+            mimeType: first.mimeType,
+          }),
+        });
+        const uploadData = await uploadRes.json().catch(() => ({}));
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? "Failed to upload source image for attachment");
+        questionImageId = uploadData.image?.id ?? null;
+      }
+
+      if (!questionImageId) {
+        throw new Error("Could not resolve a question image id for graph attachment.");
+      }
+
+      const first = images[0];
+      const cropRes = await fetch("/api/questions/graph-crops", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionImageId,
+          data: first.b64,
+          mimeType: first.mimeType,
+          graphSpec: spec,
+          graphMeta: (result?.graphMeta ?? extractSnapshot?.graphMeta ?? null) as Record<string, unknown> | null,
+          extractor: "graph-lab-link",
+          notes: "Linked from Graph Lab",
+        }),
+      });
+      const cropData = await cropRes.json().catch(() => ({}));
+      if (!cropRes.ok) throw new Error(cropData.error ?? "Failed to create graph attachment");
+
+      setLinkStatus(`Linked marker + graph attachment to ${updatedQuestion.code}.`);
+    } catch (e) {
+      setLinkError(e instanceof Error ? e.message : "Failed to link graph to question");
+    } finally {
+      setLinkingQuestion(false);
+    }
+  }
+
   const spec = specJson ? tryParseSpec(specJson) : null;
   const activeGraphMeta = (result?.graphMeta || extractSnapshot?.graphMeta) as GraphMetaLite | null;
   const windowReadout = buildWindowReadout(spec, activeGraphMeta, {
@@ -873,6 +1035,70 @@ export default function GraphLabPage() {
                   {debugCopied ? "✓ Copied" : "Copy Graph Debug Packet"}
                 </button>
               )}
+            </div>
+
+            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Link To Question Bank</h2>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex-1 min-w-55">
+                  <label className="block text-xs font-semibold text-gray-600 mb-1">Question code or id</label>
+                  <input
+                    type="text"
+                    value={linkQuery}
+                    onChange={(e) => setLinkQuery(e.target.value)}
+                    placeholder="e.g. 24AAHLP2TZ0Q05 or UUID"
+                    className="w-full rounded border border-gray-200 px-2 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void findQuestionForLinking()}
+                  disabled={findingQuestion}
+                  className="rounded border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                >
+                  {findingQuestion ? "Finding…" : "Find Question"}
+                </button>
+              </div>
+
+              {linkedQuestion && (
+                <p className="text-xs text-green-700 font-semibold">
+                  Linked target: {linkedQuestion.code} ({linkedQuestion.id})
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="text-xs font-semibold text-gray-600">Attach marker to</label>
+                <select
+                  value={linkField}
+                  onChange={(e) => setLinkField(e.target.value as "stem_latex" | "parts_draft_latex")}
+                  className="rounded border border-gray-200 px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  <option value="stem_latex">stem_latex</option>
+                  <option value="parts_draft_latex">parts_draft_latex</option>
+                </select>
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={linkWithAttachment}
+                  onChange={(e) => setLinkWithAttachment(e.target.checked)}
+                  className="rounded border-gray-300"
+                />
+                Also create graph attachment (shows in Question Bank Graph Images)
+              </label>
+
+              <button
+                type="button"
+                onClick={() => void linkGraphToQuestion()}
+                disabled={linkingQuestion || !linkedQuestion || !spec}
+                className="w-full rounded bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+              >
+                {linkingQuestion ? "Linking…" : "Link Graph To Question"}
+              </button>
+
+              {linkError && <p className="text-xs text-red-600">{linkError}</p>}
+              {linkStatus && <p className="text-xs text-green-700">{linkStatus}</p>}
             </div>
 
             {extractError && (

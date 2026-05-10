@@ -1,0 +1,36 @@
+{
+  "stats": {
+    "total_images": 1,
+    "processed": 1,
+    "skipped_existing": 0,
+    "download_failed": 0,
+    "ok": 1,
+    "auto_accepted": 0,
+    "pending_review": 1,
+    "processing_error": 0,
+    "exceptions": 0
+  },
+  "results": [
+    {
+      "question_image_id": "fff061fa-a7d3-4bbe-940a-3e12a02921ea",
+      "storage_path": "07M.1.AHL.TZ1.H_1/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -4.0,
+        2.5
+      ],
+      "warnings": [
+        "Grid: 49v/4h lines, 78/78px/unit",
+        "Harmonized unit scale (ratio 6.50 > 1.20) to 78px/unit",
+        "Origin px: (690, 124)",
+        "Window units from origin (L/R/U/D): 8/3/1/1",
+        "Curve-family fit rejected: margin 0.014 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.014)"
+      ]
+    }
+  ]
+}

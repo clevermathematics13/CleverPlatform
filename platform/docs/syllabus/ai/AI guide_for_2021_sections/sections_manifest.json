@@ -1,0 +1,61 @@
+{
+  "source_pdf": "docs/syllabus/ai/AI guide_for_2021.pdf",
+  "generated_at": "2026-05-10T02:13:10.163049+00:00",
+  "sections": [
+    {
+      "label": "TOC and Front Matter",
+      "kind": "toc",
+      "start_page": 1,
+      "end_page": 5,
+      "page_count": 5,
+      "pdf_file": "00_toc-and-front-matter.pdf",
+      "ocr_text_file": "00_toc-and-front-matter_ocr.txt",
+      "searchable_text_chars": 8705,
+      "searchable_text_detected": true
+    },
+    {
+      "label": "Introduction",
+      "kind": "section",
+      "start_page": 6,
+      "end_page": 27,
+      "page_count": 22,
+      "pdf_file": "01_introduction.pdf",
+      "ocr_text_file": "01_introduction_ocr.txt",
+      "searchable_text_chars": 56154,
+      "searchable_text_detected": true
+    },
+    {
+      "label": "Syllabus",
+      "kind": "section",
+      "start_page": 28,
+      "end_page": 76,
+      "page_count": 49,
+      "pdf_file": "02_syllabus.pdf",
+      "ocr_text_file": "02_syllabus_ocr.txt",
+      "searchable_text_chars": 108055,
+      "searchable_text_detected": true
+    },
+    {
+      "label": "Assessment",
+      "kind": "section",
+      "start_page": 77,
+      "end_page": 94,
+      "page_count": 18,
+      "pdf_file": "03_assessment.pdf",
+      "ocr_text_file": "03_assessment_ocr.txt",
+      "searchable_text_chars": 46935,
+      "searchable_text_detected": true
+    },
+    {
+      "label": "Appendices",
+      "kind": "section",
+      "start_page": 95,
+      "end_page": 101,
+      "page_count": 7,
+      "pdf_file": "04_appendices.pdf",
+      "ocr_text_file": "04_appendices_ocr.txt",
+      "searchable_text_chars": 9845,
+      "searchable_text_detected": true
+    }
+  ]
+}

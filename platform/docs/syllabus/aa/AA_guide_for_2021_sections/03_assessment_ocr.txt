@@ -1,0 +1,814 @@
+General
+Assessment is an integral part of teaching and learning. The most important aim of assessment in the DP is 
+that it should support curricular goals and encourage appropriate student learning. Both external and 
+internal assessments are used in the DP. IB examiners mark work produced for external assessment, while 
+work produced for internal assessment is marked by teachers and externally moderated by the IB.
+There are two types of assessment identified by the IB.
+Formative assessment informs both teaching and learning. It is concerned with providing accurate and 
+helpful feedback to students and teachers on the kind of learning taking place and the nature of students’ 
+strengths and weaknesses in order to help develop students’  understanding and capabilities. Formative 
+assessment can also help to improve teaching quality, as it can provide information to monitor progress 
+towards meeting the course aims and objectives.
+Summative assessment gives an overview of previous learning and is concerned with measuring student 
+achievement.
+The DP primarily focuses on summative assessment designed to record student achievement at, or towards 
+the end of, the course of study. However, many of the assessment instruments can also be used formatively 
+during the course of teaching and learning, and teachers are encouraged to do this. A comprehensive 
+assessment plan is viewed as being integral with teaching, learning and course organization. For further 
+information, see the IB Programme standards and practices document.
+The approach to assessment used by the IB is criterion-related, not norm-referenced. This approach to 
+assessment judges students’  work by their performance in relation to identified levels of attainment, and 
+not in relation to the work of other students. For further information on assessment within the DP please 
+refer to the publication DP assessment: Principles and practice.
+To support teachers in the planning, delivery and assessment of the DP courses, a variety of resources can 
+be found on the programme resource centre or purchased from the IB store (store.ibo.org). Additional 
+publications such as specimen papers and markschemes, teacher support materials, subject reports and 
+grade descriptors can also be found on the programme resource centre. Past examination papers as well as 
+markschemes can be purchased from the IB store.
+Methods of assessment
+The IB uses several methods to assess work produced by students.
+Assessment criteria
+Assessment criteria are used when the assessment task is open-ended. Each criterion concentrates on a 
+particular skill that students are expected to demonstrate. An assessment objective describes what 
+students should be able to do, and assessment criteria describe how well they should be able to do it. Using 
+assessment criteria allows discrimination between different answers and encourages a variety of responses. 
+Each criterion comprises a set of hierarchically-ordered level descriptors. Each level descriptor is worth one 
+or more marks. Each criterion is applied independently using a best-fit model. The maximum marks for each 
+criterion may differ according to the criterion’s importance. The marks awarded for each criterion are added 
+together to give the total mark for the piece of work.
+Assessment
+Assessment in the Diploma Programme
+68 Mathematics: analysis and approaches guide
+
+
+Markbands
+Markbands are a comprehensive statement of expected performance against which responses are judged. 
+They represent a single holistic criterion divided into level descriptors. Each level descriptor corresponds to 
+a range of marks to differentiate student performance. A best-fit approach is used to ascertain which 
+particular mark to use from the possible range for each level descriptor.
+Analytic markschemes
+Analytic markschemes are prepared for those examination questions that expect a particular kind of 
+response and/or a given final answer from students. They give detailed instructions to examiners on how to 
+break down the total mark for each question for different parts of the response.
+Marking notes
+For some assessment components marked using assessment criteria, marking notes are provided. Marking 
+notes give guidance on how to apply assessment criteria to the particular requirements of a question.
+Inclusive assessment arrangements
+Inclusive assessment arrangements are available for candidates with assessment access requirements. 
+These arrangements enable candidates with diverse needs to access the examinations and demonstrate 
+their knowledge and understanding of the constructs being assessed.
+The IB’s  Access and inclusion policy provides details on all the inclusive assessment arrangements available 
+to candidates with learning support requirements. The IB document Learning diversity and inclusion in the IB 
+programmes outlines the position of the IB with regard to candidates with diverse learning needs in the IB 
+programmes. For candidates affected by adverse circumstances, the IB documents General regulations: 
+Diploma Programme and Diploma Programme Assessment procedures provide details on access 
+consideration.
+Responsibilities of the school
+The school is required to ensure that that equal access arrangements and reasonable adjustments are 
+provided to candidates with learning support requirements that are in line with the IB documents Access 
+and inclusion policy and Learning diversity and inclusion in the IB programmes.
+Assessment in the Diploma Programme
+69Mathematics: analysis and approaches guide
+
+
+First assessment 2021
+Assessment component Weighting
+External assessment (3 hours)
+Paper 1 (90 minutes)
+No technology allowed. (80 marks)
+Section A
+Compulsory short-response questions based on the syllabus.
+Section B
+Compulsory extended-response questions based on the syllabus.
+80%
+40%
+Paper 2 (90 minutes)
+Technology required. (80 marks)
+Section A
+Compulsory short-response questions based on the syllabus.
+Section B
+Compulsory extended-response questions based on the syllabus
+40%
+Internal assessment
+This component is internally assessed by the teacher and externally moderated by the IB at 
+the end of the course.
+Mathematical exploration
+Internal assessment in mathematics is an individual exploration. This is a piece of written 
+work that involves investigating an area of mathematics. (20 marks)
+20%
+Assessment
+Assessment outline—SL
+70 Mathematics: analysis and approaches guide
+
+
+First assessment 2021
+Assessment component Weighting
+External assessment (5 hours)
+Paper 1 (120 minutes)
+No technology allowed. (110 marks)
+Section A
+Compulsory short-response questions based on the syllabus.
+Section B
+Compulsory extended-response questions based on the syllabus.
+80%
+30%
+Paper 2 (120 minutes)
+Technology required. (110 marks)
+Section A
+Compulsory short-response questions based on the syllabus.
+Section B
+Compulsory extended-response questions based on the syllabus.
+Paper 3 (60 minutes)
+Technology required. (55 marks)
+Two compulsory extended response problem-solving questions.
+30%
+20%
+Internal assessment
+This component is internally assessed by the teacher and externally moderated by the IB at 
+the end of the course.
+Mathematical exploration
+Internal assessment in mathematics is an individual exploration. This is a piece of written 
+work that involves investigating an area of mathematics. (20 marks)
+20%
+Assessment
+Assessment outline—HL
+71Mathematics: analysis and approaches guide
+
+
+General
+Mark schemes are used to assess students in all papers. The mark schemes are specific to each examination.
+External assessment details—SL
+General information
+Paper 1 and paper 2
+These papers are externally set and externally marked. Together, they contribute 80% of the final mark for 
+the course. These papers are designed to allow students to demonstrate what they know and what they 
+can do.
+Papers 1 and 2 will contain some questions, or parts of questions, which are common with HL.
+Calculators
+Paper 1
+Students are not permitted access to any calculator. Questions will mainly involve analytic approaches to 
+solutions, rather than requiring the use of a GDC. The paper is not intended to require complicated 
+calculations, with the potential for careless errors. However, questions will include some arithmetical 
+manipulations when they are essential to the development of the question.
+Paper 2
+Students must have access to a graphic display calculator (GDC) at all times. However, not all questions will 
+necessarily require the use of the GDC. Regulations covering the types of GDC allowed are provided in 
+Diploma Programme Assessment procedures.
+Formula booklet
+Each student must have access to a clean copy of the formula booklet during the examination. It is the 
+responsibility of the school to download a copy from IBIS or the programme resource centre and to ensure 
+that there are sufficient copies available for all students.
+Awarding of marks
+Marks are awarded for method, accuracy, answers and reasoning, including interpretation.
+In paper 1 and paper 2, full marks are not necessarily awarded for a correct answer with no working. 
+Answers must be supported by working and/or explanations (in the form of, for example diagrams, graphs 
+or calculations). Where an answer is incorrect, some marks may be given for correct method, provided this 
+is shown by written working. All students should therefore be advised to show their working.
+Paper 1
+Duration: 1 hour 30 minutes
+Weighting: 40%
+• This paper consists of section A, short-response questions, and section B, extended-response 
+questions.
+Assessment
+External assessment
+72 Mathematics: analysis and approaches guide
+
+
+• Students are not permitted access to any calculator on this paper.
+Syllabus coverage
+• Knowledge of all topics is required for this paper. However, not all topics are necessarily assessed in 
+every examination session.
+Mark allocation
+• This paper is worth 80 marks, representing 40% of the final mark.
+• Questions of varying levels of difficulty and length are set. Therefore, individual questions may not 
+necessarily each be worth the same number of marks. The exact number of marks allocated to each 
+question is indicated at the start of the question.
+Section A
+• This section consists of compulsory short-response questions based on the whole syllabus. It is worth 
+approximately 40 marks.
+• The intention of this section is to assess students across the breadth of the syllabus. However, it should 
+not be assumed that the separate topics are given equal emphasis.
+Question type
+• A small number of steps are needed to solve each question.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+Section B
+• This section consists of a small number of compulsory extended-response questions based on the 
+whole syllabus. It is worth approximately 40 marks.
+• Individual questions may require knowledge of more than one topic.
+• The intention of this section is to assess students across the breadth of the syllabus in depth. The range 
+of syllabus topics tested in this section may be narrower than that tested in section A.
+Question type
+• Questions require extended responses involving sustained reasoning.
+• Individual questions will develop a single theme.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+• Normally, each question reflects an incline of difficulty, from relatively easy tasks at the start of a 
+question to relatively difficult tasks at the end of a question. The emphasis is on sustained reasoning.
+Paper 2
+Duration: 1 hour 30 minutes
+Weighting: 40%
+• This paper consists of section A, short-response questions, and section B, extended-response 
+questions.
+• A GDC is required for this paper, but not every question will necessarily require its use.
+Syllabus coverage
+• Knowledge of all topics is required for this paper. However, not all topics are necessarily assessed in 
+every examination session.
+Mark allocation
+• This paper is worth 80 marks, representing 40% of the final mark.
+External assessment
+73Mathematics: analysis and approaches guide
+
+
+• Questions of varying levels of difficulty and length are set. Therefore, individual questions may not 
+necessarily each be worth the same number of marks. The exact number of marks allocated to each 
+question is indicated at the start of the question.
+Section A
+• This section consists of compulsory short-response questions based on the whole syllabus. It is worth 
+approximately 40 marks.
+• The intention of this section is to assess students across the breadth of the syllabus. However, it should 
+not be assumed that the separate topics are given equal emphasis.
+Question type
+• A small number of steps are needed to solve each question.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+Section B
+• This section consists of a small number of compulsory extended-response questions based on the 
+whole syllabus. It is worth approximately 40 marks.
+• Individual questions may require knowledge of more than one topic.
+• The intention of this section is to assess students across the breadth of the syllabus in depth. The range 
+of syllabus topics tested in this section may be narrower than that tested in section A.
+Question type
+• Questions require extended responses involving sustained reasoning.
+• Individual questions will develop a single theme.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+• Normally, each question reflects an incline of difficulty, from relatively easy tasks at the start of a 
+question to relatively difficult tasks at the end of a question. The emphasis is on sustained reasoning.
+General
+Markschemes are used to assess students in all papers. The markschemes are specific to each examination.
+External assessment details—HL
+General information
+Papers 1, 2 and 3
+These papers are externally set and externally marked. Together, they contribute 80% of the final mark for 
+the course. These papers are designed to allow students to demonstrate what they know and what they 
+can do.
+Papers 1 and 2 will contain some questions, or parts of questions, which are common with SL.
+Calculators
+Paper 1
+Students are not permitted access to any calculator. Questions will mainly involve analytic approaches to 
+solutions, rather than requiring the use of a GDC. The paper is not intended to require complicated 
+calculations, with the potential for careless errors. However, questions will include some arithmetical 
+manipulations when they are essential to the development of the question.
+External assessment
+74 Mathematics: analysis and approaches guide
+
+
+Paper 2
+Students must have access to a GDC at all times. However, not all questions will necessarily require the use 
+of the GDC. Regulations covering the types of GDC allowed are provided in Diploma Programme Assessment 
+procedures.
+Paper 3
+Students must have access to a GDC at all times. However, not all question parts will necessarily require the 
+use of the GDC. Regulations covering the types of GDC allowed are provided in Diploma Programme 
+Assessment procedures.
+Formula booklet
+Each student must have access to a clean copy of the formula booklet during the examination. It is the 
+responsibility of the school to download a copy from IBIS or the Programme Resource Centre and to ensure 
+that there are sufficient copies available for all students.
+Awarding of marks
+Marks are awarded for method, accuracy, answers and reasoning, including interpretation.
+In papers 1, 2 and 3, full marks are not necessarily awarded for a correct answer with no working. Answers 
+must be supported by working and/or explanations (in the form of, for example diagrams, graphs or 
+calculations). Where an answer is incorrect, some marks may be given for correct method, provided that 
+this is shown by written working. All students should therefore be advised to show their working.
+Paper 1
+Duration: 2 hours
+Weighting: 30%
+• This paper consists of section A, short-response questions, and section B, extended-response 
+questions.
+• Students are not permitted access to any calculator on this paper.
+Syllabus coverage
+• Knowledge of all topics is required for this paper. However, not all topics are necessarily assessed in 
+every examination session.
+Mark allocation
+• This paper is worth 110 marks, representing 30% of the final mark.
+• Questions of varying levels of difficulty and length are set. Therefore, individual questions may not 
+necessarily each be worth the same number of marks. The exact number of marks allocated to each 
+question is indicated at the start of the question.
+Section A
+• This section consists of compulsory short-response questions based on the whole syllabus. It is worth 
+approximately 55 marks.
+• The intention of this section is to assess students across the breadth of the syllabus. However, it should 
+not be assumed that the separate topics are given equal emphasis.
+Question type
+• A small number of steps are needed to solve each question.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+External assessment
+75Mathematics: analysis and approaches guide
+
+
+Section B
+This section consists of a small number of compulsory extended-response questions based on the whole 
+syllabus. It is worth approximately 55 marks.
+Individual questions may require knowledge of more than one topic.
+The intention of this section is to assess students across the breadth of the syllabus in depth. The range of 
+syllabus topics tested in this section may be narrower than that tested in section A.
+Question type
+• Questions require extended responses.
+• Individual questions will develop a single theme.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+• Normally, each question reflects an incline of difficulty, from relatively easy tasks at the start of a 
+question to relatively difficult tasks at the end of a question. The emphasis is on sustained reasoning.
+Paper 2
+Duration: 2 hours
+Weighting: 30%
+• This paper consists of section A, short-response questions, and section B, extended-response 
+questions.
+• A GDC is required for this paper, but not every question will necessarily require its use.
+Syllabus coverage
+• Knowledge of all topics is required for this paper. However, not all topics are necessarily assessed in 
+every examination session.
+Mark allocation
+• This paper is worth 110 marks, representing 30% of the final mark.
+• Questions of varying levels of difficulty and length are set. Therefore, individual questions may not 
+necessarily each be worth the same number of marks. The exact number of marks allocated to each 
+question is indicated at the start of the question.
+Section A
+• This section consists of compulsory short-response questions based on the whole syllabus. It is worth 
+approximately 55 marks.
+• The intention of this section is to assess students across the breadth of the syllabus. However, it should 
+not be assumed that the separate topics are given equal emphasis.
+Question type
+• A small number of steps are needed to solve each question.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+Section B
+• This section consists of a small number of compulsory extended-response questions based on the 
+whole syllabus. It is worth approximately 55 marks.
+• Individual questions may require knowledge of more than one topic.
+• The intention of this section is to assess students across the breadth of the syllabus in depth. The range 
+of syllabus topics tested in this section may be narrower than that tested in section A.
+External assessment
+76 Mathematics: analysis and approaches guide
+
+
+Question type
+• Questions require extended responses.
+• Individual questions will develop a single theme.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+• Normally, each question reflects an incline of difficulty, from relatively easy tasks at the start of a 
+question to relatively difficult tasks at the end of a question. The emphasis is on sustained reasoning.
+Paper 3
+Duration: 1 hour
+Weighting: 20%
+• This paper consists of two compulsory extended-response problem-solving questions.
+• A GDC is required for this paper, but not every question part will necessarily require its use.
+Syllabus coverage
+• Where possible, the first part of each question will be on syllabus content leading to the problem-
+solving context. Therefore, knowledge of all syllabus topics is required for this paper.
+Mark allocation
+• This paper is worth 55 marks, representing 20% of the final mark.
+• Questions may be unequal in terms of length and level of difficulty. Therefore, each question may not 
+be worth the same number of marks. The exact number of marks allocated to each question is 
+indicated at the start of each question.
+Question type
+• Questions require extended responses involving sustained reasoning.
+• Individual questions will develop from a single theme where the emphasis is on problem solving 
+leading to a generalization or the interpretation of a context.
+• Questions may be presented in the form of words, symbols, diagrams or tables, or combinations of 
+these.
+• Normally, each question reflects an incline in difficulty, from relatively easy at the start of a question to 
+relatively difficult tasks at the end of the question. The emphasis is on problem solving.
+External assessment
+77Mathematics: analysis and approaches guide
+
+
+Purpose of internal assessment
+Internal assessment is an integral part of the course and is compulsory for both SL and HL students. It 
+enables students to demonstrate the application of their skills and knowledge and to pursue their personal 
+interests without the time limitations and other constraints that are associated with written examinations. 
+The internal assessment should, as far as possible, be woven into normal classroom teaching and not be a 
+separate activity conducted after a course has been taught.
+The internal assessment requirements at SL and at HL is an individual exploration. This is a piece of written 
+work that involves investigating an area of mathematics. It is marked according to five assessment criteria.
+Guidance and authenticity
+The exploration submitted for internal assessment must be the student’s  own work. However, it is not the 
+intention that students should decide upon a title or topic and be left to work on the internal assessment 
+component without any further support from the teacher. The teacher should play an important role during 
+both the planning stage and the period when the student is working on the exploration.
+It is the responsibility of the teacher to ensure that students are familiar with:
+• the requirements of the type of work to be internally assessed
+• the IB academic honesty policy available on the programme resource centre
+• the assessment criteria; students must understand that the work submitted for assessment must 
+address these criteria effectively.
+Teachers and students must discuss the exploration. Students should be encouraged to initiate discussions 
+with the teacher to obtain advice and information, and students must not be penalized for seeking 
+guidance. As part of the learning process, teachers should read and give advice to students on one draft of 
+the work. The teacher should provide oral or written advice on how the work could be improved, but not 
+edit the draft. The next version handed to the teacher must be the final version for submission.
+It is the responsibility of teachers to ensure that all students understand the basic meaning and significance 
+of concepts that relate to academic honesty, especially authenticity and intellectual property. Teachers 
+must ensure that all student work for assessment is prepared according to requirements and must explain 
+clearly to students that the internally assessed work must be entirely their own.
+All work submitted to the IB for moderation or assessment must be authenticated by a teacher, and must 
+not include any known instances of suspected or confirmed malpractice. Each student must confirm that 
+the work is his or her authentic work and constitutes the final version of that work. Once a student has 
+officially submitted the final version of the work it cannot be retracted. The requirement to confirm the 
+authenticity of work applies to the work of all students, not just the sample work that will be submitted to 
+the IB for the purpose of moderation. For further details refer to the IB publications Academic honesty in the 
+IB educational context, The Diploma Programme: From principles into practice and the relevant articles in 
+General regulations: Diploma Programme.
+Authenticity may be checked by discussion with the student on the content of the work, and scrutiny of 
+one or more of the following:
+• the student’s initial proposal
+• the draft of the written work
+• the references cited
+• the style of writing compared with work known to be that of the student
+Assessment
+Internal assessment
+78 Mathematics: analysis and approaches guide
+
+
+• the analysis of the work by a web-based plagiarism detection service such as www.turnitin.com.
+The same piece of work cannot be submitted to meet the requirements of both the internal assessment and 
+the extended essay.
+Collaboration and teamwork
+Collaboration and teamwork are a key focus of the approaches to teaching in the DP. It is advisable that the 
+teacher uses the available class time to manage student collaboration. While working on their exploration 
+students should be encouraged to work collaboratively in the various phases of the process, for example:
+• generating ideas
+• selecting the topic for their exploration
+• sharing research sources
+• acquiring the necessary knowledge, skills and understanding
+• seeking peer feedback on their writing.
+The approaches to teaching and learning (ATL) website on the programme resource centre provides an 
+excellent source for developing collaborative skills in students.
+While students should be encouraged to talk through their ideas with others, it is not appropriate to work 
+together on a single exploration. It is important that students demonstrate how they incorporated sources 
+and collaborative ideas into their work and that they always show their understanding and engagement in 
+the work as described in the assessment criteria. Marks are awarded for the student’s  development and 
+contribution to their exploration, not for work found in literature or carried out by others either individually 
+or collaboratively.
+It is imperative that students understand that the writing and calculations they do in their work must 
+always be their own. This means that the argument they make and the ideas they rely on to make it, should 
+either be their own or they should give credit to the source of those ideas. Any sources must be cited 
+accordingly. This includes pictures, diagrams, graphs, formulae, etc.
+In the specific cases of collecting information, data or measurements it is imperative that each student 
+collects their own data, even in a case where collection of measurements is made from a group experiment. 
+Group data or measurements can be combined to provide enough information for individual analysis and 
+this should be clearly described in the written exploration.
+Time allocation
+Internal assessment is an integral part of the mathematics courses, contributing 20% to the final assessment 
+in the SL and the HL courses. This weighting should be reflected in the time that is allocated to teaching the 
+knowledge, skills and understanding required to undertake the work, as well as the total time allocated to 
+carry out the work.
+It is recommended that a total of approximately 10-15 hours of teaching time should be allocated to the 
+work. This should include:
+• time for the teacher to explain to students the requirements of the exploration
+• class time for students to work on the exploration and ask questions
+• time for consultation between the teacher and each student
+• time to review and monitor progress, and to check authenticity.
+Requirements and recommendations
+Students can choose from a wide variety of activities: for example, modelling, investigations and 
+applications of mathematics. To assist teachers and students in the choice of a topic, a list of stimuli is 
+available in the teacher support material. However, students are not restricted to this list.
+Internal assessment
+79Mathematics: analysis and approaches guide
+
+
+The exploration should be approximately 12-20 pages long with double line spacing, including diagrams 
+and graphs, but excluding the bibliography. However, it is the quality of the mathematical writing that is 
+important, not the length.
+The teacher is expected to give appropriate guidance at all stages of the exploration by, for example, 
+directing students into more productive routes of inquiry, making suggestions for suitable sources of 
+information, and providing advice on the content and clarity of the exploration in the writing-up stage.
+Teachers are responsible for indicating to students the existence of errors but should not explicitly correct 
+these errors. It must be emphasized that students are expected to consult the teacher throughout the 
+process.
+All students should be familiar with the requirements of the exploration and the criteria by which it is 
+assessed. Students need to start planning their explorations as early as possible in the course. Deadlines 
+should be firmly established and adhered to. There should be a date for submission of the exploration topic 
+and a brief outline description, a date for the submission of the draft and, of course, a date for completion.
+In developing their explorations, students should aim to make use of mathematics learned as part of the 
+course. The mathematics used should be commensurate with the level of the course–that is, it should be 
+similar to that suggested in the syllabus. It is not expected that students produce work that is outside the 
+syllabus–however, this will not be penalized.
+Ethical guidelines should be adhered to throughout the planning and conducting of the exploration. 
+Further details are given in the Ethical practice in the Diploma Programme poster on the programme 
+resource centre.
+Presentation
+The following details should be stated on the cover page of the exploration:
+• title of the exploration
+• number of pages.
+The references are not assessed. However, if they are not included in the final report it may be flagged in 
+terms of academic honesty.
+Using assessment criteria for internal assessment
+For internal assessment, a number of assessment criteria have been identified. Each assessment criterion 
+has level descriptors describing specific achievement levels, together with an appropriate range of marks. 
+The level descriptors concentrate on positive achievement, although for the lower levels failure to achieve 
+may be included in the description.
+Teachers must judge the internally assessed work at SL and at HL against the criteria using the level 
+descriptors.
+The assessment criteria A to D are the same for both SL and HL. Criterion E “Use of mathematics” is different 
+for SL and HL.
+The aim is to find, for each criterion, the descriptor that conveys most accurately the level attained by the 
+student, using the best-fit model. A best-fit approach means that compensation should be made when a 
+piece of work matches different aspects of a criterion at different levels. The mark awarded should be one 
+that most fairly reflects the balance of achievement against the criterion. It is not necessary for every single 
+aspect of a level descriptor to be met for that mark to be awarded.
+When assessing a student’s  work, teachers should read the level descriptors for each criterion until they 
+reach a descriptor that most appropriately describes the level of the work being assessed. If a piece of work 
+seems to fall between two descriptors, both descriptors should be read again and the one that more 
+appropriately describes the student’s work should be chosen.
+Where there are two or more marks available within a level, teachers should award the upper marks if the 
+student’s  work demonstrates the qualities described to a great extent; the work may be close to achieving 
+Internal assessment
+80 Mathematics: analysis and approaches guide
+
+
+marks in the level above. Teachers should award the lower marks if the student’s  work demonstrates the 
+qualities described to a lesser extent; the work may be close to achieving marks in the level below.
+Only whole numbers should be recorded; partial marks, (fractions or decimals) are not acceptable.
+Teachers should not think in terms of a pass or fail boundary, but should concentrate on identifying the 
+appropriate descriptor for each assessment criterion.
+The highest-level descriptors do not imply faultless performance but should be achievable by a student. 
+Teachers should not hesitate to use the extremes if they are appropriate descriptions of the work being 
+assessed.
+A student who attains a high achievement level in relation to one criterion will not necessarily attain high 
+achievement levels in relation to the other criteria. Similarly, a student who attains a low achievement level 
+for one criterion will not necessarily attain low achievement levels for the other criteria. Teachers should not 
+assume that the overall assessment of the students will produce any particular distribution of marks.
+It is recommended that the assessment criteria be made available to students.
+Internal assessment details
+Mathematical exploration
+Duration: 10 to 15 hours
+Weighting: 20%
+Introduction
+The internally-assessed component in this course is a mathematical exploration. This is a short report 
+written by the student based on a topic chosen by him or her, and it should focus on the mathematics of 
+that particular area. The emphasis is on mathematical communication (including formulae, diagrams, 
+graphs, tables and so on), with his or her own focus, with the teacher providing feedback via, for example, 
+discussion and interview. This will allow the students to develop areas of interest to them without a time 
+constraint as in an examination, and allow all students to experience a feeling of success.
+The final report should be approximately 12-20 pages long with double line spacing. It can be either word 
+processed or handwritten. Students should be able to explain all stages of their work in such a way that 
+demonstrates clear understanding. While there is no requirement that students present their work in class, 
+it should be written in such a way that their peers would be able to follow it fairly easily. The report should 
+include a detailed bibliography, and sources need to be referenced in line with the IB academic honesty 
+policy. Direct quotes must be acknowledged.
+The purpose of the exploration
+The aims of the Mathematics: analysis and approaches and Mathematics: applications and interpretation 
+courses at both SL and HL are carried through into the objectives that are formally assessed as part of the 
+course, through either written examination papers or the exploration, or both. In addition to testing the 
+objectives of the course, the exploration is intended to provide students with opportunities to increase 
+their understanding of mathematical concepts and processes, and to develop a wider appreciation of 
+mathematics. These are noted in the aims of the course. It is intended that, by doing the exploration, 
+students benefit from the mathematical activities undertaken and find them both stimulating and 
+rewarding. It will enable students to acquire the attributes of the IB learner profile.
+The specific purposes of the exploration are to:
+• develop students’ personal insight into the nature of mathematics and to develop their ability to ask 
+their own questions about mathematics
+• provide opportunities for students to complete a piece of mathematical work over an extended period 
+of time
+• enable students to experience the satisfaction of applying mathematical processes independently
+Internal assessment
+81Mathematics: analysis and approaches guide
+
+
+• provide students with the opportunity to experience for themselves the beauty, power and usefulness 
+of mathematics
+• encourage students, where appropriate, to discover, use and appreciate the power of technology as a 
+mathematical tool
+• enable students to develop the qualities of patience and persistence, and to reflect on the significance 
+of their work
+• provide opportunities for students to show, with confidence, how they have developed 
+mathematically.
+Management of the exploration
+Work on the exploration should be incorporated into the course so that students are given the opportunity 
+to learn the skills needed. Time in class can therefore be used for general discussion of areas of study, as 
+well as familiarizing students with the criteria. Further details on the development of the exploration are 
+included in the teacher support material.
+Internal assessment criteria—SL and HL
+The exploration is internally assessed by the teacher and externally moderated by the IB using assessment 
+criteria that relate to the objectives for mathematics.
+Each exploration is assessed against the following five criteria. The final mark for each exploration is the 
+sum of the scores for each criterion. The maximum possible final mark is 20.
+Students will not receive a grade for their mathematics course if they have not submitted an 
+exploration.
+Criterion A Presentation
+Criterion B Mathematical communication
+Criterion C Personal engagement
+Criterion D Reflection
+Criterion E Use of mathematics
+Criterion A: Presentation
+Achievement level Descriptor
+0 The exploration does not reach the standard described by the descriptors below.
+1 The exploration has some coherence or some organization.
+2 The exploration has some coherence and shows some organization.
+3 The exploration is coherent and well organized.
+4 The exploration is coherent, well organized, and concise.
+The “presentation” criterion assesses the organization and coherence of the exploration.
+A coherent exploration is logically developed, easy to follow and meets its aim. This refers to the overall 
+structure or framework, including introduction, body, conclusion and how well the different parts link to 
+each other.
+A well-organized exploration includes an introduction, describes the aim of the exploration and has a 
+conclusion. Relevant graphs, tables and diagrams should accompany the work in the appropriate place and 
+not be attached as appendices to the document. Appendices should be used to include information on 
+large data sets, additional graphs, diagrams and tables.
+Internal assessment
+82 Mathematics: analysis and approaches guide
+
+
+A concise exploration does not show irrelevant or unnecessary repetitive calculations, graphs or 
+descriptions.
+The use of technology is not required but encouraged where appropriate. However, the use of analytic 
+approaches rather than technological ones does not necessarily mean lack of conciseness, and should not 
+be penalized. This does not mean that repetitive calculations are condoned.
+Criterion B: Mathematical communication
+Achievement 
+level
+Descriptor
+0 The exploration does not reach the standard described by the descriptors below.
+1 The exploration contains some relevant mathematical communication which is 
+partially appropriate.
+2 The exploration contains some relevant appropriate mathematical communication.
+3 The mathematical communication is relevant, appropriate and is mostly consistent.
+4 The mathematical communication is relevant, appropriate and consistent 
+throughout.
+The “mathematical communication” criterion assesses to what extent the student has:
+• used appropriate mathematical language (notation, symbols, terminology). Calculator and 
+computer notation is acceptable only if it is software generated. Otherwise it is expected that students 
+use appropriate mathematical notation in their work
+• defined key terms and variables, where required
+• used multiple forms of mathematical representation, such as formulae, diagrams, tables, charts, 
+graphs and models, where appropriate
+• used a deductive method and set out proofs logically where appropriate
+Examples of level 1 can include graphs not being labelled, consistent use of computer notation with no 
+other forms of correct mathematical communication.
+Level 4 can be achieved by using only one form of mathematical representation as long as this is 
+appropriate to the topic being explored. For level 4, any minor errors that do not impair clear 
+communication should not be penalizsed.
+Criterion C: Personal engagement
+Achievement 
+level
+Descriptor
+0 The exploration does not reach the standard described by the descriptors below.
+1 There is evidence of some personal engagement.
+2 There is evidence of significant personal engagement.
+3 There is evidence of outstanding personal engagement.
+The “personal engagement” criterion assesses the extent to which the student engages with the topic by 
+exploring the mathematics and making it their own. It is not a measure of effort.
+Personal engagement may be recognized in different ways. These include thinking independently or 
+creatively, presenting mathematical ideas in their own way, exploring the topic from different perspectives, 
+making and testing predictions. Further (but not exhaustive) examples of personal engagement at different 
+levels are given in the teacher support material (TSM).
+Internal assessment
+83Mathematics: analysis and approaches guide
+
+
+There must be evidence of personal engagement demonstrated in the student’s  work. It is not sufficient 
+that a teacher comments that a student was highly engaged.
+Textbook style explorations or reproduction of readily available mathematics without the candidate’s  own 
+perspective are unlikely to achieve the higher levels.
+Significant: The student demonstrates authentic personal engagement in the exploration on a few 
+occasions and it is evident that these drive the exploration forward and help the reader to better 
+understand the writer’s intentions.
+Outstanding: The student demonstrates authentic personal engagement in the exploration in numerous 
+instances and they are of a high quality. It is evident that these drive the exploration forward in a creative 
+way. It leaves the impression that the student has developed, through their approach, a complete 
+understanding of the context of the exploration topic and the reader better understands the writer’s 
+intentions.
+Criterion D: Reflection
+Achievement level Descriptor
+0 The exploration does not reach the standard described by the descriptors below.
+1 There is evidence of limited reflection.
+2 There is evidence of meaningful reflection.
+3 There is substantial evidence of critical reflection.
+The “reflection” criterion assesses how the student reviews, analyses and evaluates the exploration. 
+Although reflection may be seen in the conclusion to the exploration, it may also be found throughout the 
+exploration.
+Simply describing results represents limited reflection. Further consideration is required to achieve the 
+higher levels.
+Some ways of showing meaningful reflection are: linking to the aims of the exploration, commenting on 
+what they have learned, considering some limitation or comparing different mathematical approaches.
+Critical reflection is reflection that is crucial, deciding or deeply insightful. It will often develop the 
+exploration by addressing the mathematical results and their impact on the student’s understanding of the 
+topic. Some ways of showing critical reflection are: considering what next, discussing implications of results, 
+discussing strengths and weaknesses of approaches, and considering different perspectives.
+Substantial evidence means that the critical reflection is present throughout the exploration. If it appears 
+at the end of the exploration it must be of high quality and demonstrate how it developed the exploration 
+in order to achieve a level 3.
+Further (but not exhaustive) examples of reflection at different levels are given in the teacher support 
+material (TSM).
+Criterion E: Use of mathematics—SL
+Achievement 
+level
+Descriptor
+0 The exploration does not reach the standard described by the descriptors below.
+1 Some relevant mathematics is used.
+2 Some relevant mathematics is used. Limited understanding is demonstrated.
+3 Relevant mathematics commensurate with the level of the course is used. Limited 
+understanding is demonstrated.
+Internal assessment
+84 Mathematics: analysis and approaches guide
+
+
+Achievement 
+level
+Descriptor
+4 Relevant mathematics commensurate with the level of the course is used. The 
+mathematics explored is partially correct. Some knowledge and understanding are 
+demonstrated.
+5 Relevant mathematics commensurate with the level of the course is used. The 
+mathematics explored is mostly correct. Good knowledge and understanding are 
+demonstrated.
+6 Relevant mathematics commensurate with the level of the course is used. The 
+mathematics explored is correct. Thorough knowledge and understanding are 
+demonstrated.
+The “Use of mathematics” SL criterion assesses to what extent students use mathematics that is relevant to 
+the exploration.
+Relevant refers to mathematics that supports the development of the exploration towards the completion 
+of its aim. Overly complicated mathematics where simple mathematics would suffice is not relevant.
+Students are expected to produce work that is commensurate with the level of the course, which means it 
+should not be completely based on mathematics listed in the prior learning. The mathematics explored 
+should either be part of the syllabus, or at a similar level.
+A key word in the descriptor is demonstrated. The command term demonstrate means “to make clear by 
+reasoning or evidence, illustrating with examples or practical application”. Obtaining the correct answer is 
+not sufficient to demonstrate understanding (even some understanding) in order to achieve level 2 or 
+higher.
+For knowledge and understanding to be thorough it must be demonstrated throughout.
+The mathematics can be regarded as correct even if there are occasional minor errors as long as they do 
+not detract from the flow of the mathematics or lead to an unreasonable outcome.
+Students are encouraged to use technology to obtain results where appropriate, but understanding must 
+be demonstrated in order for the student to achieve higher than level 1, for example merely substituting 
+values into a formula does not necessarily demonstrate understanding of the results.
+The mathematics only needs to be what is required to support the development of the exploration. This 
+could be a few small elements of mathematics or even a single topic (or sub-topic) from the syllabus. It is 
+better to do a few things well than a lot of things not so well. If the mathematics used is relevant to the 
+topic being explored, commensurate with the level of the course and understood by the student, then it 
+can achieve a high level in this criterion.
+Criterion E: Use of mathematics—HL
+Achievement 
+level
+Descriptor
+0 The exploration does not reach the standard described by the descriptors below.
+1 Some relevant mathematics is used. Limited understanding is demonstrated.
+2 Some relevant mathematics is used. The mathematics explored is partially correct. 
+Some knowledge and understanding is demonstrated.
+3 Relevant mathematics commensurate with the level of the course is used. The 
+mathematics explored is correct. Some knowledge and understanding are 
+demonstrated.
+Internal assessment
+85Mathematics: analysis and approaches guide
+
+
+Achievement 
+level
+Descriptor
+4 Relevant mathematics commensurate with the level of the course is used. The 
+mathematics explored is correct. Good knowledge and understanding are 
+demonstrated.
+5 Relevant mathematics commensurate with the level of the course is used. The 
+mathematics explored is correct and demonstrates sophistication or rigour. Thorough 
+knowledge and understanding are demonstrated.
+6 Relevant mathematics commensurate with the level of the course is used. The 
+mathematics explored is precise and demonstrates sophistication and rigour. 
+Thorough knowledge and understanding are demonstrated.
+The “Use of mathematics” HL criterion assesses to what extent students use relevant mathematics in the 
+exploration.
+Students are expected to produce work that is commensurate with the level of the course, which means it 
+should not be completely based on mathematics listed in the prior learning. The mathematics explored 
+should either be part of the syllabus, at a similar level or slightly beyond. However, mathematics of a level 
+slightly beyond the syllabus is not required to achieve the highest levels.
+A key word in the descriptor is demonstrated. The command term demonstrate means to make clear by 
+reasoning or evidence, illustrating with examples or practical application. Obtaining the correct answer is 
+not sufficient to demonstrate understanding (even some understanding) in order to achieve level 2 or 
+higher.
+For knowledge and understanding to be thorough it must be demonstrated throughout. Lines of 
+reasoning must be shown to justify steps in the mathematical development of the exploration.
+Relevant refers to mathematics that supports the development of the exploration towards the completion 
+of its aim. Overly complicated mathematics where simple mathematics would suffice is not relevant.
+The mathematics can be regarded as correct even if there are occasional minor errors as long as they do 
+not detract from the flow of the mathematics or lead to an unreasonable outcome. Precise mathematics is 
+error-free and uses an appropriate level of accuracy at all times.
+Sophistication: To be considered as sophisticated the mathematics used should be commensurate with 
+the HL syllabus or, if contained in the SL syllabus, the mathematics has been used in a complex way that is 
+beyond what could reasonably be expected of an SL student. Sophistication in mathematics may include 
+understanding and using challenging mathematical concepts, looking at a problem from different 
+perspectives and seeing underlying structures to link different areas of mathematics.
+Rigour involves clarity of logic and language when making mathematical arguments and calculations. 
+Mathematical claims relevant to the development of the exploration must be justified or proven.
+Students are encouraged to use technology to obtain results where appropriate, but understanding must 
+be demonstrated in order for the student to achieve level 1 or higher, for example merely substituting 
+values into a formula does not necessarily demonstrate understanding of the results.
+The mathematics only needs to be what is required to support the development of the exploration. This 
+could be a few small elements of mathematics or even a single topic (or sub-topic) from the syllabus. It is 
+better to do a few things well than a lot of things not so well. If the mathematics used is relevant to the 
+topic being explored, commensurate with the level of the course and understood by the student, then it 
+can achieve a high level in this criterion.
+Internal assessment
+86 Mathematics: analysis and approaches guide

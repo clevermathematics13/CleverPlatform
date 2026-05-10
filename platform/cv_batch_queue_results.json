@@ -1,0 +1,2141 @@
+{
+  "stats": {
+    "total_images": 100,
+    "processed": 100,
+    "skipped_existing": 0,
+    "download_failed": 0,
+    "ok": 90,
+    "auto_accepted": 1,
+    "pending_review": 89,
+    "processing_error": 10,
+    "exceptions": 0
+  },
+  "results": [
+    {
+      "question_image_id": "fff061fa-a7d3-4bbe-940a-3e12a02921ea",
+      "storage_path": "07M.1.AHL.TZ1.H_1/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -4.0,
+        2.5
+      ],
+      "warnings": [
+        "Grid: 49v/4h lines, 78/78px/unit",
+        "Harmonized unit scale (ratio 6.50 > 1.20) to 78px/unit",
+        "Origin px: (690, 124)",
+        "Window units from origin (L/R/U/D): 8/3/1/1",
+        "Curve-family fit rejected: margin 0.014 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.014)"
+      ]
+    },
+    {
+      "question_image_id": "6e136406-39c2-4335-a09d-2c2e8289c34e",
+      "storage_path": "07M.1.AHL.TZ1.H_10/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -6.0,
+        8.0
+      ],
+      "warnings": [
+        "Grid: 49v/8h lines, 56/56px/unit",
+        "Harmonized unit scale (ratio 3.73 > 1.20) to 56px/unit",
+        "Origin px: (521, 235)",
+        "Window units from origin (L/R/U/D): 9/8/4/3",
+        "Curve-family fit rejected: confidence 0.564 < 0.72; margin 0.007 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=3.00, median |m|=0.75)",
+        "Family-fit margin extremely small (0.007)"
+      ]
+    },
+    {
+      "question_image_id": "d25f3d50-37ed-41f8-80e5-8a9bf3ae61f5",
+      "storage_path": "07M.1.AHL.TZ1.H_10/markscheme/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        0.0,
+        14.0
+      ],
+      "warnings": [
+        "Grid: 25v/28h lines, 40/40px/unit",
+        "Harmonized unit scale (ratio 2.22 > 1.20) to 40px/unit",
+        "Origin px: (744, 388)",
+        "Window units from origin (L/R/U/D): 18/15/8/15",
+        "Curve-family fit rejected: margin 0.013 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.013)"
+      ]
+    },
+    {
+      "question_image_id": "dd969c11-84aa-4372-92fc-fd8105388272",
+      "storage_path": "07M.1.AHL.TZ1.H_17/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "e2f9a86b-f500-4fcf-95b1-b9a268634ad9",
+      "storage_path": "07M.1.AHL.TZ1.H_17/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -4.5,
+        4.5
+      ],
+      "warnings": [
+        "Grid: 50v/6h lines, 67/67px/unit",
+        "Harmonized unit scale (ratio 5.15 > 1.20) to 67px/unit",
+        "Origin px: (482, 196)",
+        "Window units from origin (L/R/U/D): 7/6/2/2",
+        "Curve-family fit rejected: confidence 0.560 < 0.72; margin 0.013 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.013)"
+      ]
+    },
+    {
+      "question_image_id": "d4674f05-47ae-4d22-973f-f095b0496f00",
+      "storage_path": "07M.1.AHL.TZ1.H_17/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -4.5,
+        4.5
+      ],
+      "warnings": [
+        "Grid: 50v/6h lines, 67/67px/unit",
+        "Harmonized unit scale (ratio 5.15 > 1.20) to 67px/unit",
+        "Origin px: (482, 196)",
+        "Window units from origin (L/R/U/D): 7/6/2/2",
+        "Curve-family fit rejected: confidence 0.560 < 0.72; margin 0.013 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.013)"
+      ]
+    },
+    {
+      "question_image_id": "b5cb037c-9d6c-4f0e-9c73-bcede98bf1e5",
+      "storage_path": "07M.1.AHL.TZ1.H_18/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -36.0,
+        31.0
+      ],
+      "warnings": [
+        "Grid: 58v/17h lines, 15/16px/unit",
+        "Origin px: (689, 137)",
+        "Window units from origin (L/R/U/D): 45/28/7/24",
+        "Curve-family fit rejected: confidence 0.666 < 0.72; margin 0.009 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Steep slope outlier detected (max |m|=12.00, median |m|=2.00)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.009)"
+      ]
+    },
+    {
+      "question_image_id": "ce0feec6-d54d-4b95-ac7c-bce4f0162df5",
+      "storage_path": "07M.1.AHL.TZ1.H_18/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "883738ee-5005-46c5-a903-83fb94393e52",
+      "storage_path": "07M.1.AHL.TZ1.H_18/question/03.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "ec1ebeff-d8a4-41b0-9aae-3b40d5905f83",
+      "storage_path": "07M.1.AHL.TZ1.H_20/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "e21f5fb7-1e55-47a0-9098-676d95b25351",
+      "storage_path": "07M.1.AHL.TZ1.H_20/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "4186ab28-c992-4ccf-b0f1-2cf5cf2df898",
+      "storage_path": "07M.1.AHL.TZ1.H_20/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -11.5,
+        13.0
+      ],
+      "warnings": [
+        "Grid: 84v/6h lines, 49/49px/unit",
+        "Harmonized unit scale (ratio 3.77 > 1.20) to 49px/unit",
+        "Origin px: (703, 226)",
+        "Window units from origin (L/R/U/D): 14/14/4/2",
+        "Curve-family fit rejected: confidence 0.626 < 0.72; margin 0.010 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=5.00, median |m|=0.33)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.010)"
+      ]
+    },
+    {
+      "question_image_id": "aadbfd1d-a5da-4666-b823-30d67447bf2c",
+      "storage_path": "07M.1.AHL.TZ1.H_7/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "09656ea5-f001-4165-a2dc-e5b1d2d2778b",
+      "storage_path": "07M.1.AHL.TZ1.H_7/question/02.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -26.5,
+        27.0
+      ],
+      "warnings": [
+        "Grid: 66v/8h lines, 24/24px/unit",
+        "Harmonized unit scale (ratio 1.60 > 1.20) to 24px/unit",
+        "Origin px: (699, 174)",
+        "Window units from origin (L/R/U/D): 28/26/6/8",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (48) indicates likely over-segmentation",
+        "High segment count (47) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.606 < 0.72; margin 0.006 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "0de29910-5407-4c69-aa67-a49716e00550",
+      "storage_path": "07M.1.AHL.TZ1.H_7/question/04.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -26.5,
+        27.0
+      ],
+      "warnings": [
+        "Grid: 66v/8h lines, 24/24px/unit",
+        "Harmonized unit scale (ratio 1.60 > 1.20) to 24px/unit",
+        "Origin px: (699, 174)",
+        "Window units from origin (L/R/U/D): 28/26/6/8",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (48) indicates likely over-segmentation",
+        "High segment count (47) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.606 < 0.72; margin 0.006 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "bf819324-f8c1-474e-b72c-ea2d79cda4b0",
+      "storage_path": "07M.1.AHL.TZ2.H_1/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -20.0,
+        19.5
+      ],
+      "warnings": [
+        "Grid: 56v/13h lines, 30/30px/unit",
+        "Harmonized unit scale (ratio 2.00 > 1.20) to 30px/unit",
+        "Origin px: (670, 388)",
+        "Window units from origin (L/R/U/D): 22/20/12/12",
+        "Curve-family fit rejected: confidence 0.653 < 0.72; margin 0.017 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=11.00, median |m|=2.83)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.017)"
+      ]
+    },
+    {
+      "question_image_id": "87c56baa-fa52-433c-b0d7-01b2cee19408",
+      "storage_path": "07M.1.AHL.TZ2.H_1/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "eb242cad-69ae-4df8-82c2-be8e4fff8992",
+      "storage_path": "07M.1.AHL.TZ2.H_1/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "cd309977-9c26-42a3-b4d9-e96e2c087215",
+      "storage_path": "07M.1.AHL.TZ2.H_1/markscheme/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -10.5,
+        17.0
+      ],
+      "warnings": [
+        "Grid: 14v/22h lines, 36/36px/unit",
+        "Harmonized unit scale (ratio 1.80 > 1.20) to 36px/unit",
+        "Origin px: (437, 403)",
+        "Window units from origin (L/R/U/D): 9/27/10/11",
+        "Curve-family fit rejected: confidence 0.606 < 0.72; margin 0.015 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=12.00, median |m|=4.08)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.015)"
+      ]
+    },
+    {
+      "question_image_id": "48eb4b20-d70a-4b40-b637-eb089e27d258",
+      "storage_path": "07M.1.AHL.TZ2.H_11/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -2.0,
+        4.0
+      ],
+      "warnings": [
+        "Fallback: grid lines not reliably detected",
+        "Curve-family fit rejected: confidence 0.660 < 0.72; margin 0.000 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis calibration anisotropy detected (173/14px per unit)",
+        "Family-fit margin extremely small (0.000)"
+      ]
+    },
+    {
+      "question_image_id": "95553e0f-11ab-4a03-b040-f2ec825a4a73",
+      "storage_path": "07M.1.AHL.TZ2.H_11/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -2.0,
+        4.0
+      ],
+      "warnings": [
+        "Fallback: grid lines not reliably detected",
+        "Curve-family fit rejected: confidence 0.660 < 0.72; margin 0.000 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis calibration anisotropy detected (173/14px per unit)",
+        "Family-fit margin extremely small (0.000)"
+      ]
+    },
+    {
+      "question_image_id": "24e84ac1-4255-4ad4-b51a-77df69791863",
+      "storage_path": "07M.1.AHL.TZ2.H_18/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "7adb0ff1-ac7a-48fb-be92-7d97d45dc8af",
+      "storage_path": "07M.1.AHL.TZ2.H_18/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "e8f37638-2dd1-461a-ae3f-4f88390934e2",
+      "storage_path": "07M.1.AHL.TZ2.H_18/question/04.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -20.0,
+        19.5
+      ],
+      "warnings": [
+        "Grid: 53v/8h lines, 31/31px/unit",
+        "Harmonized unit scale (ratio 1.94 > 1.20) to 31px/unit",
+        "Origin px: (689, 194)",
+        "Window units from origin (L/R/U/D): 21/20/5/6",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (27) indicates likely over-segmentation",
+        "High segment count (26) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.561 < 0.72; margin 0.015 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "1d0ec1c4-78ea-408c-ab23-514609d7f066",
+      "storage_path": "07M.1.AHL.TZ2.H_20/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "20a3ecfe-e67f-41a2-8713-f960cf4c8958",
+      "storage_path": "07M.1.AHL.TZ2.H_20/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "45c154fa-3d10-4f61-83a8-5cce5a33c008",
+      "storage_path": "07M.1.AHL.TZ2.H_20/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -9.0,
+        -4.5
+      ],
+      "warnings": [
+        "Grid: 85v/18h lines, 44/44px/unit",
+        "Harmonized unit scale (ratio 3.67 > 1.20) to 44px/unit",
+        "Origin px: (459, 475)",
+        "Window units from origin (L/R/U/D): 10/20/10/9",
+        "Curve-family fit rejected: confidence 0.642 < 0.72; margin 0.005 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.005)"
+      ]
+    },
+    {
+      "question_image_id": "ee8a2701-034f-4f8b-b60f-7f288071e7fd",
+      "storage_path": "07M.1.AHL.TZ2.H_3/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -1.0,
+        3.5
+      ],
+      "warnings": [
+        "Fallback: grid lines not reliably detected",
+        "Curve-family fit rejected: confidence 0.611 < 0.72; margin 0.005 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis calibration anisotropy detected (178/16px per unit)",
+        "Family-fit margin extremely small (0.005)"
+      ]
+    },
+    {
+      "question_image_id": "b1f29def-6570-4ff4-822d-83234f8eaa6d",
+      "storage_path": "07M.1.AHL.TZ2.H_3/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "eab57a3f-e4c5-4f67-b4ca-b71b6724e6e7",
+      "storage_path": "07M.1.AHL.TZ2.H_3/question/03.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "8c91fa4a-a578-4b75-865f-b65d772766f9",
+      "storage_path": "07M.1.AHL.TZ2.H_6/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -1.0,
+        3.5
+      ],
+      "warnings": [
+        "Fallback: grid lines not reliably detected",
+        "Curve-family fit rejected: confidence 0.607 < 0.72; margin 0.007 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis calibration anisotropy detected (174/14px per unit)",
+        "Family-fit margin extremely small (0.007)"
+      ]
+    },
+    {
+      "question_image_id": "60330b9b-7ed1-4876-b02c-d43f864f7a93",
+      "storage_path": "07M.1.AHL.TZ2.H_6/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -1.0,
+        3.5
+      ],
+      "warnings": [
+        "Fallback: grid lines not reliably detected",
+        "Curve-family fit rejected: confidence 0.607 < 0.72; margin 0.007 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis calibration anisotropy detected (174/14px per unit)",
+        "Family-fit margin extremely small (0.007)"
+      ]
+    },
+    {
+      "question_image_id": "f0f116cd-2e89-4fbf-9212-5eaf611f535d",
+      "storage_path": "07M.1.AHL.TZ2.H_6/question/03.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "22302da3-99c9-4cca-bcbc-ae3fa1c0bc81",
+      "storage_path": "07N.1.AHL.TZ0.H_14/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "ebc1b4a9-84f3-41f0-ba5c-42fe04bd436d",
+      "storage_path": "07N.1.AHL.TZ0.H_14/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "ba8b4da5-45a6-4fd6-9d7f-46005b81a86f",
+      "storage_path": "07N.1.AHL.TZ0.H_14/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -14.0,
+        19.0
+      ],
+      "warnings": [
+        "Grid: 81v/4h lines, 33/33px/unit",
+        "Harmonized unit scale (ratio 2.75 > 1.20) to 33px/unit",
+        "Origin px: (511, 146)",
+        "Window units from origin (L/R/U/D): 15/24/1/3",
+        "Curve-family fit rejected: confidence 0.618 < 0.72; margin 0.002 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=3.00, median |m|=0.67)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.002)"
+      ]
+    },
+    {
+      "question_image_id": "059bab56-5c16-4e0e-a460-0a33adf62027",
+      "storage_path": "08N.2.AHL.TZ0.H_11/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -11.5,
+        10.5
+      ],
+      "warnings": [
+        "Grid: 69v/13h lines, 42/42px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 42px/unit",
+        "Origin px: (710, 383)",
+        "Window units from origin (L/R/U/D): 14/11/8/8",
+        "Curve-family fit rejected: confidence 0.618 < 0.72; margin 0.009 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=16.00, median |m|=3.50)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.009)"
+      ]
+    },
+    {
+      "question_image_id": "f56db0b2-cb2d-4a55-868c-4ea756a4751e",
+      "storage_path": "08N.2.AHL.TZ0.H_11/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -9.0,
+        2.5
+      ],
+      "warnings": [
+        "Grid: 22v/21h lines, 43/43px/unit",
+        "Harmonized unit scale (ratio 2.69 > 1.20) to 43px/unit",
+        "Origin px: (401, 525)",
+        "Window units from origin (L/R/U/D): 9/20/12/10",
+        "Curve-family fit rejected: confidence 0.637 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=16.00, median |m|=2.25)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "e2c3fbdc-3f4e-49fa-924d-5b6c6b30c271",
+      "storage_path": "09M.1.AHL.TZ1.H_1/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -7.5,
+        7.0
+      ],
+      "warnings": [
+        "Grid: 54v/5h lines, 80/80px/unit",
+        "Harmonized unit scale (ratio 5.33 > 1.20) to 80px/unit",
+        "Origin px: (716, 207)",
+        "Window units from origin (L/R/U/D): 8/8/2/1",
+        "Curve-family fit rejected: confidence 0.422 < 0.72",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread"
+      ]
+    },
+    {
+      "question_image_id": "8495aeaa-e50a-4059-8f41-c9c953fff0a1",
+      "storage_path": "09M.1.AHL.TZ1.H_1/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "26f9585d-1dd1-400d-8390-0184518c1d0f",
+      "storage_path": "09M.1.AHL.TZ1.H_1/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "b8ddb40c-9b70-4c32-9140-77d3e701b537",
+      "storage_path": "09M.1.AHL.TZ1.H_1/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -14.5,
+        13.5
+      ],
+      "warnings": [
+        "Grid: 23v/14h lines, 37/37px/unit",
+        "Harmonized unit scale (ratio 1.54 > 1.20) to 37px/unit",
+        "Origin px: (595, 276)",
+        "Window units from origin (L/R/U/D): 15/19/7/7",
+        "Curve-family fit rejected: confidence 0.622 < 0.72; margin 0.014 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=5.00, median |m|=1.00)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.014)"
+      ]
+    },
+    {
+      "question_image_id": "cc4982b2-3ef3-4130-8872-03ba09681913",
+      "storage_path": "09M.1.AHL.TZ1.H_2/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -15.5,
+        13.5
+      ],
+      "warnings": [
+        "Grid: 67v/15h lines, 43/43px/unit",
+        "Harmonized unit scale (ratio 3.31 > 1.20) to 43px/unit",
+        "Origin px: (702, 362)",
+        "Window units from origin (L/R/U/D): 16/15/8/12",
+        "Curve-family fit rejected: confidence 0.583 < 0.72; margin 0.007 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=23.00, median |m|=5.25)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.007)"
+      ]
+    },
+    {
+      "question_image_id": "b0ec2168-a3d0-443a-89bc-6b519c9658f6",
+      "storage_path": "09M.1.AHL.TZ1.H_2/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "f0bf8e4f-235c-4d6b-a368-955b506da9f0",
+      "storage_path": "09M.1.AHL.TZ1.H_2/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "962112a2-a653-4f24-bb7f-bb211b62b84a",
+      "storage_path": "09M.1.AHL.TZ1.H_2/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -11.0,
+        14.5
+      ],
+      "warnings": [
+        "Grid: 16v/25h lines, 42/42px/unit",
+        "Harmonized unit scale (ratio 1.83 > 1.20) to 42px/unit",
+        "Origin px: (510, 573)",
+        "Window units from origin (L/R/U/D): 11/19/12/11",
+        "Curve-family fit rejected: confidence 0.579 < 0.72; margin 0.018 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=6.00, median |m|=2.12)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.018)"
+      ]
+    },
+    {
+      "question_image_id": "bec7c6d2-046d-4778-a443-a86b042b3f72",
+      "storage_path": "09M.1.AHL.TZ2.H_1/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "e74dcc13-5b20-41a6-97f2-2af4d8f1cf27",
+      "storage_path": "09M.1.AHL.TZ2.H_1/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "d5302fab-06be-43c4-8e51-b3d1a40ba291",
+      "storage_path": "09M.1.AHL.TZ2.H_1/question/04.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -26.0,
+        26.0
+      ],
+      "warnings": [
+        "Grid: 80v/5h lines, 28/28px/unit",
+        "Harmonized unit scale (ratio 2.00 > 1.20) to 28px/unit",
+        "Origin px: (784, 92)",
+        "Window units from origin (L/R/U/D): 27/25/2/4",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (52) indicates likely over-segmentation",
+        "High segment count (50) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.642 < 0.72; margin 0.010 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "84f81463-9886-4a95-87d6-92ed028e85b3",
+      "storage_path": "09M.1.AHL.TZ2.H_1/markscheme/01.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -19.0,
+        17.5
+      ],
+      "warnings": [
+        "Grid: 80v/9h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.46 > 1.20) to 45px/unit",
+        "Origin px: (893, 245)",
+        "Window units from origin (L/R/U/D): 19/19/5/4",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (27) indicates likely over-segmentation",
+        "High segment count (26) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.594 < 0.72; margin 0.009 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "4d3a33cc-4422-4d77-8377-cfcf5dc2efd6",
+      "storage_path": "09M.1.AHL.TZ2.H_1/markscheme/03.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -19.0,
+        17.5
+      ],
+      "warnings": [
+        "Grid: 80v/9h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.46 > 1.20) to 45px/unit",
+        "Origin px: (893, 245)",
+        "Window units from origin (L/R/U/D): 19/19/5/4",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (27) indicates likely over-segmentation",
+        "High segment count (26) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.594 < 0.72; margin 0.009 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "10f2c79b-b7e5-4b67-98c9-202b54660585",
+      "storage_path": "09M.1.AHL.TZ2.H_2/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "e0b322b5-67b2-40d4-aa2f-d7af4c9264f6",
+      "storage_path": "09M.1.AHL.TZ2.H_2/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "fd73618e-4528-442c-a1b6-4e3e5084e8bf",
+      "storage_path": "09M.1.AHL.TZ2.H_2/question/04.png",
+      "status": "auto_accepted",
+      "ok": true,
+      "domain": [
+        -28.0,
+        20.5
+      ],
+      "warnings": [
+        "Grid: 50v/39h lines, 22/22px/unit",
+        "Harmonized unit scale (ratio 1.69 > 1.20) to 22px/unit",
+        "Origin px: (640, 533)",
+        "Window units from origin (L/R/U/D): 28/13/23/33"
+      ]
+    },
+    {
+      "question_image_id": "03b33863-4207-4f56-ab1b-b6c93d8a1858",
+      "storage_path": "09M.1.AHL.TZ2.H_2/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -15.5,
+        15.5
+      ],
+      "warnings": [
+        "Grid: 76v/6h lines, 52/52px/unit",
+        "Harmonized unit scale (ratio 3.71 > 1.20) to 52px/unit",
+        "Origin px: (854, 129)",
+        "Window units from origin (L/R/U/D): 16/16/2/3",
+        "Curve-family fit rejected: confidence 0.717 < 0.72; margin 0.016 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=3.00, median |m|=0.75)",
+        "Family-fit margin extremely small (0.016)"
+      ]
+    },
+    {
+      "question_image_id": "dd68064f-d81c-424d-a713-e253d540aa3c",
+      "storage_path": "09M.1.AHL.TZ2.H_3/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -11.5,
+        2.0
+      ],
+      "warnings": [
+        "Grid: 62v/7h lines, 50/50px/unit",
+        "Harmonized unit scale (ratio 3.85 > 1.20) to 50px/unit",
+        "Origin px: (671, 160)",
+        "Window units from origin (L/R/U/D): 13/12/3/4",
+        "Curve-family fit rejected: confidence 0.461 < 0.72",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread"
+      ]
+    },
+    {
+      "question_image_id": "9dbb1d89-dfa9-46e7-a986-0cf6900f21dc",
+      "storage_path": "09M.1.AHL.TZ2.H_3/question/03.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        3.0,
+        21.5
+      ],
+      "warnings": [
+        "Grid: 45v/20h lines, 32/32px/unit",
+        "Harmonized unit scale (ratio 1.78 > 1.20) to 32px/unit",
+        "Origin px: (846, 498)",
+        "Window units from origin (L/R/U/D): 26/19/14/11",
+        "Curve-family fit rejected: confidence 0.599 < 0.72; margin 0.012 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.012)"
+      ]
+    },
+    {
+      "question_image_id": "90130a12-57d0-40da-af45-9ca3edf35131",
+      "storage_path": "09M.1.AHL.TZ2.H_4/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "555ffd94-841a-4c5e-872f-7db76a0950fc",
+      "storage_path": "09M.1.AHL.TZ2.H_4/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -22.0,
+        0.0
+      ],
+      "warnings": [
+        "Grid: 38v/7h lines, 28/28px/unit",
+        "Harmonized unit scale (ratio 1.65 > 1.20) to 28px/unit",
+        "Origin px: (667, 151)",
+        "Window units from origin (L/R/U/D): 22/25/4/5",
+        "Curve-family fit rejected: confidence 0.417 < 0.72; margin 0.010 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=8.00, median |m|=1.68)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.010)"
+      ]
+    },
+    {
+      "question_image_id": "35a6e970-de1f-4927-bbd7-137d9b99416e",
+      "storage_path": "09M.1.AHL.TZ2.H_4/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -11.0,
+        -1.5
+      ],
+      "warnings": [
+        "Grid: 75v/21h lines, 53/53px/unit",
+        "Harmonized unit scale (ratio 3.53 > 1.20) to 53px/unit",
+        "Origin px: (611, 818)",
+        "Window units from origin (L/R/U/D): 11/11/15/16",
+        "Curve-family fit rejected: confidence 0.377 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=5.00, median |m|=1.33)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "50e82e4d-3ad7-4fdb-a7a8-057041bca57f",
+      "storage_path": "09M.1.AHL.TZ2.H_5/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -13.5,
+        11.5
+      ],
+      "warnings": [
+        "Grid: 63v/13h lines, 41/41px/unit",
+        "Harmonized unit scale (ratio 2.93 > 1.20) to 41px/unit",
+        "Origin px: (621, 570)",
+        "Window units from origin (L/R/U/D): 15/12/13/0",
+        "Curve-family fit rejected: confidence 0.653 < 0.72; margin 0.004 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=6.00, median |m|=0.50)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.004)"
+      ]
+    },
+    {
+      "question_image_id": "8609f393-0862-4f48-930f-e5c9b539e022",
+      "storage_path": "09M.1.AHL.TZ2.H_5/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -13.5,
+        11.5
+      ],
+      "warnings": [
+        "Grid: 63v/13h lines, 41/41px/unit",
+        "Harmonized unit scale (ratio 2.93 > 1.20) to 41px/unit",
+        "Origin px: (621, 570)",
+        "Window units from origin (L/R/U/D): 15/12/13/0",
+        "Curve-family fit rejected: confidence 0.653 < 0.72; margin 0.004 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=6.00, median |m|=0.50)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.004)"
+      ]
+    },
+    {
+      "question_image_id": "12d1b9f1-645a-426a-9ad4-ca628b6f3aaf",
+      "storage_path": "09M.1.AHL.TZ2.H_5/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -13.5,
+        11.5
+      ],
+      "warnings": [
+        "Grid: 63v/13h lines, 41/41px/unit",
+        "Harmonized unit scale (ratio 2.93 > 1.20) to 41px/unit",
+        "Origin px: (621, 570)",
+        "Window units from origin (L/R/U/D): 15/12/13/0",
+        "Curve-family fit rejected: confidence 0.653 < 0.72; margin 0.004 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=6.00, median |m|=0.50)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.004)"
+      ]
+    },
+    {
+      "question_image_id": "7c6d9b2f-19a5-4c5d-b3e3-bd1e1a04a533",
+      "storage_path": "09M.1.AHL.TZ2.H_5/question/05.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -3.0,
+        7.0
+      ],
+      "warnings": [
+        "Grid: 46v/14h lines, 83/83px/unit",
+        "Harmonized unit scale (ratio 5.19 > 1.20) to 83px/unit",
+        "Origin px: (361, 445)",
+        "Window units from origin (L/R/U/D): 4/11/5/7",
+        "Curve-family fit rejected: confidence 0.543 < 0.72; margin 0.002 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.002)"
+      ]
+    },
+    {
+      "question_image_id": "3226b56d-6059-42a3-9254-5bd9193661fa",
+      "storage_path": "09M.1.AHL.TZ2.H_5/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        9.5,
+        21.0
+      ],
+      "warnings": [
+        "Grid: 34v/25h lines, 34/34px/unit",
+        "Harmonized unit scale (ratio 1.42 > 1.20) to 34px/unit",
+        "Origin px: (817, 570)",
+        "Window units from origin (L/R/U/D): 23/19/15/15",
+        "Curve-family fit rejected: confidence 0.613 < 0.72; margin 0.004 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.004)"
+      ]
+    },
+    {
+      "question_image_id": "50e19c3e-b40d-41e0-9cab-6e01fe2a9bb5",
+      "storage_path": "09M.1.AHL.TZ2.H_6/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        12.0
+      ],
+      "warnings": [
+        "Grid: 45v/20h lines, 50/50px/unit",
+        "Harmonized unit scale (ratio 3.57 > 1.20) to 50px/unit",
+        "Origin px: (848, 670)",
+        "Window units from origin (L/R/U/D): 17/12/13/7",
+        "Curve-family fit rejected: confidence 0.598 < 0.72; margin 0.018 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=4.75, median |m|=2.00)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.018)"
+      ]
+    },
+    {
+      "question_image_id": "ccc688ff-da34-4c80-9086-49aa98236b87",
+      "storage_path": "09M.1.AHL.TZ2.H_6/question/03.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -36.0,
+        37.5
+      ],
+      "warnings": [
+        "Grid: 61v/10h lines, 23/23px/unit",
+        "Harmonized unit scale (ratio 1.35 > 1.20) to 23px/unit",
+        "Origin px: (887, 238)",
+        "Window units from origin (L/R/U/D): 38/38/9/11",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (32) indicates likely over-segmentation",
+        "High segment count (30) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.581 < 0.72; margin 0.015 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "0e821200-7a6c-47f9-b98b-1cef31ec645b",
+      "storage_path": "09M.1.AHL.TZ2.H_7/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "ef4c993a-de05-42c8-8ee6-d01948543847",
+      "storage_path": "09M.1.AHL.TZ2.H_7/question/03.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "b162c051-01af-4302-856d-0530743ce350",
+      "storage_path": "09M.1.AHL.TZ2.H_7/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -3.5,
+        7.0
+      ],
+      "warnings": [
+        "Grid: 75v/6h lines, 113/113px/unit",
+        "Harmonized unit scale (ratio 7.06 > 1.20) to 113px/unit",
+        "Origin px: (906, 214)",
+        "Window units from origin (L/R/U/D): 8/8/2/2",
+        "Curve-family fit rejected: confidence 0.686 < 0.72; margin 0.038 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread"
+      ]
+    },
+    {
+      "question_image_id": "54b410bd-70e7-44cf-a0a1-c773cc9638d2",
+      "storage_path": "09M.1.AHL.TZ2.H_8/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -11.0,
+        11.0
+      ],
+      "warnings": [
+        "Grid: 76v/14h lines, 52/52px/unit",
+        "Harmonized unit scale (ratio 3.25 > 1.20) to 52px/unit",
+        "Origin px: (667, 635)",
+        "Window units from origin (L/R/U/D): 13/12/12/19",
+        "Curve-family fit rejected: confidence 0.519 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "0987de6b-64f5-416b-ab46-da7c2ac3e1e2",
+      "storage_path": "09M.1.AHL.TZ2.H_8/question/03.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -21.5,
+        21.5
+      ],
+      "warnings": [
+        "Grid: 65v/3h lines, 24/24px/unit",
+        "Harmonized unit scale (ratio 2.00 > 1.20) to 24px/unit",
+        "Origin px: (557, 77)",
+        "Window units from origin (L/R/U/D): 22/21/1/1",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (37) indicates likely over-segmentation",
+        "High segment count (36) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: margin 0.003 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "12bed193-df37-40c2-bc42-c69ba3561678",
+      "storage_path": "09M.1.AHL.TZ2.H_8/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -11.5,
+        10.0
+      ],
+      "warnings": [
+        "Grid: 26v/18h lines, 48/48px/unit",
+        "Harmonized unit scale (ratio 2.40 > 1.20) to 48px/unit",
+        "Origin px: (900, 417)",
+        "Window units from origin (L/R/U/D): 17/12/7/9",
+        "Curve-family fit rejected: confidence 0.615 < 0.72; margin 0.007 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=11.00, median |m|=1.00)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.007)"
+      ]
+    },
+    {
+      "question_image_id": "8e4215a7-ea4d-4284-9871-07905e274ef9",
+      "storage_path": "09M.1.AHL.TZ2.H_9/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "f07aea08-4ccf-448a-8db0-8518fc14fc6d",
+      "storage_path": "09M.1.AHL.TZ2.H_9/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "63cf0878-5c4e-4d66-a3de-27154ac73455",
+      "storage_path": "09M.1.AHL.TZ2.H_9/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -2.0,
+        7.0
+      ],
+      "warnings": [
+        "Grid: 80v/3h lines, 126/126px/unit",
+        "Harmonized unit scale (ratio 7.41 > 1.20) to 126px/unit",
+        "Origin px: (896, 159)",
+        "Window units from origin (L/R/U/D): 7/7/1/1",
+        "Curve-family fit rejected: confidence 0.657 < 0.72; margin 0.000 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.000)"
+      ]
+    },
+    {
+      "question_image_id": "9e492f4d-3434-459e-847e-c816959f665e",
+      "storage_path": "09M.2.AHL.TZ2.H_7/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "a1e5187d-86f1-4d09-bb1d-6c76cf7fb0de",
+      "storage_path": "09M.2.AHL.TZ2.H_7/question/03.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "f15338e7-d8b3-4b06-b727-b7b55534efa6",
+      "storage_path": "09M.2.AHL.TZ2.H_7/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -10.0,
+        6.5
+      ],
+      "warnings": [
+        "Grid: 75v/5h lines, 68/68px/unit",
+        "Harmonized unit scale (ratio 4.86 > 1.20) to 68px/unit",
+        "Origin px: (699, 157)",
+        "Window units from origin (L/R/U/D): 10/9/2/2",
+        "Curve-family fit rejected: confidence 0.632 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=3.00, median |m|=0.50)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "8210aa4e-2616-4fbd-bb1b-4da622afd7a3",
+      "storage_path": "09M.2.AHL.TZ2.H_7/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -6.5,
+        10.5
+      ],
+      "warnings": [
+        "Grid: 26v/15h lines, 46/46px/unit",
+        "Harmonized unit scale (ratio 1.44 > 1.20) to 46px/unit",
+        "Origin px: (641, 539)",
+        "Window units from origin (L/R/U/D): 14/10/11/3",
+        "Curve-family fit rejected: confidence 0.558 < 0.72; margin 0.012 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=13.00, median |m|=0.50)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.012)"
+      ]
+    },
+    {
+      "question_image_id": "d5ef5c17-85fd-4ea8-9e37-772c641a615d",
+      "storage_path": "10M.1.AHL.TZ1.H_13/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -15.0,
+        12.5
+      ],
+      "warnings": [
+        "Grid: 53v/9h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 2.50 > 1.20) to 45px/unit",
+        "Origin px: (706, 249)",
+        "Window units from origin (L/R/U/D): 15/15/5/5",
+        "Curve-family fit rejected: confidence 0.634 < 0.72; margin 0.029 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread"
+      ]
+    },
+    {
+      "question_image_id": "5b0d2a36-e561-4c3b-b61f-03d4751a3e60",
+      "storage_path": "10M.1.AHL.TZ1.H_13/markscheme/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -17.5,
+        15.5
+      ],
+      "warnings": [
+        "Grid: 45v/18h lines, 35/35px/unit",
+        "Harmonized unit scale (ratio 1.84 > 1.20) to 35px/unit",
+        "Origin px: (668, 478)",
+        "Window units from origin (L/R/U/D): 18/17/12/8",
+        "Curve-family fit rejected: confidence 0.637 < 0.72; margin 0.012 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=6.00, median |m|=1.00)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.012)"
+      ]
+    },
+    {
+      "question_image_id": "9c36d9b8-7a5c-4334-99f4-672295a43183",
+      "storage_path": "10M.1.AHL.TZ1.H_13/markscheme/03.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -20.0,
+        15.5
+      ],
+      "warnings": [
+        "Grid: 25v/50h lines, 29/29px/unit",
+        "Harmonized unit scale (ratio 1.61 > 1.20) to 29px/unit",
+        "Origin px: (682, 937)",
+        "Window units from origin (L/R/U/D): 23/16/31/16",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (32) indicates likely over-segmentation",
+        "High segment count (31) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.657 < 0.72; margin 0.007 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "ffa950fc-92f8-40c8-b128-320ed7f5a0ee",
+      "storage_path": "10M.1.AHL.TZ2.H_11/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -8.0,
+        5.5
+      ],
+      "warnings": [
+        "Grid: 54v/11h lines, 81/81px/unit",
+        "Harmonized unit scale (ratio 4.50 > 1.20) to 81px/unit",
+        "Origin px: (703, 477)",
+        "Window units from origin (L/R/U/D): 8/8/6/5",
+        "Curve-family fit rejected: confidence 0.570 < 0.72; margin 0.015 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.015)"
+      ]
+    },
+    {
+      "question_image_id": "35e38f9e-c467-4c7e-8614-2187117352aa",
+      "storage_path": "10M.1.AHL.TZ2.H_11/markscheme/02.png",
+      "status": "processing_error",
+      "ok": false,
+      "domain": [
+        -16.0,
+        17.0
+      ],
+      "warnings": [
+        "Grid: 29v/28h lines, 37/37px/unit",
+        "Harmonized unit scale (ratio 1.68 > 1.20) to 37px/unit",
+        "Origin px: (635, 847)",
+        "Window units from origin (L/R/U/D): 17/17/22/8",
+        "Extraction uncertainty gate triggered",
+        "High vertex count (27) indicates likely over-segmentation",
+        "High segment count (25) indicates low-confidence piecewise fallback",
+        "Curve-family fit rejected: confidence 0.609 < 0.72; margin 0.010 < 0.05"
+      ]
+    },
+    {
+      "question_image_id": "b2b266f2-f3bd-4904-96d1-6f2afe31c845",
+      "storage_path": "10N.1.AHL.TZ0.H_6/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -6.5,
+        6.5
+      ],
+      "warnings": [
+        "Grid: 54v/11h lines, 95/95px/unit",
+        "Harmonized unit scale (ratio 6.33 > 1.20) to 95px/unit",
+        "Origin px: (732, 415)",
+        "Window units from origin (L/R/U/D): 8/7/4/3",
+        "Curve-family fit rejected: confidence 0.673 < 0.72",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread"
+      ]
+    },
+    {
+      "question_image_id": "35112293-f024-4fd5-a6df-28d819c9c8fb",
+      "storage_path": "10N.1.AHL.TZ0.H_6/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -11.5,
+        0.0
+      ],
+      "warnings": [
+        "Grid: 15v/28h lines, 41/41px/unit",
+        "Harmonized unit scale (ratio 1.46 > 1.20) to 41px/unit",
+        "Origin px: (496, 729)",
+        "Window units from origin (L/R/U/D): 12/17/17/15",
+        "Curve-family fit rejected: confidence 0.583 < 0.72; margin 0.004 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=31.00, median |m|=5.25)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.004)"
+      ]
+    },
+    {
+      "question_image_id": "5de81d29-bb78-4683-a143-0b1d5a481067",
+      "storage_path": "10N.1.AHL.TZ0.H_6/markscheme/03.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -18.0,
+        17.0
+      ],
+      "warnings": [
+        "Grid: 29v/26h lines, 33/33px/unit",
+        "Harmonized unit scale (ratio 2.06 > 1.20) to 33px/unit",
+        "Origin px: (659, 765)",
+        "Window units from origin (L/R/U/D): 20/17/22/7",
+        "Curve-family fit rejected: confidence 0.598 < 0.72; margin 0.010 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=24.00, median |m|=3.50)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.010)"
+      ]
+    },
+    {
+      "question_image_id": "ee7c3980-c801-454b-89d6-713b7f847e8e",
+      "storage_path": "11M.1.AHL.TZ1.H_3/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -7.0,
+        13.5
+      ],
+      "warnings": [
+        "Grid: 68v/7h lines, 64/64px/unit",
+        "Harmonized unit scale (ratio 4.00 > 1.20) to 64px/unit",
+        "Origin px: (906, 322)",
+        "Window units from origin (L/R/U/D): 14/13/4/3",
+        "Curve-family fit rejected: confidence 0.638 < 0.72; margin 0.001 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.001)"
+      ]
+    },
+    {
+      "question_image_id": "d6185a0b-aebc-4616-bf32-472306bd8fae",
+      "storage_path": "11M.1.AHL.TZ1.H_3/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "0b8ad303-f841-433a-8abc-c6384f03f586",
+      "storage_path": "11M.1.AHL.TZ1.H_3/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "08fe7b86-2591-4f3b-8256-cff9bc2ea549",
+      "storage_path": "11M.1.AHL.TZ1.H_3/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        13.5,
+        20.0
+      ],
+      "warnings": [
+        "Grid: 66v/26h lines, 35/35px/unit",
+        "Harmonized unit scale (ratio 2.50 > 1.20) to 35px/unit",
+        "Origin px: (861, 511)",
+        "Window units from origin (L/R/U/D): 23/17/14/17",
+        "Curve-family fit rejected: confidence 0.567 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "e7331f5f-b213-4b1e-a10e-32319700b1b4",
+      "storage_path": "11M.1.AHL.TZ2.H_1/question/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "b00cc8f7-0985-41b0-af73-aa1f2e0a5134",
+      "storage_path": "11M.1.AHL.TZ2.H_1/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "dea4e837-531c-48eb-9d07-74c10eabf8b1",
+      "storage_path": "11M.1.AHL.TZ2.H_1/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -19.5,
+        21.0
+      ],
+      "warnings": [
+        "Grid: 78v/6h lines, 35/35px/unit",
+        "Harmonized unit scale (ratio 2.33 > 1.20) to 35px/unit",
+        "Origin px: (794, 146)",
+        "Window units from origin (L/R/U/D): 22/21/3/5",
+        "Curve-family fit rejected: confidence 0.575 < 0.72; margin 0.000 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=6.00, median |m|=1.00)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.000)"
+      ]
+    },
+    {
+      "question_image_id": "f6859010-d2cb-4ade-b385-5fddc0faba7b",
+      "storage_path": "11M.1.AHL.TZ2.H_1/markscheme/01.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        1.0,
+        9.5
+      ],
+      "warnings": [
+        "Grid: 37v/17h lines, 58/58px/unit",
+        "Harmonized unit scale (ratio 2.90 > 1.20) to 58px/unit",
+        "Origin px: (851, 501)",
+        "Window units from origin (L/R/U/D): 14/10/8/7",
+        "Curve-family fit rejected: confidence 0.555 < 0.72; margin 0.001 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.001)"
+      ]
+    },
+    {
+      "question_image_id": "98507fab-b914-45f7-865e-a3ecd67700e3",
+      "storage_path": "11M.1.AHL.TZ2.H_10/question/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "9fb50be3-55ef-49cd-8594-c16b90e73104",
+      "storage_path": "11M.1.AHL.TZ2.H_10/question/03.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -14.5,
+        10.5
+      ],
+      "warnings": [
+        "Grid: 66v/6h lines, 42/42px/unit",
+        "Harmonized unit scale (ratio 3.23 > 1.20) to 42px/unit",
+        "Origin px: (644, 204)",
+        "Window units from origin (L/R/U/D): 15/15/4/3",
+        "Curve-family fit rejected: confidence 0.400 < 0.72; margin 0.015 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=11.00, median |m|=1.33)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread",
+        "Family-fit margin extremely small (0.015)"
+      ]
+    },
+    {
+      "question_image_id": "7ec25c38-5f0b-40ed-b432-23c1f562d07b",
+      "storage_path": "11M.1.AHL.TZ2.H_10/question/04.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -12.5,
+        5.0
+      ],
+      "warnings": [
+        "Grid: 75v/15h lines, 45/45px/unit",
+        "Harmonized unit scale (ratio 3.00 > 1.20) to 45px/unit",
+        "Origin px: (670, 623)",
+        "Window units from origin (L/R/U/D): 15/14/13/25",
+        "Curve-family fit rejected: confidence 0.568 < 0.72; margin 0.008 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Family-fit margin extremely small (0.008)"
+      ]
+    },
+    {
+      "question_image_id": "f31287e7-a402-4edc-b70e-9d2b3da8ede2",
+      "storage_path": "11M.1.AHL.TZ2.H_10/markscheme/02.png",
+      "status": "pending_review",
+      "ok": true,
+      "domain": [
+        -13.5,
+        15.5
+      ],
+      "warnings": [
+        "Grid: 19v/21h lines, 37/37px/unit",
+        "Harmonized unit scale (ratio 1.85 > 1.20) to 37px/unit",
+        "Origin px: (541, 463)",
+        "Window units from origin (L/R/U/D): 14/17/12/11",
+        "Curve-family fit rejected: confidence 0.570 < 0.72; margin 0.024 < 0.05",
+        "Using piecewise fallback",
+        "Manual review required: fallback QA flagged low confidence",
+        "Axis scale was auto-harmonized; verify origin and y-level alignment manually",
+        "Steep slope outlier detected (max |m|=31.00, median |m|=5.50)",
+        "Large adjacent y-jump(s) detected; possible endpoint or axis misread"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,154 @@
+Mathematics: applications and interpretation 
+guide
+First assessment 2021
+
+Mathematics: applications and interpretation 
+guide
+First assessment 2021
+
+
+Published February 2019
+Published on behalf of the International Baccalaureate Organization, a not-for-profit 
+educational foundation of 15 Route des Morillons, 1218 Le Grand-Saconnex, Geneva, 
+Switzerland by the
+International Baccalaureate Organization (UK) Ltd 
+Peterson House, Malthouse Avenue, Cardiff Gate 
+Cardiff, Wales CF23 8GL 
+United Kingdom 
+Website: ibo.org
+© International Baccalaureate Organization 2019
+The International Baccalaureate Organization (known as the IB) offers four high-quality 
+and challenging educational programmes for a worldwide community of schools, aiming 
+to create a better, more peaceful world. This publication is one of a range of materials 
+produced to support these programmes.
+The IB may use a variety of sources in its work and checks information to verify accuracy 
+and authenticity, particularly when using community-based knowledge sources such as 
+Wikipedia. The IB respects the principles of intellectual property and makes strenuous 
+efforts to identify and obtain permission before publication from rights holders of all 
+copyright material used. The IB is grateful for permissions received for material used 
+in this publication and will be pleased to correct any errors or omissions at the earliest 
+opportunity.
+All rights reserved. No part of this publication may be reproduced, stored in a retrieval 
+system, or transmitted, in any form or by any means, without the IB’s prior written 
+permission, or as expressly permitted by the Rules for use of IB Intellectual Property.
+IB merchandise and publications can be purchased through the IB Store (email: sales@
+ibo.org ). Any commercial use of IB publications (whether fee-covered or commercial) 
+by third parties acting in the IB’s ecosystem without a formal relationship with the IB 
+(including but not limited to tutoring organizations, professional development providers, 
+educational publishers and operators of curriculum mapping or teacher resource digital 
+platforms etc) is prohibited and requires a subsequent written license from the IB. License 
+requests should be sent to copyright@ibo.org. More information can be obtained on the 
+IB public website.
+Diploma Programme
+Mathematics: applications and interpretation guide
+International Baccalaureate , Baccalauréat International , Bachillerato Internacional   
+and IB logos are registered trademarks of the International Baccalaureate Organization.
+
+IB learner profile I
+profile IB learner p
+arner profile IB lea
+ile IB learner profi
+IB learner profile I
+er profile IB learne
+© International Baccalaureate Organization 2017
+International Baccalaureate® | Baccalauréat International® | Bachillerato Internacional®
+The IB learner pro/f_ile represents 10 attributes valued by IB World Schools. We believe these attributes, and others 
+like them, can help individuals and groups become responsible members of local, national and global communities.
+We nurture our curiosity, developing skills for inquiry and 
+research. We know how to learn independently and with others. 
+We learn with enthusiasm and sustain our love of learning 
+throughout life.
+We develop and use conceptual understanding, exploring 
+knowledge across a range of disciplines. We engage with issues 
+and ideas that have local and global signi/f_icance. 
+We use critical and creative thinking skills to analyse and take 
+responsible action on complex problems. We exercise initiative in 
+making reasoned, ethical decisions.
+We express ourselves con/f_idently and creatively in more than one 
+language and in many ways.  We collaborate eﬀectively, listening 
+carefully to the perspectives of other individuals and groups.
+We act with integrity and honesty, with a strong sense of 
+fairness and justice, and with respect for the dignity and rights 
+of people everywhere. We take responsibility for our actions 
+and their consequences.
+We critically appreciate our own cultures and personal histories, 
+as well as the values and traditions of others. We seek and evaluate 
+a range of points of view, and we are willing to grow from the 
+experience.
+We show empathy, compassion and respect. We have a 
+commitment to service, and we act to make a positive diﬀerence 
+in the lives of others and in the world around us.
+We understand the importance of balancing diﬀerent aspects of 
+our lives /emdash.capintellectual, physical, and emotional/emdash.capto achieve 
+well-being for ourselves and others. We recognize our interde-
+pendence with other people and with the world in which we live.
+We thoughtfully consider the world and our own ideas and expe-
+rience. We work to understand our strengths and weaknesses in 
+order to support our learning and personal development.
+We approach uncertainty with forethought and determination; 
+we work independently and cooperatively to explore new ideas 
+and innovative strategies. We are resourceful and resilient in the 
+face of challenges and change.
+IB learner profile
+The aim of all IB programmes is to develop internationally minded people who, recognizing their common 
+humanity and shared guardianship of the planet, help to create a better and more peaceful world.
+As IB learners we strive to be:
+THE IB LEARNER PROFILE
+IB mission statement
+The International Baccalaureate aims to develop inquiring, knowledgeable and caring young people who 
+help to create a better and more peaceful world through intercultural understanding and respect.
+To this end the organization works with schools, governments and international organizations to develop 
+challenging programmes of international education and rigorous assessment.
+These programmes encourage students across the world to become active, compassionate and lifelong 
+learners who understand that other people, with their differences, can also be right.
+
+IB learner profile I
+profile IB learner p
+arner profile IB lea
+ile IB learner profi
+IB learner profile I
+er profile IB learne
+© International Baccalaureate Organization 2017
+International Baccalaureate® | Baccalauréat International® | Bachillerato Internacional®
+The IB learner pro/f_ile represents 10 attributes valued by IB World Schools. We believe these attributes, and others 
+like them, can help individuals and groups become responsible members of local, national and global communities.
+We nurture our curiosity, developing skills for inquiry and 
+research. We know how to learn independently and with others. 
+We learn with enthusiasm and sustain our love of learning 
+throughout life.
+We develop and use conceptual understanding, exploring 
+knowledge across a range of disciplines. We engage with issues 
+and ideas that have local and global signi/f_icance. 
+We use critical and creative thinking skills to analyse and take 
+responsible action on complex problems. We exercise initiative in 
+making reasoned, ethical decisions.
+We express ourselves con/f_idently and creatively in more than one 
+language and in many ways.  We collaborate eﬀectively, listening 
+carefully to the perspectives of other individuals and groups.
+We act with integrity and honesty, with a strong sense of 
+fairness and justice, and with respect for the dignity and rights 
+of people everywhere. We take responsibility for our actions 
+and their consequences.
+We critically appreciate our own cultures and personal histories, 
+as well as the values and traditions of others. We seek and evaluate 
+a range of points of view, and we are willing to grow from the 
+experience.
+We show empathy, compassion and respect. We have a 
+commitment to service, and we act to make a positive diﬀerence 
+in the lives of others and in the world around us.
+We understand the importance of balancing diﬀerent aspects of 
+our lives /emdash.capintellectual, physical, and emotional/emdash.capto achieve 
+well-being for ourselves and others. We recognize our interde-
+pendence with other people and with the world in which we live.
+We thoughtfully consider the world and our own ideas and expe-
+rience. We work to understand our strengths and weaknesses in 
+order to support our learning and personal development.
+We approach uncertainty with forethought and determination; 
+we work independently and cooperatively to explore new ideas 
+and innovative strategies. We are resourceful and resilient in the 
+face of challenges and change.
+IB learner profile
+The aim of all IB programmes is to develop internationally minded people who, recognizing their common 
+humanity and shared guardianship of the planet, help to create a better and more peaceful world.
+As IB learners we strive to be:
+THE IB LEARNER PROFILE
