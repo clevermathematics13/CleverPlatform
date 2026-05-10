@@ -311,7 +311,6 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
   const [templateEdits, setTemplateEdits] = useState<Record<string, string>>({});
   const [savingSection, setSavingSection] = useState<Set<string>>(new Set());
-  const dragIndexRef = useRef<number | null>(null);
 
   // ── Saved exams state ───────────────────────────────────────────────────────
   const [savedExams, setSavedExams] = useState<SavedExam[]>([]);
@@ -994,18 +993,11 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     });
   };
 
-  const handleDragStart = (index: number) => {
-    dragIndexRef.current = index;
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndexRef.current === null || dragIndexRef.current === index) return;
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return;
     setTestQueue((prev) => {
       const next = [...prev];
-      const [dragged] = next.splice(dragIndexRef.current!, 1);
-      next.splice(index, 0, dragged);
-      dragIndexRef.current = index;
+      [next[index - 1], next[index]] = [next[index], next[index - 1]];
       return next;
     });
   };
@@ -1685,8 +1677,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           onRemove={removeFromQueue}
           onUpdateSection={updateQueueSection}
           onAutoSort={autoSortQueue}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
+          onMoveUp={handleMoveUp}
           onPreviewTest={() => openPreview("question")}
           onPreviewMS={() => openPreview("markscheme")}
           onClear={() => { setTestQueue([]); setActiveExamId(null); }}
@@ -4694,8 +4685,7 @@ function TestBuilderPanel({
   onRemove,
   onUpdateSection,
   onAutoSort,
-  onDragStart,
-  onDragOver,
+  onMoveUp,
   onPreviewTest,
   onPreviewMS,
   onClear,
@@ -4732,8 +4722,7 @@ function TestBuilderPanel({
   onRemove: (id: string) => void;
   onUpdateSection: (id: string, section: "A" | "B") => void;
   onAutoSort: () => void;
-  onDragStart: (index: number) => void;
-  onDragOver: (e: React.DragEvent, index: number) => void;
+  onMoveUp: (index: number) => void;
   onPreviewTest: () => void;
   onPreviewMS: () => void;
   onClear: () => void;
@@ -4967,8 +4956,7 @@ function TestBuilderPanel({
                       showSection={true}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
-                      onDragStart={() => onDragStart(idx)}
-                      onDragOver={(e) => onDragOver(e, idx)}
+                      onMoveUp={() => onMoveUp(idx)}
                     />
                   );
                 })}
@@ -4995,8 +4983,7 @@ function TestBuilderPanel({
                       showSection={true}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
-                      onDragStart={() => onDragStart(idx)}
-                      onDragOver={(e) => onDragOver(e, idx)}
+                      onMoveUp={() => onMoveUp(idx)}
                     />
                   );
                 })}
@@ -5014,8 +5001,7 @@ function TestBuilderPanel({
                   showSection={true}
                   onRemove={() => onRemove(item.id)}
                   onUpdateSection={(s) => onUpdateSection(item.id, s)}
-                  onDragStart={() => onDragStart(idx)}
-                  onDragOver={(e) => onDragOver(e, idx)}
+                  onMoveUp={() => onMoveUp(idx)}
                 />
               );
             })}
@@ -5029,8 +5015,7 @@ function TestBuilderPanel({
               showSection={false}
               onRemove={() => onRemove(item.id)}
               onUpdateSection={(s) => onUpdateSection(item.id, s)}
-              onDragStart={() => onDragStart(idx)}
-              onDragOver={(e) => onDragOver(e, idx)}
+              onMoveUp={() => onMoveUp(idx)}
             />
           ))
         )}
@@ -5182,26 +5167,29 @@ function QueueRow({
   showSection,
   onRemove,
   onUpdateSection,
-  onDragStart,
-  onDragOver,
+  onMoveUp,
 }: {
   item: TestQueueItem;
   number: number;
   showSection: boolean;
   onRemove: () => void;
   onUpdateSection: (section: "A" | "B") => void;
-  onDragStart: () => void;
-  onDragOver: (e: React.DragEvent) => void;
+  onMoveUp: () => void;
 }) {
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      className="flex items-center gap-1 rounded bg-white border border-indigo-200 px-2 py-1 text-xs cursor-grab active:cursor-grabbing hover:border-indigo-400"
+      className="flex items-center gap-1 rounded bg-white border border-indigo-200 px-2 py-1 text-xs hover:border-indigo-400"
     >
-      {/* Drag handle */}
-      <span className="text-gray-400 select-none text-base leading-none mr-0.5">⠿</span>
+      {/* Move up */}
+      <button
+        type="button"
+        onClick={onMoveUp}
+        disabled={number === 1}
+        title="Move up"
+        className="text-indigo-400 hover:text-indigo-700 disabled:opacity-20 flex-shrink-0 leading-none"
+      >
+        ▲
+      </button>
       {/* Number */}
       <span className="font-bold text-indigo-700 w-5 text-right flex-shrink-0">
         {number}.
