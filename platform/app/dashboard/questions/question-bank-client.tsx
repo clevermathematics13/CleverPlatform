@@ -276,6 +276,11 @@ function detectPartLabels(text: string): string[] {
   return labels;
 }
 
+function normalizePartLabelKey(label: string | null | undefined): string {
+  if (!label) return "";
+  return label.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 export function QuestionBankClient({ initialDriveConnected = false }: { initialDriveConnected?: boolean }) {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [filters, setFilters] = useState<Filters | null>(null);
@@ -2799,10 +2804,11 @@ function QuestionRow({
       push("Saving parts…");
       const newParts: QuestionPart[] = [];
       for (const [idx, label] of finalLabels.entries()) {
-        const cpByLabel = claudeParts.find((p) => (p.label ?? "").toLowerCase() === label.toLowerCase());
+        const normalizedLabel = normalizePartLabelKey(label);
+        const cpByLabel = claudeParts.find((p) => normalizePartLabelKey(p.label ?? "") === normalizedLabel);
         const cpByOrder = claudeLabels.length === 0 && claudeParts.length > 1 ? claudeParts[idx] : undefined;
         const cp = cpByLabel ?? cpByOrder;
-        const existing = parts.find((p) => (p.part_label ?? "").toLowerCase() === label.toLowerCase());
+        const existing = parts.find((p) => normalizePartLabelKey(p.part_label ?? "") === normalizedLabel);
         let partId: string;
         const splitQForLabel = splitQ.get(label) ?? "";
         const splitMSForLabel = splitMS.get(label) ?? "";
@@ -2917,6 +2923,10 @@ function QuestionRow({
       });
       setLatexDrafts(newDrafts);
 
+      if (finalLabels.length > 0 && newParts.length === 0) {
+        throw new Error("No parts were saved. Existing parts may use labels with different formatting (for example b(i) vs bi).");
+      }
+
       push("Done! All LaTeX extracted and saved.");
       // Refresh parent question list so data stays in sync
       onRefresh();
@@ -2946,8 +2956,12 @@ function QuestionRow({
       const { stem, parts: splitMap } = splitDraftIntoParts(fullLatex, partLabels);
       const thisPart = parts.find((p) => p.id === partId);
       const thisLabel = thisPart?.part_label ?? "";
+      // Use normalized label matching first; this handles labels like b(i) vs bi.
+      const splitByNormalized = Array.from(splitMap.entries()).find(
+        ([k]) => normalizePartLabelKey(k) === normalizePartLabelKey(thisLabel)
+      )?.[1];
       // Use the split slice if found, otherwise fall back to stem (single-part question)
-      const extracted = splitMap.get(thisLabel) ?? stem ?? fullLatex;
+      const extracted = splitByNormalized ?? splitMap.get(thisLabel) ?? stem ?? fullLatex;
       setLatexDrafts((d) => ({
         ...d,
         [partId]: { ...d[partId], [field]: extracted },
