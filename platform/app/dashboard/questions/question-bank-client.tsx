@@ -303,6 +303,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     errors: number;
   } | null>(null);
   const [bulkErrors, setBulkErrors] = useState<{ code: string; error: string }[]>([]);
+  const [bulkEventLog, setBulkEventLog] = useState<string[]>([]);
   const [showErrors, setShowErrors] = useState(false);
   const [docExtractTroubleshooting, setDocExtractTroubleshooting] = useState<Record<string, DocExtractTroubleshooting>>({});
   const [docTroubleshootingCopied, setDocTroubleshootingCopied] = useState<Set<string>>(new Set());
@@ -680,14 +681,26 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   };
 
   const copyBulkTroubleshooting = () => {
+    const perQuestionReports = Object.values(docExtractTroubleshooting);
     const text = [
       "Bulk extract troubleshooting report",
       `Captured at: ${new Date().toISOString()}`,
+      `Location: ${window.location.href}`,
       `driveConnected: ${driveConnected}`,
       `bulkExtracting: ${bulkExtracting}`,
       `syncing: ${syncing}`,
       `importing: ${importing}`,
       `globalError: ${error ?? "(none)"}`,
+      `search: ${search || "(none)"}`,
+      `searchContent: ${searchContent}`,
+      `session: ${session || "(none)"}`,
+      `paper: ${paper || "(none)"}`,
+      `level: ${level || "(none)"}`,
+      `timezone: ${timezone || "(none)"}`,
+      `subtopic: ${subtopic || "(none)"}`,
+      `page: ${page}`,
+      `visibleQuestions: ${questions.length}`,
+      `totalQuestions: ${total}`,
       "",
       "Bulk progress",
       JSON.stringify(bulkProgress, null, 2),
@@ -700,6 +713,14 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       "",
       "Sync result",
       JSON.stringify(syncResult, null, 2),
+      "",
+      "Bulk event log",
+      bulkEventLog.length > 0 ? bulkEventLog.join("\n") : "(no events recorded in this tab yet)",
+      "",
+      "Per-question extraction troubleshooting",
+      perQuestionReports.length > 0
+        ? perQuestionReports.map((r) => formatTroubleshooting(r)).join("\n\n==============================\n\n")
+        : "(none captured)",
     ].join("\n");
 
     void navigator.clipboard.writeText(text).then(() => {
@@ -830,10 +851,21 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   };
 
   const extractAllImages = async () => {
+    setBulkExtracting(true);
     setBulkProgress({ completed: 0, total: 0, currentCode: "", totalImages: 0, errors: 0 });
     setBulkErrors([]);
+    setBulkEventLog([]);
     setShowErrors(false);
     setError(null);
+
+    const appendBulkEvent = (message: string) => {
+      setBulkEventLog((prev) => {
+        const next = [...prev, `[${new Date().toISOString()}] ${message}`];
+        return next.length > 400 ? next.slice(next.length - 400) : next;
+      });
+    };
+
+    appendBulkEvent("Bulk extraction started (skipExisting=true)");
 
     try {
       const res = await fetch("/api/questions/extract-all-images", {
@@ -846,6 +878,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       // If redirected (e.g. to login), the user isn't authenticated
       if (res.type === "opaqueredirect" || res.status === 0) {
         setError("Session expired. Please refresh the page and try again.");
+        appendBulkEvent("Session expired or redirected before stream opened");
         setBulkExtracting(false);
         setBulkProgress(null);
         return;
@@ -855,8 +888,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         try {
           const data = await res.json();
           setError(data.error ?? "Bulk extraction failed");
+          appendBulkEvent(`Bulk extraction HTTP ${res.status}: ${data.error ?? "Bulk extraction failed"}`);
         } catch {
           setError(`Bulk extraction failed (HTTP ${res.status})`);
+          appendBulkEvent(`Bulk extraction HTTP ${res.status} with non-JSON error body`);
         }
         setBulkExtracting(false);
         setBulkProgress(null);
@@ -865,6 +900,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 
       if (!res.body) {
         setError("No response stream");
+        appendBulkEvent("Bulk extraction returned no response body stream");
         setBulkExtracting(false);
         setBulkProgress(null);
         return;
@@ -887,8 +923,12 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           try {
             const msg = JSON.parse(line);
             if (msg.type === "start") {
+              appendBulkEvent(`Stream start: total=${msg.total}`);
               setBulkProgress((p) => ({ ...p!, total: msg.total }));
             } else if (msg.type === "progress") {
+              if (msg.error) {
+                appendBulkEvent(`Progress ${msg.completed}/${msg.total} ${msg.code}: ERROR ${msg.error}`);
+              }
               setBulkProgress((prev) => ({
                 completed: msg.completed,
                 total: msg.total,
@@ -900,6 +940,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 setBulkErrors((prev) => [...prev, { code: msg.code, error: msg.error }]);
               }
             } else if (msg.type === "done") {
+              appendBulkEvent(`Done: totalQuestions=${msg.totalQuestions}, totalImages=${msg.totalImages}, errors=${msg.errors}`);
               setBulkProgress({
                 completed: msg.totalQuestions,
                 total: msg.totalQuestions,
@@ -909,16 +950,20 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
               });
             } else if (msg.type === "error") {
               setError(msg.error);
+              appendBulkEvent(`Stream error: ${msg.error}`);
             }
           } catch (parseErr) {
             console.error("Failed to parse stream line:", line, parseErr);
+            appendBulkEvent(`Failed to parse stream line: ${line.slice(0, 180)}`);
           }
         }
       }
 
       setDriveConnected(true);
+      appendBulkEvent("Bulk extraction stream finished successfully");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bulk extraction failed");
+      appendBulkEvent(e instanceof Error ? `Exception: ${e.message}` : "Exception: Bulk extraction failed");
     } finally {
       setBulkExtracting(false);
     }
@@ -1308,7 +1353,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 className="rounded-lg border border-slate-400 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-100"
                 title="Copy bulk extraction diagnostics and errors for troubleshooting"
               >
-                {bulkTroubleshootingCopied ? "✓ Copied" : "Copy Bulk Troubleshooting"}
+                {bulkTroubleshootingCopied ? "✓ Copied" : "Copy Logs"}
               </button>
             </div>
           </div>
