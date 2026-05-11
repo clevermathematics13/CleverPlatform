@@ -341,6 +341,11 @@ export async function POST(request: NextRequest) {
               : "not_attempted",
             finalLookupResult: focusedQuestion ? "found" : "not_found",
             sampleIds: questions.slice(0, 3).map((q) => q.id),
+            // NEW: Also return questions with matching code (loose search) to help debug
+            codesContaining25M: questions
+              .filter((q) => q.code.includes("25M"))
+              .slice(0, 5)
+              .map((q) => ({ id: q.id, code: q.code })),
           }
         : undefined;
 

@@ -412,6 +412,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         codeLookupResult: string;
         finalLookupResult: string;
         sampleIds: string[];
+        codesContaining25M?: Array<{ id: string; code: string }>;
       };
     };
   } | null>(null);
@@ -985,6 +986,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
             codeLookupResult: string;
             finalLookupResult: string;
             sampleIds: string[];
+            codesContaining25M?: Array<{ id: string; code: string }>;
           };
         };
       };
@@ -1631,6 +1633,16 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                       </p>
                       <p>Final result: {syncResult.focused._debug.finalLookupResult}</p>
                       <p>Sample DB IDs: {syncResult.focused._debug.sampleIds.slice(0, 2).join(", ")}</p>
+                      {syncResult.focused._debug.codesContaining25M && syncResult.focused._debug.codesContaining25M.length > 0 && (
+                        <div className="mt-1 pt-1 border-t border-green-200">
+                          <p className="font-semibold">Questions with "25M" in DB:</p>
+                          {syncResult.focused._debug.codesContaining25M.map((q) => (
+                            <p key={q.id} className="text-[9px]">
+                              {q.code} → ID: {q.id}
+                            </p>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
