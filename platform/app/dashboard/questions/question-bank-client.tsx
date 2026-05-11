@@ -370,6 +370,12 @@ function normalizePartLabelKey(label: string | null | undefined): string {
   return label.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+function romanSubpartStem(label: string): string | null {
+  const normalized = normalizePartLabelKey(label);
+  const m = normalized.match(/^([a-z])(i|ii|iii|iv|v)$/);
+  return m ? m[1] : null;
+}
+
 function primaryCommandTerm(part: Pick<QuestionPart, "command_term" | "command_terms">): string | null {
   return part.command_terms?.[0] ?? part.command_term ?? null;
 }
@@ -3147,26 +3153,70 @@ function QuestionRow({
       // For each identified part label: find existing or create, then save LaTeX
       push("Saving parts…");
       const newParts: QuestionPart[] = [];
-      for (const [idx, label] of finalLabels.entries()) {
+      const labelPlans = finalLabels.map((label, idx) => {
         const normalizedLabel = normalizePartLabelKey(label);
         const cpByLabel = claudeParts.find((p) => normalizePartLabelKey(p.label ?? "") === normalizedLabel);
         const cpByOrder = claudeLabels.length === 0 && claudeParts.length > 1 ? claudeParts[idx] : undefined;
         const cp = cpByLabel ?? cpByOrder;
-        const existing = parts.find((p) => normalizePartLabelKey(p.part_label ?? "") === normalizedLabel);
-        let partId: string;
         const splitQForLabel = splitQ.get(label) ?? "";
         const splitMSForLabel = splitMS.get(label) ?? "";
-        const canonicalTerm = chooseCommandTerm({
+        const perPartTerms = chooseCommandTerms({
           questionLatex: splitQForLabel,
           markschemeLatex: splitMSForLabel,
           claudeCommandTerm: cp?.commandTerm ?? null,
         });
-        const canonicalTerms = chooseCommandTerms({
+        return {
+          idx,
+          label,
+          normalizedLabel,
+          cp,
+          splitQForLabel,
+          splitMSForLabel,
+          stem: romanSubpartStem(label),
+          perPartTerms,
+        };
+      });
+
+      const familyTerms = new Map<string, string[]>();
+      const familySourceLatex = new Map<string, string>();
+      const familyMembers = new Map<string, typeof labelPlans>();
+      for (const plan of labelPlans) {
+        if (!plan.stem) continue;
+        const current = familyMembers.get(plan.stem) ?? [];
+        current.push(plan);
+        familyMembers.set(plan.stem, current);
+      }
+      for (const [stem, members] of familyMembers.entries()) {
+        if (members.length < 2) continue;
+        const combinedQ = members.map((m) => m.splitQForLabel).filter(Boolean).join("\n");
+        const combinedMS = members.map((m) => m.splitMSForLabel).filter(Boolean).join("\n");
+        const combinedTerms = mergeHighlightTerms(...members.map((m) => m.perPartTerms));
+        const canonicalCombinedTerms = combinedTerms
+          .map((term) => DEFAULT_COMMAND_TERMS.find((t) => t.toLowerCase() === term.toLowerCase()))
+          .filter((t): t is string => Boolean(t));
+        const primary = chooseCommandTerm({
+          questionLatex: combinedQ,
+          markschemeLatex: combinedMS,
+          claudeCommandTerm: members[0]?.cp?.commandTerm ?? null,
+        });
+        familyTerms.set(stem, mergeHighlightTerms([primary], canonicalCombinedTerms));
+        familySourceLatex.set(stem, combinedQ || members[0]?.splitQForLabel || "");
+      }
+
+      for (const plan of labelPlans) {
+        const { idx, label, normalizedLabel, cp, splitQForLabel, splitMSForLabel, stem, perPartTerms } = plan;
+        const existing = parts.find((p) => normalizePartLabelKey(p.part_label ?? "") === normalizedLabel);
+        let partId: string;
+        const canonicalTerms = stem && familyTerms.has(stem) ? (familyTerms.get(stem) ?? perPartTerms) : perPartTerms;
+        const canonicalTerm = canonicalTerms[0] ?? chooseCommandTerm({
           questionLatex: splitQForLabel,
           markschemeLatex: splitMSForLabel,
           claudeCommandTerm: cp?.commandTerm ?? null,
         });
-        const exceptionFlags = deriveCommandTermFlags({ commandTerm: canonicalTerm, sourceLatex: splitQForLabel });
+        const sourceForMetadata = stem && familySourceLatex.has(stem)
+          ? (familySourceLatex.get(stem) ?? splitQForLabel)
+          : splitQForLabel;
+        const exceptionFlags = deriveCommandTermFlags({ commandTerm: canonicalTerm, sourceLatex: sourceForMetadata });
 
         if (existing) {
           // Update metadata
@@ -3179,7 +3229,7 @@ function QuestionRow({
               marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
               commandTerm: canonicalTerm,
               commandTerms: canonicalTerms,
-              sourceLatex: splitQForLabel,
+              sourceLatex: sourceForMetadata,
               subtopicCodes: cp?.subtopicCodes ?? existing.subtopic_codes,
             }),
           });
@@ -3206,7 +3256,7 @@ function QuestionRow({
               marks: typeof cp?.marks === "number" ? cp.marks : null,
               commandTerm: canonicalTerm,
               commandTerms: canonicalTerms,
-              sourceLatex: splitQForLabel,
+              sourceLatex: sourceForMetadata,
               subtopicCodes: cp?.subtopicCodes ?? [],
             }),
           });
