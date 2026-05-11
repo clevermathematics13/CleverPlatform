@@ -180,6 +180,7 @@ function renderWithTermHighlights(
     if (n === "show") return [cmd, "Show that"];
     return [cmd];
   })();
+  const cmdAliasSet = new Set(cmdAliases.map((t) => normalizeComparable(t)).filter(Boolean));
   const cleanedContextTerms = Array.from(new Set(contextTerms.map((t) => t.trim()).filter(Boolean))).filter((t) => normalizeComparable(t) !== normalizeComparable(cmd));
   const cleanedTerms = [...cmdAliases, ...cleanedContextTerms].filter(Boolean).sort((a, b) => b.length - a.length);
   if (cleanedTerms.length === 0) return text;
@@ -198,7 +199,7 @@ function renderWithTermHighlights(
     const token = text.slice(match.index, re.lastIndex);
     const tokenNorm = normalizeComparable(token);
     const isCommand =
-      (!!cmd && tokenNorm === normalizeComparable(cmd)) || COMMAND_TERM_SET.has(tokenNorm);
+      cmdAliasSet.has(tokenNorm) || COMMAND_TERM_SET.has(tokenNorm);
     nodes.push(
       <span key={`ct-${keyIdx++}`} className={isCommand ? "font-bold text-red-600" : "font-bold text-blue-600"}>
         {token}
