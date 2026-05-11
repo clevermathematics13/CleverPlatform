@@ -862,6 +862,45 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     });
   };
 
+  const clearUICache = () => {
+    if (!confirm("Clear all UI cache? This will reset questions, filters, and cached data. You'll need to reload the page.")) {
+      return;
+    }
+    
+    // Clear React state
+    setQuestions([]);
+    setTotal(0);
+    setPage(1);
+    setSearch("");
+    setSearchContent(false);
+    setSession("");
+    setPaper("");
+    setLevel("");
+    setTimezone("");
+    setSubtopic("");
+    setFilters(null);
+    setQuestionImages({});
+    setExpanded(new Set());
+    setBulkProgress(null);
+    setBulkErrors([]);
+    setSyncResult(null);
+    setFixLinksResult(null);
+    setImportResult(null);
+    
+    // Clear localStorage/sessionStorage
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {
+      console.warn("Could not clear storage:", e);
+    }
+    
+    // Reload page after brief delay to show cleared state
+    setTimeout(() => {
+      window.location.reload();
+    }, 500);
+  };
+
   const deleteImage = async (questionId: string, imageId: string) => {
     setDeletingImage((prev) => new Set(prev).add(imageId));
     try {
@@ -1588,6 +1627,14 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 title="Copy bulk extraction diagnostics and errors for troubleshooting"
               >
                 {bulkTroubleshootingCopied ? "✓ Copied" : "Copy Logs"}
+              </button>
+              <button
+                type="button"
+                onClick={clearUICache}
+                className="rounded-lg border border-red-400 bg-white px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-50"
+                title="Clear cached questions, filters, and storage. This will reload the page."
+              >
+                Clear UI Cache
               </button>
             </div>
           </div>
