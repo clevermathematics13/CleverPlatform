@@ -938,7 +938,12 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     setSyncResult(null);
     setError(null);
     try {
-      const focusCode = search.trim();
+      // Prefer the exact visible row code so focused diagnostics don't drift from
+      // free-text search input formatting.
+      const focusCode =
+        questions.length === 1 && questions[0]?.code
+          ? questions[0].code
+          : search.trim();
       const res = await fetch("/api/admin/sync-drive-docs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
