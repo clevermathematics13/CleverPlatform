@@ -35,6 +35,7 @@ interface QuestionPart {
   marks: number;
   subtopic_codes: string[];
   command_term: string | null;
+  command_terms?: string[];
   instructional_context_terms?: string[];
   is_hence?: boolean;
   is_hence_or_otherwise?: boolean;
@@ -304,6 +305,24 @@ function chooseCommandTerm(input: {
   return "State";
 }
 
+function chooseCommandTerms(input: {
+  questionLatex: string;
+  markschemeLatex?: string;
+  claudeCommandTerm?: string | null;
+}): string[] {
+  const primary = chooseCommandTerm(input);
+  const combined = mergeHighlightTerms(
+    [primary],
+    detectCommandTerms(input.questionLatex),
+    detectCommandTerms(input.markschemeLatex ?? ""),
+    input.claudeCommandTerm ? [input.claudeCommandTerm] : [],
+  );
+  const canonical = combined
+    .map((term) => DEFAULT_COMMAND_TERMS.find((t) => t.toLowerCase() === term.toLowerCase()))
+    .filter((t): t is string => Boolean(t));
+  return mergeHighlightTerms([primary], canonical);
+}
+
 function detectCommandTerms(latex: string): string[] {
   if (!latex) return [];
   const plain = latex.replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ").replace(/[${}\\]/g, " ");
@@ -349,6 +368,10 @@ function detectPartLabels(text: string): string[] {
 function normalizePartLabelKey(label: string | null | undefined): string {
   if (!label) return "";
   return label.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function primaryCommandTerm(part: Pick<QuestionPart, "command_term" | "command_terms">): string | null {
+  return part.command_terms?.[0] ?? part.command_term ?? null;
 }
 
 export function QuestionBankClient({ initialDriveConnected = false }: { initialDriveConnected?: boolean }) {
@@ -1080,7 +1103,12 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         prev.map((q) => ({
           ...q,
           question_parts: q.question_parts.map((p) =>
-            p.id === partId ? { ...p, ...(data.part ?? { command_term: commandTerm }) } : p
+            p.id === partId
+              ? {
+                ...p,
+                ...(data.part ?? { command_term: commandTerm, command_terms: commandTerm ? [commandTerm] : [] }),
+              }
+              : p
           ),
         }))
       );
@@ -2786,6 +2814,11 @@ function QuestionRow({
           markschemeLatex: msDraft,
           claudeCommandTerm: cpMeta?.commandTerm ?? null,
         });
+        const extractedWholeTerms = chooseCommandTerms({
+          questionLatex: qDraft,
+          markschemeLatex: msDraft,
+          claudeCommandTerm: cpMeta?.commandTerm ?? null,
+        });
         push("No part structure found — treating as whole question…");
         // Find or create a null-label (whole-question) part
         let wholePartId: string;
@@ -2801,6 +2834,7 @@ function QuestionRow({
                 partId: wholePartId,
                 marks: typeof cpMeta.marks === "number" ? cpMeta.marks : null,
                 commandTerm: extractedWholeTerm,
+                commandTerms: extractedWholeTerms,
                 sourceLatex: qDraft,
                 subtopicCodes: cpMeta.subtopicCodes ?? [],
               }),
@@ -2815,6 +2849,7 @@ function QuestionRow({
               partLabel: null,
               marks: typeof cpMeta?.marks === "number" ? cpMeta.marks : null,
               commandTerm: extractedWholeTerm,
+              commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
               subtopicCodes: cpMeta?.subtopicCodes ?? [],
             }),
@@ -2885,6 +2920,11 @@ function QuestionRow({
           markschemeLatex: splitMSForLabel,
           claudeCommandTerm: cp?.commandTerm ?? null,
         });
+        const canonicalTerms = chooseCommandTerms({
+          questionLatex: splitQForLabel,
+          markschemeLatex: splitMSForLabel,
+          claudeCommandTerm: cp?.commandTerm ?? null,
+        });
         const exceptionFlags = deriveCommandTermFlags({ commandTerm: canonicalTerm, sourceLatex: splitQForLabel });
 
         if (existing) {
@@ -2897,6 +2937,7 @@ function QuestionRow({
               partLabel: label,
               marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
               commandTerm: canonicalTerm,
+              commandTerms: canonicalTerms,
               sourceLatex: splitQForLabel,
               subtopicCodes: cp?.subtopicCodes ?? existing.subtopic_codes,
             }),
@@ -2907,6 +2948,7 @@ function QuestionRow({
             part_label: label,
             marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
             command_term: canonicalTerm,
+            command_terms: canonicalTerms,
             ...exceptionFlags,
             subtopic_codes: cp?.subtopicCodes ?? existing.subtopic_codes,
             content_latex: splitQForLabel || null,
@@ -2922,6 +2964,7 @@ function QuestionRow({
               partLabel: label,
               marks: typeof cp?.marks === "number" ? cp.marks : null,
               commandTerm: canonicalTerm,
+              commandTerms: canonicalTerms,
               sourceLatex: splitQForLabel,
               subtopicCodes: cp?.subtopicCodes ?? [],
             }),
@@ -2939,6 +2982,7 @@ function QuestionRow({
             part_label: label,
             marks: typeof cp?.marks === "number" ? cp.marks : created.marks,
             command_term: canonicalTerm,
+            command_terms: canonicalTerms,
             ...exceptionFlags,
             subtopic_codes: cp?.subtopicCodes ?? created.subtopic_codes,
             content_latex: splitQForLabel || null,
@@ -4252,9 +4296,10 @@ function QuestionRow({
                                 <LatexRenderer
                                   latex={draft}
                                   stripMarkAnnotations={field === "q"}
-                                  highlightCommandTerm={field === "q" ? (wholePart?.command_term ?? null) : null}
+                                  highlightCommandTerm={field === "q" ? (wholePart ? primaryCommandTerm(wholePart) : null) : null}
                                   highlightContextTerms={field === "q" ? mergeHighlightTerms(
                                     contextTermHighlightsFromFlags(wholePart ?? null, wholePart?.instructional_context_terms ?? []),
+                                    wholePart?.command_terms?.slice(1) ?? [],
                                     detectCommandTerms(draft),
                                   ) : []}
                                 />
@@ -4438,9 +4483,10 @@ function QuestionRow({
                                         <LatexRenderer
                                           latex={saved}
                                           stripMarkAnnotations={field === "content_latex"}
-                                          highlightCommandTerm={field === "content_latex" ? (part.command_term ?? null) : null}
+                                          highlightCommandTerm={field === "content_latex" ? primaryCommandTerm(part) : null}
                                           highlightContextTerms={field === "content_latex" ? mergeHighlightTerms(
                                             contextTermHighlightsFromFlags(part, part.instructional_context_terms ?? []),
+                                            part.command_terms?.slice(1) ?? [],
                                             detectCommandTerms(saved),
                                           ) : []}
                                         />

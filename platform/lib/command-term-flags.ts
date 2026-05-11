@@ -7,18 +7,11 @@ export type CommandTermFlags = {
 };
 
 export const INSTRUCTIONAL_CONTEXT_TERMS = [
-  "Hence or otherwise",
-  "Hence",
-  "Using your answer",
-  "Using",
-  "Deduce",
-  "Verify",
   "Show that",
   "Given that",
   "It is given that",
   "Assume that",
   "Suppose that",
-  "Let",
   "Consider",
   "Subject to",
   "In terms of",
@@ -30,7 +23,8 @@ export const INSTRUCTIONAL_CONTEXT_TERMS = [
   "On the same axes",
   "Show clearly",
   "Indicate clearly",
-  "Justify",
+  "Hence or otherwise",
+  "Using your answer",
 ] as const;
 
 const COMMAND_TERMS = [
@@ -141,11 +135,13 @@ export function deriveInstructionalContextTerms(input: {
   const combined = `${commandTerm} ${sourceText}`.trim();
 
   const detectedContextTerms = INSTRUCTIONAL_CONTEXT_TERMS.filter((term) => hasTerm(combined, term));
-  const detectedCommandTerms = COMMAND_TERMS.filter((term) => hasTerm(combined, term));
-  const detected = [...detectedCommandTerms, ...detectedContextTerms];
+  const detected = [...detectedContextTerms];
+  const commandSet = new Set(COMMAND_TERMS.map((t) => t.toLowerCase()));
+  const primaryCommand = commandTerm.toLowerCase();
   const seen = new Set<string>();
   return detected.filter((term) => {
     const key = term.toLowerCase();
+    if (commandSet.has(key) || key === primaryCommand) return false;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -160,15 +156,12 @@ export function contextTermHighlightsFromFlags(
   if (instructionalContextTerms && instructionalContextTerms.length > 0) {
     terms.push(...instructionalContextTerms.map((t) => t.trim()).filter(Boolean));
   }
-  if (flags?.is_hence_or_otherwise) terms.push("Hence or otherwise");
-  if (flags?.is_hence) terms.push("Hence");
-  if (flags?.is_using) terms.push("Using");
-  if (flags?.is_deduce) terms.push("Deduce");
-  if (flags?.is_verify) terms.push("Verify");
 
+  const commandSet = new Set(COMMAND_TERMS.map((t) => t.toLowerCase()));
   const seen = new Set<string>();
   return terms.filter((t) => {
     const key = t.toLowerCase();
+    if (commandSet.has(key)) return false;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

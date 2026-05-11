@@ -41,13 +41,13 @@ export async function PATCH(request: NextRequest) {
   if (field === "content_latex") {
     const { data: currentPart, error: fetchErr } = await supabase
       .from("question_parts")
-      .select("command_term")
+      .select("command_term, command_terms")
       .eq("id", partId)
       .single();
     if (fetchErr || !currentPart) {
       return NextResponse.json({ error: "Part not found" }, { status: 404 });
     }
-    const commandTerm = currentPart.command_term;
+    const commandTerm = (currentPart.command_terms?.[0] as string | undefined) ?? currentPart.command_term;
     updatePayload = {
       ...updatePayload,
       ...deriveCommandTermFlags({ commandTerm, sourceLatex: value }),

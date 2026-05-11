@@ -7,6 +7,7 @@ interface QuestionPart {
   marks: number;
   subtopic_codes: string[];
   command_term: string | null;
+  command_terms?: string[] | null;
   sort_order: number;
 }
 
@@ -147,7 +148,7 @@ export async function POST(request: NextRequest) {
     const { data: batchQs } = await supabase
       .from("ib_questions")
       .select(
-        "id, code, section, curriculum, question_parts(id, part_label, marks, subtopic_codes, command_term, sort_order)"
+        "id, code, section, curriculum, question_parts(id, part_label, marks, subtopic_codes, command_term, command_terms, sort_order)"
       )
       .in("id", batch)
       .eq("paper", paper)
@@ -181,7 +182,11 @@ export async function POST(request: NextRequest) {
   const candidates: CandidateQuestion[] = rawQuestions.map((q) => {
     const parts = (q.question_parts as QuestionPart[]).sort((a, b) => a.sort_order - b.sort_order);
     const allSubtopicCodes = [...new Set(parts.flatMap((p) => p.subtopic_codes ?? []))];
-    const allCommandTerms = [...new Set(parts.map((p) => p.command_term).filter(Boolean) as string[])];
+    const allCommandTerms = [...new Set(
+      parts.flatMap((p) => (p.command_terms && p.command_terms.length > 0)
+        ? p.command_terms
+        : (p.command_term ? [p.command_term] : []))
+    )];
     const marks = parts.reduce((sum, p) => sum + p.marks, 0);
 
     // Only count covered subtopics when determining primary section

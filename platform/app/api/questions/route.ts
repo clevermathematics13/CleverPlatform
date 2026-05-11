@@ -7,7 +7,7 @@ import {
   omitUnsupportedColumns,
 } from "@/lib/question-parts-compat";
 
-const QUESTIONS_SELECT = "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, command_term, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified)";
+const QUESTIONS_SELECT = "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, command_term, command_terms, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified)";
 
 type QuestionListRow = {
   id: string;
@@ -198,6 +198,7 @@ export async function POST(request: NextRequest) {
       partLabel?: string;
       marks?: number | null;
       commandTerm?: string | null;
+      commandTerms?: string[];
       subtopicCodes?: string[];
       contentLatex?: string;
       markschemeLatex?: string;
@@ -250,13 +251,14 @@ export async function POST(request: NextRequest) {
       question_id: question.id,
       part_label: p.partLabel?.trim() ?? '',
       marks: p.marks != null ? Number(p.marks) : null,
-      command_term: p.commandTerm || null,
+      command_term: p.commandTerms && p.commandTerms.length > 0 ? p.commandTerms[0] : (p.commandTerm || null),
+      command_terms: p.commandTerms ?? (p.commandTerm ? [p.commandTerm] : []),
       ...deriveCommandTermFlags({
-        commandTerm: p.commandTerm || null,
+        commandTerm: p.commandTerms && p.commandTerms.length > 0 ? p.commandTerms[0] : (p.commandTerm || null),
         sourceLatex: p.contentLatex?.trim() || "",
       }),
       instructional_context_terms: deriveInstructionalContextTerms({
-        commandTerm: p.commandTerm || null,
+        commandTerm: p.commandTerms && p.commandTerms.length > 0 ? p.commandTerms[0] : (p.commandTerm || null),
         sourceLatex: p.contentLatex?.trim() || "",
       }),
       subtopic_codes: p.subtopicCodes ?? [],

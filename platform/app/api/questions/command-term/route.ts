@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { deriveCommandTermFlags, deriveInstructionalContextTerms } from "@/lib/command-term-flags";
 import { probeQuestionPartsColumns, stripUnsupportedColumns, omitUnsupportedColumns } from "@/lib/question-parts-compat";
 
-const PART_SELECT = "id, command_term, instructional_context_terms, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify";
+const PART_SELECT = "id, command_term, command_terms, instructional_context_terms, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify";
 
 export async function PATCH(request: NextRequest) {
   const supabase = await createClient();
@@ -23,16 +23,19 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { partId, commandTerm } = body;
+  const { partId, commandTerm, commandTerms } = body;
 
   if (!partId || typeof partId !== "string") {
     return NextResponse.json({ error: "partId is required" }, { status: 400 });
   }
 
-  // Allow null/empty to clear
-  const value = commandTerm && typeof commandTerm === "string" && commandTerm.trim()
-    ? commandTerm.trim()
-    : null;
+  const terms: string[] = Array.isArray(commandTerms)
+    ? commandTerms
+      .filter((t: unknown): t is string => typeof t === "string")
+      .map((t: string) => t.trim())
+      .filter(Boolean)
+    : (commandTerm && typeof commandTerm === "string" && commandTerm.trim() ? [commandTerm.trim()] : []);
+  const value = terms[0] ?? null;
 
   const { data: currentPart, error: currentErr } = await supabase
     .from("question_parts")
@@ -48,6 +51,7 @@ export async function PATCH(request: NextRequest) {
 
   const updatePayload = {
     command_term: value,
+    command_terms: terms,
     ...deriveCommandTermFlags({ commandTerm: value, sourceLatex }),
     instructional_context_terms: deriveInstructionalContextTerms({ commandTerm: value, sourceLatex }),
   };

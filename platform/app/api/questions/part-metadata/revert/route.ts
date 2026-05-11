@@ -8,7 +8,7 @@ type RevertBody = {
   historyId?: unknown;
 };
 
-const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
+const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, command_terms, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
 
 type PartMetadataRow = {
   id: string;
@@ -116,6 +116,7 @@ export async function POST(request: NextRequest) {
     part_label: previous.part_label ?? "",
     marks: previous.marks ?? 1,
     command_term: previous.command_term,
+    command_terms: previous.command_term ? [previous.command_term] : [],
     ...deriveCommandTermFlags({
       commandTerm: previous.command_term,
       sourceLatex: currentPart.content_latex ?? "",

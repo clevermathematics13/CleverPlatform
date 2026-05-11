@@ -13,6 +13,7 @@ type Body = {
   partLabel?: unknown;
   marks?: unknown;
   commandTerm?: unknown;
+  commandTerms?: unknown;
   subtopicCodes?: unknown;
   sourceLatex?: unknown;
 };
@@ -23,6 +24,7 @@ type PartMetadataRow = {
   part_label: string;
   marks: number;
   command_term: string | null;
+  command_terms: string[] | null;
   subtopic_codes: string[] | null;
   sort_order: number;
   instructional_context_terms: string[] | null;
@@ -35,7 +37,7 @@ type PartMetadataRow = {
 
 type PartMetadataSnapshotRow = Pick<
   PartMetadataRow,
-  "id" | "question_id" | "part_label" | "marks" | "command_term" | "subtopic_codes" | "sort_order"
+  "id" | "question_id" | "part_label" | "marks" | "command_term" | "command_terms" | "subtopic_codes" | "sort_order"
 >;
 
 type CurrentPartRow = PartMetadataSnapshotRow & {
@@ -93,7 +95,7 @@ const DEFAULT_COMMAND_TERMS = [
   "Write down",
 ] as const;
 
-const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
+const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, command_terms, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
 
 async function snapshotPartMetadata(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -173,6 +175,24 @@ function normalizeCommandTerm(commandTerm: unknown): string | null {
   return canonical;
 }
 
+function normalizeCommandTerms(commandTerms: unknown): string[] | null {
+  if (commandTerms == null) return null;
+  if (!Array.isArray(commandTerms)) {
+    throw new Error("commandTerms must be an array of allowed command terms");
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of commandTerms) {
+    const canonical = normalizeCommandTerm(raw);
+    if (!canonical) continue;
+    const key = canonical.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(canonical);
+  }
+  return out;
+}
+
 export async function PATCH(request: NextRequest) {
   const supabase = await createClient();
   const {
@@ -198,7 +218,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { partId, partLabel, marks, commandTerm, subtopicCodes, sourceLatex } = body;
+  const { partId, partLabel, marks, commandTerm, commandTerms, subtopicCodes, sourceLatex } = body;
   if (typeof partId !== "string" || !partId) {
     return NextResponse.json({ error: "partId is required" }, { status: 400 });
   }
@@ -209,7 +229,7 @@ export async function PATCH(request: NextRequest) {
   });
 
   const currentSelect = stripUnsupportedColumns(
-    "id, question_id, part_label, marks, command_term, subtopic_codes, sort_order, content_latex, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify",
+    "id, question_id, part_label, marks, command_term, command_terms, subtopic_codes, sort_order, content_latex, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify",
     supportedColumns,
   );
 
@@ -257,9 +277,20 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  if (commandTerm !== undefined) {
+  if (commandTerms !== undefined) {
     try {
-      update.command_term = normalizeCommandTerm(commandTerm);
+      const normalizedTerms = normalizeCommandTerms(commandTerms) ?? [];
+      update.command_terms = normalizedTerms;
+      update.command_term = normalizedTerms[0] ?? null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Invalid commandTerms";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  } else if (commandTerm !== undefined) {
+    try {
+      const single = normalizeCommandTerm(commandTerm);
+      update.command_term = single;
+      update.command_terms = single ? [single] : [];
     } catch (err) {
       const message = err instanceof Error ? err.message : "Invalid commandTerm";
       return NextResponse.json({ error: message }, { status: 400 });
@@ -275,8 +306,12 @@ export async function PATCH(request: NextRequest) {
   }
 
   const sourceText = typeof sourceLatex === "string" ? sourceLatex : "";
-  if (commandTerm !== undefined || sourceText) {
-    const effectiveTerm = (update.command_term as string | null | undefined) ?? currentPart.command_term;
+  if (commandTerm !== undefined || commandTerms !== undefined || sourceText) {
+    const effectiveTerms =
+      (update.command_terms as string[] | undefined)
+      ?? currentPart.command_terms
+      ?? ((update.command_term as string | null | undefined) ? [update.command_term as string] : (currentPart.command_term ? [currentPart.command_term] : []));
+    const effectiveTerm = effectiveTerms[0] ?? null;
     const effectiveSource = sourceText || currentPart.content_latex || "";
     const flags = deriveCommandTermFlags({ commandTerm: effectiveTerm, sourceLatex: effectiveSource });
     update.is_hence = flags.is_hence;
@@ -374,7 +409,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { questionId, partLabel, marks, commandTerm, subtopicCodes, sourceLatex } = body;
+  const { questionId, partLabel, marks, commandTerm, commandTerms, subtopicCodes, sourceLatex } = body;
   if (typeof questionId !== "string" || !questionId) {
     return NextResponse.json({ error: "questionId is required" }, { status: 400 });
   }
@@ -391,13 +426,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "marks must be a number or null" }, { status: 400 });
   }
 
-  let commandTermValue: string | null;
+  let commandTermsValue: string[] = [];
   try {
-    commandTermValue = normalizeCommandTerm(commandTerm);
+    if (commandTerms !== undefined) {
+      commandTermsValue = normalizeCommandTerms(commandTerms) ?? [];
+    } else {
+      const single = normalizeCommandTerm(commandTerm);
+      commandTermsValue = single ? [single] : [];
+    }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Invalid commandTerm";
+    const message = err instanceof Error ? err.message : "Invalid commandTerm(s)";
     return NextResponse.json({ error: message }, { status: 400 });
   }
+  const commandTermValue = commandTermsValue[0] ?? null;
 
   let codes: string[];
   try {
@@ -422,6 +463,7 @@ export async function POST(request: NextRequest) {
     part_label: label,
     marks: marksValue,
     command_term: commandTermValue,
+    command_terms: commandTermsValue,
     ...deriveCommandTermFlags({
       commandTerm: commandTermValue,
       sourceLatex: typeof sourceLatex === "string" ? sourceLatex : "",
