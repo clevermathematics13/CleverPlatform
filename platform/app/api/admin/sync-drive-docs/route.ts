@@ -89,12 +89,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const { data: questions, error: qErr } = await supabase
-      .from("ib_questions")
-      .select("id, code, google_doc_id, google_ms_id");
+    const PAGE_SIZE = 1000;
+    const questions: Array<{ id: string; code: string; google_doc_id: string | null; google_ms_id: string | null }> = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data: batch, error: qErr } = await supabase
+        .from("ib_questions")
+        .select("id, code, google_doc_id, google_ms_id")
+        .order("id", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (qErr) return NextResponse.json({ error: qErr.message }, { status: 500 });
-    if (!questions?.length) {
+      if (qErr) return NextResponse.json({ error: qErr.message }, { status: 500 });
+      if (!batch || batch.length === 0) break;
+      questions.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+    }
+
+    if (!questions.length) {
       return NextResponse.json({ error: "No questions in database" }, { status: 404 });
     }
 
