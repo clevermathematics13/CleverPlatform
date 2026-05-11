@@ -98,6 +98,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No questions in database" }, { status: 404 });
     }
 
+    // Debug: Log focus parameters and what we find
+    if (focusQuestionId) {
+      console.log(`[SYNC FOCUS DEBUG] Looking for question ID: ${focusQuestionId}`);
+      console.log(`[SYNC FOCUS DEBUG] Total questions loaded: ${questions.length}`);
+      const match = questions.find((q) => q.id === focusQuestionId);
+      if (match) {
+        console.log(`[SYNC FOCUS DEBUG] ✓ Found question by ID: ${match.code}`);
+      } else {
+        console.log(`[SYNC FOCUS DEBUG] ✗ Question ID not found`);
+        console.log(
+          `[SYNC FOCUS DEBUG] First 3 IDs in DB: ${questions
+            .slice(0, 3)
+            .map((q) => q.id)
+            .join(", ")}`
+        );
+      }
+    }
+
     const needsUpdate = new Map<string, { id: string; needsDoc: boolean; needsMs: boolean }>();
     const existingByCode = new Map(
       questions.map((q) => [q.code, { google_doc_id: q.google_doc_id, google_ms_id: q.google_ms_id }])
@@ -233,6 +251,20 @@ export async function POST(request: NextRequest) {
         : focusCode
           ? questions.find((question) => normalizeCode(question.code) === normalizeCode(focusCode)) ?? null
           : null;
+
+    // Debug: Log focus lookup results
+    if (focusCode || focusQuestionId) {
+      if (focusQuestionId) {
+        console.log(`[SYNC FOCUS LOOKUP] ID lookup for ${focusQuestionId}: ${focusedQuestion ? "✓ found" : "✗ not found"}`);
+      }
+      if (!focusedQuestion && focusCode) {
+        console.log(`[SYNC FOCUS LOOKUP] Code fallback for "${focusCode}": normalized="${normalizeCode(focusCode)}"`);
+        const codeMatch = questions.find((q) => normalizeCode(q.code) === normalizeCode(focusCode));
+        console.log(`[SYNC FOCUS LOOKUP] Code lookup result: ${codeMatch ? `✓ found (id=${codeMatch.id})` : "✗ not found"}`);
+      }
+      console.log(`[SYNC FOCUS LOOKUP] Final: focusedQuestion=${focusedQuestion ? "found" : "null"}, code=${focusCode}, qId=${focusQuestionId}`);
+    }
+
     const focusedCode = focusedQuestion?.code ?? focusCode;
     const focusedNeed = focusedCode ? needsUpdate.get(focusedCode) ?? null : null;
     const focusedQuestionMatches = focusedCode ? questionCandidates.get(focusedCode) ?? [] : [];
