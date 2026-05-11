@@ -393,9 +393,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     found: number;
     updated: number;
     focused?: {
-      code: string;
+      code: string | null;
       status: string | null;
-      db: { google_doc_id: string | null; google_ms_id: string | null } | null;
+      requestedFocus?: { code: string | null; questionId: string | null };
+      db: { id?: string; google_doc_id: string | null; google_ms_id: string | null } | null;
       needs: { doc: boolean; ms: boolean } | null;
       questionMatchCount: number;
       markschemeMatchCount: number;
@@ -940,15 +941,15 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     try {
       // Prefer the exact visible row code so focused diagnostics don't drift from
       // free-text search input formatting.
-      const focusCode =
-        questions.length === 1 && questions[0]?.code
-          ? questions[0].code
-          : search.trim();
+      const focusQuestion = questions.length === 1 ? questions[0] : null;
+      const focusCode = focusQuestion?.code ?? search.trim();
+      const focusQuestionId = focusQuestion?.id ?? null;
       const res = await fetch("/api/admin/sync-drive-docs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...(focusCode ? { focusCode } : {}),
+          ...(focusQuestionId ? { focusQuestionId } : {}),
         }),
       });
       const data = await res.json() as {
@@ -956,9 +957,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         updated?: number;
         error?: string;
         focused?: {
-          code: string;
+          code: string | null;
           status: string | null;
-          db: { google_doc_id: string | null; google_ms_id: string | null } | null;
+          requestedFocus?: { code: string | null; questionId: string | null };
+          db: { id?: string; google_doc_id: string | null; google_ms_id: string | null } | null;
           needs: { doc: boolean; ms: boolean } | null;
           questionMatchCount: number;
           markschemeMatchCount: number;

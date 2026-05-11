@@ -61,9 +61,11 @@ export async function POST(request: NextRequest) {
       dryRun?: boolean;
       force?: boolean;
       focusCode?: string;
+      focusQuestionId?: string;
     };
     const { dryRun = false, force = false } = body;
     const focusCode = body.focusCode?.trim() || null;
+    const focusQuestionId = body.focusQuestionId?.trim() || null;
 
     const auth = getAuthedClient(token);
     const drive = google.drive({ version: "v3", auth });
@@ -224,26 +226,31 @@ export async function POST(request: NextRequest) {
       updates.push({ code, ...(docId ? { docId } : {}), ...(msId ? { msId } : {}) });
     }
 
-    const focusedQuestion = focusCode
-      ? questions.find((question) => question.code === focusCode) ?? null
-      : null;
-    const focusedNeed = focusCode ? needsUpdate.get(focusCode) ?? null : null;
-    const focusedQuestionMatches = focusCode ? questionCandidates.get(focusCode) ?? [] : [];
-    const focusedMarkschemeMatches = focusCode ? msCandidates.get(focusCode) ?? [] : [];
-    const focusedMsPick = focusCode
-      ? pickBestCandidate(focusCode, focusedMarkschemeMatches)
+    const normalizeCode = (value: string) => value.trim().replace(/\s+/g, "").toUpperCase();
+    const focusedQuestion =
+      focusQuestionId
+        ? questions.find((question) => question.id === focusQuestionId) ?? null
+        : focusCode
+          ? questions.find((question) => normalizeCode(question.code) === normalizeCode(focusCode)) ?? null
+          : null;
+    const focusedCode = focusedQuestion?.code ?? focusCode;
+    const focusedNeed = focusedCode ? needsUpdate.get(focusedCode) ?? null : null;
+    const focusedQuestionMatches = focusedCode ? questionCandidates.get(focusedCode) ?? [] : [];
+    const focusedMarkschemeMatches = focusedCode ? msCandidates.get(focusedCode) ?? [] : [];
+    const focusedMsPick = focusedCode
+      ? pickBestCandidate(focusedCode, focusedMarkschemeMatches)
       : undefined;
-    const focusedExisting = focusCode ? existingByCode.get(focusCode) : undefined;
+    const focusedExisting = focusedCode ? existingByCode.get(focusedCode) : undefined;
     const focusedAvoidId = focusedMsPick?.id ?? focusedExisting?.google_ms_id ?? undefined;
-    const focusedQPick = focusCode
-      ? pickBestCandidate(focusCode, focusedQuestionMatches, focusedAvoidId)
+    const focusedQPick = focusedCode
+      ? pickBestCandidate(focusedCode, focusedQuestionMatches, focusedAvoidId)
       : undefined;
-    const focusedUpdate = focusCode
-      ? updates.find((update) => update.code === focusCode) ?? null
+    const focusedUpdate = focusedCode
+      ? updates.find((update) => update.code === focusedCode) ?? null
       : null;
 
     let focusedStatus: string | null = null;
-    if (focusCode) {
+    if (focusCode || focusQuestionId) {
       if (!focusedQuestion) {
         focusedStatus = "code_not_in_db";
       } else if (!focusedNeed) {
@@ -278,13 +285,18 @@ export async function POST(request: NextRequest) {
       found: updates.length,
       updated: dryRun ? 0 : updates.length,
       dryRun,
-      ...(focusCode
+      ...(focusCode || focusQuestionId
         ? {
             focused: {
-              code: focusCode,
+              code: focusedCode,
               status: focusedStatus,
+              requestedFocus: {
+                code: focusCode,
+                questionId: focusQuestionId,
+              },
               db: focusedQuestion
                 ? {
+                    id: focusedQuestion.id,
                     google_doc_id: focusedQuestion.google_doc_id,
                     google_ms_id: focusedQuestion.google_ms_id,
                   }
