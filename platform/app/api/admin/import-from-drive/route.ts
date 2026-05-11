@@ -3,22 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+import { extractCodeToken, filterDocsOutsideFolderTree } from "@/lib/drive-doc-matching";
 
 export const maxDuration = 300;
 
 const QUESTION_FOLDER_ID = "18vwi-jz_0vur8MjixNnTkKdb0lHygNV3";
 const MARKSCHEME_FOLDER_ID = "1GDGql-mIeH2YoD1OfnFa0UhxUdaXsY4D";
-
-// Same permissive pattern as sync-drive-docs
-const CODE_TOKEN_RE = /(\d{2}[MN]\.\d\.[A-Z]+\.TZ\d[A-Z]?\.\w+_\d+)/;
-const CODE_EXACT_RE = /^\d{2}[MN]\.\d\.[A-Z]+\.TZ\d[A-Z]?\.\w+_\d+$/;
-
-function extractCode(filename: string): string | null {
-  const trimmed = filename.trim();
-  if (CODE_EXACT_RE.test(trimmed)) return trimmed;
-  const m = trimmed.match(CODE_TOKEN_RE);
-  return m ? m[1] : null;
-}
 
 function parseCodeParts(code: string) {
   const parts = code.split(".");
@@ -40,7 +30,7 @@ function getAuthedClient(token: Record<string, unknown>) {
   return oauth2;
 }
 
-type DriveFile = { id: string; name: string };
+type DriveFile = { id: string; name: string; parents?: string[] };
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -114,7 +104,7 @@ export async function POST(request: NextRequest) {
         const res = await drive.files.list({
           // No name filter — pick up everything, parse code from name
           q: `mimeType='application/vnd.google-apps.document' and trashed=false and (${parentClause})`,
-          fields: "nextPageToken, files(id, name)",
+          fields: "nextPageToken, files(id, name, parents)",
           pageSize: 1000,
           pageToken,
           supportsAllDrives: true,
@@ -141,13 +131,15 @@ export async function POST(request: NextRequest) {
 
   // code → doc id maps
   const qMap = new Map<string, string>();
-  for (const f of qFiles) {
-    const code = extractCode(f.name);
+  const qFilesFiltered = filterDocsOutsideFolderTree(qFiles, new Set(msFolderIds));
+
+  for (const f of qFilesFiltered) {
+    const code = extractCodeToken(f.name);
     if (code && !qMap.has(code)) qMap.set(code, f.id);
   }
   const msMap = new Map<string, string>();
   for (const f of msFiles) {
-    const code = extractCode(f.name);
+    const code = extractCodeToken(f.name);
     if (code && !msMap.has(code)) msMap.set(code, f.id);
   }
   // If the same doc ID appears in both maps for the same code (markscheme doc
@@ -192,8 +184,8 @@ export async function POST(request: NextRequest) {
     createCodes: toCreate.map((r) => r.code).slice(0, 30),
     updateCodes: toUpdate.map((r) => r.code).slice(0, 30),
     unparsedSample: [
-      ...qFiles.filter((f) => !extractCode(f.name)).map((f) => f.name),
-      ...msFiles.filter((f) => !extractCode(f.name)).map((f) => f.name),
+      ...qFiles.filter((f) => !extractCodeToken(f.name)).map((f) => f.name),
+      ...msFiles.filter((f) => !extractCodeToken(f.name)).map((f) => f.name),
     ].slice(0, 15),
     matches25N: [
       ...qFiles.filter((f) => f.name.includes("25N")).map((f) => `Q: ${f.name}`),

@@ -3,11 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
 import { google, drive_v3 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+import { filterDocsOutsideFolderTree, pickBestCandidate, type DriveDoc } from "@/lib/drive-doc-matching";
 
 const QUESTION_FOLDER_ID = "18vwi-jz_0vur8MjixNnTkKdb0lHygNV3";
 const MARKSCHEME_FOLDER_ID = "1GDGql-mIeH2YoD1OfnFa0UhxUdaXsY4D";
-
-type DriveDoc = { id: string; name: string; webViewLink?: string };
 
 function getAuthedClient(token: Record<string, unknown>) {
   const oauth2 = new OAuth2Client(
@@ -16,28 +15,6 @@ function getAuthedClient(token: Record<string, unknown>) {
   );
   oauth2.setCredentials(token);
   return oauth2;
-}
-
-function pickBestCandidate(code: string, candidates: DriveDoc[], avoidId?: string): DriveDoc | undefined {
-  if (candidates.length === 0) return undefined;
-
-  const unique: DriveDoc[] = [];
-  const seen = new Set<string>();
-  for (const c of candidates) {
-    if (seen.has(c.id)) continue;
-    seen.add(c.id);
-    unique.push(c);
-  }
-
-  const exact = unique.filter((c) => c.name.trim() === code);
-  const pool = exact.length > 0 ? exact : unique;
-
-  if (avoidId && pool.length > 1) {
-    const alternative = pool.find((c) => c.id !== avoidId);
-    if (alternative) return alternative;
-  }
-
-  return pool[0];
 }
 
 export async function POST(request: NextRequest) {
@@ -127,7 +104,7 @@ export async function POST(request: NextRequest) {
       return all;
     }
 
-    async function searchSingleCode(rootFolderId: string): Promise<DriveDoc[]> {
+    async function searchSingleCode(rootFolderId: string): Promise<{ folderIds: string[]; matches: DriveDoc[] }> {
       const folderIds = await getAllSubfolderIds(rootFolderId);
       const BATCH = 20;
       const escapedCode = code.replace(/'/g, "\\'");
@@ -140,7 +117,7 @@ export async function POST(request: NextRequest) {
         do {
           const res = await listDriveFilesWithRetry({
             q: `mimeType='application/vnd.google-apps.document' and trashed=false and name contains '${escapedCode}' and (${parentClause})`,
-            fields: "nextPageToken, files(id,name,webViewLink)",
+            fields: "nextPageToken, files(id,name,parents,webViewLink)",
             pageSize: 1000,
             pageToken,
             supportsAllDrives: true,
@@ -155,16 +132,18 @@ export async function POST(request: NextRequest) {
         } while (pageToken);
       }
 
-      return matches;
+      return { folderIds, matches };
     }
 
-    const [questionMatches, markschemeMatches] = await Promise.all([
+    const [{ matches: questionMatches }, { folderIds: markschemeFolderIds, matches: markschemeMatches }] = await Promise.all([
       searchSingleCode(QUESTION_FOLDER_ID),
       searchSingleCode(MARKSCHEME_FOLDER_ID),
     ]);
 
+    const filteredQuestionMatches = filterDocsOutsideFolderTree(questionMatches, new Set(markschemeFolderIds));
+
     const msPick = pickBestCandidate(code, markschemeMatches);
-    const qPick = pickBestCandidate(code, questionMatches, msPick?.id);
+    const qPick = pickBestCandidate(code, filteredQuestionMatches, msPick?.id);
 
     const patch: Record<string, string> = {};
     if (qPick && (force || !existing.google_doc_id)) patch.google_doc_id = qPick.id;
@@ -175,7 +154,7 @@ export async function POST(request: NextRequest) {
         code,
         message: "No updates needed",
         existing,
-        questionMatches,
+        questionMatches: filteredQuestionMatches,
         markschemeMatches,
       });
     }
@@ -195,7 +174,7 @@ export async function POST(request: NextRequest) {
       updated: patch,
       before: existing,
       after,
-      questionMatches,
+      questionMatches: filteredQuestionMatches,
       markschemeMatches,
     });
   } catch (err) {

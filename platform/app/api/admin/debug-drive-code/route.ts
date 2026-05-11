@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
 import { google, drive_v3 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+import { filterDocsOutsideFolderTree } from "@/lib/drive-doc-matching";
 
 const QUESTION_FOLDER_ID = "18vwi-jz_0vur8MjixNnTkKdb0lHygNV3";
 const MARKSCHEME_FOLDER_ID = "1GDGql-mIeH2YoD1OfnFa0UhxUdaXsY4D";
@@ -126,10 +127,10 @@ export async function POST(request: NextRequest) {
         } while (pageToken);
       }
 
-      return { folderCount: folderIds.length, matches };
+      return { folderCount: folderIds.length, folderIds, matches };
     }
 
-    const [{ folderCount: questionFolderCount, matches: questionMatches }, { folderCount: markschemeFolderCount, matches: markschemeMatches }, { data: dbRow }] =
+    const [questionResult, markschemeResult, { data: dbRow }] =
       await Promise.all([
         searchSingleCode(QUESTION_FOLDER_ID),
         searchSingleCode(MARKSCHEME_FOLDER_ID),
@@ -140,13 +141,15 @@ export async function POST(request: NextRequest) {
           .maybeSingle(),
       ]);
 
+    const filteredQuestionMatches = filterDocsOutsideFolderTree(questionResult.matches, new Set(markschemeResult.folderIds));
+
     return NextResponse.json({
       code,
       db: dbRow ?? null,
-      questionFolderCount,
-      markschemeFolderCount,
-      questionMatches,
-      markschemeMatches,
+      questionFolderCount: questionResult.folderCount,
+      markschemeFolderCount: markschemeResult.folderCount,
+      questionMatches: filteredQuestionMatches,
+      markschemeMatches: markschemeResult.matches,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown debug error";

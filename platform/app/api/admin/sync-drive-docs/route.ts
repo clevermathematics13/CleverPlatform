@@ -3,46 +3,16 @@ import { createClient } from "@/lib/supabase/server";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
 import { google, drive_v3 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
+import {
+  extractCodeToken,
+  filterDocsOutsideFolderTree,
+  pickBestCandidate,
+  type DriveDoc,
+} from "@/lib/drive-doc-matching";
 
 export const maxDuration = 300;
 const QUESTION_FOLDER_ID = "18vwi-jz_0vur8MjixNnTkKdb0lHygNV3";
 const MARKSCHEME_FOLDER_ID = "1GDGql-mIeH2YoD1OfnFa0UhxUdaXsY4D";
-
-// IB question code pattern: e.g. 24M.1.AHL.TZ2.H_7
-const CODE_RE = /^\d{2}[MN]\.\d\.[A-Z]+\.TZ\d[A-Z]?\.\w+_\d+$/;
-const CODE_TOKEN_RE = /(\d{2}[MN]\.\d\.[A-Z]+\.TZ\d[A-Z]?\.\w+_\d+)/;
-
-function extractCodeToken(name: string): string | null {
-  const trimmed = name.trim();
-  if (CODE_RE.test(trimmed)) return trimmed;
-  const m = trimmed.match(CODE_TOKEN_RE);
-  return m ? m[1] : null;
-}
-
-type DriveDoc = { id: string; name: string };
-
-function pickBestCandidate(code: string, candidates: DriveDoc[], avoidId?: string): DriveDoc | undefined {
-  if (candidates.length === 0) return undefined;
-
-  const unique: DriveDoc[] = [];
-  const seen = new Set<string>();
-  for (const c of candidates) {
-    if (seen.has(c.id)) continue;
-    seen.add(c.id);
-    unique.push(c);
-  }
-
-  // Prefer exact filename matches over token matches embedded in longer names.
-  const exact = unique.filter((c) => c.name.trim() === code);
-  const pool = exact.length > 0 ? exact : unique;
-
-  if (avoidId && pool.length > 1) {
-    const alternative = pool.find((c) => c.id !== avoidId);
-    if (alternative) return alternative;
-  }
-
-  return pool[0];
-}
 
 function getAuthedClient(token: Record<string, unknown>) {
   const oauth2 = new OAuth2Client(
@@ -161,7 +131,7 @@ export async function POST(request: NextRequest) {
       return all;
     }
 
-    async function searchFolderRecursive(rootFolderId: string): Promise<DriveDoc[]> {
+    async function searchFolderRecursive(rootFolderId: string): Promise<{ folderIds: string[]; files: DriveDoc[] }> {
       const folderIds = await getAllSubfolderIds(rootFolderId);
       const results: DriveDoc[] = [];
       const BATCH = 20;
@@ -183,7 +153,7 @@ export async function POST(request: NextRequest) {
               const res = await listDriveFilesWithRetry({
                 // IB question docs always contain TZ in the code token, which reduces scan volume.
                 q: `mimeType='application/vnd.google-apps.document' and trashed=false and name contains 'TZ' and (${parentClause})`,
-                fields: "nextPageToken, files(id, name)",
+                fields: "nextPageToken, files(id, name, parents)",
                 pageSize: 1000,
                 pageToken,
                 supportsAllDrives: true,
@@ -205,10 +175,10 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return results;
+      return { folderIds, files: results };
     }
 
-    const [qFiles, msFiles] = await Promise.all([
+    const [qResult, msResult] = await Promise.all([
       searchFolderRecursive(QUESTION_FOLDER_ID),
       searchFolderRecursive(MARKSCHEME_FOLDER_ID),
     ]);
@@ -216,7 +186,9 @@ export async function POST(request: NextRequest) {
     const questionCandidates = new Map<string, DriveDoc[]>();
     const msCandidates = new Map<string, DriveDoc[]>();
 
-    for (const f of qFiles) {
+    const qFilesFiltered = filterDocsOutsideFolderTree(qResult.files, new Set(msResult.folderIds));
+
+    for (const f of qFilesFiltered) {
       const code = extractCodeToken(f.name);
       if (code && needsUpdate.get(code)?.needsDoc) {
         const arr = questionCandidates.get(code) ?? [];
@@ -224,7 +196,7 @@ export async function POST(request: NextRequest) {
         questionCandidates.set(code, arr);
       }
     }
-    for (const f of msFiles) {
+    for (const f of msResult.files) {
       const code = extractCodeToken(f.name);
       if (code && needsUpdate.get(code)?.needsMs) {
         const arr = msCandidates.get(code) ?? [];

@@ -390,6 +390,14 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [driveConnected, setDriveConnected] = useState(initialDriveConnected);
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ found: number; updated: number } | null>(null);
+  const [fixingLinks, setFixingLinks] = useState<false | "dryrun" | "apply">(false);
+  const [fixLinksResult, setFixLinksResult] = useState<{
+    dryRun: boolean;
+    issuesFound: number;
+    clearedGoogleDocId?: number;
+    clearedGoogleMsId?: number;
+    updatedRows?: number;
+  } | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ created: number; updated: number; errors?: string[]; debug?: Record<string, unknown> } | null>(null);
   const [bulkExtracting, setBulkExtracting] = useState(false);
@@ -929,6 +937,44 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     }
   };
 
+  const fixConflictedLinks = async (dryRun: boolean) => {
+    setFixingLinks(dryRun ? "dryrun" : "apply");
+    setFixLinksResult(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/fix-conflicted-doc-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun, limit: 100 }),
+      });
+      const data = await res.json() as {
+        error?: string;
+        dryRun?: boolean;
+        issuesFound?: number;
+        conflictedCount?: number;
+        updatedRows?: number;
+        updated?: number;
+        clearedGoogleDocId?: number;
+        clearedGoogleMsId?: number;
+      };
+      if (!res.ok) {
+        setError(data.error ?? "Fix conflicted links failed");
+      } else {
+        setFixLinksResult({
+          dryRun: data.dryRun ?? dryRun,
+          issuesFound: data.issuesFound ?? data.conflictedCount ?? 0,
+          updatedRows: data.updatedRows ?? data.updated,
+          clearedGoogleDocId: data.clearedGoogleDocId,
+          clearedGoogleMsId: data.clearedGoogleMsId,
+        });
+      }
+    } catch {
+      setError("Network error during fix conflicted links");
+    } finally {
+      setFixingLinks(false);
+    }
+  };
+
   const importFromDrive = async () => {
     setImporting(true);
     setImportResult(null);
@@ -1436,7 +1482,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
               <button
                 type="button"
                 onClick={syncDriveLinks}
-                disabled={syncing || bulkExtracting || importing}
+                disabled={syncing || bulkExtracting || importing || !!fixingLinks}
                 className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
                 title="Scan Drive folders and link Google Doc IDs to questions that are missing them"
               >
@@ -1444,8 +1490,26 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
               </button>
               <button
                 type="button"
+                onClick={() => fixConflictedLinks(true)}
+                disabled={syncing || bulkExtracting || importing || !!fixingLinks}
+                className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50"
+                title="Scan for wrong question/markscheme doc links using Drive folder ancestry"
+              >
+                {fixingLinks === "dryrun" ? "Scanning…" : "Dry Run Fix Links"}
+              </button>
+              <button
+                type="button"
+                onClick={() => fixConflictedLinks(false)}
+                disabled={syncing || bulkExtracting || importing || !!fixingLinks}
+                className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+                title="Apply cleanup: clear wrong-field links before re-syncing"
+              >
+                {fixingLinks === "apply" ? "Applying…" : "Apply Fix Links"}
+              </button>
+              <button
+                type="button"
                 onClick={extractAllImages}
-                disabled={bulkExtracting || syncing || importing}
+                disabled={bulkExtracting || syncing || importing || !!fixingLinks}
                 className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
               >
                 {bulkExtracting ? "Extracting…" : "Extract All Images from Docs"}
@@ -1478,6 +1542,13 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
             <p className="mt-1 text-xs text-green-700">
               Sync complete — {syncResult.found} doc link{syncResult.found !== 1 ? "s" : ""} found,{" "}
               {syncResult.updated} updated.
+            </p>
+          )}
+          {fixLinksResult && (
+            <p className="mt-1 text-xs text-amber-800">
+              {fixLinksResult.dryRun
+                ? `Fix dry run — ${fixLinksResult.issuesFound} issue(s) found.`
+                : `Fix applied — ${fixLinksResult.updatedRows ?? 0} row(s), cleared Q=${fixLinksResult.clearedGoogleDocId ?? 0}, MS=${fixLinksResult.clearedGoogleMsId ?? 0}.`}
             </p>
           )}
           {bulkProgress && (
@@ -5111,7 +5182,6 @@ function TestBuilderPanel({
       className="flex-shrink-0 rounded-xl border-2 border-indigo-300 bg-indigo-50 flex flex-col transition-[width] duration-200"
       style={{
         width: "var(--exam-builder-width, 20rem)",
-        maxHeight: "calc(100vh - 140px)",
         position: "sticky",
         top: 20,
       }}
@@ -5274,7 +5344,7 @@ function TestBuilderPanel({
           </div>
         )}
       </div>
-      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+      <div className="px-2 py-2 space-y-1">
         {queue.length === 0 && (
           <p className="text-center text-xs text-indigo-400 py-6">
             Click + next to a question to add it here

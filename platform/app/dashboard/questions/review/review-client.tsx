@@ -2126,6 +2126,33 @@ function SyncDriveDocsButton() {
   const [status, setStatus] = useState<"idle" | "dryrun" | "syncing" | "done" | "error">("idle");
   const [result, setResult] = useState<{ found: number; updated: number; updates: { code: string; google_doc_id?: string; google_ms_id?: string }[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fixBusy, setFixBusy] = useState<false | "dryrun" | "apply">(false);
+  const [fixError, setFixError] = useState<string | null>(null);
+  const [fixResult, setFixResult] = useState<{
+    dryRun: boolean;
+    scannedRowsWithAnyId: number;
+    issuesFound: number;
+    wouldClearGoogleDocId?: number;
+    wouldClearGoogleMsId?: number;
+    wouldClearDocOnly?: number;
+    wouldClearMsOnly?: number;
+    wouldClearBoth?: number;
+    updatedRows?: number;
+    clearedGoogleDocId?: number;
+    clearedGoogleMsId?: number;
+    clearedDocOnly?: number;
+    clearedMsOnly?: number;
+    clearedBoth?: number;
+    sample: {
+      id: string;
+      code: string;
+      google_doc_id: string | null;
+      google_ms_id: string | null;
+      clearGoogleDocId?: boolean;
+      clearGoogleMsId?: boolean;
+      reasons?: string[];
+    }[];
+  } | null>(null);
   const [showDetails, setShowDetails] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [force, setForce] = useState(false);
@@ -2293,6 +2320,95 @@ function SyncDriveDocsButton() {
     }
   }
 
+  async function runFixConflictedLinks(dryRun: boolean) {
+    setFixBusy(dryRun ? "dryrun" : "apply");
+    setFixError(null);
+    setFixResult(null);
+
+    try {
+      const res = await fetch("/api/admin/fix-conflicted-doc-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dryRun, limit: 100 }),
+      });
+      const raw = await res.text();
+      let data: {
+        error?: string;
+        dryRun?: boolean;
+        scannedRowsWithAnyId?: number;
+        scannedWithBothIds?: number;
+        issuesFound?: number;
+        conflictedCount?: number;
+        wouldClearGoogleDocId?: number;
+        wouldClearGoogleMsId?: number;
+        wouldClearDocOnly?: number;
+        wouldClearMsOnly?: number;
+        wouldClearBoth?: number;
+        updatedRows?: number;
+        updated?: number;
+        clearedGoogleDocId?: number;
+        clearedGoogleMsId?: number;
+        clearedDocOnly?: number;
+        clearedMsOnly?: number;
+        clearedBoth?: number;
+        sample?: {
+          id: string;
+          code: string;
+          google_doc_id?: string | null;
+          google_ms_id?: string | null;
+          conflicted_doc_id?: string | null;
+          clearGoogleDocId?: boolean;
+          clearGoogleMsId?: boolean;
+          reasons?: string[];
+        }[];
+      } = {};
+
+      if (raw.trim()) {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          setFixError(`Fix conflicted links failed: non-JSON response (HTTP ${res.status})`);
+          return;
+        }
+      }
+
+      if (!res.ok) {
+        setFixError(data.error ?? `Fix conflicted links failed (HTTP ${res.status})`);
+        return;
+      }
+
+      setFixResult({
+        dryRun: data.dryRun ?? dryRun,
+        scannedRowsWithAnyId: data.scannedRowsWithAnyId ?? data.scannedWithBothIds ?? 0,
+        issuesFound: data.issuesFound ?? data.conflictedCount ?? 0,
+        wouldClearGoogleDocId: data.wouldClearGoogleDocId,
+        wouldClearGoogleMsId: data.wouldClearGoogleMsId,
+        wouldClearDocOnly: data.wouldClearDocOnly,
+        wouldClearMsOnly: data.wouldClearMsOnly,
+        wouldClearBoth: data.wouldClearBoth,
+        updatedRows: data.updatedRows ?? data.updated,
+        clearedGoogleDocId: data.clearedGoogleDocId,
+        clearedGoogleMsId: data.clearedGoogleMsId,
+        clearedDocOnly: data.clearedDocOnly,
+        clearedMsOnly: data.clearedMsOnly,
+        clearedBoth: data.clearedBoth,
+        sample: (data.sample ?? []).map((row) => ({
+          id: row.id,
+          code: row.code,
+          google_doc_id: row.google_doc_id ?? row.conflicted_doc_id ?? null,
+          google_ms_id: row.google_ms_id ?? null,
+          clearGoogleDocId: row.clearGoogleDocId,
+          clearGoogleMsId: row.clearGoogleMsId,
+          reasons: row.reasons,
+        })),
+      });
+    } catch (e) {
+      setFixError(String(e));
+    } finally {
+      setFixBusy(false);
+    }
+  }
+
   const busy = status === "dryrun" || status === "syncing";
 
   return (
@@ -2335,6 +2451,86 @@ function SyncDriveDocsButton() {
             />
             <span>Force re-link (overwrite existing Doc IDs — use to fix stale/deleted links)</span>
           </label>
+
+          <div className="pt-1 border-t border-blue-100 space-y-1.5">
+            <p className="text-xs text-amber-800 font-medium">Fix existing conflicted links (Q doc = MS doc):</p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => runFixConflictedLinks(true)}
+                disabled={busy || debugBusy || singleSyncBusy || !!fixBusy}
+                className="px-3 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs font-medium hover:bg-amber-50 disabled:opacity-40"
+              >
+                {fixBusy === "dryrun" ? "Scanning…" : "Dry run fix"}
+              </button>
+              <button
+                onClick={() => runFixConflictedLinks(false)}
+                disabled={busy || debugBusy || singleSyncBusy || !!fixBusy}
+                className="px-3 py-1 rounded bg-amber-600 text-white text-xs font-medium hover:bg-amber-700 disabled:opacity-40"
+              >
+                {fixBusy === "apply" ? "Applying…" : "Apply fix"}
+              </button>
+            </div>
+            {fixError && <p className="text-xs text-red-600 font-medium">⚠ {fixError}</p>}
+            {fixResult && (
+              <div className="text-xs text-amber-800 bg-white border border-amber-100 rounded p-2 space-y-1">
+                <p>
+                  Scanned <strong>{fixResult.scannedRowsWithAnyId}</strong> rows with any Drive ID; found <strong>{fixResult.issuesFound}</strong> issue(s).
+                </p>
+                <p>
+                  {fixResult.dryRun
+                    ? "Dry run only. No DB rows changed."
+                    : `Updated ${fixResult.updatedRows ?? 0} row(s): cleared Q=${fixResult.clearedGoogleDocId ?? 0}, MS=${fixResult.clearedGoogleMsId ?? 0}.`}
+                </p>
+                {fixResult.dryRun && (fixResult.wouldClearGoogleDocId !== undefined || fixResult.wouldClearGoogleMsId !== undefined) && (
+                  <p>
+                    Would clear Q={fixResult.wouldClearGoogleDocId ?? 0}, MS={fixResult.wouldClearGoogleMsId ?? 0}.
+                  </p>
+                )}
+                {fixResult.dryRun && (fixResult.wouldClearDocOnly !== undefined || fixResult.wouldClearMsOnly !== undefined || fixResult.wouldClearBoth !== undefined) && (
+                  <p>
+                    Breakdown: Q-only={fixResult.wouldClearDocOnly ?? 0}, MS-only={fixResult.wouldClearMsOnly ?? 0}, both={fixResult.wouldClearBoth ?? 0}.
+                  </p>
+                )}
+                {!fixResult.dryRun && (fixResult.clearedDocOnly !== undefined || fixResult.clearedMsOnly !== undefined || fixResult.clearedBoth !== undefined) && (
+                  <p>
+                    Breakdown: Q-only={fixResult.clearedDocOnly ?? 0}, MS-only={fixResult.clearedMsOnly ?? 0}, both={fixResult.clearedBoth ?? 0}.
+                  </p>
+                )}
+                {fixResult.sample.length > 0 && (
+                  <div className="max-h-32 overflow-auto border border-amber-100 rounded">
+                    <table className="w-full text-[11px] font-mono">
+                      <thead className="bg-amber-50 text-amber-900 sticky top-0">
+                        <tr>
+                          <th className="text-left px-2 py-1">Code</th>
+                          <th className="text-left px-2 py-1">Action</th>
+                          <th className="text-left px-2 py-1">Reasons</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fixResult.sample.map((row) => (
+                          <tr key={row.id} className="border-t border-amber-100">
+                            <td className="px-2 py-1 whitespace-nowrap">{row.code}</td>
+                            <td className="px-2 py-1 whitespace-nowrap">
+                              {row.clearGoogleDocId && row.clearGoogleMsId
+                                ? "Clear Q+MS"
+                                : row.clearGoogleDocId
+                                  ? "Clear Q"
+                                  : row.clearGoogleMsId
+                                    ? "Clear MS"
+                                    : "-"}
+                            </td>
+                            <td className="px-2 py-1 text-[10px] text-amber-900/90">
+                              {(row.reasons ?? []).join(", ") || "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="pt-1 border-t border-blue-100 space-y-1.5">
             <p className="text-xs text-blue-800 font-medium">Debug one code (no full scan):</p>
