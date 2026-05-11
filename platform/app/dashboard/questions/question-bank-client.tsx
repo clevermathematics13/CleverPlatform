@@ -413,6 +413,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         finalLookupResult: string;
         sampleIds: string[];
         codesContaining25M?: Array<{ id: string; code: string }>;
+        codesContainingH6?: Array<{ id: string; code: string }>;
       };
     };
   } | null>(null);
@@ -987,6 +988,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
             finalLookupResult: string;
             sampleIds: string[];
             codesContaining25M?: Array<{ id: string; code: string }>;
+            codesContainingH6?: Array<{ id: string; code: string }>;
           };
         };
       };
@@ -1642,6 +1644,22 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                             </p>
                           ))}
                         </div>
+                      )}
+                      {syncResult.focused._debug.codesContaining25M && syncResult.focused._debug.codesContaining25M.length === 0 && (
+                        <p className="mt-1 pt-1 text-[9px] font-semibold text-red-600">⚠️ NO questions with "25M" found in DB!</p>
+                      )}
+                      {syncResult.focused._debug.codesContainingH6 && syncResult.focused._debug.codesContainingH6.length > 0 && (
+                        <div className="mt-1 pt-1 border-t border-green-200">
+                          <p className="font-semibold">Questions with "H_6" in DB:</p>
+                          {syncResult.focused._debug.codesContainingH6.map((q) => (
+                            <p key={q.id} className="text-[9px]">
+                              {q.code} → ID: {q.id}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      {syncResult.focused._debug.codesContainingH6 && syncResult.focused._debug.codesContainingH6.length === 0 && (
+                        <p className="mt-1 pt-1 text-[9px] font-semibold text-red-600">⚠️ NO questions with "H_6" found in DB!</p>
                       )}
                     </div>
                   )}

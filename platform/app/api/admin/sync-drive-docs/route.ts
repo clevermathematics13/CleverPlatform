@@ -346,6 +346,11 @@ export async function POST(request: NextRequest) {
               .filter((q) => q.code.includes("25M"))
               .slice(0, 5)
               .map((q) => ({ id: q.id, code: q.code })),
+            // NEW: Also search for exact H_6 pattern to see if it exists anywhere
+            codesContainingH6: questions
+              .filter((q) => q.code.includes("H_6"))
+              .slice(0, 5)
+              .map((q) => ({ id: q.id, code: q.code })),
           }
         : undefined;
 
