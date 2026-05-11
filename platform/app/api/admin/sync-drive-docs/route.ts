@@ -312,6 +312,38 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Build debug info for focus lookups
+    const focusDebug =
+      focusCode || focusQuestionId
+        ? {
+            totalQuestionsLoaded: questions.length,
+            focusRequestedQuestionId: focusQuestionId,
+            focusRequestedCode: focusCode,
+            idLookupResult: focusQuestionId
+              ? questions.find((q) => q.id === focusQuestionId)
+                ? "found"
+                : "not_found"
+              : "not_attempted",
+            codeLookupResult: focusCode && !focusedQuestion
+              ? questions.find(
+                  (q) =>
+                    q.code
+                      .trim()
+                      .replace(/\s+/g, "")
+                      .toUpperCase() ===
+                    focusCode
+                      .trim()
+                      .replace(/\s+/g, "")
+                      .toUpperCase()
+                )
+                ? "found"
+                : "not_found"
+              : "not_attempted",
+            finalLookupResult: focusedQuestion ? "found" : "not_found",
+            sampleIds: questions.slice(0, 3).map((q) => q.id),
+          }
+        : undefined;
+
     return NextResponse.json({
       scanned: needsUpdate.size,
       found: updates.length,
@@ -351,6 +383,7 @@ export async function POST(request: NextRequest) {
                 id: match.id,
                 name: match.name,
               })),
+              _debug: focusDebug,
             },
           }
         : {}),

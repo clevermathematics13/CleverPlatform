@@ -404,6 +404,15 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       selectedMarkschemeDocId: string | null;
       questionMatches: { id: string; name: string }[];
       markschemeMatches: { id: string; name: string }[];
+      _debug?: {
+        totalQuestionsLoaded: number;
+        focusRequestedQuestionId: string | null;
+        focusRequestedCode: string | null;
+        idLookupResult: string;
+        codeLookupResult: string;
+        finalLookupResult: string;
+        sampleIds: string[];
+      };
     };
   } | null>(null);
   const [fixingLinks, setFixingLinks] = useState<false | "dryrun" | "apply">(false);
@@ -968,6 +977,15 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           selectedMarkschemeDocId: string | null;
           questionMatches: { id: string; name: string }[];
           markschemeMatches: { id: string; name: string }[];
+          _debug?: {
+            totalQuestionsLoaded: number;
+            focusRequestedQuestionId: string | null;
+            focusRequestedCode: string | null;
+            idLookupResult: string;
+            codeLookupResult: string;
+            finalLookupResult: string;
+            sampleIds: string[];
+          };
         };
       };
       if (!res.ok) {
@@ -1602,6 +1620,19 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                     Matches Q={syncResult.focused.questionMatchCount}, MS={syncResult.focused.markschemeMatchCount};
                     selected Q={syncResult.focused.selectedQuestionDocId ?? "null"}, MS={syncResult.focused.selectedMarkschemeDocId ?? "null"}
                   </p>
+                  {syncResult.focused._debug && (
+                    <div className="mt-2 pt-2 border-t border-green-200 text-[10px] text-slate-600">
+                      <p>DEBUG: {syncResult.focused._debug.totalQuestionsLoaded} total questions in DB</p>
+                      <p>
+                        ID lookup (requested: {syncResult.focused._debug.focusRequestedQuestionId}): {syncResult.focused._debug.idLookupResult}
+                      </p>
+                      <p>
+                        Code lookup (requested: "{syncResult.focused._debug.focusRequestedCode}"): {syncResult.focused._debug.codeLookupResult}
+                      </p>
+                      <p>Final result: {syncResult.focused._debug.finalLookupResult}</p>
+                      <p>Sample DB IDs: {syncResult.focused._debug.sampleIds.slice(0, 2).join(", ")}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
