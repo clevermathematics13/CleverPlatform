@@ -97,6 +97,9 @@ export async function POST(request: NextRequest) {
     }
 
     const needsUpdate = new Map<string, { id: string; needsDoc: boolean; needsMs: boolean }>();
+    const existingByCode = new Map(
+      questions.map((q) => [q.code, { google_doc_id: q.google_doc_id, google_ms_id: q.google_ms_id }])
+    );
     for (const q of questions) {
       const needsDoc = force ? true : !q.google_doc_id;
       const needsMs = force ? true : !q.google_ms_id;
@@ -209,8 +212,10 @@ export async function POST(request: NextRequest) {
 
     const updates: { code: string; docId?: string; msId?: string }[] = [];
     for (const [code] of needsUpdate) {
+      const existing = existingByCode.get(code);
       const msPick = pickBestCandidate(code, msCandidates.get(code) ?? []);
-      const qPick = pickBestCandidate(code, questionCandidates.get(code) ?? [], msPick?.id);
+      const avoidId = msPick?.id ?? existing?.google_ms_id ?? undefined;
+      const qPick = pickBestCandidate(code, questionCandidates.get(code) ?? [], avoidId);
       // Skip if the same doc was picked for both — it means the MS doc is stored
       // in the question folder too; don't overwrite google_doc_id with wrong data.
       const docId = (qPick && qPick.id !== msPick?.id) ? qPick.id : undefined;
@@ -228,8 +233,10 @@ export async function POST(request: NextRequest) {
     const focusedMsPick = focusCode
       ? pickBestCandidate(focusCode, focusedMarkschemeMatches)
       : undefined;
+    const focusedExisting = focusCode ? existingByCode.get(focusCode) : undefined;
+    const focusedAvoidId = focusedMsPick?.id ?? focusedExisting?.google_ms_id ?? undefined;
     const focusedQPick = focusCode
-      ? pickBestCandidate(focusCode, focusedQuestionMatches, focusedMsPick?.id)
+      ? pickBestCandidate(focusCode, focusedQuestionMatches, focusedAvoidId)
       : undefined;
     const focusedUpdate = focusCode
       ? updates.find((update) => update.code === focusCode) ?? null
