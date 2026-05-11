@@ -389,7 +389,22 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [uploadingImage, setUploadingImage] = useState<Set<string>>(new Set()); // keyed by questionId
   const [driveConnected, setDriveConnected] = useState(initialDriveConnected);
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ found: number; updated: number } | null>(null);
+  const [syncResult, setSyncResult] = useState<{
+    found: number;
+    updated: number;
+    focused?: {
+      code: string;
+      status: string | null;
+      db: { google_doc_id: string | null; google_ms_id: string | null } | null;
+      needs: { doc: boolean; ms: boolean } | null;
+      questionMatchCount: number;
+      markschemeMatchCount: number;
+      selectedQuestionDocId: string | null;
+      selectedMarkschemeDocId: string | null;
+      questionMatches: { id: string; name: string }[];
+      markschemeMatches: { id: string; name: string }[];
+    };
+  } | null>(null);
   const [fixingLinks, setFixingLinks] = useState<false | "dryrun" | "apply">(false);
   const [fixLinksResult, setFixLinksResult] = useState<{
     dryRun: boolean;
@@ -923,12 +938,35 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     setSyncResult(null);
     setError(null);
     try {
-      const res = await fetch("/api/admin/sync-drive-docs", { method: "POST" });
-      const data = await res.json() as { found?: number; updated?: number; error?: string };
+      const focusCode = search.trim();
+      const res = await fetch("/api/admin/sync-drive-docs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(focusCode ? { focusCode } : {}),
+        }),
+      });
+      const data = await res.json() as {
+        found?: number;
+        updated?: number;
+        error?: string;
+        focused?: {
+          code: string;
+          status: string | null;
+          db: { google_doc_id: string | null; google_ms_id: string | null } | null;
+          needs: { doc: boolean; ms: boolean } | null;
+          questionMatchCount: number;
+          markschemeMatchCount: number;
+          selectedQuestionDocId: string | null;
+          selectedMarkschemeDocId: string | null;
+          questionMatches: { id: string; name: string }[];
+          markschemeMatches: { id: string; name: string }[];
+        };
+      };
       if (!res.ok) {
         setError(data.error ?? "Sync failed");
       } else {
-        setSyncResult({ found: data.found ?? 0, updated: data.updated ?? 0 });
+        setSyncResult({ found: data.found ?? 0, updated: data.updated ?? 0, focused: data.focused });
       }
     } catch {
       setError("Network error during sync");
@@ -1539,10 +1577,27 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
             </div>
           )}
           {syncResult && (
-            <p className="mt-1 text-xs text-green-700">
-              Sync complete — {syncResult.found} doc link{syncResult.found !== 1 ? "s" : ""} found,{" "}
-              {syncResult.updated} updated.
-            </p>
+            <div className="mt-1 text-xs text-green-700 space-y-1">
+              <p>
+                Sync complete — {syncResult.found} doc link{syncResult.found !== 1 ? "s" : ""} found,{" "}
+                {syncResult.updated} updated.
+              </p>
+              {syncResult.focused && (
+                <div className="rounded border border-green-200 bg-white/80 p-2 text-[11px] text-slate-700">
+                  <p>
+                    Focused code <span className="font-mono font-semibold">{syncResult.focused.code}</span>: <span className="font-semibold">{syncResult.focused.status ?? "unknown"}</span>
+                  </p>
+                  <p>
+                    DB Q={syncResult.focused.db?.google_doc_id ?? "null"}, MS={syncResult.focused.db?.google_ms_id ?? "null"};
+                    needs Q={String(syncResult.focused.needs?.doc ?? false)}, MS={String(syncResult.focused.needs?.ms ?? false)}
+                  </p>
+                  <p>
+                    Matches Q={syncResult.focused.questionMatchCount}, MS={syncResult.focused.markschemeMatchCount};
+                    selected Q={syncResult.focused.selectedQuestionDocId ?? "null"}, MS={syncResult.focused.selectedMarkschemeDocId ?? "null"}
+                  </p>
+                </div>
+              )}
+            </div>
           )}
           {fixLinksResult && (
             <p className="mt-1 text-xs text-amber-800">

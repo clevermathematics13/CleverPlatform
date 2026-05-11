@@ -60,8 +60,10 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as {
       dryRun?: boolean;
       force?: boolean;
+      focusCode?: string;
     };
     const { dryRun = false, force = false } = body;
+    const focusCode = body.focusCode?.trim() || null;
 
     const auth = getAuthedClient(token);
     const drive = google.drive({ version: "v3", auth });
@@ -217,6 +219,41 @@ export async function POST(request: NextRequest) {
       updates.push({ code, ...(docId ? { docId } : {}), ...(msId ? { msId } : {}) });
     }
 
+    const focusedQuestion = focusCode
+      ? questions.find((question) => question.code === focusCode) ?? null
+      : null;
+    const focusedNeed = focusCode ? needsUpdate.get(focusCode) ?? null : null;
+    const focusedQuestionMatches = focusCode ? questionCandidates.get(focusCode) ?? [] : [];
+    const focusedMarkschemeMatches = focusCode ? msCandidates.get(focusCode) ?? [] : [];
+    const focusedMsPick = focusCode
+      ? pickBestCandidate(focusCode, focusedMarkschemeMatches)
+      : undefined;
+    const focusedQPick = focusCode
+      ? pickBestCandidate(focusCode, focusedQuestionMatches, focusedMsPick?.id)
+      : undefined;
+    const focusedUpdate = focusCode
+      ? updates.find((update) => update.code === focusCode) ?? null
+      : null;
+
+    let focusedStatus: string | null = null;
+    if (focusCode) {
+      if (!focusedQuestion) {
+        focusedStatus = "code_not_in_db";
+      } else if (!focusedNeed) {
+        focusedStatus = "already_linked_no_force";
+      } else if (focusedUpdate) {
+        focusedStatus = dryRun ? "would_update" : "updated";
+      } else if (focusedNeed.needsDoc && focusedQuestionMatches.length === 0) {
+        focusedStatus = "no_question_doc_match_found";
+      } else if (focusedNeed.needsMs && focusedMarkschemeMatches.length === 0) {
+        focusedStatus = "no_markscheme_doc_match_found";
+      } else if (focusedNeed.needsDoc && focusedMsPick && focusedQPick?.id === focusedMsPick.id) {
+        focusedStatus = "question_match_conflicted_with_markscheme_match";
+      } else {
+        focusedStatus = "no_update_generated";
+      }
+    }
+
     if (!dryRun) {
       for (const u of updates) {
         const patch: Record<string, string> = {};
@@ -234,6 +271,38 @@ export async function POST(request: NextRequest) {
       found: updates.length,
       updated: dryRun ? 0 : updates.length,
       dryRun,
+      ...(focusCode
+        ? {
+            focused: {
+              code: focusCode,
+              status: focusedStatus,
+              db: focusedQuestion
+                ? {
+                    google_doc_id: focusedQuestion.google_doc_id,
+                    google_ms_id: focusedQuestion.google_ms_id,
+                  }
+                : null,
+              needs: focusedNeed
+                ? {
+                    doc: focusedNeed.needsDoc,
+                    ms: focusedNeed.needsMs,
+                  }
+                : null,
+              questionMatchCount: focusedQuestionMatches.length,
+              markschemeMatchCount: focusedMarkschemeMatches.length,
+              selectedQuestionDocId: focusedQPick?.id ?? null,
+              selectedMarkschemeDocId: focusedMsPick?.id ?? null,
+              questionMatches: focusedQuestionMatches.slice(0, 5).map((match) => ({
+                id: match.id,
+                name: match.name,
+              })),
+              markschemeMatches: focusedMarkschemeMatches.slice(0, 5).map((match) => ({
+                id: match.id,
+                name: match.name,
+              })),
+            },
+          }
+        : {}),
       updates: updates.map((u) => ({
         code: u.code,
         ...(u.docId ? { google_doc_id: u.docId } : {}),
