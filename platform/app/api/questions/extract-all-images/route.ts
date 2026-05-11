@@ -71,6 +71,14 @@ function extensionForType(contentType: string): string {
   return "png";
 }
 
+function isDriveFileNotFound(err: unknown): boolean {
+  const status =
+    (err as { code?: number; response?: { status?: number } } | null)?.code ??
+    (err as { response?: { status?: number } } | null)?.response?.status;
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return status === 404 || /file not found|requested entity was not found/i.test(msg);
+}
+
 async function extractOneQuestion(
   supabase: Awaited<ReturnType<typeof createClient>>,
   auth: OAuth2Client,
@@ -130,6 +138,18 @@ async function extractOneQuestion(
       questionCount++;
     }
   } catch (err) {
+    if (isDriveFileNotFound(err)) {
+      await supabase
+        .from("ib_questions")
+        .update({ google_doc_id: null })
+        .eq("id", question.id);
+      return {
+        code: question.code,
+        questionImages: questionCount,
+        msImages: msCount,
+        error: "Question doc not found in Drive; stale google_doc_id was cleared",
+      };
+    }
     return {
       code: question.code,
       questionImages: questionCount,
@@ -190,6 +210,18 @@ async function extractOneQuestion(
         writeIdx++;
       }
     } catch (err) {
+      if (isDriveFileNotFound(err)) {
+        await supabase
+          .from("ib_questions")
+          .update({ google_ms_id: null })
+          .eq("id", question.id);
+        return {
+          code: question.code,
+          questionImages: questionCount,
+          msImages: msCount,
+          error: "Markscheme doc not found in Drive; stale google_ms_id was cleared",
+        };
+      }
       return {
         code: question.code,
         questionImages: questionCount,

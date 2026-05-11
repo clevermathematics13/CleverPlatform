@@ -83,6 +83,14 @@ function extensionForType(contentType: string): string {
   return "png";
 }
 
+function isDriveFileNotFound(err: unknown): boolean {
+  const status =
+    (err as { code?: number; response?: { status?: number } } | null)?.code ??
+    (err as { response?: { status?: number } } | null)?.response?.status;
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return status === 404 || /file not found|requested entity was not found/i.test(msg);
+}
+
 export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   const diagnostics: Record<string, unknown> = {
@@ -274,6 +282,22 @@ export async function POST(request: NextRequest) {
     }
   } catch (err) {
     console.error("Error extracting question doc images:", err);
+    if (isDriveFileNotFound(err)) {
+      await supabase
+        .from("ib_questions")
+        .update({ google_doc_id: null })
+        .eq("id", question.id);
+      (diagnostics.warnings as string[]).push("Question doc link was stale and has been cleared");
+      return NextResponse.json(
+        {
+          error:
+            "Question Google Doc was not found in Drive. The stale question-doc link has been cleared. Re-link using Sync Doc Links / Fix Links and try again.",
+          partial: results,
+          diagnostics: finish(),
+        },
+        { status: 400 }
+      );
+    }
     (diagnostics.warnings as string[]).push(`Question doc extraction failed: ${err instanceof Error ? err.message : String(err)}`);
     return NextResponse.json(
       {
@@ -363,6 +387,15 @@ export async function POST(request: NextRequest) {
       }
     } catch (err) {
       console.error("Error extracting markscheme doc images:", err);
+      if (isDriveFileNotFound(err)) {
+        await supabase
+          .from("ib_questions")
+          .update({ google_ms_id: null })
+          .eq("id", question.id);
+        (diagnostics.warnings as string[]).push(
+          "Markscheme doc not found; stale markscheme-doc link was cleared"
+        );
+      }
       (diagnostics.warnings as string[]).push(
         `Markscheme extraction failed after question extraction succeeded: ${err instanceof Error ? err.message : String(err)}`
       );
