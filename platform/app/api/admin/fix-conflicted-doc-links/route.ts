@@ -29,6 +29,7 @@ type LinkIssue = {
 type FileTreeInfo = {
   inQuestionTree: boolean;
   inMarkschemeTree: boolean;
+  missing: boolean;
 };
 
 function getAuthedClient(token: Record<string, unknown>) {
@@ -38,6 +39,14 @@ function getAuthedClient(token: Record<string, unknown>) {
   );
   oauth2.setCredentials(token);
   return oauth2;
+}
+
+function isDriveFileNotFound(err: unknown): boolean {
+  const status =
+    (err as { code?: number; response?: { status?: number } } | null)?.code ??
+    (err as { response?: { status?: number } } | null)?.response?.status;
+  const msg = err instanceof Error ? err.message : String(err ?? "");
+  return status === 404 || /file not found|requested entity was not found/i.test(msg);
 }
 
 export async function POST(request: NextRequest) {
@@ -151,15 +160,24 @@ export async function POST(request: NextRequest) {
         if (inQuestionTree && inMarkschemeTree) break;
 
         if (current === fileId) {
-          const parents = await getParents(current);
-          queue.push(...parents);
+          try {
+            const parents = await getParents(current);
+            queue.push(...parents);
+          } catch (err) {
+            if (isDriveFileNotFound(err)) {
+              const info = { inQuestionTree: false, inMarkschemeTree: false, missing: true };
+              fileInfoCache.set(fileId, info);
+              return info;
+            }
+            throw err;
+          }
         } else {
           const parents = await getParents(current).catch(() => [] as string[]);
           queue.push(...parents);
         }
       }
 
-      const info = { inQuestionTree, inMarkschemeTree };
+      const info = { inQuestionTree, inMarkschemeTree, missing: false };
       fileInfoCache.set(fileId, info);
       return info;
     }
@@ -177,19 +195,27 @@ export async function POST(request: NextRequest) {
 
       if (row.google_doc_id) {
         const info = await classifyFile(row.google_doc_id);
-        if (info.inMarkschemeTree) {
+        if (info.missing) {
           clearGoogleDocId = true;
-          reasons.push("question_doc_is_in_markscheme_tree");
-        }
-        if (!info.inQuestionTree) {
-          clearGoogleDocId = true;
-          reasons.push("question_doc_not_in_question_tree");
+          reasons.push("question_doc_missing_in_drive");
+        } else {
+          if (info.inMarkschemeTree) {
+            clearGoogleDocId = true;
+            reasons.push("question_doc_is_in_markscheme_tree");
+          }
+          if (!info.inQuestionTree) {
+            clearGoogleDocId = true;
+            reasons.push("question_doc_not_in_question_tree");
+          }
         }
       }
 
       if (row.google_ms_id) {
         const info = await classifyFile(row.google_ms_id);
-        if (!info.inMarkschemeTree) {
+        if (info.missing) {
+          clearGoogleMsId = true;
+          reasons.push("markscheme_doc_missing_in_drive");
+        } else if (!info.inMarkschemeTree) {
           clearGoogleMsId = true;
           reasons.push("markscheme_doc_not_in_markscheme_tree");
         }
