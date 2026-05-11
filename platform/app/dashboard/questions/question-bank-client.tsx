@@ -3041,7 +3041,28 @@ function QuestionRow({
       const candidateLabels = claudeLabels.length > 0 ? claudeLabels : (detectedLabels.length > 0 ? detectedLabels : claudeCountLabels);
       const splitProbe = splitDraftIntoParts(qDraft || msDraft, candidateLabels);
       const inferredLabels = candidateLabels.length > 0 ? candidateLabels : Array.from(splitProbe.parts.keys());
-      const finalLabels = Array.from(new Set(inferredLabels.map((l) => l.trim()).filter(Boolean)));
+      let finalLabels = Array.from(new Set(inferredLabels.map((l) => l.trim()).filter(Boolean)));
+
+      // Guard against false positives: OCR text like "where (a) ..." can be
+      // misread as a single part label. Only trust a lone "a" when structure
+      // markers clearly indicate multipart formatting.
+      const combinedDraft = `${qDraft}\n${msDraft}`;
+      const hasExplicitPartEnvironment =
+        /\\begin\{IBPart\}/i.test(combinedDraft)
+        || /\\item\s*\[\s*\(?[a-z](?:i|ii|iii|iv|v)?\)?\s*\]/i.test(combinedDraft);
+      const strongLabelMatches = Array.from(
+        combinedDraft.matchAll(/(?:^|\n)\s*\(([a-z](?:i|ii|iii|iv|v)?)\)\s+/gi),
+      );
+      const strongUniqueLabels = new Set(strongLabelMatches.map((m) => (m[1] ?? "").toLowerCase()));
+      const isSuspiciousSingleA =
+        finalLabels.length === 1
+        && normalizePartLabelKey(finalLabels[0]) === "a"
+        && !hasExplicitPartEnvironment
+        && strongUniqueLabels.size < 2;
+      if (isSuspiciousSingleA) {
+        push("Single '(a)' marker looked incidental; using whole-question mode.");
+        finalLabels = [];
+      }
 
       if (claudeLabels.length === 0 && finalLabels.length > 0) {
         const source = detectedLabels.length > 0 ? "OCR text" : (claudeCountLabels.length > 0 ? "Claude part count" : "structure inference");
