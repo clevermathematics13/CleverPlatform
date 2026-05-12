@@ -3054,11 +3054,24 @@ function QuestionRow({
       );
       const strongUniqueLabels = new Set(strongLabelMatches.map((m) => (m[1] ?? "").toLowerCase()));
 
+      const existingLabeledPartKeys = new Set(
+        parts
+          .map((p) => normalizePartLabelKey(p.part_label ?? ""))
+          .filter(Boolean),
+      );
+      const hasExistingMultipart = existingLabeledPartKeys.size > 1;
+      const canTrustClaudeMultipartWithoutExplicit =
+        !hasExplicitPartEnvironment
+        && hasExistingMultipart
+        && claudeLabels.length >= 2;
+
       // If no explicit top-level part markers exist, force whole-question mode.
       // This prevents synthetic fallback labels like "a" from unlabeled OCR blocks.
-      if (!hasExplicitPartEnvironment && finalLabels.length > 0) {
+      if (!hasExplicitPartEnvironment && finalLabels.length > 0 && !canTrustClaudeMultipartWithoutExplicit) {
         push("No explicit top-level part labels found; using whole-question mode.");
         finalLabels = [];
+      } else if (canTrustClaudeMultipartWithoutExplicit) {
+        push("No explicit top-level markers found, but existing multipart labels + Claude labels support multipart extraction.");
       }
 
       const isSuspiciousSingleA =
