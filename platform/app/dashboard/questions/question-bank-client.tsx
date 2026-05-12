@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import LatexRenderer from "@/components/LatexRenderer";
 import { AddQuestionWizard } from "./add-question-wizard";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
-import { hasExplicitTopLevelPartStructure, shouldBlockPartAutoSave } from "./part-structure";
+import { hasExplicitTopLevelPartStructure, shouldBlockPartAutoSave, shouldTrustMultipartWithoutExplicit } from "./part-structure";
 import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
 import { contextTermHighlightsFromFlags, deriveCommandTermFlags } from "@/lib/command-term-flags";
 import { readJsonSafely } from "@/lib/http-json";
@@ -3054,16 +3054,12 @@ function QuestionRow({
       );
       const strongUniqueLabels = new Set(strongLabelMatches.map((m) => (m[1] ?? "").toLowerCase()));
 
-      const existingLabeledPartKeys = new Set(
-        parts
-          .map((p) => normalizePartLabelKey(p.part_label ?? ""))
-          .filter(Boolean),
-      );
-      const hasExistingMultipart = existingLabeledPartKeys.size > 1;
       const canTrustClaudeMultipartWithoutExplicit =
         !hasExplicitPartEnvironment
-        && hasExistingMultipart
-        && claudeLabels.length >= 2;
+        && shouldTrustMultipartWithoutExplicit({
+          claudeLabelsCount: claudeLabels.length,
+          splitProbePartsCount: splitProbe.parts.size,
+        });
 
       // If no explicit top-level part markers exist, force whole-question mode.
       // This prevents synthetic fallback labels like "a" from unlabeled OCR blocks.
@@ -3071,7 +3067,7 @@ function QuestionRow({
         push("No explicit top-level part labels found; using whole-question mode.");
         finalLabels = [];
       } else if (canTrustClaudeMultipartWithoutExplicit) {
-        push("No explicit top-level markers found, but existing multipart labels + Claude labels support multipart extraction.");
+        push("No explicit top-level markers found, but Claude labels + extracted part structure support multipart extraction.");
       }
 
       const isSuspiciousSingleA =

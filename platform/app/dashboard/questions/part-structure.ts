@@ -57,3 +57,10 @@ export function shouldBlockPartAutoSave(params: {
 
   return { block: false, reason: null };
 }
+
+export function shouldTrustMultipartWithoutExplicit(params: {
+  claudeLabelsCount: number;
+  splitProbePartsCount: number;
+}): boolean {
+  return params.claudeLabelsCount >= 2 && params.splitProbePartsCount >= 2;
+}

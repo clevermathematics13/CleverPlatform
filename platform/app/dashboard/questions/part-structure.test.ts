@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hasExplicitTopLevelPartStructure, shouldBlockPartAutoSave } from "./part-structure";
+import { hasExplicitTopLevelPartStructure, shouldBlockPartAutoSave, shouldTrustMultipartWithoutExplicit } from "./part-structure";
 
 describe("hasExplicitTopLevelPartStructure", () => {
   it("returns false for unlabeled IBPart blocks", () => {
@@ -75,5 +75,19 @@ describe("shouldBlockPartAutoSave", () => {
 
     expect(result.block).toBe(true);
     expect(result.reason).toContain("unexpected part label");
+  });
+});
+
+describe("shouldTrustMultipartWithoutExplicit", () => {
+  it("trusts multipart when Claude and split probe both indicate 2+ parts", () => {
+    expect(shouldTrustMultipartWithoutExplicit({ claudeLabelsCount: 2, splitProbePartsCount: 2 })).toBe(true);
+  });
+
+  it("does not trust multipart when Claude indicates multipart but split probe does not", () => {
+    expect(shouldTrustMultipartWithoutExplicit({ claudeLabelsCount: 2, splitProbePartsCount: 0 })).toBe(false);
+  });
+
+  it("does not trust multipart for single Claude label", () => {
+    expect(shouldTrustMultipartWithoutExplicit({ claudeLabelsCount: 1, splitProbePartsCount: 3 })).toBe(false);
   });
 });
