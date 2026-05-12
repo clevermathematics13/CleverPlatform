@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import LatexRenderer from "@/components/LatexRenderer";
 import { AddQuestionWizard } from "./add-question-wizard";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
+import { hasExplicitTopLevelPartStructure, shouldBlockPartAutoSave } from "./part-structure";
 import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
 import { contextTermHighlightsFromFlags, deriveCommandTermFlags } from "@/lib/command-term-flags";
 import { readJsonSafely } from "@/lib/http-json";
@@ -3047,13 +3048,19 @@ function QuestionRow({
       // misread as a single part label. Only trust a lone "a" when structure
       // markers clearly indicate multipart formatting.
       const combinedDraft = `${qDraft}\n${msDraft}`;
-      const hasExplicitPartEnvironment =
-        /\\begin\{IBPart\}/i.test(combinedDraft)
-        || /\\item\s*\[\s*\(?[a-z](?:i|ii|iii|iv|v)?\)?\s*\]/i.test(combinedDraft);
+      const hasExplicitPartEnvironment = hasExplicitTopLevelPartStructure(combinedDraft);
       const strongLabelMatches = Array.from(
         combinedDraft.matchAll(/(?:^|\n)\s*\(([a-z](?:i|ii|iii|iv|v)?)\)\s+/gi),
       );
       const strongUniqueLabels = new Set(strongLabelMatches.map((m) => (m[1] ?? "").toLowerCase()));
+
+      // If no explicit top-level part markers exist, force whole-question mode.
+      // This prevents synthetic fallback labels like "a" from unlabeled OCR blocks.
+      if (!hasExplicitPartEnvironment && finalLabels.length > 0) {
+        push("No explicit top-level part labels found; using whole-question mode.");
+        finalLabels = [];
+      }
+
       const isSuspiciousSingleA =
         finalLabels.length === 1
         && normalizePartLabelKey(finalLabels[0]) === "a"
@@ -3072,6 +3079,20 @@ function QuestionRow({
       // Split the drafts using final labels (Claude, OCR-detected, or inferred)
       const { stem: stemQ, parts: splitQ } = splitDraftIntoParts(qDraft, finalLabels);
       const { stem: stemMS, parts: splitMS } = splitDraftIntoParts(msDraft, finalLabels);
+
+      const expectedExistingLabels = parts
+        .map((p) => (p.part_label ?? "").trim())
+        .filter(Boolean);
+      const saveGuard = shouldBlockPartAutoSave({
+        expectedLabels: expectedExistingLabels,
+        splitQuestion: splitQ,
+        splitMarkscheme: splitMS,
+      });
+      if (finalLabels.length > 0 && saveGuard.block) {
+        throw new Error(
+          `Auto-save blocked to avoid part misalignment: ${saveGuard.reason}. Please review/extract manually.`,
+        );
+      }
 
       // Whole-question path: no labels from Claude/OCR/inference.
       const isWholeQuestion = finalLabels.length === 0;
@@ -4304,6 +4325,17 @@ function QuestionRow({
                       + Add Part
                     </button>
                   </div>
+
+                  {fullExtractError?.includes("Auto-save blocked to avoid part misalignment") && (
+                    <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3">
+                      <p className="text-xs font-semibold text-red-800">
+                        Auto-save was blocked to prevent part misalignment.
+                      </p>
+                      <p className="mt-1 text-xs text-red-700">
+                        Next step: extract and review each part manually using the per-part Extract buttons, then save after confirming Part A/Part B placement.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Confirm overwrite dialog */}
                   {fullExtractState === "confirm" && (

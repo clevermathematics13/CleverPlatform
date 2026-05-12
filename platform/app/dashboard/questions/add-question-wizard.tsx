@@ -5,6 +5,7 @@ import LatexRenderer from "@/components/LatexRenderer";
 import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
 import { readJsonSafely } from "@/lib/http-json";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
+import { hasExplicitTopLevelPartStructure } from "./part-structure";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -748,10 +749,20 @@ export function AddQuestionWizard({
       }
 
       // 5. Split drafts using Claude-identified (or detected) labels
-      const finalLabels =
+      const rawFinalLabels =
         claudeParts.length > 0
           ? claudeParts.map((p) => p.label)
           : detectedLabels;
+
+      const combinedDraft = `${qDraft}\n${msDraft}`;
+      const hasExplicitPartEnvironment = hasExplicitTopLevelPartStructure(combinedDraft);
+      const finalLabels = hasExplicitPartEnvironment
+        ? rawFinalLabels.map((l) => l.trim()).filter(Boolean)
+        : [];
+
+      if (!hasExplicitPartEnvironment && rawFinalLabels.length > 0) {
+        push("No explicit top-level part labels found; using whole-question mode.");
+      }
 
       const { stem, parts: splitQ } = splitDraftIntoParts(qDraft, finalLabels);
       const { stem: stemMs, parts: splitMS } = splitDraftIntoParts(
