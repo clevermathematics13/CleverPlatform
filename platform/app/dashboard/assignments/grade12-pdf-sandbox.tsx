@@ -1,6 +1,6 @@
 "use client";
 
-import { GenericAssignmentSandbox } from "../generic-pdf-sandbox";
+import { GenericAssignmentSandbox } from "./generic-pdf-sandbox";
 import type { FormattingRequirements, AssignmentInput, AssignmentDraft } from "@/lib/assignments";
 
 const grade12Formatting: FormattingRequirements = {
