@@ -5109,21 +5109,6 @@ function QuestionRow({
                       ] as const).map((section) => (
                         <div key={section.key} className="space-y-3">
                           <h3 className="text-xs font-bold uppercase tracking-wide text-gray-600">{section.title}</h3>
-                          {(() => {
-                            const combinedLatex = buildCombinedLatex(section.key);
-                            return (
-                              <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-4">
-                                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
-                                  Full {section.title} (combined)
-                                </p>
-                                {combinedLatex ? (
-                                  <LatexRenderer latex={combinedLatex} stripMarkAnnotations={section.key === "content_latex"} />
-                                ) : (
-                                  <p className="text-xs text-gray-400 italic">{section.emptyHint}</p>
-                                )}
-                              </div>
-                            );
-                          })()}
                           <div className="space-y-4">
                             {parts.map((part) => {
                               const partLabel = part.part_label ? `Part ${part.part_label.toUpperCase()}` : "Whole question";
