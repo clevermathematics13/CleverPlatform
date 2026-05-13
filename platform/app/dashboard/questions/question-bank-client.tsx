@@ -2990,6 +2990,8 @@ function QuestionRow({
   const [graphEditorOpen, setGraphEditorOpen] = useState(false);
   const [graphSpecJson, setGraphSpecJson] = useState(() => JSON.stringify(EXAMPLE_SPEC, null, 2));
   const [graphSavingField, setGraphSavingField] = useState<"stem_latex" | "parts_draft_latex" | null>(null);
+  const [graphCopiedMarker, setGraphCopiedMarker] = useState<string | null>(null);
+  const [graphMarkerCopied, setGraphMarkerCopied] = useState(false);
   const [graphParseError, setGraphParseError] = useState<string | null>(null);
   const [graphExtracting, setGraphExtracting] = useState(false);
   const [graphExtractError, setGraphExtractError] = useState<string | null>(null);
@@ -4741,6 +4743,25 @@ function QuestionRow({
                             >
                               Reset to example
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                try {
+                                  const spec = JSON.parse(graphSpecJson) as IbGraphSpec;
+                                  const marker = encodeGraphSpec(spec);
+                                  void navigator.clipboard.writeText(marker).then(() => {
+                                    setGraphCopiedMarker(marker);
+                                    setGraphMarkerCopied(true);
+                                    setTimeout(() => setGraphMarkerCopied(false), 2000);
+                                  });
+                                } catch {
+                                  setGraphParseError("Invalid JSON — fix errors before copying");
+                                }
+                              }}
+                              className="rounded border border-violet-300 bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700 hover:bg-violet-100"
+                            >
+                              {graphMarkerCopied ? "✓ Copied!" : "📋 Copy Graph LaTeX"}
+                            </button>
                           </div>
                           <details className="text-xs text-gray-500">
                             <summary className="cursor-pointer font-semibold text-gray-600">Element reference</summary>
@@ -5184,19 +5205,41 @@ function QuestionRow({
                       </div>
                       <div className="p-4 bg-white">
                         {editingStem === "stem_latex" ? (
-                          <textarea
-                            className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            rows={6}
-                            value={stemDraftQ}
-                            onChange={(e) => setStemDraftQ(e.target.value)}
-                          />
+                          <>
+                            {graphCopiedMarker && (
+                              <div className="mb-1.5 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setStemDraftQ((v) => v + "\n" + graphCopiedMarker)}
+                                  className="rounded border border-violet-300 bg-violet-50 px-2.5 py-0.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100"
+                                >⊕ Insert Graph</button>
+                              </div>
+                            )}
+                            <textarea
+                              className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                              rows={6}
+                              value={stemDraftQ}
+                              onChange={(e) => setStemDraftQ(e.target.value)}
+                            />
+                          </>
                         ) : editingStem === "stem_markscheme_latex" ? (
-                          <textarea
-                            className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            rows={6}
-                            value={stemDraftMS}
-                            onChange={(e) => setStemDraftMS(e.target.value)}
-                          />
+                          <>
+                            {graphCopiedMarker && (
+                              <div className="mb-1.5 flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setStemDraftMS((v) => v + "\n" + graphCopiedMarker)}
+                                  className="rounded border border-violet-300 bg-violet-50 px-2.5 py-0.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100"
+                                >⊕ Insert Graph</button>
+                              </div>
+                            )}
+                            <textarea
+                              className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                              rows={6}
+                              value={stemDraftMS}
+                              onChange={(e) => setStemDraftMS(e.target.value)}
+                            />
+                          </>
                         ) : (
                           <div className="space-y-4">
                             <div>
@@ -5276,13 +5319,24 @@ function QuestionRow({
                                 )}
                               </div>
                               {isEditing ? (
-                                <textarea
-                                  className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                                  rows={8}
-                                  value={draft}
-                                  onChange={(e) => setDraft(e.target.value)}
-                                  autoFocus
-                                />
+                                <>
+                                  {graphCopiedMarker && (
+                                    <div className="mb-1.5 flex justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => setDraft((v) => v + "\n" + graphCopiedMarker)}
+                                        className="rounded border border-violet-300 bg-violet-50 px-2.5 py-0.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100"
+                                      >⊕ Insert Graph</button>
+                                    </div>
+                                  )}
+                                  <textarea
+                                    className="w-full border border-gray-300 rounded p-2 text-xs font-mono text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                                    rows={8}
+                                    value={draft}
+                                    onChange={(e) => setDraft(e.target.value)}
+                                    autoFocus
+                                  />
+                                </>
                               ) : draft ? (
                                 <LatexRenderer
                                   latex={draft}
@@ -5428,6 +5482,15 @@ function QuestionRow({
                                             <span className="inline-block w-3 h-3 border-2 border-amber-400 border-t-amber-700 rounded-full animate-spin" />
                                             Running OCR on images…
                                           </p>
+                                        )}
+                                        {graphCopiedMarker && (
+                                          <div className="mb-1.5 flex justify-end">
+                                            <button
+                                              type="button"
+                                              onClick={() => setLatexDrafts((d) => ({ ...d, [part.id]: { ...d[part.id], [field]: (d[part.id]?.[field] ?? "") + "\n" + graphCopiedMarker } }))}
+                                              className="rounded border border-violet-300 bg-violet-50 px-2.5 py-0.5 text-[11px] font-bold text-violet-700 hover:bg-violet-100"
+                                            >⊕ Insert Graph</button>
+                                          </div>
                                         )}
                                         <textarea
                                           className="w-full border border-gray-300 rounded p-2 text-xs font-mono resize-y min-h-24 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
