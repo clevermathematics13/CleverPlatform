@@ -3001,6 +3001,9 @@ function QuestionRow({
   const [graphExtractFeedback, setGraphExtractFeedback] = useState<string[]>([]);
   const [graphSourceImageB64, setGraphSourceImageB64] = useState<string | null>(null);
   const [graphMeta, setGraphMeta] = useState<Record<string, unknown> | null>(null);
+  const [showCorrectionInput, setShowCorrectionInput] = useState(false);
+  const [correctionJson, setCorrectionJson] = useState("");
+  const [correctionParseError, setCorrectionParseError] = useState<string | null>(null);
   const [graphCrops, setGraphCrops] = useState<GraphImageCrop[]>([]);
   const [graphCropsLoading, setGraphCropsLoading] = useState(false);
   const [graphCropsError, setGraphCropsError] = useState<string | null>(null);
@@ -3210,6 +3213,29 @@ function QuestionRow({
       setGraphDebugCopied(true);
       setTimeout(() => setGraphDebugCopied(false), 2000);
     });
+  }
+
+  function applyCorrection() {
+    setCorrectionParseError(null);
+    try {
+      const parsed = JSON.parse(correctionJson) as {
+        graphSpec?: IbGraphSpec;
+        graphMeta?: Record<string, unknown>;
+        warnings?: string[];
+      };
+      if (!parsed.graphSpec) {
+        setCorrectionParseError("JSON must have a \"graphSpec\" key.");
+        return;
+      }
+      setGraphSpecJson(JSON.stringify(parsed.graphSpec, null, 2));
+      setGraphParseError(null);
+      if (parsed.graphMeta) setGraphMeta(parsed.graphMeta);
+      if (Array.isArray(parsed.warnings)) setGraphExtractWarnings(parsed.warnings);
+      setShowCorrectionInput(false);
+      setCorrectionJson("");
+    } catch (e) {
+      setCorrectionParseError(String(e));
+    }
   }
 
   async function extractGraphFromImage() {
@@ -4498,6 +4524,15 @@ function QuestionRow({
                             {graphDebugCopied ? "✓ Copied" : "Copy Graph Debug Packet"}
                           </button>
                         )}
+                        {graphExtractSnapshot && (
+                          <button
+                            type="button"
+                            onClick={() => { setShowCorrectionInput((v) => !v); setCorrectionParseError(null); }}
+                            className="inline-flex items-center gap-1 rounded border border-emerald-400 bg-white px-2.5 py-1.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50"
+                          >
+                            {showCorrectionInput ? "✕ Cancel" : "✏ Paste Correction"}
+                          </button>
+                        )}
                         {graphExtracting && (
                           <span className="text-xs text-violet-600 italic">
                             Running 2-pass analysis (this may take ~30 s)…
@@ -4576,6 +4611,35 @@ function QuestionRow({
                           {graphExtractWarnings.map((w, i) => (
                             <p key={i} className="text-xs text-yellow-700">{w}</p>
                           ))}
+                        </div>
+                      )}
+
+                      {/* ── Paste correction panel ── */}
+                      {showCorrectionInput && (
+                        <div className="rounded border border-emerald-300 bg-emerald-50 px-3 py-3 space-y-2">
+                          <p className="text-xs font-bold text-emerald-800">✏ Paste corrected JSON</p>
+                          <p className="text-[11px] text-emerald-700">
+                            Paste the JSON returned by the AI (must have a <code className="bg-white px-0.5 rounded">graphSpec</code> key, optionally <code className="bg-white px-0.5 rounded">graphMeta</code> and <code className="bg-white px-0.5 rounded">warnings</code>).
+                          </p>
+                          <textarea
+                            rows={10}
+                            value={correctionJson}
+                            onChange={(e) => { setCorrectionJson(e.target.value); setCorrectionParseError(null); }}
+                            spellCheck={false}
+                            placeholder={'{\n  "graphSpec": { ... },\n  "graphMeta": { ... },\n  "warnings": []\n}'}
+                            className="w-full rounded border border-emerald-300 px-2 py-1.5 font-mono text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-400 bg-white"
+                          />
+                          {correctionParseError && (
+                            <p className="text-xs text-red-600">{correctionParseError}</p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={applyCorrection}
+                            disabled={!correctionJson.trim()}
+                            className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-40"
+                          >
+                            Apply → Load into Graph Editor
+                          </button>
                         </div>
                       )}
 
