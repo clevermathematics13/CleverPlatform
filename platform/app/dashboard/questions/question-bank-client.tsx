@@ -4331,7 +4331,7 @@ function QuestionRow({
               </div>
             </div>
             {/* Scrollable content */}
-            <div className="flex-1 overflow-hidden bg-blue-50 flex flex-col gap-6 p-6">
+            <div className="flex-1 overflow-y-auto bg-blue-50 flex flex-col gap-6 p-6">
 
                 {/* ── Question metadata ── */}
                 <div className="bg-white rounded-xl border border-blue-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
