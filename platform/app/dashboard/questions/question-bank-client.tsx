@@ -3040,14 +3040,18 @@ function QuestionRow({
           ? Array.from({ length: claudeParts.length }, (_, i) => String.fromCharCode(97 + i))
           : [];
       const candidateLabels = claudeLabels.length > 0 ? claudeLabels : (detectedLabels.length > 0 ? detectedLabels : claudeCountLabels);
-      const splitProbe = splitDraftIntoParts(qDraft || msDraft, candidateLabels);
+      // Probe using the full combined text (question + mark scheme) so that the
+      // mark scheme's explicit (a)/(b) line-start markers are visible to the splitter.
+      // Using only qDraft || msDraft caused failures when the question OCR was short
+      // and only contained inline references like "result from part (a)".
+      const combinedDraft = `${qDraft}\n\n${msDraft}`;
+      const splitProbe = splitDraftIntoParts(combinedDraft, candidateLabels);
       const inferredLabels = candidateLabels.length > 0 ? candidateLabels : Array.from(splitProbe.parts.keys());
       let finalLabels = Array.from(new Set(inferredLabels.map((l) => l.trim()).filter(Boolean)));
 
       // Guard against false positives: OCR text like "where (a) ..." can be
       // misread as a single part label. Only trust a lone "a" when structure
       // markers clearly indicate multipart formatting.
-      const combinedDraft = `${qDraft}\n${msDraft}`;
       const hasExplicitPartEnvironment = hasExplicitTopLevelPartStructure(combinedDraft);
       const strongLabelMatches = Array.from(
         combinedDraft.matchAll(/(?:^|\n)\s*\(([a-z](?:i|ii|iii|iv|v)?)\)\s+/gi),
