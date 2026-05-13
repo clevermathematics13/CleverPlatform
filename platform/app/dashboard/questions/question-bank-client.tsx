@@ -508,6 +508,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [loadingExams, setLoadingExams] = useState(false);
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [examDirty, setExamDirty] = useState(false);
+  const [pendingAddQuestion, setPendingAddQuestion] = useState<Question | null>(null);
 
   // ── Random exam state ───────────────────────────────────────────────────────
   const [showRandomPanel, setShowRandomPanel] = useState(false);
@@ -1348,7 +1349,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       .catch(() => {});
   }, [testBuilderOpen, courses.length]);
 
-  const addToQueue = (q: Question) => {
+  const doAddToQueue = (q: Question) => {
     if (testQueue.find((item) => item.id === q.id)) return;
     setTestQueue((prev) => [
       ...prev,
@@ -1363,6 +1364,36 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       },
     ]);
     setExamDirty(true);
+  };
+
+  const addToQueue = (q: Question) => {
+    if (testQueue.find((item) => item.id === q.id)) return;
+    if (activeExamId) {
+      setPendingAddQuestion(q);
+    } else {
+      doAddToQueue(q);
+    }
+  };
+
+  const confirmPendingAdd = async () => {
+    if (!pendingAddQuestion) return;
+    const q = pendingAddQuestion;
+    // Build the updated queue synchronously so saveExam can use it
+    const newItem: TestQueueItem = {
+      id: q.id,
+      code: q.code,
+      section: q.section,
+      curriculum: q.curriculum ?? ["AA"],
+      hasQuestion: q.has_question_images,
+      hasMarkscheme: q.has_markscheme_images,
+      marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
+    };
+    const newQueue = [...testQueue, newItem];
+    setTestQueue(newQueue);
+    setExamDirty(false);
+    setPendingAddQuestion(null);
+    // Immediately overwrite the saved exam with the updated queue
+    await saveExam(newQueue);
   };
 
   const removeFromQueue = (id: string) => {
@@ -1477,12 +1508,13 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const saveExam = async () => {
+  const saveExam = async (queueOverride?: TestQueueItem[]) => {
+    const queueToSave = queueOverride ?? testQueue;
     if (!examConfig.name.trim()) {
       alert("Please enter an exam name before saving.");
       return;
     }
-    if (testQueue.length === 0) {
+    if (queueToSave.length === 0) {
       alert("Add at least one question before saving.");
       return;
     }
@@ -1495,7 +1527,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         paper: examConfig.paper,
         course_id: examConfig.courseId || null,
         exam_date: examConfig.date || null,
-        questions: testQueue,
+        questions: queueToSave,
       };
       if (activeExamId) {
         await fetch("/api/exams", {
@@ -2221,7 +2253,60 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           onSaved={loadQuestions}
         />
       )}
+
+      {/* ── Add-to-exam confirmation ── */}
+      {pendingAddQuestion && (
+        <AddToExamModal
+          questionCode={pendingAddQuestion.code}
+          onConfirm={confirmPendingAdd}
+          onCancel={() => setPendingAddQuestion(null)}
+          saving={savingExam}
+        />
+      )}
     </div>
+  );
+}
+
+
+// ── Add-to-exam confirmation modal ───────────────────────────────────────────
+function AddToExamModal({
+  questionCode,
+  onConfirm,
+  onCancel,
+  saving,
+}: {
+  questionCode: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-2xl p-6 w-80 flex flex-col gap-4">
+        <h2 className="text-base font-bold text-gray-800">Add to saved exam?</h2>
+        <p className="text-sm text-gray-600">
+          Adding <span className="font-mono font-semibold">{questionCode}</span> will overwrite the currently saved exam.
+        </p>
+        <div className="flex gap-3 justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded px-4 py-1.5 text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={saving}
+            className="rounded px-4 py-1.5 text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+          >
+            {saving ? "Saving…" : "Overwrite"}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
