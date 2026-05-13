@@ -3005,6 +3005,7 @@ function QuestionRow({
   const [graphCropsLoading, setGraphCropsLoading] = useState(false);
   const [graphCropsError, setGraphCropsError] = useState<string | null>(null);
   const [deletingGraphCropIds, setDeletingGraphCropIds] = useState<Set<string>>(new Set());
+  const [savingAsGraphCropIds, setSavingAsGraphCropIds] = useState<Set<string>>(new Set());
 
   const fetchGraphCrops = useCallback(async () => {
     setGraphCropsLoading(true);
@@ -3039,6 +3040,47 @@ function QuestionRow({
       setDeletingGraphCropIds((prev) => {
         const next = new Set(prev);
         next.delete(cropId);
+        return next;
+      });
+    }
+  }
+
+  async function saveImageAsGraphCrop(img: QuestionImage) {
+    if (!img.url) return;
+    setSavingAsGraphCropIds((prev) => new Set(prev).add(img.id));
+    setGraphCropsError(null);
+    try {
+      const resp = await fetch(img.url);
+      if (!resp.ok) throw new Error("Failed to fetch image");
+      const blob = await resp.blob();
+      const mimeType = blob.type || "image/png";
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(",")[1] ?? "");
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      const res = await fetch("/api/questions/graph-crops", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionImageId: img.id,
+          data: base64,
+          mimeType,
+          extractor: "manual",
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? "Failed to save graph image");
+      }
+      await fetchGraphCrops();
+    } catch (e) {
+      setGraphCropsError(e instanceof Error ? e.message : "Failed to save graph image");
+    } finally {
+      setSavingAsGraphCropIds((prev) => {
+        const next = new Set(prev);
+        next.delete(img.id);
         return next;
       });
     }
@@ -4734,6 +4776,8 @@ function QuestionRow({
                       onDelete={onDeleteImage}
                       onReorder={(orderedIds) => onReorderImages("question", orderedIds)}
                       onUpload={(file) => onUploadImage("question", file)}
+                      onSaveAsGraphImage={saveImageAsGraphCrop}
+                      savingAsGraphImageIds={savingAsGraphCropIds}
                     />
                     <ImageGroup
                       label="Markscheme"
@@ -5397,6 +5441,8 @@ function ImageGroup({
   onDelete,
   onReorder,
   onUpload,
+  onSaveAsGraphImage,
+  savingAsGraphImageIds,
 }: {
   label: string;
   labelColor: "blue" | "green";
@@ -5408,6 +5454,8 @@ function ImageGroup({
   onDelete: (imageId: string) => void;
   onReorder: (orderedIds: string[]) => void;
   onUpload: (file: File) => void;
+  onSaveAsGraphImage?: (img: QuestionImage) => void;
+  savingAsGraphImageIds?: Set<string>;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const dragIdx = useRef<number | null>(null);
@@ -5525,11 +5573,24 @@ function ImageGroup({
                   href={img.url ?? "#"}
                   download
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute bottom-1 left-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded bg-white/95 text-[11px] text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-white"
+                  className="absolute bottom-1 left-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded bg-white/95 text-[11px] text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Download image"
                 >
                   ↓
                 </a>
+
+                {/* Save as graph image button (bottom-right) */}
+                {onSaveAsGraphImage && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); onSaveAsGraphImage(img); }}
+                    disabled={savingAsGraphImageIds?.has(img.id)}
+                    className="absolute bottom-1 right-1 z-10 opacity-0 group-hover:opacity-100 inline-flex h-5 w-5 items-center justify-center rounded bg-violet-600/90 text-[11px] text-white shadow-sm hover:bg-violet-700 disabled:opacity-50 transition-opacity"
+                    title="Save as graph image"
+                  >
+                    {savingAsGraphImageIds?.has(img.id) ? "…" : "📊"}
+                  </button>
+                )}
 
                 {/* Delete button (top-right) */}
                 {confirmingDelete === img.id ? (
