@@ -54,6 +54,8 @@ export function DashboardShell({
         ["--exam-builder-width" as string]: "28rem",
       }}
     >
+      {/* Full-page subtle psychedelic background behind main content */}
+      <MandelbrotBg subtle />
       {/* Hover zone: thin strip that expands into the sidebar */}
       <div
         className="fixed left-0 top-0 h-full z-40 flex"
@@ -63,7 +65,7 @@ export function DashboardShell({
       >
         {/* Strip indicator, visible only when sidebar is hidden */}
         {!sidebarVisible && (
-          <div className="w-full h-full bg-da-accent/10 hover:bg-da-accent/25 transition-colors cursor-pointer" />
+          <div className="w-full h-full bg-[#0b1020] hover:bg-da-surface border-r border-da-accent/30 hover:border-da-accent/60 transition-colors cursor-pointer" />
         )}
 
         {/* Sidebar panel */}
