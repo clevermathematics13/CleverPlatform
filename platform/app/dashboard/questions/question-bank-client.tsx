@@ -507,6 +507,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [savingExam, setSavingExam] = useState(false);
   const [loadingExams, setLoadingExams] = useState(false);
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
+  const [examDirty, setExamDirty] = useState(false);
 
   // ── Random exam state ───────────────────────────────────────────────────────
   const [showRandomPanel, setShowRandomPanel] = useState(false);
@@ -1361,16 +1362,19 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
       },
     ]);
+    setExamDirty(true);
   };
 
   const removeFromQueue = (id: string) => {
     setTestQueue((prev) => prev.filter((item) => item.id !== id));
+    setExamDirty(true);
   };
 
   const updateQueueSection = (id: string, section: "A" | "B") => {
     setTestQueue((prev) =>
       prev.map((item) => (item.id === id ? { ...item, section } : item))
     );
+    setExamDirty(true);
   };
 
   const autoSortQueue = () => {
@@ -1380,6 +1384,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       const other = prev.filter((q) => q.section !== "A" && q.section !== "B");
       return [...a, ...b, ...other];
     });
+    setExamDirty(true);
   };
 
   const handleMoveUp = (index: number) => {
@@ -1389,6 +1394,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       [next[index - 1], next[index]] = [next[index], next[index - 1]];
       return next;
     });
+    setExamDirty(true);
   };
 
   const updateSection = async (questionId: string, section: "A" | "B") => {
@@ -1506,6 +1512,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         const data = await res.json();
         if (data.id) setActiveExamId(data.id);
       }
+      setExamDirty(false);
       // Refresh saved exams list if visible
       if (showSavedExams) await fetchSavedExams();
     } catch { /* ignore */ } finally {
@@ -1524,6 +1531,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       date: exam.exam_date ?? "",
     });
     setActiveExamId(exam.id);
+    setExamDirty(false);
     setShowSavedExams(false);
   };
 
@@ -2160,9 +2168,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           queueHasMarkscheme={queueHasMarkscheme}
           showTemplateEditor={showTemplateEditor}
           templateEdits={templateEdits}
-          onConfigChange={(updates) =>
-            setExamConfig((prev) => ({ ...prev, ...updates }))
-          }
+          onConfigChange={(updates) => {
+            setExamConfig((prev) => ({ ...prev, ...updates }));
+            setExamDirty(true);
+          }}
           onRemove={removeFromQueue}
           onUpdateSection={updateQueueSection}
           onAutoSort={autoSortQueue}
@@ -2180,6 +2189,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           savingExam={savingExam}
           loadingExams={loadingExams}
           activeExamId={activeExamId}
+          examDirty={examDirty}
           onSaveExam={saveExam}
           onToggleSavedExams={toggleSavedExams}
           onLoadExam={loadExam}
@@ -5815,6 +5825,7 @@ function TestBuilderPanel({
   savingExam,
   loadingExams,
   activeExamId,
+  examDirty,
   onSaveExam,
   onToggleSavedExams,
   onLoadExam,
@@ -5853,6 +5864,7 @@ function TestBuilderPanel({
   savingExam: boolean;
   loadingExams: boolean;
   activeExamId: string | null;
+  examDirty: boolean;
   onSaveExam: () => void;
   onToggleSavedExams: () => void;
   onLoadExam: (exam: SavedExam) => void;
@@ -6165,12 +6177,22 @@ function TestBuilderPanel({
         </button>
 
         {/* Save / Load row */}
+        {activeExamId && examDirty && (
+          <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+            <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            Unsaved changes
+          </p>
+        )}
         <div className="flex gap-2">
           <button
             type="button"
             onClick={onSaveExam}
             disabled={savingExam || queue.length === 0}
-            className="flex-1 rounded bg-green-600 text-white text-xs font-bold py-1.5 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className={`flex-1 rounded text-white text-xs font-bold py-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+              activeExamId && examDirty
+                ? "bg-amber-500 hover:bg-amber-600 animate-pulse"
+                : "bg-green-600 hover:bg-green-700"
+            }`}
             title={activeExamId ? "Overwrite saved exam" : "Save exam to database"}
           >
             {savingExam ? "Saving…" : activeExamId ? "💾 Overwrite" : "💾 Save Exam"}
