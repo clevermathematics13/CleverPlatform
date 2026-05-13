@@ -188,6 +188,32 @@ interface DocExtractTroubleshooting {
   };
 }
 
+interface ExtractPlan {
+  qDraft: string;
+  msDraft: string;
+  finalLabels: string[];
+  isWholeQuestion: boolean;
+  stemQ: string;
+  stemMS: string;
+  splitQ: Map<string, string>;
+  splitMS: Map<string, string>;
+  claudeParts: { label: string; marks: number; commandTerm: string; subtopicCodes: string[] }[];
+  debug: {
+    claudeLabels: string[];
+    detectedLabels: string[];
+    candidateLabels: string[];
+    inferredLabels: string[];
+    hasExplicitPartEnvironment: boolean;
+    canTrustClaudeMultipart: boolean;
+    isSuspiciousSingleA: boolean;
+    strongUniqueLabels: string[];
+    splitProbeKeys: string[];
+    saveGuardBlocked: boolean;
+    saveGuardReason: string | null;
+    logLines: string[];
+  };
+}
+
 const SECTION_NAMES: Record<number, string> = {
   1: "Number & Algebra",
   2: "Functions",
@@ -2190,6 +2216,361 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 }
 
 
+// ── Extraction Review Modal ───────────────────────────────────────────────────
+function ExtractionReviewModal({
+  plan: initialPlan,
+  questionCode,
+  onConfirm,
+  onCancel,
+}: {
+  plan: ExtractPlan;
+  questionCode: string;
+  onConfirm: (plan: ExtractPlan) => void;
+  onCancel: () => void;
+}) {
+  type StepSpec =
+    | { kind: "parts" }
+    | { kind: "stem" }
+    | { kind: "whole" }
+    | { kind: "part"; label: string };
+
+  const [plan, setPlan] = useState<ExtractPlan>(initialPlan);
+  const [stepIdx, setStepIdx] = useState(0);
+  const [labelsText, setLabelsText] = useState(
+    initialPlan.isWholeQuestion ? "" : initialPlan.finalLabels.join(", "),
+  );
+  const [showDebug, setShowDebug] = useState(false);
+
+  function buildSteps(p: ExtractPlan): StepSpec[] {
+    const s: StepSpec[] = [{ kind: "parts" }];
+    if (p.isWholeQuestion) {
+      s.push({ kind: "whole" });
+    } else {
+      s.push({ kind: "stem" });
+      for (const label of p.finalLabels) {
+        s.push({ kind: "part", label });
+      }
+    }
+    return s;
+  }
+
+  const steps = buildSteps(plan);
+  const currentStep = steps[stepIdx];
+  const isLast = stepIdx > 0 && stepIdx >= steps.length - 1;
+
+  function handleNext() {
+    let planToUse = plan;
+    if (stepIdx === 0) {
+      const newLabels = labelsText
+        .split(/[\s,]+/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (newLabels.length === 0) {
+        planToUse = {
+          ...plan,
+          finalLabels: [],
+          isWholeQuestion: true,
+          stemQ: "",
+          stemMS: "",
+          splitQ: new Map(),
+          splitMS: new Map(),
+        };
+      } else {
+        const { stem: stemQ, parts: splitQ } = splitDraftIntoParts(plan.qDraft, newLabels);
+        const { stem: stemMS, parts: splitMS } = splitDraftIntoParts(plan.msDraft, newLabels);
+        planToUse = { ...plan, finalLabels: newLabels, isWholeQuestion: false, stemQ, stemMS, splitQ, splitMS };
+      }
+      setPlan(planToUse);
+    }
+    const stepsForPlan = buildSteps(planToUse);
+    const nextIdx = stepIdx + 1;
+    if (nextIdx >= stepsForPlan.length) {
+      onConfirm(planToUse);
+    } else {
+      setStepIdx(nextIdx);
+      setShowDebug(false);
+    }
+  }
+
+  function handleBack() {
+    setStepIdx((s) => Math.max(0, s - 1));
+    setShowDebug(false);
+  }
+
+  const debugText = [
+    `=== Extraction Review — ${questionCode} ===`,
+    ``,
+    `=== OCR Output ===`,
+    `Question LaTeX length: ${plan.qDraft.length} chars`,
+    `Mark scheme LaTeX length: ${plan.msDraft.length} chars`,
+    ``,
+    `=== Label Detection ===`,
+    `Claude returned labels: ${plan.debug.claudeLabels.length > 0 ? plan.debug.claudeLabels.join(", ") : "(none)"}`,
+    `OCR-detected labels: ${plan.debug.detectedLabels.length > 0 ? plan.debug.detectedLabels.join(", ") : "(none)"}`,
+    `Candidate labels (before guards): ${plan.debug.candidateLabels.length > 0 ? plan.debug.candidateLabels.join(", ") : "(none)"}`,
+    `Split probe found parts: ${plan.debug.splitProbeKeys.length > 0 ? plan.debug.splitProbeKeys.join(", ") : "(none)"}`,
+    `Inferred labels: ${plan.debug.inferredLabels.length > 0 ? plan.debug.inferredLabels.join(", ") : "(none)"}`,
+    `Final labels after guards: ${plan.finalLabels.length > 0 ? plan.finalLabels.join(", ") : "(whole question)"}`,
+    ``,
+    `=== Guard Flags ===`,
+    `hasExplicitPartEnvironment: ${plan.debug.hasExplicitPartEnvironment}`,
+    `canTrustClaudeMultipartWithoutExplicit: ${plan.debug.canTrustClaudeMultipart}`,
+    `isSuspiciousSingleA: ${plan.debug.isSuspiciousSingleA}`,
+    `strongUniqueLabels: ${plan.debug.strongUniqueLabels.length > 0 ? plan.debug.strongUniqueLabels.join(", ") : "(none)"}`,
+    plan.debug.saveGuardBlocked
+      ? `saveGuard: BLOCKED — ${plan.debug.saveGuardReason}`
+      : `saveGuard: not triggered`,
+    ``,
+    `=== Extraction Log ===`,
+    ...plan.debug.logLines,
+    ``,
+    `=== Raw Question OCR (first 800 chars) ===`,
+    plan.qDraft.slice(0, 800),
+    ``,
+    `=== Raw Mark Scheme OCR (first 800 chars) ===`,
+    plan.msDraft.slice(0, 800),
+  ].join("\n");
+
+  let stepTitle = "";
+  let stepContent: React.ReactNode = null;
+
+  if (currentStep.kind === "parts") {
+    stepTitle = `Step 1 of ${steps.length}: Confirm part structure`;
+    stepContent = (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-gray-700">
+          The extractor identified these part labels. Edit if incorrect, or clear to save as a whole question.
+        </p>
+        <div>
+          <label className="block text-xs font-semibold text-gray-600 mb-1">
+            Part labels (comma-separated, e.g.{" "}
+            <code className="bg-gray-100 px-1 rounded">a, b, ci, cii</code>)
+          </label>
+          <input
+            type="text"
+            value={labelsText}
+            onChange={(e) => setLabelsText(e.target.value)}
+            placeholder="Leave empty for whole question"
+            className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+          />
+          {!labelsText.trim() && (
+            <p className="mt-1 text-xs text-amber-600">No labels — will save as whole question.</p>
+          )}
+        </div>
+        <div className="rounded bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+          <p className="font-semibold">How these parts were determined:</p>
+          <ul className="ml-3 list-disc space-y-0.5">
+            <li>
+              Claude AI returned labels:{" "}
+              <code className="bg-blue-100 px-0.5 rounded">
+                {plan.debug.claudeLabels.join(", ") || "(none)"}
+              </code>
+            </li>
+            <li>
+              OCR regex detected:{" "}
+              <code className="bg-blue-100 px-0.5 rounded">
+                {plan.debug.detectedLabels.join(", ") || "(none)"}
+              </code>
+            </li>
+            <li>
+              Split probe found:{" "}
+              <code className="bg-blue-100 px-0.5 rounded">
+                {plan.debug.splitProbeKeys.join(", ") || "(none)"}
+              </code>
+            </li>
+            <li>
+              Explicit part markers (IBPart/item/line-start):{" "}
+              <strong>{plan.debug.hasExplicitPartEnvironment ? "Yes ✓" : "No"}</strong>
+            </li>
+            <li>
+              Claude multipart trusted without explicit markers:{" "}
+              <strong>
+                {plan.debug.canTrustClaudeMultipart
+                  ? "Yes (Claude ≥ 2 AND split probe ≥ 2)"
+                  : "No"}
+              </strong>
+            </li>
+            {plan.debug.isSuspiciousSingleA && (
+              <li className="text-amber-700">
+                ⚠ Single &apos;(a)&apos; looked incidental — collapsed to whole question
+              </li>
+            )}
+            {plan.debug.saveGuardBlocked && (
+              <li className="text-red-700">⚠ Save guard triggered: {plan.debug.saveGuardReason}</li>
+            )}
+          </ul>
+        </div>
+      </div>
+    );
+  } else if (currentStep.kind === "stem") {
+    stepTitle = `Step ${stepIdx + 1} of ${steps.length}: Confirm stem`;
+    stepContent = (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-gray-500">
+          The stem is shared text appearing before the first part label.
+        </p>
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-1">Question stem (rendered):</p>
+          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
+            {plan.stemQ
+              ? <LatexRenderer latex={plan.stemQ} />
+              : <span className="text-gray-400 text-xs">(empty — no stem)</span>
+            }
+          </div>
+          <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-24 font-mono whitespace-pre-wrap">
+            {plan.stemQ || "(empty)"}
+          </pre>
+        </div>
+        {plan.stemMS && (
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-1">Mark scheme stem (rendered):</p>
+            <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-28 overflow-y-auto">
+              <LatexRenderer latex={plan.stemMS} />
+            </div>
+            <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-20 font-mono whitespace-pre-wrap">
+              {plan.stemMS}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
+  } else if (currentStep.kind === "whole") {
+    stepTitle = `Step ${stepIdx + 1} of ${steps.length}: Confirm whole question`;
+    stepContent = (
+      <div className="flex flex-col gap-4">
+        <p className="text-sm text-gray-500">No parts detected — will be saved as a single whole question.</p>
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-1">Question LaTeX (rendered):</p>
+          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-40 overflow-y-auto">
+            <LatexRenderer latex={plan.qDraft} />
+          </div>
+          <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-24 font-mono whitespace-pre-wrap">
+            {plan.qDraft.slice(0, 600)}
+          </pre>
+        </div>
+        {plan.msDraft && (
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-1">Mark scheme (rendered):</p>
+            <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
+              <LatexRenderer latex={plan.msDraft} />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  } else if (currentStep.kind === "part") {
+    const label = currentStep.label;
+    const qContent = plan.splitQ.get(label) ?? "";
+    const msContent = plan.splitMS.get(label) ?? "";
+    stepTitle = `Step ${stepIdx + 1} of ${steps.length}: Part (${label})`;
+    stepContent = (
+      <div className="flex flex-col gap-4">
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-1">
+            Question — part ({label}) (rendered):
+          </p>
+          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-36 overflow-y-auto">
+            {qContent
+              ? <LatexRenderer latex={qContent} />
+              : <span className="text-gray-400 text-xs">(empty)</span>
+            }
+          </div>
+          <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-20 font-mono whitespace-pre-wrap">
+            {qContent.slice(0, 500) || "(empty)"}
+          </pre>
+        </div>
+        {msContent && (
+          <div>
+            <p className="text-xs font-semibold text-gray-600 mb-1">
+              Mark scheme — part ({label}) (rendered):
+            </p>
+            <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
+              <LatexRenderer latex={msContent} />
+            </div>
+            <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-20 font-mono whitespace-pre-wrap">
+              {msContent.slice(0, 500)}
+            </pre>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  const modal = (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
+          <div>
+            <p className="text-xs font-mono text-gray-400 mb-0.5">{questionCode}</p>
+            <h2 className="text-base font-bold text-gray-900">{stepTitle}</h2>
+          </div>
+          <div className="flex gap-1.5 ml-4 shrink-0">
+            {steps.map((_, i) => (
+              <span
+                key={i}
+                className={`rounded-full w-2.5 h-2.5 transition-colors ${
+                  i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-500" : "bg-gray-200"
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">{stepContent}</div>
+
+        {/* Debug toggle */}
+        <div className="px-6 pb-3">
+          <button
+            type="button"
+            onClick={() => setShowDebug((v) => !v)}
+            className="text-xs text-gray-400 hover:text-gray-600 underline"
+          >
+            {showDebug ? "Hide" : "Show"} troubleshooting info
+          </button>
+          {showDebug && (
+            <pre className="mt-2 rounded bg-gray-900 text-green-300 text-xs p-3 overflow-auto max-h-64 font-mono whitespace-pre-wrap">
+              {debugText}
+            </pre>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-gray-200"
+          >
+            Cancel extraction
+          </button>
+          <div className="flex gap-2">
+            {stepIdx > 0 && (
+              <button
+                type="button"
+                onClick={handleBack}
+                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors border border-gray-200"
+              >
+                ← Back
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleNext}
+              className="rounded-lg px-5 py-2 text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+            >
+              {isLast ? "Save to database" : stepIdx === 0 ? "Confirm parts →" : "OK, next →"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(modal, document.body);
+}
+
 function QuestionRow({
   question,
   expanded,
@@ -2298,10 +2679,11 @@ function QuestionRow({
   };
 
   // Full-question extraction state
-  const [fullExtractState, setFullExtractState] = useState<"idle" | "confirm" | "running">("idle");
+  const [fullExtractState, setFullExtractState] = useState<"idle" | "confirm" | "running" | "reviewing">("idle");
   const [fullExtractLog, setFullExtractLog] = useState<string[]>([]);
   const [fullExtractError, setFullExtractError] = useState<string | null>(null);
   const [fullExtractCopied, setFullExtractCopied] = useState(false);
+  const [extractPlan, setExtractPlan] = useState<ExtractPlan | null>(null);
 
   // Stem state (no separate edit for each field — share the same edit pattern)
   const [stemLatex, setStemLatex] = useState(question.stem_latex ?? "");
@@ -3101,15 +3483,56 @@ function QuestionRow({
         splitQuestion: splitQ,
         splitMarkscheme: splitMS,
       });
-      if (finalLabels.length > 0 && saveGuard.block) {
-        throw new Error(
-          `Auto-save blocked to avoid part misalignment: ${saveGuard.reason}. Please review/extract manually.`,
-        );
-      }
+
+      // Build the extraction plan and launch the step-by-step review wizard.
+      // No data is written to the database until the user confirms all steps.
+      const extractionPlan: ExtractPlan = {
+        qDraft,
+        msDraft,
+        finalLabels,
+        isWholeQuestion: finalLabels.length === 0,
+        stemQ,
+        stemMS,
+        splitQ,
+        splitMS,
+        claudeParts,
+        debug: {
+          claudeLabels,
+          detectedLabels,
+          candidateLabels,
+          inferredLabels,
+          hasExplicitPartEnvironment,
+          canTrustClaudeMultipart: canTrustClaudeMultipartWithoutExplicit,
+          isSuspiciousSingleA,
+          strongUniqueLabels: Array.from(strongUniqueLabels),
+          splitProbeKeys: Array.from(splitProbe.parts.keys()),
+          saveGuardBlocked: finalLabels.length > 0 && saveGuard.block,
+          saveGuardReason: saveGuard.reason,
+          logLines: [...log],
+        },
+      };
+      setExtractPlan(extractionPlan);
+      setFullExtractState("reviewing");
+      push("Extraction ready — please review the results in the popup.");
+    } catch (e) {
+      setFullExtractError(e instanceof Error ? e.message : "Unexpected error");
+      setFullExtractState("idle");
+    }
+  }
+
+  async function commitExtractPlan(plan: ExtractPlan) {
+    setFullExtractState("running");
+    setFullExtractError(null);
+    const push = (msg: string) => {
+      setFullExtractLog((prev) => [...prev, msg]);
+    };
+
+    try {
+      const { finalLabels, qDraft, msDraft, stemQ, stemMS, splitQ, splitMS, claudeParts } = plan;
+      const claudeLabels = plan.debug.claudeLabels;
 
       // Whole-question path: no labels from Claude/OCR/inference.
-      const isWholeQuestion = finalLabels.length === 0;
-      if (isWholeQuestion) {
+      if (plan.isWholeQuestion) {
         const cpMeta = claudeParts[0]; // may be undefined if claudeParts is empty
         const extractedWholeTerm = chooseCommandTerm({
           questionLatex: qDraft,
@@ -3235,11 +3658,11 @@ function QuestionRow({
       const familyTerms = new Map<string, string[]>();
       const familySourceLatex = new Map<string, string>();
       const familyMembers = new Map<string, typeof labelPlans>();
-      for (const plan of labelPlans) {
-        if (!plan.stem) continue;
-        const current = familyMembers.get(plan.stem) ?? [];
-        current.push(plan);
-        familyMembers.set(plan.stem, current);
+      for (const lp of labelPlans) {
+        if (!lp.stem) continue;
+        const current = familyMembers.get(lp.stem) ?? [];
+        current.push(lp);
+        familyMembers.set(lp.stem, current);
       }
       for (const [stem, members] of familyMembers.entries()) {
         if (members.length < 2) continue;
@@ -3258,8 +3681,8 @@ function QuestionRow({
         familySourceLatex.set(stem, combinedQ || members[0]?.splitQForLabel || "");
       }
 
-      for (const plan of labelPlans) {
-        const { idx, label, normalizedLabel, cp, splitQForLabel, splitMSForLabel, stem, perPartTerms } = plan;
+      for (const lp of labelPlans) {
+        const { label, normalizedLabel, cp, splitQForLabel, splitMSForLabel, stem, perPartTerms } = lp;
         const existing = parts.find((p) => normalizePartLabelKey(p.part_label ?? "") === normalizedLabel);
         let partId: string;
         const canonicalTerms = stem && familyTerms.has(stem) ? (familyTerms.get(stem) ?? perPartTerms) : perPartTerms;
@@ -3393,6 +3816,7 @@ function QuestionRow({
       setTimeout(() => setFullExtractState("idle"), 3000);
     } catch (e) {
       setFullExtractError(e instanceof Error ? e.message : "Unexpected error");
+      setFullExtractState("idle");
     }
   }
 
@@ -3637,6 +4061,22 @@ function QuestionRow({
       </tr>
       {expanded && typeof document !== "undefined" && createPortal(
         <>
+        {/* ── Extraction review wizard ── */}
+        {extractPlan && (
+          <ExtractionReviewModal
+            plan={extractPlan}
+            questionCode={question.code}
+            onConfirm={(confirmedPlan) => {
+              setExtractPlan(null);
+              void commitExtractPlan(confirmedPlan);
+            }}
+            onCancel={() => {
+              setExtractPlan(null);
+              setFullExtractState("idle");
+              setFullExtractLog([]);
+            }}
+          />
+        )}
         {/* ── Section prompt overlay ── */}
         {showSectionPrompt && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
@@ -4297,11 +4737,13 @@ function QuestionRow({
                             void runFullExtract();
                           }
                         }}
-                        disabled={fullExtractState === "running"}
+                        disabled={fullExtractState === "running" || fullExtractState === "reviewing"}
                         className="rounded px-3 py-1.5 text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
                       >
                         {fullExtractState === "running" ? (
                           <><span className="inline-block w-3 h-3 border-2 border-amber-200 border-t-white rounded-full animate-spin" /> Extracting…</>
+                        ) : fullExtractState === "reviewing" ? (
+                          "Reviewing…"
                         ) : (
                           "⟳ Extract LaTeX"
                         )}
@@ -4325,7 +4767,7 @@ function QuestionRow({
                           void clearAllLatex();
                         }
                       }}
-                      disabled={clearingAllLatex || fullExtractState === "running"}
+                      disabled={clearingAllLatex || fullExtractState === "running" || fullExtractState === "reviewing"}
                       className="rounded px-3 py-1.5 text-xs font-bold border border-red-300 text-red-600 bg-white hover:bg-red-50 disabled:opacity-50 transition-colors"
                     >
                       {clearingAllLatex ? "Clearing…" : "🧹 Clear LaTeX"}
@@ -4338,17 +4780,6 @@ function QuestionRow({
                       + Add Part
                     </button>
                   </div>
-
-                  {fullExtractError?.includes("Auto-save blocked to avoid part misalignment") && (
-                    <div className="mb-4 rounded-lg border border-red-300 bg-red-50 p-3">
-                      <p className="text-xs font-semibold text-red-800">
-                        Auto-save was blocked to prevent part misalignment.
-                      </p>
-                      <p className="mt-1 text-xs text-red-700">
-                        Next step: extract and review each part manually using the per-part Extract buttons, then save after confirming Part A/Part B placement.
-                      </p>
-                    </div>
-                  )}
 
                   {/* Confirm overwrite dialog */}
                   {fullExtractState === "confirm" && (
@@ -4379,7 +4810,7 @@ function QuestionRow({
                   )}
 
                   {/* Extraction progress / log */}
-                  {(fullExtractState === "running" || fullExtractLog.length > 0 || !!fullExtractError) && (
+                  {(fullExtractState === "running" || fullExtractState === "reviewing" || fullExtractLog.length > 0 || !!fullExtractError) && (
                     <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-1.5">
                       <div className="mb-1 flex items-center justify-between gap-2">
                         <p className="text-[11px] font-semibold text-amber-900">Extractor debug output</p>
