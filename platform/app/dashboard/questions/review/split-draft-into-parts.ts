@@ -41,7 +41,9 @@ export function splitDraftIntoParts(draft: string, partLabels: string[]): { stem
   };
 
   const splitByRomanLabels = (text: string): { intro: string; parts: Map<string, string> } => {
-    const ROMAN_RE = /(^|\n|\s)\((i|ii|iii|iv|v)\)(?=\s)/gi;
+    // Only match roman labels at line-start (after ^ or \n) to avoid splitting on
+    // inline references like "see part (i) for details".
+    const ROMAN_RE = /(^|\n)[ \t]*\((i|ii|iii|iv|v)\)(?=\s)/gi;
     const splits: { label: string; index: number; matchLen: number }[] = [];
     let m: RegExpExecArray | null;
     while ((m = ROMAN_RE.exec(text)) !== null) {
@@ -126,7 +128,10 @@ export function splitDraftIntoParts(draft: string, partLabels: string[]): { stem
   };
 
   const splitByPlainLabels = (text: string): { stem: string; parts: Map<string, string> } => {
-    const PLAIN_RE = /(^|\n|\s)\(([a-z])\)(?=\s)/gi;
+    // Only match top-level labels at line-start (after ^ or \n + optional indent) to
+    // avoid treating inline cross-references like "result from part (a) to prove" as
+    // part-label boundaries.
+    const PLAIN_RE = /(^|\n)[ \t]*\(([a-z])\)(?=\s)/gi;
     const plainSplits: { label: string; index: number; matchLen: number }[] = [];
     let m: RegExpExecArray | null;
     while ((m = PLAIN_RE.exec(text)) !== null) {
