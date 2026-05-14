@@ -2512,21 +2512,28 @@ function ExtractionReviewModal({
               : <span className="text-gray-400 text-xs">(empty — no stem)</span>
             }
           </div>
-          <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-24 font-mono whitespace-pre-wrap">
-            {plan.stemQ || "(empty)"}
-          </pre>
+          <textarea
+            className="mt-1 w-full rounded bg-gray-900 text-green-300 px-2 py-1 text-xs font-mono resize-y min-h-[60px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={plan.stemQ}
+            onChange={(e) => setPlan((p) => ({ ...p, stemQ: e.target.value }))}
+            spellCheck={false}
+          />
         </div>
-        {plan.stemMS && (
-          <div>
-            <p className="text-xs font-semibold text-gray-600 mb-1">Mark scheme stem (rendered):</p>
-            <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-28 overflow-y-auto">
-              <LatexRenderer latex={plan.stemMS} />
-            </div>
-            <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-20 font-mono whitespace-pre-wrap">
-              {plan.stemMS}
-            </pre>
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-1">Mark scheme stem (rendered):</p>
+          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-28 overflow-y-auto">
+            {plan.stemMS
+              ? <LatexRenderer latex={plan.stemMS} />
+              : <span className="text-gray-400 text-xs">(empty)</span>
+            }
           </div>
-        )}
+          <textarea
+            className="mt-1 w-full rounded bg-gray-900 text-green-300 px-2 py-1 text-xs font-mono resize-y min-h-[60px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={plan.stemMS}
+            onChange={(e) => setPlan((p) => ({ ...p, stemMS: e.target.value }))}
+            spellCheck={false}
+          />
+        </div>
       </div>
     );
   } else if (currentStep.kind === "whole") {
@@ -2539,18 +2546,25 @@ function ExtractionReviewModal({
           <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-40 overflow-y-auto">
             <LatexRenderer latex={plan.qDraft} />
           </div>
-          <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-24 font-mono whitespace-pre-wrap">
-            {plan.qDraft.slice(0, 600)}
-          </pre>
+          <textarea
+            className="mt-1 w-full rounded bg-gray-900 text-green-300 px-2 py-1 text-xs font-mono resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={plan.qDraft}
+            onChange={(e) => setPlan((p) => ({ ...p, qDraft: e.target.value }))}
+            spellCheck={false}
+          />
         </div>
-        {plan.msDraft && (
-          <div>
-            <p className="text-xs font-semibold text-gray-600 mb-1">Mark scheme (rendered):</p>
-            <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
-              <LatexRenderer latex={plan.msDraft} />
-            </div>
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-1">Mark scheme (rendered):</p>
+          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
+            <LatexRenderer latex={plan.msDraft} />
           </div>
-        )}
+          <textarea
+            className="mt-1 w-full rounded bg-gray-900 text-green-300 px-2 py-1 text-xs font-mono resize-y min-h-[80px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={plan.msDraft}
+            onChange={(e) => setPlan((p) => ({ ...p, msDraft: e.target.value }))}
+            spellCheck={false}
+          />
+        </div>
       </div>
     );
   } else if (currentStep.kind === "part") {
@@ -2570,23 +2584,38 @@ function ExtractionReviewModal({
               : <span className="text-gray-400 text-xs">(empty)</span>
             }
           </div>
-          <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-20 font-mono whitespace-pre-wrap">
-            {qContent.slice(0, 500) || "(empty)"}
-          </pre>
+          <textarea
+            className="mt-1 w-full rounded bg-gray-900 text-green-300 px-2 py-1 text-xs font-mono resize-y min-h-[70px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={qContent}
+            onChange={(e) => setPlan((p) => {
+              const next = new Map(p.splitQ);
+              next.set(label, e.target.value);
+              return { ...p, splitQ: next };
+            })}
+            spellCheck={false}
+          />
         </div>
-        {msContent && (
-          <div>
-            <p className="text-xs font-semibold text-gray-600 mb-1">
-              Mark scheme — part ({label}) (rendered):
-            </p>
-            <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
-              <LatexRenderer latex={msContent} />
-            </div>
-            <pre className="mt-1 rounded bg-gray-900 text-green-300 px-2 py-1 text-xs overflow-x-auto max-h-20 font-mono whitespace-pre-wrap">
-              {msContent.slice(0, 500)}
-            </pre>
+        <div>
+          <p className="text-xs font-semibold text-gray-600 mb-1">
+            Mark scheme — part ({label}) (rendered):
+          </p>
+          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
+            {msContent
+              ? <LatexRenderer latex={msContent} />
+              : <span className="text-gray-400 text-xs">(empty)</span>
+            }
           </div>
-        )}
+          <textarea
+            className="mt-1 w-full rounded bg-gray-900 text-green-300 px-2 py-1 text-xs font-mono resize-y min-h-[70px] focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={msContent}
+            onChange={(e) => setPlan((p) => {
+              const next = new Map(p.splitMS);
+              next.set(label, e.target.value);
+              return { ...p, splitMS: next };
+            })}
+            spellCheck={false}
+          />
+        </div>
       </div>
     );
   }
