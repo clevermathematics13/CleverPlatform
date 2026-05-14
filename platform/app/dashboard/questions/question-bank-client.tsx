@@ -6197,7 +6197,9 @@ function TestBuilderPanel({
 
   const canPreview = queue.length > 0 && examConfig.courseId;
   const totalMarks = queue.reduce((sum, item) => sum + item.marks, 0);
-  const totalMinutes = Math.ceil((12 / 11) * totalMarks);
+  // HL: 120 min / 110 marks = 12/11; SL: 90 min / 80 marks = 9/8
+  const mpm = examConfig.level === "HL" ? 12 / 11 : 9 / 8;
+  const totalMinutes = Math.ceil(mpm * totalMarks);
 
   return (
     <div
@@ -6393,6 +6395,7 @@ function TestBuilderPanel({
                       item={item}
                       number={globalIdx + 1}
                       showSection={true}
+                      minutesPerMark={mpm}
                       onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
@@ -6421,6 +6424,7 @@ function TestBuilderPanel({
                       item={item}
                       number={sectionAItems.length + bIdx + 1}
                       showSection={true}
+                      minutesPerMark={mpm}
                       onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
@@ -6440,6 +6444,7 @@ function TestBuilderPanel({
                   item={item}
                   number={sectionAItems.length + sectionBItems.length + uIdx + 1}
                   showSection={true}
+                  minutesPerMark={mpm}
                   onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                   onRemove={() => onRemove(item.id)}
                   onUpdateSection={(s) => onUpdateSection(item.id, s)}
@@ -6455,6 +6460,7 @@ function TestBuilderPanel({
               item={item}
               number={idx + 1}
               showSection={false}
+              minutesPerMark={mpm}
               onOpenQuestion={() => onOpenQuestionFromQueue(item)}
               onRemove={() => onRemove(item.id)}
               onUpdateSection={(s) => onUpdateSection(item.id, s)}
@@ -6618,6 +6624,7 @@ function QueueRow({
   item,
   number,
   showSection,
+  minutesPerMark,
   onOpenQuestion,
   onRemove,
   onUpdateSection,
@@ -6626,6 +6633,7 @@ function QueueRow({
   item: TestQueueItem;
   number: number;
   showSection: boolean;
+  minutesPerMark: number;
   onOpenQuestion: () => void;
   onRemove: () => void;
   onUpdateSection: (section: "A" | "B") => void;
@@ -6658,8 +6666,10 @@ function QueueRow({
       >
         {item.code}
       </button>
-      {/* Marks */}
-      <span className="text-xs text-indigo-500 font-semibold flex-shrink-0">{item.marks}m</span>
+      {/* Marks + time */}
+      <span className="text-xs text-indigo-500 font-semibold flex-shrink-0">
+        {item.marks}m·≈{Math.round(item.marks * minutesPerMark)}min
+      </span>
       {/* Section toggle (P1/P2 AA only) */}
       {showSection && (
         <div className="flex gap-0.5 flex-shrink-0">
