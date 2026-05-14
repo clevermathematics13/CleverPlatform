@@ -6830,19 +6830,27 @@ function QueueRow({
       <span className="font-bold text-indigo-700 w-5 text-right flex-shrink-0">
         {number}.
       </span>
-      {/* Code */}
-      <button
-        type="button"
-        onClick={onOpenQuestion}
-        className="flex-1 text-left font-semibold text-gray-800 truncate hover:underline"
-        title="Open this question in the editor"
-      >
-        {item.code}
-      </button>
-      {/* Marks + time */}
-      <span className="text-xs text-indigo-500 font-semibold flex-shrink-0">
-        {item.marks} marks / {(item.marks * minutesPerMark).toFixed(2)} minutes
-      </span>
+      {/* Code + marks/minutes + section label */}
+      <div className="flex-1 min-w-0 flex flex-col gap-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={onOpenQuestion}
+            className="flex-1 text-left font-semibold text-gray-800 truncate hover:underline"
+            title="Open this question in the editor"
+          >
+            {item.code}
+          </button>
+          <span className="text-xs text-indigo-500 font-semibold flex-shrink-0">
+            {item.marks} marks / {(item.marks * minutesPerMark).toFixed(2)} minutes
+          </span>
+        </div>
+        {showSection && item.section && (
+          <span className={`text-[10px] font-bold leading-tight ${item.section === "A" ? "text-blue-600" : "text-orange-500"}`}>
+            Section {item.section}
+          </span>
+        )}
+      </div>
       {/* Section toggle (P1/P2 AA only) */}
       {showSection && (
         <div className="flex gap-0.5 flex-shrink-0">
