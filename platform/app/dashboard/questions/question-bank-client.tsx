@@ -198,6 +198,9 @@ interface ExtractPlan {
   splitQ: Map<string, string>;
   splitMS: Map<string, string>;
   claudeParts: { label: string; marks: number; commandTerm: string; subtopicCodes: string[] }[];
+  /** Editable marks per part label (key="" for whole-question). Pre-seeded from
+   *  Claude data or \hfill [N] inference; user can edit in the review wizard. */
+  partMarks: Map<string, number>;
   debug: {
     claudeLabels: string[];
     detectedLabels: string[];
@@ -2388,6 +2391,8 @@ function ExtractionReviewModal({
         .map((l) => l.trim())
         .filter(Boolean);
       if (newLabels.length === 0) {
+        const newPartMarks = new Map<string, number>();
+        newPartMarks.set("", plan.partMarks?.get("") ?? parseMarksFromLatex(plan.qDraft) ?? 1);
         planToUse = {
           ...plan,
           finalLabels: [],
@@ -2396,11 +2401,18 @@ function ExtractionReviewModal({
           stemMS: "",
           splitQ: new Map(),
           splitMS: new Map(),
+          partMarks: newPartMarks,
         };
       } else {
         const { stem: stemQ, parts: splitQ } = splitDraftIntoParts(plan.qDraft, newLabels);
         const { stem: stemMS, parts: splitMS } = splitDraftIntoParts(plan.msDraft, newLabels);
-        planToUse = { ...plan, finalLabels: newLabels, isWholeQuestion: false, stemQ, stemMS, splitQ, splitMS };
+        const newPartMarks = new Map<string, number>();
+        for (const label of newLabels) {
+          const sq = splitQ.get(label) ?? "";
+          const sm = splitMS.get(label) ?? "";
+          newPartMarks.set(label, plan.partMarks?.get(label) ?? parseMarksFromLatex(sq || sm) ?? 1);
+        }
+        planToUse = { ...plan, finalLabels: newLabels, isWholeQuestion: false, stemQ, stemMS, splitQ, splitMS, partMarks: newPartMarks };
       }
       setPlan(planToUse);
     }
@@ -2568,6 +2580,21 @@ function ExtractionReviewModal({
     stepContent = (
       <div className="flex flex-col gap-4">
         <p className="text-sm text-gray-500">No parts detected — will be saved as a single whole question.</p>
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-semibold text-gray-700">Total marks:</label>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            className="w-20 rounded border border-indigo-300 px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={plan.partMarks?.get("") ?? 1}
+            onChange={(e) => setPlan((p) => {
+              const next = new Map(p.partMarks ?? []);
+              next.set("", Math.max(1, parseInt(e.target.value) || 1));
+              return { ...p, partMarks: next };
+            })}
+          />
+        </div>
         <div>
           <p className="text-xs font-semibold text-gray-600 mb-1">Question LaTeX (rendered):</p>
           <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-40 overflow-y-auto">
@@ -2601,6 +2628,21 @@ function ExtractionReviewModal({
     stepTitle = `Step ${stepIdx + 1} of ${steps.length}: Part (${label})`;
     stepContent = (
       <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-semibold text-gray-700">Marks for part ({label}):</label>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            className="w-20 rounded border border-indigo-300 px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            value={plan.partMarks?.get(label) ?? 1}
+            onChange={(e) => setPlan((p) => {
+              const next = new Map(p.partMarks ?? []);
+              next.set(label, Math.max(1, parseInt(e.target.value) || 1));
+              return { ...p, partMarks: next };
+            })}
+          />
+        </div>
         <div>
           <p className="text-xs font-semibold text-gray-600 mb-1">
             Question — part ({label}) (rendered):
@@ -3713,6 +3755,24 @@ function QuestionRow({
 
       // Build the extraction plan and launch the step-by-step review wizard.
       // No data is written to the database until the user confirms all steps.
+      // Pre-seed editable marks from Claude data or \hfill [N] inference.
+      const partMarks = new Map<string, number>();
+      if (finalLabels.length === 0) {
+        const cpMeta = claudeParts[0];
+        const m = (typeof cpMeta?.marks === "number" && cpMeta.marks > 0)
+          ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? 1;
+        partMarks.set("", m);
+      } else {
+        for (const label of finalLabels) {
+          const normLabel = normalizePartLabelKey(label);
+          const cp = claudeParts.find((p) => normalizePartLabelKey(p.label ?? "") === normLabel);
+          const sq = splitQ.get(label) ?? "";
+          const sm = splitMS.get(label) ?? "";
+          const m = (typeof cp?.marks === "number" && cp.marks > 0)
+            ? cp.marks : parseMarksFromLatex(sq || sm) ?? 1;
+          partMarks.set(label, m);
+        }
+      }
       const extractionPlan: ExtractPlan = {
         qDraft,
         msDraft,
@@ -3723,6 +3783,7 @@ function QuestionRow({
         splitQ,
         splitMS,
         claudeParts,
+        partMarks,
         debug: {
           claudeLabels,
           detectedLabels,
@@ -3784,7 +3845,7 @@ function QuestionRow({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 partId: wholePartId,
-                marks: (typeof cpMeta.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? null,
+                marks: plan.partMarks?.get("") ?? ((typeof cpMeta.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? null),
                 commandTerm: extractedWholeTerm,
                 commandTerms: extractedWholeTerms,
                 sourceLatex: qDraft,
@@ -3799,7 +3860,7 @@ function QuestionRow({
             body: JSON.stringify({
               questionId: question.id,
               partLabel: null,
-              marks: (typeof cpMeta?.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? null,
+              marks: plan.partMarks?.get("") ?? ((typeof cpMeta?.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? null),
               commandTerm: extractedWholeTerm,
               commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
@@ -3931,7 +3992,7 @@ function QuestionRow({
             body: JSON.stringify({
               partId: existing.id,
               partLabel: label,
-              marks: (typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? existing.marks,
+              marks: plan.partMarks?.get(label) ?? ((typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? existing.marks),
               commandTerm: canonicalTerm,
               commandTerms: canonicalTerms,
               sourceLatex: sourceForMetadata,
@@ -3942,7 +4003,7 @@ function QuestionRow({
           newParts.push({
             ...existing,
             part_label: label,
-            marks: (typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? existing.marks,
+            marks: plan.partMarks?.get(label) ?? ((typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? existing.marks),
             command_term: canonicalTerm,
             command_terms: canonicalTerms,
             ...exceptionFlags,
@@ -3958,7 +4019,7 @@ function QuestionRow({
             body: JSON.stringify({
               questionId: question.id,
               partLabel: label,
-              marks: (typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? null,
+              marks: plan.partMarks?.get(label) ?? ((typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? null),
               commandTerm: canonicalTerm,
               commandTerms: canonicalTerms,
               sourceLatex: sourceForMetadata,
@@ -3976,7 +4037,7 @@ function QuestionRow({
           newParts.push({
             ...created,
             part_label: label,
-            marks: (typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? created.marks,
+            marks: plan.partMarks?.get(label) ?? ((typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? created.marks),
             command_term: canonicalTerm,
             command_terms: canonicalTerms,
             ...exceptionFlags,
@@ -4375,6 +4436,15 @@ function QuestionRow({
               <span className="text-sm text-blue-200">
                 {question.session} · P{question.paper} · {question.level} · TZ{question.timezone}
               </span>
+              {(() => {
+                const editorMarks = parts.reduce((s, p) => s + p.marks, 0);
+                const mpm = question.level === "SL" ? 9 / 8 : 12 / 11;
+                return editorMarks > 0 ? (
+                  <span className="text-xs bg-blue-700 rounded-full px-2.5 py-0.5 font-semibold text-blue-100">
+                    {editorMarks} marks · ≈{Math.round(editorMarks * mpm)} min
+                  </span>
+                ) : null;
+              })()}
               <div className="ml-auto flex items-center gap-2">
                 <button
                   type="button"
