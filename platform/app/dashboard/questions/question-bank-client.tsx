@@ -2956,6 +2956,7 @@ function QuestionRow({
   const [fullExtractLog, setFullExtractLog] = useState<string[]>([]);
   const [fullExtractError, setFullExtractError] = useState<string | null>(null);
   const [fullExtractCopied, setFullExtractCopied] = useState(false);
+  const [extractLogCollapsed, setExtractLogCollapsed] = useState(false);
   const [extractPlan, setExtractPlan] = useState<ExtractPlan | null>(null);
 
   // Stem state (no separate edit for each field — share the same edit pattern)
@@ -3672,6 +3673,7 @@ function QuestionRow({
 
   async function runFullExtract() {
     setFullExtractState("running");
+    setExtractLogCollapsed(false);
     setFullExtractLog([]);
     setFullExtractError(null);
     setFullExtractCopied(false);
@@ -3887,6 +3889,7 @@ function QuestionRow({
 
   async function commitExtractPlan(plan: ExtractPlan) {
     setFullExtractState("running");
+    setExtractLogCollapsed(false);
     setFullExtractError(null);
     const push = (msg: string) => {
       setFullExtractLog((prev) => [...prev, msg]);
@@ -3970,7 +3973,7 @@ function QuestionRow({
         push("Done! Whole question LaTeX saved.");
         onQueueMarksChange(question.id, wholeMarks);
         onRefresh();
-        setTimeout(() => setFullExtractState("idle"), 3000);
+        setTimeout(() => { setFullExtractState("idle"); setExtractLogCollapsed(true); }, 3000);
         return;
       }
 
@@ -4179,7 +4182,7 @@ function QuestionRow({
       // Refresh parent question list so data stays in sync
       onQueueMarksChange(question.id, sortedMerged.reduce((s, p) => s + p.marks, 0));
       onRefresh();
-      setTimeout(() => setFullExtractState("idle"), 3000);
+      setTimeout(() => { setFullExtractState("idle"); setExtractLogCollapsed(true); }, 3000);
     } catch (e) {
       setFullExtractError(e instanceof Error ? e.message : "Unexpected error");
       setFullExtractState("idle");
@@ -5247,11 +5250,21 @@ function QuestionRow({
                   {/* Extraction progress / log */}
                   {(fullExtractState === "running" || fullExtractState === "reviewing" || fullExtractLog.length > 0 || !!fullExtractError) && (
                     <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-1.5">
-                      <div className="mb-1 flex items-center justify-between gap-2">
-                        <p className="text-[11px] font-semibold text-amber-900">Extractor debug output</p>
+                      <div
+                        className="mb-1 flex items-center justify-between gap-2 cursor-pointer select-none"
+                        onClick={() => setExtractLogCollapsed((v) => !v)}
+                        title={extractLogCollapsed ? "Show extractor log" : "Collapse extractor log"}
+                      >
+                        <p className="text-[11px] font-semibold text-amber-900 flex items-center gap-1">
+                          <span className="text-amber-600 text-[10px]">{extractLogCollapsed ? "▶" : "▼"}</span>
+                          Extractor debug output
+                          {extractLogCollapsed && fullExtractLog.length > 0 && (
+                            <span className="ml-1 text-[10px] font-normal text-amber-700">({fullExtractLog.length} steps)</span>
+                          )}
+                        </p>
                         <button
                           type="button"
-                          onClick={() => copyFullExtractDebugOutput()}
+                          onClick={(e) => { e.stopPropagation(); copyFullExtractDebugOutput(); }}
                           disabled={fullExtractLog.length === 0 && !fullExtractError}
                           className="rounded border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-bold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
                           title="Copy LaTeX extractor progress log and error"
@@ -5259,19 +5272,23 @@ function QuestionRow({
                           {fullExtractCopied ? "✓ Copied" : "📋 Copy Debug Output"}
                         </button>
                       </div>
-                      {fullExtractLog.map((msg, i) => (
-                        <p key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                          <span className="text-green-500 shrink-0 mt-0.5">✓</span>{msg}
-                        </p>
-                      ))}
-                      {fullExtractState === "running" && (
-                        <p className="text-xs text-amber-700 flex items-center gap-1.5">
-                          <span className="inline-block w-3 h-3 border-2 border-amber-400 border-t-amber-700 rounded-full animate-spin" />
-                          Working…
-                        </p>
-                      )}
-                      {fullExtractError && (
-                        <p className="text-xs text-red-600 font-medium">⚠ {fullExtractError}</p>
+                      {!extractLogCollapsed && (
+                        <>
+                          {fullExtractLog.map((msg, i) => (
+                            <p key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
+                              <span className="text-green-500 shrink-0 mt-0.5">✓</span>{msg}
+                            </p>
+                          ))}
+                          {fullExtractState === "running" && (
+                            <p className="text-xs text-amber-700 flex items-center gap-1.5">
+                              <span className="inline-block w-3 h-3 border-2 border-amber-400 border-t-amber-700 rounded-full animate-spin" />
+                              Working…
+                            </p>
+                          )}
+                          {fullExtractError && (
+                            <p className="text-xs text-red-600 font-medium">⚠ {fullExtractError}</p>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
