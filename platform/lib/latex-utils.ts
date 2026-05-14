@@ -103,6 +103,26 @@ Identify the mathematical command term for each part from the question text (e.g
 
 From the available subtopics list provided, choose up to 3 subtopic codes that best match the mathematical content of each part.
 
+## Subtopic assignment rules — read carefully
+
+### Prior Learning (code 1.0)
+Use code **1.0** (Assumed Prior Learning) when the primary skill tested is from the IB Prior Learning list, NOT from a numbered syllabus topic. This includes:
+- Factorising monic quadratic trinomials (e.g. x²−8x+7 → (x−7)(x−1))
+- Difference of two squares (e.g. x²−1 → (x−1)(x+1))
+- Expanding brackets and collecting like terms
+- Simplifying or multiplying/dividing algebraic fractions (including cancelling common factors)
+- Rearranging formulae
+- Solving linear or simple quadratic equations
+- Basic manipulation of rational expressions where the skill is fraction arithmetic, NOT function analysis
+
+**Critical distinction:** If a question only requires factorising + simplifying/cancelling rational expressions (even if the expressions involve quadratics in the denominator), use **1.0**, NOT 2.8 or 1.11.
+
+### AHL 1.11 — Partial Fractions only
+Only use **1.11** when the question explicitly decomposes a single fraction INTO a SUM of simpler fractions (e.g. finding A and B such that the expression equals A/(x−1) + B/(x+2)). Do NOT use 1.11 for factorising or simplifying rational expressions.
+
+### SL 2.8 — Rational Functions
+Use **2.8** only when the question involves analysing the graph, asymptotes, domain, or behaviour of rational functions f(x) = (ax+b)/(cx+d) or similar. Factorising a denominator as an algebraic step within a simplification does NOT make a question a 2.8 question.
+
 Return ONLY a valid JSON object with NO markdown fences, NO explanation, in exactly this format:
 {
   "parts": [
