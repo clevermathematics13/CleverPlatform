@@ -108,6 +108,7 @@ interface TestQueueItem {
   hasQuestion: boolean;
   hasMarkscheme: boolean;
   marks: number;
+  subtopicCodes: string[];
 }
 
 interface ExamConfig {
@@ -1391,6 +1392,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         hasQuestion: q.has_question_images,
         hasMarkscheme: q.has_markscheme_images,
         marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
+        subtopicCodes: [...new Set(q.question_parts.flatMap((p) => p.subtopic_codes ?? []))],
       },
     ]);
     setExamDirty(true);
@@ -1417,6 +1419,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       hasQuestion: q.has_question_images,
       hasMarkscheme: q.has_markscheme_images,
       marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
+      subtopicCodes: [...new Set(q.question_parts.flatMap((p) => p.subtopic_codes ?? []))],
     };
     const newQueue = [...testQueue, newItem];
     setTestQueue(newQueue);
@@ -6845,9 +6848,9 @@ function QueueRow({
             {item.marks} marks / {(item.marks * minutesPerMark).toFixed(2)} minutes
           </span>
         </div>
-        {showSection && item.section && (
-          <span className={`text-[10px] font-bold leading-tight ${item.section === "A" ? "text-blue-600" : "text-orange-500"}`}>
-            Section {item.section}
+        {item.subtopicCodes && item.subtopicCodes.length > 0 && (
+          <span className="text-[10px] text-gray-400 leading-tight truncate">
+            {item.subtopicCodes.join(" · ")}
           </span>
         )}
       </div>

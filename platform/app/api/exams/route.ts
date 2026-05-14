@@ -33,18 +33,22 @@ export async function GET() {
   if (allIds.length > 0) {
     const { data: partsData } = await supabase
       .from("question_parts")
-      .select("question_id, marks")
+      .select("question_id, marks, subtopic_codes")
       .in("question_id", allIds);
 
     const liveMarks: Record<string, number> = {};
+    const liveSubtopics: Record<string, Set<string>> = {};
     for (const p of (partsData ?? [])) {
       liveMarks[p.question_id] = (liveMarks[p.question_id] ?? 0) + (p.marks ?? 0);
+      if (!liveSubtopics[p.question_id]) liveSubtopics[p.question_id] = new Set();
+      for (const code of (p.subtopic_codes ?? [])) liveSubtopics[p.question_id].add(code);
     }
 
     for (const exam of exams) {
-      exam.questions = ((exam.questions as { id: string; marks: number }[]) ?? []).map((q) => ({
+      exam.questions = ((exam.questions as { id: string; marks: number; subtopicCodes?: string[] }[]) ?? []).map((q) => ({
         ...q,
         marks: liveMarks[q.id] ?? q.marks,
+        subtopicCodes: liveSubtopics[q.id] ? [...liveSubtopics[q.id]] : (q.subtopicCodes ?? []),
       }));
     }
   }
