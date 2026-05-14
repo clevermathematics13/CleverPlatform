@@ -6834,7 +6834,7 @@ function QueueRow({
       </button>
       {/* Marks + time */}
       <span className="text-xs text-indigo-500 font-semibold flex-shrink-0">
-        {item.marks}m·≈{Math.round(item.marks * minutesPerMark)}min
+        {item.marks} marks / {(item.marks * minutesPerMark).toFixed(2)} minutes
       </span>
       {/* Section toggle (P1/P2 AA only) */}
       {showSection && (
