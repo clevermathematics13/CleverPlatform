@@ -3905,23 +3905,22 @@ function QuestionRow({
         // Find or create a null-label (whole-question) part
         let wholePartId: string;
         const existingWhole = parts.find((p) => !p.part_label || p.part_label.trim() === "");
+        const wholeMarks = plan.partMarks?.get("") ?? ((typeof cpMeta?.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? existingWhole?.marks ?? 1);
         if (existingWhole) {
           wholePartId = existingWhole.id;
-          // Update metadata from Claude if available
-          if (cpMeta) {
-            await fetch("/api/questions/part-metadata", {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                partId: wholePartId,
-                marks: plan.partMarks?.get("") ?? ((typeof cpMeta.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? null),
-                commandTerm: extractedWholeTerm,
-                commandTerms: extractedWholeTerms,
-                sourceLatex: qDraft,
-                subtopicCodes: cpMeta.subtopicCodes ?? [],
-              }),
-            });
-          }
+          // Always update marks + metadata (even when cpMeta is absent)
+          await fetch("/api/questions/part-metadata", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              partId: wholePartId,
+              marks: wholeMarks,
+              commandTerm: extractedWholeTerm,
+              commandTerms: extractedWholeTerms,
+              sourceLatex: qDraft,
+              subtopicCodes: cpMeta?.subtopicCodes ?? existingWhole.subtopic_codes ?? [],
+            }),
+          });
         } else {
           const createRes = await fetch("/api/questions/part-metadata", {
             method: "POST",
@@ -3929,7 +3928,7 @@ function QuestionRow({
             body: JSON.stringify({
               questionId: question.id,
               partLabel: null,
-              marks: plan.partMarks?.get("") ?? ((typeof cpMeta?.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? null),
+              marks: wholeMarks,
               commandTerm: extractedWholeTerm,
               commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
@@ -3954,8 +3953,8 @@ function QuestionRow({
           }),
         ]);
         const wholePart: QuestionPart = existingWhole
-          ? { ...existingWhole, content_latex: qDraft || null, markscheme_latex: msDraft || null }
-          : { id: wholePartId, part_label: "", marks: 0, subtopic_codes: [], command_term: null, sort_order: 0, content_latex: qDraft || null, markscheme_latex: msDraft || null, latex_verified: null };
+          ? { ...existingWhole, marks: wholeMarks, content_latex: qDraft || null, markscheme_latex: msDraft || null }
+          : { id: wholePartId, part_label: "", marks: wholeMarks, subtopic_codes: cpMeta?.subtopicCodes ?? [], command_term: extractedWholeTerm, sort_order: 0, content_latex: qDraft || null, markscheme_latex: msDraft || null, latex_verified: null };
         setParts([wholePart]);
         setLatexDrafts({ [wholePartId]: { content_latex: qDraft, markscheme_latex: msDraft } });
         setWholeQDraft(qDraft);
