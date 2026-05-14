@@ -2345,11 +2345,13 @@ function AddToExamModal({
 function ExtractionReviewModal({
   plan: initialPlan,
   questionCode,
+  images,
   onConfirm,
   onCancel,
 }: {
   plan: ExtractPlan;
   questionCode: string;
+  images: QuestionImage[];
   onConfirm: (plan: ExtractPlan) => void;
   onCancel: () => void;
 }) {
@@ -2365,6 +2367,8 @@ function ExtractionReviewModal({
     initialPlan.isWholeQuestion ? "" : initialPlan.finalLabels.join(", "),
   );
   const [showDebug, setShowDebug] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [zoom, setZoom] = useState(100);
 
   function buildSteps(p: ExtractPlan): StepSpec[] {
     const s: StepSpec[] = [{ kind: "parts" }];
@@ -2689,74 +2693,139 @@ function ExtractionReviewModal({
     );
   }
 
-  const modal = (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-2xl flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-3 border-b border-gray-100">
-          <div>
-            <p className="text-xs font-mono text-gray-400 mb-0.5">{questionCode}</p>
-            <h2 className="text-base font-bold text-gray-900">{stepTitle}</h2>
-          </div>
-          <div className="flex gap-1.5 ml-4 shrink-0">
-            {steps.map((_, i) => (
-              <span
-                key={i}
-                className={`rounded-full w-2.5 h-2.5 transition-colors ${
-                  i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-500" : "bg-gray-200"
-                }`}
-              />
-            ))}
-          </div>
-        </div>
+  const qImages = images.filter((i) => i.image_type === "question").sort((a, b) => a.sort_order - b.sort_order);
+  const msImages = images.filter((i) => i.image_type === "markscheme").sort((a, b) => a.sort_order - b.sort_order);
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">{stepContent}</div>
-
-        {/* Debug toggle */}
-        <div className="px-6 pb-3">
+  const wizardFooter = (
+    <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-gray-200"
+      >
+        Cancel extraction
+      </button>
+      <div className="flex gap-2">
+        {stepIdx > 0 && (
           <button
             type="button"
-            onClick={() => setShowDebug((v) => !v)}
-            className="text-xs text-gray-400 hover:text-gray-600 underline"
+            onClick={handleBack}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors border border-gray-200"
           >
-            {showDebug ? "Hide" : "Show"} troubleshooting info
+            ← Back
           </button>
-          {showDebug && (
-            <pre className="mt-2 rounded bg-gray-900 text-green-300 text-xs p-3 overflow-auto max-h-64 font-mono whitespace-pre-wrap">
-              {debugText}
-            </pre>
-          )}
-        </div>
+        )}
+        <button
+          type="button"
+          onClick={handleNext}
+          className="rounded-lg px-5 py-2 text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+        >
+          {isLast ? "Save to database" : stepIdx === 0 ? "Confirm parts →" : "OK, next →"}
+        </button>
+      </div>
+    </div>
+  );
 
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-gray-200"
-          >
-            Cancel extraction
-          </button>
-          <div className="flex gap-2">
-            {stepIdx > 0 && (
-              <button
-                type="button"
-                onClick={handleBack}
-                className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors border border-gray-200"
-              >
-                ← Back
-              </button>
-            )}
+  const modal = minimized ? (
+    /* ── Minimized bar ── */
+    <div className="fixed bottom-0 left-0 right-0 z-[80] bg-white border-t-2 border-blue-400 shadow-xl px-5 py-2 flex items-center gap-4">
+      <span className="font-mono font-bold text-blue-900 text-sm">{questionCode}</span>
+      <span className="text-xs text-gray-500 truncate">{stepTitle}</span>
+      <div className="flex gap-1.5 mx-2 shrink-0">
+        {steps.map((_, i) => (
+          <span key={i} className={`rounded-full w-2 h-2 transition-colors ${i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-500" : "bg-gray-300"}`} />
+        ))}
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <button type="button" onClick={() => setMinimized(false)} className="rounded px-3 py-1.5 text-xs font-bold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors">▲ Restore</button>
+        <button type="button" onClick={onCancel} className="rounded w-7 h-7 flex items-center justify-center text-sm font-bold bg-gray-100 text-gray-700 hover:bg-red-100 hover:text-red-700 transition-colors">✕</button>
+      </div>
+    </div>
+  ) : (
+    /* ── Full-screen split layout ── */
+    <div className="fixed inset-0 z-[80] flex flex-col bg-white">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-5 py-3 bg-gray-900 text-white shadow-md shrink-0">
+        <span className="font-mono font-bold text-base">{questionCode}</span>
+        <span className="text-sm text-gray-400 truncate">{stepTitle}</span>
+        <div className="flex gap-1.5 mx-2 shrink-0">
+          {steps.map((_, i) => (
+            <span key={i} className={`rounded-full w-2.5 h-2.5 transition-colors ${i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-400" : "bg-gray-600"}`} />
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <button type="button" onClick={() => setMinimized(true)} className="rounded px-3 py-1.5 text-xs font-bold bg-gray-700 hover:bg-gray-600 text-white transition-colors">— Minimize</button>
+          <button type="button" onClick={onCancel} className="rounded px-3 py-1.5 text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors">✕ Cancel</button>
+        </div>
+      </div>
+
+      {/* Split body */}
+      <div className="flex-1 overflow-hidden flex">
+
+        {/* ── Left pane: images ── */}
+        <div className="w-1/2 border-r border-gray-200 flex flex-col overflow-hidden">
+          {/* Zoom toolbar */}
+          <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
+            <span className="text-xs font-semibold text-gray-600 mr-1">Zoom:</span>
             <button
               type="button"
-              onClick={handleNext}
-              className="rounded-lg px-5 py-2 text-sm font-bold bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
-            >
-              {isLast ? "Save to database" : stepIdx === 0 ? "Confirm parts →" : "OK, next →"}
-            </button>
+              onClick={() => setZoom((z) => Math.max(25, z - 25))}
+              className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-sm flex items-center justify-center transition-colors"
+            >−</button>
+            <span className="text-xs font-mono w-12 text-center text-gray-700">{zoom}%</span>
+            <button
+              type="button"
+              onClick={() => setZoom((z) => Math.min(400, z + 25))}
+              className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-sm flex items-center justify-center transition-colors"
+            >+</button>
+            <button type="button" onClick={() => setZoom(100)} className="text-xs text-gray-400 hover:text-gray-600 ml-2 underline">Reset</button>
+            <span className="ml-auto text-xs text-gray-400">{qImages.length}Q · {msImages.length}MS</span>
+          </div>
+          {/* Scrollable images */}
+          <div className="flex-1 overflow-auto p-4 bg-gray-50">
+            {qImages.length === 0 && msImages.length === 0 ? (
+              <div className="text-center text-gray-400 text-sm mt-16">No images loaded</div>
+            ) : (
+              <>
+                {qImages.length > 0 && (
+                  <div className="mb-6">
+                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">Question</p>
+                    <div className="space-y-3">
+                      {qImages.map((img) => img.url ? (
+                        <img key={img.id} src={img.url} alt={img.alt_text ?? "Question image"} style={{ width: `${zoom}%` }} className="block rounded shadow-sm border border-gray-200" />
+                      ) : null)}
+                    </div>
+                  </div>
+                )}
+                {msImages.length > 0 && (
+                  <div>
+                    <p className="text-xs font-bold text-green-700 uppercase tracking-wide mb-2">Mark Scheme</p>
+                    <div className="space-y-3">
+                      {msImages.map((img) => img.url ? (
+                        <img key={img.id} src={img.url} alt={img.alt_text ?? "Markscheme image"} style={{ width: `${zoom}%` }} className="block rounded shadow-sm border border-gray-200" />
+                      ) : null)}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
+
+        {/* ── Right pane: wizard ── */}
+        <div className="w-1/2 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-6 py-4">{stepContent}</div>
+          <div className="px-6 pb-3 shrink-0">
+            <button type="button" onClick={() => setShowDebug((v) => !v)} className="text-xs text-gray-400 hover:text-gray-600 underline">
+              {showDebug ? "Hide" : "Show"} troubleshooting info
+            </button>
+            {showDebug && (
+              <pre className="mt-2 rounded bg-gray-900 text-green-300 text-xs p-3 overflow-auto max-h-40 font-mono whitespace-pre-wrap">{debugText}</pre>
+            )}
+          </div>
+          {wizardFooter}
+        </div>
+
       </div>
     </div>
   );
@@ -4354,6 +4423,7 @@ function QuestionRow({
           <ExtractionReviewModal
             plan={extractPlan}
             questionCode={question.code}
+            images={images}
             onConfirm={(confirmedPlan) => {
               setExtractPlan(null);
               void commitExtractPlan(confirmedPlan);
