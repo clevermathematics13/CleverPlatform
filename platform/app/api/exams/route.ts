@@ -23,7 +23,33 @@ export async function GET() {
     .order("updated_at", { ascending: false });
 
   if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
-  return NextResponse.json({ exams: data ?? [] });
+
+  // Re-hydrate marks from live question_parts so stale stored values don't show wrong minutes
+  const exams = data ?? [];
+  const allIds = [...new Set(
+    exams.flatMap((e) => ((e.questions as { id: string }[]) ?? []).map((q) => q.id))
+  )];
+
+  if (allIds.length > 0) {
+    const { data: partsData } = await supabase
+      .from("question_parts")
+      .select("question_id, marks")
+      .in("question_id", allIds);
+
+    const liveMarks: Record<string, number> = {};
+    for (const p of (partsData ?? [])) {
+      liveMarks[p.question_id] = (liveMarks[p.question_id] ?? 0) + (p.marks ?? 0);
+    }
+
+    for (const exam of exams) {
+      exam.questions = ((exam.questions as { id: string; marks: number }[]) ?? []).map((q) => ({
+        ...q,
+        marks: liveMarks[q.id] ?? q.marks,
+      }));
+    }
+  }
+
+  return NextResponse.json({ exams });
 }
 
 // ─── POST /api/exams — create a new saved exam ───────────────────────────────
