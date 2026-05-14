@@ -109,6 +109,7 @@ interface TestQueueItem {
   hasMarkscheme: boolean;
   marks: number;
   subtopicCodes: string[];
+  partSubtopics: { partLabel: string; codes: string[] }[];
 }
 
 interface ExamConfig {
@@ -436,6 +437,12 @@ function romanSubpartStem(label: string): string | null {
 
 function primaryCommandTerm(part: Pick<QuestionPart, "command_term" | "command_terms">): string | null {
   return part.command_terms?.[0] ?? part.command_term ?? null;
+}
+
+/** Remove 1.0 (Prior Learning) from a part's subtopic codes if other topics are also assigned. */
+function filterPriorLearning(codes: string[]): string[] {
+  if (codes.length > 1 && codes.includes("1.0")) return codes.filter((c) => c !== "1.0");
+  return codes;
 }
 
 export function QuestionBankClient({ initialDriveConnected = false }: { initialDriveConnected?: boolean }) {
@@ -1392,7 +1399,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         hasQuestion: q.has_question_images,
         hasMarkscheme: q.has_markscheme_images,
         marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
-        subtopicCodes: [...new Set(q.question_parts.flatMap((p) => p.subtopic_codes ?? []))],
+        subtopicCodes: [...new Set(q.question_parts.flatMap((p) => filterPriorLearning(p.subtopic_codes ?? [])))],
+        partSubtopics: q.question_parts
+          .map((p) => ({ partLabel: p.part_label ?? "", codes: filterPriorLearning(p.subtopic_codes ?? []) }))
+          .filter((ps) => ps.codes.length > 0),
       },
     ]);
     setExamDirty(true);
@@ -1419,7 +1429,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       hasQuestion: q.has_question_images,
       hasMarkscheme: q.has_markscheme_images,
       marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
-      subtopicCodes: [...new Set(q.question_parts.flatMap((p) => p.subtopic_codes ?? []))],
+      subtopicCodes: [...new Set(q.question_parts.flatMap((p) => filterPriorLearning(p.subtopic_codes ?? [])))],
+      partSubtopics: q.question_parts
+        .map((p) => ({ partLabel: p.part_label ?? "", codes: filterPriorLearning(p.subtopic_codes ?? []) }))
+        .filter((ps) => ps.codes.length > 0),
     };
     const newQueue = [...testQueue, newItem];
     setTestQueue(newQueue);
@@ -4547,7 +4560,7 @@ function QuestionRow({
               </div>
             </div>
             {/* Scrollable content */}
-            <div className="flex-1 overflow-y-auto bg-blue-50 space-y-6 p-6">
+            <div className="flex-1 overflow-y-auto bg-blue-50 p-6 flex flex-col gap-6">
 
                 {/* ── Question metadata ── */}
                 <div className="bg-white rounded-xl border border-blue-200 px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
@@ -4707,8 +4720,8 @@ function QuestionRow({
                   </div>
                 </div>
 
-                {/* ── Row 4: Graph Editor ── */}
-                <div className="border-t border-blue-100 pt-3">
+                {/* ── Graph Editor ── */}
+                <div className="border-t border-blue-100 pt-3 order-3">
                   <button
                     type="button"
                     onClick={() => setGraphEditorOpen((o) => !o)}
@@ -5015,7 +5028,7 @@ function QuestionRow({
                 </div>
 
                 {/* ── Images + Parts & LaTeX side-by-side ── */}
-                <div className="h-[640px] grid grid-cols-2 gap-6">
+                <div className="h-[640px] grid grid-cols-2 gap-6 order-2">
 
                 {/* ── Images (left column) ── */}
                 <div className="bg-white rounded-xl border border-blue-200 p-5 overflow-y-auto">
@@ -6865,11 +6878,19 @@ function QueueRow({
             {item.marks} marks / {(item.marks * minutesPerMark).toFixed(2)} minutes
           </span>
         </div>
-        {item.subtopicCodes && item.subtopicCodes.length > 0 && (
+        {(item.partSubtopics?.length ?? 0) > 0 ? (
+          <div className="flex flex-col">
+            {item.partSubtopics.map((ps, i) => (
+              <span key={i} className="text-[10px] text-gray-400 leading-tight truncate">
+                {ps.partLabel ? `Part ${ps.partLabel.toUpperCase()} · ` : ""}{ps.codes.join(" · ")}
+              </span>
+            ))}
+          </div>
+        ) : item.subtopicCodes && item.subtopicCodes.length > 0 ? (
           <span className="text-[10px] text-gray-400 leading-tight truncate">
             {item.subtopicCodes.join(" · ")}
           </span>
-        )}
+        ) : null}
       </div>
       {/* Section toggle (P1/P2 AA only) */}
       {showSection && (

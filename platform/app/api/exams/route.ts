@@ -33,22 +33,35 @@ export async function GET() {
   if (allIds.length > 0) {
     const { data: partsData } = await supabase
       .from("question_parts")
-      .select("question_id, marks, subtopic_codes")
-      .in("question_id", allIds);
+      .select("question_id, marks, subtopic_codes, part_label, sort_order")
+      .in("question_id", allIds)
+      .order("sort_order", { ascending: true });
+
+    function filterPriorLearning(codes: string[]): string[] {
+      if (codes.length > 1 && codes.includes("1.0")) return codes.filter((c) => c !== "1.0");
+      return codes;
+    }
 
     const liveMarks: Record<string, number> = {};
     const liveSubtopics: Record<string, Set<string>> = {};
+    const livePartSubtopics: Record<string, { partLabel: string; codes: string[] }[]> = {};
     for (const p of (partsData ?? [])) {
       liveMarks[p.question_id] = (liveMarks[p.question_id] ?? 0) + (p.marks ?? 0);
       if (!liveSubtopics[p.question_id]) liveSubtopics[p.question_id] = new Set();
-      for (const code of (p.subtopic_codes ?? [])) liveSubtopics[p.question_id].add(code);
+      const filtered = filterPriorLearning(p.subtopic_codes ?? []);
+      for (const code of filtered) liveSubtopics[p.question_id].add(code);
+      if (filtered.length > 0) {
+        if (!livePartSubtopics[p.question_id]) livePartSubtopics[p.question_id] = [];
+        livePartSubtopics[p.question_id].push({ partLabel: p.part_label ?? "", codes: filtered });
+      }
     }
 
     for (const exam of exams) {
-      exam.questions = ((exam.questions as { id: string; marks: number; subtopicCodes?: string[] }[]) ?? []).map((q) => ({
+      exam.questions = ((exam.questions as { id: string; marks: number; subtopicCodes?: string[]; partSubtopics?: { partLabel: string; codes: string[] }[] }[]) ?? []).map((q) => ({
         ...q,
         marks: liveMarks[q.id] ?? q.marks,
         subtopicCodes: liveSubtopics[q.id] ? [...liveSubtopics[q.id]] : (q.subtopicCodes ?? []),
+        partSubtopics: livePartSubtopics[q.id] ?? q.partSubtopics ?? [],
       }));
     }
   }
