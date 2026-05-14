@@ -274,6 +274,33 @@ const DEFAULT_COMMAND_TERMS = [
 ];
 
 /**
+ * Infer the total mark value for a piece of LaTeX by summing all
+ * `\hfill [N]` / `\hfill [N marks]` patterns (standard IB question notation).
+ * Falls back to summing `[N marks]` lines found in markschemes, skipping
+ * any line that contains "Total". Returns null when nothing is found.
+ */
+function parseMarksFromLatex(latex: string): number | null {
+  if (!latex) return null;
+  // Primary: \hfill [N] or \hfill [N marks]
+  const hfillRe = /\\hfill\s*\[(\d+)(?:\s*marks?)?\]/gi;
+  let total = 0;
+  let found = false;
+  let m: RegExpExecArray | null;
+  while ((m = hfillRe.exec(latex)) !== null) {
+    total += parseInt(m[1], 10);
+    found = true;
+  }
+  if (found) return total > 0 ? total : null;
+  // Fallback: [N marks] / [N mark] lines in markscheme (ignore "Total" lines)
+  for (const line of latex.split("\n")) {
+    if (/Total\s*\[/i.test(line)) continue;
+    const mm = /\[(\d+)\s*marks?\]/i.exec(line);
+    if (mm) { total += parseInt(mm[1], 10); found = true; }
+  }
+  return found && total > 0 ? total : null;
+}
+
+/**
  * Scan the question LaTeX for the first IB command term that appears as a
  * whole word (case-insensitive). Returns the canonical form or null.
  */
@@ -3757,7 +3784,7 @@ function QuestionRow({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 partId: wholePartId,
-                marks: typeof cpMeta.marks === "number" ? cpMeta.marks : null,
+                marks: (typeof cpMeta.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? null,
                 commandTerm: extractedWholeTerm,
                 commandTerms: extractedWholeTerms,
                 sourceLatex: qDraft,
@@ -3772,7 +3799,7 @@ function QuestionRow({
             body: JSON.stringify({
               questionId: question.id,
               partLabel: null,
-              marks: typeof cpMeta?.marks === "number" ? cpMeta.marks : null,
+              marks: (typeof cpMeta?.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? null,
               commandTerm: extractedWholeTerm,
               commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
@@ -3904,7 +3931,7 @@ function QuestionRow({
             body: JSON.stringify({
               partId: existing.id,
               partLabel: label,
-              marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
+              marks: (typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? existing.marks,
               commandTerm: canonicalTerm,
               commandTerms: canonicalTerms,
               sourceLatex: sourceForMetadata,
@@ -3915,7 +3942,7 @@ function QuestionRow({
           newParts.push({
             ...existing,
             part_label: label,
-            marks: typeof cp?.marks === "number" ? cp.marks : existing.marks,
+            marks: (typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? existing.marks,
             command_term: canonicalTerm,
             command_terms: canonicalTerms,
             ...exceptionFlags,
@@ -3931,7 +3958,7 @@ function QuestionRow({
             body: JSON.stringify({
               questionId: question.id,
               partLabel: label,
-              marks: typeof cp?.marks === "number" ? cp.marks : null,
+              marks: (typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? null,
               commandTerm: canonicalTerm,
               commandTerms: canonicalTerms,
               sourceLatex: sourceForMetadata,
@@ -3949,7 +3976,7 @@ function QuestionRow({
           newParts.push({
             ...created,
             part_label: label,
-            marks: typeof cp?.marks === "number" ? cp.marks : created.marks,
+            marks: (typeof cp?.marks === "number" && cp.marks > 0) ? cp.marks : parseMarksFromLatex(splitQForLabel || splitMSForLabel) ?? created.marks,
             command_term: canonicalTerm,
             command_terms: canonicalTerms,
             ...exceptionFlags,
