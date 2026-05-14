@@ -2178,6 +2178,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 savingSection={savingSection.has(q.id)}
                 onUpdateSection={(section) => updateSection(q.id, section)}
                 onRefresh={loadQuestions}
+                onQueueMarksChange={(qId, marks) =>
+                  setTestQueue((prev) => prev.map((item) => item.id === qId ? { ...item, marks } : item))
+                }
               />
             ))}
             {!loading && questions.length === 0 && (
@@ -2862,6 +2865,7 @@ function QuestionRow({
   savingSection,
   onUpdateSection,
   onRefresh,
+  onQueueMarksChange,
 }: {
   question: Question;
   expanded: boolean;
@@ -2891,6 +2895,7 @@ function QuestionRow({
   savingSection: boolean;
   onUpdateSection: (section: "A" | "B") => void;
   onRefresh: () => void;
+  onQueueMarksChange: (questionId: string, marks: number) => void;
 }) {
   const showSection = question.paper !== 3;
   const hasDocLinkConflict = question.google_ms_id !== null && question.google_doc_id === question.google_ms_id;
@@ -3960,6 +3965,7 @@ function QuestionRow({
         setWholeQDraft(qDraft);
         setWholeMSDraft(msDraft);
         push("Done! Whole question LaTeX saved.");
+        onQueueMarksChange(question.id, wholeMarks);
         onRefresh();
         setTimeout(() => setFullExtractState("idle"), 3000);
         return;
@@ -4168,6 +4174,7 @@ function QuestionRow({
 
       push("Done! All LaTeX extracted and saved.");
       // Refresh parent question list so data stays in sync
+      onQueueMarksChange(question.id, sortedMerged.reduce((s, p) => s + p.marks, 0));
       onRefresh();
       setTimeout(() => setFullExtractState("idle"), 3000);
     } catch (e) {
