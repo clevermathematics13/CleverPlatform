@@ -38,8 +38,10 @@ export async function GET() {
       .order("sort_order", { ascending: true });
 
     function filterPriorLearning(codes: string[]): string[] {
-      if (codes.length > 1 && codes.includes("1.0")) return codes.filter((c) => c !== "1.0");
-      return codes;
+      let result = codes;
+      if (result.length > 1 && result.includes("1.0")) result = result.filter((c) => c !== "1.0");
+      if (result.includes("2.1") && result.some((c) => c !== "2.1" && c !== "1.0")) result = result.filter((c) => c !== "2.1");
+      return result;
     }
 
     const liveMarks: Record<string, number> = {};

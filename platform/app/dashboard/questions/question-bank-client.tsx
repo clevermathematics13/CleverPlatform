@@ -439,10 +439,12 @@ function primaryCommandTerm(part: Pick<QuestionPart, "command_term" | "command_t
   return part.command_terms?.[0] ?? part.command_term ?? null;
 }
 
-/** Remove 1.0 (Prior Learning) from a part's subtopic codes if other topics are also assigned. */
+/** Remove 1.0 (Prior Learning) and 2.1 (Fundamentals) from a part's subtopic codes if more specific topics are also assigned. */
 function filterPriorLearning(codes: string[]): string[] {
-  if (codes.length > 1 && codes.includes("1.0")) return codes.filter((c) => c !== "1.0");
-  return codes;
+  let result = codes;
+  if (result.length > 1 && result.includes("1.0")) result = result.filter((c) => c !== "1.0");
+  if (result.includes("2.1") && result.some((c) => c !== "2.1" && c !== "1.0")) result = result.filter((c) => c !== "2.1");
+  return result;
 }
 
 export function QuestionBankClient({ initialDriveConnected = false }: { initialDriveConnected?: boolean }) {
@@ -5128,7 +5130,7 @@ function QuestionRow({
                         <div className="flex flex-wrap gap-2">
                           {graphCrops.map((crop, idx) => {
                             const part = parts.find((p) => p.id === crop.part_id);
-                            const partLabel = part?.part_label?.trim() ? `Part ${part.part_label}` : crop.part_id ? "Part linked" : "No part";
+                            const partLabel = part?.part_label?.trim() ? `part ${part.part_label}` : crop.part_id ? "part linked" : "No part";
                             const isDeleting = deletingGraphCropIds.has(crop.id);
                             return (
                               <div key={crop.id} className="relative group rounded border border-violet-200 bg-white p-1">
@@ -5609,7 +5611,7 @@ function QuestionRow({
                           <h3 className="text-xs font-bold uppercase tracking-wide text-gray-600">{section.title}</h3>
                           <div className="space-y-4">
                             {parts.map((part) => {
-                              const partLabel = part.part_label ? `Part ${part.part_label.toUpperCase()}` : "Whole question";
+                              const partLabel = part.part_label ? `part ${part.part_label}` : "Whole question";
                               const field = section.key;
                               const isEditing = editingLatex?.partId === part.id && editingLatex.field === field;
                               const isExtracting = extractingLatexField?.partId === part.id && extractingLatexField.field === field;
@@ -5905,14 +5907,14 @@ function ImageGroup({
             📋 Click to paste image from clipboard
           </p>
         ) : (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-col gap-2">
             {images.map((img, idx) => (
               <div
                 key={img.id}
                 draggable
                 onDragStart={() => handleDragStart(idx)}
                 onDragOver={(e) => handleDragOver(e, idx)}
-                className="relative group cursor-grab active:cursor-grabbing"
+                className="relative group cursor-grab active:cursor-grabbing w-full"
               >
                 {/* Drag handle overlay (top-left corner) */}
                 <div className="absolute top-1 left-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded px-1 py-0.5 text-white text-xs select-none pointer-events-none">
@@ -5925,12 +5927,13 @@ function ImageGroup({
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
+                  className="block w-full"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={img.url ?? ""}
                     alt={img.alt_text ?? `${label} image ${idx + 1}`}
-                    className={`max-h-40 rounded border bg-white p-1 ${borderColor} ${hoverBorderColor} hover:shadow-md transition-all ${
+                    className={`w-full object-contain rounded border bg-white p-1 ${borderColor} ${hoverBorderColor} hover:shadow-md transition-all ${
                       deletingImageIds.has(img.id) ? "opacity-40" : ""
                     }`}
                     draggable={false}
@@ -6882,7 +6885,7 @@ function QueueRow({
           <div className="flex flex-col">
             {item.partSubtopics.map((ps, i) => (
               <span key={i} className="text-[10px] text-gray-400 leading-tight truncate">
-                {ps.partLabel ? `Part ${ps.partLabel.toUpperCase()} · ` : ""}{ps.codes.join(" · ")}
+                {ps.partLabel ? `part ${ps.partLabel} · ` : ""}{ps.codes.join(" · ")}
               </span>
             ))}
           </div>

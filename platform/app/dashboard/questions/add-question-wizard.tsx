@@ -298,7 +298,7 @@ function WizardPartEditor({
     onMeta(part.label, part.marks, part.commandTerm, next);
   }
 
-  const displayLabel = part.label ? `Part ${part.label.toUpperCase()}` : `Part ${index + 1}`;
+  const displayLabel = part.label ? `part ${part.label}` : `part ${index + 1}`;
   const marksNum = part.marks !== "" ? Number(part.marks) : null;
 
   // Group subtopics by section

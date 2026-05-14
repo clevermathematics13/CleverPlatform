@@ -750,7 +750,7 @@ function PartEditor({
   }
 
   const label = part.part_label
-    ? `Part ${part.part_label.toUpperCase()}`
+    ? `part ${part.part_label}`
     : "Whole question";
   const marks = part.marks != null ? ` [${part.marks} mark${part.marks !== 1 ? "s" : ""}]` : "";
 
