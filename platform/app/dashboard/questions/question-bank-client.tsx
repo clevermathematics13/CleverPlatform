@@ -5130,7 +5130,7 @@ function QuestionRow({
                         <div className="flex flex-wrap gap-2">
                           {graphCrops.map((crop, idx) => {
                             const part = parts.find((p) => p.id === crop.part_id);
-                            const partLabel = part?.part_label?.trim() ? `part ${part.part_label}` : crop.part_id ? "part linked" : "No part";
+                            const partLabel = part?.part_label?.trim() ? `part ${part.part_label.toLowerCase()}` : crop.part_id ? "part linked" : "No part";
                             const isDeleting = deletingGraphCropIds.has(crop.id);
                             return (
                               <div key={crop.id} className="relative group rounded border border-violet-200 bg-white p-1">
@@ -5417,11 +5417,6 @@ function QuestionRow({
                             onClick={() => setEditingStem("stem_latex")}
                             className={`px-2 py-0.5 rounded text-xs font-medium border ${editingStem === "stem_latex" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50"}`}
                           >Question</button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingStem("stem_markscheme_latex")}
-                            className={`px-2 py-0.5 rounded text-xs font-medium border ${editingStem === "stem_markscheme_latex" ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-indigo-700 border-indigo-300 hover:bg-indigo-50"}`}
-                          >Mark Scheme</button>
                         </div>
                         <button
                           type="button"
@@ -5489,12 +5484,6 @@ function QuestionRow({
                               <p className="text-xs font-semibold text-gray-500 mb-1">Question stem</p>
                               {stemLatex
                                 ? <LatexRenderer latex={stemLatex} />
-                                : <p className="text-xs text-gray-400 italic">—</p>}
-                            </div>
-                            <div>
-                              <p className="text-xs font-semibold text-gray-500 mb-1">Mark scheme stem</p>
-                              {stemMsLatex
-                                ? <LatexRenderer latex={stemMsLatex} />
                                 : <p className="text-xs text-gray-400 italic">—</p>}
                             </div>
                           </div>
@@ -5611,7 +5600,7 @@ function QuestionRow({
                           <h3 className="text-xs font-bold uppercase tracking-wide text-gray-600">{section.title}</h3>
                           <div className="space-y-4">
                             {parts.map((part) => {
-                              const partLabel = part.part_label ? `part ${part.part_label}` : "Whole question";
+                              const partLabel = part.part_label ? `part ${part.part_label.toLowerCase()}` : "Whole question";
                               const field = section.key;
                               const isEditing = editingLatex?.partId === part.id && editingLatex.field === field;
                               const isExtracting = extractingLatexField?.partId === part.id && extractingLatexField.field === field;
@@ -5933,7 +5922,7 @@ function ImageGroup({
                   <img
                     src={img.url ?? ""}
                     alt={img.alt_text ?? `${label} image ${idx + 1}`}
-                    className={`w-full object-contain rounded border bg-white p-1 ${borderColor} ${hoverBorderColor} hover:shadow-md transition-all ${
+                    className={`w-full rounded border bg-white p-1 ${borderColor} ${hoverBorderColor} hover:shadow-md transition-all ${
                       deletingImageIds.has(img.id) ? "opacity-40" : ""
                     }`}
                     draggable={false}
@@ -6885,7 +6874,7 @@ function QueueRow({
           <div className="flex flex-col">
             {item.partSubtopics.map((ps, i) => (
               <span key={i} className="text-[10px] text-gray-400 leading-tight truncate">
-                {ps.partLabel ? `part ${ps.partLabel} · ` : ""}{ps.codes.join(" · ")}
+                {ps.partLabel ? `part ${ps.partLabel.toLowerCase()} · ` : ""}{ps.codes.join(" · ")}
               </span>
             ))}
           </div>
