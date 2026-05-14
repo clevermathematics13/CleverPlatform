@@ -2761,6 +2761,9 @@ function QuestionRow({
 
   // Guard close: if section is required but not set, show inline prompt instead.
   const handleClose = () => {
+    if (graphEditorOpen && graphSpecDirty) {
+      if (!confirm("You have unsaved graph edits. Close anyway? (Click \"Save \u2192 Stem\" or \"Save \u2192 Parts Draft\" first to keep them.)")) return;
+    }
     if (showSection && question.section === null) {
       setShowSectionPrompt(true);
     } else {
@@ -3018,6 +3021,7 @@ function QuestionRow({
   // ── Graph editor state ──────────────────────────────────────────────────
   const [graphEditorOpen, setGraphEditorOpen] = useState(false);
   const [graphSpecJson, setGraphSpecJson] = useState(() => JSON.stringify(EXAMPLE_SPEC, null, 2));
+  const [graphSpecDirty, setGraphSpecDirty] = useState(false);
   const [graphSavingField, setGraphSavingField] = useState<"stem_latex" | "parts_draft_latex" | null>(null);
   const [graphCopiedMarker, setGraphCopiedMarker] = useState<string | null>(null);
   const [graphMarkerCopied, setGraphMarkerCopied] = useState(false);
@@ -3259,8 +3263,8 @@ function QuestionRow({
         return;
       }
       setGraphSpecJson(JSON.stringify(parsed.graphSpec, null, 2));
+      setGraphSpecDirty(true);
       setGraphParseError(null);
-      if (parsed.graphMeta) setGraphMeta(parsed.graphMeta);
       if (Array.isArray(parsed.warnings)) setGraphExtractWarnings(parsed.warnings);
       setShowCorrectionInput(false);
       setCorrectionJson("");
@@ -3329,6 +3333,7 @@ function QuestionRow({
 
       if (data.graphSpec) {
         setGraphSpecJson(JSON.stringify(data.graphSpec, null, 2));
+        setGraphSpecDirty(true);
         setGraphParseError(null);
       }
       if (data.graphMeta) setGraphMeta(data.graphMeta as Record<string, unknown>);
@@ -3398,6 +3403,7 @@ function QuestionRow({
       onRefresh();
     } finally {
       setGraphSavingField(null);
+      setGraphSpecDirty(false);
     }
   }
 
@@ -4741,7 +4747,7 @@ function QuestionRow({
                           <textarea
                             rows={16}
                             value={graphSpecJson}
-                            onChange={(e) => { setGraphSpecJson(e.target.value); setGraphParseError(null); }}
+                            onChange={(e) => { setGraphSpecJson(e.target.value); setGraphSpecDirty(true); setGraphParseError(null); }}
                             spellCheck={false}
                             className="w-full rounded border border-gray-300 px-2 py-1.5 font-mono text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
                           />
@@ -4767,7 +4773,7 @@ function QuestionRow({
                             </button>
                             <button
                               type="button"
-                              onClick={() => { setGraphSpecJson(JSON.stringify(EXAMPLE_SPEC, null, 2)); setGraphParseError(null); }}
+                              onClick={() => { setGraphSpecJson(JSON.stringify(EXAMPLE_SPEC, null, 2)); setGraphSpecDirty(false); setGraphParseError(null); }}
                               className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
                             >
                               Reset to example
