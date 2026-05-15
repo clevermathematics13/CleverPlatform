@@ -6578,7 +6578,9 @@ function TestBuilderPanel({
             </span>
           </div>
         )}
-
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        <div className="px-4 pt-3 pb-2 border-b border-indigo-100" suppressHydrationWarning>
         {/* Exam config form */}
         <div className="space-y-2" suppressHydrationWarning>
           <input
@@ -6717,8 +6719,8 @@ function TestBuilderPanel({
             </button>
           </div>
         )}
-      </div>
-      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+        </div>
+        <div className="px-2 py-2 space-y-1">
         {queue.length === 0 && (
           <p className="text-center text-xs text-indigo-400 py-6">
             Click + next to a question to add it here
@@ -6818,6 +6820,7 @@ function TestBuilderPanel({
             />
           ))
         )}
+        </div>
       </div>
 
       {/* Footer */}
