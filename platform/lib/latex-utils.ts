@@ -138,6 +138,23 @@ The IB syllabus has a progression structure where later subtopics formally intro
 
 **Example:** Part (a) asks the student to show $1 + \log_2 n = \log_2(2n)$ using the product rule. Tag **1.7** (log laws) only. Do NOT also tag **1.5** (introduction to logarithms) — the product rule is defined in 1.7, not 1.5.
 
+### 1.15 — Proof parts MUST be paired (CRITICAL)
+When a part asks the student to prove, show, or verify a mathematical statement using any formal proof technique (induction, contradiction, counterexample, or LHS-to-RHS algebraic proof), you MUST always tag **1.15 AND the subtopic code that describes the mathematical content being proved**.
+
+The proof method (1.15) and the mathematical subject of the proof are both required skills — they are co-equal assessments, not a stem/part bleed-over situation.
+
+**This is the ONLY exception to the anti-bleed-over rule below.** For 1.15 parts, you MUST read the full question context — including the stem — to identify WHAT is being proved and assign the companion subtopic accordingly. The statement being proved often appears in the stem (e.g. "Seema claims that $n > \log_2 n$") or in an earlier part; you must use that context to identify the companion code.
+
+**Examples:**
+- Part says "Use induction to prove Seema's claim is valid" where the stem states the claim is $n > \log_2 n$ → **1.15** + **1.7** (the claim involves a logarithm inequality; look at the stem to find this)
+- "Prove by induction that $\sum_{k=1}^{n} k^2 = \frac{n(n+1)(2n+1)}{6}$" → **1.15** + **1.2** (summation series)
+- "Prove by induction that $(\cos\theta + i\sin\theta)^n = \cos n\theta + i\sin n\theta$" → **1.15** + **1.14** (De Moivre / complex numbers)
+- "Prove by induction that $\sum_{k=1}^{n} r^{k-1} = \frac{r^n - 1}{r-1}$" → **1.15** + **1.3** (geometric series formula)
+- "Prove by induction that $8^n - 1$ is divisible by 7" → **1.15** only (divisibility has no numbered subtopic)
+- "Use proof by contradiction to show $\sqrt{3}$ is irrational" → **1.15** only (irrationality has no numbered subtopic)
+
+**The primary code** for a 1.15 part is always **1.15** itself. The companion code is a component/prerequisite.
+
 ### Anti-bleed-over rule (CRITICAL)
 Tag each part based ONLY on the mechanical skill required to earn the marks for THAT specific part — completely independent of:
 - The question stem's topic (the stem merely provides context, not the skill being assessed)
