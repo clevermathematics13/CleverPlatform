@@ -138,8 +138,6 @@ The IB syllabus has a progression structure where later subtopics formally intro
 - **1.8** (Sum of geometric sequences) subsumes **1.3** (geometric sequences) when the skill being tested is evaluating the sum formula, not identifying the ratio.
 - **5.6/5.7/5.8** (integration rules) subsume **5.1** (anti-differentiation as reverse of differentiation) when a specific integration technique (substitution, by-parts, standard form) is being tested.
 - **5.9/5.10** (differential equations) subsume **5.6** when the skill is solving a DE, not bare integration.
-- **2.5.1** (Composite functions) subsumes **2.5.2** (Inverse functions) when the inverse function is merely used as an ingredient inside a composition AND was already explicitly derived in a preceding part of the same question. Only add **2.5.2** if the act of finding/deriving the inverse is itself a required algebraic step to earn marks within this specific part — i.e. it does not rely on a previously found inverse.
-
 **General rule:** Ask "Does the advanced subtopic's syllabus description explicitly mention the skill tested?" If yes, tag only the advanced subtopic. Only add the foundational subtopic if the part is **directly** testing foundational knowledge (e.g. the part ONLY asks the student to recall what $\log_{10} e$ equals, not to apply a log law).
 
 **Example:** Part (a) asks the student to show $1 + \log_2 n = \log_2(2n)$ using the product rule. Tag **1.7** (log laws) only. Do NOT also tag **1.5** (introduction to logarithms) — the product rule is defined in 1.7, not 1.5.
@@ -161,11 +159,27 @@ The proof method (1.15) and the mathematical subject of the proof are both requi
 
 **The primary code** for a 1.15 part is always **1.15** itself. The companion code is a component/prerequisite.
 
+### 2.5.1 vs 2.5.2 — Composition using a previously found inverse (CRITICAL EXCEPTION)
+
+This is an **explicit exception** to the anti-bleed-over rule below.
+
+When a part asks the student to evaluate or find a composite function of the form $(f^{-1} \circ g)(x)$ or similar, you must check whether $f^{-1}$ was explicitly derived in an earlier part of the same question.
+
+- If **YES** — the inverse was already found earlier: tag **2.5.1 only**. The bottleneck skill is building and manipulating the composite function; the inverse is a pre-computed ingredient. Adding 2.5.2 creates false diagnostic signal.
+- If **NO** — the inverse has not been established anywhere earlier in the question: tag **both 2.5.1 and 2.5.2**, because finding the inverse is itself a required step.
+
+**Worked example:** A question has parts (a)(i) "Find f(2)", (a)(ii) "Find $f^{-1}(x)$", (b) "Write down h(x)", (c) "Solve $h^{-1}(x) = -2$", (d) "Given $h(x) = (f^{-1} \circ g)(x)$, find $m$ and $c$".
+- Part (a)(ii) → **2.5.2** (finding the inverse is the entire task)
+- Part (c) → **2.5.2** (solving using an inverse)
+- Part (d) → **2.5.1 only**. $f^{-1}$ was already derived in (a)(ii); the student substitutes it into the composition to equate coefficients. The bottleneck is the composition algebra, NOT inverse functions.
+
 ### Anti-bleed-over rule (CRITICAL)
 Tag each part based ONLY on the mechanical skill required to earn the marks for THAT specific part — completely independent of:
 - The question stem's topic (the stem merely provides context, not the skill being assessed)
 - Other parts in the question
 - The overall question theme or setting
+
+**Exception:** The 2.5.1 vs 2.5.2 rule above deliberately looks across parts — apply it before this rule.
 
 **Example:** If the stem introduces a complex number z = 3^(i−1) but part (a) only asks "Write 3 in the form e^a where a ∈ ℝ" (a real-number logarithm step worth 1 mark), tag part (a) with **1.5** (Exponents and logarithms) only — NOT 1.13 (Complex numbers). The stem's topic must never contaminate the granular skill tag of a part.
 
