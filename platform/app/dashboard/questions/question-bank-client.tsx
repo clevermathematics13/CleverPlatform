@@ -3020,6 +3020,19 @@ function QuestionRow({
     if (graphEditorOpen && graphSpecDirty) {
       if (!confirm("You have unsaved graph edits. Close anyway? (Click \"Save \u2192 Stem\" or \"Save \u2192 Parts Draft\" first to keep them.)")) return;
     }
+    // Warn if any parts have multiple subtopics but no primary (★) selected
+    const missingPrimary = question.question_parts.filter(
+      (p) => (p.subtopic_codes?.length ?? 0) > 1 && !p.primary_subtopic_code
+    );
+    if (missingPrimary.length > 0) {
+      const labels = missingPrimary
+        .map((p) => (p.part_label ? `part (${p.part_label})` : "the whole question"))
+        .join(", ");
+      const plural = missingPrimary.length === 1;
+      if (!confirm(
+        `${plural ? labels + " has" : labels + " have"} multiple subtopics but no primary (\u2605) selected.\n\nPress OK to close anyway, or Cancel to stay and set the primary subtopic${plural ? "" : "s"}.`
+      )) return;
+    }
     if (showSection && question.section === null) {
       setShowSectionPrompt(true);
     } else {
