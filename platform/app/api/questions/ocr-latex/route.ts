@@ -280,6 +280,7 @@ Additional rules:
 - Include sub-parts (i), (ii) within the parent part's \\begin{IBPart} block
 - Include mark allocations as \\hfill [N] at the end of each part's final line
 - Use $ ... $ for inline math and \\[ ... \\] for display math
+- If the image contains a coordinate diagram or graph, output the marker [[GRAPH_IMAGE]] on its own line at the exact position where the graph appears in the document. For example, if the graph appears after the stem introduction and before part (a), place [[GRAPH_IMAGE]] after the stem text and before the first \\begin{IBPart}. If the graph appears between two parts, place it inside the following part's \\begin{IBPart} block, before that part's question text. Do NOT place [[GRAPH_IMAGE]] after the last \\end{IBPart}.
 - Return ONLY the LaTeX body, no explanation, no markdown fences`;
     } else if (imageType === "markscheme") {
       prompt = `These are images of an IB Mathematics mark scheme. Extract the complete LaTeX for the solution/mark scheme shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`;
@@ -368,12 +369,7 @@ Additional rules:
     extractedLatex = stripMarkAnnotationLines(extractedLatex);
   }
 
-  // Ensure draft output includes a graph marker when OCR likely detected a graph.
-  // The UI renderer maps this marker to the currently viewed source image.
-  const graphMarkerInjected = isQuestionDraft && graphDetected && !extractedLatex.includes(GRAPH_IMAGE_MARKER);
-  if (graphMarkerInjected) {
-    extractedLatex = `${extractedLatex.trim()}\n\n${GRAPH_IMAGE_MARKER}`;
-  }
+  const graphMarkerInjected = false; // graph marker is now placed by Claude at the correct position
 
   // Save extracted LaTeX to the appropriate table
   if (savesToQuestion) {

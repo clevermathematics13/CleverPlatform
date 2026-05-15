@@ -6167,7 +6167,8 @@ function SubtopicEditor({
       <div className="flex flex-wrap items-center gap-1">
         {codes.map((c) => {
           const sub = available.find((s) => s.code === c);
-          const isPrimary = primaryCode === c;
+          const autoSolo = codes.length === 1; // single code is implicitly primary
+          const isPrimary = autoSolo || primaryCode === c;
           return (
             <span
               key={c}
@@ -6179,7 +6180,7 @@ function SubtopicEditor({
             >
               {isPrimary && <span title="Primary skill">★</span>}
               {c}{sub?.descriptor ? ` ${sub.descriptor}` : ""}
-              {onPrimaryChange && (
+              {onPrimaryChange && !autoSolo && (
                 <button
                   type="button"
                   onClick={() => onPrimaryChange(isPrimary ? null : c)}

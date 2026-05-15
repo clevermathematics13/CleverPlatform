@@ -213,6 +213,43 @@ function renderWithTermHighlights(
   return nodes.length > 0 ? <>{nodes}</> : text;
 }
 
+/** Expand the private-use-area bold/italic markers inserted by preprocessLatex. */
+function renderStyledText(
+  text: string,
+  commandTerm: string | null | undefined,
+  contextTerms: string[]
+): React.ReactNode {
+  const BOLD_OPEN = "\u{E001}", BOLD_CLOSE = "\u{E002}";
+  const ITAL_OPEN = "\u{E003}", ITAL_CLOSE = "\u{E004}";
+  const re = new RegExp(`[${BOLD_OPEN}${ITAL_OPEN}]`, "u");
+  if (!re.test(text)) return renderWithTermHighlights(text, commandTerm, contextTerms);
+
+  const nodes: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+  while (remaining.length > 0) {
+    const boldOpen = remaining.indexOf(BOLD_OPEN);
+    const italOpen = remaining.indexOf(ITAL_OPEN);
+    const next = boldOpen === -1 ? italOpen : italOpen === -1 ? boldOpen : Math.min(boldOpen, italOpen);
+    if (next === -1) {
+      nodes.push(renderWithTermHighlights(remaining, commandTerm, contextTerms));
+      break;
+    }
+    if (next > 0) nodes.push(renderWithTermHighlights(remaining.slice(0, next), commandTerm, contextTerms));
+    const isBold = remaining[next] === BOLD_OPEN;
+    const closeChar = isBold ? BOLD_CLOSE : ITAL_CLOSE;
+    const closeIdx = remaining.indexOf(closeChar, next + 1);
+    const inner = closeIdx === -1 ? remaining.slice(next + 1) : remaining.slice(next + 1, closeIdx);
+    const content = renderWithTermHighlights(inner, commandTerm, contextTerms);
+    nodes.push(isBold
+      ? <strong key={`s-${key++}`}>{content}</strong>
+      : <em key={`s-${key++}`}>{content}</em>
+    );
+    remaining = closeIdx === -1 ? "" : remaining.slice(closeIdx + 1);
+  }
+  return <>{nodes}</>;
+}
+
 function renderTextLine(
   line: string,
   key: string | number,
@@ -228,14 +265,14 @@ function renderTextLine(
     const isMarkCode = /^\(?[A-Z]{1,2}\d*\)?$/.test(before);
     return (
       <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-        <span>{isMarkCode ? null : (before ? renderWithTermHighlights(before, commandTerm, contextTerms) : null)}</span>
+        <span>{isMarkCode ? null : (before ? renderStyledText(before, commandTerm, contextTerms) : null)}</span>
         <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
           {isMarkCode ? `${before} ${markCode}` : markCode}
         </span>
       </span>
     );
   }
-  return renderWithTermHighlights(line, commandTerm, contextTerms);
+  return renderStyledText(line, commandTerm, contextTerms);
 }
 
 /**
@@ -256,6 +293,13 @@ function preprocessLatex(src: string): string {
 
   // Strip the container environment tags themselves
   out = out.replace(/\\(?:begin|end)\{(?:enumerate|itemize)\}/g, "");
+
+  // Convert LaTeX text-mode formatting commands to Unicode/marker equivalents
+  // so they render correctly in text segments (outside math mode).
+  // We use distinctive markers that won't appear in normal LaTeX.
+  out = out.replace(/\\textbf\{([^}]*)\}/g, "\u{E001}$1\u{E002}"); // bold markers
+  out = out.replace(/\\textit\{([^}]*)\}/g, "\u{E003}$1\u{E004}"); // italic markers
+  out = out.replace(/\\emph\{([^}]*)\}/g, "\u{E003}$1\u{E004}");   // treat \emph same as \textit
 
   return out;
 }
