@@ -368,6 +368,56 @@ Additional rules:
     }
   }
 
+  // ── IBPart boundary correction pass (draft fields only) ──────────────────
+  // Cross-reference the extracted IBPart blocks with the original images to
+  // detect and fix interspersed context paragraphs that landed in the wrong
+  // block. A common error: text that appears BETWEEN part (c) and (d) in the
+  // original image (a setup paragraph for (d)) ends up at the bottom of the
+  // (c) block instead of the top of the (d) block.
+  if (isDraft && extractedLatex && base64Images.length > 0) {
+    try {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const correctionImages = base64Images.map((b64) => ({
+        type: "image" as const,
+        source: { type: "base64" as const, media_type: "image/png" as const, data: b64 },
+      }));
+      const docType = isQuestionDraft ? "question" : "mark scheme";
+      const correctionPrompt = `You have already extracted this IB Mathematics ${docType} into \\begin{IBPart}[letter]...\\end{IBPart} blocks. Now perform a boundary check against the original images.
+
+Background: In IB papers, a context/setup paragraph sometimes appears printed BETWEEN two part labels in the original document — for example, a line like "Consider the function $g(x) = mx + c$, where $x \\in \\mathbb{R}$ and $m, c \\in \\mathbb{Q}$." printed between the "(c)" and "(d)" labels. Such paragraphs must go at the TOP of the FOLLOWING part's IBPart block.
+
+A frequent extraction error is placing such paragraphs at the BOTTOM of the PRECEDING part instead.
+
+For each IBPart block, compare its content with the image:
+- If the block's FINAL paragraph is a setup/definition that introduces the NEXT part's task (it provides no answer to the current part and is not needed to understand the current part's conclusion), move it to the beginning of the next part's IBPart block.
+- If the block's final content is a genuine conclusion or result of the current part's task, leave it in place.
+
+Apply corrections directly. Return the complete corrected LaTeX with \\begin{IBPart}[letter] tags preserved. If nothing needs moving, return the text unchanged. Return ONLY the LaTeX body — no explanation, no markdown fences.
+
+Current extraction:
+${extractedLatex}`;
+
+      const correctionResp = await anthropic.messages.create({
+        model: "claude-opus-4-5",
+        max_tokens: 4096,
+        messages: [{
+          role: "user",
+          content: [
+            ...correctionImages,
+            { type: "text" as const, text: correctionPrompt },
+          ],
+        }],
+      });
+      const corrected = correctionResp.content[0].type === "text"
+        ? correctionResp.content[0].text.trim()
+        : "";
+      if (corrected) extractedLatex = corrected;
+    } catch (boundaryErr) {
+      // Non-fatal: log and continue with the un-corrected extraction
+      console.warn("IBPart boundary correction pass failed:", boundaryErr);
+    }
+  }
+
   // Strip mark-scheme annotation lines from question OCR output.
   // (Markscheme fields intentionally keep A1/M1 annotations.)
   if (imageType === "question") {
