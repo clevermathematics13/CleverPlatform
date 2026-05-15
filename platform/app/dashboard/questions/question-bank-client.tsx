@@ -667,6 +667,24 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       next.delete(id);
       return next;
     });
+    // Sync testQueue item with latest question state when the editor closes
+    const q = questions.find((qq) => qq.id === id);
+    if (q) {
+      setTestQueue((prevQueue) =>
+        prevQueue.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
+                subtopicCodes: [...new Set(q.question_parts.flatMap((p) => filterPriorLearning(p.subtopic_codes ?? [])))],
+                partSubtopics: q.question_parts
+                  .map((p) => ({ partLabel: p.part_label ?? "", codes: filterPriorLearning(p.subtopic_codes ?? []) }))
+                  .filter((ps) => ps.codes.length > 0),
+              }
+            : item
+        )
+      );
+    }
   };
 
   const openQuestionFromQueue = (item: TestQueueItem) => {
@@ -1346,12 +1364,19 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   };
 
   const updateSubtopics = async (partId: string, codes: string[], primaryCode?: string | null) => {
+    // Mirror the server's auto-primary logic: if exactly one code and no explicit primary, auto-select it
+    const effectivePrimary = primaryCode !== undefined
+      ? primaryCode
+      : codes.length === 1 ? codes[0] : undefined;
+
     // Optimistic update
     setQuestions((prev) =>
       prev.map((q) => ({
         ...q,
         question_parts: q.question_parts.map((p) =>
-          p.id === partId ? { ...p, subtopic_codes: codes, ...(primaryCode !== undefined ? { primary_subtopic_code: primaryCode } : {}) } : p
+          p.id === partId
+            ? { ...p, subtopic_codes: codes, ...(effectivePrimary !== undefined ? { primary_subtopic_code: effectivePrimary } : {}) }
+            : p
         ),
       }))
     );
@@ -1366,6 +1391,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         setError(data.error);
         return;
       }
+      // Confirmed update
       setQuestions((prev) =>
         prev.map((q) => ({
           ...q,
@@ -1374,6 +1400,29 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           ),
         }))
       );
+      // Sync testQueue: find the question owning this part and refresh its queue item
+      const ownerQ = questions.find((q) => q.question_parts.some((p) => p.id === partId));
+      if (ownerQ) {
+        const updatedParts = ownerQ.question_parts.map((p) =>
+          p.id === partId
+            ? { ...p, subtopic_codes: data.subtopic_codes, primary_subtopic_code: data.primary_subtopic_code ?? p.primary_subtopic_code }
+            : p
+        );
+        setTestQueue((prevQueue) =>
+          prevQueue.map((item) =>
+            item.id === ownerQ.id
+              ? {
+                  ...item,
+                  marks: updatedParts.reduce((sum, p) => sum + p.marks, 0),
+                  subtopicCodes: [...new Set(updatedParts.flatMap((p) => filterPriorLearning(p.subtopic_codes ?? [])))],
+                  partSubtopics: updatedParts
+                    .map((p) => ({ partLabel: p.part_label ?? "", codes: filterPriorLearning(p.subtopic_codes ?? []) }))
+                    .filter((ps) => ps.codes.length > 0),
+                }
+              : item
+          )
+        );
+      }
     } catch {
       setError("Failed to update subtopics");
     }
