@@ -138,6 +138,7 @@ The IB syllabus has a progression structure where later subtopics formally intro
 - **1.8** (Sum of geometric sequences) subsumes **1.3** (geometric sequences) when the skill being tested is evaluating the sum formula, not identifying the ratio.
 - **5.6/5.7/5.8** (integration rules) subsume **5.1** (anti-differentiation as reverse of differentiation) when a specific integration technique (substitution, by-parts, standard form) is being tested.
 - **5.9/5.10** (differential equations) subsume **5.6** when the skill is solving a DE, not bare integration.
+- **2.5.1** (Composite functions) subsumes **2.5.2** (Inverse functions) when the inverse function is merely used as an ingredient inside a composition AND was already explicitly derived in a preceding part of the same question. Only add **2.5.2** if the act of finding/deriving the inverse is itself a required algebraic step to earn marks within this specific part — i.e. it does not rely on a previously found inverse.
 
 **General rule:** Ask "Does the advanced subtopic's syllabus description explicitly mention the skill tested?" If yes, tag only the advanced subtopic. Only add the foundational subtopic if the part is **directly** testing foundational knowledge (e.g. the part ONLY asks the student to recall what $\log_{10} e$ equals, not to apply a log law).
 

@@ -233,7 +233,10 @@ DO NOT include:
 
 If there is no text before "(a)", return an empty string.
 
-Use $ ... $ for inline math and \\[ ... \\] for display math. Use \\boldsymbol{} for vectors, \\begin{pmatrix} for matrices. Return ONLY the LaTeX body, no explanation, no markdown fences.`;
+Use $ ... $ for inline math and \\[ ... \\] for display math. Use \\boldsymbol{} for vectors, \\begin{pmatrix} for matrices.
+- If the image contains a coordinate diagram or graph appearing in the stem area (before part (a)), output the marker [[GRAPH_IMAGE]] on its own line at the position where the graph appears within the stem.
+- No color formatting: NEVER output \\textcolor{}{}, \\color{}, \\colorbox{}{}, \\definecolor{}, or ANY color macro whatsoever. Return plain LaTeX only.
+Return ONLY the LaTeX body, no explanation, no markdown fences.`;
     } else if (isDraft) {
       const draftType = field === "parts_draft_latex" ? "question" : "mark scheme";
       prompt = `These are images of an IB Mathematics exam ${draftType}. The question has an introductory stem followed by multiple labelled parts (a), (b), (c) etc.
@@ -281,6 +284,7 @@ Additional rules:
 - Include mark allocations as \\hfill [N] at the end of each part's final line
 - Use $ ... $ for inline math and \\[ ... \\] for display math
 - If the image contains a coordinate diagram or graph, output the marker [[GRAPH_IMAGE]] on its own line at the exact position where the graph appears in the document. For example, if the graph appears after the stem introduction and before part (a), place [[GRAPH_IMAGE]] after the stem text and before the first \\begin{IBPart}. If the graph appears between two parts, place it inside the following part's \\begin{IBPart} block, before that part's question text. Do NOT place [[GRAPH_IMAGE]] after the last \\end{IBPart}.
+- No color formatting: NEVER output \\textcolor{}{}, \\color{}, \\colorbox{}{}, \\definecolor{}, or ANY color macro whatsoever. Return plain LaTeX only.
 - Return ONLY the LaTeX body, no explanation, no markdown fences`;
     } else if (imageType === "markscheme") {
       prompt = `These are images of an IB Mathematics mark scheme. Extract the complete LaTeX for the solution/mark scheme shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`;
