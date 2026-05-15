@@ -8,6 +8,8 @@ type PostgrestLikeError = {
  * If the target database is behind, any of these may be missing.
  */
 export const OPTIONAL_QUESTION_PARTS_COLUMNS = [
+  // migration 042
+  "primary_subtopic_code",
   // migration 040
   "command_terms",
   // migration 035

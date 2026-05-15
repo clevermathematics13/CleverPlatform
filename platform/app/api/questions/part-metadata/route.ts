@@ -15,6 +15,7 @@ type Body = {
   commandTerm?: unknown;
   commandTerms?: unknown;
   subtopicCodes?: unknown;
+  primarySubtopicCode?: unknown;
   sourceLatex?: unknown;
 };
 
@@ -95,7 +96,7 @@ const DEFAULT_COMMAND_TERMS = [
   "Write down",
 ] as const;
 
-const PART_SELECT = "id, part_label, marks, subtopic_codes, command_term, command_terms, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
+const PART_SELECT = "id, part_label, marks, subtopic_codes, primary_subtopic_code, command_term, command_terms, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
 
 async function snapshotPartMetadata(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -305,6 +306,13 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
+  if (body.primarySubtopicCode !== undefined) {
+    update.primary_subtopic_code =
+      typeof body.primarySubtopicCode === "string" && body.primarySubtopicCode.trim().length > 0
+        ? body.primarySubtopicCode.trim()
+        : null;
+  }
+
   const sourceText = typeof sourceLatex === "string" ? sourceLatex : "";
   if (commandTerm !== undefined || commandTerms !== undefined || sourceText) {
     const effectiveTerms =
@@ -409,7 +417,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { questionId, partLabel, marks, commandTerm, commandTerms, subtopicCodes, sourceLatex } = body;
+  const { questionId, partLabel, marks, commandTerm, commandTerms, subtopicCodes, primarySubtopicCode, sourceLatex } = body;
   if (typeof questionId !== "string" || !questionId) {
     return NextResponse.json({ error: "questionId is required" }, { status: 400 });
   }
@@ -473,6 +481,10 @@ export async function POST(request: NextRequest) {
       sourceLatex: typeof sourceLatex === "string" ? sourceLatex : "",
     }),
     subtopic_codes: codes,
+    primary_subtopic_code:
+      typeof primarySubtopicCode === "string" && primarySubtopicCode.trim().length > 0
+        ? primarySubtopicCode.trim()
+        : null,
     sort_order: sortOrder,
   };
 

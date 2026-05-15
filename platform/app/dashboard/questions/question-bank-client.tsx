@@ -35,6 +35,7 @@ interface QuestionPart {
   part_label: string;
   marks: number;
   subtopic_codes: string[];
+  primary_subtopic_code?: string | null;
   command_term: string | null;
   command_terms?: string[];
   instructional_context_terms?: string[];
@@ -1344,13 +1345,13 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     }
   };
 
-  const updateSubtopics = async (partId: string, codes: string[]) => {
+  const updateSubtopics = async (partId: string, codes: string[], primaryCode?: string | null) => {
     // Optimistic update
     setQuestions((prev) =>
       prev.map((q) => ({
         ...q,
         question_parts: q.question_parts.map((p) =>
-          p.id === partId ? { ...p, subtopic_codes: codes } : p
+          p.id === partId ? { ...p, subtopic_codes: codes, ...(primaryCode !== undefined ? { primary_subtopic_code: primaryCode } : {}) } : p
         ),
       }))
     );
@@ -1358,7 +1359,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       const res = await fetch("/api/questions/subtopics", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ partId, subtopicCodes: codes }),
+        body: JSON.stringify({ partId, subtopicCodes: codes, ...(primaryCode !== undefined ? { primarySubtopicCode: primaryCode } : {}) }),
       });
       const data = await res.json();
       if (data.error) {
@@ -1369,7 +1370,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         prev.map((q) => ({
           ...q,
           question_parts: q.question_parts.map((p) =>
-            p.id === partId ? { ...p, subtopic_codes: data.subtopic_codes } : p
+            p.id === partId ? { ...p, subtopic_codes: data.subtopic_codes, primary_subtopic_code: data.primary_subtopic_code ?? p.primary_subtopic_code } : p
           ),
         }))
       );
@@ -2894,7 +2895,7 @@ function QuestionRow({
   onUpdateCommandTerm: (partId: string, commandTerm: string | null) => void;
   onAddCustomTerm: (term: string) => void;
   availableSubtopics: Subtopic[];
-  onUpdateSubtopics: (partId: string, codes: string[]) => void;
+  onUpdateSubtopics: (partId: string, codes: string[], primaryCode?: string | null) => void;
   images: QuestionImage[];
   extracting: boolean;
   driveConnected: boolean;
@@ -5506,6 +5507,11 @@ function QuestionRow({
                               <SubtopicEditor
                                 codes={wholePart.subtopic_codes}
                                 available={availableSubtopics}
+                                primaryCode={wholePart.primary_subtopic_code ?? null}
+                                onPrimaryChange={(code) => {
+                                  onUpdateSubtopics(wholePart.id, wholePart.subtopic_codes, code);
+                                  setParts((prev) => prev.map((p) => (p.id === wholePart.id ? { ...p, primary_subtopic_code: code } : p)));
+                                }}
                                 onChange={(codes) => {
                                   onUpdateSubtopics(wholePart.id, codes);
                                   setParts((prev) => prev.map((p) => (p.id === wholePart.id ? { ...p, subtopic_codes: codes } : p)));
@@ -5635,6 +5641,11 @@ function QuestionRow({
                                         <SubtopicEditor
                                           codes={part.subtopic_codes}
                                           available={availableSubtopics}
+                                          primaryCode={part.primary_subtopic_code ?? null}
+                                          onPrimaryChange={(code) => {
+                                            onUpdateSubtopics(part.id, part.subtopic_codes, code);
+                                            setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, primary_subtopic_code: code } : p)));
+                                          }}
                                           onChange={(codes) => {
                                             onUpdateSubtopics(part.id, codes);
                                             setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, subtopic_codes: codes } : p)));
@@ -6005,16 +6016,21 @@ function SubtopicEditor({
   codes,
   available,
   onChange,
+  primaryCode,
+  onPrimaryChange,
 }: {
   codes: string[];
   available: Subtopic[];
   onChange: (codes: string[]) => void;
+  primaryCode?: string | null;
+  onPrimaryChange?: (code: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const removeTopic = (code: string) => {
     onChange(codes.filter((c) => c !== code));
+    if (primaryCode === code) onPrimaryChange?.(null);
   };
 
   const addTopic = (code: string) => {
@@ -6048,12 +6064,30 @@ function SubtopicEditor({
       <div className="flex flex-wrap items-center gap-1">
         {codes.map((c) => {
           const sub = available.find((s) => s.code === c);
+          const isPrimary = primaryCode === c;
           return (
             <span
               key={c}
-              className="inline-flex items-center gap-0.5 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800"
+              className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                isPrimary
+                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-400"
+                  : "bg-blue-100 text-blue-800"
+              }`}
             >
+              {isPrimary && <span title="Primary skill">★</span>}
               {c}{sub?.descriptor ? ` ${sub.descriptor}` : ""}
+              {onPrimaryChange && (
+                <button
+                  type="button"
+                  onClick={() => onPrimaryChange(isPrimary ? null : c)}
+                  className={`ml-0.5 font-bold leading-none ${
+                    isPrimary ? "text-amber-500 hover:text-gray-500" : "text-blue-300 hover:text-amber-500"
+                  }`}
+                  title={isPrimary ? "Unset as primary skill" : "Set as primary skill"}
+                >
+                  {isPrimary ? "★" : "☆"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => removeTopic(c)}

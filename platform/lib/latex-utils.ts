@@ -52,10 +52,11 @@ export const IB_LATEX_STYLE_GUIDE = `IB Mathematics past-paper LaTeX conventions
 - Dot product (vector · vector): use \\boldsymbol{\\cdot} so the dot matches the weight of the bold vectors. NEVER use \\bullet or \\times for dot product.
 - Scalar × scalar: use \\times or \\cdot as appropriate.
 - Greek letter parameters (λ, μ, etc.) that appear as unknowns in problems: render in regular math italic (just $\\lambda$, not boldsymbol).
-- Displayed equations: use $$ ... $$ or \\[ ... \\]. Place full-width matrix equations in display mode.
+- Display equations: use $$ ... $$ or \\[ ... \\]. Place full-width matrix equations, column vectors, and multi-line expressions in display mode — do NOT leave them inline if they disrupt line height.
 - Multi-part questions: label parts with \\begin{IBPart}...\\end{IBPart} (not \\begin{enumerate})
-- Mark scheme mark codes: preserve \\hfill before each IB mark code (e.g. "$$...$$\\n\\hfill (A1)"). Place \\hfill OUTSIDE math delimiters, one per line after the equation it annotates. Valid codes: (A1), A1, M1, (M1), AG, R1, N1–N3, ft.
+- Mark scheme mark codes: ALWAYS place \\hfill BEFORE each IB mark code, on its own line after the equation it annotates. Format: \\hfill (A1) or \\hfill M1. Place \\hfill OUTSIDE math delimiters. Valid codes: (A1), A1, M1, (M1), AG, R1, N1–N3, ft. This right-aligns marks to the margin exactly as in IB official documents.
 - Inline math: wrap in $ ... $; do NOT leave math expressions as plain text.
+- No color formatting: NEVER output \\textcolor{}{}, \\color{}, \\colorbox{}{}, \\definecolor{}, or ANY color macro whatsoever. Return completely plain LaTeX — all visual styling is applied by CSS. Injecting color commands is an anti-pattern that will corrupt the database.
 - Do NOT include \\documentclass, \\usepackage, \\begin{document} or any preamble — return body LaTeX only.
 - Common OCR errors to fix: missing minus signs on negative entries, \\lambda/\\mu confusion, 1 vs l vs I confusion, extra spaces inside \\boldsymbol{}.`;
 
@@ -136,10 +137,12 @@ Ask yourself for each part: "If this part appeared in isolation with no stem, wh
 Return ONLY a valid JSON object with NO markdown fences, NO explanation, in exactly this format:
 {
   "parts": [
-    { "label": "a", "marks": 4, "commandTerm": "Find", "subtopicCodes": ["2.1", "5.1"] },
-    { "label": "b", "marks": 2, "commandTerm": "Hence", "subtopicCodes": ["5.1"] }
+    { "label": "a", "marks": 4, "commandTerm": "Find", "primarySubtopicCode": "5.1", "subtopicCodes": ["2.1", "5.1"] },
+    { "label": "b", "marks": 2, "commandTerm": "Hence", "primarySubtopicCode": "5.1", "subtopicCodes": ["5.1"] }
   ]
 }
+
+**primarySubtopicCode** must be one of the codes in `subtopicCodes` — it identifies the single capstone/target skill being assessed by that part (the skill the question is ultimately testing). The remaining codes in `subtopicCodes` are component/prerequisite skills needed to reach the answer but not the main objective. If there is only one subtopic code, it is also the primary.
 
 If sub-parts are nested (e.g. (b)(i), (b)(ii)), use combined labels "bi", "bii" etc.
 The "label" values MUST come from the "Parts detected" list supplied by the user (or infer from the LaTeX if the list is empty).

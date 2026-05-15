@@ -28,6 +28,7 @@ interface WizardPart {
   marks: string;
   commandTerm: string;
   subtopicCodes: string[];
+  primarySubtopicCode?: string | null;
   contentLatex: string;
   markschemeLatex: string;
 }
@@ -716,6 +717,7 @@ export function AddQuestionWizard({
         marks: number;
         commandTerm: string;
         subtopicCodes: string[];
+        primarySubtopicCode?: string;
       }[] = [];
 
       try {
@@ -786,6 +788,7 @@ export function AddQuestionWizard({
             marks: claude?.marks != null ? String(claude.marks) : "",
             commandTerm: claude?.commandTerm ?? "",
             subtopicCodes: claude?.subtopicCodes ?? [],
+            primarySubtopicCode: claude?.primarySubtopicCode ?? null,
             contentLatex: splitQ.get(label) ?? "",
             markschemeLatex: splitMS.get(label) ?? "",
           };
@@ -802,6 +805,7 @@ export function AddQuestionWizard({
                 : "",
             commandTerm: claudeParts[0]?.commandTerm ?? "",
             subtopicCodes: claudeParts[0]?.subtopicCodes ?? [],
+            primarySubtopicCode: claudeParts[0]?.primarySubtopicCode ?? null,
             contentLatex: qDraft,
             markschemeLatex: msDraft,
           },
@@ -910,6 +914,7 @@ export function AddQuestionWizard({
             marks: part.marks === "" ? null : Number(part.marks),
             commandTerm: part.commandTerm || null,
             subtopicCodes: part.subtopicCodes,
+            primarySubtopicCode: part.primarySubtopicCode ?? null,
           }),
         });
         if (!createRes.ok) continue;
