@@ -118,6 +118,8 @@ Use code **1.0** (Assumed Prior Learning) when the primary skill tested is from 
 
 **Critical distinction:** If a question only requires factorising + simplifying/cancelling rational expressions (even if the expressions involve quadratics in the denominator), use **1.0**, NOT 2.8 or 1.11.
 
+**1.0 is ALWAYS used alone.** Never combine 1.0 with any numbered syllabus subtopic. If a part tests prior-learning skills *as a step inside* a broader syllabus topic, tag only the syllabus subtopic — omit 1.0 entirely. 1.0 is only appropriate when the entire skill being assessed is prior learning with no numbered syllabus topic involved.
+
 ### AHL 1.11 — Partial Fractions only
 Only use **1.11** when the question explicitly decomposes a single fraction INTO a SUM of simpler fractions (e.g. finding A and B such that the expression equals A/(x−1) + B/(x+2)). Do NOT use 1.11 for factorising or simplifying rational expressions.
 
