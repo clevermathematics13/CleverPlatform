@@ -49,28 +49,33 @@ fi
 
 # ── commit & push ──────────────────────────────────────────────
 commit_and_push() {
-    [[ -z "$(git status --porcelain)" ]] && return 0
+    # Stage and commit any uncommitted changes
+    if [[ -n "$(git status --porcelain)" ]]; then
+        git add -A
+        if ! git diff --cached --quiet; then
+            local count changed summary msg
+            changed="$(git diff --cached --name-status)"
+            count="$(echo "$changed" | wc -l)"
+            summary="$(echo "$changed" | awk '{print $NF}' | head -3 | paste -sd', ')"
 
-    git add -A
-    git diff --cached --quiet && return 0
+            if [[ "$count" -eq 1 ]]; then
+                msg="update ${summary}"
+            elif [[ "$count" -le 3 ]]; then
+                msg="update ${count} files: ${summary}"
+            else
+                msg="update ${count} files: ${summary}, ..."
+            fi
 
-    # Build a descriptive message from the staged diff
-    local count changed summary msg
-    changed="$(git diff --cached --name-status)"
-    count="$(echo "$changed" | wc -l)"
-    summary="$(echo "$changed" | awk '{print $NF}' | head -3 | paste -sd', ')"
-
-    if [[ "$count" -eq 1 ]]; then
-        msg="update ${summary}"
-    elif [[ "$count" -le 3 ]]; then
-        msg="update ${count} files: ${summary}"
-    else
-        msg="update ${count} files: ${summary}, ..."
+            git commit -m "$msg"
+            echo "$(date +%H:%M:%S) ✓ committed: ${msg}"
+        fi
     fi
 
-    git commit -m "$msg"
-    git push origin "$branch"
-    echo "$(date +%H:%M:%S) ✓ ${msg}"
+    # Always push any unpushed commits (including manually-made ones)
+    if [[ -n "$(git log --oneline "origin/${branch}..HEAD" 2>/dev/null)" ]]; then
+        git push origin "$branch"
+        echo "$(date +%H:%M:%S) ✓ pushed to origin/${branch}"
+    fi
 }
 
 # ── banner ──────────────────────────────────────────────────────

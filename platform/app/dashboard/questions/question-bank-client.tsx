@@ -5481,7 +5481,6 @@ function QuestionRow({
                         ) : (
                           <div className="space-y-4">
                             <div>
-                              <p className="text-xs font-semibold text-gray-500 mb-1">Question stem</p>
                               {stemLatex
                                 ? <LatexRenderer latex={stemLatex} />
                                 : <p className="text-xs text-gray-400 italic">—</p>}

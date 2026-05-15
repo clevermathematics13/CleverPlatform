@@ -123,6 +123,16 @@ Only use **1.11** when the question explicitly decomposes a single fraction INTO
 ### SL 2.8 — Rational Functions
 Use **2.8** only when the question involves analysing the graph, asymptotes, domain, or behaviour of rational functions f(x) = (ax+b)/(cx+d) or similar. Factorising a denominator as an algebraic step within a simplification does NOT make a question a 2.8 question.
 
+### Anti-bleed-over rule (CRITICAL)
+Tag each part based ONLY on the mechanical skill required to earn the marks for THAT specific part — completely independent of:
+- The question stem's topic (the stem merely provides context, not the skill being assessed)
+- Other parts in the question
+- The overall question theme or setting
+
+**Example:** If the stem introduces a complex number z = 3^(i−1) but part (a) only asks "Write 3 in the form e^a where a ∈ ℝ" (a real-number logarithm step worth 1 mark), tag part (a) with **1.5** (Exponents and logarithms) only — NOT 1.13 (Complex numbers). The stem's topic must never contaminate the granular skill tag of a part.
+
+Ask yourself for each part: "If this part appeared in isolation with no stem, what subtopic would I assign?" That is the correct tag.
+
 Return ONLY a valid JSON object with NO markdown fences, NO explanation, in exactly this format:
 {
   "parts": [
