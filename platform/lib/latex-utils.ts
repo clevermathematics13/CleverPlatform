@@ -123,6 +123,9 @@ Use code **1.0** (Assumed Prior Learning) when the primary skill tested is from 
 ### AHL 1.11 — Partial Fractions only
 Only use **1.11** when the question explicitly decomposes a single fraction INTO a SUM of simpler fractions (e.g. finding A and B such that the expression equals A/(x−1) + B/(x+2)). Do NOT use 1.11 for factorising or simplifying rational expressions.
 
+### SL 2.2 — Functions concept (NOT just function notation)
+Only use **2.2** when the part explicitly tests the *concept* of a function: defining domain or range, discussing whether a mapping is a function, working with inverse functions ($f^{-1}$), or discussing the reflection of a graph in $y = x$. **Do NOT tag 2.2 merely because the answer is written in function notation** (e.g. writing $h(x) = \tfrac{1}{2}x - 1$). If the skill being tested is finding the equation of a line, that is **2.1** regardless of whether the line is called $h$ or $h(x)$.
+
 ### SL 2.8 — Rational Functions
 Use **2.8** only when the question involves analysing the graph, asymptotes, domain, or behaviour of rational functions f(x) = (ax+b)/(cx+d) or similar. Factorising a denominator as an algebraic step within a simplification does NOT make a question a 2.8 question.
 
