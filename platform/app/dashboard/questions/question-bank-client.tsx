@@ -2457,6 +2457,41 @@ function ExtractionReviewModal({
     setShowDebug(false);
   }
 
+  function handleConfirmAll() {
+    let planToUse = plan;
+    if (stepIdx === 0) {
+      const newLabels = labelsText
+        .split(/[\s,]+/)
+        .map((l) => l.trim())
+        .filter(Boolean);
+      if (newLabels.length === 0) {
+        const newPartMarks = new Map<string, number>();
+        newPartMarks.set("", plan.partMarks?.get("") ?? parseMarksFromLatex(plan.qDraft) ?? 1);
+        planToUse = {
+          ...plan,
+          finalLabels: [],
+          isWholeQuestion: true,
+          stemQ: "",
+          stemMS: "",
+          splitQ: new Map(),
+          splitMS: new Map(),
+          partMarks: newPartMarks,
+        };
+      } else {
+        const { stem: stemQ, parts: splitQ } = splitDraftIntoParts(plan.qDraft, newLabels);
+        const { stem: stemMS, parts: splitMS } = splitDraftIntoParts(plan.msDraft, newLabels);
+        const newPartMarks = new Map<string, number>();
+        for (const label of newLabels) {
+          const sq = splitQ.get(label) ?? "";
+          const sm = splitMS.get(label) ?? "";
+          newPartMarks.set(label, plan.partMarks?.get(label) ?? parseMarksFromLatex(sq || sm) ?? 1);
+        }
+        planToUse = { ...plan, finalLabels: newLabels, isWholeQuestion: false, stemQ, stemMS, splitQ, splitMS, partMarks: newPartMarks };
+      }
+    }
+    onConfirm(planToUse);
+  }
+
   const debugText = [
     `=== Extraction Review — ${questionCode} ===`,
     ``,
@@ -2735,6 +2770,16 @@ function ExtractionReviewModal({
             className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors border border-gray-200"
           >
             ← Back
+          </button>
+        )}
+        {!isLast && (
+          <button
+            type="button"
+            onClick={handleConfirmAll}
+            className="rounded-lg px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 transition-colors border border-green-300"
+            title="Accept all remaining steps as-is and save directly"
+          >
+            Save all →
           </button>
         )}
         <button
