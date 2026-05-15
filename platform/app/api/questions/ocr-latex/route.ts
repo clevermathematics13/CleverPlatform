@@ -250,11 +250,11 @@ Concrete example of correct output structure:
 ---
 [stem text before (a), if any — outside all IBPart blocks]
 
-\\begin{IBPart}
+\\begin{IBPart}[a]
 Write down the value of $\\alpha + \\beta + \\gamma$. \\hfill [1]
 \\end{IBPart}
 
-\\begin{IBPart}
+\\begin{IBPart}[b]
 A function $h(z)$ is defined by $h(z) = 2z^5 - 11z^4 + rz^3 + sz^2 + tz - 20$, where $r, s, t \\in \\mathbb{R}$.
 
 $\\alpha$, $\\beta$ and $\\gamma$ are also roots of the equation $h(z) = 0$.
@@ -264,7 +264,7 @@ It is given that $h(z) = 0$ is satisfied by the complex number $z = p + 3\\mathr
 Show that $p = 1$. \\hfill [3]
 \\end{IBPart}
 
-\\begin{IBPart}
+\\begin{IBPart}[c]
 It is now given that $h\\!\\left(\\dfrac{1}{2}\\right) = 0$, and $\\alpha, \\beta \\in \\mathbb{Z}^+$, $\\alpha < \\beta$ and $\\gamma \\in \\mathbb{Q}$.
 
 \\begin{enumerate}[label=(\\roman*)]
@@ -277,9 +277,10 @@ It is now given that $h\\!\\left(\\dfrac{1}{2}\\right) = 0$, and $\\alpha, \\bet
 Notice: the h(z) paragraphs appear between labels (a) and (b) in the image, so they go INSIDE the (b) IBPart block FIRST. The "It is now given…" paragraph appears between (b) and (c) in the image, so it goes INSIDE the (c) IBPart block FIRST.
 
 Additional rules:
+- ALWAYS tag each \\begin{IBPart} with the part letter in square brackets: \\begin{IBPart}[a] for part (a), \\begin{IBPart}[d] for part (d), etc. This is CRITICAL for mark schemes that may only show a subset of parts — without the label the parts will be assigned to the wrong slots.
 - Text BEFORE the first labelled part (a) goes OUTSIDE all \\begin{IBPart} blocks — it is the shared stem
 - If there is no text before part (a), output nothing before the first \\begin{IBPart}
-- Do NOT include the part labels (a), (b), (c) themselves
+- Do NOT include the part labels (a), (b), (c) inside the block content — the label goes in the \\begin{IBPart}[letter] tag only
 - Include sub-parts (i), (ii) within the parent part's \\begin{IBPart} block
 - Include mark allocations as \\hfill [N] at the end of each part's final line
 - Use $ ... $ for inline math and \\[ ... \\] for display math
@@ -349,7 +350,7 @@ Additional rules:
                 text: isStem
                   ? `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nThis should be ONLY the introductory stem text before the labelled parts (a), (b), (c) etc. Apply IB conventions and fix any OCR errors. Return ONLY the corrected stem LaTeX body.`
                   : isDraft
-                  ? `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nFormat this as \\begin{IBPart}...\\end{IBPart} blocks. CRITICAL: any setup/definition paragraphs appearing between two part labels in the image belong at the TOP of the FOLLOWING part's \\begin{IBPart} block, BEFORE that part's question sentence. Text before part (a) goes outside all IBPart blocks (the shared stem). Do NOT include part labels (a)/(b)/(c) themselves. Include sub-parts and mark allocations as \\hfill [N]. Apply IB conventions and fix any OCR errors. Return ONLY the corrected LaTeX body.`
+                  ? `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nFormat this as \\begin{IBPart}[letter]...\\end{IBPart} blocks, ALWAYS tagging each block with the correct part letter from the image (e.g. \\begin{IBPart}[a], \\begin{IBPart}[d]). This is critical for mark schemes that may start mid-question. CRITICAL: any setup/definition paragraphs appearing between two part labels in the image belong at the TOP of the FOLLOWING part's \\begin{IBPart} block, BEFORE that part's question sentence. Text before part (a) goes outside all IBPart blocks (the shared stem). Do NOT include part labels (a)/(b)/(c) inside block content. Include sub-parts and mark allocations as \\hfill [N]. Apply IB conventions and fix any OCR errors. Return ONLY the corrected LaTeX body.`
                   : `Raw MathPix output to normalise:\n\n${extractedLatex}\n\nApply IB conventions and fix any OCR errors. Return ONLY the corrected LaTeX body.`,
               },
             ],
