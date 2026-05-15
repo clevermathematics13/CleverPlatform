@@ -6644,6 +6644,83 @@ function TestBuilderPanel({
           />
         </div>
 
+        {/* Save / Load row — pinned in header for quick access */}
+        {activeExamId && examDirty && (
+          <p className="text-xs font-semibold text-amber-700 flex items-center gap-1 mt-2">
+            <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+            Unsaved changes
+          </p>
+        )}
+        <div className="flex gap-2 mt-2">
+          <button
+            type="button"
+            onClick={onSaveExam}
+            disabled={savingExam || queue.length === 0}
+            className={`flex-1 rounded text-white text-xs font-bold py-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
+              activeExamId && examDirty
+                ? "bg-amber-500 hover:bg-amber-600 animate-pulse"
+                : "bg-green-600 hover:bg-green-700"
+            }`}
+            title={activeExamId ? "Overwrite saved exam" : "Save exam to database"}
+          >
+            {savingExam ? "Saving…" : activeExamId ? "💾 Overwrite" : "💾 Save Exam"}
+          </button>
+          <button
+            type="button"
+            onClick={onToggleSavedExams}
+            className={`flex-1 rounded text-xs font-bold py-1.5 transition-colors border ${
+              showSavedExams
+                ? "bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200"
+                : "border-gray-300 text-gray-600 bg-white hover:bg-gray-100"
+            }`}
+          >
+            📂 {showSavedExams ? "Hide" : "Load Exam"}
+          </button>
+        </div>
+
+        {/* Saved exams list */}
+        {showSavedExams && (
+          <div className="rounded border border-amber-200 bg-amber-50 p-2 space-y-1 max-h-48 overflow-y-auto mt-2">
+            <p className="text-xs font-bold text-amber-800 mb-1">Saved Exams</p>
+            {loadingExams && <p className="text-xs text-gray-500">Loading…</p>}
+            {!loadingExams && savedExams.length === 0 && (
+              <p className="text-xs text-gray-500">No saved exams yet.</p>
+            )}
+            {savedExams.map((exam) => (
+              <div
+                key={exam.id}
+                className={`flex items-center gap-1 rounded px-2 py-1 border ${
+                  activeExamId === exam.id
+                    ? "border-green-400 bg-green-50"
+                    : "border-gray-200 bg-white"
+                }`}
+              >
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 truncate">{exam.name}</p>
+                  <p className="text-xs text-gray-500">
+                    {exam.curriculum}{exam.level} P{exam.paper} · {exam.questions.length}q
+                    {exam.exam_date ? ` · ${exam.exam_date}` : ""}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onLoadExam(exam)}
+                  className="rounded bg-indigo-600 text-white text-xs px-1.5 py-0.5 hover:bg-indigo-700 flex-shrink-0"
+                >
+                  Load
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDeleteExam(exam.id)}
+                  className="rounded bg-red-100 text-red-600 text-xs px-1.5 py-0.5 hover:bg-red-200 flex-shrink-0"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Section controls (P1/P2 AA only) */}
         {showSections && queue.length > 0 && (
           <button
@@ -6838,82 +6915,7 @@ function TestBuilderPanel({
           📝 Preview Mark Scheme
         </button>
 
-        {/* Save / Load row */}
-        {activeExamId && examDirty && (
-          <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-            Unsaved changes
-          </p>
-        )}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={onSaveExam}
-            disabled={savingExam || queue.length === 0}
-            className={`flex-1 rounded text-white text-xs font-bold py-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
-              activeExamId && examDirty
-                ? "bg-amber-500 hover:bg-amber-600 animate-pulse"
-                : "bg-green-600 hover:bg-green-700"
-            }`}
-            title={activeExamId ? "Overwrite saved exam" : "Save exam to database"}
-          >
-            {savingExam ? "Saving…" : activeExamId ? "💾 Overwrite" : "💾 Save Exam"}
-          </button>
-          <button
-            type="button"
-            onClick={onToggleSavedExams}
-            className={`flex-1 rounded text-xs font-bold py-1.5 transition-colors border ${
-              showSavedExams
-                ? "bg-amber-100 border-amber-400 text-amber-800 hover:bg-amber-200"
-                : "border-gray-300 text-gray-600 bg-white hover:bg-gray-100"
-            }`}
-          >
-            📂 {showSavedExams ? "Hide" : "Load Exam"}
-          </button>
-        </div>
-
-        {/* Saved exams list */}
-        {showSavedExams && (
-          <div className="rounded border border-amber-200 bg-amber-50 p-2 space-y-1 max-h-48 overflow-y-auto">
-            <p className="text-xs font-bold text-amber-800 mb-1">Saved Exams</p>
-            {loadingExams && <p className="text-xs text-gray-500">Loading…</p>}
-            {!loadingExams && savedExams.length === 0 && (
-              <p className="text-xs text-gray-500">No saved exams yet.</p>
-            )}
-            {savedExams.map((exam) => (
-              <div
-                key={exam.id}
-                className={`flex items-center gap-1 rounded px-2 py-1 border ${
-                  activeExamId === exam.id
-                    ? "border-green-400 bg-green-50"
-                    : "border-gray-200 bg-white"
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-gray-800 truncate">{exam.name}</p>
-                  <p className="text-xs text-gray-500">
-                    {exam.curriculum}{exam.level} P{exam.paper} · {exam.questions.length}q
-                    {exam.exam_date ? ` · ${exam.exam_date}` : ""}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onLoadExam(exam)}
-                  className="rounded bg-indigo-600 text-white text-xs px-1.5 py-0.5 hover:bg-indigo-700 flex-shrink-0"
-                >
-                  Load
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDeleteExam(exam.id)}
-                  className="rounded bg-red-100 text-red-600 text-xs px-1.5 py-0.5 hover:bg-red-200 flex-shrink-0"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Saved exams list removed — now in header above question list */}
 
         <div className="flex gap-2">
           <button
