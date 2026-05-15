@@ -124,6 +124,20 @@ Only use **1.11** when the question explicitly decomposes a single fraction INTO
 ### SL 2.8 — Rational Functions
 Use **2.8** only when the question involves analysing the graph, asymptotes, domain, or behaviour of rational functions f(x) = (ax+b)/(cx+d) or similar. Factorising a denominator as an algebraic step within a simplification does NOT make a question a 2.8 question.
 
+### Anti-redundancy / subsumption rule (CRITICAL)
+The IB syllabus has a progression structure where later subtopics formally introduce skills that build on earlier ones. **Do NOT tag a foundational/introductory subtopic alongside a more advanced subtopic that already covers the required skill.** The advanced subtopic implies the foundational one — adding both creates misleading duplicate analytics.
+
+**Canonical subsumption pairs (if the advanced code is used, do NOT add the foundational one):**
+- **1.7** (Laws of logarithms; laws of exponents with rational exponents) subsumes **1.5** (Introduction to logarithms; laws of exponents with integer exponents). If a part uses the product/quotient/power rule of logarithms, tag **1.7 only** — not 1.5 + 1.7.
+- **1.6** (Exponential growth/decay models) subsumes **1.5** for questions about exponential functions (not bare exponent arithmetic).
+- **1.8** (Sum of geometric sequences) subsumes **1.3** (geometric sequences) when the skill being tested is evaluating the sum formula, not identifying the ratio.
+- **5.6/5.7/5.8** (integration rules) subsume **5.1** (anti-differentiation as reverse of differentiation) when a specific integration technique (substitution, by-parts, standard form) is being tested.
+- **5.9/5.10** (differential equations) subsume **5.6** when the skill is solving a DE, not bare integration.
+
+**General rule:** Ask "Does the advanced subtopic's syllabus description explicitly mention the skill tested?" If yes, tag only the advanced subtopic. Only add the foundational subtopic if the part is **directly** testing foundational knowledge (e.g. the part ONLY asks the student to recall what $\log_{10} e$ equals, not to apply a log law).
+
+**Example:** Part (a) asks the student to show $1 + \log_2 n = \log_2(2n)$ using the product rule. Tag **1.7** (log laws) only. Do NOT also tag **1.5** (introduction to logarithms) — the product rule is defined in 1.7, not 1.5.
+
 ### Anti-bleed-over rule (CRITICAL)
 Tag each part based ONLY on the mechanical skill required to earn the marks for THAT specific part — completely independent of:
 - The question stem's topic (the stem merely provides context, not the skill being assessed)
