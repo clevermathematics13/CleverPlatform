@@ -5921,7 +5921,6 @@ function ImageGroup({
   savingAsGraphImageIds?: Set<string>;
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
-  const dragIdx = useRef<number | null>(null);
 
   const borderColor = labelColor === "blue" ? "border-blue-200" : "border-green-200";
   const hoverBorderColor = labelColor === "blue" ? "hover:border-blue-500" : "hover:border-green-500";
@@ -5962,17 +5961,10 @@ function ImageGroup({
     (e.currentTarget as HTMLDivElement).focus();
   };
 
-  const handleDragStart = (idx: number) => {
-    dragIdx.current = idx;
-  };
-
-  const handleDragOver = (e: React.DragEvent, idx: number) => {
-    e.preventDefault();
-    if (dragIdx.current === null || dragIdx.current === idx) return;
+  const moveImage = (from: number, to: number) => {
     const newOrder = [...images];
-    const [moved] = newOrder.splice(dragIdx.current, 1);
-    newOrder.splice(idx, 0, moved);
-    dragIdx.current = idx;
+    const [moved] = newOrder.splice(from, 1);
+    newOrder.splice(to, 0, moved);
     onReorder(newOrder.map((i) => i.id));
   };
 
@@ -6004,15 +5996,31 @@ function ImageGroup({
             {images.map((img, idx) => (
               <div
                 key={img.id}
-                draggable
-                onDragStart={() => handleDragStart(idx)}
-                onDragOver={(e) => handleDragOver(e, idx)}
-                className="relative group cursor-grab active:cursor-grabbing w-full"
+                className="relative group w-full"
               >
-                {/* Drag handle overlay (top-left corner) */}
-                <div className="absolute top-1 left-1 z-10 opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 rounded px-1 py-0.5 text-white text-xs select-none pointer-events-none">
-                  ⠿
-                </div>
+                {/* Up arrow (top-left) — hidden for first image */}
+                {idx > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); moveImage(idx, idx - 1); }}
+                    className="absolute top-1 left-1 z-10 opacity-0 group-hover:opacity-100 inline-flex h-5 w-5 items-center justify-center rounded bg-black/50 text-white text-xs hover:bg-black/70 transition-opacity"
+                    title="Move up"
+                  >
+                    ↑
+                  </button>
+                )}
+
+                {/* Down arrow (bottom-left) — hidden for last image */}
+                {idx < images.length - 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); moveImage(idx, idx + 1); }}
+                    className="absolute bottom-1 left-1 z-10 opacity-0 group-hover:opacity-100 inline-flex h-5 w-5 items-center justify-center rounded bg-black/50 text-white text-xs hover:bg-black/70 transition-opacity"
+                    title="Move down"
+                  >
+                    ↓
+                  </button>
+                )}
 
                 {/* Image */}
                 <a
@@ -6033,14 +6041,15 @@ function ImageGroup({
                   />
                 </a>
 
+                {/* Download button (bottom-right) */}
                 <a
                   href={img.url ?? "#"}
                   download
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute bottom-1 left-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded bg-white/95 text-[11px] text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  className={`absolute bottom-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded bg-white/95 text-[11px] text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity ${onSaveAsGraphImage ? "right-7" : "right-1"}`}
                   title="Download image"
                 >
-                  ↓
+                  🖼
                 </a>
 
                 {/* Save as graph image button (bottom-right) */}
@@ -6098,7 +6107,7 @@ function ImageGroup({
         {/* Always show paste hint below images if there are some */}
         {images.length > 0 && (
           <p className="text-xs text-gray-400 mt-1 text-center">
-            📋 Paste an image to add · drag to reorder
+            📋 Paste an image to add
           </p>
         )}
       </div>
