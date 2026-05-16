@@ -66,8 +66,36 @@ export async function DELETE(request: NextRequest) {
   }
 
   const imageId = request.nextUrl.searchParams.get("imageId");
+  const questionId = request.nextUrl.searchParams.get("questionId");
+
+  // Bulk delete: remove ALL images for a question
+  if (questionId && !imageId) {
+    const { data: imgs, error: fetchErr } = await supabase
+      .from("question_images")
+      .select("id, storage_path")
+      .eq("question_id", questionId);
+
+    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 });
+
+    const paths = (imgs ?? []).map((i) => i.storage_path).filter(Boolean);
+    if (paths.length > 0) {
+      const { error: storageErr } = await supabase.storage
+        .from("question-images")
+        .remove(paths);
+      if (storageErr) return NextResponse.json({ error: storageErr.message }, { status: 500 });
+    }
+
+    const { error: dbErr } = await supabase
+      .from("question_images")
+      .delete()
+      .eq("question_id", questionId);
+
+    if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
+    return NextResponse.json({ ok: true, deleted: (imgs ?? []).length });
+  }
+
   if (!imageId) {
-    return NextResponse.json({ error: "imageId is required" }, { status: 400 });
+    return NextResponse.json({ error: "imageId or questionId is required" }, { status: 400 });
   }
 
   // Fetch the record so we know the storage_path

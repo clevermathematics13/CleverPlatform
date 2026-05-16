@@ -999,6 +999,16 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     }, 500);
   };
 
+  const deleteAllImages = async (questionId: string, allImages: QuestionImage[]) => {
+    setDeletingImage((prev) => { const n = new Set(prev); for (const i of allImages) n.add(i.id); return n; });
+    try {
+      const res = await fetch(`/api/questions/images?questionId=${questionId}`, { method: "DELETE" });
+      if (res.ok) setQuestionImages((prev) => ({ ...prev, [questionId]: [] }));
+    } finally {
+      setDeletingImage((prev) => { const n = new Set(prev); for (const i of allImages) n.delete(i.id); return n; });
+    }
+  };
+
   const deleteImage = async (questionId: string, imageId: string) => {
     setDeletingImage((prev) => new Set(prev).add(imageId));
     try {
@@ -2289,6 +2299,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 deletingImageIds={deletingImage}
                 uploadingImage={uploadingImage.has(q.id)}
                 onDeleteImage={(imageId) => deleteImage(q.id, imageId)}
+                onDeleteAllImages={() => deleteAllImages(q.id, questionImages[q.id] ?? [])}
                 onReorderImages={(imageType, orderedIds) => reorderImages(q.id, imageType, orderedIds)}
                 onUploadImage={(imageType, file) => uploadImage(q.id, imageType, file)}
                 testBuilderOpen={testBuilderOpen}
@@ -3023,6 +3034,7 @@ function QuestionRow({
   deletingImageIds,
   uploadingImage,
   onDeleteImage,
+  onDeleteAllImages,
   onReorderImages,
   onUploadImage,
   testBuilderOpen,
@@ -3053,6 +3065,7 @@ function QuestionRow({
   deletingImageIds: Set<string>;
   uploadingImage: boolean;
   onDeleteImage: (imageId: string) => void;
+  onDeleteAllImages: () => void;
   onReorderImages: (imageType: "question" | "markscheme", orderedIds: string[]) => void;
   onUploadImage: (imageType: "question" | "markscheme", file: File) => void;
   testBuilderOpen: boolean;
@@ -5236,6 +5249,17 @@ function QuestionRow({
                         {images.filter(i => i.image_type === "question").length} question,{" "}
                         {images.filter(i => i.image_type === "markscheme").length} markscheme
                       </span>
+                    )}
+                    {images.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteAllImages()}
+                        disabled={deletingImageIds.size > 0}
+                        className="rounded-lg border border-red-300 bg-red-50 px-3 py-1 text-xs font-bold text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        title="Delete all images from storage and database"
+                      >
+                        {deletingImageIds.size > 0 ? "Deleting…" : "🗑 Delete Images"}
+                      </button>
                     )}
                   </div>
                   <div className="space-y-4">
