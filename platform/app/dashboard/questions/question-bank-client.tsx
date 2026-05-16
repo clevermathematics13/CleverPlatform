@@ -6957,10 +6957,11 @@ function TestBuilderPanel({
             {savedExams.map((exam) => (
               <div
                 key={exam.id}
-                className={`flex items-center gap-1 rounded px-2 py-1 border ${
+                onClick={() => onLoadExam(exam)}
+                className={`flex items-center gap-1 rounded px-2 py-1 border cursor-pointer ${
                   activeExamId === exam.id
-                    ? "border-green-400 bg-green-50"
-                    : "border-gray-200 bg-white"
+                    ? "border-green-400 bg-green-50 hover:bg-green-100"
+                    : "border-gray-200 bg-white hover:bg-indigo-50 hover:border-indigo-300"
                 }`}
               >
                 <div className="flex-1 min-w-0">
@@ -6972,14 +6973,7 @@ function TestBuilderPanel({
                 </div>
                 <button
                   type="button"
-                  onClick={() => onLoadExam(exam)}
-                  className="rounded bg-indigo-600 text-white text-xs px-1.5 py-0.5 hover:bg-indigo-700 flex-shrink-0"
-                >
-                  Load
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDeleteExam(exam.id)}
+                  onClick={(e) => { e.stopPropagation(); onDeleteExam(exam.id); }}
                   className="rounded bg-red-100 text-red-600 text-xs px-1.5 py-0.5 hover:bg-red-200 flex-shrink-0"
                 >
                   ✕
