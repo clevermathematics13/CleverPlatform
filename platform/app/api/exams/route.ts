@@ -59,11 +59,13 @@ export async function GET() {
     }
 
     for (const exam of exams) {
-      exam.questions = ((exam.questions as { id: string; marks: number; subtopicCodes?: string[]; partSubtopics?: { partLabel: string; codes: string[] }[] }[]) ?? []).map((q) => ({
+      // Guard: questions must be a JSON array — older rows or bugs may store non-array
+      const rawQuestions = Array.isArray(exam.questions) ? exam.questions : [];
+      exam.questions = (rawQuestions as { id: string; marks: number; subtopicCodes?: string[]; partSubtopics?: { partLabel: string; codes: string[] }[] }[]).map((q) => ({
         ...q,
         marks: liveMarks[q.id] ?? q.marks,
-        subtopicCodes: liveSubtopics[q.id] ? [...liveSubtopics[q.id]] : (q.subtopicCodes ?? []),
-        partSubtopics: livePartSubtopics[q.id] ?? q.partSubtopics ?? [],
+        subtopicCodes: liveSubtopics[q.id] ? [...liveSubtopics[q.id]] : (Array.isArray(q.subtopicCodes) ? q.subtopicCodes : []),
+        partSubtopics: livePartSubtopics[q.id] ?? (Array.isArray(q.partSubtopics) ? q.partSubtopics : []),
       }));
     }
   }

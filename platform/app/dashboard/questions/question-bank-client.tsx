@@ -949,6 +949,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       perQuestionReports.length > 0
         ? perQuestionReports.map((r) => formatTroubleshooting(r)).join("\n\n==============================\n\n")
         : "(none captured)",
+      "",
+      "Save exam error",
+      saveExamError ?? "(none)",
     ].join("\n");
 
     void navigator.clipboard.writeText(text).then(() => {
@@ -1620,6 +1623,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     setSavingExam(true);
     setSaveExamError(null);
     try {
+      // Guard: ensure queue is a real array (catches loadExam/random-exam state edge-cases)
+      if (!Array.isArray(queueToSave)) {
+        throw new Error(`Queue is not an array (got ${typeof queueToSave}: ${JSON.stringify(queueToSave)?.slice(0, 200)}). Reload the page and try again.`);
+      }
       // Sanitize to plain fields only to prevent circular DOM-reference errors
       const sanitizedQueue = queueToSave.map((item) => ({
         id: item.id,
@@ -1693,7 +1700,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   };
 
   const loadExam = (exam: SavedExam) => {
-    setTestQueue(exam.questions);
+    // Guard: questions must be a real Array (older DB rows may have non-array JSONB)
+    setTestQueue(Array.isArray(exam.questions) ? exam.questions : []);
     setExamConfig({
       name: exam.name,
       curriculum: exam.curriculum,

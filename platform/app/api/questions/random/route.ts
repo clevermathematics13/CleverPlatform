@@ -327,6 +327,8 @@ export async function POST(request: NextRequest) {
     hasQuestion: q.has_question_images,
     hasMarkscheme: q.has_markscheme_images,
     marks: q.marks,
+    subtopicCodes: q.subtopicCodes,
+    partSubtopics: [] as { partLabel: string; codes: string[] }[],
   }));
 
   const totalSelectedMarks = selected.reduce((sum, q) => sum + q.marks, 0);
