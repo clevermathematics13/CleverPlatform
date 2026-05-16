@@ -77,8 +77,10 @@ export async function POST(request: NextRequest) {
     courseId: string;
     paper: number;
     targetMinutes: number;
+    excludeIds?: string[];
   };
-  const { courseId, paper, targetMinutes } = body;
+  const { courseId, paper, targetMinutes, excludeIds = [] } = body;
+  const excludedSet = new Set<string>(excludeIds);
 
   if (!courseId || !paper || !targetMinutes) {
     return NextResponse.json({ error: "courseId, paper, and targetMinutes are required" }, { status: 400 });
@@ -178,8 +180,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Build candidate objects
-  const candidates: CandidateQuestion[] = rawQuestions.map((q) => {
+  // Build candidate objects — filtered to only questions where ALL subtopics are covered
+  // and not already appearing in a saved exam
+  const coveredSet = new Set(coveredCodes);
+  const candidates: CandidateQuestion[] = rawQuestions.filter((q) => {
+    if (excludedSet.has(q.id)) return false;
+    const allCodes = [...new Set((q.question_parts as QuestionPart[]).flatMap((p) => p.subtopic_codes ?? []))];
+    return allCodes.every((code) => coveredSet.has(code) || !subtopicSectionMap[code]);
+  }).map((q) => {
     const parts = (q.question_parts as QuestionPart[]).sort((a, b) => a.sort_order - b.sort_order);
     const allSubtopicCodes = [...new Set(parts.flatMap((p) => p.subtopic_codes ?? []))];
     const allCommandTerms = [...new Set(
@@ -190,7 +198,6 @@ export async function POST(request: NextRequest) {
     const marks = parts.reduce((sum, p) => sum + p.marks, 0);
 
     // Only count covered subtopics when determining primary section
-    const coveredSet = new Set(coveredCodes);
     const coveredSubtopicsOfQ = allSubtopicCodes.filter((c) => coveredSet.has(c));
 
     return {

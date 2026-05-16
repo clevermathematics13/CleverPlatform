@@ -1738,6 +1738,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           courseId: examConfig.courseId,
           paper: examConfig.paper,
           targetMinutes: randomTargetMinutes,
+          excludeIds: [...new Set(savedExams.flatMap((e) => e.questions.map((q) => q.id)))],
         }),
       });
       const data = await res.json();
@@ -4053,9 +4054,8 @@ function QuestionRow({
           logLines: [...log],
         },
       };
-      setExtractPlan(extractionPlan);
-      setFullExtractState("reviewing");
-      push("Extraction ready — please review the results in the popup.");
+      push("Extraction complete — saving…");
+      void commitExtractPlan(extractionPlan);
     } catch (e) {
       setFullExtractError(e instanceof Error ? e.message : "Unexpected error");
       setFullExtractState("idle");
@@ -5343,14 +5343,8 @@ function QuestionRow({
                     {(images.some((i) => i.image_type === "question") || images.some((i) => i.image_type === "markscheme")) && (
                       <button
                         type="button"
-                        onClick={() => {
-                          if (hasExistingContent()) {
-                            setFullExtractState("confirm");
-                          } else {
-                            void runFullExtract();
-                          }
-                        }}
-                        disabled={fullExtractState === "running" || fullExtractState === "reviewing"}
+                        onClick={() => void runFullExtract()}
+                        disabled={fullExtractState === "running"}
                         className="rounded px-3 py-1.5 text-xs font-bold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 flex items-center gap-1.5 transition-colors"
                       >
                         {fullExtractState === "running" ? (
