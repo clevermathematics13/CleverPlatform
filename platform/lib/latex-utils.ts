@@ -144,17 +144,17 @@ The IB syllabus has a progression structure where later subtopics formally intro
 
 ### 1.6 vs 1.15 — Differentiating Proof Types (CRITICAL — "Prove" does NOT mean 1.15)
 
-**The "Command Word" Fallacy:** Do NOT auto-assign `1.15` just because the question says "Prove" or "Show that". You must inspect the markscheme structure to determine which proof type is actually assessed.
+**The "Command Word" Fallacy:** Do NOT auto-assign \`1.15\` just because the question says "Prove" or "Show that". You must inspect the markscheme structure to determine which proof type is actually assessed.
 
 #### Step 1 — The Induction Check (must pass ALL three to assign 1.15)
-Before assigning `1.15 (ind) Proof by induction`, explicitly verify that the markscheme contains all of the following:
+Before assigning \`1.15 (ind) Proof by induction\`, explicitly verify that the markscheme contains all of the following:
 1. A **base case** (e.g. "When $n=1$, LHS = ... = RHS ✓")
 2. An **inductive hypothesis** (e.g. "Assume true for $n=k$: ...")
 3. An **inductive step** (e.g. "Now prove true for $n=k+1$: ...")
 
-If ANY of these three elements is missing from the markscheme, **reject `1.15`**.
+If ANY of these three elements is missing from the markscheme, **reject \`1.15\`**.
 
-Proof by contradiction and proof by counterexample are also tagged `1.15` but do NOT follow the induction structure — use your judgment on whether the question explicitly calls for those methods.
+Proof by contradiction and proof by counterexample are also tagged \`1.15\` but do NOT follow the induction structure — use your judgment on whether the question explicitly calls for those methods.
 
 #### Step 2 — The Deduction Default (1.6)
 If a question asks to "prove", "show", or "verify" a general statement, but the markscheme shows the student performing **direct algebraic manipulation, substitution, logical equivalence, or deduction** without inductive steps, assign **1.6 Deductive Proof** as the proof-type tag (not 1.15).
