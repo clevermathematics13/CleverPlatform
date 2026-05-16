@@ -1593,7 +1593,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   };
 
   const toggleSavedExams = async () => {
-    if (!showSavedExams && savedExams.length === 0) await fetchSavedExams();
+    if (!showSavedExams) await fetchSavedExams();
     setShowSavedExams((v) => !v);
   };
 
@@ -1643,8 +1643,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         if (data.id) setActiveExamId(data.id);
       }
       setExamDirty(false);
-      // Refresh saved exams list if visible
-      if (showSavedExams) await fetchSavedExams();
+      // Always refresh saved exams cache after a save
+      await fetchSavedExams();
     } catch { /* ignore */ } finally {
       setSavingExam(false);
     }
