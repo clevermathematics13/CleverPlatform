@@ -173,6 +173,19 @@ When a part asks the student to evaluate or find a composite function of the for
 - Part (c) → **2.5.2** (solving using an inverse)
 - Part (d) → **2.5.1 only**. $f^{-1}$ was already derived in (a)(ii); the student substitutes it into the composition to equate coefficients. The bottleneck is the composition algebra, NOT inverse functions.
 
+### 1.12 vs 2.12 — Complex numbers vocabulary ≠ complex numbers mechanics (CRITICAL)
+Do NOT tag **1.12** (Introduction to Complex Numbers) simply because a complex number $z = a + bi$ appears in the question text. Tag 1.12 ONLY when the part's markscheme requires basic Cartesian complex-number mechanics: arithmetic on $a + bi$ form, plotting on an Argand diagram, or computing modulus/argument directly.
+
+If the actual mechanic required is a **polynomial property** (Vieta's formulas — sum/product of roots, factor theorem, remainder theorem, multiplying out factors), tag **2.12** (Polynomial Functions) as the primary code. The fact that some roots are complex is incidental context, not the assessed skill.
+
+**The conjugate root theorem** — stating that $p - qi$ must also be a root when coefficients are real — is classified under **AHL 1.14** (Powers and roots of complex numbers), NOT 1.12. When a part merely invokes the conjugate root in order to then apply Vieta's formulas or polynomial arithmetic, tag **2.12** only (the conjugate pair cancels immediately and leaves real arithmetic; no complex-number mechanics are performed).
+
+**Test:** After the student writes the conjugate root, do they perform any complex arithmetic? If the $\pm qi$ terms immediately cancel and the rest is real — it is **2.12**, not 1.12.
+
+**Example:** Part (b) — A degree-5 polynomial has $z = p+3i$ as a root. Show $p = 1$.
+- Markscheme: state conjugate $p - 3i$ (A1); sum all 5 roots using $-a_{n-1}/a_n$ (M1, A1).
+- Tag: **2.12** (Vieta's sum-of-roots formula is the engine). Do NOT add 1.12 — no Argand diagram, no modulus/argument, and the imaginary parts cancel at once.
+
 ### Anti-bleed-over rule (CRITICAL)
 Tag each part based ONLY on the mechanical skill required to earn the marks for THAT specific part — completely independent of:
 - The question stem's topic (the stem merely provides context, not the skill being assessed)

@@ -6881,23 +6881,25 @@ function TestBuilderPanel({
 
       {/* Footer */}
       <div className="px-4 py-3 border-t border-indigo-200 space-y-2">
-        <button
-          type="button"
-          onClick={onPreviewTest}
-          disabled={!canPreview}
-          className="w-full rounded-lg bg-indigo-600 text-white font-bold text-sm py-2 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          🖨 Preview Exam
-        </button>
-        <button
-          type="button"
-          onClick={onPreviewMS}
-          disabled={!canPreview || !queueHasMarkscheme}
-          className="w-full rounded-lg border-2 border-indigo-400 text-indigo-700 font-bold text-sm py-1.5 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          title={!queueHasMarkscheme ? "No markscheme images in queue" : undefined}
-        >
-          📝 Preview Mark Scheme
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onPreviewTest}
+            disabled={!canPreview}
+            className="flex-1 rounded-lg bg-indigo-600 text-white font-bold text-sm py-2 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            🖨 Preview Exam
+          </button>
+          <button
+            type="button"
+            onClick={onPreviewMS}
+            disabled={!canPreview || !queueHasMarkscheme}
+            className="flex-1 rounded-lg border-2 border-indigo-400 text-indigo-700 font-bold text-sm py-1.5 hover:bg-indigo-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            title={!queueHasMarkscheme ? "No markscheme images in queue" : undefined}
+          >
+            📝 Mark Scheme
+          </button>
+        </div>
 
         {/* Save error — selectable so user can copy */}
         {saveExamError && (
