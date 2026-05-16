@@ -7,7 +7,7 @@ import LatexRenderer from "@/components/LatexRenderer";
 import { AddQuestionWizard } from "./add-question-wizard";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
 import { hasExplicitTopLevelPartStructure, shouldBlockPartAutoSave, shouldTrustMultipartWithoutExplicit } from "./part-structure";
-import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
+import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM, parseMSTokens, type MarkToken } from "@/lib/latex-utils";
 import { contextTermHighlightsFromFlags, deriveCommandTermFlags } from "@/lib/command-term-flags";
 import { readJsonSafely } from "@/lib/http-json";
 import { encodeGraphSpec, GRAPH_MARKER_RE, EXAMPLE_SPEC, type IbGraphSpec } from "@/components/IbGraph";
@@ -3142,6 +3142,50 @@ function QuestionRow({
   const [claudeInstruction, setClaudeInstruction] = useState<Record<string, string>>({}); // key: `${partId}-${field}`
   const [claudeLoading, setClaudeLoading] = useState<Record<string, boolean>>({});
 
+  // Per-mark attribution state — keyed by `${partId}-${tokenId}`
+  type TokenRationaleResult = {
+    selectedSubtopic: string;
+    confidence: number;
+    confidenceBucket: "high" | "medium" | "low";
+    rationale: string;
+    evidenceSpan: string;
+  };
+  const [tokenResults, setTokenResults] = useState<
+    Record<string, TokenRationaleResult | "loading" | "error">
+  >({});
+
+  async function generateMarkRationale(part: QuestionPart, token: MarkToken) {
+    const key = `${part.id}-${token.id}`;
+    setTokenResults((r) => ({ ...r, [key]: "loading" }));
+    try {
+      const res = await fetch("/api/questions/mark-rationale", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partLabel: part.part_label,
+          partMarks: part.marks,
+          token,
+          subtopicCodes: part.subtopic_codes,
+          primarySubtopicCode: part.primary_subtopic_code ?? null,
+          questionLatex: part.content_latex ?? "",
+          markschemeLatex: part.markscheme_latex ?? "",
+          availableSubtopics: availableSubtopics.map((s) => ({
+            code: s.code,
+            descriptor: s.descriptor ?? s.code,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        setTokenResults((r) => ({ ...r, [key]: "error" }));
+        return;
+      }
+      const data = await res.json();
+      setTokenResults((r) => ({ ...r, [key]: data as TokenRationaleResult }));
+    } catch {
+      setTokenResults((r) => ({ ...r, [key]: "error" }));
+    }
+  }
+
   const togglePartCard = (cardKey: string) => {
     setCollapsedPartCards((prev) => {
       const next = new Set(prev);
@@ -5909,6 +5953,63 @@ function QuestionRow({
                                         title="Delete this part"
                                       >{deletingPartId === part.id ? "…" : "×"}</button>
                                     </div>
+                                    {/* Per-mark attribution — shown in markscheme card when part has ≥2 subtopics */}
+                                    {field === "markscheme_latex" && part.subtopic_codes.length >= 2 && (() => {
+                                      const tokens = parseMSTokens(part.markscheme_latex ?? "");
+                                      if (tokens.length === 0) return null;
+                                      return (
+                                        <div className="flex flex-wrap items-start gap-y-1.5 gap-x-3 pt-0.5">
+                                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0 mt-1">Mark attribution</span>
+                                          {tokens.map((token) => {
+                                            const rKey = `${part.id}-${token.id}`;
+                                            const result = tokenResults[rKey];
+                                            const isLoading = result === "loading";
+                                            const isError = result === "error";
+                                            const hasResult = result && result !== "loading" && result !== "error";
+                                            const res = hasResult ? (result as TokenRationaleResult) : null;
+                                            return (
+                                              <div key={token.id} className="flex items-center gap-1 text-xs">
+                                                <span className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${token.label === "M1" ? "bg-blue-100 text-blue-800" : token.label === "A1" ? "bg-green-100 text-green-800" : "bg-purple-100 text-purple-800"}`}>
+                                                  {token.label}
+                                                </span>
+                                                {res ? (
+                                                  <>
+                                                    <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded font-mono text-[11px]">{res.selectedSubtopic}</span>
+                                                    <span
+                                                      title={`${res.confidenceBucket} confidence\n${res.rationale}`}
+                                                      className={`w-2 h-2 rounded-full shrink-0 ${res.confidenceBucket === "high" ? "bg-green-400" : res.confidenceBucket === "medium" ? "bg-yellow-400" : "bg-red-400"}`}
+                                                    />
+                                                    <span
+                                                      className="text-gray-400 italic text-[10px] max-w-[200px] truncate"
+                                                      title={res.rationale}
+                                                    >{res.rationale}</span>
+                                                  </>
+                                                ) : isError ? (
+                                                  <span className="text-red-400 text-[10px]">error</span>
+                                                ) : (
+                                                  <span className="text-gray-300 text-[10px]">—</span>
+                                                )}
+                                                <button
+                                                  type="button"
+                                                  title={`Explain which subtopic this ${token.label} tests`}
+                                                  disabled={isLoading}
+                                                  onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
+                                                  className="text-gray-400 hover:text-blue-600 disabled:opacity-40 transition-colors shrink-0"
+                                                >
+                                                  {isLoading ? (
+                                                    <span className="inline-block w-3 h-3 border border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+                                                  ) : (
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                                                      <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v5A2.5 2.5 0 0 1 11.5 12H10v1.5a.5.5 0 0 1-.5.5H6.5a.5.5 0 0 1-.5-.5V12H4.5A2.5 2.5 0 0 1 2 9.5v-5Zm10.5 6a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h9Z" />
+                                                    </svg>
+                                                  )}
+                                                </button>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      );
+                                    })()}
                                   </div>
 
                                   {!isCollapsed && <div className="p-4 space-y-3">

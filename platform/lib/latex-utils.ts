@@ -283,3 +283,85 @@ export function postProcessMathpixLatex(raw: string): string {
 
   return out;
 }
+
+// ─── Mark-token extraction ────────────────────────────────────────────────────
+
+/**
+ * A single countable mark token parsed from markscheme LaTeX.
+ * Only M1 (method), A1 (accuracy), and R1 (reasoning) are included —
+ * AG, ft, N0–N3 are excluded because they do not award marks.
+ */
+export interface MarkToken {
+  /** Stable key for React rendering and API payloads: e.g. "0-M1", "1-A1" */
+  id: string;
+  /** Token label as it appears in the markscheme: "M1", "A1", or "R1" */
+  label: "M1" | "A1" | "R1";
+  /** 0-indexed position among all countable tokens in this markscheme */
+  ordinal: number;
+  /**
+   * Up to 300 chars of markscheme text around the token for context.
+   * Starts up to 200 chars before and ends at the token inclusive.
+   */
+  snippet: string;
+}
+
+/**
+ * Parse markscheme LaTeX and return the ordered list of countable mark tokens.
+ *
+ * Recognises both canonical IB format (`\hfill M1`) and bare line-ending tokens
+ * (`M1` alone at the end of a line) so that OCR variation is handled gracefully.
+ */
+export function parseMSTokens(markschemeLatex: string): MarkToken[] {
+  // Primary pattern: \hfill followed by optional parens and M1/A1/R1
+  // Fallback pattern: bare M1/A1/R1 at the very end of a line (after optional whitespace)
+  const TOKEN_RE = /\\hfill\s+\(?(M1|A1|R1)\)?|\b(M1|A1|R1)\b(?=\s*$)/gm;
+  const tokens: MarkToken[] = [];
+  let ordinal = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN_RE.exec(markschemeLatex)) !== null) {
+    const label = (m[1] ?? m[2]) as "M1" | "A1" | "R1";
+    const pos = m.index;
+    const start = Math.max(0, pos - 200);
+    const snippet = markschemeLatex
+      .slice(start, pos + m[0].length)
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 300);
+    tokens.push({ id: `${ordinal}-${label}`, label, ordinal, snippet });
+    ordinal++;
+  }
+  return tokens;
+}
+
+/**
+ * System prompt used by the mark-level rationale API route.
+ * Exported so the API route can import it without duplicating.
+ */
+export const IB_MARK_RATIONALE_SYSTEM = `You are an expert IB Mathematics examiner performing mark-level subtopic attribution.
+
+You will be given:
+- The question LaTeX for one part of an IB Mathematics past paper question
+- The markscheme LaTeX for the same part
+- A single mark token (M1, A1, or R1) with its surrounding context snippet
+- The list of subtopics already assigned to this part (with one identified as primary)
+- The full list of available subtopics with descriptors
+
+Your task: decide which of the already-assigned subtopics this specific token is most directly testing, and explain your reasoning concisely.
+
+Guidelines:
+- M1 (Method mark): awarded for the METHOD step — which mathematical procedure is being initiated or set up? Tag the subtopic whose technique is being APPLIED in this step.
+- A1 (Accuracy mark): awarded for a CORRECT RESULT — which subtopic's skill produced this specific correct value, expression, or conclusion?
+- R1 (Reasoning mark): awarded for a LOGICAL JUSTIFICATION — which subtopic's conceptual understanding underpins the reasoning required?
+- Focus only on the specific snippet provided, not the whole part. The subtopic should explain WHY this token is awarded.
+- If the token's evidence snippet maps clearly to one subtopic, choose that. If genuinely ambiguous between two, pick the stronger match.
+- The primary subtopic is a hint, not a constraint — override it if the token evidence clearly points elsewhere.
+
+Return ONLY a valid JSON object with NO markdown fences, NO extra text:
+{
+  "selectedSubtopic": "<code from part subtopics>",
+  "confidence": <0.0 to 1.0>,
+  "confidenceBucket": "<high|medium|low>",
+  "rationale": "<one or two sentences explaining why this subtopic applies to this token>",
+  "evidenceSpan": "<short quoted or paraphrased text from the snippet that clinches the attribution>"
+}`;
+
