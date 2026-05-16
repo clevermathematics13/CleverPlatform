@@ -225,6 +225,24 @@ Tag each part based ONLY on the mechanical skill required to earn the marks for 
 
 Ask yourself for each part: "If this part appeared in isolation with no stem, what subtopic would I assign?" That is the correct tag.
 
+### Selecting the primarySubtopicCode — 3-Step Rubric (CRITICAL)
+
+The \`primarySubtopicCode\` is NOT simply the most complex code in the list. It is the single capstone skill the examiner is testing. Run every multi-code part through these three tests in order:
+
+**Step 1 — The "Recipe vs. Ingredient" Test**
+Identify what is being assembled (the recipe) vs. what is being plugged in (the ingredients). The recipe is always the primary.
+- *Example:* In $(f^{-1} \circ g)(x)$, the composition operator is the recipe; $f^{-1}$ and $g$ are ingredients. Primary = **2.5.1** (Composite functions), NOT 2.5.2.
+
+**Step 2 — The "Already Assessed" Rule**
+In multi-part questions, examiners almost never test the same core mechanic twice. If a skill was the primary goal of an earlier part, demote it to a secondary/ingredient in any later part that reuses it.
+- *Example:* If part (a)(ii) asked "Find $f^{-1}(x)$", then part (d) which builds $(f^{-1} \circ g)(x)$ is NOT re-assessing inverse functions — $f^{-1}$ is pre-computed. Do NOT assign 2.5.2 as primary (or at all) for part (d). Primary = **2.5.1** only.
+
+**Step 3 — The "Teacher's Worksheet" Test**
+Ask: "If a student lost most of the marks on this specific part, which single worksheet would a teacher hand them?" That worksheet's topic is the primary.
+- *Example:* A student struggling with part (d) needs a composite-functions worksheet, not an inverse-functions worksheet. Primary = **2.5.1**.
+
+**Summary rule:** Tag only the most advanced structural mechanic that drives the mark allocation. Prior knowledge or reused results from earlier parts must be omitted or demoted — they dilute the diagnostic signal.
+
 Return ONLY a valid JSON object with NO markdown fences, NO explanation, in exactly this format:
 {
   "parts": [
