@@ -5838,7 +5838,7 @@ function QuestionRow({
                                     <div className="flex flex-wrap items-center gap-3">
                                       <button
                                         type="button"
-                                        className="text-xs text-gray-500 hover:text-gray-700"
+                                        className="text-base text-gray-500 hover:text-gray-700 leading-none"
                                         onClick={() => togglePartCard(cardKey)}
                                         title={isCollapsed ? "Expand this part" : "Collapse this part"}
                                       >
