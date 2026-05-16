@@ -549,6 +549,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [loadingExams, setLoadingExams] = useState(false);
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [examDirty, setExamDirty] = useState(false);
+  const [saveExamError, setSaveExamError] = useState<string | null>(null);
   const [pendingAddQuestion, setPendingAddQuestion] = useState<Question | null>(null);
 
   // ── Random exam state ───────────────────────────────────────────────────────
@@ -1617,7 +1618,20 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       return;
     }
     setSavingExam(true);
+    setSaveExamError(null);
     try {
+      // Sanitize to plain fields only to prevent circular DOM-reference errors
+      const sanitizedQueue = queueToSave.map((item) => ({
+        id: item.id,
+        code: item.code,
+        section: item.section,
+        curriculum: item.curriculum,
+        hasQuestion: item.hasQuestion,
+        hasMarkscheme: item.hasMarkscheme,
+        marks: item.marks,
+        subtopicCodes: item.subtopicCodes,
+        partSubtopics: item.partSubtopics,
+      }));
       const payload = {
         name: examConfig.name,
         curriculum: examConfig.curriculum,
@@ -1625,7 +1639,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         paper: examConfig.paper,
         course_id: examConfig.courseId || null,
         exam_date: examConfig.date || null,
-        questions: queueToSave,
+        questions: sanitizedQueue,
       };
       const now = new Date().toISOString();
       if (activeExamId) {
@@ -1638,7 +1652,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         // Optimistic update: reflect changes immediately in the list
         setSavedExams((prev) => prev.map((e) =>
           e.id === activeExamId
-            ? { ...e, name: payload.name.trim(), curriculum: payload.curriculum, level: payload.level, paper: payload.paper, course_id: payload.course_id, exam_date: payload.exam_date, questions: queueToSave, updated_at: now }
+            ? { ...e, name: payload.name.trim(), curriculum: payload.curriculum, level: payload.level, paper: payload.paper, course_id: payload.course_id, exam_date: payload.exam_date, questions: sanitizedQueue, updated_at: now }
             : e
         ));
       } else {
@@ -1660,7 +1674,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
             paper: payload.paper,
             course_id: payload.course_id,
             exam_date: payload.exam_date,
-            questions: queueToSave,
+            questions: sanitizedQueue,
             created_at: now,
             updated_at: now,
           };
@@ -1672,7 +1686,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       // Background refresh to sync with server (non-blocking)
       fetchSavedExams();
     } catch (err) {
-      alert(`Failed to save exam: ${err instanceof Error ? err.message : "Unknown error"}`);
+      setSaveExamError(`${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSavingExam(false);
     }
@@ -2351,6 +2365,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           loadingExams={loadingExams}
           activeExamId={activeExamId}
           examDirty={examDirty}
+          saveExamError={saveExamError}
+          onClearSaveExamError={() => setSaveExamError(null)}
           onSaveExam={saveExam}
           onToggleSavedExams={toggleSavedExams}
           onLoadExam={loadExam}
@@ -6510,6 +6526,8 @@ function TestBuilderPanel({
   loadingExams,
   activeExamId,
   examDirty,
+  saveExamError,
+  onClearSaveExamError,
   onSaveExam,
   onToggleSavedExams,
   onLoadExam,
@@ -6549,6 +6567,8 @@ function TestBuilderPanel({
   loadingExams: boolean;
   activeExamId: string | null;
   examDirty: boolean;
+  saveExamError: string | null;
+  onClearSaveExamError: () => void;
   onSaveExam: () => void;
   onToggleSavedExams: () => void;
   onLoadExam: (exam: SavedExam) => void;
@@ -6870,6 +6890,17 @@ function TestBuilderPanel({
         >
           📝 Preview Mark Scheme
         </button>
+
+        {/* Save error — selectable so user can copy */}
+        {saveExamError && (
+          <div className="rounded border border-red-300 bg-red-50 px-2 py-1.5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs font-bold text-red-700">Save failed</span>
+              <button type="button" onClick={onClearSaveExamError} className="text-red-400 hover:text-red-700 text-xs font-bold leading-none">✕</button>
+            </div>
+            <pre className="text-xs text-red-800 whitespace-pre-wrap break-all select-text cursor-text font-mono">{saveExamError}</pre>
+          </div>
+        )}
 
         {/* Save / Load row */}
         {activeExamId && examDirty && (
