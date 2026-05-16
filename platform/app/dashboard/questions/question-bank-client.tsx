@@ -1627,25 +1627,53 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         exam_date: examConfig.date || null,
         questions: queueToSave,
       };
+      const now = new Date().toISOString();
       if (activeExamId) {
-        await fetch("/api/exams", {
+        const res = await fetch("/api/exams", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: activeExamId, ...payload }),
         });
+        if (!res.ok) throw new Error(await res.text());
+        // Optimistic update: reflect changes immediately in the list
+        setSavedExams((prev) => prev.map((e) =>
+          e.id === activeExamId
+            ? { ...e, name: payload.name.trim(), curriculum: payload.curriculum, level: payload.level, paper: payload.paper, course_id: payload.course_id, exam_date: payload.exam_date, questions: queueToSave, updated_at: now }
+            : e
+        ));
       } else {
         const res = await fetch("/api/exams", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
-        if (data.id) setActiveExamId(data.id);
+        if (data.id) {
+          setActiveExamId(data.id);
+          // Optimistic update: prepend new exam to list immediately
+          const newExam: SavedExam = {
+            id: data.id,
+            name: payload.name.trim(),
+            curriculum: payload.curriculum,
+            level: payload.level,
+            paper: payload.paper,
+            course_id: payload.course_id,
+            exam_date: payload.exam_date,
+            questions: queueToSave,
+            created_at: now,
+            updated_at: now,
+          };
+          setSavedExams((prev) => [newExam, ...prev]);
+          setShowSavedExams(true);
+        }
       }
       setExamDirty(false);
-      // Always refresh saved exams cache after a save
-      await fetchSavedExams();
-    } catch { /* ignore */ } finally {
+      // Background refresh to sync with server (non-blocking)
+      fetchSavedExams();
+    } catch (err) {
+      alert(`Failed to save exam: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
       setSavingExam(false);
     }
   };
