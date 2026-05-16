@@ -3131,7 +3131,14 @@ function QuestionRow({
   const [editingLatex, setEditingLatex] = useState<{ partId: string; field: "content_latex" | "markscheme_latex" } | null>(null);
   const [savingLatex, setSavingLatex] = useState(false);
   const [extractingLatexField, setExtractingLatexField] = useState<{ partId: string; field: "content_latex" | "markscheme_latex" } | null>(null);
-  const [collapsedPartCards, setCollapsedPartCards] = useState<Set<string>>(new Set());
+  const [collapsedPartCards, setCollapsedPartCards] = useState<Set<string>>(() => {
+    const s = new Set<string>();
+    (question.question_parts ?? []).forEach((p) => {
+      s.add(`${p.id}-content_latex`);
+      s.add(`${p.id}-markscheme_latex`);
+    });
+    return s;
+  });
   const [claudeInstruction, setClaudeInstruction] = useState<Record<string, string>>({}); // key: `${partId}-${field}`
   const [claudeLoading, setClaudeLoading] = useState<Record<string, boolean>>({});
 
@@ -5446,6 +5453,30 @@ function QuestionRow({
                     >
                       + Add Part
                     </button>
+                    {/* Expand / Collapse all part cards */}
+                    {parts.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allKeys: string[] = [];
+                          parts.forEach((p) => {
+                            allKeys.push(`${p.id}-content_latex`, `${p.id}-markscheme_latex`);
+                          });
+                          const allCollapsed = allKeys.every((k) => collapsedPartCards.has(k));
+                          if (allCollapsed) {
+                            setCollapsedPartCards(new Set());
+                          } else {
+                            setCollapsedPartCards(new Set(allKeys));
+                          }
+                        }}
+                        className="rounded px-3 py-1.5 text-xs font-bold border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+                      >
+                        {parts.every((p) =>
+                          collapsedPartCards.has(`${p.id}-content_latex`) &&
+                          collapsedPartCards.has(`${p.id}-markscheme_latex`)
+                        ) ? "↕ Expand All" : "↕ Collapse All"}
+                      </button>
+                    )}
                   </div>
 
                   {/* Confirm overwrite dialog */}
