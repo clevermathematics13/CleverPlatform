@@ -142,22 +142,49 @@ The IB syllabus has a progression structure where later subtopics formally intro
 
 **Example:** Part (a) asks the student to show $1 + \log_2 n = \log_2(2n)$ using the product rule. Tag **1.7** (log laws) only. Do NOT also tag **1.5** (introduction to logarithms) — the product rule is defined in 1.7, not 1.5.
 
-### 1.15 — Proof parts MUST be paired (CRITICAL)
-When a part asks the student to prove, show, or verify a mathematical statement using any formal proof technique (induction, contradiction, counterexample, or LHS-to-RHS algebraic proof), you MUST always tag **1.15 AND the subtopic code that describes the mathematical content being proved**.
+### 1.6 vs 1.15 — Differentiating Proof Types (CRITICAL — "Prove" does NOT mean 1.15)
+
+**The "Command Word" Fallacy:** Do NOT auto-assign `1.15` just because the question says "Prove" or "Show that". You must inspect the markscheme structure to determine which proof type is actually assessed.
+
+#### Step 1 — The Induction Check (must pass ALL three to assign 1.15)
+Before assigning `1.15 (ind) Proof by induction`, explicitly verify that the markscheme contains all of the following:
+1. A **base case** (e.g. "When $n=1$, LHS = ... = RHS ✓")
+2. An **inductive hypothesis** (e.g. "Assume true for $n=k$: ...")
+3. An **inductive step** (e.g. "Now prove true for $n=k+1$: ...")
+
+If ANY of these three elements is missing from the markscheme, **reject `1.15`**.
+
+Proof by contradiction and proof by counterexample are also tagged `1.15` but do NOT follow the induction structure — use your judgment on whether the question explicitly calls for those methods.
+
+#### Step 2 — The Deduction Default (1.6)
+If a question asks to "prove", "show", or "verify" a general statement, but the markscheme shows the student performing **direct algebraic manipulation, substitution, logical equivalence, or deduction** without inductive steps, assign **1.6 Deductive Proof** as the proof-type tag (not 1.15).
+
+**Worked example:** "Prove that $\{u_n\}$ is an arithmetic sequence, stating clearly its common difference."
+- Markscheme: uses $u_n = S_n - S_{n-1}$ to find a general term (M1, A1), then forms $d = u_{n+1} - u_n$ and shows it simplifies to a constant 6 independent of $n$ (R1, A1).
+- No base case, no inductive hypothesis, no inductive step → **reject 1.15**.
+- Student is deducing a conclusion from algebraic manipulation → **tag 1.6 + 1.2** (the content being proved is arithmetic sequences).
+
+#### 1.15 — Proof parts MUST still be paired with a companion subtopic (CRITICAL)
+When a part genuinely uses 1.15 (induction / contradiction / counterexample), you MUST always tag **1.15 AND the subtopic code that describes the mathematical content being proved**.
 
 The proof method (1.15) and the mathematical subject of the proof are both required skills — they are co-equal assessments, not a stem/part bleed-over situation.
 
 **This is the ONLY exception to the anti-bleed-over rule below.** For 1.15 parts, you MUST read the full question context — including the stem — to identify WHAT is being proved and assign the companion subtopic accordingly. The statement being proved often appears in the stem (e.g. "Seema claims that $n > \log_2 n$") or in an earlier part; you must use that context to identify the companion code.
 
-**Examples:**
-- Part says "Use induction to prove Seema's claim is valid" where the stem states the claim is $n > \log_2 n$ → **1.15** + **1.7** (the claim involves a logarithm inequality; look at the stem to find this)
-- "Prove by induction that $\sum_{k=1}^{n} k^2 = \frac{n(n+1)(2n+1)}{6}$" → **1.15** + **1.2** (summation series)
-- "Prove by induction that $(\cos\theta + i\sin\theta)^n = \cos n\theta + i\sin n\theta$" → **1.15** + **1.14** (De Moivre / complex numbers)
-- "Prove by induction that $\sum_{k=1}^{n} r^{k-1} = \frac{r^n - 1}{r-1}$" → **1.15** + **1.3** (geometric series formula)
+**1.15 examples (induction structure confirmed in markscheme):**
+- "Use induction to prove Seema's claim is valid" where the stem states the claim is $n > \log_2 n$ → **1.15** + **1.7**
+- "Prove by induction that $\sum_{k=1}^{n} k^2 = \frac{n(n+1)(2n+1)}{6}$" → **1.15** + **1.2**
+- "Prove by induction that $(\cos\theta + i\sin\theta)^n = \cos n\theta + i\sin n\theta$" → **1.15** + **1.14**
+- "Prove by induction that $\sum_{k=1}^{n} r^{k-1} = \frac{r^n - 1}{r-1}$" → **1.15** + **1.3**
 - "Prove by induction that $8^n - 1$ is divisible by 7" → **1.15** only (divisibility has no numbered subtopic)
 - "Use proof by contradiction to show $\sqrt{3}$ is irrational" → **1.15** only (irrationality has no numbered subtopic)
 
-**The primary code** for a 1.15 part is always **1.15** itself. The companion code is a component/prerequisite.
+**1.6 examples (direct deduction — do NOT tag 1.15):**
+- "Prove that $\{u_n\}$ is an arithmetic sequence" via $d = u_{n+1} - u_n = $ constant → **1.6** + **1.2**
+- "Show that $f(x) = x^2 + 2x + 1$ can be written as $(x+1)^2$" via algebraic expansion → **1.6** + the relevant algebra subtopic
+- "Prove that the sum of two odd numbers is even" via direct substitution $2m+1$ and $2n+1$ → **1.6** only
+
+**The primary code** for a 1.15 part is always **1.15** itself. For a 1.6 part, the primary code is always **1.6** itself. In both cases the companion code is the mathematical content being proved.
 
 ### 2.5.1 vs 2.5.2 — Composition using a previously found inverse (CRITICAL EXCEPTION)
 
