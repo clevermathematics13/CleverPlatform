@@ -200,7 +200,7 @@ interface ExtractPlan {
   stemMS: string;
   splitQ: Map<string, string>;
   splitMS: Map<string, string>;
-  claudeParts: { label: string; marks: number; commandTerm: string; subtopicCodes: string[] }[];
+  claudeParts: { label: string; marks: number; commandTerm: string; primarySubtopicCode?: string; subtopicCodes: string[] }[];
   /** Editable marks per part label (key="" for whole-question). Pre-seeded from
    *  Claude data or \hfill [N] inference; user can edit in the review wizard. */
   partMarks: Map<string, number>;
@@ -3935,7 +3935,7 @@ function QuestionRow({
 
       // Claude classification
       push("Analysing question structure with Claude…");
-      let claudeParts: { label: string; marks: number; commandTerm: string; subtopicCodes: string[] }[] = [];
+      let claudeParts: { label: string; marks: number; commandTerm: string; primarySubtopicCode?: string; subtopicCodes: string[] }[] = [];
       try {
         const subtopicList = availableSubtopics.map((s) => `${s.code}: ${s.descriptor}`).join("\n");
         const labelHint = parts.length > 0 && parts[0].part_label
@@ -4276,6 +4276,7 @@ function QuestionRow({
               commandTerms: canonicalTerms,
               sourceLatex: sourceForMetadata,
               subtopicCodes: cp?.subtopicCodes ?? existing.subtopic_codes,
+              primarySubtopicCode: cp?.primarySubtopicCode ?? null,
             }),
           });
           partId = existing.id;
@@ -4287,6 +4288,7 @@ function QuestionRow({
             command_terms: canonicalTerms,
             ...exceptionFlags,
             subtopic_codes: cp?.subtopicCodes ?? existing.subtopic_codes,
+            primary_subtopic_code: cp?.primarySubtopicCode ?? existing.primary_subtopic_code ?? null,
             content_latex: splitQForLabel || null,
             markscheme_latex: splitMSForLabel || null,
           });
@@ -4303,6 +4305,7 @@ function QuestionRow({
               commandTerms: canonicalTerms,
               sourceLatex: sourceForMetadata,
               subtopicCodes: cp?.subtopicCodes ?? [],
+              primarySubtopicCode: cp?.primarySubtopicCode ?? null,
             }),
           });
           if (!res.ok) {
@@ -4321,6 +4324,7 @@ function QuestionRow({
             command_terms: canonicalTerms,
             ...exceptionFlags,
             subtopic_codes: cp?.subtopicCodes ?? created.subtopic_codes,
+            primary_subtopic_code: cp?.primarySubtopicCode ?? created.primary_subtopic_code ?? null,
             content_latex: splitQForLabel || null,
             markscheme_latex: splitMSForLabel || null,
           });
