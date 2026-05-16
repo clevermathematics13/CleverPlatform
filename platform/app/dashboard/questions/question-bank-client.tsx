@@ -5900,9 +5900,9 @@ function QuestionRow({
                                         type="button"
                                         onClick={() => { if (confirm(`Delete ${partLabel}? This cannot be undone.`)) deletePart(part.id); }}
                                         disabled={deletingPartId === part.id}
-                                        className="ml-auto px-2 py-0.5 rounded text-xs font-medium border border-red-300 text-red-500 bg-white hover:bg-red-50 disabled:opacity-50"
-                                        title="Delete this part from the database"
-                                      >{deletingPartId === part.id ? "Deleting…" : "Delete Part"}</button>
+                                        className="ml-auto w-6 h-6 flex items-center justify-center rounded text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 transition-colors"
+                                        title="Delete this part"
+                                      >{deletingPartId === part.id ? "…" : "×"}</button>
                                     </div>
                                   </div>
 
@@ -7142,12 +7142,14 @@ function QueueRow({
 }) {
   return (
     <div
-      className="flex items-center gap-1 rounded bg-white border border-indigo-200 px-2 py-1 text-xs hover:border-indigo-400"
+      className="flex items-center gap-1 rounded bg-white border border-indigo-200 px-2 py-1 text-xs hover:border-indigo-400 cursor-pointer"
+      onClick={onOpenQuestion}
+      title="Open this question in the editor"
     >
       {/* Move up */}
       <button
         type="button"
-        onClick={onMoveUp}
+        onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
         disabled={number === 1}
         title="Move up"
         className="text-indigo-400 hover:text-indigo-700 disabled:opacity-20 flex-shrink-0 leading-none"
@@ -7161,14 +7163,9 @@ function QueueRow({
       {/* Code + marks/minutes + section label */}
       <div className="flex-1 min-w-0 flex flex-col gap-0">
         <div className="flex items-center gap-2 min-w-0">
-          <button
-            type="button"
-            onClick={onOpenQuestion}
-            className="flex-1 text-left font-semibold text-gray-800 truncate hover:underline"
-            title="Open this question in the editor"
-          >
+          <span className="flex-1 text-left font-semibold text-gray-800 truncate">
             {item.code}
-          </button>
+          </span>
           <span className="text-xs text-indigo-500 font-semibold flex-shrink-0">
             {item.marks} marks / {(item.marks * minutesPerMark).toFixed(2)} minutes
           </span>
@@ -7192,7 +7189,7 @@ function QueueRow({
         <div className="flex gap-0.5 flex-shrink-0">
           <button
             type="button"
-            onClick={() => onUpdateSection("A")}
+            onClick={(e) => { e.stopPropagation(); onUpdateSection("A"); }}
             className={`rounded px-1 py-0.5 text-xs font-bold ${
               item.section === "A"
                 ? "bg-blue-600 text-white"
@@ -7203,7 +7200,7 @@ function QueueRow({
           </button>
           <button
             type="button"
-            onClick={() => onUpdateSection("B")}
+            onClick={(e) => { e.stopPropagation(); onUpdateSection("B"); }}
             className={`rounded px-1 py-0.5 text-xs font-bold ${
               item.section === "B"
                 ? "bg-orange-500 text-white"
@@ -7217,7 +7214,7 @@ function QueueRow({
       {/* Remove */}
       <button
         type="button"
-        onClick={onRemove}
+        onClick={(e) => { e.stopPropagation(); onRemove(); }}
         className="text-gray-400 hover:text-red-600 font-bold ml-0.5 flex-shrink-0"
       >
         ×
