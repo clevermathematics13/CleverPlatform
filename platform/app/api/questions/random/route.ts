@@ -113,6 +113,27 @@ export async function POST(request: NextRequest) {
     coveredCodes.map((c) => subtopicSectionMap[c]).filter(Boolean)
   );
 
+  // 2b. Fetch historical subtopic frequency from past saved exams for this course.
+  // historicalFreq[code] = number of past exams that included this subtopic.
+  // Used to weight selection toward under-represented topics across the whole exam bank.
+  const { data: pastExamRows } = await supabase
+    .from("saved_exams")
+    .select("questions")
+    .eq("course_id", courseId)
+    .eq("teacher_id", user.id);
+
+  const historicalFreq: Record<string, number> = {};
+  for (const row of pastExamRows ?? []) {
+    // Count each subtopic code once per exam (not once per question)
+    const examSubtopics = new Set<string>();
+    for (const q of ((row.questions as { subtopicCodes?: string[] }[]) ?? [])) {
+      for (const code of q.subtopicCodes ?? []) examSubtopics.add(code);
+    }
+    for (const code of examSubtopics) {
+      historicalFreq[code] = (historicalFreq[code] ?? 0) + 1;
+    }
+  }
+
   // 3. Find question IDs whose parts overlap covered subtopics.
   // Fetch in batches of 200 subtopic codes to avoid URL length limits.
   const BATCH = 200;
@@ -243,10 +264,30 @@ export async function POST(request: NextRequest) {
   const usedIds = new Set<string>();
   const usedSubtopics = new Set<string>();
 
-  // Scoring: prefer questions with fewest already-used subtopics
-  const noveltyScore = (q: CandidateQuestion): number => {
-    const novel = q.subtopicCodes.filter((c) => !usedSubtopics.has(c)).length;
-    return novel;
+  /**
+   * Combined score for a candidate question — higher is better.
+   *
+   * Global component (0.6 weight): inverse historical frequency across all past exams
+   * for this course. Subtopics never yet tested score highest; frequently-tested ones
+   * score lowest. This drives cross-exam balance over the whole exam bank.
+   *
+   * Local component (0.4 weight): number of subtopics the question would add that
+   * aren’t already covered by questions already selected in this exam. This drives
+   * within-exam variety.
+   *
+   * Equal treatment: a question covering 3 globally-rare subtopics scores higher than
+   * one covering 1 globally-rare + 2 locally-novel ones, keeping both signals meaningful.
+   */
+  const scoreQuestion = (q: CandidateQuestion): number => {
+    // Global rarity: sum of 1/(1 + examCount) for each subtopic code
+    // A subtopic never tested before contributes 1.0; tested in N exams contributes 1/(N+1)
+    const globalScore = q.subtopicCodes.reduce(
+      (sum, code) => sum + 1 / (1 + (historicalFreq[code] ?? 0)),
+      0
+    );
+    // Local novelty: codes not yet appearing in the current exam being built
+    const localScore = q.subtopicCodes.filter((c) => !usedSubtopics.has(c)).length;
+    return 0.6 * globalScore + 0.4 * localScore;
   };
 
   const pick = (
@@ -261,13 +302,9 @@ export async function POST(request: NextRequest) {
     if (candidates.length === 0) candidates = available;
     if (candidates.length === 0) return null;
 
-    // Sort by novelty (most new subtopics first), then by command term diversity
-    candidates = [...candidates].sort((a, b) => {
-      const novelDiff = noveltyScore(b) - noveltyScore(a);
-      if (novelDiff !== 0) return novelDiff;
-      // Fallback: prefer questions where command terms aren't already heavily used
-      return b.commandTerms.length - a.commandTerms.length;
-    });
+    // Sort by combined score (global rarity + local novelty) descending.
+    // Shuffle first so equal-scoring candidates vary between runs.
+    candidates = shuffle([...candidates]).sort((a, b) => scoreQuestion(b) - scoreQuestion(a));
 
     return candidates[0];
   };
@@ -349,6 +386,11 @@ export async function POST(request: NextRequest) {
       sectionAMarks: marksA,
       sectionBMarks: marksB,
       coveredSections: Array.from(coveredSections).sort(),
+      pastExamCount: (pastExamRows ?? []).length,
+      topHistoricalSubtopics: Object.entries(historicalFreq)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([code, count]) => ({ code, count })),
     },
   });
 }
