@@ -3079,6 +3079,7 @@ function QuestionRow({
   const showSection = question.paper !== 3;
   const hasDocLinkConflict = question.google_ms_id !== null && question.google_doc_id === question.google_ms_id;
   const [showSectionPrompt, setShowSectionPrompt] = useState(false);
+  const [primaryWarningDialog, setPrimaryWarningDialog] = useState<{ labels: string; plural: boolean } | null>(null);
   const [minimized, setMinimized] = useState(false);
 
   // Guard close: if section is required but not set, show inline prompt instead.
@@ -3095,10 +3096,13 @@ function QuestionRow({
         .map((p) => (p.part_label ? `part (${p.part_label})` : "the whole question"))
         .join(", ");
       const plural = missingPrimary.length === 1;
-      if (!confirm(
-        `${plural ? labels + " has" : labels + " have"} multiple subtopics but no primary (\u2605) selected.\n\nPress OK to close anyway, or Cancel to stay and set the primary subtopic${plural ? "" : "s"}.`
-      )) return;
+      setPrimaryWarningDialog({ labels, plural });
+      return;
     }
+    proceedClose();
+  };
+
+  const proceedClose = () => {
     if (showSection && question.section === null) {
       setShowSectionPrompt(true);
     } else {
@@ -4634,6 +4638,38 @@ function QuestionRow({
               setFullExtractLog([]);
             }}
           />
+        )}
+        {/* ── Primary subtopic warning overlay ── */}
+        {primaryWarningDialog && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-2xl shadow-2xl border border-amber-300 p-6 w-96 flex flex-col gap-4">
+              <div>
+                <p className="text-base font-bold text-gray-900 mb-1">No primary subtopic selected</p>
+                <p className="text-sm text-gray-600">
+                  {primaryWarningDialog.plural
+                    ? `${primaryWarningDialog.labels} has`
+                    : `${primaryWarningDialog.labels} have`}{" "}
+                  multiple subtopics but no primary (★) selected.
+                </p>
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPrimaryWarningDialog(null)}
+                  className="flex-1 rounded-lg bg-green-600 text-white font-bold py-2 text-sm hover:bg-green-700 transition-colors"
+                >
+                  Fix
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setPrimaryWarningDialog(null); proceedClose(); }}
+                  className="flex-1 rounded-lg bg-red-600 text-white font-bold py-2 text-sm hover:bg-red-700 transition-colors"
+                >
+                  Ignore
+                </button>
+              </div>
+            </div>
+          </div>
         )}
         {/* ── Section prompt overlay ── */}
         {showSectionPrompt && (
