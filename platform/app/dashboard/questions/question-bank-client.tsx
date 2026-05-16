@@ -3939,8 +3939,8 @@ function QuestionRow({
       try {
         const subtopicList = availableSubtopics.map((s) => `${s.code}: ${s.descriptor}`).join("\n");
         const labelHint = parts.length > 0 && parts[0].part_label
-          ? parts.map((p) => p.part_label ?? "").join(", ")
-          : "unknown — determine from LaTeX";
+          ? parts.map((p) => p.part_label ?? "").join(", ") + " (top-level only — detect nested (i)(ii) sub-parts and emit combined labels ai, aii, bi, bii etc.)"
+          : "unknown — determine from LaTeX; always split (i)(ii) sub-parts into combined labels ai, aii etc.";
         const clRes = await fetch("/api/claude", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -5455,27 +5455,28 @@ function QuestionRow({
                     </button>
                     {/* Expand / Collapse all part cards */}
                     {parts.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const allKeys: string[] = [];
-                          parts.forEach((p) => {
-                            allKeys.push(`${p.id}-content_latex`, `${p.id}-markscheme_latex`);
-                          });
-                          const allCollapsed = allKeys.every((k) => collapsedPartCards.has(k));
-                          if (allCollapsed) {
-                            setCollapsedPartCards(new Set());
-                          } else {
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setCollapsedPartCards(new Set())}
+                          className="rounded px-3 py-1.5 text-xs font-bold border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+                        >
+                          ↕ Expand All
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allKeys: string[] = [];
+                            parts.forEach((p) => {
+                              allKeys.push(`${p.id}-content_latex`, `${p.id}-markscheme_latex`);
+                            });
                             setCollapsedPartCards(new Set(allKeys));
-                          }
-                        }}
-                        className="rounded px-3 py-1.5 text-xs font-bold border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
-                      >
-                        {parts.every((p) =>
-                          collapsedPartCards.has(`${p.id}-content_latex`) &&
-                          collapsedPartCards.has(`${p.id}-markscheme_latex`)
-                        ) ? "↕ Expand All" : "↕ Collapse All"}
-                      </button>
+                          }}
+                          className="rounded px-3 py-1.5 text-xs font-bold border border-gray-300 text-gray-600 bg-white hover:bg-gray-50 transition-colors"
+                        >
+                          ↕ Collapse All
+                        </button>
+                      </>
                     )}
                   </div>
 

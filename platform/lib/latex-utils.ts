@@ -253,8 +253,8 @@ Return ONLY a valid JSON object with NO markdown fences, NO explanation, in exac
 
 **primarySubtopicCode** must be one of the codes in \`subtopicCodes\` — it identifies the single capstone/target skill being assessed by that part (the skill the question is ultimately testing). The remaining codes in \`subtopicCodes\` are component/prerequisite skills needed to reach the answer but not the main objective. If there is only one subtopic code, it is also the primary.
 
-If sub-parts are nested (e.g. (b)(i), (b)(ii)), use combined labels "bi", "bii" etc.
-The "label" values MUST come from the "Parts detected" list supplied by the user (or infer from the LaTeX if the list is empty).
+If sub-parts are nested (e.g. (b)(i), (b)(ii)), you MUST split them into separate entries with combined labels "bi", "bii" etc. — never collapse nested sub-parts into a single parent label like "b". This applies even when the user supplies a top-level label hint.
+The "label" values should reflect the actual LaTeX structure. Use the "Known part labels" supplied by the user as top-level hints only; always split further whenever the LaTeX contains nested (i), (ii), (iii) … sub-parts.
 If the question has no sub-parts, return a single entry with label "".`;
 
 /**
