@@ -6920,7 +6920,7 @@ function TestBuilderPanel({
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={onSaveExam}
+            onClick={() => onSaveExam()}
             disabled={savingExam || queue.length === 0}
             className={`flex-1 rounded text-white text-xs font-bold py-1.5 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ${
               activeExamId && examDirty
