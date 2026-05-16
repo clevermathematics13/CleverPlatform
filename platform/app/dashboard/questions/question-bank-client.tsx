@@ -5918,7 +5918,7 @@ function QuestionRow({
                                     <div className="flex flex-wrap items-center gap-3">
                                       <button
                                         type="button"
-                                        className="text-base text-gray-500 hover:text-gray-700 leading-none"
+                                        className="text-base text-gray-500 hover:text-gray-700 leading-none shrink-0"
                                         onClick={() => togglePartCard(cardKey)}
                                         title={isCollapsed ? "Expand this part" : "Collapse this part"}
                                       >
@@ -5929,29 +5929,30 @@ function QuestionRow({
                                       {part.latex_verified && (
                                         <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">✓ Verified</span>
                                       )}
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="text-xs font-semibold text-gray-500">Subtopics:</span>
-                                        <SubtopicEditor
-                                          codes={part.subtopic_codes}
-                                          available={availableSubtopics}
-                                          primaryCode={part.primary_subtopic_code ?? null}
-                                          onPrimaryChange={(code) => {
-                                            onUpdateSubtopics(part.id, part.subtopic_codes, code);
-                                            setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, primary_subtopic_code: code } : p)));
-                                          }}
-                                          onChange={(codes) => {
-                                            onUpdateSubtopics(part.id, codes);
-                                            setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, subtopic_codes: codes } : p)));
-                                          }}
-                                        />
-                                      </div>
                                       <button
                                         type="button"
                                         onClick={() => { if (confirm(`Delete ${partLabel}? This cannot be undone.`)) deletePart(part.id); }}
                                         disabled={deletingPartId === part.id}
-                                        className="ml-auto w-6 h-6 flex items-center justify-center rounded text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 transition-colors"
+                                        className="ml-auto w-6 h-6 flex items-center justify-center rounded text-red-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 transition-colors shrink-0"
                                         title="Delete this part"
                                       >{deletingPartId === part.id ? "…" : "×"}</button>
+                                    </div>
+                                    {/* Second row: subtopics */}
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-xs font-semibold text-gray-500">Subtopics:</span>
+                                      <SubtopicEditor
+                                        codes={part.subtopic_codes}
+                                        available={availableSubtopics}
+                                        primaryCode={part.primary_subtopic_code ?? null}
+                                        onPrimaryChange={(code) => {
+                                          onUpdateSubtopics(part.id, part.subtopic_codes, code);
+                                          setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, primary_subtopic_code: code } : p)));
+                                        }}
+                                        onChange={(codes) => {
+                                          onUpdateSubtopics(part.id, codes);
+                                          setParts((prev) => prev.map((p) => (p.id === part.id ? { ...p, subtopic_codes: codes } : p)));
+                                        }}
+                                      />
                                     </div>
                                     {/* Per-mark attribution — shown in markscheme card when part has ≥2 subtopics */}
                                     {field === "markscheme_latex" && part.subtopic_codes.length >= 2 && (() => {
