@@ -5983,67 +5983,6 @@ function QuestionRow({
                                         }}
                                       />
                                     </div>
-                                    {/* Per-mark attribution — shown in markscheme card when part has ≥1 subtopic */}
-                                    {field === "markscheme_latex" && part.subtopic_codes.length >= 1 && (() => {
-                                      const tokens = parseMSTokens(part.markscheme_latex ?? "");
-                                      if (tokens.length === 0) return null;
-                                      return (
-                                        <div className="mt-3 pt-2 border-t border-gray-100">
-                                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Clev&apos;s Marks Attribution</span>
-                                          <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                                            {tokens.map((token) => {
-                                              const rKey = `${part.id}-${token.id}`;
-                                              const result = tokenResults[rKey];
-                                              const isLoading = result === "loading";
-                                              const isError = result === "error";
-                                              const hasResult = result && result !== "loading" && result !== "error";
-                                              const res = hasResult ? (result as TokenRationaleResult) : null;
-                                              return (
-                                                <div key={token.id} className="group relative flex items-center bg-white border border-gray-200 rounded shadow-sm p-1 pr-1.5 hover:border-indigo-300 transition-colors">
-                                                  <span className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${token.label === "M1" ? "bg-blue-100 text-blue-800" : token.label === "A1" ? "bg-green-100 text-green-800" : "bg-purple-100 text-purple-800"}`}>
-                                                    {token.label}
-                                                  </span>
-                                                  <div className="flex items-center gap-1.5 ml-2 mr-1">
-                                                    {res ? (
-                                                      <>
-                                                        <span className="font-mono text-[11px] text-gray-600">{res.selectedSubtopic}</span>
-                                                        <span
-                                                          title={`${res.confidenceBucket} confidence`}
-                                                          className={`w-1.5 h-1.5 rounded-full ${res.confidenceBucket === "high" ? "bg-green-400" : res.confidenceBucket === "medium" ? "bg-yellow-400" : "bg-red-400"}`}
-                                                        />
-                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-800 text-white text-[10px] rounded shadow-lg z-10 whitespace-normal break-words pointer-events-none">
-                                                          {res.rationale}
-                                                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></div>
-                                                        </div>
-                                                      </>
-                                                    ) : isError ? (
-                                                      <span className="text-red-400 text-[10px]">error</span>
-                                                    ) : (
-                                                      <span className="text-gray-400 text-[10px] italic">unassigned</span>
-                                                    )}
-                                                  </div>
-                                                  <button
-                                                    type="button"
-                                                    title={`Generate attribution for ${token.label}`}
-                                                    disabled={isLoading}
-                                                    onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
-                                                    className="flex items-center justify-center w-5 h-5 rounded bg-gray-50 text-gray-400 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shrink-0 ml-auto"
-                                                  >
-                                                    {isLoading ? (
-                                                      <span className="inline-block w-3 h-3 border border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
-                                                    ) : (
-                                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-                                                        <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v5A2.5 2.5 0 0 1 11.5 12H10v1.5a.5.5 0 0 1-.5.5H6.5a.5.5 0 0 1-.5-.5V12H4.5A2.5 2.5 0 0 1 2 9.5v-5Zm10.5 6a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h9Z" />
-                                                      </svg>
-                                                    )}
-                                                  </button>
-                                                </div>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      );
-                                    })()}
                                   </div>
 
                                   {!isCollapsed && <div className="p-4 space-y-3">
@@ -6144,17 +6083,77 @@ function QuestionRow({
                                         </div>
                                       </>
                                     ) : saved ? (
-                                      <div className="text-sm leading-relaxed min-h-8">
-                                        <LatexRenderer
-                                          latex={saved}
-                                          stripMarkAnnotations={field === "content_latex"}
-                                          highlightCommandTerm={field === "content_latex" ? primaryCommandTerm(part) : null}
-                                          highlightContextTerms={field === "content_latex" ? mergeHighlightTerms(
-                                            contextTermHighlightsFromFlags(part, part.instructional_context_terms ?? []),
-                                            part.command_terms?.slice(1) ?? [],
-                                            detectCommandTerms(saved),
-                                          ) : []}
-                                        />
+                                      <div className="flex gap-3 items-start text-sm leading-relaxed min-h-8">
+                                        <div className="flex-1">
+                                          <LatexRenderer
+                                            latex={saved}
+                                            stripMarkAnnotations={field === "content_latex"}
+                                            highlightCommandTerm={field === "content_latex" ? primaryCommandTerm(part) : null}
+                                            highlightContextTerms={field === "content_latex" ? mergeHighlightTerms(
+                                              contextTermHighlightsFromFlags(part, part.instructional_context_terms ?? []),
+                                              part.command_terms?.slice(1) ?? [],
+                                              detectCommandTerms(saved),
+                                            ) : []}
+                                          />
+                                        </div>
+                                        {field === "markscheme_latex" && part.subtopic_codes.length >= 1 && (() => {
+                                          const tokens = parseMSTokens(part.markscheme_latex ?? "");
+                                          if (tokens.length === 0) return null;
+                                          return (
+                                            <div className="flex flex-col gap-1.5 w-[180px] shrink-0">
+                                              <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wide">Clev&apos;s Attribution</span>
+                                              {tokens.map((token) => {
+                                                const rKey = `${part.id}-${token.id}`;
+                                                const result = tokenResults[rKey];
+                                                const isLoading = result === "loading";
+                                                const isError = result === "error";
+                                                const hasResult = result && result !== "loading" && result !== "error";
+                                                const res = hasResult ? (result as TokenRationaleResult) : null;
+                                                return (
+                                                  <div key={token.id} className="group relative flex items-center bg-white border border-gray-200 rounded shadow-sm px-1.5 py-1 hover:border-indigo-300 transition-colors">
+                                                    <span className={`font-mono font-bold px-1 py-0.5 rounded text-[10px] shrink-0 ${token.label === "M1" ? "bg-blue-100 text-blue-800" : token.label === "A1" ? "bg-green-100 text-green-800" : "bg-purple-100 text-purple-800"}`}>
+                                                      {token.label}
+                                                    </span>
+                                                    <div className="flex items-center gap-1 ml-1.5 mr-0.5 min-w-0 flex-1">
+                                                      {res ? (
+                                                        <>
+                                                          <span className="font-mono text-[10px] text-gray-600 truncate">{res.selectedSubtopic}</span>
+                                                          <span
+                                                            title={`${res.confidenceBucket} confidence`}
+                                                            className={`w-1.5 h-1.5 rounded-full shrink-0 ${res.confidenceBucket === "high" ? "bg-green-400" : res.confidenceBucket === "medium" ? "bg-yellow-400" : "bg-red-400"}`}
+                                                          />
+                                                          <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block w-52 p-2 bg-gray-800 text-white text-[10px] rounded shadow-lg z-10 whitespace-normal break-words pointer-events-none">
+                                                            {res.rationale}
+                                                            <div className="absolute top-full left-4 -mt-1 border-4 border-transparent border-t-gray-800"></div>
+                                                          </div>
+                                                        </>
+                                                      ) : isError ? (
+                                                        <span className="text-red-400 text-[10px]">error</span>
+                                                      ) : (
+                                                        <span className="text-gray-400 text-[10px] italic">unassigned</span>
+                                                      )}
+                                                    </div>
+                                                    <button
+                                                      type="button"
+                                                      title={`Generate attribution for ${token.label}`}
+                                                      disabled={isLoading}
+                                                      onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
+                                                      className="flex items-center justify-center w-4 h-4 rounded bg-gray-50 text-gray-400 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shrink-0"
+                                                    >
+                                                      {isLoading ? (
+                                                        <span className="inline-block w-2.5 h-2.5 border border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+                                                      ) : (
+                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
+                                                          <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v5A2.5 2.5 0 0 1 11.5 12H10v1.5a.5.5 0 0 1-.5.5H6.5a.5.5 0 0 1-.5-.5V12H4.5A2.5 2.5 0 0 1 2 9.5v-5Zm10.5 6a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h9Z" />
+                                                        </svg>
+                                                      )}
+                                                    </button>
+                                                  </div>
+                                                );
+                                              })}
+                                            </div>
+                                          );
+                                        })()}
                                       </div>
                                     ) : (
                                       <p className="text-xs text-gray-400 italic">{section.emptyHint}</p>
