@@ -6111,10 +6111,7 @@ function QuestionRow({
                                                 const res = hasResult ? (result as TokenRationaleResult) : null;
                                                 return (
                                                   <div key={token.id} className="group relative flex items-center bg-white border border-gray-200 rounded shadow-sm px-1.5 py-1 hover:border-indigo-300 transition-colors">
-                                                    <span className={`font-mono font-bold px-1 py-0.5 rounded text-[10px] shrink-0 ${token.label === "M1" ? "bg-blue-100 text-blue-800" : token.label === "A1" ? "bg-green-100 text-green-800" : "bg-purple-100 text-purple-800"}`}>
-                                                      {token.label}
-                                                    </span>
-                                                    <div className="flex items-center gap-1 ml-1.5 mr-0.5 min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1 min-w-0 flex-1">
                                                       {res ? (
                                                         <>
                                                           <span className="font-mono text-[10px] text-gray-600 truncate">{res.selectedSubtopic}</span>
@@ -6138,14 +6135,12 @@ function QuestionRow({
                                                       title={`Generate attribution for ${token.label}`}
                                                       disabled={isLoading}
                                                       onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
-                                                      className="flex items-center justify-center w-4 h-4 rounded bg-gray-50 text-gray-400 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shrink-0"
+                                                      className="flex items-center justify-center w-4 h-4 rounded bg-gray-50 text-gray-400 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shrink-0 ml-1"
                                                     >
                                                       {isLoading ? (
                                                         <span className="inline-block w-2.5 h-2.5 border border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
                                                       ) : (
-                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">
-                                                          <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v5A2.5 2.5 0 0 1 11.5 12H10v1.5a.5.5 0 0 1-.5.5H6.5a.5.5 0 0 1-.5-.5V12H4.5A2.5 2.5 0 0 1 2 9.5v-5Zm10.5 6a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h9Z" />
-                                                        </svg>
+                                                        <span className="text-[10px] font-bold">↻</span>
                                                       )}
                                                     </button>
                                                   </div>

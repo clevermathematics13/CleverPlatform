@@ -1,2 +1,11 @@
 Never use sed, awk, or terminal commands to edit files. You must always use your native file-editing tools.
 Always push to GitHub after every response that changes a file.
+NO TERMINAL SEARCHES: You are operating in a browser-based environment where background PTYs will hang. Do NOT use grep, find, or similar terminal commands to search for code. Use your native read-file tools instead.
+
+MANUAL EXECUTION: If a necessary terminal command is complex or long-running (like starting a server or installing a package), output the raw code block in chat and explicitly ask the user to run it in their visible terminal. Do not attempt to run it yourself.
+
+STRICT CONTEXT LIMITS: Never read more than 3 files at once to prevent extension host memory crashes.
+
+NEVER use the search_files tool. It causes fatal deadlocks in this environment. You must only use the read_file tool on explicitly specified file paths.
+
+LARGE FILES: If a file is over 1,000 lines long, do NOT use file editing tools like replace_in_file. Instead, output the exact code block in the chat and explicitly tell the user which line numbers to manually highlight and replace.
