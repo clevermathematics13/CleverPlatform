@@ -306,28 +306,65 @@ function parseMarksFromLatex(latex: string): number | null {
   return found && total > 0 ? total : null;
 }
 
+function sanitizeLatexForCommandTermDetection(latex: string): string {
+  return latex
+    .replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ")
+    .replace(/[${}\\]/g, " ");
+}
+
+function escapeRegex(source: string): string {
+  return source.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const COMMAND_TERM_VARIANTS: Readonly<Record<string, readonly string[]>> = {
+  State: ["stating"],
+};
+
+function commandTermPattern(term: string): RegExp {
+  const variants = COMMAND_TERM_VARIANTS[term] ?? [];
+  const tokens = [term, ...variants]
+    .map((entry) => escapeRegex(entry).replace(/\s+/g, "\\s+"));
+  return new RegExp(`\\b(?:${tokens.join("|")})\\b`, "gi");
+}
+
+function detectCommandTermMatches(latex: string): Array<{ term: string; index: number }> {
+  if (!latex) return [];
+  const plain = sanitizeLatexForCommandTermDetection(latex);
+  const matches: Array<{ term: string; index: number }> = [];
+
+  for (const term of DEFAULT_COMMAND_TERMS) {
+    const re = commandTermPattern(term);
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(plain)) !== null) {
+      matches.push({ term, index: m.index });
+    }
+  }
+
+  matches.sort((a, b) => a.index - b.index || b.term.length - a.term.length || a.term.localeCompare(b.term));
+
+  // Keep each canonical command term once, in order of first appearance.
+  const seen = new Set<string>();
+  const ordered: Array<{ term: string; index: number }> = [];
+  for (const match of matches) {
+    const key = match.term.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(match);
+  }
+  return ordered;
+}
+
 /**
- * Scan the question LaTeX for the first IB command term that appears as a
- * whole word (case-insensitive). Returns the canonical form or null.
+ * Scan the question LaTeX for the first IB command term by textual position
+ * (case-insensitive). Returns the canonical form or null.
  */
 function detectCommandTerm(latex: string): string | null {
-  if (!latex) return null;
-  // Strip LaTeX commands so we match plain text
-  const plain = latex.replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ").replace(/[${}\\]/g, " ");
-  // Longer terms first so "Write down" beats "Write", "Show that" etc.
-  const sorted = [...DEFAULT_COMMAND_TERMS].sort((a, b) => b.length - a.length);
-  for (const term of sorted) {
-    const re = new RegExp(`\\b${term.replace(/ /g, "\\s+")}\\b`, "i");
-    if (re.test(plain)) return term;
-  }
-  return null;
+  return detectCommandTermMatches(latex)[0]?.term ?? null;
 }
 
 function inferFallbackCommandTerm(latex: string): string | null {
   if (!latex) return null;
-  const plain = latex
-    .replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ")
-    .replace(/[${}\\]/g, " ")
+  const plain = sanitizeLatexForCommandTermDetection(latex)
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
@@ -339,7 +376,7 @@ function inferFallbackCommandTerm(latex: string): string | null {
   if (/^show\b/.test(plain)) return "Show";
   if (/^find\b/.test(plain)) return "Find";
   if (/^calculate\b/.test(plain)) return "Calculate";
-  if (/^state\b/.test(plain)) return "State";
+  if (/^(?:state|stating)\b/.test(plain)) return "State";
   if (/^determine\b/.test(plain)) return "Determine";
   if (/^hence\b/.test(plain)) return "Hence";
   return null;
@@ -384,15 +421,7 @@ function chooseCommandTerms(input: {
 }
 
 function detectCommandTerms(latex: string): string[] {
-  if (!latex) return [];
-  const plain = latex.replace(/\\[a-zA-Z]+\{[^}]*\}/g, " ").replace(/[${}\\]/g, " ");
-  const sorted = [...DEFAULT_COMMAND_TERMS].sort((a, b) => b.length - a.length);
-  const found: string[] = [];
-  for (const term of sorted) {
-    const re = new RegExp(`\\b${term.replace(/ /g, "\\s+")}\\b`, "i");
-    if (re.test(plain)) found.push(term);
-  }
-  return found;
+  return detectCommandTermMatches(latex).map((m) => m.term);
 }
 
 function mergeHighlightTerms(...groups: Array<string[] | null | undefined>): string[] {
@@ -1617,7 +1646,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     setTestBuilderOpen(true);
     setShowSavedExams(true);
     fetchSavedExams();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, []);
 
   const saveExam = async (queueOverride?: TestQueueItem[]) => {
@@ -5954,13 +5983,13 @@ function QuestionRow({
                                         }}
                                       />
                                     </div>
-                                    {/* Per-mark attribution — shown in markscheme card when part has ≥2 subtopics */}
-                                    {field === "markscheme_latex" && part.subtopic_codes.length >= 2 && (() => {
+                                    {/* Per-mark attribution — shown in markscheme card when part has ≥1 subtopic */}
+                                    {field === "markscheme_latex" && part.subtopic_codes.length >= 1 && (() => {
                                       const tokens = parseMSTokens(part.markscheme_latex ?? "");
                                       if (tokens.length === 0) return null;
                                       return (
-                                        <div className="flex flex-wrap items-start gap-y-1.5 gap-x-3 pt-0.5">
-                                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0 mt-1">Mark attribution</span>
+                                        <div className="flex flex-wrap items-center gap-y-1.5 gap-x-2 pt-0.5">
+                                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">Mark attribution</span>
                                           {tokens.map((token) => {
                                             const rKey = `${part.id}-${token.id}`;
                                             const result = tokenResults[rKey];
@@ -5973,6 +6002,21 @@ function QuestionRow({
                                                 <span className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${token.label === "M1" ? "bg-blue-100 text-blue-800" : token.label === "A1" ? "bg-green-100 text-green-800" : "bg-purple-100 text-purple-800"}`}>
                                                   {token.label}
                                                 </span>
+                                                <button
+                                                  type="button"
+                                                  title={`Explain which subtopic this ${token.label} tests`}
+                                                  disabled={isLoading}
+                                                  onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
+                                                  className="flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 hover:bg-indigo-600 hover:text-white disabled:opacity-40 transition-colors shrink-0 shadow-sm"
+                                                >
+                                                  {isLoading ? (
+                                                    <span className="inline-block w-3 h-3 border border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+                                                  ) : (
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                                      <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v5A2.5 2.5 0 0 1 11.5 12H10v1.5a.5.5 0 0 1-.5.5H6.5a.5.5 0 0 1-.5-.5V12H4.5A2.5 2.5 0 0 1 2 9.5v-5Zm10.5 6a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h9Z" />
+                                                    </svg>
+                                                  )}
+                                                </button>
                                                 {res ? (
                                                   <>
                                                     <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded font-mono text-[11px]">{res.selectedSubtopic}</span>
@@ -5987,24 +6031,7 @@ function QuestionRow({
                                                   </>
                                                 ) : isError ? (
                                                   <span className="text-red-400 text-[10px]">error</span>
-                                                ) : (
-                                                  <span className="text-gray-300 text-[10px]">—</span>
-                                                )}
-                                                <button
-                                                  type="button"
-                                                  title={`Explain which subtopic this ${token.label} tests`}
-                                                  disabled={isLoading}
-                                                  onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
-                                                  className="text-gray-400 hover:text-blue-600 disabled:opacity-40 transition-colors shrink-0"
-                                                >
-                                                  {isLoading ? (
-                                                    <span className="inline-block w-3 h-3 border border-gray-300 border-t-blue-500 rounded-full animate-spin" />
-                                                  ) : (
-                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                                                      <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v5A2.5 2.5 0 0 1 11.5 12H10v1.5a.5.5 0 0 1-.5.5H6.5a.5.5 0 0 1-.5-.5V12H4.5A2.5 2.5 0 0 1 2 9.5v-5Zm10.5 6a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h9Z" />
-                                                    </svg>
-                                                  )}
-                                                </button>
+                                                ) : null}
                                               </div>
                                             );
                                           })}
@@ -6097,12 +6124,12 @@ function QuestionRow({
                                             placeholder="Correction for Claude, e.g. 'fix the fraction in line 2'…"
                                             value={claudeInstruction[claudeKey] ?? ""}
                                             onChange={(e) => setClaudeInstruction((c) => ({ ...c, [claudeKey]: e.target.value }))}
-                                            onKeyDown={(e) => e.key === "Enter" && runClaude(part.id, field)}
+                                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void runClaude(part.id, field); } }}
                                             className="flex-1 border border-gray-300 rounded px-2 py-1 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400"
                                           />
                                           <button
                                             type="button"
-                                            onClick={() => runClaude(part.id, field)}
+                                            onClick={() => void runClaude(part.id, field)}
                                             disabled={claudeLoading[claudeKey] || !(claudeInstruction[claudeKey] ?? "").trim()}
                                             className="rounded px-2 py-1 text-xs font-bold bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-40"
                                           >

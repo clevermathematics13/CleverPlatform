@@ -1,0 +1,2 @@
+Never use sed, awk, or terminal commands to edit files. You must always use your native file-editing tools.
+Always push to GitHub after every response that changes a file.
