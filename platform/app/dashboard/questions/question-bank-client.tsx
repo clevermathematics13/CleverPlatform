@@ -5988,53 +5988,59 @@ function QuestionRow({
                                       const tokens = parseMSTokens(part.markscheme_latex ?? "");
                                       if (tokens.length === 0) return null;
                                       return (
-                                        <div className="flex flex-wrap items-center gap-y-1.5 gap-x-2 pt-0.5">
-                                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide shrink-0">Mark attribution</span>
-                                          {tokens.map((token) => {
-                                            const rKey = `${part.id}-${token.id}`;
-                                            const result = tokenResults[rKey];
-                                            const isLoading = result === "loading";
-                                            const isError = result === "error";
-                                            const hasResult = result && result !== "loading" && result !== "error";
-                                            const res = hasResult ? (result as TokenRationaleResult) : null;
-                                            return (
-                                              <div key={token.id} className="flex items-center gap-1 text-xs">
-                                                <span className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${token.label === "M1" ? "bg-blue-100 text-blue-800" : token.label === "A1" ? "bg-green-100 text-green-800" : "bg-purple-100 text-purple-800"}`}>
-                                                  {token.label}
-                                                </span>
-                                                <button
-                                                  type="button"
-                                                  title={`Explain which subtopic this ${token.label} tests`}
-                                                  disabled={isLoading}
-                                                  onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
-                                                  className="flex items-center justify-center w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 hover:bg-indigo-600 hover:text-white disabled:opacity-40 transition-colors shrink-0 shadow-sm"
-                                                >
-                                                  {isLoading ? (
-                                                    <span className="inline-block w-3 h-3 border border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
-                                                  ) : (
-                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-                                                      <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v5A2.5 2.5 0 0 1 11.5 12H10v1.5a.5.5 0 0 1-.5.5H6.5a.5.5 0 0 1-.5-.5V12H4.5A2.5 2.5 0 0 1 2 9.5v-5Zm10.5 6a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h9Z" />
-                                                    </svg>
-                                                  )}
-                                                </button>
-                                                {res ? (
-                                                  <>
-                                                    <span className="bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded font-mono text-[11px]">{res.selectedSubtopic}</span>
-                                                    <span
-                                                      title={`${res.confidenceBucket} confidence\n${res.rationale}`}
-                                                      className={`w-2 h-2 rounded-full shrink-0 ${res.confidenceBucket === "high" ? "bg-green-400" : res.confidenceBucket === "medium" ? "bg-yellow-400" : "bg-red-400"}`}
-                                                    />
-                                                    <span
-                                                      className="text-gray-400 italic text-[10px] max-w-[200px] truncate"
-                                                      title={res.rationale}
-                                                    >{res.rationale}</span>
-                                                  </>
-                                                ) : isError ? (
-                                                  <span className="text-red-400 text-[10px]">error</span>
-                                                ) : null}
-                                              </div>
-                                            );
-                                          })}
+                                        <div className="mt-3 pt-2 border-t border-gray-100">
+                                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Clev&apos;s Marks Attribution</span>
+                                          <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                                            {tokens.map((token) => {
+                                              const rKey = `${part.id}-${token.id}`;
+                                              const result = tokenResults[rKey];
+                                              const isLoading = result === "loading";
+                                              const isError = result === "error";
+                                              const hasResult = result && result !== "loading" && result !== "error";
+                                              const res = hasResult ? (result as TokenRationaleResult) : null;
+                                              return (
+                                                <div key={token.id} className="group relative flex items-center bg-white border border-gray-200 rounded shadow-sm p-1 pr-1.5 hover:border-indigo-300 transition-colors">
+                                                  <span className={`font-mono font-bold px-1.5 py-0.5 rounded text-[11px] ${token.label === "M1" ? "bg-blue-100 text-blue-800" : token.label === "A1" ? "bg-green-100 text-green-800" : "bg-purple-100 text-purple-800"}`}>
+                                                    {token.label}
+                                                  </span>
+                                                  <div className="flex items-center gap-1.5 ml-2 mr-1">
+                                                    {res ? (
+                                                      <>
+                                                        <span className="font-mono text-[11px] text-gray-600">{res.selectedSubtopic}</span>
+                                                        <span
+                                                          title={`${res.confidenceBucket} confidence`}
+                                                          className={`w-1.5 h-1.5 rounded-full ${res.confidenceBucket === "high" ? "bg-green-400" : res.confidenceBucket === "medium" ? "bg-yellow-400" : "bg-red-400"}`}
+                                                        />
+                                                        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 p-2 bg-gray-800 text-white text-[10px] rounded shadow-lg z-10 whitespace-normal break-words pointer-events-none">
+                                                          {res.rationale}
+                                                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-800"></div>
+                                                        </div>
+                                                      </>
+                                                    ) : isError ? (
+                                                      <span className="text-red-400 text-[10px]">error</span>
+                                                    ) : (
+                                                      <span className="text-gray-400 text-[10px] italic">unassigned</span>
+                                                    )}
+                                                  </div>
+                                                  <button
+                                                    type="button"
+                                                    title={`Generate attribution for ${token.label}`}
+                                                    disabled={isLoading}
+                                                    onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
+                                                    className="flex items-center justify-center w-5 h-5 rounded bg-gray-50 text-gray-400 hover:bg-indigo-100 hover:text-indigo-600 disabled:opacity-40 transition-colors shrink-0 ml-auto"
+                                                  >
+                                                    {isLoading ? (
+                                                      <span className="inline-block w-3 h-3 border border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
+                                                    ) : (
+                                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+                                                        <path d="M2 4.5A2.5 2.5 0 0 1 4.5 2h7A2.5 2.5 0 0 1 14 4.5v5A2.5 2.5 0 0 1 11.5 12H10v1.5a.5.5 0 0 1-.5.5H6.5a.5.5 0 0 1-.5-.5V12H4.5A2.5 2.5 0 0 1 2 9.5v-5Zm10.5 6a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h9Z" />
+                                                      </svg>
+                                                    )}
+                                                  </button>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
                                         </div>
                                       );
                                     })()}
