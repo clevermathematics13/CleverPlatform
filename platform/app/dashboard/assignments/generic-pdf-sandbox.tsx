@@ -132,7 +132,7 @@ export function GenericAssignmentSandbox({
 
   async function handleExportPdf() {
     try {
-      const res = await fetch("/api/assignments/export-pdf", {
+      const res = await fetch("/api/assignments/generate-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -145,19 +145,19 @@ export function GenericAssignmentSandbox({
       });
 
       if (!res.ok) {
-        throw new Error(`Export failed with status ${res.status}`);
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `Export failed with status ${res.status}`);
       }
 
-      const html = await res.text();
-      const popup = window.open("", "_blank", "noopener,noreferrer");
-      if (!popup) {
-        setError("Could not open print window. Please allow popups for this site.");
-        return;
-      }
-
-      popup.document.open();
-      popup.document.write(html);
-      popup.document.close();
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(draft.title || "assignment").replace(/[^a-z0-9]/gi, "_")}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
     } catch (err) {
       setError(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
@@ -451,7 +451,7 @@ export function GenericAssignmentSandbox({
               onClick={handleExportPdf}
               className="rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60"
             >
-              Export To PDF
+              Download PDF
             </button>
           </div>
 
