@@ -13,6 +13,12 @@ import { ExtractionReviewModal } from "./ExtractionReviewModal";
 import { ImageGroup } from "./ImageGroup";
 import { SubtopicEditor } from "./SubtopicEditor";
 import { CommandTermSelect } from "./CommandTermSelect";
+import { splitDraftIntoParts } from "../review/split-draft-into-parts";
+import {
+  hasExplicitTopLevelPartStructure,
+  shouldTrustMultipartWithoutExplicit,
+  shouldBlockPartAutoSave,
+} from "../part-structure";
 import {
   mergeHighlightTerms,
   detectCommandTerms,
@@ -24,6 +30,7 @@ import {
   DEFAULT_COMMAND_TERMS,
   chooseCommandTerm,
   chooseCommandTerms,
+  detectPartLabels,
 } from "./question-utils";
 import type {
   Question,
@@ -52,7 +59,7 @@ Expr functions: sin cos tan arcsin arccos arctan ln log sqrt abs exp
 Use ^ for powers: x^2, e^(-x), (x+1)^3
 Colors: any CSS hex or named colour`.trim();
 
-function QuestionRow({
+export function QuestionRow({
   question,
   expanded,
   onOpen,
