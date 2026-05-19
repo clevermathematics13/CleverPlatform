@@ -735,7 +735,8 @@ Be thorough: include all curves, asymptotes, intercepts, labeled points, guide l
     ],
   });
 
-  const pass1Raw = pass1Response.content[0].type === "text" ? pass1Response.content[0].text : "";
+  const pass1Block = pass1Response.content[0];
+  const pass1Raw = pass1Block.type === "text" ? (pass1Block as unknown as { text: string }).text : "";
 
   let graphSpec: IbGraphSpec;
   let graphMeta: GraphMetadata;
@@ -787,8 +788,9 @@ Verify the spec against the image and the written context. Return the refined sp
         ],
       });
 
-      pass2Raw = pass2Response.content[0].type === "text" ? pass2Response.content[0].text : "";
-      const parsed2 = safeParseJson(pass2Raw) as { graphSpec: IbGraphSpec; graphMeta: GraphMetadata; warnings: string[] };
+      const pass2Block = pass2Response.content[0];
+      pass2Raw = pass2Block.type === "text" ? (pass2Block as unknown as { text: string }).text : "";
+      const parsed2 = safeParseJson(pass2Raw ?? "") as { graphSpec: IbGraphSpec; graphMeta: GraphMetadata; warnings: string[] };
       graphSpec = normalizeLineDomains(parsed2.graphSpec ?? graphSpec);
       graphMeta = parsed2.graphMeta ?? graphMeta;
       if (Array.isArray(parsed2.warnings)) warnings.push(...parsed2.warnings);
@@ -822,7 +824,8 @@ Verify the spec against the image and the written context. Return the refined sp
       ],
     });
 
-    const auditRaw = auditResponse.content[0].type === "text" ? auditResponse.content[0].text : "";
+    const auditBlock = auditResponse.content[0];
+    const auditRaw = auditBlock.type === "text" ? (auditBlock as unknown as { text: string }).text : "";
     const audit = safeParseJson(auditRaw) as {
       vertices?: Array<{ x: number; y: number; confidence?: number }>;
       notes?: string[];
@@ -842,19 +845,20 @@ Verify the spec against the image and the written context. Return the refined sp
         let mergedVertices: AuditedVertex[] = [...existingVertices, ...rawAuditedVertices];
         try {
           const raster = await rasterSnapVerticesFromBase64(images[0], mergedVertices);
-          if (raster?.applied && raster.vertices.length === mergedVertices.length) {
-            mergedVertices = raster.vertices;
+          if (raster !== null && raster!.applied && raster!.vertices.length === mergedVertices.length) {
+            mergedVertices = raster!.vertices;
             rasterSnapApplied = true;
             warnings.push("Applied raster y-level snap from source image.");
-            warnings.push(...raster.diagnostics.map((d) => `Raster diagnostics: ${d}`));
+            warnings.push(...raster!.diagnostics.map((d) => `Raster diagnostics: ${d}`));
           } else {
-            if (raster?.diagnostics?.length) {
-              warnings.push(...raster.diagnostics.map((d) => `Raster diagnostics: ${d}`));
+            if (raster !== null && raster!.diagnostics?.length) {
+              warnings.push(...raster!.diagnostics.map((d) => `Raster diagnostics: ${d}`));
             }
             warnings.push("Raster y-level snap unavailable or rejected; using vision-derived vertices.");
           }
         } catch (e) {
-          warnings.push(`Raster y-level snap failed: ${e instanceof Error ? e.message : String(e)}`);
+          const errMsgRaster = e instanceof Error ? (e as Error).message : String(e);
+          warnings.push(`Raster y-level snap failed: ${errMsgRaster}`);
         }
 
         const auditedVertices = sanitizeAuditedVertices(mergedVertices);
@@ -910,9 +914,9 @@ Verify the spec against the image and the written context. Return the refined sp
       deterministicTarget = { ...graphSpec, elements: [...nonPoint, ...pass1PointEls] };
       deterministicSource = "pass 1";
     }
-    const deterministicResult = deterministicPiecewiseRepair(deterministicTarget, lockedBreakpoints);
+    const deterministicResult = deterministicPiecewiseRepair(deterministicTarget!, lockedBreakpoints);
     if (deterministicResult) {
-      const det = normalizeLineDomains(deterministicResult);
+      const det = normalizeLineDomains(deterministicResult!);
       const detContinuity = validateContinuity(det);
       if (detContinuity.isValid) {
         graphSpec = det;
@@ -962,14 +966,16 @@ Return ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
         ],
       });
 
-      const repairRaw = repairResponse.content[0].type === "text" ? repairResponse.content[0].text : "";
+      const repairBlock = repairResponse.content[0];
+      const repairRaw = repairBlock.type === "text" ? (repairBlock as unknown as { text: string }).text : "";
       const repaired = safeParseJson(repairRaw) as { graphSpec: IbGraphSpec; graphMeta: GraphMetadata; warnings?: string[] };
       if (repaired.graphSpec?.elements?.length) graphSpec = normalizeLineDomains(repaired.graphSpec);
       if (repaired.graphMeta) graphMeta = repaired.graphMeta;
-      if (Array.isArray(repaired.warnings)) warnings.push(...repaired.warnings);
+      warnings.push(...(repaired.warnings ?? []));
       continuity = validateContinuity(graphSpec);
     } catch (e) {
-      warnings.push(`Automatic continuity repair failed on attempt ${attempt}: ${e instanceof Error ? e.message : String(e)}`);
+      const errMsgRepair = e instanceof Error ? (e as Error).message : String(e);
+      warnings.push(`Automatic continuity repair failed on attempt ${attempt}: ${errMsgRepair}`);
       break;
     }
   }
@@ -977,9 +983,9 @@ Return ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
   // Deterministic fallback: if LLM repairs still fail, rebuild line segments from
   // detected point vertices from current spec (last resort).
   if (!continuity.isValid) {
-    const fallbackSpec = deterministicPiecewiseRepair(graphSpec, lockedBreakpoints);
+    const fallbackSpec = deterministicPiecewiseRepair(graphSpec!, lockedBreakpoints);
     if (fallbackSpec) {
-      graphSpec = normalizeLineDomains(fallbackSpec);
+      graphSpec = normalizeLineDomains(fallbackSpec!);
       continuity = validateContinuity(graphSpec);
       warnings.push("Applied deterministic piecewise repair from point vertices.");
     }
@@ -1012,9 +1018,9 @@ Return ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
   if (images[0]) {
     try {
       const refined = await rasterRefineHorizontalSegmentsFromBase64(images[0], graphSpec as unknown as Parameters<typeof rasterRefineHorizontalSegmentsFromBase64>[1]);
-      if (refined?.diagnostics?.length) {
-        graphSpec = refined.spec as IbGraphSpec;
-        warnings.push(...refined.diagnostics.map((d) => `Raster diagnostics: ${d}`));
+      if (refined !== null && refined!.diagnostics?.length) {
+        graphSpec = refined!.spec as IbGraphSpec;
+        warnings.push(...refined!.diagnostics.map((d) => `Raster diagnostics: ${d}`));
       }
     } catch {
       // Non-fatal: continue with the best available spec.

@@ -627,15 +627,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "questionId is required" }, { status: 400 });
 
   // ── 1. Fetch question images ─────────────────────────────────────────────
-  const { data: imgRows, error: imgErr } = await supabase
+  const imgResult = await supabase
     .from("question_images")
     .select("id, storage_path, sort_order, image_type")
     .eq("question_id", questionId)
     .order("sort_order");
 
-  if (imgErr) return NextResponse.json({ error: imgErr.message }, { status: 500 });
+  if (imgResult.error) return NextResponse.json({ error: imgResult.error?.message ?? "Unknown error" }, { status: 500 });
 
-  const questionImgRows = (imgRows ?? []).filter((r) => r.image_type === "question");
+  const questionImgRows = (imgResult.data ?? []).filter((r) => r.image_type === "question");
   if (questionImgRows.length === 0)
     return NextResponse.json(
       { error: "No question images found. Please extract question images first." },
@@ -650,10 +650,12 @@ export async function POST(request: NextRequest) {
     const { data: signed, error: signErr } = await supabase.storage
       .from("question-images")
       .createSignedUrl(img.storage_path, 300);
-    if (signErr || !signed?.signedUrl)
+    if (!signed)
+      return NextResponse.json({ error: `Failed to sign URL for ${img.storage_path}` }, { status: 500 });
+    if (!signed!.signedUrl)
       return NextResponse.json({ error: `Failed to sign URL for ${img.storage_path}` }, { status: 500 });
 
-    const res = await fetch(signed.signedUrl);
+    const res = await fetch(signed!.signedUrl);
     if (!res.ok)
       return NextResponse.json({ error: `Failed to download image: ${res.status}` }, { status: 502 });
 
@@ -701,7 +703,8 @@ Be thorough: include all curves, asymptotes, intercepts, labeled points, guide l
     ],
   });
 
-  const pass1Text = pass1Response.content[0].type === "text" ? pass1Response.content[0].text : "";
+  const pass1Block = pass1Response.content[0];
+  const pass1Text = pass1Block.type === "text" ? (pass1Block as unknown as { text: string }).text : "";
 
   let graphSpec: IbGraphSpec;
   let graphMeta: GraphMetadata;
@@ -753,7 +756,8 @@ and list any warnings about discrepancies.`,
         ],
       });
 
-      const pass2Text = pass2Response.content[0].type === "text" ? pass2Response.content[0].text : "";
+      const pass2Block = pass2Response.content[0];
+      const pass2Text = pass2Block.type === "text" ? (pass2Block as unknown as { text: string }).text : "";
       try {
         const refined = safeParseJson(pass2Text) as {
           graphSpec: IbGraphSpec;
@@ -768,7 +772,8 @@ and list any warnings about discrepancies.`,
         warnings.push("Pass 2 verification JSON parse failed — using Pass 1 result.");
       }
     } catch (e) {
-      warnings.push(`Pass 2 verification error: ${e instanceof Error ? e.message : String(e)}`);
+      const errMsgPass2 = e instanceof Error ? (e as Error).message : String(e);
+      warnings.push(`Pass 2 verification error: ${errMsgPass2}`);
     }
   } else {
     warnings.push("No existing question/MS LaTeX found — skipped Pass 2 verification. Run OCR extraction first for best results.");
@@ -799,7 +804,8 @@ and list any warnings about discrepancies.`,
       ],
     });
 
-    const auditRaw = auditResponse.content[0].type === "text" ? auditResponse.content[0].text : "";
+    const auditBlock = auditResponse.content[0];
+    const auditRaw = auditBlock.type === "text" ? (auditBlock as unknown as { text: string }).text : "";
     const audit = safeParseJson(auditRaw) as {
       vertices?: Array<{ x: number; y: number; confidence?: number }>;
       notes?: string[];
@@ -819,19 +825,20 @@ and list any warnings about discrepancies.`,
         let mergedVertices: AuditedVertex[] = [...existingVertices, ...rawAuditedVertices];
         try {
           const raster = await rasterSnapVerticesFromBase64(base64Images[0], mergedVertices);
-          if (raster?.applied && raster.vertices.length === mergedVertices.length) {
-            mergedVertices = raster.vertices;
+          if (raster !== null && raster!.applied && raster!.vertices.length === mergedVertices.length) {
+            mergedVertices = raster!.vertices;
             rasterSnapApplied = true;
             warnings.push("Applied raster y-level snap from source image.");
-            warnings.push(...raster.diagnostics.map((d) => `Raster diagnostics: ${d}`));
+            warnings.push(...raster!.diagnostics.map((d) => `Raster diagnostics: ${d}`));
           } else {
-            if (raster?.diagnostics?.length) {
-              warnings.push(...raster.diagnostics.map((d) => `Raster diagnostics: ${d}`));
+            if (raster !== null && raster!.diagnostics?.length) {
+              warnings.push(...raster!.diagnostics.map((d) => `Raster diagnostics: ${d}`));
             }
             warnings.push("Raster y-level snap unavailable or rejected; using vision-derived vertices.");
           }
         } catch (e) {
-          warnings.push(`Raster y-level snap failed: ${e instanceof Error ? e.message : String(e)}`);
+          const errMsgRaster = e instanceof Error ? (e as Error).message : String(e);
+          warnings.push(`Raster y-level snap failed: ${errMsgRaster}`);
         }
 
         const auditedVertices = sanitizeAuditedVertices(mergedVertices);
@@ -970,7 +977,8 @@ Return ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
         ],
       });
 
-      const repairText = repairResponse.content[0].type === "text" ? repairResponse.content[0].text : "";
+      const repairBlock = repairResponse.content[0];
+      const repairText = repairBlock.type === "text" ? (repairBlock as unknown as { text: string }).text : "";
       const repaired = safeParseJson(repairText) as {
         graphSpec: IbGraphSpec;
         graphMeta: GraphMetadata;
@@ -978,19 +986,20 @@ Return ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
       };
       if (repaired.graphSpec?.elements?.length) graphSpec = repaired.graphSpec;
       if (repaired.graphMeta) graphMeta = repaired.graphMeta;
-      if (Array.isArray(repaired.warnings)) warnings.push(...repaired.warnings);
+      warnings.push(...(repaired.warnings ?? []));
       continuity = validateContinuity(graphSpec);
     } catch (e) {
-      warnings.push(`Automatic continuity repair failed on attempt ${attempt}: ${e instanceof Error ? e.message : String(e)}`);
+      const errMsgRepair = e instanceof Error ? (e as Error).message : String(e);
+      warnings.push(`Automatic continuity repair failed on attempt ${attempt}: ${errMsgRepair}`);
       break;
     }
   }
 
   if (!continuity.isValid) {
     const lockedBreakpoints = collectLockedBreakpoints(pass1Spec, graphSpec);
-    const deterministic = deterministicPiecewiseRepair(graphSpec, lockedBreakpoints);
+    const deterministic = deterministicPiecewiseRepair(graphSpec!, lockedBreakpoints);
     if (deterministic) {
-      const det = normalizeLineDomains(deterministic);
+      const det = normalizeLineDomains(deterministic!);
       const deterministicContinuity = validateContinuity(det);
       if (deterministicContinuity.isValid) {
         graphSpec = det;
@@ -1024,9 +1033,9 @@ Return ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
   if (base64Images[0]) {
     try {
       const refined = await rasterRefineHorizontalSegmentsFromBase64(base64Images[0], graphSpec as unknown as Parameters<typeof rasterRefineHorizontalSegmentsFromBase64>[1]);
-      if (refined?.diagnostics?.length) {
-        graphSpec = refined.spec as IbGraphSpec;
-        warnings.push(...refined.diagnostics.map((d) => `Raster diagnostics: ${d}`));
+      if (refined !== null && refined!.diagnostics?.length) {
+        graphSpec = refined!.spec as IbGraphSpec;
+        warnings.push(...refined!.diagnostics.map((d) => `Raster diagnostics: ${d}`));
       }
     } catch {
       // Non-fatal: continue with the best available spec.
