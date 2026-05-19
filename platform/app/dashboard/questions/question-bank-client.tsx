@@ -15,6 +15,7 @@ import type {
   ExamConfig,
   Course,
   SavedExam,
+  Subtopic,
 } from "./components/types";
 
 export function QuestionBankClient({ initialDriveConnected = false }: { initialDriveConnected?: boolean }) {
