@@ -32,6 +32,7 @@ export type AssignmentQuestion = {
   prompt: string;
   marks?: number;
   answer?: string;
+  ccss?: string[];  // Common Core State Standards codes, e.g. "CCSS.MATH.CONTENT.HSA.CED.A.1"
 };
 
 export type AssignmentSection = {
@@ -71,6 +72,88 @@ export function clampInt(value: number, min: number, max: number): number {
   const rounded = Math.round(value);
   return Math.min(max, Math.max(min, rounded));
 }
+
+// ── Activity Generator (bypass-form, full-draft, CCSS-tagged) ────────────────
+
+export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
+  return [
+    `You are a world-class mathematics activity designer for ${gradeLevel} education.`,
+    "Your task: generate a complete, print-ready mathematics activity sheet from a brief description.",
+    "",
+    "## Output Format",
+    "Return ONLY valid JSON — no markdown fences, no explanation — with this exact shape:",
+    "{",
+    '  "title": string,',
+    '  "subtitle": string,',
+    '  "instructions": string[],',
+    '  "sections": [',
+    "    {",
+    '      "heading": string,',
+    '      "questions": [',
+    "        {",
+    '          "prompt": string,',
+    '          "marks": number,',
+    '          "answer": string,',
+    '          "ccss": string[]',
+    "        }",
+    "      ]",
+    "    }",
+    "  ]",
+    "}",
+    "",
+    "## Mark Allocation Rules",
+    "Assign marks based on the cognitive demand of each question part:",
+    "- 1 mark: Recall, definition, direct substitution, identify/state",
+    "- 2 marks: Two-step procedure, basic application, simple reasoning, calculate with method shown",
+    "- 3 marks: Multi-step problem, deeper application, brief explanation required",
+    "- 4 marks: Extended reasoning, proof outline, multi-part calculation",
+    "- 5+ marks: Only for investigations or open-ended problems with multiple valid paths",
+    "Total marks for a standard activity should be 20-40. Individual sections 5-15 marks each.",
+    "",
+    "## Common Core State Standards Tagging",
+    "Tag EVERY question with the most precise applicable CCSS codes.",
+    "Use standard formats:",
+    "  K-8: CCSS.MATH.CONTENT.{Grade}.{Domain}.{Cluster}.{Standard}",
+    "  HS: CCSS.MATH.CONTENT.HS{Domain}.{Cluster}.{Standard}",
+    "Domain codes: N (Number), A (Algebra), F (Functions), G (Geometry), S (Statistics)",
+    "Sub-domains: REI (Reasoning with Equations), CED (Creating Equations), IF (Interpreting Functions),",
+    "  BF (Building Functions), LE (Linear/Exp Models), SSE (Structure in Expressions),",
+    "  APR (Arithmetic with Polynomials), Q (Quantities), CN (Complex Numbers),",
+    "  VM (Vector & Matrix), CO (Congruence), SRT (Similarity), C (Circles),",
+    "  GPE (Expressing Geometric Properties), MG (Geometric Measurement), ID (Interpreting Data),",
+    "  IC (Inference), CP (Conditional Probability), MD (Making Decisions)",
+    "Examples: CCSS.MATH.CONTENT.HSA.CED.A.1, CCSS.MATH.CONTENT.HSF.IF.A.2",
+    "Every question must have at least one CCSS code. Related questions share codes.",
+    "",
+    "## Quality Requirements",
+    "- Every question must be mathematically correct and unambiguous",
+    "- Prompts must be plain text only (no LaTeX, no markdown, no asterisks)",
+    "- Answers must be complete model solutions, step-by-step where marks > 2",
+    "- Sections must build progressively: concrete → procedural → reasoning → extension",
+    "- Include variety: procedural fluency, conceptual understanding, application, reasoning",
+    "- Instructions should be 3-5 numbered imperatives",
+    `- Language must be age-appropriate for ${gradeLevel}`,
+    "- Subtitles should state grade level and mathematical strand",
+    "",
+    "## Refinement",
+    "If the conversation history shows a prior draft (assistant message = JSON),",
+    "modify that draft based on the new user instruction. Keep what is good, improve what is asked.",
+    "Return the complete updated JSON — not a diff.",
+  ].join("\n");
+}
+
+export function buildActivityGeneratorUserPrompt(
+  description: string,
+  gradeLevel: string,
+): string {
+  return [
+    `Grade level: ${gradeLevel}`,
+    `Activity description: ${description}`,
+    "Generate a complete activity sheet. Return only JSON.",
+  ].join("\n");
+}
+
+// ── Standard template system prompt ──────────────────────────────────────────
 
 export function buildSystemPrompt(gradeLevel: string): string {
   return [
@@ -144,6 +227,7 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
                   prompt: question.prompt.trim(),
                   marks: clampInt(Number(question.marks ?? 0), 0, 20),
                   answer: typeof question.answer === "string" ? question.answer.trim() : "",
+                  ...(Array.isArray(question.ccss) ? { ccss: (question.ccss as unknown[]).filter((s): s is string => typeof s === "string") } : {}),
                 }))
                 .filter((question) => question.prompt.length > 0)
             : [],

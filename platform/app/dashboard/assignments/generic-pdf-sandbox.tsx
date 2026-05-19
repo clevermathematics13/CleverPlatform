@@ -15,6 +15,7 @@ import {
   sanitizeDraft,
   formatQuestionLabel,
 } from "@/lib/assignments";
+import { ActivityGeneratorPanel } from "./activity-generator";
 
 type GenericSandboxProps = {
   gradeLevel: "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
@@ -167,11 +168,17 @@ export function GenericAssignmentSandbox({
     <section className="rounded-2xl border border-da-border bg-da-surface/80 p-6 shadow-lg shadow-black/30">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         <div className="space-y-5">
+          <ActivityGeneratorPanel
+            gradeLevel={gradeLevel}
+            formatting={formatting}
+            onDraftGenerated={(generated) => setDraft(generated)}
+          />
+
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h2 className="text-lg font-semibold font-serif text-da-text">{gradeLevel} PDF Sandbox</h2>
             <p className="text-xs text-da-muted">
-              Configure your formatting requirements, generate a draft with AI, edit in place, and
-              export as a clean print-ready PDF.
+              Or configure the form below and use &ldquo;Generate With AI&rdquo; for more control over
+              formatting and topic.
             </p>
           </div>
 
@@ -539,23 +546,38 @@ export function GenericAssignmentSandbox({
                       return (
                         <div key={`q-${sectionIndex}-${questionIndex}`} className="grid grid-cols-[auto_1fr_auto] gap-2 items-start">
                           <span className="font-medium text-gray-800">{label}</span>
-                          <textarea
-                            value={question.prompt}
-                            rows={2}
-                            onChange={(event) =>
-                              setDraft((prev) => {
-                                const sections = [...prev.sections];
-                                const questions = [...sections[sectionIndex].questions];
-                                questions[questionIndex] = {
-                                  ...questions[questionIndex],
-                                  prompt: event.target.value,
-                                };
-                                sections[sectionIndex] = { ...sections[sectionIndex], questions };
-                                return { ...prev, sections };
-                              })
-                            }
-                            className="w-full resize-y border-0 p-0 text-gray-900 focus:outline-none"
-                          />
+                          <div className="min-w-0">
+                            <textarea
+                              value={question.prompt}
+                              rows={2}
+                              onChange={(event) =>
+                                setDraft((prev) => {
+                                  const sections = [...prev.sections];
+                                  const questions = [...sections[sectionIndex].questions];
+                                  questions[questionIndex] = {
+                                    ...questions[questionIndex],
+                                    prompt: event.target.value,
+                                  };
+                                  sections[sectionIndex] = { ...sections[sectionIndex], questions };
+                                  return { ...prev, sections };
+                                })
+                              }
+                              className="w-full resize-y border-0 p-0 text-gray-900 focus:outline-none"
+                            />
+                            {question.ccss && question.ccss.length > 0 && (
+                              <div className="mt-0.5 flex flex-wrap gap-1">
+                                {question.ccss.map((code) => (
+                                  <span
+                                    key={code}
+                                    title={code}
+                                    className="rounded border border-blue-200 bg-blue-50 px-1 py-0.5 text-[8px] font-mono text-blue-500"
+                                  >
+                                    {code.replace("CCSS.MATH.CONTENT.", "")}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
 
                           {formatting.includeMarksColumn && (
                             <input
