@@ -271,10 +271,10 @@ function renderTextLine(
     // Find all countable tokens in this line to render attributions next to them
     const attributions: React.ReactNode[] = [];
     if (renderMarkAttribution && tokenCounter) {
-      const TOKEN_RE = /\\hfill\s+\(?(M1|A1|R1)\)?|\b(M1|A1|R1)\b(?=\s*$)/gm;
+      const TOKEN_RE = /\\hfill\s+\(?((M1|A1|R1)+)\)?|\b((M1|A1|R1)+)\b(?=\s*$)/gm;
       let m: RegExpExecArray | null;
       while ((m = TOKEN_RE.exec(line)) !== null) {
-        const label = (m[1] ?? m[2]);
+        const label = (m[1] ?? m[3]);
         attributions.push(
           <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
             {renderMarkAttribution(label, tokenCounter.count)}
@@ -303,13 +303,13 @@ function renderTextLine(
   
   // If no \hfill, there could still be a bare mark token at the end of the line
   if (renderMarkAttribution && tokenCounter) {
-    const TOKEN_RE = /\b(M1|A1|R1)\b(?=\s*$)/g; // only bare ones here
+    const TOKEN_RE = /\b((M1|A1|R1)+)\b(?=\s*$)/g; // only bare ones here
     let m: RegExpExecArray | null;
     let foundBareTokens = false;
     const attributions: React.ReactNode[] = [];
     while ((m = TOKEN_RE.exec(line)) !== null) {
       foundBareTokens = true;
-      const label = m[1];
+      const label = (m[1] ?? m[2]);
       attributions.push(
         <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
           {renderMarkAttribution(label, tokenCounter.count)}

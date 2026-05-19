@@ -292,10 +292,10 @@ export function postProcessMathpixLatex(raw: string): string {
  * AG, ft, N0–N3 are excluded because they do not award marks.
  */
 export interface MarkToken {
-  /** Stable key for React rendering and API payloads: e.g. "0-M1", "1-A1" */
+  /** Stable key for React rendering and API payloads: e.g. "0-M1", "1-A1", "2-M1A1" */
   id: string;
-  /** Token label as it appears in the markscheme: "M1", "A1", or "R1" */
-  label: "M1" | "A1" | "R1";
+  /** Token label as it appears in the markscheme: "M1", "A1", "R1", or a combined form like "M1A1" */
+  label: string;
   /** 0-indexed position among all countable tokens in this markscheme */
   ordinal: number;
   /**
@@ -312,14 +312,15 @@ export interface MarkToken {
  * (`M1` alone at the end of a line) so that OCR variation is handled gracefully.
  */
 export function parseMSTokens(markschemeLatex: string): MarkToken[] {
-  // Primary pattern: \hfill followed by optional parens and M1/A1/R1
-  // Fallback pattern: bare M1/A1/R1 at the very end of a line (after optional whitespace)
-  const TOKEN_RE = /\\hfill\s+\(?(M1|A1|R1)\)?|\b(M1|A1|R1)\b(?=\s*$)/gm;
+  // Primary pattern: \hfill followed by optional parens and one or more adjacent
+  // mark codes (e.g. "M1", "A1", "M1A1", "A1A1").
+  // Fallback pattern: same combined form at the very end of a line.
+  const TOKEN_RE = /\\hfill\s+\(?((M1|A1|R1)+)\)?|\b((M1|A1|R1)+)\b(?=\s*$)/gm;
   const tokens: MarkToken[] = [];
   let ordinal = 0;
   let m: RegExpExecArray | null;
   while ((m = TOKEN_RE.exec(markschemeLatex)) !== null) {
-    const label = (m[1] ?? m[2]) as "M1" | "A1" | "R1";
+    const label = (m[1] ?? m[3]) as string;
     const pos = m.index;
     const start = Math.max(0, pos - 200);
     const snippet = markschemeLatex
@@ -342,13 +343,14 @@ export const IB_MARK_RATIONALE_SYSTEM = `You are an expert IB Mathematics examin
 You will be given:
 - The question LaTeX for one part of an IB Mathematics past paper question
 - The markscheme LaTeX for the same part
-- A single mark token (M1, A1, or R1) with its surrounding context snippet
+- A single mark token (M1, A1, R1, or a combined token like M1A1 or A1A1) with its surrounding context snippet
 - The list of subtopics already assigned to this part (with one identified as primary)
 - The full list of available subtopics with descriptors
 
 Your task: decide which of the already-assigned subtopics this specific token is most directly testing, and explain your reasoning concisely.
 
 Guidelines:
+- M1A1 or similar combined tokens: treat the group as a unit. The M1 was awarded for the method and the A1 for the correct result of that same step — attribute them together to whichever subtopic best describes what was being done.
 - M1 (Method mark): awarded for the METHOD step — which mathematical procedure is being initiated or set up? Tag the subtopic whose technique is being APPLIED in this step.
 - A1 (Accuracy mark): awarded for a CORRECT RESULT — which subtopic's skill produced this specific correct value, expression, or conclusion?
 - R1 (Reasoning mark): awarded for a LOGICAL JUSTIFICATION — which subtopic's conceptual understanding underpins the reasoning required?
