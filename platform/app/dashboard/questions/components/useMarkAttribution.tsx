@@ -43,6 +43,8 @@ export function useMarkAttribution(
     return initial;
   });
 
+  const [activePopover, setActivePopover] = useState<string | null>(null);
+
   async function persistAttribution(
     partId: string,
     tokenId: string,
@@ -145,19 +147,86 @@ export function useMarkAttribution(
         }
       };
 
+      const hasRationale =
+        !!res?.rationale && res.rationale !== "Manual" && res.rationale !== "AI";
+
+      const rationalePopoverContent = (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setActivePopover(null)}
+          />
+          <div
+            className="absolute left-0 top-full mt-1 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between mb-1.5">
+              <span className="font-mono text-xs font-semibold text-indigo-700">
+                {displayCode}
+              </span>
+              <button
+                type="button"
+                onClick={() => setActivePopover(null)}
+                className="text-gray-400 hover:text-gray-600 text-sm leading-none ml-2 shrink-0"
+              >
+                ×
+              </button>
+            </div>
+            {hasRationale ? (
+              <div className="space-y-1">
+                <p className="text-xs text-gray-700 leading-snug">{res!.rationale}</p>
+                {res!.evidenceSpan && (
+                  <p className="text-[10px] text-gray-400 italic">&ldquo;{res!.evidenceSpan}&rdquo;</p>
+                )}
+                <p className="text-[10px] text-gray-400">
+                  Confidence: {res!.confidenceBucket}
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-400 italic">No rationale generated yet.</p>
+            )}
+            <button
+              type="button"
+              disabled={isLoading}
+              onClick={(e) => {
+                e.stopPropagation();
+                void generateMarkRationale(part, token.id);
+              }}
+              className="mt-2 text-[10px] text-indigo-500 hover:text-indigo-700 disabled:opacity-40 flex items-center gap-1"
+            >
+              {isLoading
+                ? "Generating…"
+                : hasRationale
+                  ? "↺ Regenerate"
+                  : "✦ Generate rationale"}
+            </button>
+          </div>
+        </>
+      );
+
       return (
         <span
           key={token.id}
           className="group relative inline-flex items-center gap-0.5 ml-1"
         >
           {singleSubtopic ? (
-            <span className="font-mono text-[10px] px-1 bg-gray-100 text-gray-600 rounded">
-              {singleSubtopic}
+            <span className="relative">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActivePopover(activePopover === rKey ? null : rKey);
+                }}
+                className="font-mono text-[10px] px-1 bg-gray-100 hover:bg-indigo-50 text-gray-600 hover:text-indigo-600 rounded cursor-pointer"
+              >
+                {singleSubtopic}
+              </button>
+              {activePopover === rKey && rationalePopoverContent}
             </span>
           ) : isError ? (
             <span className="text-red-400 text-[10px]">err</span>
           ) : (
-            <span className="inline-flex items-center gap-0.5">
+            <span className="relative inline-flex items-center gap-0.5">
               <select
                 value={displayCode ?? ""}
                 onChange={(e) => {
@@ -176,6 +245,19 @@ export function useMarkAttribution(
                   </option>
                 ))}
               </select>
+              {(res || isLoading) && (
+                <button
+                  type="button"
+                  title="View rationale"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActivePopover(activePopover === rKey ? null : rKey);
+                  }}
+                  className="font-mono text-[10px] text-gray-400 hover:text-indigo-500"
+                >
+                  ⓘ
+                </button>
+              )}
               <button
                 type="button"
                 title="Auto-assign with AI"
@@ -188,6 +270,7 @@ export function useMarkAttribution(
               >
                 {isLoading ? "…" : "✦"}
               </button>
+              {activePopover === rKey && rationalePopoverContent}
             </span>
           )}
         </span>
