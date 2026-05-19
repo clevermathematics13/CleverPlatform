@@ -1,5 +1,11 @@
 // Shared types for the question bank components
 
+export interface MarkAttribution {
+  subtopicCode: string;
+  source: 'manual' | 'ai';
+  rationale?: string;
+}
+
 export interface QuestionPart {
   id: string;
   part_label: string;
@@ -18,6 +24,8 @@ export interface QuestionPart {
   content_latex: string | null;
   markscheme_latex: string | null;
   latex_verified: boolean | null;
+  /** Persisted mark-level subtopic attributions, keyed by token ID. */
+  mark_attributions?: Record<string, MarkAttribution> | null;
 }
 
 export interface QuestionImage {
