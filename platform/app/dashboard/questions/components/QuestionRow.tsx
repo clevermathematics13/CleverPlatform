@@ -3104,46 +3104,40 @@ function QuestionRow({
                                               part.command_terms?.slice(1) ?? [],
                                               detectCommandTerms(saved),
                                             ) : []}
+                                            renderMarkAttribution={field === "markscheme_latex" && part.subtopic_codes.length >= 1 ? (label, ordinal) => {
+                                              const tokens = parseMSTokens(saved);
+                                              const token = tokens[ordinal];
+                                              if (!token) return null;
+                                              const singleSubtopic = part.subtopic_codes.length === 1 ? part.subtopic_codes[0] : null;
+                                              const rKey = `${part.id}-${token.id}`;
+                                              const result = tokenResults[rKey];
+                                              const isLoading = result === "loading";
+                                              const isError = result === "error";
+                                              const hasResult = result && result !== "loading" && result !== "error";
+                                              const res = hasResult ? (result as TokenRationaleResult) : null;
+                                              const displayCode = singleSubtopic || res?.selectedSubtopic || null;
+                                              return (
+                                                <div key={token.id} className="group relative inline-flex items-center gap-1">
+                                                  {displayCode ? (
+                                                    <span className="font-mono text-[10px] text-gray-600">{displayCode}</span>
+                                                  ) : isError ? (
+                                                    <span className="text-red-400 text-[10px]">error</span>
+                                                  ) : !singleSubtopic ? (
+                                                    <button
+                                                      type="button"
+                                                      title={`Generate attribution for ${token.label}`}
+                                                      disabled={isLoading}
+                                                      onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
+                                                      className="font-mono text-[10px] text-gray-400 hover:text-indigo-600 disabled:opacity-40"
+                                                    >
+                                                      {isLoading ? "…" : "?"}
+                                                    </button>
+                                                  ) : null}
+                                                </div>
+                                              );
+                                            } : undefined}
                                           />
                                         </div>
-                                        {field === "markscheme_latex" && part.subtopic_codes.length >= 1 && (() => {
-                                          const tokens = parseMSTokens(part.markscheme_latex ?? "");
-                                          if (tokens.length === 0) return null;
-                                          // If only one subtopic, just show it directly for each token
-                                          const singleSubtopic = part.subtopic_codes.length === 1 ? part.subtopic_codes[0] : null;
-                                          return (
-                                            <div className="flex flex-col gap-y-1 shrink-0">
-                                              {tokens.map((token) => {
-                                                const rKey = `${part.id}-${token.id}`;
-                                                const result = tokenResults[rKey];
-                                                const isLoading = result === "loading";
-                                                const isError = result === "error";
-                                                const hasResult = result && result !== "loading" && result !== "error";
-                                                const res = hasResult ? (result as TokenRationaleResult) : null;
-                                                const displayCode = singleSubtopic || res?.selectedSubtopic || null;
-                                                return (
-                                                  <div key={token.id} className="group relative inline-flex items-center gap-1">
-                                                    {displayCode ? (
-                                                      <span className="font-mono text-[10px] text-gray-600">{displayCode}</span>
-                                                    ) : isError ? (
-                                                      <span className="text-red-400 text-[10px]">error</span>
-                                                    ) : !singleSubtopic ? (
-                                                      <button
-                                                        type="button"
-                                                        title={`Generate attribution for ${token.label}`}
-                                                        disabled={isLoading}
-                                                        onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
-                                                        className="font-mono text-[10px] text-gray-400 hover:text-indigo-600 disabled:opacity-40"
-                                                      >
-                                                        {isLoading ? "…" : "?"}
-                                                      </button>
-                                                    ) : null}
-                                                  </div>
-                                                );
-                                              })}
-                                            </div>
-                                          );
-                                        })()}
                                       </div>
                                     ) : (
                                       <p className="text-xs text-gray-400 italic">{section.emptyHint}</p>

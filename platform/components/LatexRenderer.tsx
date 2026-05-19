@@ -20,6 +20,8 @@ interface Props {
   highlightCommandTerm?: string | null;
   /** Optional context/instructional term list to highlight inline in rendered text. */
   highlightContextTerms?: string[];
+  /** Optional callback to render attribution next to a specific mark token. */
+  renderMarkAttribution?: (tokenLabel: string, ordinal: number) => React.ReactNode;
 }
 
 const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
@@ -254,7 +256,9 @@ function renderTextLine(
   line: string,
   key: string | number,
   commandTerm: string | null | undefined,
-  contextTerms: string[]
+  contextTerms: string[],
+  renderMarkAttribution?: (tokenLabel: string, ordinal: number) => React.ReactNode,
+  tokenCounter?: { count: number }
 ): React.ReactNode {
   if (line.includes("\\hfill")) {
     const hfillIdx = line.indexOf("\\hfill");
@@ -263,15 +267,64 @@ function renderTextLine(
     // If the part before \hfill is itself a mark code (e.g. "A1", "(M1)", "N2", "AG"),
     // group it with the right-side code rather than showing it as left content.
     const isMarkCode = /^\(?[A-Z]{1,2}\d*\)?$/.test(before);
+    
+    // Find all countable tokens in this line to render attributions next to them
+    const attributions: React.ReactNode[] = [];
+    if (renderMarkAttribution && tokenCounter) {
+      const TOKEN_RE = /\\hfill\s+\(?(M1|A1|R1)\)?|\b(M1|A1|R1)\b(?=\s*$)/gm;
+      let m: RegExpExecArray | null;
+      while ((m = TOKEN_RE.exec(line)) !== null) {
+        const label = (m[1] ?? m[2]);
+        attributions.push(
+          <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
+            {renderMarkAttribution(label, tokenCounter.count)}
+          </span>
+        );
+        tokenCounter.count++;
+      }
+    }
+
     return (
       <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
         <span>{isMarkCode ? null : (before ? renderStyledText(before, commandTerm, contextTerms) : null)}</span>
-        <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
-          {isMarkCode ? `${before} ${markCode}` : markCode}
+        <span style={{ display: "flex", alignItems: "baseline", flexShrink: 0 }}>
+          <span style={{ fontStyle: "italic", color: "#374151" }}>
+            {isMarkCode ? `${before} ${markCode}` : markCode}
+          </span>
+          {attributions}
         </span>
       </span>
     );
   }
+  
+  // If no \hfill, there could still be a bare mark token at the end of the line
+  if (renderMarkAttribution && tokenCounter) {
+    const TOKEN_RE = /\b(M1|A1|R1)\b(?=\s*$)/g; // only bare ones here
+    let m: RegExpExecArray | null;
+    let foundBareTokens = false;
+    const attributions: React.ReactNode[] = [];
+    while ((m = TOKEN_RE.exec(line)) !== null) {
+      foundBareTokens = true;
+      const label = m[1];
+      attributions.push(
+        <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
+          {renderMarkAttribution(label, tokenCounter.count)}
+        </span>
+      );
+      tokenCounter.count++;
+    }
+    if (foundBareTokens) {
+      return (
+        <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+          <span>{renderStyledText(line, commandTerm, contextTerms)}</span>
+          <span style={{ display: "flex", alignItems: "baseline", flexShrink: 0 }}>
+            {attributions}
+          </span>
+        </span>
+      );
+    }
+  }
+
   return renderStyledText(line, commandTerm, contextTerms);
 }
 
@@ -304,7 +357,7 @@ function preprocessLatex(src: string): string {
   return out;
 }
 
-export default function LatexRenderer({ latex, className, graphImageUrl, stripMarkAnnotations, highlightCommandTerm, highlightContextTerms }: Props) {
+export default function LatexRenderer({ latex, className, graphImageUrl, stripMarkAnnotations, highlightCommandTerm, highlightContextTerms, renderMarkAttribution }: Props) {
   const MARK_LINE = /^(?:\\hfill\s*)?(?:\s*[\(\[]?(?:A|M|R|N)\d*[\)\]]?\s*)+$|^Total\s+\[\d+\s+marks?\]\s*$|^\[\d+\s+marks?\]\s*$/i;
   function applyStrip(src: string): string {
     if (!stripMarkAnnotations) return src;
@@ -321,6 +374,9 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
   );
   const segments = splitSegments(preprocessed);
   const contextTermsToHighlight = (highlightContextTerms ?? []).filter(Boolean);
+  
+  // Shared counter for the entire render pass so that ordinals match parseMSTokens
+  const tokenCounter = { count: 0 };
 
   function renderTabularTable(tabular: ParsedTabular, key: string | number): React.ReactNode {
     const { aligns, hasBorders } = parseColSpec(tabular.colSpec);
@@ -406,7 +462,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
             }
             // Skip blank lines that only exist to separate equations
             if (trimmed === "") return;
-            nodes.push(renderTextLine(line, `${i}-${j}-line`, highlightCommandTerm ?? null, contextTermsToHighlight));
+            nodes.push(renderTextLine(line, `${i}-${j}-line`, highlightCommandTerm ?? null, contextTermsToHighlight, renderMarkAttribution, tokenCounter));
             // Add a single line break after non-blank lines (except the last)
             if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-br`} />);
           });
