@@ -1,5 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/auth";
+import { getApiTeacher } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -14,8 +13,9 @@ type TemplateData = {
 
 export async function GET(req: Request, context: { params: { action: string } }) {
   try {
-    const profile = await getProfile();
-    const supabase = await createClient();
+    const auth = await getApiTeacher();
+    if (!auth.ok) return auth.response;
+    const { supabase, profile } = auth;
     const action = context.params.action;
 
     if (action === "list") {
@@ -66,8 +66,9 @@ export async function GET(req: Request, context: { params: { action: string } })
 
 export async function POST(req: Request) {
   try {
-    const profile = await getProfile();
-    const supabase = await createClient();
+    const auth = await getApiTeacher();
+    if (!auth.ok) return auth.response;
+    const { supabase, profile } = auth;
     const body = (await req.json()) as TemplateData;
 
     const { templateName, gradeLevel, documentKind, formattingRequirements, assignmentInput } = body;
@@ -103,8 +104,9 @@ export async function POST(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const profile = await getProfile();
-    const supabase = await createClient();
+    const auth = await getApiTeacher();
+    if (!auth.ok) return auth.response;
+    const { supabase, profile } = auth;
     const body = (await req.json()) as TemplateData & { id: string };
 
     const { id, templateName, gradeLevel, documentKind, formattingRequirements, assignmentInput } = body;
@@ -149,8 +151,9 @@ export async function PUT(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const profile = await getProfile();
-    const supabase = await createClient();
+    const auth = await getApiTeacher();
+    if (!auth.ok) return auth.response;
+    const { supabase, profile } = auth;
     const { searchParams } = new URL(req.url);
     const templateId = searchParams.get("id");
 

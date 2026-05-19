@@ -1,4 +1,4 @@
-import { requireTeacher } from "@/lib/auth";
+import { getApiTeacher } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -142,7 +142,8 @@ function generatePdfHtml(request: ExportRequest): string {
 
 export async function POST(req: Request) {
   try {
-    await requireTeacher();
+    const auth = await getApiTeacher();
+    if (!auth.ok) return auth.response;
     const body = (await req.json()) as ExportRequest;
 
     const html = generatePdfHtml(body);

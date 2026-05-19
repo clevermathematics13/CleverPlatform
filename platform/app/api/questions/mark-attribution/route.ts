@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { createClient } from "@/lib/supabase/server";
+import { getApiTeacher } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
@@ -14,13 +14,9 @@ const MarkAttributionSchema = z.object({
 
 export async function PATCH(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
+    const auth = await getApiTeacher();
+    if (!auth.ok) return auth.response;
+    const { supabase } = auth;
 
     // Parse + validate request body
     const json = await req.json();

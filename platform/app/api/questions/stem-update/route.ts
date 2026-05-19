@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getApiTeacher } from "@/lib/auth";
 
 // PATCH /api/questions/stem-update
 // Body: { questionId: string, field: QuestionField, value: string }
@@ -11,21 +11,9 @@ type QuestionField =
   | "parts_draft_markscheme_latex";
 
 export async function PATCH(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user)
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (profile?.role !== "teacher") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user, profile } = auth;
 
   const body = (await request.json()) as {
     questionId: string;

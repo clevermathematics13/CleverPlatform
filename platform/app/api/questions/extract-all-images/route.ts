@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { getApiTeacher } from "@/lib/auth";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
 import { isBlockedQuestionImage } from "@/lib/question-image-filter";
 import { google } from "googleapis";
@@ -235,21 +236,9 @@ async function extractOneQuestion(
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-  if (!profile || profile.role !== "teacher") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user, profile } = auth;
 
   const token = (await getDriveTokenFromCookie()) as Record<string, unknown> | null;
   if (!token) {
@@ -259,7 +248,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const auth = getAuthedClient(token);
+  const driveAuth = getAuthedClient(token);
 
   // Optional: skip questions that already have images extracted
   let skipExisting = false;
@@ -330,7 +319,7 @@ export async function POST(request: NextRequest) {
 
         for (const q of questions) {
           try {
-            const result = await extractOneQuestion(supabase, auth, q as {
+            const result = await extractOneQuestion(supabase, driveAuth, q as {
               id: string;
               code: string;
               google_doc_id: string;

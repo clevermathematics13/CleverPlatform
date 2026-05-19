@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getApiTeacher } from "@/lib/auth";
 
 // PATCH /api/questions/doc-link
 // Body: { questionId: string, field: "google_doc_id" | "google_ms_id", value: string | null }
 export async function PATCH(request: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "teacher") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user, profile } = auth;
 
   const body = await request.json() as { questionId?: string; field?: string; value?: string | null };
   const { questionId, field, value } = body;

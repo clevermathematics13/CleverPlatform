@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-
-async function requireTeacherClient() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { supabase, error: NextResponse.json({ error: "Not authenticated" }, { status: 401 }) };
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (profile?.role !== "teacher") return { supabase, error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
-  return { supabase, error: null };
-}
+import { getApiTeacher } from "@/lib/auth";
 
 // DELETE /api/questions/images/[id]
 // Permanently deletes the image from storage and unlinks it from the question
@@ -16,8 +7,9 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { supabase, error } = await requireTeacherClient();
-  if (error) return error;
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase } = auth;
 
   const { id } = await params;
 
@@ -60,8 +52,9 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { supabase, error } = await requireTeacherClient();
-  if (error) return error;
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase } = auth;
 
   const { id } = await params;
   const body = await request.json();

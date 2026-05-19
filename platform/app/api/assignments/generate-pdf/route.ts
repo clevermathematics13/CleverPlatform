@@ -1,4 +1,4 @@
-import { requireTeacher } from "@/lib/auth";
+import { getApiTeacher } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import type { AssignmentPdfRequest } from "@/lib/assignments";
 import { generateAssignmentHtml } from "@/lib/assignments";
@@ -9,7 +9,8 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    await requireTeacher();
+    const auth = await getApiTeacher();
+    if (!auth.ok) return auth.response;
     const body = (await req.json()) as AssignmentPdfRequest;
 
     const html = generateAssignmentHtml(body);

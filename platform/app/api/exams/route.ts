@@ -1,20 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-
-// ─── Auth helper ─────────────────────────────────────────────────────────────
-async function requireTeacher() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { supabase, user: null, error: NextResponse.json({ error: "Not authenticated" }, { status: 401 }) };
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (!profile || profile.role !== "teacher") return { supabase, user: null, error: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
-  return { supabase, user, error: null };
-}
+import { getApiTeacher } from "@/lib/auth";
 
 // ─── GET /api/exams — list saved exams for current teacher ───────────────────
 export async function GET() {
-  const { supabase, user, error } = await requireTeacher();
-  if (error) return error;
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user } = auth;
 
   const { data, error: dbError } = await supabase
     .from("saved_exams")
@@ -75,8 +66,9 @@ export async function GET() {
 
 // ─── POST /api/exams — create a new saved exam ───────────────────────────────
 export async function POST(request: NextRequest) {
-  const { supabase, user, error } = await requireTeacher();
-  if (error) return error;
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user } = auth;
 
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -110,8 +102,9 @@ export async function POST(request: NextRequest) {
 
 // ─── PATCH /api/exams — update an existing saved exam ───────────────────────
 export async function PATCH(request: NextRequest) {
-  const { supabase, user, error } = await requireTeacher();
-  if (error) return error;
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user } = auth;
 
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
@@ -140,8 +133,9 @@ export async function PATCH(request: NextRequest) {
 
 // ─── DELETE /api/exams — delete a saved exam ─────────────────────────────────
 export async function DELETE(request: NextRequest) {
-  const { supabase, user, error } = await requireTeacher();
-  if (error) return error;
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user } = auth;
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");

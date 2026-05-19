@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getApiTeacher } from "@/lib/auth";
 
 interface ChoiceAssociationInput {
   partId?: string | null;
@@ -21,33 +21,6 @@ interface GraphCropCreateRequest {
   choiceAssociations?: ChoiceAssociationInput[];
 }
 
-async function requireUserRole() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return {
-      supabase,
-      user: null,
-      role: null,
-      error: NextResponse.json({ error: "Not authenticated" }, { status: 401 }),
-    };
-  }
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  return {
-    supabase,
-    user,
-    role: profile?.role ?? null,
-    error: null,
-  };
-}
 
 function extensionForType(contentType: string): string {
   if (contentType.includes("jpeg") || contentType.includes("jpg")) return "jpg";
@@ -58,8 +31,9 @@ function extensionForType(contentType: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await requireUserRole();
-  if (auth.error) return auth.error;
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase } = auth;
 
   const questionId = request.nextUrl.searchParams.get("questionId");
   const partId = request.nextUrl.searchParams.get("partId");
@@ -69,7 +43,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "questionId is required" }, { status: 400 });
   }
 
-  let query = auth.supabase
+  let query = supabase
     .from("graph_image_crops")
     .select(
       "id, question_id, question_image_id, part_id, storage_path, crop_bbox, graph_spec, graph_meta, extractor, notes, created_by, created_at"
@@ -88,7 +62,7 @@ export async function GET(request: NextRequest) {
 
   const withUrls = await Promise.all(
     (crops ?? []).map(async (crop) => {
-      const { data: signed } = await auth.supabase.storage
+      const { data: signed } = await supabase.storage
         .from("graph-crops")
         .createSignedUrl(crop.storage_path, 3600);
 
@@ -102,7 +76,7 @@ export async function GET(request: NextRequest) {
   let associationsByCrop: Record<string, unknown[]> = {};
   if (includeAssociations && withUrls.length > 0) {
     const cropIds = withUrls.map((c) => c.id);
-    const { data: associations } = await auth.supabase
+    const { data: associations } = await supabase
       .from("graph_crop_choice_associations")
       .select("id, graph_crop_id, part_id, choice_key, is_correct, rationale, created_at")
       .in("graph_crop_id", cropIds)
@@ -122,11 +96,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireUserRole();
-  if (auth.error) return auth.error;
-  if (auth.role !== "teacher") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user } = auth;
 
   let body: GraphCropCreateRequest;
   try {
@@ -155,7 +127,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: sourceImage, error: sourceErr } = await auth.supabase
+  const { data: sourceImage, error: sourceErr } = await supabase
     .from("question_images")
     .select("id, question_id")
     .eq("id", questionImageId)
@@ -166,7 +138,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (partId) {
-    const { data: partRow } = await auth.supabase
+    const { data: partRow } = await supabase
       .from("question_parts")
       .select("id, question_id")
       .eq("id", partId)
@@ -180,7 +152,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const { data: question } = await auth.supabase
+  const { data: question } = await supabase
     .from("ib_questions")
     .select("code")
     .eq("id", sourceImage.question_id)
@@ -196,7 +168,7 @@ export async function POST(request: NextRequest) {
 
   const buffer = Buffer.from(base64, "base64");
 
-  const { error: uploadErr } = await auth.supabase.storage
+  const { error: uploadErr } = await supabase.storage
     .from("graph-crops")
     .upload(storagePath, buffer, {
       contentType: mimeType,
@@ -207,7 +179,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Upload failed: ${uploadErr.message}` }, { status: 500 });
   }
 
-  const { data: insertedCrop, error: cropErr } = await auth.supabase
+  const { data: insertedCrop, error: cropErr } = await supabase
     .from("graph_image_crops")
     .insert({
       question_id: sourceImage.question_id,
@@ -219,7 +191,7 @@ export async function POST(request: NextRequest) {
       graph_meta: graphMeta ?? null,
       extractor: extractor?.trim() || "manual",
       notes: notes ?? null,
-      created_by: auth.user?.id ?? null,
+      created_by: user.id ?? null,
     })
     .select(
       "id, question_id, question_image_id, part_id, storage_path, crop_bbox, graph_spec, graph_meta, extractor, notes, created_by, created_at"
@@ -227,7 +199,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (cropErr || !insertedCrop) {
-    await auth.supabase.storage.from("graph-crops").remove([storagePath]);
+    await supabase.storage.from("graph-crops").remove([storagePath]);
     return NextResponse.json({ error: cropErr?.message ?? "Failed to save graph crop" }, { status: 500 });
   }
 
@@ -244,22 +216,22 @@ export async function POST(request: NextRequest) {
       rationale: a.rationale ?? null,
     }));
 
-    const { error: assocErr } = await auth.supabase
+    const { error: assocErr } = await supabase
       .from("graph_crop_choice_associations")
       .upsert(rows, { onConflict: "graph_crop_id,choice_key" });
 
     if (assocErr) {
-      await auth.supabase.from("graph_image_crops").delete().eq("id", insertedCrop.id);
-      await auth.supabase.storage.from("graph-crops").remove([storagePath]);
+      await supabase.from("graph_image_crops").delete().eq("id", insertedCrop.id);
+      await supabase.storage.from("graph-crops").remove([storagePath]);
       return NextResponse.json({ error: assocErr.message }, { status: 500 });
     }
   }
 
-  const { data: signed } = await auth.supabase.storage
+  const { data: signed } = await supabase.storage
     .from("graph-crops")
     .createSignedUrl(storagePath, 3600);
 
-  const { data: associations } = await auth.supabase
+  const { data: associations } = await supabase
     .from("graph_crop_choice_associations")
     .select("id, graph_crop_id, part_id, choice_key, is_correct, rationale, created_at")
     .eq("graph_crop_id", insertedCrop.id)

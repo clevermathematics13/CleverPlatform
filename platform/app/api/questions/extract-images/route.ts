@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getApiTeacher } from "@/lib/auth";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
 import { isBlockedQuestionImage } from "@/lib/question-image-filter";
 import { google } from "googleapis";
@@ -121,25 +121,13 @@ export async function POST(request: NextRequest) {
   };
 
   // Auth checks
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated", diagnostics: finish() }, { status: 401 });
-  }
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase, user, profile } = auth;
   (diagnostics.phases as Record<string, unknown>).auth = {
     userId: user.id,
-    role: profile?.role ?? null,
+    role: profile.role,
   };
-  if (!profile || profile.role !== "teacher") {
-    return NextResponse.json({ error: "Forbidden", diagnostics: finish() }, { status: 403 });
-  }
 
   // Google Drive token
   const token = (await getDriveTokenFromCookie()) as Record<string, unknown> | null;
@@ -198,7 +186,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const auth = getAuthedClient(token);
+  const driveAuth = getAuthedClient(token);
 
   const { data: partRows } = await supabase
     .from("question_parts")
@@ -215,12 +203,12 @@ export async function POST(request: NextRequest) {
 
   // Extract from question doc
   try {
-    const questionImages = await getDocImages(auth, question.google_doc_id);
+    const questionImages = await getDocImages(driveAuth, question.google_doc_id);
     (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc.scannedInlineObjects = questionImages.length;
 
     for (let i = 0; i < questionImages.length; i++) {
       const img = questionImages[i];
-      const { buffer, contentType } = await downloadImage(auth, img.contentUri);
+      const { buffer, contentType } = await downloadImage(driveAuth, img.contentUri);
       if (isBlockedQuestionImage(buffer)) {
         console.log(`Skipping blocked question image for ${question.code} at question/${String(i + 1).padStart(2, "0")}`);
         const qPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc;
@@ -312,7 +300,7 @@ export async function POST(request: NextRequest) {
   // Extract from markscheme doc (if exists)
   if (question.google_ms_id) {
     try {
-      const msImages = await getDocImages(auth, question.google_ms_id);
+      const msImages = await getDocImages(driveAuth, question.google_ms_id);
       (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc.scannedInlineObjects = msImages.length;
 
       // Delete all existing markscheme image records so re-extraction is clean
@@ -327,7 +315,7 @@ export async function POST(request: NextRequest) {
       for (let i = 0; i < msImages.length; i++) {
         const img = msImages[i];
         const { buffer, contentType } = await downloadImage(
-          auth,
+          driveAuth,
           img.contentUri
         );
         if (isBlockedQuestionImage(buffer)) {

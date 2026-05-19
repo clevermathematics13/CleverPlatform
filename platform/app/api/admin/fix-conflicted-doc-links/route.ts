@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { getApiTeacher } from "@/lib/auth";
 import { getDriveTokenFromCookie } from "@/lib/google-drive";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
@@ -51,33 +51,17 @@ function isDriveFileNotFound(err: unknown): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (profile?.role !== "teacher") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    const auth = await getApiTeacher();
+    if (!auth.ok) return auth.response;
+    const { supabase, user, profile } = auth;
 
     const token = (await getDriveTokenFromCookie()) as Record<string, unknown> | null;
     if (!token) {
       return NextResponse.json({ error: "Google Drive not connected" }, { status: 401 });
     }
 
-    const auth = getAuthedClient(token);
-    const drive = google.drive({ version: "v3", auth });
+    const driveAuth = getAuthedClient(token);
+    const drive = google.drive({ version: "v3", auth: driveAuth });
 
     async function getFileWithRetry(fileId: string, attempt = 0) {
       try {
