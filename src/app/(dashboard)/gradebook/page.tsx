@@ -1,21 +1,9 @@
-import { createClient } from '@/lib/supabase-server';
+import { getStudentsWithGrades } from '@/lib/services/gradebook';
+
 export const dynamic = 'force-dynamic';
 
 export default async function GradebookPage() {
-  const supabase = await createClient();
-
-  // Fetch students list
-  const { data: students } = await supabase
-    .from('students')
-    .select('*')
-    .order('name');
-
-  // Fetch recent grades
-  const { data: grades } = await supabase
-    .from('grades')
-    .select('*')
-    .order('created_at', { ascending: false })
-    .limit(100);
+  const { students, grades } = await getStudentsWithGrades();
 
   return (
     <div>
@@ -31,7 +19,7 @@ export default async function GradebookPage() {
         </button>
       </div>
 
-      {students && students.length > 0 ? (
+      {students.length > 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -44,8 +32,8 @@ export default async function GradebookPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {students.map((student) => {
-                const studentGrades = grades?.filter(
-                  (g) => g.student_email === student.email
+                const studentGrades = grades.filter(
+                  (g) => g.student_email === student.email,
                 );
                 return (
                   <tr key={student.id} className="hover:bg-slate-50">
@@ -58,7 +46,7 @@ export default async function GradebookPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-xs font-medium">
-                        {studentGrades?.length ?? 0}
+                        {studentGrades.length}
                       </span>
                     </td>
                   </tr>

@@ -1,13 +1,9 @@
-import { createClient } from '@/lib/supabase-server';
-export const dynamic = 'force-dynamic';
+import { getAssignments } from '@/lib/services/assignments';
+
+export const revalidate = 60;
 
 export default async function AssignmentsPage() {
-  const supabase = await createClient();
-
-  const { data: assignments } = await supabase
-    .from('assignments')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const assignments = await getAssignments();
 
   return (
     <div>
@@ -18,7 +14,7 @@ export default async function AssignmentsPage() {
         </div>
       </div>
 
-      {assignments && assignments.length > 0 ? (
+      {assignments.length > 0 ? (
         <div className="space-y-3">
           {assignments.map((assignment) => (
             <div

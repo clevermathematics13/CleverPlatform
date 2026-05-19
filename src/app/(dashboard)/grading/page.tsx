@@ -1,15 +1,9 @@
-import { createClient } from '@/lib/supabase-server';
+import { getPendingSubmissions } from '@/lib/services/grading';
+
 export const dynamic = 'force-dynamic';
 
 export default async function GradingPage() {
-  const supabase = await createClient();
-
-  const { data: submissions } = await supabase
-    .from('submissions')
-    .select('*')
-    .eq('confirmed', false)
-    .order('submitted_at', { ascending: false })
-    .limit(20);
+  const submissions = await getPendingSubmissions();
 
   return (
     <div>
@@ -33,7 +27,7 @@ export default async function GradingPage() {
         </div>
       </div>
 
-      {submissions && submissions.length > 0 ? (
+      {submissions.length > 0 ? (
         <div className="space-y-3">
           {submissions.map((sub) => (
             <div

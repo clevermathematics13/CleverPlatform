@@ -1,13 +1,9 @@
-import { createClient } from '@/lib/supabase-server';
-export const dynamic = 'force-dynamic';
+import { getExams } from '@/lib/services/exams';
+
+export const revalidate = 60;
 
 export default async function ExamsPage() {
-  const supabase = await createClient();
-
-  const { data: exams } = await supabase
-    .from('exams')
-    .select('*')
-    .order('created_at', { ascending: false });
+  const exams = await getExams();
 
   return (
     <div>
@@ -18,7 +14,7 @@ export default async function ExamsPage() {
         </p>
       </div>
 
-      {exams && exams.length > 0 ? (
+      {exams.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {exams.map((exam) => (
             <div

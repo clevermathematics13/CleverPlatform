@@ -1,33 +1,12 @@
-import { createClient } from '@/lib/supabase-server';
+import { getStudentProgress } from '@/lib/services/progress';
+
 export const dynamic = 'force-dynamic';
-import { redirect } from 'next/navigation';
 
 export default async function ProgressPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { grades, responses } = await getStudentProgress();
 
-  if (!user) {
-    redirect('/login');
-  }
-
-  // Fetch student's grades
-  const { data: grades } = await supabase
-    .from('grades')
-    .select('*')
-    .eq('student_email', user.email!)
-    .order('created_at', { ascending: false });
-
-  // Fetch student's self-reported responses
-  const { data: responses } = await supabase
-    .from('student_responses')
-    .select('*')
-    .eq('student_email', user.email!)
-    .order('created_at', { ascending: false });
-
-  // Compute summary stats
-  const totalGrades = grades?.length ?? 0;
-  const totalMarksAwarded = grades?.reduce((sum, g) => sum + g.marks_awarded, 0) ?? 0;
-  const totalMarksPossible = grades?.reduce((sum, g) => sum + (g.marks_possible ?? 0), 0) ?? 0;
+  const totalMarksAwarded = grades.reduce((sum, g) => sum + g.marks_awarded, 0);
+  const totalMarksPossible = grades.reduce((sum, g) => sum + (g.marks_possible ?? 0), 0);
   const overallPercentage = totalMarksPossible > 0
     ? Math.round((totalMarksAwarded / totalMarksPossible) * 100)
     : null;
@@ -54,17 +33,17 @@ export default async function ProgressPage() {
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <p className="text-sm text-slate-500 mb-1">Assessments Graded</p>
-          <p className="text-3xl font-bold text-slate-900">{totalGrades}</p>
+          <p className="text-3xl font-bold text-slate-900">{grades.length}</p>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-6">
           <p className="text-sm text-slate-500 mb-1">Self-Reports Submitted</p>
-          <p className="text-3xl font-bold text-slate-900">{responses?.length ?? 0}</p>
+          <p className="text-3xl font-bold text-slate-900">{responses.length}</p>
         </div>
       </div>
 
       {/* Recent Grades */}
       <h2 className="text-lg font-semibold text-slate-900 mb-4">Recent Grades</h2>
-      {grades && grades.length > 0 ? (
+      {grades.length > 0 ? (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -72,24 +51,25 @@ export default async function ProgressPage() {
                 <th className="text-left px-4 py-3 font-medium text-slate-600">Exam</th>
                 <th className="text-left px-4 py-3 font-medium text-slate-600">Question</th>
                 <th className="text-left px-4 py-3 font-medium text-slate-600">Score</th>
-                <th className="text-left px-4 py-3 font-medium text-slate-600">Graded By</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-600">Graded by</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {grades.slice(0, 20).map((grade) => (
+              {grades.map((grade) => (
                 <tr key={grade.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">{grade.exam_code}</td>
-                  <td className="px-4 py-3 font-mono text-sm">{grade.question_code}</td>
+                  <td className="px-4 py-3 text-slate-600">{grade.exam_code}</td>
+                  <td className="px-4 py-3 text-slate-600">{grade.question_code}</td>
                   <td className="px-4 py-3">
-                    <span className="font-medium">
-                      {grade.marks_awarded}/{grade.marks_possible ?? '?'}
-                    </span>
+                    <span className="font-medium text-slate-900">{grade.marks_awarded}</span>
+                    {grade.marks_possible !== null && (
+                      <span className="text-slate-400"> / {grade.marks_possible}</span>
+                    )}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                    <span className={`text-xs px-2 py-0.5 rounded font-medium ${
                       grade.grader_type === 'ai'
-                        ? 'bg-purple-100 text-purple-700'
-                        : 'bg-green-100 text-green-700'
+                        ? 'bg-purple-50 text-purple-700'
+                        : 'bg-green-50 text-green-700'
                     }`}>
                       {grade.grader_type === 'ai' ? 'AI' : 'Teacher'}
                     </span>
@@ -104,7 +84,7 @@ export default async function ProgressPage() {
           <div className="text-4xl mb-4">📈</div>
           <h2 className="text-lg font-semibold text-slate-900 mb-2">No grades yet</h2>
           <p className="text-sm text-slate-500">
-            Your grades will appear here as assessments are completed and graded.
+            Your graded assessments will appear here.
           </p>
         </div>
       )}

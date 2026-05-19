@@ -1,14 +1,9 @@
-import { createClient } from '@/lib/supabase-server';
-export const dynamic = 'force-dynamic';
+import { getTopics } from '@/lib/services/textbook';
+
+export const revalidate = 300;
 
 export default async function TextbookPage() {
-  const supabase = await createClient();
-
-  // Fetch topics from database (will be empty until seeded)
-  const { data: topics } = await supabase
-    .from('topics')
-    .select('*')
-    .order('order_index');
+  const topics = await getTopics();
 
   return (
     <div>
@@ -19,7 +14,7 @@ export default async function TextbookPage() {
         </p>
       </div>
 
-      {topics && topics.length > 0 ? (
+      {topics.length > 0 ? (
         <div className="space-y-4">
           {topics.map((topic) => (
             <div
