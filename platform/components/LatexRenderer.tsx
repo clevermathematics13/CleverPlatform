@@ -287,7 +287,7 @@ function renderTextLine(
     return (
       <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
         <span>{isMarkCode ? null : (before ? renderStyledText(before, commandTerm, contextTerms) : null)}</span>
-        <span style={{ display: "flex", alignItems: "baseline", flexShrink: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
           <span style={{ fontStyle: "italic", color: "#374151" }}>
             {isMarkCode ? `${before} ${markCode}` : markCode}
           </span>

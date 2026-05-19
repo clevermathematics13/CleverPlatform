@@ -3006,6 +3006,9 @@ export function QuestionRow({
                                     <div className="flex items-center justify-between">
                                       <span className="text-xs font-semibold text-gray-600">{fieldLabel}</span>
                                       <div className="flex gap-1 items-center">
+                                        {field === "markscheme_latex" && part.subtopic_codes.length >= 1 && !isEditing && (
+                                          <span className="text-[9px] font-bold uppercase tracking-widest text-gray-400 mr-1">Attribution</span>
+                                        )}
                                         {hasImages && !isEditing && (
                                           <button
                                             type="button"
@@ -3123,24 +3126,49 @@ export function QuestionRow({
                                               const hasResult = result && result !== "loading" && result !== "error";
                                               const res = hasResult ? (result as TokenRationaleResult) : null;
                                               const displayCode = singleSubtopic || res?.selectedSubtopic || null;
+                                              const handleManualSelect = (code: string) => {
+                                                if (code) {
+                                                  setTokenResults((r) => ({
+                                                    ...r,
+                                                    [rKey]: { selectedSubtopic: code, confidence: 1, confidenceBucket: "high", rationale: "Manual", evidenceSpan: "" } as TokenRationaleResult,
+                                                  }));
+                                                } else {
+                                                  setTokenResults((r) => { const next = { ...r }; delete next[rKey]; return next; });
+                                                }
+                                              };
                                               return (
-                                                <div key={token.id} className="group relative inline-flex items-center gap-1">
-                                                  {displayCode ? (
-                                                    <span className="font-mono text-[10px] text-gray-600">{displayCode}</span>
+                                                <span key={token.id} className="group relative inline-flex items-center gap-0.5 ml-1">
+                                                  {singleSubtopic ? (
+                                                    <span className="font-mono text-[10px] px-1 bg-gray-100 text-gray-600 rounded">{singleSubtopic}</span>
                                                   ) : isError ? (
-                                                    <span className="text-red-400 text-[10px]">error</span>
-                                                  ) : !singleSubtopic ? (
-                                                    <button
-                                                      type="button"
-                                                      title={`Generate attribution for ${token.label}`}
-                                                      disabled={isLoading}
-                                                      onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
-                                                      className="font-mono text-[10px] text-gray-400 hover:text-indigo-600 disabled:opacity-40"
-                                                    >
-                                                      {isLoading ? "…" : "?"}
-                                                    </button>
-                                                  ) : null}
-                                                </div>
+                                                    <span className="text-red-400 text-[10px]">err</span>
+                                                  ) : (
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <select
+                                                        value={displayCode ?? ""}
+                                                        onChange={(e) => { e.stopPropagation(); handleManualSelect(e.target.value); }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        disabled={isLoading}
+                                                        title="Attribute this mark to a subtopic"
+                                                        className="text-[10px] font-mono text-gray-600 border border-gray-300 rounded px-0.5 bg-white leading-none"
+                                                      >
+                                                        <option value="">unassigned</option>
+                                                        {part.subtopic_codes.map((code) => (
+                                                          <option key={code} value={code}>{code}</option>
+                                                        ))}
+                                                      </select>
+                                                      <button
+                                                        type="button"
+                                                        title="Auto-assign with AI"
+                                                        disabled={isLoading}
+                                                        onClick={(e) => { e.stopPropagation(); generateMarkRationale(part, token); }}
+                                                        className="font-mono text-[10px] text-gray-400 hover:text-indigo-500 disabled:opacity-40"
+                                                      >
+                                                        {isLoading ? "…" : "✦"}
+                                                      </button>
+                                                    </span>
+                                                  )}
+                                                </span>
                                               );
                                             } : undefined}
                                           />
