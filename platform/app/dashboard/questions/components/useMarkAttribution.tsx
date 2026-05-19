@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { parseMSTokens } from "@/lib/latex-utils";
 import type { QuestionPart, MarkAttribution } from "./types";
 
@@ -44,6 +44,25 @@ export function useMarkAttribution(
   });
 
   const [activePopover, setActivePopover] = useState<string | null>(null);
+
+  // Auto-generate subtopic attribution for all unassigned tokens in parts that
+  // have more than one subtopic (so the dropdown isn't left empty).
+  const autoGenStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoGenStartedRef.current) return;
+    autoGenStartedRef.current = true;
+    for (const part of questionParts) {
+      if (part.subtopic_codes.length <= 1) continue;
+      const tokens = parseMSTokens(part.markscheme_latex ?? "");
+      for (const token of tokens) {
+        const key = `${part.id}-${token.id}`;
+        if (!tokenResults[key]) {
+          void generateMarkRationale(part, token.id);
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function persistAttribution(
     partId: string,
@@ -157,7 +176,7 @@ export function useMarkAttribution(
             onClick={() => setActivePopover(null)}
           />
           <div
-            className="absolute left-0 top-full mt-1 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-left"
+            className="absolute right-0 top-full mt-1 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-left"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-1.5">
