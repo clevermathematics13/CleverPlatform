@@ -10,13 +10,13 @@ export const maxDuration = 300;
 const QUESTION_FOLDER_ID = "18vwi-jz_0vur8MjixNnTkKdb0lHygNV3";
 const MARKSCHEME_FOLDER_ID = "1GDGql-mIeH2YoD1OfnFa0UhxUdaXsY4D";
 
-function parseCodeParts(code: string) {
+function parseCodeParts(code: string): { session: string; paper: number; level: string; timezone: string } | null {
   const parts = code.split(".");
   if (parts.length < 5) return null;
-  const session = parts[0];
-  const paper = parseInt(parts[1], 10);
-  const level = parts[2];
-  const timezone = parts[3];
+  const session = parts[0] as string;
+  const paper = parseInt(parts[1] as string, 10);
+  const level = parts[2] as string;
+  const timezone = parts[3] as string;
   if (isNaN(paper)) return null;
   return { session, paper, level, timezone };
 }
@@ -36,7 +36,6 @@ export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
   const { supabase, user, profile } = auth;
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const dryRun = request.nextUrl.searchParams.get("dryRun") === "true";
 
@@ -50,18 +49,19 @@ export async function POST(request: NextRequest) {
   const PAGE_SIZE = 1000;
   let from = 0;
   while (true) {
-    const { data: page, error: dbErr } = await supabase
+    const qRes = await supabase
       .from("ib_questions")
       .select("id, code, google_doc_id, google_ms_id")
       .range(from, from + PAGE_SIZE - 1);
-    if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 });
-    if (!page || page.length === 0) break;
+    if (qRes.error) return NextResponse.json({ error: qRes.error.message }, { status: 500 });
+    const page = qRes.data ?? [];
+    if (page.length === 0) break;
     allExisting.push(...page);
     if (page.length < PAGE_SIZE) break;
     from += PAGE_SIZE;
   }
 
-  const existingMap = new Map(
+  const existingMap = new Map<string, { id: string; hasDocId: boolean; hasMsId: boolean }>(
     allExisting.map((r) => [r.code, { id: r.id, hasDocId: !!r.google_doc_id, hasMsId: !!r.google_ms_id }])
   );
 
@@ -131,12 +131,12 @@ export async function POST(request: NextRequest) {
 
   for (const f of qFilesFiltered) {
     const code = extractCodeToken(f.name);
-    if (code && !qMap.has(code)) qMap.set(code, f.id);
+    if (code !== null && !qMap.has(code)) qMap.set(code, f.id);
   }
   const msMap = new Map<string, string>();
   for (const f of msFiles) {
     const code = extractCodeToken(f.name);
-    if (code && !msMap.has(code)) msMap.set(code, f.id);
+    if (code !== null && !msMap.has(code)) msMap.set(code, f.id);
   }
   // If the same doc ID appears in both maps for the same code (markscheme doc
   // is stored in both folders), clear the question entry — it's wrong.
@@ -200,21 +200,21 @@ export async function POST(request: NextRequest) {
       curriculum: ["AA"], source_pdf_path: "drive-import",
       google_doc_id: r.google_doc_id, google_ms_id: r.google_ms_id,
     }));
-    const { error, data: inserted } = await supabase
+    const insertRes = await supabase
       .from("ib_questions")
       .upsert(batch, { onConflict: "code", ignoreDuplicates: true })
       .select("id");
-    if (error) errors.push(`INSERT: ${error.message}`);
-    else created += (inserted ?? []).length;
+    if (insertRes.error) errors.push(`INSERT: ${insertRes.error.message}`);
+    else created += (insertRes.data ?? []).length;
   }
 
   let updated = 0;
   for (const u of toUpdate) {
     const patch: Record<string, string> = {};
-    if (u.google_doc_id) patch.google_doc_id = u.google_doc_id;
-    if (u.google_ms_id) patch.google_ms_id = u.google_ms_id;
-    const { error } = await supabase.from("ib_questions").update(patch).eq("id", u.id);
-    if (error) errors.push(`UPDATE ${u.code}: ${error.message}`);
+    if (u.google_doc_id) patch.google_doc_id = u.google_doc_id!;
+    if (u.google_ms_id) patch.google_ms_id = u.google_ms_id!;
+    const updateRes = await supabase.from("ib_questions").update(patch).eq("id", u.id);
+    if (updateRes.error) errors.push(`UPDATE ${u.code}: ${updateRes.error.message}`);
     else updated++;
   }
 
