@@ -285,15 +285,19 @@ function renderTextLine(
     }
 
     return (
-      <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-        <span>{isMarkCode ? null : (before ? renderStyledText(before, commandTerm, contextTerms) : null)}</span>
-        <span style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
-          <span style={{ fontStyle: "italic", color: "#374151" }}>
+      <React.Fragment key={key}>
+        <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+          <span>{isMarkCode ? null : (before ? renderStyledText(before, commandTerm, contextTerms) : null)}</span>
+          <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
             {isMarkCode ? `${before} ${markCode}` : markCode}
           </span>
-          {attributions}
         </span>
-      </span>
+        {attributions.length > 0 && (
+          <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
+            {attributions}
+          </span>
+        )}
+      </React.Fragment>
     );
   }
   
@@ -315,12 +319,14 @@ function renderTextLine(
     }
     if (foundBareTokens) {
       return (
-        <span key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-          <span>{renderStyledText(line, commandTerm, contextTerms)}</span>
-          <span style={{ display: "flex", alignItems: "baseline", flexShrink: 0 }}>
+        <React.Fragment key={key}>
+          <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+            <span>{renderStyledText(line, commandTerm, contextTerms)}</span>
+          </span>
+          <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
             {attributions}
           </span>
-        </span>
+        </React.Fragment>
       );
     }
   }
