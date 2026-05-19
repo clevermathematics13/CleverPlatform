@@ -1,11 +1,26 @@
 'use client';
 
 import { createClient } from '@/lib/supabase-browser';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
-export default function LoginPage() {
+const ERROR_MESSAGES: Record<string, string> = {
+  auth_failed: 'Sign-in failed. Please try again.',
+  domain_not_allowed:
+    'Only @amersol.edu.pe school accounts are allowed. Use your school Google account or contact your teacher.',
+};
+
+function LoginForm() {
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const urlError = searchParams.get('error');
+    if (urlError) {
+      setError(ERROR_MESSAGES[urlError] ?? 'An unexpected error occurred.');
+    }
+  }, [searchParams]);
 
   const signInWithGoogle = useCallback(async () => {
     setLoading(true);
@@ -17,9 +32,8 @@ export default function LoginPage() {
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        queryParams: {
-          hd: 'amersol.edu.pe', // Restrict to school Google Workspace domain
-        },
+        // No hd param — domain is enforced server-side in /auth/callback
+        // so that the admin Gmail account works without an extra click.
       },
     });
 
@@ -74,7 +88,7 @@ export default function LoginPage() {
           {/* Google Sign In (Students & Teachers) */}
           <div>
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-3">
-              Students & Teachers
+              Students &amp; Teachers
             </h2>
             <button
               onClick={signInWithGoogle}
@@ -148,5 +162,14 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+// Suspense wrapper required by Next.js when using useSearchParams in a page
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
