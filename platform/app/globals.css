@@ -2,8 +2,8 @@
 @import "katex/dist/katex.min.css";
 
 :root {
-  --background: #1a1a2e;
-  --foreground: #f0e6d3;
+  --background: #1a0c06;
+  --foreground: #f0dfc0;
 }
 
 @theme inline {
@@ -13,21 +13,68 @@
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-playfair);
 
-  /* Dark Academia palette */
-  --color-da-bg:      #1a1a2e;
-  --color-da-surface: #1e1e38;
-  --color-da-hover:   #26264a;
-  --color-da-border:  #38385c;
-  --color-da-text:    #f0e6d3;
-  --color-da-muted:   #9e8f7a;
-  --color-da-accent:  #d4a853;
-  --color-da-amber:   #e8c46a;
+  /* Wood · Leather · Whiskey palette */
+  --color-da-bg:      #1a0c06;   /* deep walnut dark */
+  --color-da-surface: #231108;   /* dark wood plank */
+  --color-da-hover:   #2e1a0d;   /* warm hover */
+  --color-da-border:  #6b3d1c;   /* walnut grain border */
+  --color-da-text:    #f0dfc0;   /* warm parchment */
+  --color-da-muted:   #9b7555;   /* saddle leather tan */
+  --color-da-accent:  #c88a1a;   /* whiskey amber */
+  --color-da-amber:   #e8a030;   /* golden bourbon */
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+/* ── Wood-grain texture overlay ─────────────────────────────────────────────
+   Applied via .wood-surface utility — a subtle repeating grain pattern on
+   dark walnut surfaces. Uses two offset gradients to fake annual rings. */
+.wood-surface {
+  background-image:
+    repeating-linear-gradient(
+      92deg,
+      transparent,
+      transparent 3px,
+      rgba(0, 0, 0, 0.06) 3px,
+      rgba(0, 0, 0, 0.06) 4px
+    ),
+    repeating-linear-gradient(
+      185deg,
+      transparent,
+      transparent 60px,
+      rgba(200, 138, 26, 0.04) 60px,
+      rgba(200, 138, 26, 0.04) 120px
+    );
+}
+
+/* ── Leather pebble texture ──────────────────────────────────────────────────
+   Fine crosshatch on form panels and cards. */
+.leather-surface {
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 5px,
+      rgba(0, 0, 0, 0.05) 5px,
+      rgba(0, 0, 0, 0.05) 6px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 5px,
+      rgba(0, 0, 0, 0.04) 5px,
+      rgba(0, 0, 0, 0.04) 6px
+    );
+}
+
+/* ── Whiskey glow on focus ───────────────────────────────────────────────── */
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(200, 138, 26, 0.45);
 }
 
 input, textarea, select {
@@ -48,9 +95,9 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
   color: #111827 !important;
 }
 
-/* Force KaTeX-rendered math to always use ivory, matching dark academia foreground */
+/* Force KaTeX-rendered math to always use parchment, matching whiskey-wood foreground */
 .katex, .katex * {
-  color: #f0e6d3;
+  color: #f0dfc0;
 }
 
 /* Inside white / light surfaces (modals, cards, editor panels), KaTeX must use
@@ -96,7 +143,7 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
   white-space: normal;
 }
 
-@keyframes menuPsychedelicDrift {
+@keyframes warmAmbiance {
   0% {
     transform: translate3d(-1.5%, -1.5%, 0) scale(1.03) rotate(-1.2deg);
   }

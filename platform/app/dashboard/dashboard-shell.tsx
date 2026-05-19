@@ -65,15 +65,15 @@ export function DashboardShell({
       >
         {/* Strip indicator, visible only when sidebar is hidden */}
         {!sidebarVisible && (
-          <div className="w-full h-full bg-[#0b1020] hover:bg-da-surface border-r border-da-accent/30 hover:border-da-accent/60 transition-colors cursor-pointer" />
+          <div className="w-full h-full bg-[#160905] hover:bg-da-surface border-r border-da-accent/30 hover:border-da-accent/60 transition-colors cursor-pointer" />
         )}
 
         {/* Sidebar panel */}
         <aside
-          className={`relative left-0 top-0 h-full flex flex-col border-r border-da-border shadow-xl shadow-black/40 transition-all duration-200 overflow-hidden ${
+          className={`wood-surface relative left-0 top-0 h-full flex flex-col border-r border-da-border shadow-xl shadow-black/60 transition-all duration-200 overflow-hidden ${
             sidebarVisible ? "w-64 opacity-100" : "w-0 opacity-0"
           }`}
-          style={{ backgroundColor: "#0b1020" }}
+          style={{ backgroundColor: "#160905" }}
         >
           <MandelbrotBg />
           <div className="relative z-10 flex h-16 items-center border-b border-da-border px-6">
@@ -165,7 +165,7 @@ export function DashboardShell({
           {(settingsOpen || settingsHover) && (
             <div
               className="absolute overflow-hidden bottom-full left-0 w-64 border border-da-border rounded-t-xl shadow-lg shadow-black/40 px-3 pb-2 pt-1 space-y-0.5 z-50 transition-all duration-200"
-              style={{ minHeight: '16rem', height: 'auto', backgroundColor: '#0b1020' }} // double the height
+              style={{ minHeight: '16rem', height: 'auto', backgroundColor: '#160905' }} // double the height
             >
               <MandelbrotBg />
               <div className="relative z-10">
