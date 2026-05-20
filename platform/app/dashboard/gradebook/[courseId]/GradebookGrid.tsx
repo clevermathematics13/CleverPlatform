@@ -182,16 +182,11 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
     []
   );
 
-  const handleBlur = useCallback(
-    async (itemId: string, profileId: string, maxMarks: number) => {
+  const saveCell = useCallback(
+    async (itemId: string, profileId: string, value: number | null, maxMarks: number) => {
       const key = `${itemId}:${profileId}`;
-      const value = marks[itemId]?.[profileId] ?? null;
-
       if (value !== null && (value < 0 || value > maxMarks)) {
-        setCellErrors((prev) => ({
-          ...prev,
-          [key]: `0–${maxMarks}`,
-        }));
+        setCellErrors((prev) => ({ ...prev, [key]: `0–${maxMarks}` }));
         return;
       }
       setCellErrors((prev) => {
@@ -199,24 +194,16 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         delete n[key];
         return n;
       });
-
       setSaving((prev) => new Set(prev).add(key));
       try {
         const res = await fetch("/api/gradebook/marks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            testItemId: itemId,
-            studentId: profileId,
-            marksAwarded: value,
-          }),
+          body: JSON.stringify({ testItemId: itemId, studentId: profileId, marksAwarded: value }),
         });
         if (!res.ok) {
           const d = (await res.json()) as { error?: string };
-          setCellErrors((prev) => ({
-            ...prev,
-            [key]: d.error ?? "Save failed",
-          }));
+          setCellErrors((prev) => ({ ...prev, [key]: d.error ?? "Save failed" }));
         }
       } catch {
         setCellErrors((prev) => ({ ...prev, [key]: "Network error" }));
@@ -228,7 +215,74 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         });
       }
     },
-    [marks]
+    []
+  );
+
+  const handleBlur = useCallback(
+    async (itemId: string, profileId: string, maxMarks: number) => {
+      const value = marks[itemId]?.[profileId] ?? null;
+      await saveCell(itemId, profileId, value, maxMarks);
+    },
+    [marks, saveCell]
+  );
+
+  const handleCellPaste = useCallback(
+    (e: React.ClipboardEvent<HTMLInputElement>, anchorRow: number, anchorCol: number) => {
+      const text = e.clipboardData.getData("text/plain");
+      if (!text) return;
+
+      const pastedRows = text.split(/\r?\n|\r/);
+      if (pastedRows[pastedRows.length - 1] === "") pastedRows.pop();
+      const grid = pastedRows.map((row) => row.split("\t"));
+
+      // Only intercept multi-cell pastes; let single values go through natively
+      if (grid.length === 1 && grid[0].length === 1) return;
+      e.preventDefault();
+
+      // Build flat ordered list of visible test item columns
+      const visibleItems: { itemId: string; maxMarks: number }[] = [];
+      for (const test of tests) {
+        if (expandedTests.has(test.id)) {
+          for (const item of test.items) {
+            visibleItems.push({ itemId: item.id, maxMarks: item.max_marks });
+          }
+        }
+      }
+
+      const updates: { itemId: string; profileId: string; value: number | null; maxMarks: number }[] = [];
+      for (let r = 0; r < grid.length; r++) {
+        const studentIdx = anchorRow + r;
+        if (studentIdx >= students.length) break;
+        const student = students[studentIdx];
+        for (let c = 0; c < grid[r].length; c++) {
+          const colIdx = anchorCol + c;
+          if (colIdx >= visibleItems.length) break;
+          const { itemId, maxMarks } = visibleItems[colIdx];
+          const raw = grid[r][c].trim();
+          const parsed = raw === "" ? null : parseInt(raw, 10);
+          const value =
+            parsed !== null && !isNaN(parsed)
+              ? Math.max(0, Math.min(parsed, maxMarks))
+              : null;
+          updates.push({ itemId, profileId: student.profile_id, value, maxMarks });
+        }
+      }
+
+      if (updates.length === 0) return;
+
+      setMarks((prev) => {
+        const next = { ...prev };
+        for (const { itemId, profileId, value } of updates) {
+          next[itemId] = { ...(next[itemId] ?? {}), [profileId]: value };
+        }
+        return next;
+      });
+
+      for (const { itemId, profileId, value, maxMarks } of updates) {
+        saveCell(itemId, profileId, value, maxMarks);
+      }
+    },
+    [tests, expandedTests, students, saveCell]
   );
 
   // ── Styles ───────────────────────────────────────────────────────────────────
@@ -239,6 +293,19 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
   const tdBase = "px-2 py-2 text-center text-sm border-b border-da-border/50";
 
   // ── Render ───────────────────────────────────────────────────────────────────
+
+  // Build item → column index map for paste coordinate resolution
+  const itemColMap = new Map<string, number>();
+  {
+    let col = 0;
+    for (const test of tests) {
+      if (expandedTests.has(test.id)) {
+        for (const item of test.items) {
+          itemColMap.set(item.id, col++);
+        }
+      }
+    }
+  }
 
   return (
     <div className="rounded-xl border border-da-border bg-da-surface overflow-hidden">
@@ -450,6 +517,13 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                                 if (e.key === "Enter")
                                   (e.target as HTMLInputElement).blur();
                               }}
+                              onPaste={(e) =>
+                                handleCellPaste(
+                                  e,
+                                  rowIdx,
+                                  itemColMap.get(item.id) ?? 0
+                                )
+                              }
                               className={[
                                 "w-12 rounded text-center text-sm py-1 bg-da-bg",
                                 "border focus:outline-none focus:ring-1 transition-colors",
@@ -502,6 +576,8 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         ))}
         <span className="text-da-border">|</span>
         <span>Hover grade cells for percentage. Enter marks and press Tab/Enter to save.</span>
+        <span className="text-da-border">|</span>
+        <span>Expand a test, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
       </div>
     </div>
   );

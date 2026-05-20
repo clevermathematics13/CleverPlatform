@@ -172,7 +172,7 @@ export function TestBuilderPanel({
   onRemove: (id: string) => void;
   onUpdateSection: (id: string, section: "A" | "B") => void;
   onAutoSort: () => void;
-  onMoveUp: (index: number) => void;
+  onMoveUp: (fromIndex: number, toIndex: number) => void;
   onPreviewTest: () => void;
   onPreviewMS: () => void;
   onClear: () => void;
@@ -409,6 +409,7 @@ export function TestBuilderPanel({
                 </div>
                 {sectionAItems.map((item, globalIdx) => {
                   const idx = queue.indexOf(item);
+                  const prevIdx = globalIdx > 0 ? queue.indexOf(sectionAItems[globalIdx - 1]) : -1;
                   return (
                     <QueueRow
                       key={item.id}
@@ -419,7 +420,7 @@ export function TestBuilderPanel({
                       onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
-                      onMoveUp={() => onMoveUp(idx)}
+                      onMoveUp={() => onMoveUp(idx, prevIdx)}
                     />
                   );
                 })}
@@ -438,6 +439,7 @@ export function TestBuilderPanel({
                 </div>
                 {sectionBItems.map((item, bIdx) => {
                   const idx = queue.indexOf(item);
+                  const prevIdx = bIdx > 0 ? queue.indexOf(sectionBItems[bIdx - 1]) : -1;
                   return (
                     <QueueRow
                       key={item.id}
@@ -448,7 +450,7 @@ export function TestBuilderPanel({
                       onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
-                      onMoveUp={() => onMoveUp(idx)}
+                      onMoveUp={() => onMoveUp(idx, prevIdx)}
                     />
                   );
                 })}
@@ -458,6 +460,7 @@ export function TestBuilderPanel({
             {/* Unsectioned */}
             {unsectionedItems.map((item, uIdx) => {
               const idx = queue.indexOf(item);
+              const prevIdx = uIdx > 0 ? queue.indexOf(unsectionedItems[uIdx - 1]) : -1;
               return (
                 <QueueRow
                   key={item.id}
@@ -468,7 +471,7 @@ export function TestBuilderPanel({
                   onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                   onRemove={() => onRemove(item.id)}
                   onUpdateSection={(s) => onUpdateSection(item.id, s)}
-                  onMoveUp={() => onMoveUp(idx)}
+                  onMoveUp={() => onMoveUp(idx, prevIdx)}
                 />
               );
             })}
@@ -484,7 +487,7 @@ export function TestBuilderPanel({
               onOpenQuestion={() => onOpenQuestionFromQueue(item)}
               onRemove={() => onRemove(item.id)}
               onUpdateSection={(s) => onUpdateSection(item.id, s)}
-              onMoveUp={() => onMoveUp(idx)}
+              onMoveUp={() => onMoveUp(idx, idx - 1)}
             />
           ))
         )}

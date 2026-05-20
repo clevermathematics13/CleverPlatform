@@ -1101,11 +1101,11 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     setExamDirty(true);
   };
 
-  const handleMoveUp = (index: number) => {
-    if (index === 0) return;
+  const handleMoveUp = (fromIndex: number, toIndex: number) => {
+    if (fromIndex <= 0 || toIndex < 0 || fromIndex === toIndex) return;
     setTestQueue((prev) => {
       const next = [...prev];
-      [next[index - 1], next[index]] = [next[index], next[index - 1]];
+      [next[toIndex], next[fromIndex]] = [next[fromIndex], next[toIndex]];
       return next;
     });
     setExamDirty(true);

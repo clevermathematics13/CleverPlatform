@@ -80,7 +80,10 @@ export default async function GradebookCoursePage({
         name: displayName ?? "Unknown",
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => {
+      const lastName = (n: string) => n.trim().split(/\s+/).slice(-1)[0] ?? n;
+      return lastName(a.name).localeCompare(lastName(b.name)) || a.name.localeCompare(b.name);
+    });
 
   // Student marks
   const itemIds = allItems.map((i) => i.id);
