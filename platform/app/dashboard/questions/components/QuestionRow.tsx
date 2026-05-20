@@ -1188,6 +1188,7 @@ export function QuestionRow({
               commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
               subtopicCodes: effectiveSubtopics,
+              primarySubtopicCode: cpMeta?.primarySubtopicCode ?? null,
             }),
           });
         } else {
@@ -1206,6 +1207,7 @@ export function QuestionRow({
               commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
               subtopicCodes: effectiveSubtopics,
+              primarySubtopicCode: cpMeta?.primarySubtopicCode ?? null,
             }),
           });
           if (!createRes.ok) throw new Error("Failed to create whole-question part");
@@ -1226,8 +1228,8 @@ export function QuestionRow({
           }),
         ]);
         const wholePart: QuestionPart = existingWhole
-          ? { ...existingWhole, marks: wholeMarks, content_latex: qDraft || null, markscheme_latex: msDraft || null }
-          : { id: wholePartId, part_label: "", marks: wholeMarks, subtopic_codes: cpMeta?.subtopicCodes ?? [], command_term: extractedWholeTerm, sort_order: 0, content_latex: qDraft || null, markscheme_latex: msDraft || null, latex_verified: null };
+          ? { ...existingWhole, marks: wholeMarks, primary_subtopic_code: cpMeta?.primarySubtopicCode ?? existingWhole.primary_subtopic_code ?? null, content_latex: qDraft || null, markscheme_latex: msDraft || null }
+          : { id: wholePartId, part_label: "", marks: wholeMarks, subtopic_codes: cpMeta?.subtopicCodes ?? [], primary_subtopic_code: cpMeta?.primarySubtopicCode ?? null, command_term: extractedWholeTerm, sort_order: 0, content_latex: qDraft || null, markscheme_latex: msDraft || null, latex_verified: null };
         setParts([wholePart]);
         setLatexDrafts({ [wholePartId]: { content_latex: qDraft, markscheme_latex: msDraft } });
         setWholeQDraft(qDraft);
