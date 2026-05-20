@@ -47,12 +47,16 @@ export function useMarkAttribution(
 
   // Auto-generate subtopic attribution for all unassigned tokens on mount.
   // - Single-subtopic parts: trivially persist the one code to DB (no AI).
+  // - Single-subtopic parts: trivially persist the one code to DB (no AI).
   // - Multi-subtopic parts: use AI to pick the best subtopic per token.
-  const autoGenStartedRef = useRef(false);
+  // Tracks which part IDs have already been processed so re-renders caused by
+  // questionParts prop changes (e.g. after an extraction + onRefresh) still
+  // trigger auto-gen for newly-appeared parts without re-processing old ones.
+  const autoGenProcessedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (autoGenStartedRef.current) return;
-    autoGenStartedRef.current = true;
     for (const part of questionParts) {
+      if (autoGenProcessedRef.current.has(part.id)) continue;
+      autoGenProcessedRef.current.add(part.id);
       if (part.subtopic_codes.length === 0) continue;
       const tokens = parseMSTokens(part.markscheme_latex ?? "");
       if (tokens.length === 0) continue;
@@ -76,7 +80,7 @@ export function useMarkAttribution(
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [questionParts]);
 
   async function persistAttribution(
     partId: string,
