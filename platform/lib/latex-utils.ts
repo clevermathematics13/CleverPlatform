@@ -312,15 +312,19 @@ export interface MarkToken {
  * (`M1` alone at the end of a line) so that OCR variation is handled gracefully.
  */
 export function parseMSTokens(markschemeLatex: string): MarkToken[] {
-  // Primary pattern: \hfill followed by optional parens and one or more adjacent
-  // mark codes (e.g. "M1", "A1", "M1A1", "A1A1").
-  // Fallback pattern: same combined form at the very end of a line.
-  const TOKEN_RE = /\\hfill\s+\(?((M1|A1|R1)+)\)?|\b((M1|A1|R1)+)\b(?=\s*$)/gm;
+  // Three alternatives, tried in order:
+  // 1. \hfill M1 / \hfill (M1)         — standard IB Claude OCR output
+  // 2. (M1) / (A1) / (M1A1) at EOL     — parenthesised mark at line end without \hfill
+  // 3. bare M1 / A1 / M1A1 at EOL      — no parens, no \hfill
+  // Note: alternative 2 is needed because lookahead in the original fallback stopped
+  // at the closing ')' and never matched parenthesised marks without \hfill.
+  const TOKEN_RE =
+    /\\hfill\s+\(?((M1|A1|R1)+)\)?|\(((M1|A1|R1)+)\)\s*$|\b((M1|A1|R1)+)\b\s*$/gm;
   const tokens: MarkToken[] = [];
   let ordinal = 0;
   let m: RegExpExecArray | null;
   while ((m = TOKEN_RE.exec(markschemeLatex)) !== null) {
-    const label = (m[1] ?? m[3]) as string;
+    const label = (m[1] ?? m[3] ?? m[5]) as string;
     const pos = m.index;
     const start = Math.max(0, pos - 200);
     const snippet = markschemeLatex
