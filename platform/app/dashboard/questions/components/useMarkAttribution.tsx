@@ -45,19 +45,33 @@ export function useMarkAttribution(
 
   const [activePopover, setActivePopover] = useState<string | null>(null);
 
-  // Auto-generate subtopic attribution for all unassigned tokens in parts that
-  // have more than one subtopic (so the dropdown isn't left empty).
+  // Auto-generate subtopic attribution for all unassigned tokens on mount.
+  // - Single-subtopic parts: trivially persist the one code to DB (no AI).
+  // - Multi-subtopic parts: use AI to pick the best subtopic per token.
   const autoGenStartedRef = useRef(false);
   useEffect(() => {
     if (autoGenStartedRef.current) return;
     autoGenStartedRef.current = true;
     for (const part of questionParts) {
-      if (part.subtopic_codes.length <= 1) continue;
+      if (part.subtopic_codes.length === 0) continue;
       const tokens = parseMSTokens(part.markscheme_latex ?? "");
-      for (const token of tokens) {
-        const key = `${part.id}-${token.id}`;
-        if (!tokenResults[key]) {
-          void generateMarkRationale(part, token.id);
+      if (tokens.length === 0) continue;
+      if (part.subtopic_codes.length === 1) {
+        // Single subtopic: persist without AI for any token not yet in DB.
+        const code = part.subtopic_codes[0];
+        for (const token of tokens) {
+          const key = `${part.id}-${token.id}`;
+          if (!tokenResults[key]) {
+            void persistAttribution(part.id, token.id, code, "ai", "Auto-attributed — single subtopic");
+          }
+        }
+      } else {
+        // Multi-subtopic: use AI per token.
+        for (const token of tokens) {
+          const key = `${part.id}-${token.id}`;
+          if (!tokenResults[key]) {
+            void generateMarkRationale(part, token.id);
+          }
         }
       }
     }

@@ -1180,7 +1180,7 @@ export function QuestionRow({
               commandTerm: extractedWholeTerm,
               commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
-              subtopicCodes: cpMeta?.subtopicCodes ?? existingWhole.subtopic_codes ?? [],
+              subtopicCodes: cpMeta?.subtopicCodes?.length ? cpMeta.subtopicCodes : (existingWhole.subtopic_codes ?? []),
             }),
           });
         } else {
@@ -1327,7 +1327,7 @@ export function QuestionRow({
               commandTerm: canonicalTerm,
               commandTerms: canonicalTerms,
               sourceLatex: sourceForMetadata,
-              subtopicCodes: cp?.subtopicCodes ?? existing.subtopic_codes,
+              subtopicCodes: cp?.subtopicCodes?.length ? cp.subtopicCodes : existing.subtopic_codes,
               primarySubtopicCode: cp?.primarySubtopicCode ?? null,
             }),
           });
@@ -1339,7 +1339,7 @@ export function QuestionRow({
             command_term: canonicalTerm,
             command_terms: canonicalTerms,
             ...exceptionFlags,
-            subtopic_codes: cp?.subtopicCodes ?? existing.subtopic_codes,
+            subtopic_codes: cp?.subtopicCodes?.length ? cp.subtopicCodes : existing.subtopic_codes,
             primary_subtopic_code: cp?.primarySubtopicCode ?? existing.primary_subtopic_code ?? null,
             content_latex: splitQForLabel || null,
             markscheme_latex: splitMSForLabel || null,
