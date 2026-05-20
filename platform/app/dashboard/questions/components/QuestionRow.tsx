@@ -1169,10 +1169,14 @@ export function QuestionRow({
         let wholePartId: string;
         const existingWhole = parts.find((p) => !p.part_label || p.part_label.trim() === "");
         const wholeMarks = plan.partMarks?.get("") ?? ((typeof cpMeta?.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? existingWhole?.marks ?? 1);
+        // Hoist so attribution diagnostics can reference it after the if/else
+        let effectiveSubtopics: string[];
         if (existingWhole) {
           wholePartId = existingWhole.id;
-          const effectiveSubtopics = cpMeta?.subtopicCodes?.length ? cpMeta.subtopicCodes : (existingWhole.subtopic_codes ?? []);
+          effectiveSubtopics = cpMeta?.subtopicCodes?.length ? cpMeta.subtopicCodes : (existingWhole.subtopic_codes ?? []);
+          push(`Claude subtopics: ${cpMeta?.subtopicCodes?.length ? cpMeta.subtopicCodes.join(", ") : "(none returned)"}`);
           push(`Subtopics saved: ${effectiveSubtopics.length ? effectiveSubtopics.join(", ") : "(none)"}${!cpMeta?.subtopicCodes?.length && existingWhole.subtopic_codes?.length ? " (kept from existing part)" : ""}`);
+          push(`Marks: ${wholeMarks} (existing part id: ${existingWhole.id.slice(0, 8)}…)`);
           // Always update marks + metadata (even when cpMeta is absent)
           await fetch("/api/questions/part-metadata", {
             method: "PATCH",
@@ -1187,8 +1191,10 @@ export function QuestionRow({
             }),
           });
         } else {
-          const effectiveSubtopics = cpMeta?.subtopicCodes ?? [];
+          effectiveSubtopics = cpMeta?.subtopicCodes ?? [];
+          push(`Claude subtopics: ${cpMeta?.subtopicCodes?.length ? cpMeta.subtopicCodes.join(", ") : "(none returned)"}`);
           push(`Subtopics saved: ${effectiveSubtopics.length ? effectiveSubtopics.join(", ") : "(none — new part, Claude returned nothing)"}`);
+          push(`Marks: ${wholeMarks} (creating new part)`);
           const createRes = await fetch("/api/questions/part-metadata", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1227,6 +1233,19 @@ export function QuestionRow({
         setWholeQDraft(qDraft);
         setWholeMSDraft(msDraft);
         push("Done! Whole question LaTeX saved.");
+        // ── Attribution readiness diagnostics ──────────────────────────────
+        {
+          const attrTokens = parseMSTokens(msDraft);
+          push(`MS LaTeX length: ${msDraft.length} chars`);
+          if (effectiveSubtopics.length === 0) {
+            push("Attribution: skipped — no subtopics saved (assign at least one subtopic to this question).");
+          } else if (attrTokens.length === 0) {
+            push(`Attribution: skipped — markscheme has no \\hfill M1/A1/R1 tokens (${msDraft.length} chars). Check OCR quality or mark notation.`);
+            if (msDraft.length > 0) push(`MS LaTeX preview: ${msDraft.slice(0, 200).replace(/\n/g, "↵")}`);
+          } else {
+            push(`Attribution: will auto-run after refresh — ${attrTokens.length} token(s) found: ${attrTokens.map((t) => t.label).join(", ")}.`);
+          }
+        }
         onQueueMarksChange(question.id, wholeMarks);
         onRefresh();
         setTimeout(() => { setFullExtractState("idle"); setExtractLogCollapsed(true); }, 3000);
@@ -1439,6 +1458,19 @@ export function QuestionRow({
       }
 
       push("Done! All LaTeX extracted and saved.");
+      // ── Attribution readiness diagnostics (per part) ────────────────────
+      for (const p of sortedMerged) {
+        const attrTokens = parseMSTokens(p.markscheme_latex ?? "");
+        const codes = p.subtopic_codes ?? [];
+        const label = p.part_label ? `Part ${p.part_label}` : "Whole";
+        if (codes.length === 0) {
+          push(`${label} — attribution skipped: no subtopics.`);
+        } else if (attrTokens.length === 0) {
+          push(`${label} — attribution skipped: no \\hfill M1/A1/R1 tokens in MS (${(p.markscheme_latex ?? "").length} chars). Check OCR.`);
+        } else {
+          push(`${label} — attribution will auto-run: ${codes.length} subtopic(s), ${attrTokens.length} token(s): ${attrTokens.map((t) => t.label).join(", ")}.`);
+        }
+      }
       // Refresh parent question list so data stays in sync
       onQueueMarksChange(question.id, sortedMerged.reduce((s, p) => s + p.marks, 0));
       onRefresh();
