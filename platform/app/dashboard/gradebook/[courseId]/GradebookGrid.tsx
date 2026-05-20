@@ -204,7 +204,8 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         });
         if (!res.ok) {
           const d = (await res.json()) as { error?: string };
-          setCellErrors((prev) => ({ ...prev, [key]: d.error ?? "Save failed" }));
+          setCellErrors((prev) => ({ ...prev, [key]: "Save failed" }));
+          console.error("Mark save error:", d.error);
         }
       } catch {
         setCellErrors((prev) => ({ ...prev, [key]: "Network error" }));
@@ -279,9 +280,56 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         return next;
       });
 
-      for (const { itemId, profileId, value, maxMarks } of updates) {
-        saveCell(itemId, profileId, value, maxMarks);
-      }
+      // Clear prior errors and mark all cells as saving
+      setCellErrors((prev) => {
+        const next = { ...prev };
+        for (const { itemId, profileId } of updates) delete next[`${itemId}:${profileId}`];
+        return next;
+      });
+      setSaving((prev) => {
+        const next = new Set(prev);
+        for (const { itemId, profileId } of updates) next.add(`${itemId}:${profileId}`);
+        return next;
+      });
+
+      // Single batch request instead of one per cell
+      fetch("/api/gradebook/marks/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          marks: updates.map(({ itemId, profileId, value }) => ({
+            testItemId: itemId,
+            studentId: profileId,
+            marksAwarded: value,
+          })),
+        }),
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const d = (await res.json()) as { error?: string };
+            setCellErrors((prev) => {
+              const next = { ...prev };
+              for (const { itemId, profileId } of updates)
+                next[`${itemId}:${profileId}`] = "Paste save failed";
+              return next;
+            });
+          }
+        })
+        .catch(() => {
+          setCellErrors((prev) => {
+            const next = { ...prev };
+            for (const { itemId, profileId } of updates)
+              next[`${itemId}:${profileId}`] = "Network error";
+            return next;
+          });
+        })
+        .finally(() => {
+          setSaving((prev) => {
+            const next = new Set(prev);
+            for (const { itemId, profileId } of updates) next.delete(`${itemId}:${profileId}`);
+            return next;
+          });
+        });
     },
     [tests, expandedTests, students, saveCell]
   );
@@ -549,7 +597,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                                   : "border-da-border focus:ring-da-accent/50 focus:border-da-accent",
                                 "text-da-text",
                               ].join(" ")}
-                              title={err ?? `Max: ${item.max_marks}`}
+                              title={err ? `⚠ ${err}` : `Max: ${item.max_marks}`}
                             />
                           </td>
                         );
