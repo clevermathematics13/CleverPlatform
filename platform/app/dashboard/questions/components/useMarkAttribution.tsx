@@ -187,19 +187,19 @@ export function useMarkAttribution(
       const hasRationale =
         !!res?.rationale && res.rationale !== "Manual" && res.rationale !== "AI";
 
-      const rationalePopoverContent = (
+      const popoverContent = (
         <>
           <div
             className="fixed inset-0 z-40"
             onClick={() => setActivePopover(null)}
           />
           <div
-            className="absolute right-0 top-full mt-1 z-50 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-left"
+            className="absolute right-0 top-full mt-1 z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-left"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-start justify-between mb-1.5">
+            <div className="flex items-center justify-between mb-2">
               <span className="font-mono text-xs font-semibold text-indigo-700">
-                {displayCode}
+                {displayCode ?? "unassigned"}
               </span>
               <button
                 type="button"
@@ -209,8 +209,37 @@ export function useMarkAttribution(
                 ×
               </button>
             </div>
+            <div className="flex flex-wrap gap-1 mb-2">
+              {part.subtopic_codes.map((code) => (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => { handleManualSelect(code); setActivePopover(null); }}
+                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
+                    displayCode === code
+                      ? "bg-indigo-50 border-indigo-400 text-indigo-700"
+                      : "border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
+                  }`}
+                >
+                  {code}
+                </button>
+              ))}
+              {part.subtopic_codes.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => { handleManualSelect(""); setActivePopover(null); }}
+                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
+                    !displayCode
+                      ? "bg-gray-100 border-gray-400 text-gray-700"
+                      : "border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"
+                  }`}
+                >
+                  unassigned
+                </button>
+              )}
+            </div>
             {hasRationale ? (
-              <div className="space-y-1">
+              <div className="space-y-1 border-t border-gray-100 pt-2">
                 <p className="text-xs text-gray-700 leading-snug">{res!.rationale}</p>
                 {res!.evidenceSpan && (
                   <p className="text-[10px] text-gray-400 italic">&ldquo;{res!.evidenceSpan}&rdquo;</p>
@@ -219,9 +248,7 @@ export function useMarkAttribution(
                   Confidence: {res!.confidenceBucket}
                 </p>
               </div>
-            ) : (
-              <p className="text-xs text-gray-400 italic">No rationale generated yet.</p>
-            )}
+            ) : null}
             <button
               type="button"
               disabled={isLoading}
@@ -246,70 +273,27 @@ export function useMarkAttribution(
           key={token.id}
           className="group relative inline-flex items-center gap-0.5 ml-1"
         >
-          {singleSubtopic ? (
-            <span className="relative">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActivePopover(activePopover === rKey ? null : rKey);
-                }}
-                className="font-mono text-[10px] px-1 bg-gray-100 hover:bg-indigo-50 text-gray-600 hover:text-indigo-600 rounded cursor-pointer"
-              >
-                {singleSubtopic}
-              </button>
-              {activePopover === rKey && rationalePopoverContent}
-            </span>
-          ) : isError ? (
-            <span className="text-red-400 text-[10px]">err</span>
-          ) : (
-            <span className="relative inline-flex items-center gap-0.5">
-              <select
-                value={displayCode ?? ""}
-                onChange={(e) => {
-                  e.stopPropagation();
-                  handleManualSelect(e.target.value);
-                }}
-                onClick={(e) => e.stopPropagation()}
-                disabled={isLoading}
-                title="Attribute this mark to a subtopic"
-                className="text-[10px] font-mono text-gray-600 border border-gray-300 rounded px-0.5 bg-white leading-none"
-              >
-                <option value="">unassigned</option>
-                {part.subtopic_codes.map((code) => (
-                  <option key={code} value={code}>
-                    {code}
-                  </option>
-                ))}
-              </select>
-              {(res || isLoading) && (
-                <button
-                  type="button"
-                  title="View rationale"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActivePopover(activePopover === rKey ? null : rKey);
-                  }}
-                  className="font-mono text-[10px] text-gray-400 hover:text-indigo-500"
-                >
-                  ⓘ
-                </button>
-              )}
-              <button
-                type="button"
-                title="Auto-assign with AI"
-                disabled={isLoading}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  void generateMarkRationale(part, token.id);
-                }}
-                className="font-mono text-[10px] text-gray-400 hover:text-indigo-500 disabled:opacity-40"
-              >
-                {isLoading ? "…" : "✦"}
-              </button>
-              {activePopover === rKey && rationalePopoverContent}
-            </span>
-          )}
+          <span className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActivePopover(activePopover === rKey ? null : rKey);
+              }}
+              className={`font-mono text-[10px] px-1 rounded cursor-pointer transition-colors ${
+                isError
+                  ? "bg-red-50 text-red-400"
+                  : isLoading
+                    ? "bg-gray-100 text-gray-400 animate-pulse"
+                    : displayCode
+                      ? "bg-gray-100 hover:bg-indigo-50 text-gray-600 hover:text-indigo-600"
+                      : "bg-gray-50 text-gray-400 hover:bg-indigo-50 hover:text-indigo-500 border border-dashed border-gray-300"
+              }`}
+            >
+              {isLoading ? "…" : isError ? "err" : (displayCode ?? "?")}
+            </button>
+            {activePopover === rKey && popoverContent}
+          </span>
         </span>
       );
     };
