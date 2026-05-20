@@ -10,6 +10,7 @@ export type TestItem = {
   part_label: string;
   max_marks: number;
   sort_order: number;
+  question_code: string | null;
 };
 
 export type Test = {
@@ -372,16 +373,30 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                     <th
                       key={item.id}
                       className={`${thBtn} min-w-[52px]`}
-                      onClick={idx === 0 ? () => toggleTest(test.id) : undefined}
-                      title={idx === 0 ? "Click to collapse" : undefined}
+                      title={idx === 0 ? "Click to collapse" : item.question_code ? `Open ${item.question_code} in question editor` : undefined}
                     >
                       {idx === 0 && (
-                        <span className="block text-[10px] text-da-accent/70 max-w-[100px] truncate">
+                        <span
+                          className="block text-[10px] text-da-accent/70 max-w-[100px] truncate cursor-pointer"
+                          onClick={() => toggleTest(test.id)}
+                          title="Click to collapse"
+                        >
                           ◂ {test.name}
                         </span>
                       )}
-                      Q{item.question_number}
-                      {item.part_label ? item.part_label : ""}
+                      <span
+                        className={item.question_code ? "cursor-pointer hover:underline" : ""}
+                        onClick={() => {
+                          if (item.question_code) {
+                            window.open(`/dashboard/questions?search=${encodeURIComponent(item.question_code)}`, "_blank");
+                          } else {
+                            toggleTest(test.id);
+                          }
+                        }}
+                      >
+                        Q{item.question_number}
+                        {item.part_label ? item.part_label : ""}
+                      </span>
                       <span className="block text-[10px] text-da-muted">
                         /{item.max_marks}
                       </span>

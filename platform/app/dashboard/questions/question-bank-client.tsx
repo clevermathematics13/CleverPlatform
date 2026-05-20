@@ -144,23 +144,31 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     } catch {}
   }, []);
 
-  // Detect Google Drive connection status from URL params
+  // Detect Google Drive connection status from URL params; also clean ?search= if present
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    let dirty = false;
     if (params.get("drive_connected") === "true") {
       setDriveConnected(true);
-      // Clean URL
-      window.history.replaceState({}, "", window.location.pathname);
+      dirty = true;
     }
     if (params.get("drive_error")) {
       setError(`Google Drive connection failed: ${params.get("drive_error")}`);
-      window.history.replaceState({}, "", window.location.pathname);
+      dirty = true;
     }
+    if (params.get("search")) dirty = true;
+    if (dirty) window.history.replaceState({}, "", window.location.pathname);
   }, []);
 
   // Filter state
   const [search, setSearch] = useState(() => {
-    try { return localStorage.getItem("qbank-search") ?? ""; } catch { return ""; }
+    try {
+      if (typeof window !== "undefined") {
+        const urlSearch = new URLSearchParams(window.location.search).get("search");
+        if (urlSearch) return urlSearch;
+      }
+      return localStorage.getItem("qbank-search") ?? "";
+    } catch { return ""; }
   });
   const [searchContent, setSearchContent] = useState(false);
   const [session, setSession] = useState("");

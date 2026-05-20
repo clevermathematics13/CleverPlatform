@@ -52,7 +52,7 @@ export default async function GradebookCoursePage({
   if (testIds.length > 0) {
     const { data } = await supabase
       .from("test_items")
-      .select("id, test_id, question_number, part_label, max_marks, sort_order")
+      .select("id, test_id, question_number, part_label, max_marks, sort_order, ib_question_code")
       .in("test_id", testIds)
       .order("sort_order");
     allItems = data ?? [];
@@ -118,6 +118,7 @@ export default async function GradebookCoursePage({
       part_label: item.part_label ?? "",
       max_marks: item.max_marks,
       sort_order: item.sort_order,
+      question_code: (item as { ib_question_code?: string | null }).ib_question_code ?? null,
     })),
   }));
 
