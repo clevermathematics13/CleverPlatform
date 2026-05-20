@@ -1164,12 +1164,15 @@ export function QuestionRow({
           claudeCommandTerm: cpMeta?.commandTerm ?? null,
         });
         push("No part structure found — treating as whole question…");
+        push(`Claude subtopics: ${cpMeta?.subtopicCodes?.length ? cpMeta.subtopicCodes.join(", ") : "(none returned)"}`);
         // Find or create a null-label (whole-question) part
         let wholePartId: string;
         const existingWhole = parts.find((p) => !p.part_label || p.part_label.trim() === "");
         const wholeMarks = plan.partMarks?.get("") ?? ((typeof cpMeta?.marks === "number" && cpMeta.marks > 0) ? cpMeta.marks : parseMarksFromLatex(qDraft) ?? existingWhole?.marks ?? 1);
         if (existingWhole) {
           wholePartId = existingWhole.id;
+          const effectiveSubtopics = cpMeta?.subtopicCodes?.length ? cpMeta.subtopicCodes : (existingWhole.subtopic_codes ?? []);
+          push(`Subtopics saved: ${effectiveSubtopics.length ? effectiveSubtopics.join(", ") : "(none)"}${!cpMeta?.subtopicCodes?.length && existingWhole.subtopic_codes?.length ? " (kept from existing part)" : ""}`);
           // Always update marks + metadata (even when cpMeta is absent)
           await fetch("/api/questions/part-metadata", {
             method: "PATCH",
@@ -1180,10 +1183,12 @@ export function QuestionRow({
               commandTerm: extractedWholeTerm,
               commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
-              subtopicCodes: cpMeta?.subtopicCodes?.length ? cpMeta.subtopicCodes : (existingWhole.subtopic_codes ?? []),
+              subtopicCodes: effectiveSubtopics,
             }),
           });
         } else {
+          const effectiveSubtopics = cpMeta?.subtopicCodes ?? [];
+          push(`Subtopics saved: ${effectiveSubtopics.length ? effectiveSubtopics.join(", ") : "(none — new part, Claude returned nothing)"}`);
           const createRes = await fetch("/api/questions/part-metadata", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1194,7 +1199,7 @@ export function QuestionRow({
               commandTerm: extractedWholeTerm,
               commandTerms: extractedWholeTerms,
               sourceLatex: qDraft,
-              subtopicCodes: cpMeta?.subtopicCodes ?? [],
+              subtopicCodes: effectiveSubtopics,
             }),
           });
           if (!createRes.ok) throw new Error("Failed to create whole-question part");
