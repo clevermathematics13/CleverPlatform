@@ -206,6 +206,14 @@ export async function POST(request: NextRequest) {
     const questionImages = await getDocImages(driveAuth, question.google_doc_id);
     (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc.scannedInlineObjects = questionImages.length;
 
+    // Delete all existing question image records so re-extraction is clean
+    // (removes stale rows if the doc now has fewer images than before)
+    await supabase
+      .from("question_images")
+      .delete()
+      .eq("question_id", question.id)
+      .eq("image_type", "question");
+
     for (let i = 0; i < questionImages.length; i++) {
       const img = questionImages[i];
       const { buffer, contentType } = await downloadImage(driveAuth, img.contentUri);
@@ -247,18 +255,15 @@ export async function POST(request: NextRequest) {
       }
 
       // Insert record in question_images table
-      await supabase.from("question_images").upsert(
-        {
-          question_id: question.id,
-          part_id: partIds[i] ?? null,
-          image_type: "question",
-          storage_path: storagePath,
-          source_google_doc_id: question.google_doc_id,
-          sort_order: i,
-          alt_text: `Question image ${i + 1} for ${question.code}`,
-        },
-        { onConflict: "question_id,image_type,sort_order" }
-      );
+      await supabase.from("question_images").insert({
+        question_id: question.id,
+        part_id: partIds[i] ?? null,
+        image_type: "question",
+        storage_path: storagePath,
+        source_google_doc_id: question.google_doc_id,
+        sort_order: i,
+        alt_text: `Question image ${i + 1} for ${question.code}`,
+      });
 
       results.push({
         type: "question",

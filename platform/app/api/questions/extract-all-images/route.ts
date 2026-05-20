@@ -98,6 +98,14 @@ async function extractOneQuestion(
   // Extract question doc images
   try {
     const images = await getDocImages(auth, question.google_doc_id);
+
+    // Delete all existing question image records so re-extraction is clean
+    await supabase
+      .from("question_images")
+      .delete()
+      .eq("question_id", question.id)
+      .eq("image_type", "question");
+
     for (let i = 0; i < images.length; i++) {
       const { buffer, contentType } = await downloadImage(auth, images[i].contentUri);
       if (isBlockedQuestionImage(buffer)) {
@@ -124,18 +132,15 @@ async function extractOneQuestion(
         continue;
       }
 
-      await supabase.from("question_images").upsert(
-        {
-          question_id: question.id,
-          part_id: partIds[i] ?? null,
-          image_type: "question",
-          storage_path: storagePath,
-          source_google_doc_id: question.google_doc_id,
-          sort_order: i,
-          alt_text: `Question image ${i + 1} for ${question.code}`,
-        },
-        { onConflict: "question_id,image_type,sort_order" }
-      );
+      await supabase.from("question_images").insert({
+        question_id: question.id,
+        part_id: partIds[i] ?? null,
+        image_type: "question",
+        storage_path: storagePath,
+        source_google_doc_id: question.google_doc_id,
+        sort_order: i,
+        alt_text: `Question image ${i + 1} for ${question.code}`,
+      });
       questionCount++;
     }
   } catch (err) {
