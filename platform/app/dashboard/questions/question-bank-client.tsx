@@ -121,6 +121,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [examDirty, setExamDirty] = useState(false);
   const [saveExamError, setSaveExamError] = useState<string | null>(null);
   const [pendingAddQuestion, setPendingAddQuestion] = useState<Question | null>(null);
+  const [savingToGradebook, setSavingToGradebook] = useState(false);
 
   // ── Random exam state ───────────────────────────────────────────────────────
   const [showRandomPanel, setShowRandomPanel] = useState(false);
@@ -1302,6 +1303,46 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     if (activeExamId === id) setActiveExamId(null);
   };
 
+  const saveToGradebook = async () => {
+    if (!examConfig.name.trim()) {
+      alert("Set an exam name before saving to gradebook.");
+      return;
+    }
+    if (!examConfig.courseId) {
+      alert("Select a course before saving to gradebook.");
+      return;
+    }
+    if (testQueue.length === 0) {
+      alert("Add at least one question before saving to gradebook.");
+      return;
+    }
+    setSavingToGradebook(true);
+    try {
+      const res = await fetch("/api/gradebook/tests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: examConfig.name.trim(),
+          courseId: examConfig.courseId,
+          testDate: examConfig.date || null,
+          questions: testQueue.map((q) => ({
+            id: q.id,
+            code: q.code,
+            marks: q.marks,
+            subtopicCodes: q.subtopicCodes,
+          })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      window.open(`/dashboard/gradebook/${data.courseId}`, "_blank");
+    } catch (err) {
+      alert(`Failed to save to gradebook: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSavingToGradebook(false);
+    }
+  };
+
   const buildRandomExam = async () => {
     if (!examConfig.courseId) {
       setCourseIdError(true);
@@ -1975,6 +2016,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           onBuildRandom={buildRandomExam}
           onClearCourseIdError={() => setCourseIdError(false)}
           onOpenQuestionFromQueue={openQuestionFromQueue}
+          savingToGradebook={savingToGradebook}
+          onSaveToGradebook={saveToGradebook}
         />
       )}
 

@@ -158,6 +158,8 @@ export function TestBuilderPanel({
   onBuildRandom,
   onClearCourseIdError,
   onOpenQuestionFromQueue,
+  savingToGradebook,
+  onSaveToGradebook,
 }: {
   queue: TestQueueItem[];
   examConfig: ExamConfig;
@@ -199,6 +201,8 @@ export function TestBuilderPanel({
   onBuildRandom: () => void;
   onClearCourseIdError: () => void;
   onOpenQuestionFromQueue: (item: TestQueueItem) => void;
+  savingToGradebook: boolean;
+  onSaveToGradebook: () => void;
 }) {
   // Build section groups for rendering placeholder dividers
   const sectionAItems = showSections ? queue.filter((q) => q.section === "A") : [];
@@ -554,6 +558,17 @@ export function TestBuilderPanel({
           </button>
         </div>
 
+        {/* Save to Gradebook */}
+        <button
+          type="button"
+          onClick={onSaveToGradebook}
+          disabled={savingToGradebook || queue.length === 0 || !examConfig.courseId || !examConfig.name}
+          className="w-full rounded text-xs font-bold py-1.5 transition-colors bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          title={!examConfig.courseId ? "Select a course first" : !examConfig.name ? "Enter an exam name first" : "Create a test in the gradebook from this exam"}
+        >
+          {savingToGradebook ? "Saving…" : "📊 Save to Gradebook"}
+        </button>
+
         {/* Saved exams list */}
         {showSavedExams && (
           <div className="rounded border border-amber-200 bg-amber-50 p-2 space-y-1 max-h-48 overflow-y-auto">
@@ -582,9 +597,9 @@ export function TestBuilderPanel({
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onDeleteExam(exam.id); }}
-                  className="rounded bg-red-100 text-red-600 text-xs px-1.5 py-0.5 hover:bg-red-200 flex-shrink-0"
+                  className="text-gray-400 hover:text-red-600 font-bold ml-0.5 flex-shrink-0"
                 >
-                  ✕
+                  ×
                 </button>
               </div>
             ))}
