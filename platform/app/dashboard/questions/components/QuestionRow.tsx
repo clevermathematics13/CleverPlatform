@@ -2922,6 +2922,9 @@ export function QuestionRow({
                                     wholePart?.command_terms?.slice(1) ?? [],
                                     detectCommandTerms(draft),
                                   ) : []}
+                                  renderMarkAttribution={field === "ms" && wholePart && wholePart.subtopic_codes.length >= 1
+                                    ? makeMarkAttributionRenderer(wholePart, draft)
+                                    : undefined}
                                 />
                               ) : (
                                 <p className="text-xs text-gray-400 italic">No LaTeX — click Edit or ⟳ Extract to add</p>

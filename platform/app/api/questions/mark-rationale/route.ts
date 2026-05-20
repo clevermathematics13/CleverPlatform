@@ -4,6 +4,7 @@ import { getApiTeacher } from '@/lib/auth';
 import { IB_MARK_RATIONALE_SYSTEM } from '@/lib/latex-utils';
 
 export const runtime = 'nodejs';
+export const maxDuration = 30;
 
 type MarkRationaleRequest = {
   partLabel: string;

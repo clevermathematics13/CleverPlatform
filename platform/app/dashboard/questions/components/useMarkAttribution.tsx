@@ -54,13 +54,11 @@ export function useMarkAttribution(
   // trigger auto-gen for newly-appeared parts without re-processing old ones.
   const autoGenProcessedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    console.log("[Attribution] effect fired", { partCount: questionParts.length, partIds: questionParts.map(p => p.id) });
     for (const part of questionParts) {
       if (autoGenProcessedRef.current.has(part.id)) continue;
       autoGenProcessedRef.current.add(part.id);
       if (part.subtopic_codes.length === 0) continue;
       const tokens = parseMSTokens(part.markscheme_latex ?? "");
-      console.log("[Attribution] processing part", { partId: part.id, subtopicCodes: part.subtopic_codes, tokenCount: tokens.length, msLength: (part.markscheme_latex ?? "").length });
       if (tokens.length === 0) continue;
       if (part.subtopic_codes.length === 1) {
         // Single subtopic: persist without AI for any token not yet in DB.
@@ -148,19 +146,9 @@ export function useMarkAttribution(
     part: QuestionPart,
     saved: string,
   ): (label: string, ordinal: number) => React.ReactNode {
-    console.log("[Attribution] makeMarkAttributionRenderer called", {
-      partId: part.id,
-      subtopicCodes: part.subtopic_codes,
-      savedLength: saved?.length ?? 0,
-      tokenCount: parseMSTokens(saved).length,
-    });
     return (label: string, ordinal: number) => {
       const tokens = parseMSTokens(saved);
       const token = tokens[ordinal];
-      console.log("[Attribution] renderMarkAttribution called", {
-        label, ordinal, tokensFound: tokens.length, tokenFound: !!token,
-        partId: part.id, subtopicCodes: part.subtopic_codes,
-      });
       if (!token) return null;
 
       const singleSubtopic =
