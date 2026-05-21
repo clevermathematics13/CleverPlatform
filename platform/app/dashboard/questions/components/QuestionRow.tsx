@@ -1925,6 +1925,52 @@ export function QuestionRow({
                 ) : null;
               })()}
               <div className="ml-auto flex items-center gap-2">
+                {/* Notes button in modal header */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    title={notesDraft.trim() ? "Edit notes" : "Add notes"}
+                    onClick={() => setNotesOpen((o) => !o)}
+                    className={`rounded px-3 py-1.5 text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                      notesDraft.trim()
+                        ? "bg-amber-400 hover:bg-amber-300 text-amber-900"
+                        : "bg-blue-700 hover:bg-blue-600 text-white"
+                    }`}
+                  >
+                    💬 {notesDraft.trim() ? "Notes" : "Add Note"}
+                  </button>
+                  {notesOpen && (
+                    <div className="absolute right-0 top-10 z-[60] w-80 rounded-xl border border-gray-200 bg-white shadow-2xl p-3 flex flex-col gap-2">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Teacher Notes</p>
+                      <textarea
+                        ref={notesRef}
+                        value={notesDraft}
+                        onChange={(e) => setNotesDraft(e.target.value)}
+                        rows={5}
+                        placeholder="Add private notes about this question…"
+                        className="w-full resize-none rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-blue-400 focus:outline-none"
+                        autoFocus
+                      />
+                      <div className="flex gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => { setNotesOpen(false); setNotesDraft(question.teacher_notes ?? ""); }}
+                          className="rounded px-2 py-1 text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={saveNotes}
+                          disabled={notesSaving}
+                          className="rounded bg-blue-600 px-3 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                        >
+                          {notesSaving ? "Saving…" : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => setMinimized(true)}
