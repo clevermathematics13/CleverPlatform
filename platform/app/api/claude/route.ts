@@ -4,9 +4,13 @@ import { getApiTeacher } from '@/lib/auth';
 
 export const runtime = 'nodejs';
 
+type TextBlock = { type: 'text'; text: string };
+type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+type ContentBlock = TextBlock | ImageBlock;
+
 type ClaudeRequestBody = {
   system: string;
-  messages: { role: 'user' | 'assistant'; content: string }[];
+  messages: { role: 'user' | 'assistant'; content: string | ContentBlock[] }[];
 };
 
 export async function POST(req: Request) {

@@ -12,10 +12,13 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+type PendingImage = { base64: string; mimeType: string; previewUrl: string; name: string };
+
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   draftTitle?: string; // short label shown in history for assistant turns
+  imageCount?: number; // number of images attached to this user message
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -36,28 +39,84 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const [lastDraft, setLastDraft] = useState<AssignmentDraft | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isExpanded, setIsExpanded] = useState(true);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const historyRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Image handling ─────────────────────────────────────────────────────────
+
+  function addImageFile(file: File) {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(",")[1];
+      setPendingImages((prev) => [
+        ...prev,
+        { base64, mimeType: file.type, previewUrl: dataUrl, name: file.name || "image" },
+      ]);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    const imageItems = Array.from(e.clipboardData.items).filter((item) =>
+      item.type.startsWith("image/")
+    );
+    if (imageItems.length === 0) return;
+    e.preventDefault();
+    imageItems.forEach((item) => {
+      const file = item.getAsFile();
+      if (file) addImageFile(file);
+    });
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    Array.from(e.target.files ?? []).forEach(addImageFile);
+    e.target.value = "";
+  }
+
+  function removeImage(idx: number) {
+    setPendingImages((prev) => prev.filter((_, i) => i !== idx));
+  }
 
   // ── Generate / Refine ──────────────────────────────────────────────────────
 
   async function handleGenerate() {
     const userText = description.trim();
-    if (!userText || isGenerating) return;
+    if ((!userText && pendingImages.length === 0) || isGenerating) return;
 
     setIsGenerating(true);
     setError(null);
     setSaveStatus("idle");
+    const snapshotImages = [...pendingImages];
+    setPendingImages([]);
 
     // Optimistically add user message to history
-    const nextHistory: ChatMessage[] = [...history, { role: "user", content: userText }];
+    const nextHistory: ChatMessage[] = [
+      ...history,
+      { role: "user", content: userText, imageCount: snapshotImages.length || undefined },
+    ];
     setHistory(nextHistory);
     setDescription("");
 
     // Build messages for Claude: send full conversation so it can refine prior drafts
-    const apiMessages = nextHistory.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    const apiMessages = nextHistory.map((m) => {
+      // Attach images to this user turn
+      if (m === nextHistory[nextHistory.length - 1] && snapshotImages.length > 0) {
+        return {
+          role: m.role,
+          content: [
+            ...snapshotImages.map((img) => ({
+              type: "image" as const,
+              source: { type: "base64" as const, media_type: img.mimeType, data: img.base64 },
+            })),
+            ...(userText ? [{ type: "text" as const, text: userText }] : []),
+          ],
+        };
+      }
+      return { role: m.role, content: m.content };
+    });
 
     try {
       const res = await fetch("/api/claude", {
@@ -101,6 +160,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       // Revert last user message on failure
       setHistory(history);
       setDescription(userText);
+      setPendingImages(snapshotImages);
     } finally {
       setIsGenerating(false);
     }
@@ -203,7 +263,12 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                 msg.role === "user" ? (
                   <div key={i} className="flex items-start gap-2 text-xs text-da-text/90">
                     <span className="mt-0.5 shrink-0 text-indigo-400 font-bold">▶</span>
-                    <span className="line-clamp-2">{msg.content}</span>
+                    <span className="line-clamp-2">
+                      {msg.content}
+                      {msg.imageCount ? (
+                        <span className="ml-1 text-indigo-400">[+{msg.imageCount} image{msg.imageCount > 1 ? "s" : ""}]</span>
+                      ) : null}
+                    </span>
                   </div>
                 ) : (
                   <div key={i} className="flex items-start gap-2 text-xs text-indigo-300">
@@ -225,26 +290,70 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
           {/* Input area */}
           <div className="space-y-2">
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                isRefinement
-                  ? "Describe what to change or add… (Ctrl+Enter to refine)"
-                  : 'e.g. "A Grade 9 activity on solving two-step linear equations with 10 questions, two real-world word problems, one error-analysis question, increasing difficulty, exam tone."'
-              }
-              rows={isRefinement ? 2 : 3}
-              disabled={isGenerating}
-              className="w-full resize-none rounded-md border border-indigo-500/30 bg-da-bg/50 px-3 py-2.5 text-sm text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
-            />
+            {/* Pending image thumbnails */}
+            {pendingImages.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {pendingImages.map((img, i) => (
+                  <div key={i} className="relative group">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.previewUrl}
+                      alt={img.name}
+                      className="h-16 w-16 rounded-md object-cover border border-indigo-500/40"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(i)}
+                      className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="relative">
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onPaste={handlePaste}
+                placeholder={
+                  isRefinement
+                    ? "Describe what to change or add… (Ctrl+Enter to refine)"
+                    : 'e.g. "A Grade 9 activity on solving two-step linear equations with 10 questions, two real-world word problems, one error-analysis question, increasing difficulty, exam tone."'
+                }
+                rows={isRefinement ? 2 : 3}
+                disabled={isGenerating}
+                className="w-full resize-none rounded-md border border-indigo-500/30 bg-da-bg/50 px-3 py-2.5 pr-10 text-sm text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
+              />
+              {/* Attach image button */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isGenerating}
+                title="Attach image (or paste a screenshot)"
+                className="absolute bottom-2 right-2 text-indigo-400/60 hover:text-indigo-300 transition-colors disabled:opacity-40"
+              >
+                📎
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
 
             {/* Action buttons */}
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={isGenerating || !description.trim()}
+                disabled={isGenerating || (!description.trim() && pendingImages.length === 0)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-indigo-500/60 bg-indigo-600/30 px-4 py-2 text-sm font-semibold text-indigo-200 transition-colors hover:bg-indigo-600/40 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isGenerating ? (
