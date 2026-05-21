@@ -66,3 +66,11 @@ cd platform && npx vitest        # watch mode (same as the auto task)
 - `npm test` must exit 0 on `main` at all times.
 - All tests must pass before merging or shipping a feature.
 
+## Git — Push After Every Change
+
+**After completing any code change, always run:**
+```bash
+git add -A && git commit -m "<descriptive message>" && git push
+```
+This applies to every task, fix, or feature — no exceptions. Do not leave changes uncommitted.
+
