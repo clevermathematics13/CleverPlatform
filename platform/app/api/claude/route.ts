@@ -6,7 +6,8 @@ export const runtime = 'nodejs';
 
 type TextBlock = { type: 'text'; text: string };
 type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; data: string } };
-type ContentBlock = TextBlock | ImageBlock;
+type DocumentBlock = { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } };
+type ContentBlock = TextBlock | ImageBlock | DocumentBlock;
 
 type ClaudeRequestBody = {
   system: string;

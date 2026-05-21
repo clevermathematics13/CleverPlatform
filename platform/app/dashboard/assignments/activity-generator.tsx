@@ -14,6 +14,7 @@ import {
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 type PendingImage = { base64: string; mimeType: ImageMimeType; previewUrl: string; name: string };
+type PendingPdf = { base64: string; name: string };
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -41,6 +42,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isExpanded, setIsExpanded] = useState(true);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [pendingPdfs, setPendingPdfs] = useState<PendingPdf[]>([]);
   const historyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -60,6 +62,17 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     reader.readAsDataURL(file);
   }
 
+  function addPdfFile(file: File) {
+    if (file.type !== "application/pdf") return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const base64 = dataUrl.split(",")[1];
+      setPendingPdfs((prev) => [...prev, { base64, name: file.name || "document.pdf" }]);
+    };
+    reader.readAsDataURL(file);
+  }
+
   function handlePaste(e: React.ClipboardEvent) {
     const imageItems = Array.from(e.clipboardData.items).filter((item) =>
       item.type.startsWith("image/")
@@ -73,7 +86,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    Array.from(e.target.files ?? []).forEach(addImageFile);
+    Array.from(e.target.files ?? []).forEach((file) => {
+      if (file.type === "application/pdf") addPdfFile(file);
+      else addImageFile(file);
+    });
     e.target.value = "";
   }
 
@@ -91,23 +107,31 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setError(null);
     setSaveStatus("idle");
     const snapshotImages = [...pendingImages];
+    const snapshotPdfs = [...pendingPdfs];
     setPendingImages([]);
+    setPendingPdfs([]);
+
+    const attachmentCount = snapshotImages.length + snapshotPdfs.length;
 
     // Optimistically add user message to history
     const nextHistory: ChatMessage[] = [
       ...history,
-      { role: "user", content: userText, imageCount: snapshotImages.length || undefined },
+      { role: "user", content: userText, imageCount: attachmentCount || undefined },
     ];
     setHistory(nextHistory);
     setDescription("");
 
     // Build messages for Claude: send full conversation so it can refine prior drafts
     const apiMessages = nextHistory.map((m) => {
-      // Attach images to this user turn
-      if (m === nextHistory[nextHistory.length - 1] && snapshotImages.length > 0) {
+      // Attach images and PDFs to this user turn
+      if (m === nextHistory[nextHistory.length - 1] && (snapshotImages.length > 0 || snapshotPdfs.length > 0)) {
         return {
           role: m.role,
           content: [
+            ...snapshotPdfs.map((pdf) => ({
+              type: "document" as const,
+              source: { type: "base64" as const, media_type: "application/pdf" as const, data: pdf.base64 },
+            })),
             ...snapshotImages.map((img) => ({
               type: "image" as const,
               source: { type: "base64" as const, media_type: img.mimeType, data: img.base64 },
@@ -162,6 +186,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       setHistory(history);
       setDescription(userText);
       setPendingImages(snapshotImages);
+      setPendingPdfs(snapshotPdfs);
     } finally {
       setIsGenerating(false);
     }
@@ -291,11 +316,11 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
           {/* Input area */}
           <div className="space-y-2">
-            {/* Pending image thumbnails */}
-            {pendingImages.length > 0 && (
+            {/* Pending image thumbnails and PDF chips */}
+            {(pendingImages.length > 0 || pendingPdfs.length > 0) && (
               <div className="flex flex-wrap gap-2">
                 {pendingImages.map((img, i) => (
-                  <div key={i} className="relative group">
+                  <div key={`img-${i}`} className="relative group">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={img.previewUrl}
@@ -306,6 +331,19 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                       type="button"
                       onClick={() => removeImage(i)}
                       className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                {pendingPdfs.map((pdf, i) => (
+                  <div key={`pdf-${i}`} className="relative group flex items-center gap-1.5 rounded-md border border-indigo-500/40 bg-da-bg/50 px-2 py-1">
+                    <span className="text-xs">📄</span>
+                    <span className="max-w-[120px] truncate text-xs text-da-text">{pdf.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setPendingPdfs((prev) => prev.filter((_, j) => j !== i))}
+                      className="ml-1 text-red-400 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       ✕
                     </button>
@@ -342,7 +380,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,application/pdf"
                 multiple
                 className="hidden"
                 onChange={handleFileChange}
@@ -354,7 +392,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               <button
                 type="button"
                 onClick={handleGenerate}
-                disabled={isGenerating || (!description.trim() && pendingImages.length === 0)}
+                disabled={isGenerating || (!description.trim() && pendingImages.length === 0 && pendingPdfs.length === 0)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-indigo-500/60 bg-indigo-600/30 px-4 py-2 text-sm font-semibold text-indigo-200 transition-colors hover:bg-indigo-600/40 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isGenerating ? (
