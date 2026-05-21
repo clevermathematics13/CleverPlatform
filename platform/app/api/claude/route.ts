@@ -5,7 +5,7 @@ import { getApiTeacher } from '@/lib/auth';
 export const runtime = 'nodejs';
 
 type TextBlock = { type: 'text'; text: string };
-type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; data: string } };
 type ContentBlock = TextBlock | ImageBlock;
 
 type ClaudeRequestBody = {
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 4096,
       system: body.system,
-      messages: body.messages,
+      messages: body.messages as Anthropic.MessageParam[],
     });
 
     return NextResponse.json(response, { status: 200 });

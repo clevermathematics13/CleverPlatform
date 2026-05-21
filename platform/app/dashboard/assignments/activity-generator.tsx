@@ -12,7 +12,8 @@ import {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type PendingImage = { base64: string; mimeType: string; previewUrl: string; name: string };
+type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+type PendingImage = { base64: string; mimeType: ImageMimeType; previewUrl: string; name: string };
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -53,7 +54,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       const base64 = dataUrl.split(",")[1];
       setPendingImages((prev) => [
         ...prev,
-        { base64, mimeType: file.type, previewUrl: dataUrl, name: file.name || "image" },
+        { base64, mimeType: file.type as ImageMimeType, previewUrl: dataUrl, name: file.name || "image" },
       ]);
     };
     reader.readAsDataURL(file);
