@@ -9,6 +9,7 @@ const nextConfig: NextConfig = {
         "*.app.github.dev",
         "*.vercel.app",
       ],
+      bodySizeLimit: "20mb",
     },
   },
 };

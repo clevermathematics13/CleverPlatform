@@ -64,6 +64,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
   function addPdfFile(file: File) {
     if (file.type !== "application/pdf") return;
+    if (file.size > 3 * 1024 * 1024) {
+      setError(`PDF "${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)} MB — please use a file under 3 MB.`);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
@@ -154,8 +158,15 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       });
 
       if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? `Generation failed (${res.status})`);
+        let errorMsg = `Generation failed (${res.status})`;
+        try {
+          const data = (await res.json()) as { error?: string };
+          errorMsg = data.error ?? errorMsg;
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) errorMsg = text;
+        }
+        throw new Error(errorMsg);
       }
 
       const data = (await res.json()) as ClaudeResponse;
@@ -446,9 +457,15 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
           {/* Error */}
           {error && (
-            <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-              {error}
-            </p>
+            <button
+              type="button"
+              title="Click to copy full error"
+              onClick={() => navigator.clipboard.writeText(error)}
+              className="w-full cursor-copy rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-500/20 transition-colors"
+            >
+              <span className="block break-all">{error}</span>
+              <span className="mt-1 block text-[10px] text-red-400/60">Click to copy</span>
+            </button>
           )}
 
           {/* Feature hints */}
