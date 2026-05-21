@@ -8,7 +8,7 @@ import {
   omitUnsupportedColumns,
 } from "@/lib/question-parts-compat";
 
-const QUESTIONS_SELECT = "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, question_parts(id, part_label, marks, subtopic_codes, primary_subtopic_code, command_term, command_terms, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified, mark_attributions)";
+const QUESTIONS_SELECT = "id, code, session, paper, level, timezone, difficulty, google_doc_id, google_ms_id, section, curriculum, source_pdf_path, page_image_paths, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex, teacher_notes, question_parts(id, part_label, marks, subtopic_codes, primary_subtopic_code, command_term, command_terms, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified, mark_attributions)";
 
 type QuestionListRow = {
   id: string;
@@ -81,7 +81,13 @@ export async function GET(request: NextRequest) {
     return error;
   });
 
-  const selectStr = stripUnsupportedColumns(QUESTIONS_SELECT, supportedColumns);
+  // Probe for teacher_notes on ib_questions (added in migration 044)
+  const { error: notesProbeError } = await supabase.from("ib_questions").select("teacher_notes").limit(0);
+  const teacherNotesSupported = !notesProbeError || (notesProbeError.code !== "42703" && !notesProbeError.message?.includes("does not exist"));
+  const selectStr = stripUnsupportedColumns(
+    teacherNotesSupported ? QUESTIONS_SELECT : QUESTIONS_SELECT.replace(", teacher_notes", ""),
+    supportedColumns,
+  );
 
   let query = supabase
     .from("ib_questions")

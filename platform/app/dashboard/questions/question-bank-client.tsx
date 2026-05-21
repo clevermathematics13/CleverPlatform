@@ -1892,6 +1892,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                   Add
                 </th>
               )}
+              <th className="px-2 py-3 text-center text-sm font-bold text-blue-900">
+                Notes
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">

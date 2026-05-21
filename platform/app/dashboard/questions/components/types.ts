@@ -71,6 +71,7 @@ export interface Question {
   stem_markscheme_latex: string | null;
   parts_draft_latex: string | null;
   parts_draft_markscheme_latex: string | null;
+  teacher_notes: string | null;
   question_parts: QuestionPart[];
 }
 
