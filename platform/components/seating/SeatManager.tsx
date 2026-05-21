@@ -90,6 +90,9 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
   const [layoutLoading, setLayoutLoading] = useState(false);
   const [deletingLayoutId, setDeletingLayoutId] = useState<string | null>(null);
 
+  // Undo stack for deleted pods
+  const [undoStack, setUndoStack] = useState<{ pod: PodConfig; idx: number; expiresAt: number }[]>([]);
+
   // Load layouts and seats on mount/classGroup change
   useEffect(() => {
     let ignore = false;
@@ -132,11 +135,65 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
   const updateCount = (idx: number, seat_count: SeatCount) =>
     setConfigs((prev) => prev.map((c, i) => (i === idx ? { ...c, seat_count } : c)));
 
-  const remove = (idx: number) =>
-    setConfigs((prev) => prev.filter((_, i) => i !== idx));
-
   const add = () =>
     setConfigs((prev) => [...prev, { pod_id: nextPodId(prev), seat_count: 4 }]);
+
+  // Persist whichever storage is active (named layout or raw seats)
+  const autoSaveConfigs = async (updatedConfigs: PodConfig[]) => {
+    const seats = updatedConfigs.flatMap((c) => seatsForConfig(c, classGroup));
+    if (selectedLayoutId && layoutName.trim()) {
+      await saveSeatingLayout(classGroup, layoutName.trim(), seats);
+    } else {
+      await saveSeatLayout(seats, classGroup);
+    }
+  };
+
+  // Delete pod: confirm → persist → undo toast
+  const handleRemovePod = async (idx: number) => {
+    const podName = configs[idx].pod_id;
+    if (!confirm(`Delete pod "${podName}"?\n\nThis will be saved immediately. You can undo for 3 minutes.`)) return;
+    const removed = configs[idx];
+    const newConfigs = configs.filter((_, i) => i !== idx);
+    setConfigs(newConfigs);
+    try {
+      await autoSaveConfigs(newConfigs);
+      onSaved();
+    } catch (e) {
+      alert('Failed to save deletion: ' + (e as Error).message);
+      setConfigs(configs); // revert
+      return;
+    }
+    setUndoStack((prev) => [
+      ...prev,
+      { pod: removed, idx, expiresAt: Date.now() + 3 * 60 * 1000 },
+    ]);
+  };
+
+  // Undo a pod deletion
+  const handleUndoRemove = async (entry: { pod: PodConfig; idx: number; expiresAt: number }) => {
+    const newConfigs = [...configs];
+    newConfigs.splice(entry.idx, 0, entry.pod);
+    setConfigs(newConfigs);
+    setUndoStack((prev) => prev.filter((e) => e !== entry));
+    try {
+      await autoSaveConfigs(newConfigs);
+      onSaved();
+    } catch (e) {
+      alert('Undo failed: ' + (e as Error).message);
+    }
+  };
+
+  // Expire undo entries after 3 minutes
+  useEffect(() => {
+    if (undoStack.length === 0) return;
+    const nearest = Math.min(...undoStack.map((e) => e.expiresAt));
+    const delay = Math.max(100, nearest - Date.now());
+    const timer = setTimeout(
+      () => setUndoStack((prev) => prev.filter((e) => e.expiresAt > Date.now())),
+      delay,
+    );
+    return () => clearTimeout(timer);
+  }, [undoStack]);
 
   // Save as named layout
   const handleSaveLayout = async () => {
@@ -409,7 +466,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
                     {/* Delete */}
                     <td className="px-4 py-3 text-center">
                       <button
-                        onClick={() => remove(idx)}
+                        onClick={() => handleRemovePod(idx)}
                         className="text-red-500 hover:text-red-700 text-lg leading-none"
                         title="Remove pod"
                       >
@@ -429,6 +486,28 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
         <strong>B</strong> = back-center (3-seat), <strong>BL/BR</strong> = back-left/right (4-seat).
         Seat IDs are auto-generated as <em>PodName-Role</em> (e.g. <em>Pod A-L</em>).
       </p>
+
+      {/* Undo toast */}
+      {undoStack.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 items-center pointer-events-none">
+          {undoStack.map((entry, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-3 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl text-sm border border-gray-700 pointer-events-auto"
+            >
+              <span>
+                Pod <strong>&ldquo;{entry.pod.pod_id}&rdquo;</strong> deleted
+              </span>
+              <button
+                onClick={() => handleUndoRemove(entry)}
+                className="rounded bg-yellow-400 text-gray-900 font-bold px-3 py-1 hover:bg-yellow-300 transition-colors"
+              >
+                Undo
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
