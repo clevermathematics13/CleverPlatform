@@ -9,6 +9,7 @@ import type {
   SelfScore,
   PdfUpload,
 } from "@/lib/reflection-types";
+import { computeDisagreement } from "@/lib/reflection-utils";
 import { StepTracker } from "@/components/reflection/StepTracker";
 import { HowItWorks } from "@/components/reflection/HowItWorks";
 import { NativeForm } from "@/components/reflection/NativeForm";
@@ -40,12 +41,15 @@ export function ReflectionClient({
 }: ReflectionClientProps) {
   const router = useRouter();
   const [items, setItems] = useState<ReflectionItem[]>(initialItems ?? []);
+  const [pdfUpload, setPdfUpload] = useState<PdfUpload | null>(initialUpload);
   const hasSelfScores = items.some((i) => i.self_marks !== null);
   const hasTeacherMarks = items.some((i) => i.marks_awarded !== null);
+  const disagreement = computeDisagreement(items);
 
   const getInitialStep = (): ReflectionStep => {
-    if (initialUpload) return 4;
-    if (hasSelfScores && hasTeacherMarks) return 3;
+    if (pdfUpload) return 4;
+    if (hasSelfScores && hasTeacherMarks && disagreement === 0) return 3;
+    if (hasSelfScores && hasTeacherMarks) return 2;
     if (hasSelfScores) return 2;
     return 1;
   };
@@ -98,17 +102,16 @@ export function ReflectionClient({
           { onConflict: "test_item_id,student_id" }
         );
       }
-      setItems((prev) =>
-        prev.map((item) => {
-          const score = scores.find(
-            (s) => s.test_item_id === item.test_item_id
-          );
-          return score ? { ...item, self_marks: score.self_marks } : item;
-        })
-      );
-      setStep(3);
+      const updatedItems = items.map((item) => {
+        const score = scores.find((s) => s.test_item_id === item.test_item_id);
+        return score ? { ...item, self_marks: score.self_marks } : item;
+      });
+      setItems(updatedItems);
+      // Auto-advance to upload only when disagreement reaches 0
+      const newDisagreement = computeDisagreement(updatedItems);
+      if (newDisagreement === 0) setStep(3);
     },
-    [profile.id]
+    [profile.id, items]
   );
 
   if (tests.length === 0) {
@@ -185,13 +188,27 @@ export function ReflectionClient({
             editable={true}
             onSave={handleSaveComparison}
           />
-          <button
-            type="button"
-            onClick={() => setStep(3)}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Skip to Upload →
-          </button>
+          {hasTeacherMarks && disagreement !== 0 && (
+            <p className="text-sm text-orange-600">
+              Bring disagreement to 0% to unlock the upload step. Edit your
+              self marks above and hit &ldquo;Save Changes&rdquo;.
+            </p>
+          )}
+          {!hasTeacherMarks && (
+            <p className="text-sm text-gray-500">
+              Waiting for your teacher to enter marks — come back once grading is
+              complete to see your disagreement score.
+            </p>
+          )}
+          {hasTeacherMarks && disagreement === 0 && (
+            <button
+              type="button"
+              onClick={() => setStep(3)}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              Proceed to Upload →
+            </button>
+          )}
         </div>
       )}
 
@@ -201,15 +218,13 @@ export function ReflectionClient({
           <UploadSection
             studentId={profile.id}
             testId={selectedTestId}
-            existingUpload={initialUpload}
+            existingUpload={pdfUpload}
+            disagreement={disagreement}
+            onChangeUpload={(u) => {
+              setPdfUpload(u);
+              if (u) setStep(4);
+            }}
           />
-          <button
-            type="button"
-            onClick={() => setStep(4)}
-            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
-          >
-            Mark Complete ✓
-          </button>
         </div>
       )}
 

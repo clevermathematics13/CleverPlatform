@@ -72,10 +72,11 @@ function getNavigation(role: string) {
       { href: "/dashboard/questions/review", label: "LaTeX Review", icon: "🔬" },
       { href: "/dashboard/graph-lab", label: "Graph Lab", icon: "📈" },
       { href: "/dashboard/assignments", label: "Assignments", icon: "📋" },
+      { href: "/dashboard/tests", label: "Tests", icon: "📝" },
       { href: "/dashboard/reflection", label: "Exam Reflection", icon: "🪞" },
       { href: "/dashboard/mastery", label: "Mastery", icon: "🎯" },
       { href: "/dashboard/seating", label: "Seating Chart", icon: "🪑" },
-      { href: "/dashboard/gradebook", label: "Gradebook", icon: "📝" },
+      { href: "/dashboard/gradebook", label: "Gradebook", icon: "�" },
     ];
   }
 

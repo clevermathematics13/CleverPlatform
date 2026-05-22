@@ -17,10 +17,16 @@ interface ClassData {
   rows: StudentReflectionRow[];
 }
 
-/** Key for tracking which cell is being edited */
-type CellKey = `${string}:${string}`; // studentId:testItemId
+type CellKey = `${string}:${string}`;
+
+interface Course {
+  id: string;
+  name: string;
+}
 
 export function TeacherDashboard({ tests }: TeacherDashboardProps) {
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<string>("");
   const [selectedTest, setSelectedTest] = useState<string>(
     tests[0]?.id ?? ""
   );
@@ -34,24 +40,43 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [showHidden, setShowHidden] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Fetch courses for filter
+  useEffect(() => {
+    fetch("/api/courses")
+      .then((r) => r.json())
+      .then((d: Course[]) => {
+        setCourses(d ?? []);
+        if (d?.length > 0) setSelectedCourse(d[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
   // Close menu on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setMenuFor(null);
       }
     };
-    if (menuFor) {
-      document.addEventListener("click", handler);
-    }
+    if (menuFor) document.addEventListener("click", handler);
     return () => document.removeEventListener("click", handler);
   }, [menuFor]);
 
+  // Filter tests by selected course
+  const filteredTests = selectedCourse
+    ? tests.filter((t) => t.course_id === selectedCourse)
+    : tests;
+
+  // Auto-select first test when course changes — deferred to avoid cascade error
   useEffect(() => {
-    if (!selectedTest) return;
+    const first = filteredTests[0]?.id ?? "";
+    const timer = setTimeout(() => setSelectedTest(first), 0);
+    return () => clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCourse]);
+
+  useEffect(() => {
+    if (!selectedTest) { setData(null); return; }
     setLoading(true);
     setEditingCell(null);
     setSavedCells(new Set());
@@ -75,7 +100,6 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
         });
         const result = await res.json();
         if (res.ok) {
-          // Update local data
           setData((prev) => {
             if (!prev) return prev;
             return {
@@ -111,21 +135,13 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
     []
   );
 
-  const handleCellClick = (
-    studentId: string,
-    testItemId: string,
-    currentMarks: number | null
-  ) => {
+  const handleCellClick = (studentId: string, testItemId: string, currentMarks: number | null) => {
     const key: CellKey = `${studentId}:${testItemId}`;
     setEditingCell(key);
     setEditValue(currentMarks !== null ? String(currentMarks) : "0");
   };
 
-  const handleCellBlur = (
-    studentId: string,
-    testItemId: string,
-    maxMarks: number
-  ) => {
+  const handleCellBlur = (studentId: string, testItemId: string, maxMarks: number) => {
     const raw = parseInt(editValue) || 0;
     const clamped = Math.max(0, Math.min(raw, maxMarks));
     saveCell(studentId, testItemId, clamped);
@@ -137,47 +153,62 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
     testItemId: string,
     maxMarks: number
   ) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      handleCellBlur(studentId, testItemId, maxMarks);
-    } else if (e.key === "Escape") {
-      setEditingCell(null);
-    }
+    if (e.key === "Enter") { e.preventDefault(); handleCellBlur(studentId, testItemId, maxMarks); }
+    else if (e.key === "Escape") setEditingCell(null);
   };
 
-  const toggleStudent = useCallback(
-    async (studentProfileId: string, hidden: boolean) => {
-      setMenuFor(null);
-      const res = await fetch("/api/reflection/toggle-student", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentProfileId, hidden }),
+  const toggleStudent = useCallback(async (studentProfileId: string, hidden: boolean) => {
+    setMenuFor(null);
+    const res = await fetch("/api/reflection/toggle-student", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentProfileId, hidden }),
+    });
+    if (res.ok) {
+      setData((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          rows: prev.rows.map((row) =>
+            row.student_id === studentProfileId ? { ...row, hidden } : row
+          ),
+        };
       });
-      if (res.ok) {
-        setData((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            rows: prev.rows.map((row) =>
-              row.student_id === studentProfileId
-                ? { ...row, hidden }
-                : row
-            ),
-          };
-        });
-      }
-    },
-    []
-  );
+    }
+  }, []);
 
   const visibleRows = data?.rows.filter((r) => showHidden || !r.hidden) ?? [];
   const hiddenCount = data?.rows.filter((r) => r.hidden).length ?? 0;
 
+  const disagreementColor = (d: number | null) => {
+    if (d === null) return "text-gray-400";
+    if (d === 0) return "text-green-600 font-bold";
+    if (d <= 10) return "text-yellow-600 font-semibold";
+    return "text-red-600 font-bold";
+  };
+
   return (
     <div className="space-y-4" ref={containerRef}>
+      {/* Course + Test selectors */}
       <div className="flex items-center gap-4 flex-wrap">
+        {courses.length > 1 && (
+          <>
+            <label className="text-base font-semibold text-blue-900">Class:</label>
+            <select
+              value={selectedCourse}
+              onChange={(e) => setSelectedCourse(e.target.value)}
+              className="rounded border border-blue-400 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All classes</option>
+              {courses.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </>
+        )}
+
         <label htmlFor="test-select" className="text-base font-semibold text-blue-900">
-          Select Test:
+          Test:
         </label>
         <select
           id="test-select"
@@ -185,15 +216,23 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
           onChange={(e) => setSelectedTest(e.target.value)}
           className="rounded border border-blue-400 px-3 py-1.5 text-base font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
         >
-          {tests.map((t) => (
-            <option key={t.id} value={t.id} className="text-blue-900 font-semibold">
-              {t.name}
-            </option>
+          {filteredTests.length === 0 && (
+            <option value="">— no tests for this class —</option>
+          )}
+          {filteredTests.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
           ))}
         </select>
 
+        <a
+          href="/dashboard/tests"
+          className="ml-auto text-sm text-blue-600 hover:underline"
+        >
+          + Manage Tests
+        </a>
+
         {hiddenCount > 0 && (
-          <label className="flex items-center gap-1.5 text-sm text-gray-600 ml-auto">
+          <label className="flex items-center gap-1.5 text-sm text-gray-600">
             <input
               type="checkbox"
               checked={showHidden}
@@ -212,16 +251,17 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-gray-50">
-                <th className="sticky left-0 bg-blue-50 px-3 py-2 text-left font-bold text-blue-900">
+                <th className="sticky left-0 bg-blue-50 px-3 py-2 text-left font-bold text-blue-900 min-w-[180px]">
                   Student
                 </th>
                 {data.items.map((item) => (
-                  <th key={item.id} className="px-3 py-2 text-center font-bold text-blue-900">
-                    Q{item.question_number}
-                    {item.part_label ? item.part_label : ""}
+                  <th key={item.id} className="px-3 py-2 text-center font-bold text-blue-900 whitespace-nowrap">
+                    Q{item.question_number}{item.part_label}
+                    <span className="block text-xs font-normal text-gray-400">/{item.max_marks}</span>
                   </th>
                 ))}
-                <th className="px-3 py-2 text-center font-bold text-blue-900">📄</th>
+                <th className="px-3 py-2 text-center font-bold text-blue-900 whitespace-nowrap">Disagree %</th>
+                <th className="px-3 py-2 text-center font-bold text-blue-900">PDF</th>
               </tr>
             </thead>
             <tbody>
@@ -230,6 +270,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                   key={row.student_id}
                   className={`border-b ${row.hidden ? "opacity-50" : ""}`}
                 >
+                  {/* Name cell */}
                   <td
                     className={`sticky left-0 bg-white px-3 py-2 font-medium text-gray-900 ${
                       menuFor === row.student_id ? "z-30" : "z-10"
@@ -240,36 +281,24 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setMenuFor(
-                            menuFor === row.student_id
-                              ? null
-                              : row.student_id
-                          );
+                          setMenuFor(menuFor === row.student_id ? null : row.student_id);
                         }}
                         className="text-left hover:text-blue-600 hover:underline"
                       >
                         {row.display_name}
-                        {row.hidden && (
-                          <span className="ml-1 text-xs text-gray-400">
-                            (hidden)
-                          </span>
-                        )}
+                        {row.hidden && <span className="ml-1 text-xs text-gray-400">(hidden)</span>}
                       </button>
                       {menuFor === row.student_id && (
-                        <div
-                          className="absolute left-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
-                        >
+                        <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
                           <a
                             href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${row.student_id}`}
                             className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
                           >
-                            👤 View student page
+                            👤 View student reflection
                           </a>
                           <button
                             type="button"
-                            onClick={() =>
-                              toggleStudent(row.student_id, !row.hidden)
-                            }
+                            onClick={() => toggleStudent(row.student_id, !row.hidden)}
                             className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                           >
                             {row.hidden ? "👁 Unhide student" : "🙈 Hide student"}
@@ -278,6 +307,8 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                       )}
                     </div>
                   </td>
+
+                  {/* Mark cells */}
                   {row.items.map((cell, i) => {
                     const item = data.items[i];
                     const key: CellKey = `${row.student_id}:${item.id}`;
@@ -288,8 +319,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                       cell.marks_awarded !== null && cell.self_marks !== null
                         ? cell.self_marks - cell.marks_awarded
                         : null;
-                    const hasAny =
-                      cell.marks_awarded !== null || cell.self_marks !== null;
+                    const hasAny = cell.marks_awarded !== null || cell.self_marks !== null;
                     return (
                       <td
                         key={item.id}
@@ -312,12 +342,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                             : "Click to enter marks"
                         }
                         onClick={() =>
-                          !isEditing &&
-                          handleCellClick(
-                            row.student_id,
-                            item.id,
-                            cell.marks_awarded
-                          )
+                          !isEditing && handleCellClick(row.student_id, item.id, cell.marks_awarded)
                         }
                       >
                         {isEditing ? (
@@ -327,21 +352,8 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                             max={item.max_marks}
                             value={editValue}
                             onChange={(e) => setEditValue(e.target.value)}
-                            onBlur={() =>
-                              handleCellBlur(
-                                row.student_id,
-                                item.id,
-                                item.max_marks
-                              )
-                            }
-                            onKeyDown={(e) =>
-                              handleCellKeyDown(
-                                e,
-                                row.student_id,
-                                item.id,
-                                item.max_marks
-                              )
-                            }
+                            onBlur={() => handleCellBlur(row.student_id, item.id, item.max_marks)}
+                            onKeyDown={(e) => handleCellKeyDown(e, row.student_id, item.id, item.max_marks)}
                             className="w-12 rounded border border-blue-400 bg-white px-1 py-0.5 text-center text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                             autoFocus
                           />
@@ -354,18 +366,10 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                             </span>
                             {cell.self_marks !== null && (
                               <span className="text-xs text-gray-500 ml-0.5">
-                                /
-                                {cell.self_marks}
+                                /{cell.self_marks}
                                 {diff !== null && diff !== 0 && (
-                                  <span
-                                    className={
-                                      diff > 0
-                                        ? "text-yellow-600"
-                                        : "text-red-500"
-                                    }
-                                  >
-                                    ({diff > 0 ? "+" : ""}
-                                    {diff})
+                                  <span className={diff > 0 ? "text-yellow-600" : "text-red-500"}>
+                                    ({diff > 0 ? "+" : ""}{diff})
                                   </span>
                                 )}
                               </span>
@@ -377,8 +381,27 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                       </td>
                     );
                   })}
+
+                  {/* Disagreement % */}
+                  <td className={`px-3 py-2 text-center ${disagreementColor(row.disagreement)}`}>
+                    {row.disagreement !== null ? `${row.disagreement.toFixed(1)}%` : "—"}
+                  </td>
+
+                  {/* PDF link */}
                   <td className="px-3 py-2 text-center">
-                    {row.has_upload ? "✅" : "—"}
+                    {row.pdf_url ? (
+                      <a
+                        href={row.pdf_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline text-lg"
+                        title="View corrected work"
+                      >
+                        📎
+                      </a>
+                    ) : (
+                      <span className="text-gray-300">—</span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -388,7 +411,21 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
       )}
 
       {data && data.items.length === 0 && (
-        <p className="text-sm text-gray-500">No items found for this test.</p>
+        <p className="text-sm text-gray-500">
+          No items found for this test.{" "}
+          <a href="/dashboard/tests" className="text-blue-600 hover:underline">
+            Add questions →
+          </a>
+        </p>
+      )}
+
+      {!selectedTest && !loading && (
+        <p className="text-sm text-gray-500">
+          No tests available.{" "}
+          <a href="/dashboard/tests" className="text-blue-600 hover:underline">
+            Create your first test →
+          </a>
+        </p>
       )}
     </div>
   );

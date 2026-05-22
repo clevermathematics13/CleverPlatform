@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { ReflectionItem, SelfScore } from "@/lib/reflection-types";
+import { computeDisagreement } from "@/lib/reflection-utils";
 
 interface ScoreTableProps {
   items: ReflectionItem[];
@@ -31,6 +32,13 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
   );
   const totalMax = items.reduce((sum, i) => sum + i.max_marks, 0);
 
+  // Compute live disagreement from current edited scores
+  const liveItems: ReflectionItem[] = items.map((item) => ({
+    ...item,
+    self_marks: editedScores[item.test_item_id] ?? item.self_marks,
+  }));
+  const disagreement = computeDisagreement(liveItems);
+
   const handleSave = async () => {
     if (!onSave) return;
     setSaving(true);
@@ -55,6 +63,37 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-bold text-blue-900">Score Comparison</h3>
+
+      {/* Disagreement banner */}
+      {disagreement !== null && (
+        <div
+          className={`rounded-lg border px-4 py-3 font-semibold text-sm flex items-center gap-3 ${
+            disagreement === 0
+              ? "border-green-300 bg-green-50 text-green-800"
+              : disagreement <= 10
+                ? "border-yellow-300 bg-yellow-50 text-yellow-800"
+                : "border-red-300 bg-red-50 text-red-800"
+          }`}
+        >
+          <span className="text-lg">
+            {disagreement === 0 ? "✅" : disagreement <= 10 ? "⚠️" : "🔴"}
+          </span>
+          <span>
+            Judgement Disagreement:{" "}
+            <strong>{disagreement.toFixed(1)}%</strong>
+            {disagreement === 0
+              ? " — ready to upload corrections"
+              : " — bring this to 0% before uploading"}
+          </span>
+        </div>
+      )}
+
+      {disagreement === null && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+          ⏳ Waiting for teacher marks — disagreement will appear once grading is complete.
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-base">
           <thead>

@@ -71,6 +71,8 @@ export interface StudentReflectionRow {
     self_marks: number | null;
   }[];
   has_upload: boolean;
+  pdf_url: string | null;
+  disagreement: number | null;
   hidden: boolean;
 }
 

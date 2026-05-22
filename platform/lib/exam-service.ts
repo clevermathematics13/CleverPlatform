@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { computeDisagreement } from "@/lib/reflection-utils";
 import type {
   ReflectionTest,
   ReflectionItem,
@@ -8,6 +9,8 @@ import type {
   SubtopicMastery,
   HeatmapCell,
 } from "@/lib/reflection-types";
+
+export { computeDisagreement };
 
 /** Fetch all tests visible to a student (via their course enrollment). */
 export async function getTestsForStudent(
@@ -157,6 +160,34 @@ export async function uploadCorrectionsPdf(
 
   if (error) throw error;
   return data as PdfUpload;
+}
+
+/** Delete the PDF upload record and remove the file from storage. */
+export async function clearPdfUpload(
+  studentId: string,
+  testId: string
+): Promise<void> {
+  const supabase = await createClient();
+
+  // Get existing upload record so we can remove the file from storage
+  const { data: existing } = await supabase
+    .from("pdf_uploads")
+    .select("storage_path")
+    .eq("student_id", studentId)
+    .eq("test_id", testId)
+    .maybeSingle();
+
+  if (existing?.storage_path) {
+    await supabase.storage
+      .from("corrections")
+      .remove([existing.storage_path]);
+  }
+
+  await supabase
+    .from("pdf_uploads")
+    .delete()
+    .eq("student_id", studentId)
+    .eq("test_id", testId);
 }
 
 /** Get the PDF upload record for a student+test. */
@@ -309,35 +340,60 @@ export async function getClassReflectionData(
     .in("student_id", studentIds)
     .in("test_item_id", itemIds);
 
-  // Get uploads
+  // Get uploads (include storage_path so we can build signed URLs if needed)
   const { data: uploads } = await supabase
     .from("pdf_uploads")
-    .select("student_id")
+    .select("student_id, storage_path, file_name")
     .eq("test_id", testId)
     .in("student_id", studentIds);
 
-  const uploadSet = new Set((uploads ?? []).map((u) => u.student_id));
+  const uploadMap = new Map(
+    (uploads ?? []).map((u) => [u.student_id, u])
+  );
 
-  // Build rows
+  // Build rows with disagreement computed server-side
   const rows: StudentReflectionRow[] = students.map((s) => {
     const profile = s.profiles as unknown as { display_name: string } | null;
+    const rowItems = items.map((item) => ({
+      test_item_id: item.id,
+      marks_awarded:
+        allMarks?.find(
+          (m) =>
+            m.student_id === s.profile_id && m.test_item_id === item.id
+        )?.marks_awarded ?? null,
+      self_marks:
+        allSelf?.find(
+          (ss) =>
+            ss.student_id === s.profile_id && ss.test_item_id === item.id
+        )?.self_marks ?? null,
+    }));
+
+    // Compute disagreement for this student
+    const reflectionItems: ReflectionItem[] = rowItems.map((ri, idx) => ({
+      id: items[idx].id,
+      test_item_id: ri.test_item_id,
+      question_number: items[idx].question_number,
+      part_label: items[idx].part_label,
+      max_marks: items[idx].max_marks,
+      subtopic_codes: [],
+      marks_awarded: ri.marks_awarded,
+      self_marks: ri.self_marks,
+    }));
+    const disagreement = computeDisagreement(reflectionItems);
+
+    const upload = uploadMap.get(s.profile_id);
+    // Build a public-style path; the client can create a signed URL if needed
+    const pdf_url = upload
+      ? supabase.storage.from("corrections").getPublicUrl(upload.storage_path).data.publicUrl
+      : null;
+
     return {
       student_id: s.profile_id,
       display_name: profile?.display_name ?? "Unknown",
-      items: items.map((item) => ({
-        test_item_id: item.id,
-        marks_awarded:
-          allMarks?.find(
-            (m) =>
-              m.student_id === s.profile_id && m.test_item_id === item.id
-          )?.marks_awarded ?? null,
-        self_marks:
-          allSelf?.find(
-            (ss) =>
-              ss.student_id === s.profile_id && ss.test_item_id === item.id
-          )?.self_marks ?? null,
-      })),
-      has_upload: uploadSet.has(s.profile_id),
+      items: rowItems,
+      has_upload: !!upload,
+      pdf_url,
+      disagreement,
       hidden: s.hidden ?? false,
     };
   });
