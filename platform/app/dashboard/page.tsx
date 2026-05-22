@@ -105,6 +105,12 @@ async function StudentDashboard({ supabase, profileId }: { supabase: Awaited<Ret
         description="Open your assigned activity"
         href="/dashboard/student-start"
       />
+      <DashboardCard
+        title="Self-Assess"
+        value="→"
+        description="Grade your own exams and review feedback"
+        href="/dashboard/reflection"
+      />
     </>
   );
 }
