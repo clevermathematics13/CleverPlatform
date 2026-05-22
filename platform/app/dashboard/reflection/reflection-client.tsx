@@ -16,6 +16,7 @@ import { NativeForm } from "@/components/reflection/NativeForm";
 import { ScoreTable } from "@/components/reflection/ScoreTable";
 import { UploadSection } from "@/components/reflection/UploadSection";
 import { TeacherDashboard } from "@/components/reflection/TeacherDashboard";
+import { DocPanel } from "@/components/reflection/DocPanel";
 import { createClient } from "@/lib/supabase/client";
 
 interface ReflectionClientProps {
@@ -55,6 +56,10 @@ export function ReflectionClient({
   };
 
   const [step, setStep] = useState<ReflectionStep>(getInitialStep);
+  const [docPanel, setDocPanel] = useState<{ title: string; url: string } | null>(null);
+
+  // Currently selected test object (for paper/mark scheme URLs)
+  const selectedTest = tests.find((t) => t.id === selectedTestId) ?? null;
 
   const handleTestChange = (testId: string) => {
     router.push(`/dashboard/reflection?testId=${testId}`);
@@ -172,6 +177,38 @@ export function ReflectionClient({
           ))}
         </select>
       </div>
+
+      {/* Exam paper / mark scheme quick-access buttons */}
+      {selectedTest && (selectedTest.paper_url || selectedTest.mark_scheme_url) && (
+        <div className="mb-4 flex flex-wrap gap-2">
+          {selectedTest.paper_url && (
+            <button
+              type="button"
+              onClick={() => setDocPanel({ title: "Exam Paper", url: selectedTest.paper_url! })}
+              className="flex items-center gap-1.5 rounded-lg border border-da-border bg-da-surface px-3 py-1.5 text-sm font-medium text-da-text hover:bg-da-hover transition-colors"
+            >
+              📄 Exam Paper
+            </button>
+          )}
+          {selectedTest.mark_scheme_url && (
+            <button
+              type="button"
+              onClick={() => setDocPanel({ title: "Mark Scheme", url: selectedTest.mark_scheme_url! })}
+              className="flex items-center gap-1.5 rounded-lg border border-da-border bg-da-surface px-3 py-1.5 text-sm font-medium text-da-text hover:bg-da-hover transition-colors"
+            >
+              📝 Mark Scheme
+            </button>
+          )}
+        </div>
+      )}
+
+      {docPanel && (
+        <DocPanel
+          title={docPanel.title}
+          url={docPanel.url}
+          onClose={() => setDocPanel(null)}
+        />
+      )}
 
       <HowItWorks />
       <StepTracker current={step} />

@@ -30,7 +30,7 @@ export async function getTestsForStudent(
 
   const { data: tests, error } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks, course_id")
+    .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url")
     .in("course_id", courseIds)
     .order("test_date", { ascending: false });
 
@@ -44,7 +44,7 @@ export async function getAllTests(): Promise<ReflectionTest[]> {
 
   const { data: tests, error } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks, course_id")
+    .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url")
     .order("test_date", { ascending: false });
 
   if (error) throw error;

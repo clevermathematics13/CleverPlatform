@@ -19,6 +19,8 @@ export interface ReflectionTest {
   test_date: string | null;
   total_marks: number | null;
   course_id: string | null;
+  paper_url: string | null;
+  mark_scheme_url: string | null;
 }
 
 /** Student self-score record */

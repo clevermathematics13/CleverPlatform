@@ -37,6 +37,8 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
   const [name, setName] = useState("");
   const [courseId, setCourseId] = useState(courses[0]?.id ?? "");
   const [testDate, setTestDate] = useState("");
+  const [paperUrl, setPaperUrl] = useState("");
+  const [markSchemeUrl, setMarkSchemeUrl] = useState("");
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
 
   // Expand/collapse test items
@@ -71,6 +73,8 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
           name: name.trim(),
           course_id: courseId,
           test_date: testDate || null,
+          paper_url: paperUrl.trim() || null,
+          mark_scheme_url: markSchemeUrl.trim() || null,
           items: items.map((it, i) => ({
             question_number: Number(it.question_number),
             part_label: it.part_label || "",
@@ -85,6 +89,8 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
       setShowCreate(false);
       setName("");
       setTestDate("");
+      setPaperUrl("");
+      setMarkSchemeUrl("");
       setItems([emptyItem()]);
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : "Error");
@@ -150,6 +156,30 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                 type="date"
                 value={testDate}
                 onChange={(e) => setTestDate(e.target.value)}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+              />
+            </label>
+          </div>
+
+          {/* Document URLs */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-gray-600 uppercase">Exam Paper URL</span>
+              <input
+                type="url"
+                value={paperUrl}
+                onChange={(e) => setPaperUrl(e.target.value)}
+                placeholder="https://drive.google.com/file/d/…/view"
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-gray-600 uppercase">Mark Scheme URL</span>
+              <input
+                type="url"
+                value={markSchemeUrl}
+                onChange={(e) => setMarkSchemeUrl(e.target.value)}
+                placeholder="https://drive.google.com/file/d/…/view"
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
               />
             </label>

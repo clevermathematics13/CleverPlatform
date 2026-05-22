@@ -54,11 +54,13 @@ export async function POST(request: NextRequest) {
   const { supabase, user } = auth;
 
   const body = await request.json();
-  const { name, course_id, test_date, total_marks, items } = body as {
+  const { name, course_id, test_date, total_marks, paper_url, mark_scheme_url, items } = body as {
     name: string;
     course_id: string;
     test_date?: string | null;
     total_marks?: number | null;
+    paper_url?: string | null;
+    mark_scheme_url?: string | null;
     items: Array<{
       question_number: number;
       part_label: string;
@@ -84,6 +86,8 @@ export async function POST(request: NextRequest) {
       teacher_id: user.id,
       test_date: test_date ?? null,
       total_marks: total_marks ?? items.reduce((s, i) => s + i.max_marks, 0),
+      paper_url: paper_url ?? null,
+      mark_scheme_url: mark_scheme_url ?? null,
     })
     .select("id")
     .single();
