@@ -6,19 +6,19 @@ export function HowItWorks() {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+    <div className="mb-6 rounded-lg border border-da-border/50 bg-da-surface p-4">
       <button
         type="button"
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between text-left"
       >
-        <h3 className="text-sm font-semibold text-blue-800">
+        <h3 className="text-sm font-semibold text-da-amber">
           📘 How It Works
         </h3>
-        <span className="text-blue-600">{open ? "▲" : "▼"}</span>
+        <span className="text-da-accent">{open ? "▲" : "▼"}</span>
       </button>
       {open && (
-        <ol className="mt-3 space-y-2 text-sm text-blue-900">
+        <ol className="mt-3 space-y-2 text-sm text-da-text">
           <li>
             <strong>Step 1 — Self-Grade:</strong> Go through each question and
             enter the marks you think you earned, based on the mark scheme.

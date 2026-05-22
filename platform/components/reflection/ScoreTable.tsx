@@ -55,24 +55,24 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
 
   const getDiffClass = (teacher: number | null, self: number) => {
     if (teacher === null) return "";
-    if (self === teacher) return "bg-green-50";
-    if (self > teacher) return "bg-yellow-50";
-    return "bg-red-50";
+    if (self === teacher) return "bg-green-900/20";
+    if (self > teacher) return "bg-yellow-900/20";
+    return "bg-red-900/20";
   };
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-bold text-blue-900">Score Comparison</h3>
+      <h3 className="text-lg font-bold text-da-amber">Score Comparison</h3>
 
       {/* Disagreement banner */}
       {disagreement !== null && (
         <div
           className={`rounded-lg border px-4 py-3 font-semibold text-sm flex items-center gap-3 ${
             disagreement === 0
-              ? "border-green-300 bg-green-50 text-green-800"
+              ? "border-green-700 bg-green-900/25 text-green-300"
               : disagreement <= 10
-                ? "border-yellow-300 bg-yellow-50 text-yellow-800"
-                : "border-red-300 bg-red-50 text-red-800"
+                ? "border-yellow-700 bg-yellow-900/25 text-yellow-300"
+                : "border-red-700 bg-red-900/25 text-red-300"
           }`}
         >
           <span className="text-lg">
@@ -89,7 +89,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
       )}
 
       {disagreement === null && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+        <div className="rounded-lg border border-da-border/50 bg-da-surface px-4 py-3 text-sm text-da-muted">
           ⏳ Waiting for teacher marks — disagreement will appear once grading is complete.
         </div>
       )}
@@ -97,12 +97,12 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
       <div className="overflow-x-auto">
         <table className="w-full text-base">
           <thead>
-            <tr className="border-b bg-blue-50">
-              <th className="px-3 py-2 text-left font-bold text-blue-900">Question</th>
-              <th className="px-3 py-2 text-center font-bold text-blue-900">Max</th>
-              <th className="px-3 py-2 text-center font-bold text-blue-900">Teacher</th>
-              <th className="px-3 py-2 text-center font-bold text-blue-900">Self</th>
-              <th className="px-3 py-2 text-center font-bold text-blue-900">Diff</th>
+            <tr className="border-b border-da-border/40 bg-da-surface">
+              <th className="px-3 py-2 text-left font-bold text-da-amber">Question</th>
+              <th className="px-3 py-2 text-center font-bold text-da-amber">Max</th>
+              <th className="px-3 py-2 text-center font-bold text-da-amber">Teacher</th>
+              <th className="px-3 py-2 text-center font-bold text-da-amber">Self</th>
+              <th className="px-3 py-2 text-center font-bold text-da-amber">Diff</th>
             </tr>
           </thead>
           <tbody>
@@ -119,12 +119,12 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
                   className={`border-b ${getDiffClass(item.marks_awarded, self)}`}
                 >
                   <td className="px-3 py-2">
-                    <span className="font-bold text-blue-900">Q{item.question_number}</span>
+                    <span className="font-bold text-da-amber">Q{item.question_number}</span>
                     {item.part_label && (
-                      <span className="ml-1 font-bold text-blue-700">({item.part_label})</span>
+                      <span className="ml-1 font-bold text-da-muted">({item.part_label})</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-center font-bold text-blue-900">{item.max_marks}</td>
+                  <td className="px-3 py-2 text-center font-bold text-da-text">{item.max_marks}</td>
                   <td className="px-3 py-2 text-center">
                     {item.marks_awarded ?? "—"}
                   </td>
@@ -148,7 +148,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
                             [item.test_item_id]: val,
                           }));
                         }}
-                        className="w-16 rounded border-2 border-blue-400 px-2 py-1 text-center text-blue-900 font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-600"
+                        className="w-16 rounded border-2 border-da-border bg-da-surface px-2 py-1 text-center text-da-text font-bold focus:ring-2 focus:ring-da-accent focus:border-da-accent"
                       />
                     ) : (
                       self
@@ -159,10 +159,10 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
                       <span
                         className={
                           diff === 0
-                            ? "text-green-600"
+                            ? "text-green-400"
                             : diff > 0
-                              ? "text-yellow-600"
-                              : "text-red-600"
+                              ? "text-yellow-400"
+                              : "text-red-400"
                         }
                       >
                         {diff > 0 ? `+${diff}` : diff}
@@ -176,7 +176,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
             })}
           </tbody>
           <tfoot>
-            <tr className="border-t bg-blue-50 font-bold text-blue-900">
+            <tr className="border-t border-da-border/40 bg-da-surface font-bold text-da-amber">
               <td className="px-3 py-2">Total</td>
               <td className="px-3 py-2 text-center">{totalMax}</td>
               <td className="px-3 py-2 text-center">{totalTeacher}</td>
@@ -196,7 +196,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
           type="button"
           onClick={handleSave}
           disabled={saving}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save Changes"}
         </button>

@@ -17,10 +17,10 @@ export function StepTracker({ current }: { current: ReflectionStep }) {
           <div
             className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
               step.num < current
-                ? "bg-green-500 text-white"
+                ? "bg-green-700/70 text-da-text"
                 : step.num === current
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-500"
+                  ? "bg-da-accent text-da-bg"
+                  : "bg-da-surface border border-da-border text-da-muted"
             }`}
           >
             {step.num < current ? "✓" : step.num}
@@ -28,10 +28,10 @@ export function StepTracker({ current }: { current: ReflectionStep }) {
           <span
             className={`text-base font-bold ${
               step.num === current
-                ? "text-blue-900"
+                ? "text-da-amber"
                 : step.num < current
-                  ? "text-green-700"
-                  : "text-gray-500"
+                  ? "text-green-400"
+                  : "text-da-muted"
             }`}
           >
             {step.label}
@@ -39,7 +39,7 @@ export function StepTracker({ current }: { current: ReflectionStep }) {
           {i < STEPS.length - 1 && (
             <div
               className={`h-0.5 w-8 ${
-                step.num < current ? "bg-green-500" : "bg-gray-200"
+                step.num < current ? "bg-green-700/60" : "bg-da-border/50"
               }`}
             />
           )}

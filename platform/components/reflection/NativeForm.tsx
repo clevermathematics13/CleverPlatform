@@ -42,8 +42,8 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-bold text-blue-900">Self-Grade Your Answers</h3>
-      <p className="text-base text-blue-800">
+      <h3 className="text-lg font-bold text-da-amber">Self-Grade Your Answers</h3>
+      <p className="text-base text-da-text">
         For each question, enter the marks you think you earned based on the
         mark scheme.
       </p>
@@ -51,22 +51,22 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
       <div className="overflow-x-auto">
         <table className="w-full text-base">
           <thead>
-            <tr className="border-b bg-blue-50">
-              <th className="px-3 py-2 text-left font-bold text-blue-900">Question</th>
-              <th className="px-3 py-2 text-center font-bold text-blue-900">Max</th>
-              <th className="px-3 py-2 text-center font-bold text-blue-900">Your Marks</th>
+            <tr className="border-b border-da-border/40 bg-da-surface">
+              <th className="px-3 py-2 text-left font-bold text-da-amber">Question</th>
+              <th className="px-3 py-2 text-center font-bold text-da-amber">Max</th>
+              <th className="px-3 py-2 text-center font-bold text-da-amber">Your Marks</th>
             </tr>
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.test_item_id} className="border-b">
+              <tr key={item.test_item_id} className="border-b border-da-border/25">
                 <td className="px-3 py-2">
-                  <span className="font-bold text-blue-900">Q{item.question_number}</span>
+                  <span className="font-bold text-da-amber">Q{item.question_number}</span>
                   {item.part_label && (
-                    <span className="ml-1 font-bold text-blue-700">({item.part_label})</span>
+                    <span className="ml-1 font-bold text-da-muted">({item.part_label})</span>
                   )}
                 </td>
-                <td className="px-3 py-2 text-center font-bold text-blue-900">{item.max_marks}</td>
+                <td className="px-3 py-2 text-center font-bold text-da-text">{item.max_marks}</td>
                 <td className="px-3 py-2 text-center">
                   <input
                     type="number"
@@ -80,7 +80,7 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
                         item.max_marks
                       )
                     }
-                    className="w-16 rounded border-2 border-blue-400 px-2 py-1 text-center text-blue-900 font-bold focus:ring-2 focus:ring-blue-500 focus:border-blue-600"
+                    className="w-16 rounded border-2 border-da-border bg-da-surface px-2 py-1 text-center text-da-text font-bold focus:ring-2 focus:ring-da-accent focus:border-da-accent"
                   />
                 </td>
               </tr>
@@ -90,14 +90,14 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
       </div>
 
       {error && (
-        <p className="text-sm text-red-600">{error}</p>
+        <p className="text-sm text-red-400">{error}</p>
       )}
 
       <button
         type="button"
         onClick={handleSubmit}
         disabled={submitting}
-        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+        className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50"
       >
         {submitting ? "Submitting…" : "Submit Self-Grades"}
       </button>

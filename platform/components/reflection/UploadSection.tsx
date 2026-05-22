@@ -33,16 +33,15 @@ export function UploadSection({
   // ── LOCKED STATE ─────────────────────────────────────────────
   if (isLocked && !upload) {
     return (
-      <div className="rounded-lg border-2 border-orange-300 bg-orange-50 p-5 space-y-3">
-        <p className="font-bold text-orange-800">
+      <div className="rounded-lg border-2 border-orange-700/50 bg-orange-900/15 p-5 space-y-3">
+        <p className="font-bold text-orange-300">
           🔒 Upload Locked — Judgement Disagreement Must Reach 0%
         </p>
         {disagreement === null ? (
-          <p className="text-sm text-orange-700">
-            Your teacher has not yet entered marks. Return here once grading is complete.
+          <p className="text-sm text-orange-300/80">
           </p>
         ) : (
-          <div className="text-sm text-orange-700 space-y-2">
+          <div className="text-sm text-orange-300/80 space-y-2">
             <p>
               Current disagreement:{" "}
               <strong>{disagreement.toFixed(1)}%</strong>. The upload form
@@ -69,12 +68,12 @@ export function UploadSection({
   // ── COMPLETED STATE ────────────────────────────────────────
   if (upload) {
     return (
-      <div className="rounded-lg border-2 border-green-300 bg-green-50 p-5 space-y-3">
-        <h3 className="text-lg font-bold text-green-800">🎉 Corrections Uploaded!</h3>
-        <p className="text-sm text-green-700">
+      <div className="rounded-lg border-2 border-green-700/50 bg-green-900/15 p-5 space-y-3">
+        <h3 className="text-lg font-bold text-green-300">🎉 Corrections Uploaded!</h3>
+        <p className="text-sm text-green-300/80">
           File: <strong>{upload.file_name}</strong>
           {upload.file_size && (
-            <span className="ml-2 text-green-600">
+            <span className="ml-2 text-green-400">
               ({(upload.file_size / 1024 / 1024).toFixed(2)} MB)
             </span>
           )}
@@ -107,11 +106,11 @@ export function UploadSection({
               setRemoving(false);
             }
           }}
-          className="rounded border border-red-300 bg-white px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+          className="rounded border border-red-700 bg-da-surface px-3 py-1.5 text-sm text-red-400 hover:bg-red-900/20 disabled:opacity-50"
         >
           {removing ? "Removing…" : "🗑 Remove & Re-upload"}
         </button>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-red-400">{error}</p>}
       </div>
     );
   }
@@ -181,11 +180,11 @@ export function UploadSection({
   };
 
   return (
-    <div className="rounded-lg border-2 border-dashed border-blue-300 bg-blue-50 p-5 space-y-4">
-      <h3 className="text-lg font-semibold text-blue-900">
+    <div className="rounded-lg border-2 border-dashed border-da-border bg-da-surface p-5 space-y-4">
+      <h3 className="text-lg font-semibold text-da-amber">
         📤 Step 3: Upload Corrected Work
       </h3>
-      <p className="text-sm text-blue-700">
+      <p className="text-sm text-da-text">
         Disagreement is <strong>0%</strong> — upload a single PDF of all your
         corrected exam answers.
       </p>
@@ -195,13 +194,13 @@ export function UploadSection({
           ref={fileRef}
           type="file"
           accept="application/pdf"
-          className="text-sm text-gray-700 file:mr-3 file:rounded file:border file:border-blue-400 file:bg-white file:px-3 file:py-1 file:text-sm file:text-blue-700 file:cursor-pointer"
+          className="text-sm text-da-muted file:mr-3 file:rounded file:border file:border-da-border file:bg-da-bg file:px-3 file:py-1 file:text-sm file:text-da-accent file:cursor-pointer"
         />
         <button
           type="button"
           onClick={handleUpload}
           disabled={uploading}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50"
         >
           {uploading ? "Uploading…" : "🚀 Upload"}
         </button>
@@ -209,17 +208,17 @@ export function UploadSection({
 
       {uploading && (
         <div className="space-y-1">
-          <div className="h-2.5 w-full rounded-full bg-blue-200">
+          <div className="h-2.5 w-full rounded-full bg-da-border/40">
             <div
-              className="h-2.5 rounded-full bg-blue-600 transition-all duration-300"
+              className="h-2.5 rounded-full bg-da-amber transition-all duration-300"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-xs text-blue-600 text-center">{progress}%</p>
+          <p className="text-xs text-da-accent text-center">{progress}%</p>
         </div>
       )}
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-sm text-red-400">{error}</p>}
     </div>
   );
 }

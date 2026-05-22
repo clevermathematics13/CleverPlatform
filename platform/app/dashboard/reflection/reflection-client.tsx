@@ -118,7 +118,7 @@ export function ReflectionClient({
     return (
       <div className="max-w-4xl">
         <h1 className="text-2xl font-bold mb-4">Reflection</h1>
-        <p className="text-gray-500">No tests available yet.</p>
+        <p className="text-da-muted">No tests available yet.</p>
       </div>
     );
   }
@@ -126,7 +126,7 @@ export function ReflectionClient({
   if (isTeacher && !viewStudentId) {
     return (
       <div className="max-w-6xl">
-        <h1 className="text-2xl font-bold mb-4 text-blue-900">Exam Reflection Dashboard</h1>
+        <h1 className="text-2xl font-bold mb-4 text-da-amber">Exam Reflection Dashboard</h1>
         <TeacherDashboard tests={tests} />
       </div>
     );
@@ -141,13 +141,13 @@ export function ReflectionClient({
         <div className="mb-4">
           <a
             href="/dashboard/reflection"
-            className="text-sm text-blue-600 hover:underline"
+            className="text-sm text-da-accent hover:underline"
           >
             ← Back to dashboard
           </a>
         </div>
       )}
-      <h1 className="text-2xl font-extrabold mb-2 text-blue-900 drop-shadow-sm">
+      <h1 className="text-2xl font-extrabold mb-2 text-da-text drop-shadow-sm">
         {isViewingStudent
           ? `${viewStudentName}'s Exam Reflection`
           : "Exam Reflection"}
@@ -155,18 +155,18 @@ export function ReflectionClient({
 
       {/* Test selector */}
       <div className="mb-4 flex items-center gap-3">
-        <label htmlFor="test-selector" className="text-base font-semibold text-blue-900">
+        <label htmlFor="test-selector" className="text-base font-semibold text-da-amber">
           Test:
         </label>
         <select
           id="test-selector"
           value={selectedTestId ?? ""}
           onChange={(e) => handleTestChange(e.target.value)}
-          className="rounded border border-blue-400 px-3 py-1.5 text-base font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
+          className="rounded border border-da-border px-3 py-1.5 text-base font-semibold text-da-text bg-da-surface focus:ring-2 focus:ring-da-accent"
           disabled={tests.length === 0}
         >
           {tests.map((t) => (
-            <option key={t.id} value={t.id} className="text-blue-900 font-semibold">
+            <option key={t.id} value={t.id} className="text-da-text font-semibold">
               {t.name}
             </option>
           ))}
@@ -189,13 +189,13 @@ export function ReflectionClient({
             onSave={handleSaveComparison}
           />
           {hasTeacherMarks && disagreement !== 0 && (
-            <p className="text-sm text-orange-600">
+            <p className="text-sm text-orange-300/80">
               Bring disagreement to 0% to unlock the upload step. Edit your
               self marks above and hit &ldquo;Save Changes&rdquo;.
             </p>
           )}
           {!hasTeacherMarks && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-da-muted">
               Waiting for your teacher to enter marks — come back once grading is
               complete to see your disagreement score.
             </p>
@@ -204,7 +204,7 @@ export function ReflectionClient({
             <button
               type="button"
               onClick={() => setStep(3)}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber"
             >
               Proceed to Upload →
             </button>
@@ -231,14 +231,14 @@ export function ReflectionClient({
       {step === 4 && (
         <div className="space-y-4 text-center py-8">
           <p className="text-4xl">🎉</p>
-          <h2 className="text-xl font-bold text-green-700">
+          <h2 className="text-xl font-bold text-green-400">
             Reflection Complete!
           </h2>
-          <p className="text-gray-600">
+          <p className="text-da-muted">
             Check the{" "}
             <a
               href="/dashboard/mastery"
-              className="text-blue-600 hover:underline"
+              className="text-da-accent hover:underline"
             >
               Mastery page
             </a>{" "}
@@ -247,7 +247,7 @@ export function ReflectionClient({
           <button
             type="button"
             onClick={() => setStep(1)}
-            className="text-sm text-gray-500 hover:underline"
+            className="text-sm text-da-muted hover:underline"
           >
             ← Redo this reflection
           </button>
