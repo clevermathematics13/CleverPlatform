@@ -185,10 +185,10 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const hiddenCount = data?.rows.filter((r) => r.hidden).length ?? 0;
 
   const disagreementColor = (d: number | null) => {
-    if (d === null) return "text-gray-400";
-    if (d === 0) return "text-green-600 font-bold";
-    if (d <= 10) return "text-yellow-600 font-semibold";
-    return "text-red-600 font-bold";
+    if (d === null) return "text-da-muted";
+    if (d === 0) return "text-green-400 font-bold";
+    if (d <= 10) return "text-yellow-400 font-semibold";
+    return "text-red-400 font-bold";
   };
 
   return (
@@ -197,11 +197,11 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
       <div className="flex items-center gap-4 flex-wrap">
         {courses.length > 1 && (
           <>
-            <label className="text-base font-semibold text-blue-900">Class:</label>
+            <label className="text-base font-semibold text-da-amber">Class:</label>
             <select
               value={selectedCourse}
               onChange={(e) => setSelectedCourse(e.target.value)}
-              className="rounded border border-blue-400 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
+              className="rounded border border-da-border px-3 py-1.5 text-sm font-semibold text-da-text bg-da-surface focus:ring-2 focus:ring-da-accent"
             >
               <option value="">All classes</option>
               {courses.map((c) => (
@@ -211,14 +211,14 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
           </>
         )}
 
-        <label htmlFor="test-select" className="text-base font-semibold text-blue-900">
+        <label htmlFor="test-select" className="text-base font-semibold text-da-amber">
           Test:
         </label>
         <select
           id="test-select"
           value={selectedTest}
           onChange={(e) => setSelectedTest(e.target.value)}
-          className="rounded border border-blue-400 px-3 py-1.5 text-base font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
+          className="rounded border border-da-border px-3 py-1.5 text-base font-semibold text-da-text bg-da-surface focus:ring-2 focus:ring-da-accent"
         >
           {filteredTests.length === 0 && (
             <option value="">— no tests for this class —</option>
@@ -230,13 +230,13 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
 
         <a
           href="/dashboard/tests"
-          className="ml-auto text-sm text-blue-600 hover:underline"
+          className="ml-auto text-sm text-da-accent hover:underline"
         >
           + Manage Tests
         </a>
 
         {hiddenCount > 0 && (
-          <label className="flex items-center gap-1.5 text-sm text-gray-600">
+          <label className="flex items-center gap-1.5 text-sm text-da-muted">
             <input
               type="checkbox"
               checked={showHidden}
@@ -250,15 +250,15 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
         {/* Student selector — appears once class data is loaded */}
         {data && data.rows.length > 0 && (
           <>
-            <span className="text-gray-300">|</span>
-            <label htmlFor="student-select" className="text-base font-semibold text-blue-900">
+            <span className="text-da-muted">|</span>
+            <label htmlFor="student-select" className="text-base font-semibold text-da-amber">
               Student:
             </label>
             <select
               id="student-select"
               value={selectedStudentId}
               onChange={(e) => setSelectedStudentId(e.target.value)}
-              className="rounded border border-blue-400 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
+              className="rounded border border-da-border px-3 py-1.5 text-sm font-semibold text-da-text bg-da-surface focus:ring-2 focus:ring-da-accent"
             >
               <option value="">— select to preview —</option>
               {[...data.rows]
@@ -272,7 +272,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             {selectedStudentId && (
               <a
                 href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${selectedStudentId}`}
-                className="text-sm text-blue-600 hover:underline"
+                className="text-sm text-da-accent hover:underline"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -283,35 +283,35 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
         )}
       </div>
 
-      {loading && <p className="text-sm text-gray-500">Loading…</p>}
+      {loading && <p className="text-sm text-da-muted">Loading…</p>}
 
       {data && data.items.length > 0 && (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b bg-gray-50">
-                <th className="sticky left-0 bg-blue-50 px-3 py-2 text-left font-bold text-blue-900 min-w-[180px]">
+              <tr className="border-b border-da-border/40 bg-da-surface">
+                <th className="sticky left-0 bg-da-surface px-3 py-2 text-left font-bold text-da-amber min-w-[180px]">
                   Student
                 </th>
                 {data.items.map((item) => (
-                  <th key={item.id} className="px-3 py-2 text-center font-bold text-blue-900 whitespace-nowrap">
+                  <th key={item.id} className="px-3 py-2 text-center font-bold text-da-amber whitespace-nowrap">
                     Q{item.question_number}{item.part_label}
-                    <span className="block text-xs font-normal text-gray-400">/{item.max_marks}</span>
+                    <span className="block text-xs font-normal text-da-muted">/{item.max_marks}</span>
                   </th>
                 ))}
-                <th className="px-3 py-2 text-center font-bold text-blue-900 whitespace-nowrap">Disagree %</th>
-                <th className="px-3 py-2 text-center font-bold text-blue-900">PDF</th>
+                <th className="px-3 py-2 text-center font-bold text-da-amber whitespace-nowrap">Disagree %</th>
+                <th className="px-3 py-2 text-center font-bold text-da-amber">PDF</th>
               </tr>
             </thead>
             <tbody>
               {visibleRows.map((row) => (
                 <tr
                   key={row.student_id}
-                  className={`border-b ${row.hidden ? "opacity-50" : ""}`}
+                  className={`border-b border-da-border/20 ${row.hidden ? "opacity-50" : ""}`}
                 >
                   {/* Name cell */}
                   <td
-                    className={`sticky left-0 bg-white px-3 py-2 font-medium text-gray-900 ${
+                    className={`sticky left-0 bg-da-bg px-3 py-2 font-medium text-da-text ${
                       menuFor === row.student_id ? "z-30" : "z-10"
                     }`}
                   >
@@ -322,23 +322,23 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                           e.stopPropagation();
                           setMenuFor(menuFor === row.student_id ? null : row.student_id);
                         }}
-                        className="text-left hover:text-blue-600 hover:underline"
+                        className="text-left hover:text-da-amber hover:underline"
                       >
                         {row.display_name}
-                        {row.hidden && <span className="ml-1 text-xs text-gray-400">(hidden)</span>}
+                        {row.hidden && <span className="ml-1 text-xs text-da-muted">(hidden)</span>}
                       </button>
                       {menuFor === row.student_id && (
-                        <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+                        <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded-lg border border-da-border bg-da-surface py-1 shadow-lg">
                           <a
                             href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${row.student_id}`}
-                            className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            className="flex items-center gap-2 px-3 py-2 text-sm text-da-text hover:bg-da-hover"
                           >
                             👤 View student reflection
                           </a>
                           <button
                             type="button"
                             onClick={() => toggleStudent(row.student_id, !row.hidden)}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-da-text hover:bg-da-hover"
                           >
                             {row.hidden ? "👁 Unhide student" : "🙈 Hide student"}
                           </button>
@@ -362,18 +362,18 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                     return (
                       <td
                         key={item.id}
-                        className={`px-3 py-2 text-center text-gray-800 cursor-pointer transition-colors ${
+                        className={`px-3 py-2 text-center text-da-text cursor-pointer transition-colors ${
                           justSaved
-                            ? "bg-green-100"
+                            ? "bg-green-900/40"
                             : isSaving
-                              ? "bg-blue-50"
+                              ? "bg-da-surface"
                               : diff === null
-                                ? "hover:bg-gray-100"
+                                ? "hover:bg-da-hover"
                                 : diff === 0
-                                  ? "bg-green-50 hover:bg-green-100"
+                                  ? "bg-green-900/25 hover:bg-green-800/40"
                                   : Math.abs(diff) <= 1
-                                    ? "bg-yellow-50 hover:bg-yellow-100"
-                                    : "bg-red-50 hover:bg-red-100"
+                                    ? "bg-yellow-900/25 hover:bg-yellow-800/40"
+                                    : "bg-red-900/25 hover:bg-red-800/40"
                         }`}
                         title={
                           hasAny
@@ -393,21 +393,21 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                             onChange={(e) => setEditValue(e.target.value)}
                             onBlur={() => handleCellBlur(row.student_id, item.id, item.max_marks)}
                             onKeyDown={(e) => handleCellKeyDown(e, row.student_id, item.id, item.max_marks)}
-                            className="w-12 rounded border border-blue-400 bg-white px-1 py-0.5 text-center text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            className="w-12 rounded border border-da-accent bg-da-surface px-1 py-0.5 text-center text-sm text-da-text focus:outline-none focus:ring-2 focus:ring-da-accent"
                             autoFocus
                           />
                         ) : isSaving ? (
-                          <span className="text-blue-500">…</span>
+                          <span className="text-da-accent">…</span>
                         ) : hasAny ? (
                           <span>
-                            <span className="font-semibold text-gray-900">
+                            <span className="font-semibold text-da-text">
                               {cell.marks_awarded ?? "—"}
                             </span>
                             {cell.self_marks !== null && (
-                              <span className="text-xs text-gray-500 ml-0.5">
+                              <span className="text-xs text-da-muted ml-0.5">
                                 /{cell.self_marks}
                                 {diff !== null && diff !== 0 && (
-                                  <span className={diff > 0 ? "text-yellow-600" : "text-red-500"}>
+                                  <span className={diff > 0 ? "text-yellow-400" : "text-red-400"}>
                                     ({diff > 0 ? "+" : ""}{diff})
                                   </span>
                                 )}
@@ -415,7 +415,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                             )}
                           </span>
                         ) : (
-                          <span className="text-gray-400">—</span>
+                          <span className="text-da-muted">—</span>
                         )}
                       </td>
                     );
@@ -439,7 +439,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                         📎
                       </a>
                     ) : (
-                      <span className="text-gray-300">—</span>
+                      <span className="text-da-muted">—</span>
                     )}
                   </td>
                 </tr>
@@ -484,15 +484,15 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                 : "Step 3 — Ready to upload";
 
         return (
-          <div className="mt-4 rounded-xl border-2 border-blue-200 bg-gradient-to-b from-blue-50 to-white shadow-inner space-y-4 p-5">
+          <div className="mt-4 rounded-xl border-2 border-da-border bg-da-surface space-y-4 p-5">
             {/* Header */}
             <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-400 mb-0.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-da-muted mb-0.5">
                   Viewing as student
                 </p>
-                <h3 className="text-xl font-bold text-blue-900">{row.display_name}</h3>
-                <p className="text-sm text-gray-500 mt-0.5">{stepLabel}</p>
+                <h3 className="text-xl font-bold text-da-text">{row.display_name}</h3>
+                <p className="text-sm text-da-muted mt-0.5">{stepLabel}</p>
               </div>
               <div className="flex items-center gap-3">
                 {row.pdf_url && (
@@ -500,7 +500,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                     href={row.pdf_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100"
+                    className="flex items-center gap-1.5 rounded-lg border border-green-700 bg-green-900/30 px-3 py-1.5 text-sm font-medium text-green-300 hover:bg-green-900/50"
                   >
                     📎 View corrections PDF
                   </a>
@@ -509,14 +509,14 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                   href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${selectedStudentId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                  className="flex items-center gap-1.5 rounded-lg border border-da-border bg-da-hover px-3 py-1.5 text-sm font-medium text-da-accent hover:opacity-80"
                 >
                   ↗ Open full student view
                 </a>
                 <button
                   type="button"
                   onClick={() => setSelectedStudentId("")}
-                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
+                  className="rounded-lg border border-da-border bg-da-bg px-3 py-1.5 text-sm text-da-muted hover:bg-da-hover"
                 >
                   ✕ Close
                 </button>
@@ -527,10 +527,10 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             {hasSelf && hasTeacher && (
               <div className={`rounded-lg border px-4 py-3 text-sm font-semibold flex items-center gap-3 ${
                 disagreement === 0
-                  ? "border-green-300 bg-green-50 text-green-800"
+                  ? "border-green-700 bg-green-900/30 text-green-300"
                   : disagreement !== null && disagreement <= 10
-                    ? "border-yellow-300 bg-yellow-50 text-yellow-800"
-                    : "border-red-300 bg-red-50 text-red-800"
+                    ? "border-yellow-700 bg-yellow-900/30 text-yellow-300"
+                    : "border-red-700 bg-red-900/30 text-red-300"
               }`}>
                 <span className="text-base">
                   {disagreement === 0 ? "✅" : disagreement !== null && disagreement <= 10 ? "⚠️" : "🔴"}
@@ -544,13 +544,13 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             )}
 
             {!hasSelf && (
-              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+              <div className="rounded-lg border border-da-border/50 bg-da-bg px-4 py-3 text-sm text-da-muted">
                 ⏳ This student has not yet submitted their self-assessment marks.
               </div>
             )}
 
             {hasSelf && !hasTeacher && (
-              <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700">
+              <div className="rounded-lg border border-orange-700 bg-orange-900/25 px-4 py-3 text-sm text-orange-300">
                 ⏳ Self-marks submitted — waiting for you to enter teacher marks above.
               </div>
             )}
@@ -564,8 +564,8 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             {!row.pdf_url && hasSelf && hasTeacher && (
               <div className={`rounded-lg border px-4 py-3 text-sm ${
                 disagreement === 0
-                  ? "border-blue-200 bg-blue-50 text-blue-700"
-                  : "border-orange-200 bg-orange-50 text-orange-700"
+                  ? "border-da-border bg-da-hover text-da-accent"
+                  : "border-orange-700 bg-orange-900/25 text-orange-300"
               }`}>
                 {disagreement === 0
                   ? "📤 Disagreement is 0% — student can now upload their corrections."
@@ -577,18 +577,18 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
       })()}
 
       {data && data.items.length === 0 && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-da-muted">
           No items found for this test.{" "}
-          <a href="/dashboard/tests" className="text-blue-600 hover:underline">
+          <a href="/dashboard/tests" className="text-da-accent hover:underline">
             Add questions →
           </a>
         </p>
       )}
 
       {!selectedTest && !loading && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-da-muted">
           No tests available.{" "}
-          <a href="/dashboard/tests" className="text-blue-600 hover:underline">
+          <a href="/dashboard/tests" className="text-da-accent hover:underline">
             Create your first test →
           </a>
         </p>
