@@ -34,7 +34,19 @@ export async function getTestsForStudent(
     .in("course_id", courseIds)
     .order("test_date", { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    // Fallback if migration 045 (paper_url/mark_scheme_url columns) hasn't been applied yet
+    if (/paper_url|mark_scheme_url/.test(error.message)) {
+      const { data: fallback, error: fallbackError } = await supabase
+        .from("tests")
+        .select("id, name, test_date, total_marks, course_id")
+        .in("course_id", courseIds)
+        .order("test_date", { ascending: false });
+      if (fallbackError) throw fallbackError;
+      return (fallback ?? []).map((t) => ({ ...t, paper_url: null, mark_scheme_url: null })) as ReflectionTest[];
+    }
+    throw error;
+  }
   return (tests ?? []) as ReflectionTest[];
 }
 
@@ -47,7 +59,18 @@ export async function getAllTests(): Promise<ReflectionTest[]> {
     .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url")
     .order("test_date", { ascending: false });
 
-  if (error) throw error;
+  if (error) {
+    // Fallback if migration 045 (paper_url/mark_scheme_url columns) hasn't been applied yet
+    if (/paper_url|mark_scheme_url/.test(error.message)) {
+      const { data: fallback, error: fallbackError } = await supabase
+        .from("tests")
+        .select("id, name, test_date, total_marks, course_id")
+        .order("test_date", { ascending: false });
+      if (fallbackError) throw fallbackError;
+      return (fallback ?? []).map((t) => ({ ...t, paper_url: null, mark_scheme_url: null })) as ReflectionTest[];
+    }
+    throw error;
+  }
   return (tests ?? []) as ReflectionTest[];
 }
 
