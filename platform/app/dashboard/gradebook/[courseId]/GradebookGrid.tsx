@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import React, { useState, useCallback } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -108,6 +108,41 @@ function computeComponentGrade(
   }
   if (!hasAny || totalPossible === 0) return null;
   return pctToGrade((totalEarned / totalPossible) * 100);
+}
+
+// IB standard: Section A = Q1–8, Section B = Q9+
+const SECTION_A_MAX_Q = 8;
+
+interface SectionScore {
+  earned: number;
+  max: number;
+  pct: number | null; // null if no marks entered yet
+}
+
+function computeSectionScores(
+  profileId: string,
+  test: Test,
+  marks: MarksState
+): { secA: SectionScore | null; secB: SectionScore | null } {
+  const score = (items: TestItem[]): SectionScore | null => {
+    if (items.length === 0) return null;
+    let earned = 0;
+    let max = 0;
+    let hasAny = false;
+    for (const item of items) {
+      max += item.max_marks;
+      const m = marks[item.id]?.[profileId];
+      if (m !== null && m !== undefined) {
+        earned += m;
+        hasAny = true;
+      }
+    }
+    return { earned, max, pct: hasAny && max > 0 ? (earned / max) * 100 : null };
+  };
+  return {
+    secA: score(test.items.filter((i) => i.question_number <= SECTION_A_MAX_Q)),
+    secB: score(test.items.filter((i) => i.question_number > SECTION_A_MAX_Q)),
+  };
 }
 
 function computeOverallGrade(
@@ -417,39 +452,76 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                       </th>
                     );
                   }
-                  return test.items.map((item, idx) => (
-                    <th
-                      key={item.id}
-                      className={`${thBtn} min-w-[52px]`}
-                      title={idx === 0 ? "Click to collapse" : item.question_code ? `Open ${item.question_code} in question editor` : undefined}
-                    >
-                      {idx === 0 && (
-                        <span
-                          className="block text-[10px] text-da-accent/70 max-w-[100px] truncate cursor-pointer"
-                          onClick={() => toggleTest(test.id)}
-                          title="Click to collapse"
+                  const aMax = test.items
+                    .filter((i) => i.question_number <= SECTION_A_MAX_Q)
+                    .reduce((s, i) => s + i.max_marks, 0);
+                  const bMax = test.items
+                    .filter((i) => i.question_number > SECTION_A_MAX_Q)
+                    .reduce((s, i) => s + i.max_marks, 0);
+                  const hasA = aMax > 0;
+                  const hasB = bMax > 0;
+
+                  return (
+                    <React.Fragment key={test.id}>
+                      {test.items.map((item, idx) => (
+                        <th
+                          key={item.id}
+                          className={`${thBtn} min-w-[52px]`}
+                          title={idx === 0 ? "Click to collapse" : item.question_code ? `Open ${item.question_code} in question editor` : undefined}
                         >
-                          ◂ {test.name}
-                        </span>
+                          {idx === 0 && (
+                            <span
+                              className="block text-[10px] text-da-accent/70 max-w-[100px] truncate cursor-pointer"
+                              onClick={() => toggleTest(test.id)}
+                              title="Click to collapse"
+                            >
+                              ◂ {test.name}
+                            </span>
+                          )}
+                          <span
+                            className={item.question_code ? "cursor-pointer hover:underline" : ""}
+                            onClick={() => {
+                              if (item.question_code) {
+                                window.open(`/dashboard/questions?search=${encodeURIComponent(item.question_code)}`, "_blank");
+                              } else {
+                                toggleTest(test.id);
+                              }
+                            }}
+                          >
+                            Q{item.question_number}
+                            {item.part_label ? item.part_label : ""}
+                          </span>
+                          <span className="block text-[10px] text-da-muted">
+                            /{item.max_marks}
+                          </span>
+                        </th>
+                      ))}
+                      {hasA && (
+                        <>
+                          <th className={`${thBase} min-w-[64px] bg-indigo-950/40 border-l border-indigo-800/40`}>
+                            <span className="block text-[10px] text-indigo-300/70">Sec A</span>
+                            <span className="text-indigo-300">/{aMax}</span>
+                          </th>
+                          <th className={`${thBase} min-w-[56px] bg-indigo-950/40`}>
+                            <span className="block text-[10px] text-indigo-300/70">Sec A</span>
+                            <span className="text-indigo-300">%</span>
+                          </th>
+                        </>
                       )}
-                      <span
-                        className={item.question_code ? "cursor-pointer hover:underline" : ""}
-                        onClick={() => {
-                          if (item.question_code) {
-                            window.open(`/dashboard/questions?search=${encodeURIComponent(item.question_code)}`, "_blank");
-                          } else {
-                            toggleTest(test.id);
-                          }
-                        }}
-                      >
-                        Q{item.question_number}
-                        {item.part_label ? item.part_label : ""}
-                      </span>
-                      <span className="block text-[10px] text-da-muted">
-                        /{item.max_marks}
-                      </span>
-                    </th>
-                  ));
+                      {hasB && (
+                        <>
+                          <th className={`${thBase} min-w-[64px] bg-violet-950/40 border-l border-violet-800/40`}>
+                            <span className="block text-[10px] text-violet-300/70">Sec B</span>
+                            <span className="text-violet-300">/{bMax}</span>
+                          </th>
+                          <th className={`${thBase} min-w-[56px] bg-violet-950/40 border-r border-violet-800/40`}>
+                            <span className="block text-[10px] text-violet-300/70">Sec B</span>
+                            <span className="text-violet-300">%</span>
+                          </th>
+                        </>
+                      )}
+                    </React.Fragment>
+                  );
                 }
 
                 return (
@@ -547,61 +619,92 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                           </td>
                         );
                       }
-                      return test.items.map((item) => {
-                        const cellKey = `${item.id}:${student.profile_id}`;
-                        const val =
-                          marks[item.id]?.[student.profile_id] ??
-                          null;
-                        const isSaving = saving.has(cellKey);
-                        const err = cellErrors[cellKey];
+                      const { secA, secB } = computeSectionScores(
+                        student.profile_id,
+                        test,
+                        marks
+                      );
+                      return (
+                        <React.Fragment key={test.id}>
+                          {test.items.map((item) => {
+                            const cellKey = `${item.id}:${student.profile_id}`;
+                            const val =
+                              marks[item.id]?.[student.profile_id] ??
+                              null;
+                            const isSaving = saving.has(cellKey);
+                            const err = cellErrors[cellKey];
 
-                        return (
-                          <td key={item.id} className={`${tdBase} p-1`}>
-                            <input
-                              type="number"
-                              min={0}
-                              max={item.max_marks}
-                              value={val === null ? "" : val}
-                              onChange={(e) =>
-                                handleChange(
-                                  item.id,
-                                  student.profile_id,
-                                  e.target.value
-                                )
-                              }
-                              onBlur={() =>
-                                handleBlur(
-                                  item.id,
-                                  student.profile_id,
-                                  item.max_marks
-                                )
-                              }
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter")
-                                  (e.target as HTMLInputElement).blur();
-                              }}
-                              onPaste={(e) =>
-                                handleCellPaste(
-                                  e,
-                                  rowIdx,
-                                  itemColMap.get(item.id) ?? 0
-                                )
-                              }
-                              className={[
-                                "w-12 rounded text-center text-sm py-1 bg-da-bg",
-                                "border focus:outline-none focus:ring-1 transition-colors",
-                                err
-                                  ? "border-red-500 focus:ring-red-500"
-                                  : isSaving
-                                  ? "border-da-accent/60 focus:ring-da-accent/40"
-                                  : "border-da-border focus:ring-da-accent/50 focus:border-da-accent",
-                                "text-da-text",
-                              ].join(" ")}
-                              title={err ? `⚠ ${err}` : `Max: ${item.max_marks}`}
-                            />
-                          </td>
-                        );
-                      });
+                            return (
+                              <td key={item.id} className={`${tdBase} p-1`}>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={item.max_marks}
+                                  value={val === null ? "" : val}
+                                  onChange={(e) =>
+                                    handleChange(
+                                      item.id,
+                                      student.profile_id,
+                                      e.target.value
+                                    )
+                                  }
+                                  onBlur={() =>
+                                    handleBlur(
+                                      item.id,
+                                      student.profile_id,
+                                      item.max_marks
+                                    )
+                                  }
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      (e.target as HTMLInputElement).blur();
+                                  }}
+                                  onPaste={(e) =>
+                                    handleCellPaste(
+                                      e,
+                                      rowIdx,
+                                      itemColMap.get(item.id) ?? 0
+                                    )
+                                  }
+                                  className={[
+                                    "w-12 rounded text-center text-sm py-1 bg-da-bg",
+                                    "border focus:outline-none focus:ring-1 transition-colors",
+                                    err
+                                      ? "border-red-500 focus:ring-red-500"
+                                      : isSaving
+                                      ? "border-da-accent/60 focus:ring-da-accent/40"
+                                      : "border-da-border focus:ring-da-accent/50 focus:border-da-accent",
+                                    "text-da-text",
+                                  ].join(" ")}
+                                  title={err ? `⚠ ${err}` : `Max: ${item.max_marks}`}
+                                />
+                              </td>
+                            );
+                          })}
+                          {secA && (
+                            <>
+                              <td className={`${tdBase} font-semibold text-indigo-300 bg-indigo-950/30 border-l border-indigo-800/40`}>
+                                {secA.pct !== null ? secA.earned : "—"}
+                              </td>
+                              <td className={`${tdBase} text-indigo-200 bg-indigo-950/30`}
+                                title={secA.pct !== null ? `${secA.earned}/${secA.max}` : undefined}>
+                                {secA.pct !== null ? `${secA.pct.toFixed(0)}%` : "—"}
+                              </td>
+                            </>
+                          )}
+                          {secB && (
+                            <>
+                              <td className={`${tdBase} font-semibold text-violet-300 bg-violet-950/30 border-l border-violet-800/40`}>
+                                {secB.pct !== null ? secB.earned : "—"}
+                              </td>
+                              <td className={`${tdBase} text-violet-200 bg-violet-950/30 border-r border-violet-800/40`}
+                                title={secB.pct !== null ? `${secB.earned}/${secB.max}` : undefined}>
+                                {secB.pct !== null ? `${secB.pct.toFixed(0)}%` : "—"}
+                              </td>
+                            </>
+                          )}
+                        </React.Fragment>
+                      );
                     }
 
                     // Collapsed test: show IB grade
