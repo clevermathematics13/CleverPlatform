@@ -13,18 +13,25 @@ interface NativeFormProps {
 
 export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc }: NativeFormProps) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const [scores, setScores] = useState<Record<string, number>>(() => {
-    const init: Record<string, number> = {};
+
+  // Use "" for "no entry yet" (dash / not attempted); number for a real score
+  const [scores, setScores] = useState<Record<string, number | "">>((): Record<string, number | ""> => {
+    const init: Record<string, number | ""> = {};
     for (const item of items) {
-      init[item.test_item_id] = item.self_marks ?? 0;
+      init[item.test_item_id] = item.self_marks !== null ? item.self_marks : "";
     }
     return init;
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleChange = (testItemId: string, value: number, max: number) => {
-    const clamped = Math.max(0, Math.min(value, max));
+  const handleChange = (testItemId: string, raw: string, max: number) => {
+    if (raw === "") {
+      setScores((prev) => ({ ...prev, [testItemId]: "" }));
+      return;
+    }
+    const n = parseInt(raw, 10);
+    const clamped = Math.max(0, Math.min(isNaN(n) ? 0 : n, max));
     setScores((prev) => ({ ...prev, [testItemId]: clamped }));
   };
 
@@ -34,7 +41,7 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
     try {
       const selfScores: SelfScore[] = items.map((item) => ({
         test_item_id: item.test_item_id,
-        self_marks: scores[item.test_item_id] ?? 0,
+        self_marks: scores[item.test_item_id] === "" ? null : (scores[item.test_item_id] as number),
       }));
       await onSubmit(selfScores);
     } catch (e) {
@@ -77,6 +84,11 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
         mark scheme.
       </p>
 
+      <p className="rounded-lg border border-da-border/40 bg-da-surface px-3 py-2 text-sm text-da-muted">
+        Leave a box <span className="font-bold text-da-text">blank</span> if you made no attempt on that question (recorded as&nbsp;<span className="font-mono font-bold text-da-amber">&ndash;</span>).
+        Enter <span className="font-mono font-bold text-da-amber">0</span> if you attempted the question but earned zero marks.
+      </p>
+
       <div className="overflow-x-auto">
         <table className="w-full text-base">
           <thead>
@@ -102,13 +114,10 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
                     type="number"
                     min={0}
                     max={item.max_marks}
-                    value={scores[item.test_item_id] ?? 0}
+                    value={scores[item.test_item_id] ?? ""}
+                    placeholder="–"
                     onChange={(e) =>
-                      handleChange(
-                        item.test_item_id,
-                        parseInt(e.target.value) || 0,
-                        item.max_marks
-                      )
+                      handleChange(item.test_item_id, e.target.value, item.max_marks)
                     }
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {

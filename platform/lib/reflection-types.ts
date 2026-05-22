@@ -26,7 +26,7 @@ export interface ReflectionTest {
 /** Student self-score record */
 export interface SelfScore {
   test_item_id: string;
-  self_marks: number;
+  self_marks: number | null; // null = question not attempted
 }
 
 /** PDF upload record */
