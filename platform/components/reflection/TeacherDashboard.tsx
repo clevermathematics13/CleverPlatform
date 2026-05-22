@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { ReflectionTest, StudentReflectionRow } from "@/lib/reflection-types";
+import type { ReflectionTest, StudentReflectionRow, ReflectionItem } from "@/lib/reflection-types";
+import { computeDisagreement } from "@/lib/reflection-utils";
+import { ScoreTable } from "@/components/reflection/ScoreTable";
 
 interface TeacherDashboardProps {
   tests: ReflectionTest[];
@@ -38,6 +40,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [savedCells, setSavedCells] = useState<Set<CellKey>>(new Set());
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch courses for filter
@@ -81,6 +84,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
     setEditingCell(null);
     setSavedCells(new Set());
     setMenuFor(null);
+    setSelectedStudentId("");
     fetch(`/api/reflection/class-data?testId=${encodeURIComponent(selectedTest)}`)
       .then((r) => r.json())
       .then((d: ClassData) => setData(d))
@@ -241,6 +245,41 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             />
             Show hidden ({hiddenCount})
           </label>
+        )}
+
+        {/* Student selector — appears once class data is loaded */}
+        {data && data.rows.length > 0 && (
+          <>
+            <span className="text-gray-300">|</span>
+            <label htmlFor="student-select" className="text-base font-semibold text-blue-900">
+              Student:
+            </label>
+            <select
+              id="student-select"
+              value={selectedStudentId}
+              onChange={(e) => setSelectedStudentId(e.target.value)}
+              className="rounded border border-blue-400 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-blue-50 focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">— select to preview —</option>
+              {[...data.rows]
+                .sort((a, b) => a.display_name.localeCompare(b.display_name))
+                .map((row) => (
+                  <option key={row.student_id} value={row.student_id}>
+                    {row.display_name}
+                  </option>
+                ))}
+            </select>
+            {selectedStudentId && (
+              <a
+                href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${selectedStudentId}`}
+                className="text-sm text-blue-600 hover:underline"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                ↗ Open full view
+              </a>
+            )}
+          </>
         )}
       </div>
 
@@ -409,6 +448,133 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
           </table>
         </div>
       )}
+
+      {/* ── Student preview panel ────────────────────────────────────────── */}
+      {selectedStudentId && data && (() => {
+        const row = data.rows.find((r) => r.student_id === selectedStudentId);
+        if (!row) return null;
+
+        // Build ReflectionItem[] by merging test items with the student's marks
+        const reflectionItems: ReflectionItem[] = data.items.map((item) => {
+          const mark = row.items.find((m) => m.test_item_id === item.id);
+          return {
+            id: item.id,
+            test_item_id: item.id,
+            question_number: item.question_number,
+            part_label: item.part_label,
+            max_marks: item.max_marks,
+            subtopic_codes: [],
+            marks_awarded: mark?.marks_awarded ?? null,
+            self_marks: mark?.self_marks ?? null,
+          };
+        });
+
+        const hasSelf = reflectionItems.some((i) => i.self_marks !== null);
+        const hasTeacher = reflectionItems.some((i) => i.marks_awarded !== null);
+        const disagreement = computeDisagreement(reflectionItems);
+
+        const stepLabel = !hasSelf
+          ? "Step 1 — Awaiting self-assessment"
+          : !hasTeacher
+            ? "Step 2 — Awaiting teacher marks"
+            : disagreement !== 0
+              ? `Step 2 — Resolving disagreement (${disagreement !== null ? disagreement.toFixed(1) + "%" : "pending"})`
+              : row.pdf_url
+                ? "Step 4 — Corrections uploaded ✅"
+                : "Step 3 — Ready to upload";
+
+        return (
+          <div className="mt-4 rounded-xl border-2 border-blue-200 bg-gradient-to-b from-blue-50 to-white shadow-inner space-y-4 p-5">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-400 mb-0.5">
+                  Viewing as student
+                </p>
+                <h3 className="text-xl font-bold text-blue-900">{row.display_name}</h3>
+                <p className="text-sm text-gray-500 mt-0.5">{stepLabel}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {row.pdf_url && (
+                  <a
+                    href={row.pdf_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 rounded-lg border border-green-300 bg-green-50 px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100"
+                  >
+                    📎 View corrections PDF
+                  </a>
+                )}
+                <a
+                  href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${selectedStudentId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100"
+                >
+                  ↗ Open full student view
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStudentId("")}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50"
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+
+            {/* Disagreement status */}
+            {hasSelf && hasTeacher && (
+              <div className={`rounded-lg border px-4 py-3 text-sm font-semibold flex items-center gap-3 ${
+                disagreement === 0
+                  ? "border-green-300 bg-green-50 text-green-800"
+                  : disagreement !== null && disagreement <= 10
+                    ? "border-yellow-300 bg-yellow-50 text-yellow-800"
+                    : "border-red-300 bg-red-50 text-red-800"
+              }`}>
+                <span className="text-base">
+                  {disagreement === 0 ? "✅" : disagreement !== null && disagreement <= 10 ? "⚠️" : "🔴"}
+                </span>
+                <span>
+                  Judgement Disagreement:{" "}
+                  <strong>{disagreement !== null ? `${disagreement.toFixed(1)}%` : "pending"}</strong>
+                  {disagreement === 0 ? " — ready to upload corrections" : ""}
+                </span>
+              </div>
+            )}
+
+            {!hasSelf && (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                ⏳ This student has not yet submitted their self-assessment marks.
+              </div>
+            )}
+
+            {hasSelf && !hasTeacher && (
+              <div className="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-700">
+                ⏳ Self-marks submitted — waiting for you to enter teacher marks above.
+              </div>
+            )}
+
+            {/* Score table (read-only) */}
+            {hasSelf && reflectionItems.length > 0 && (
+              <ScoreTable items={reflectionItems} editable={false} />
+            )}
+
+            {/* Upload status */}
+            {!row.pdf_url && hasSelf && hasTeacher && (
+              <div className={`rounded-lg border px-4 py-3 text-sm ${
+                disagreement === 0
+                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                  : "border-orange-200 bg-orange-50 text-orange-700"
+              }`}>
+                {disagreement === 0
+                  ? "📤 Disagreement is 0% — student can now upload their corrections."
+                  : "🔒 Upload locked until disagreement reaches 0%."}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {data && data.items.length === 0 && (
         <p className="text-sm text-gray-500">
