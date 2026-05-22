@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f4f4f9; text-align: center; }
+      .container { background: white; max-width: 95%; margin: 0 auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+      
+      h1 { color: #2c3e50; margin-bottom: 5px; }
+      .sub-header { color: #555; margin-bottom: 20px; font-size: 1.1em; }
+      .student-badge { background-color: #e3f2fd; color: #0288d1; padding: 5px 12px; border-radius: 15px; font-weight: bold; font-size: 0.9em; }
+      
+      .nav-btn { display: inline-block; text-decoration: none; background-color: #546e7a; color: white; padding: 10px 20px; border-radius: 25px; font-weight: bold; margin-bottom: 20px; transition: background 0.2s; }
+      .nav-btn:hover { background-color: #37474f; }
+
+      /* MENU STYLES */
+      .teacher-controls { margin-bottom: 20px; padding: 15px; background: #eceff1; border-radius: 8px; display: none; border: 1px solid #cfd8dc; }
+      .mode-btn { 
+        padding: 10px 25px; cursor: pointer; 
+        border: 2px solid #37474f; border-radius: 25px; 
+        background: white; color: #37474f; 
+        font-weight: bold; font-size: 1em; margin: 0 10px; 
+        transition: all 0.3s ease;
+      }
+      .mode-btn:hover { background-color: #cfd8dc; transform: translateY(-2px); }
+      .mode-btn.active { background: #37474f; color: white; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+
+      /* SORT BUTTON STYLE */
+      .sort-btn {
+        padding: 8px 20px; cursor: pointer;
+        border: 1px solid #0288d1; border-radius: 20px;
+        background: #e1f5fe; color: #0277bd;
+        font-weight: bold; font-size: 0.9em; margin-left: 15px;
+        transition: all 0.2s;
+      }
+      .sort-btn:hover { background: #b3e5fc; }
+
+      /* STUDENT DASHBOARD STYLES */
+      .cards-row { display: flex; justify-content: center; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
+      .card { flex: 1; min-width: 200px; padding: 20px; border-radius: 8px; color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+      .card-good { background: linear-gradient(135deg, #66bb6a, #43a047); } 
+      .card-bad { background: linear-gradient(135deg, #ef5350, #e53935); }   
+      .card-title { font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px; opacity: 0.9; }
+      .card-value { font-size: 2.5em; font-weight: bold; margin: 10px 0; }
+      .card-desc { font-size: 1em; font-weight: 500; }
+      .chart-container { position: relative; height: 400px; width: 100%; margin-bottom: 40px; }
+      
+      .std-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.95em; }
+      .std-table th { background-color: #2c3e50; color: white; padding: 12px; text-align: left; }
+      .std-table td { border-bottom: 1px solid #eee; padding: 10px; text-align: left; vertical-align: middle; }
+      .std-table tr:nth-child(even) { background-color: #fafafa; }
+      .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+      .green { background-color: #4caf50; box-shadow: 0 0 5px #4caf50; }
+      .yellow { background-color: #ffeb3b; box-shadow: 0 0 5px #ffeb3b; }
+      .red { background-color: #f44336; box-shadow: 0 0 5px #f44336; }
+
+      /* HEATMAP STYLES */
+      .heatmap-container { overflow-x: auto; max-height: 70vh; margin-top: 20px; border: 1px solid #ddd; }
+      .heat-table { border-collapse: separate; border-spacing: 0; min-width: 100%; font-size: 0.85em; }
+      
+      /* Headers */
+      .heat-table th { 
+        background-color: #2c3e50; color: white; padding: 8px 6px; 
+        position: sticky; top: 0; z-index: 10; 
+        min-width: 90px; max-width: 150px;
+        text-align: center; border: 1px solid #455a64;
+        vertical-align: middle;
+        transition: background 0.2s;
+      }
+      
+      .heat-table th.expandable { cursor: pointer; }
+      .heat-table th.expandable:hover { background-color: #0288d1; }
+      .heat-table th.expanded-header { background-color: #01579b; border-bottom: 4px solid #f57c00; }
+
+      @keyframes smoothSlide {
+        0% { max-width: 0; opacity: 0; padding: 0; border-width: 0; color: transparent; }
+        100% { max-width: 180px; opacity: 1; color: inherit; }
+      }
+
+      /* Drill Down Headers */
+      .heat-table th.drill-header { 
+        background-color: #cfd8dc; /* Light Blue Grey */
+        color: #37474f; 
+        font-size: 0.85em; 
+        min-width: 80px; 
+        border-left: 1px solid #b0bec5; 
+        animation: smoothSlide 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        transform-origin: left;
+        vertical-align: bottom; /* Aligns text to bottom if multi-line */
+      }
+
+      /* Drill Down Cells */
+      .h-drill { 
+        background-color: #eceff1; color: #455a64; font-weight: bold; font-size: 0.9em; 
+        border-left: 1px solid #cfd8dc;
+        white-space: nowrap; overflow: hidden;
+        animation: smoothSlide 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        transform-origin: left;
+      }
+
+      /* Sticky First Column */
+      .heat-table td:first-child, .heat-table th:first-child { 
+        position: sticky; left: 0; z-index: 20; 
+        background-color: #fff; border-right: 2px solid #ccc; 
+        min-width: 120px; text-align: left; padding-left: 10px; font-weight: bold;
+      }
+      .heat-table th:first-child { background-color: #2c3e50; z-index: 30; }
+      
+      .heat-table td { border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: middle; }
+      
+      .h-green { background-color: #c8e6c9; color: #1b5e20; }
+      .h-yellow { background-color: #fff9c4; color: #f57f17; }
+      .h-red { background-color: #ffcdd2; color: #b71c1c; }
+      .h-blank { background-color: #ffffff; color: #ccc; }
+
+      /* === CLASS AVERAGE ROW STYLES === */
+      .avg-row {
+        background-color: #e0e0e0 !important; 
+        font-weight: bold;
+        border-bottom: 3px solid #546e7a; 
+        position: sticky;
+        top: 55px; /* Stick below the header */
+        z-index: 25; 
+        box-shadow: 0 2px 2px rgba(0,0,0,0.1);
+      }
+
+      .avg-row td:first-child {
+        background-color: #cfd8dc !important; 
+        color: #263238;
+        font-style: italic;
+        z-index: 26 !important; 
+      }
+      
+      .avg-row .h-drill {
+          background-color: #eceff1 !important; 
+          color: #455a64;
+      }
+
+      #loading { font-size: 1.2em; color: #0288d1; font-weight: bold; margin: 50px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <a href="<?!= ScriptApp.getService().getUrl() ?>" class="nav-btn">⬅ Back to Reflection Tool</a>
+      
+      <h1>📊 CleverMastery</h1>
+      <div class="sub-header">
+        Performance Report for: <span id="student-name-display" class="student-badge">Loading...</span>
+      </div>
+      
+      <div style="max-width:600px; margin:0 auto 15px auto; font-size:0.85em; color:#666; line-height:1.5; text-align:left; background:#f9fbe7; padding:12px 18px; border-radius:8px; border:1px solid #e6ee9c;">
+        This page aggregates your scores across all exams by <strong>IB syllabus topic code</strong>. Green = strong (≥80%), yellow = developing (50-79%), red = needs attention (&lt;50%). Teachers can switch to the <strong>Class Heatmap</strong> to see all students at a glance — click any topic header to drill down into individual questions.
+      </div>
+
+      <div id="teacher-controls" class="teacher-controls">
+         <span style="font-weight:bold; color:#37474f; margin-right:10px;">👑 Teacher Controls: </span>
+         <button class="mode-btn active" onclick="switchMode('student')">My Stats (Preview)</button>
+         <button class="mode-btn" onclick="switchMode('teacher')">Class Heatmap</button>
+         <button id="sort-btn" class="sort-btn" onclick="toggleSort()" style="display:none;">Sort: 1.1, 1.2...</button>
+      </div>
+
+      <div id="loading">⏳ Crunching the numbers...</div>
+
+      <div id="student-view" style="display:none;">
+          <div id="student-dashboard-content">
+            <div class="cards-row">
+              <div class="card card-good">
+                <div class="card-title">Strongest Topic</div>
+                <div class="card-value" id="best-score">-</div>
+                <div class="card-desc" id="best-topic">-</div>
+              </div>
+              <div class="card card-bad">
+                <div class="card-title">Needs Attention</div>
+                <div class="card-value" id="worst-score">-</div>
+                <div class="card-desc" id="worst-topic">-</div>
+              </div>
+            </div>
+            <div class="chart-container">
+              <canvas id="masteryChart"></canvas>
+            </div>
+            <h3>Detailed Breakdown</h3>
+            <table class="std-table">
+              <thead><tr><th>Status</th><th>Code</th><th>Description</th><th>Score</th></tr></thead>
+              <tbody id="std-table-body"></tbody>
+            </table>
+          </div>
+          <div id="student-no-data" style="display:none; padding:40px; color:#666;">
+             <h3>No personal data found.</h3>
+             <p>If you are a teacher, this view shows your own stats (which are likely empty). Switch to Class Heatmap.</p>
+          </div>
+      </div>
+
+      <div id="teacher-view" style="display:none;">
+        <h3>🔥 Class Mastery Heatmap</h3>
+        <p style="font-size:0.9em; color:#666;">Click a Syllabus Code (e.g., 3.14) to expand questions. Click again to collapse.</p>
+        <div class="heatmap-container">
+           <table class="heat-table" id="heatmap-table"></table>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var globalClassData = null;
+      var currentExpandedCode = null; 
+      var currentRenderOrder = null; 
+      var isSortedByPerformance = false; 
+
+      loadStudentData();
+
+      function loadStudentData() {
+        google.script.run.withSuccessHandler(function(identity) {
+           document.getElementById('student-name-display').innerText = identity.name || identity.email;
+           if (identity.isTeacher) {
+              document.getElementById('teacher-controls').style.display = 'block';
+           }
+        }).getIdentityInfo();
+        
+        google.script.run.withSuccessHandler(renderStudentView).getStudentStats();
+      }
+
+      function switchMode(mode) {
+         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+         event.target.classList.add('active');
+         
+         if (mode === 'student') {
+            // STUDENT VIEW
+            document.getElementById('student-view').style.display = 'block';
+            document.getElementById('teacher-view').style.display = 'none';
+            
+            // HIDE Sort Button
+            document.getElementById('sort-btn').style.display = 'none';
+         } else {
+            // TEACHER VIEW
+            document.getElementById('student-view').style.display = 'none';
+            document.getElementById('teacher-view').style.display = 'block';
+            
+            // SHOW Sort Button
+            document.getElementById('sort-btn').style.display = 'inline-block';
+            
+            if(!globalClassData) loadHeatmapData(); 
+         }
+      }
+
+      function loadHeatmapData() {
+         document.getElementById('heatmap-table').innerHTML = "<tr><td style='padding:20px;'>Loading Class Data...</td></tr>";
+         google.script.run.withSuccessHandler(function(data) {
+             globalClassData = data;
+             currentRenderOrder = data.syllabusList;
+             renderHeatmap();
+         }).getClassStats();
+      }
+
+      function toggleExpansion(code) {
+          if (currentExpandedCode === code) {
+              currentExpandedCode = null; 
+          } else {
+              currentExpandedCode = code; 
+          }
+          renderHeatmap(); 
+      }
+
+      function toggleSort() {
+          if (!globalClassData) return;
+          
+          isSortedByPerformance = !isSortedByPerformance;
+          var btn = document.getElementById("sort-btn");
+
+          if (isSortedByPerformance) {
+              var avgStats = calculateClassStats(globalClassData);
+              var sortable = globalClassData.syllabusList.map(code => {
+                  var topic = avgStats.topics.find(t => t.code === code);
+                  var pct = topic ? parseFloat(topic.pct) : -1; 
+                  return { code: code, val: isNaN(pct) ? -1 : pct };
+              });
+              sortable.sort((a, b) => a.val - b.val);
+              currentRenderOrder = sortable.map(item => item.code);
+              btn.innerText = "Sort: Lowest % ➡ Highest %";
+          } else {
+              currentRenderOrder = globalClassData.syllabusList;
+              btn.innerText = "Sort: 1.1, 1.2...";
+          }
+          renderHeatmap();
+      }
+
+      function calculateClassStats(data) {
+        var avgRow = { 
+          name: "Class Average", 
+          isAverage: true, 
+          topics: [], 
+          drillData: {} 
+        };
+
+        // 1. Calculate Syllabus Averages (Percentages)
+        data.syllabusList.forEach(code => {
+          var sum = 0;
+          var count = 0;
+          
+          data.students.forEach(student => {
+            var topic = student.topics.find(t => t.code === code);
+            if (topic && topic.pct !== null && topic.pct !== "") {
+              sum += parseFloat(topic.pct);
+              count++;
+            }
+          });
+
+          var avgPct = count > 0 ? (sum / count).toFixed(1) : null;
+          avgRow.topics.push({ code: code, pct: avgPct, description: "Average performance" });
+        });
+
+        // 2. Calculate Question Averages (Drill Down) as PERCENTAGE
+        Object.keys(data.drillDownMap).forEach(key => {
+           var questions = data.drillDownMap[key];
+           questions.forEach(q => {
+              var sum = 0;
+              var count = 0;
+
+              data.students.forEach(student => {
+                  var score = student.drillData[q.uniqueId];
+                  if (score !== undefined && score !== null && score !== "") {
+                      sum += parseFloat(score);
+                      count++;
+                  }
+              });
+              
+              if (count > 0) {
+                  var avgRaw = sum / count;
+                  var max = parseFloat(q.max);
+                  
+                  if (max > 0) {
+                      avgRow.drillData[q.uniqueId] = ((avgRaw / max) * 100).toFixed(1) + "%";
+                  } else {
+                      avgRow.drillData[q.uniqueId] = "-";
+                  }
+              }
+           });
+        });
+
+        return avgRow;
+      }
+
+      function renderHeatmap() {
+         if(!globalClassData) return;
+         var data = globalClassData;
+         var table = document.getElementById('heatmap-table');
+         table.innerHTML = "";
+         
+         var codesToRender = currentRenderOrder || data.syllabusList;
+
+         // --- HEADER GENERATION ---
+         var thead = table.createTHead();
+         var hRow = thead.insertRow();
+         
+         var thName = document.createElement("th");
+         thName.innerText = "Student";
+         hRow.appendChild(thName);
+         
+         var firstStudent = data.students[0] || { topics: [] };
+
+         codesToRender.forEach(code => {
+            var th = document.createElement("th");
+            th.title = "Click to drill down";
+            th.className = "expandable";
+            if (code === currentExpandedCode) th.classList.add("expanded-header");
+            th.onclick = function() { toggleExpansion(code); };
+            
+            var topicObj = firstStudent.topics.find(t => t.code === code) || {};
+            var desc = topicObj.description || "";
+            th.innerHTML = `<div style="font-size:1.1em; margin-bottom:3px;">${code}</div><div style="font-size:0.7em; font-weight:normal; line-height:1.1; opacity:0.9;">${desc}</div>`;
+            
+            hRow.appendChild(th);
+
+            if (code === currentExpandedCode) {
+                var questions = data.drillDownMap[code] || [];
+                questions.forEach(q => {
+                    var thDrill = document.createElement("th");
+                    thDrill.className = "drill-header";
+                    thDrill.innerHTML = `<div style='font-weight:bold'>${q.examName} #${q.questionLabel}</div><div style='font-size:0.85em; opacity:0.8; margin-top:2px;'>/${q.max}</div>`;
+                    hRow.appendChild(thDrill);
+                });
+            }
+         });
+
+         // --- BODY GENERATION ---
+         var tbody = table.createTBody();
+
+         var avgRowData = calculateClassStats(data);
+         var rowsToRender = [avgRowData].concat(data.students);
+
+         rowsToRender.forEach(student => {
+            var row = tbody.insertRow();
+            
+            if (student.isAverage) {
+                row.className = "avg-row";
+            }
+
+            var cellName = row.insertCell();
+            cellName.innerText = student.name;
+            
+            codesToRender.forEach((code) => {
+               var topic = student.topics.find(t => t.code === code) || { pct: null };
+               
+               var cell = row.insertCell();
+               var val = parseFloat(topic.pct);
+               
+               if (topic.pct === null || isNaN(val)) {
+                  cell.innerText = "-";
+                  cell.className = "h-blank";
+               } else {
+                  if (student.isAverage) {
+                      cell.innerText = val + "%";
+                  } else {
+                      cell.innerText = Math.round(val) + "%";
+                      if (val >= 80) cell.className = "h-green";
+                      else if (val >= 50) cell.className = "h-yellow";
+                      else cell.className = "h-red";
+                  }
+                  cell.title = topic.description || "";
+               }
+
+               if (code === currentExpandedCode) {
+                   var questions = data.drillDownMap[code] || [];
+                   questions.forEach(q => {
+                       var cellDrill = row.insertCell();
+                       cellDrill.className = "h-drill";
+                       var raw = student.drillData[q.uniqueId];
+                       
+                       if (raw === undefined || raw === null) {
+                           cellDrill.innerText = "-";
+                           cellDrill.style.backgroundColor = "#fff";
+                       } else {
+                           cellDrill.innerText = raw;
+                           
+                           if (!student.isAverage) {
+                               if(raw == q.max) cellDrill.style.color = "#2e7d32"; 
+                               if(raw == 0) cellDrill.style.color = "#c62828";
+                           }
+                       }
+                   });
+               }
+            });
+         });
+      }
+
+      function renderStudentView(data) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('student-view').style.display = 'block';
+
+        if (!data || data.length === 0) {
+           document.getElementById('student-dashboard-content').style.display = 'none';
+           document.getElementById('student-no-data').style.display = 'block';
+           return;
+        }
+        
+        document.getElementById('student-dashboard-content').style.display = 'block';
+        document.getElementById('student-no-data').style.display = 'none';
+
+        let sorted = [...data].filter(x => x.pct !== null).sort((a, b) => parseFloat(b.pct) - parseFloat(a.pct));
+        
+        if (sorted.length > 0) {
+            let best = sorted[0];
+            let worst = sorted[sorted.length - 1];
+            
+            document.getElementById('best-score').innerText = best.pct + "%";
+            document.getElementById('best-topic').innerText = best.code + " " + (best.description || "");
+            
+            document.getElementById('worst-score').innerText = worst.pct + "%";
+            document.getElementById('worst-topic').innerText = worst.code + " " + (worst.description || "");
+        }
+
+        const tbody = document.getElementById('std-table-body');
+        tbody.innerHTML = "";
+        
+        sorted.forEach(item => {
+           var val = parseFloat(item.pct);
+           if (isNaN(val)) return; 
+
+           let statusClass = "red";
+           if(val >= 80) statusClass = "green";
+           else if(val >= 50) statusClass = "yellow";
+
+           let row = `<tr>
+             <td><span class="status-dot ${statusClass}"></span></td>
+             <td><strong>${item.code}</strong></td>
+             <td style="color:#555;">${item.description}</td>
+             <td style="font-weight:bold;">${item.pct}%</td>
+           </tr>`;
+           tbody.insertAdjacentHTML('beforeend', row);
+        });
+
+        renderChart(sorted);
+      }
+
+      function renderChart(data) {
+        const ctx = document.getElementById('masteryChart').getContext('2d');
+        let chartData = data.slice(0, 15); 
+        const labels = chartData.map(d => d.code);
+        const scores = chartData.map(d => parseFloat(d.pct));
+        const colors = scores.map(s => s >= 80 ? '#66bb6a' : (s >= 50 ? '#ffeb3b' : '#ef5350'));
+
+        if(window.myChart) window.myChart.destroy();
+
+        window.myChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Mastery %',
+              data: scores,
+              backgroundColor: colors,
+              borderRadius: 5
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, max: 100 } },
+            plugins: { legend: { display: false } }
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 20px; background-color: #f4f4f9; text-align: center; }
+      .container { background: white; max-width: 95%; margin: 0 auto; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+      
+      /* 🛠️ FIX: display: inline-block makes the clickable area shrink to the text size */
+      h1 { 
+        color: #2c3e50; 
+        margin-bottom: 10px; 
+        margin-top: 0;
+        cursor: pointer; 
+        transition: color 0.2s; 
+        user-select: none; 
+        display: inline-block; 
+      }
+      h1:hover { color: #0288d1; }
+      
+      .controls-row { display: flex; justify-content: center; gap: 10px; margin: 20px 0; flex-wrap: wrap; }
+      select { padding: 10px; font-size: 16px; border-radius: 5px; border: 1px solid #ccc; background: white; }
+      #exam-selector { width: 40%; min-width: 250px; }
+      #student-selector { width: 30%; min-width: 200px; display: none; border-color: #0288d1; color: #0288d1; font-weight: bold; }
+      
+      /* FORM & INPUT STYLES */
+      .native-form-container { text-align: left; max-width: 600px; margin: 0 auto; }
+      .form-item { margin-bottom: 20px; background: #fafafa; padding: 15px; border-radius: 8px; border: 1px solid #eee; }
+      .form-label { font-weight: bold; display: block; margin-bottom: 8px; color: #333; }
+      .form-sub { font-size: 0.85em; color: #666; font-style: italic; margin-bottom: 5px; }
+      .form-input { width: 100%; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+      .form-input:focus { border-color: #0288d1; outline: none; }
+      
+      /* TABLE INPUT STYLES */
+      .table-input { 
+          width: 80px; padding: 8px; font-size: 16px; border: 2px solid #ddd; 
+          border-radius: 6px; text-align: center; font-weight: bold; color: #444;
+      }
+      .table-input:focus { border-color: #0288d1; outline: none; }
+      
+      .btn-update-table {
+          margin-top: 20px; background-color: #2e7d32; color: white; padding: 12px 30px; 
+          border: none; border-radius: 25px; font-size: 1.1em; font-weight: bold; 
+          cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: transform 0.1s;
+      }
+      .btn-update-table:hover { background-color: #1b5e20; transform: scale(1.02); }
+
+      .btn-submit-form { 
+          width: 100%; padding: 15px; background-color: #0288d1; color: white; font-size: 1.1em; 
+          font-weight: bold; border: none; border-radius: 8px; cursor: pointer; margin-top: 10px; transition: background 0.2s; 
+      }
+      .btn-submit-form:hover { background-color: #01579b; }
+
+      /* UPLOAD & UI STYLES */
+      .upload-section { margin: 20px 0; border: 2px dashed #0288d1; background-color: #e1f5fe; padding: 30px; border-radius: 8px; }
+      .upload-title { color: #01579b; font-size: 1.4em; margin-bottom: 15px; margin-top: 0; }
+      
+      input[type="file"] { display: none; }
+      .custom-file-upload {
+          border: 1px solid #0288d1; display: inline-block; padding: 10px 20px; cursor: pointer;
+          background: white; color: #0288d1; border-radius: 5px; font-weight: bold; transition: all 0.2s;
+      }
+      .custom-file-upload:hover { background-color: #f1f8e9; }
+      
+      .btn-upload-action {
+          background-color: #0288d1; color: white; padding: 12px 25px; border: none; 
+          border-radius: 5px; cursor: pointer; font-size: 1em; font-weight: bold; margin-top: 15px;
+          display: block; margin-left: auto; margin-right: auto;
+      }
+      .btn-upload-action:disabled { background-color: #b0bec5; cursor: not-allowed; }
+
+      .upload-locked { background-color: #fff3e0; color: #e65100; padding: 20px; border-radius: 8px; border: 2px solid #ffcc80; margin: 20px 0; }
+      .celebration-box { background-color: #e8f5e9; border: 2px solid #a5d6a7; color: #2e7d32; padding: 25px; border-radius: 12px; margin: 25px 0; }
+      
+      .student-table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+      .student-table th { background-color: #0288d1; color: white; padding: 12px; }
+      .student-table td { border-bottom: 1px solid #eee; padding: 12px; vertical-align: middle; }
+      
+      /* Description Column Style */
+      .desc-col { font-size: 0.85em; color: #555; text-align: left; max-width: 300px; padding-left: 15px !important; }
+
+      .teacher-status-box { background-color: #fce4ec; border: 2px dashed #f48fb1; padding: 30px; border-radius: 12px; margin-top: 30px; }
+      
+      .dashboard-container { overflow-x: auto; margin-top: 20px; }
+      .teacher-table { border-collapse: collapse; width: 100%; min-width: 800px; font-size: 0.9em; }
+      .teacher-table th { background-color: #2c3e50; color: white; padding: 8px; position: sticky; left: 0; z-index: 10; text-align: center; border: 1px solid #455a64; }
+      .teacher-table td { border: 1px solid #ddd; padding: 6px; text-align: center; vertical-align: middle; }
+      .teacher-table tr:nth-child(even) { background-color: #f9f9f9; }
+      
+      .name-col { text-align: left !important; font-weight: bold; background-color: #fff; position: sticky; left: 0; z-index: 5; border-right: 2px solid #ddd; min-width: 200px; }
+      .pdf-clip { text-decoration: none; font-size: 1.2em; margin-left: 8px; }
+      .d-badge { display: inline-block; padding: 2px 6px; font-size: 0.75em; border-radius: 4px; margin-left: 8px; vertical-align: middle; font-weight: normal; }
+      .d-low { background-color: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+      
+      .score-stack { display: flex; flex-direction: column; justify-content: center; align-items: center; }
+      .t-score { font-weight: bold; color: #0288d1; font-size: 1.1em; }
+      .s-score { font-size: 0.8em; color: #777; margin-top: 2px; }
+      .s-score.match { color: #2e7d32; font-weight: bold; }
+      .s-score.mismatch { color: #e65100; font-weight: bold; background-color: #fff3e0; padding: 0 4px; border-radius: 3px; }
+      .btn-pdf { display: block; background-color: #546e7a; color: white; padding: 10px 15px; margin: 15px auto; width: fit-content; border-radius: 5px; text-decoration: none; font-weight: bold; }
+      
+      .btn-edit { background-color: #ff9800; color: white; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 15px; }
+      .btn-edit:hover { background-color: #e65100; }
+      
+      /* Reset Button Style */
+      .btn-reset { background-color: #d32f2f; color: white; padding: 8px 15px; border: none; border-radius: 20px; font-size: 0.9em; margin-top: 15px; cursor: pointer; opacity: 0.8; transition: opacity 0.2s; }
+      .btn-reset:hover { opacity: 1; }
+
+      /* TEACHER OVERRIDE MODAL */
+      .override-modal-bg { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.78); z-index: 2000; overflow-y: auto; }
+      .override-modal-card { background: white; max-width: 580px; width: 90%; margin: 40px auto; border-radius: 14px; padding: 30px; position: relative; box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+      .override-close-x { position: absolute; top: 12px; right: 16px; font-size: 1.5em; cursor: pointer; color: #999; background: none; border: none; line-height: 1; }
+      .override-close-x:hover { color: #333; }
+      .override-pw-input { width: 100%; padding: 13px; font-size: 1em; border: 2px solid #ccc; border-radius: 6px; box-sizing: border-box; margin: 10px 0; letter-spacing: 2px; }
+      .override-pw-input:focus { border-color: #0288d1; outline: none; }
+      .override-score-input { width: 72px; padding: 7px; font-size: 1em; border: 2px solid #ddd; border-radius: 5px; text-align: center; font-weight: bold; }
+      .override-score-input:focus { border-color: #f57c00; outline: none; }
+      .btn-override-unlock { background: #0288d1; color: white; border: none; padding: 13px; border-radius: 8px; font-size: 1em; font-weight: bold; cursor: pointer; width: 100%; margin-top: 5px; }
+      .btn-override-unlock:hover { background: #0277bd; }
+      .btn-override-unlock:disabled { background: #b0bec5; cursor: not-allowed; }
+      .btn-override-done { background: #2e7d32; color: white; border: none; padding: 15px; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; width: 100%; margin-top: 20px; letter-spacing: 0.5px; }
+      .btn-override-done:hover { background: #1b5e20; }
+      .btn-override-done:disabled { background: #b0bec5; cursor: not-allowed; }
+      .override-timer-bar { background: #fff3e0; border: 1px solid #ffcc80; border-radius: 6px; padding: 9px 14px; margin: 12px 0; font-size: 0.9em; color: #e65100; display: flex; align-items: center; gap: 8px; }
+      .override-timer-bar.urgent { background: #ffebee; border-color: #ef9a9a; color: #c62828; animation: pulse 1s infinite; }
+      @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.6; } }
+      .override-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.95em; }
+      .override-table th { background: #2c3e50; color: white; padding: 9px 12px; text-align: left; }
+      .override-table td { border-bottom: 1px solid #eee; padding: 8px 12px; vertical-align: middle; }
+      .btn-override-trigger { display: block; width: fit-content; margin: 22px auto 0 auto; background: none; border: 1px dashed #90a4ae; color: #90a4ae; padding: 7px 18px; border-radius: 20px; font-size: 0.85em; cursor: pointer; transition: all 0.2s; }
+      .btn-override-trigger:hover { background: #eceff1; color: #546e7a; border-color: #546e7a; border-style: solid; }
+
+      /* HOW IT WORKS GUIDE */
+      .guide-toggle { 
+        display: inline-block; cursor: pointer; color: #546e7a; font-size: 0.9em; 
+        border: 1px solid #cfd8dc; padding: 6px 14px; border-radius: 20px; 
+        background: #eceff1; transition: all 0.2s; margin-bottom: 10px; user-select: none;
+      }
+      .guide-toggle:hover { background: #cfd8dc; }
+      .guide-panel {
+        display: none; text-align: left; max-width: 650px; margin: 0 auto 20px auto;
+        background: linear-gradient(135deg, #e3f2fd, #f3e5f5); padding: 25px 30px;
+        border-radius: 12px; border: 1px solid #bbdefb; font-size: 0.95em; line-height: 1.6;
+      }
+      .guide-panel.open { display: block; animation: fadeIn 0.3s ease; }
+      @keyframes fadeIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+      .guide-panel h3 { margin-top: 0; color: #1a237e; }
+      .guide-step { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+      .guide-num { 
+        flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; 
+        background: #0288d1; color: white; font-weight: bold; font-size: 0.85em;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .guide-text { color: #333; }
+      .guide-text strong { color: #0d47a1; }
+
+      /* STEP PROGRESS TRACKER */
+      .step-tracker { 
+        display: flex; justify-content: center; align-items: center; gap: 0; 
+        margin: 15px auto 5px auto; max-width: 500px;
+      }
+      .step-item { 
+        display: flex; flex-direction: column; align-items: center; flex: 1; position: relative;
+      }
+      .step-circle {
+        width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+        font-weight: bold; font-size: 0.85em; border: 2px solid #ccc; background: #fff; color: #999;
+        transition: all 0.3s; z-index: 2;
+      }
+      .step-circle.active { border-color: #0288d1; background: #0288d1; color: white; box-shadow: 0 2px 8px rgba(2,136,209,0.4); }
+      .step-circle.done { border-color: #4caf50; background: #4caf50; color: white; }
+      .step-label { font-size: 0.7em; color: #999; margin-top: 4px; text-align: center; transition: color 0.3s; }
+      .step-label.active { color: #0288d1; font-weight: bold; }
+      .step-label.done { color: #4caf50; font-weight: bold; }
+      .step-line { 
+        flex: 1; height: 3px; background: #ddd; margin-top: -22px; z-index: 1;
+        transition: background 0.3s;
+      }
+      .step-line.done { background: #4caf50; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1 onclick="goHome()" title="Click to Reset">♾️ CleverReflection ♾️</h1>
+      
+      <div style="margin-bottom: 25px;">
+        <a href="<?!= ScriptApp.getService().getUrl() ?>?page=stats" 
+           style="text-decoration: none; color: #546e7a; font-weight: bold; border: 1px solid #cfd8dc; padding: 8px 15px; border-radius: 20px; background: #eceff1; transition: all 0.2s;"
+           onmouseover="this.style.background='#cfd8dc'" 
+           onmouseout="this.style.background='#eceff1'">
+           📊 View Syllabus Mastery Report
+        </a>
+      </div>
+
+      <!-- HOW IT WORKS GUIDE -->
+      <span class="guide-toggle" onclick="toggleGuide()">❓ How does this work?</span>
+      <div id="guide-panel" class="guide-panel open">
+        <h3>📋 The Reflection Process</h3>
+        <p style="color:#555; margin-top:0;">This tool guides you through a structured self-reflection process in 3 steps. Read all of the following carefully before you begin.</p>
+
+        <div class="guide-step">
+          <span class="guide-num">1</span>
+          <span class="guide-text"><strong>Self-Grade</strong> — Select an exam from the dropdown below and enter the marks you believe you earned for each question. You must be honest and accurate — refer to the mark scheme if you have it. Do not guess, and do not enter marks that are higher than what you genuinely believe you earned.</span>
+        </div>
+
+        <div class="guide-step">
+          <span class="guide-num">2</span>
+          <span class="guide-text"><strong>Compare &amp; Resolve</strong> — Once Clev has entered his marks, return to this page to see a side-by-side comparison. Your <strong>Judgement Disagreement %</strong> measures the gap between what you said you earned and what Clev awarded. You must bring this disagreement to <strong>exactly 0%</strong> before you are permitted to upload corrected work.
+
+            <div style="margin-top:14px; background:#fff8e1; border-left:4px solid #f9a825; padding:14px 16px; border-radius:0 8px 8px 0; font-size:0.92em; line-height:1.7;">
+              <strong style="color:#e65100; font-size:1em;">🤝 The Two Permitted Paths to Consensus</strong><br><br>
+
+              There are <strong>exactly two</strong> legitimate reasons why a disagreement may exist, and <strong>exactly two</strong> corresponding actions you are permitted to take. No other actions are acceptable.
+
+              <br><br>
+              <strong>PATH A — You Over-Awarded Yourself</strong><br>
+              If, upon consulting the official mark scheme, you conclude that the mark you entered for a question was <em>higher</em> than what the mark scheme supports, you are required to lower your "You Said" score for that question to accurately reflect what the mark scheme awards. This is the most common scenario. You do this yourself by editing the "You Said" column and clicking <strong>Update &amp; Recalculate</strong>.
+
+              <br><br>
+              <strong>PATH B — Clev Under-Awarded You</strong><br>
+              If, upon consulting the official mark scheme, you have a genuine and evidenced belief that Clev's mark for a specific question is <em>lower</em> than what the mark scheme warrants — that is, that your written answer on your exam paper satisfies a marking point that Clev did not credit — you may challenge that mark. However, the following conditions are <strong>non-negotiable and strictly enforced</strong>:
+
+              <ol style="margin:10px 0 0 0; padding-left:20px; line-height:1.9;">
+                <li>You must locate the <strong>specific mark point</strong> in the official mark scheme that you believe your answer satisfies.</li>
+                <li>You must bring <strong>your physical exam paper</strong> to Clev in person so he can read your original handwritten answer.</li>
+                <li>You must bring the <strong>official mark scheme</strong> and point to the exact criterion you are citing.</li>
+              </ol>
+
+            </div>
+          </span>
+        </div>
+
+        <div class="guide-step">
+          <span class="guide-num">3</span>
+          <span class="guide-text"><strong>Upload Corrected Work</strong> — Once disagreement reaches 0%, the upload form will unlock. You must upload a <strong>single PDF</strong> containing all of your corrected exam work. This is your evidence that you have reviewed your errors, understood the correct answers, and completed the learning cycle.</span>
+        </div>
+
+        <p style="color:#888; font-size:0.85em; margin-bottom:0;">💡 <em>Tip: Click the title "CleverReflection" to reset your view. Use the 📊 button above to see your cumulative performance by syllabus topic.</em></p>
+      </div>
+
+      <!-- STEP PROGRESS TRACKER (hidden until an exam is loaded) -->
+      <div id="step-tracker" class="step-tracker" style="display:none;">
+        <div class="step-item">
+          <div id="step-1" class="step-circle">1</div>
+          <div id="step-1-label" class="step-label">Self-Grade</div>
+        </div>
+        <div class="step-line" id="step-line-1"></div>
+        <div class="step-item">
+          <div id="step-2" class="step-circle">2</div>
+          <div id="step-2-label" class="step-label">Compare</div>
+        </div>
+        <div class="step-line" id="step-line-2"></div>
+        <div class="step-item">
+          <div id="step-3" class="step-circle">3</div>
+          <div id="step-3-label" class="step-label">Upload</div>
+        </div>
+        <div class="step-line" id="step-line-3"></div>
+        <div class="step-item">
+          <div id="step-4" class="step-circle">✓</div>
+          <div id="step-4-label" class="step-label">Done</div>
+        </div>
+      </div>
+
+      <div class="controls-row">
+        <select id="exam-selector" onchange="loadExam()">
+          <option value="" disabled selected>-- Loading... --</option>
+        </select>
+        <select id="student-selector" onchange="loadExam()" style="display:none;">
+          <option value="" selected>👥 Whole Class View</option>
+        </select>
+      </div>
+
+      <div id="loading" style="display:none; margin-top:20px; color:#0288d1; font-weight:bold;">Loading Data...</div>
+
+      <div id="teacher-area" style="display:none;">
+        <h3>👑 Class Dashboard: <span id="teacher-exam-title"></span></h3>
+        <div class="dashboard-container">
+          <table id="teacher-table" class="teacher-table"></table>
+        </div>
+      </div>
+
+      <div id="teacher-status-box" class="teacher-status-box" style="display:none;">
+        <h2 style="color:#c2185b;">🚫 No Submission Yet</h2>
+        <p style="font-size:1.1em;">The student <strong><span id="ts-name"></span></strong> has not submitted their self-reflection yet.</p>
+      </div>
+
+      <div id="results-area" style="display:none;">
+        <div id="impersonation-msg" style="background-color: #0288d1; color: white; padding: 10px; margin-bottom: 20px; border-radius: 5px; display: none; font-weight: bold;"></div>
+        <h3 id="exam-display-title"></h3>
+        
+        <div id="locked-msg" class="upload-locked" style="display:none;">
+           🔒 <strong>Upload Locked — Judgement Disagreement Must Reach 0%</strong>
+           <div style="margin-top:10px; font-size:0.92em; line-height:1.7;">
+             Your self-awarded marks and Clev's marks do not yet match. The upload form will remain locked until your Judgement Disagreement is exactly <strong>0.0%</strong>.
+             <br><br>
+             You have two — and only two — permitted paths to consensus 🤝:
+             <ol style="margin:8px 0 0 0; padding-left:18px;">
+               <li><strong>Lower your "You Said" mark</strong> for any question where you now accept, after checking the mark scheme, that you over-awarded yourself. Edit the value in the table below and click <strong>Update &amp; Recalculate</strong>.</li>
+               <li><strong>Request a Teacher Override</strong> for any question where you have clear mark-scheme evidence that Clev under-awarded you. You must bring your physical exam paper and the mark scheme to Clev in person. If Clev agrees, he will adjust his score using the override tool on this page. <em>Do not raise your own "You Said" mark without Clev's approval first.</em></li>
+             </ol>
+           </div>
+        </div>
+
+        <div id="corrections-area" class="upload-section" style="display:none;">
+          <h4 class="upload-title">📤 Step 2: Upload Corrected Work</h4>
+          <p style="color:#555;">Please upload a single PDF of all your corrected work.</p>
+          
+          <form id="uploadForm">
+             <label for="file-input" class="custom-file-upload">📂 Choose PDF File</label>
+             <input type="file" id="file-input" accept="application/pdf" onchange="updateFileName()">
+             <div id="file-name-display" style="margin: 15px 0; color: #333; font-style:italic;">No file selected</div>
+             
+             <div id="progressContainer" style="display: none; width: 100%; background-color: #e0e0e0; border-radius: 25px; margin-top: 10px; margin-bottom:10px;">
+               <div id="progressBar" style="width: 0%; height: 25px; background-color: #2196F3; border-radius: 25px; transition: width 0.4s ease;"></div>
+             </div>
+             <div id="progressText" style="display: none; text-align: center; margin-top: 5px; font-size: 0.9em; color: #555;">0%</div>
+             
+             <button type="button" id="btn-submit-upload" class="btn-upload-action" onclick="submitFile()" disabled>🚀 Upload Assignment</button>
+          </form>
+          <div id="statusMsg" style="margin-top: 15px; font-weight: bold;"></div>
+        </div>
+
+        <div id="upload-done-msg" class="celebration-box" style="display:none;">
+          <h2 style="margin-top:0;">🎉 Excellent Work!</h2>
+          <p style="font-size:1.1em; color:#555;">You have completed the correction process.</p>
+          <div id="celebration-pdf-container" style="margin-top:15px;"></div>
+          
+          <button class="btn-reset" onclick="resetUpload()">🗑️ Remove & Re-upload</button>
+        </div>
+        
+        <div id="student-summary" style="background-color: #f1f8e9; padding: 15px; border-radius: 8px; margin: 15px 0; border: 1px solid #c5e1a5; display: inline-block; display:none;">
+          <strong>Judgement Disagreement:</strong> <span id="student-diff-val"></span>%
+        </div>
+
+        <table id="score-table" class="student-table"></table>
+        <button id="btn-table-update" class="btn-update-table" style="display:none;" onclick="submitTableEdits()">
+           🔄 Update & Recalculate
+        </button>
+        <button class="btn-override-trigger" id="btn-override-trigger" onclick="openOverrideModal()" style="display:none;">
+          🔑 Teacher: Adjust My Scores
+        </button>
+      </div>
+
+      <div id="gatekeeper-area" style="display:none; margin-top:30px;">
+        <div class="gatekeeper-header" style="background-color: #e3f2fd; padding: 25px; border-radius: 12px 12px 0 0; border: 1px solid #bbdefb;">
+          <span style="font-size: 60px; display: block;">📝</span>
+          <h3 style="margin-top:0; color:#0d47a1;">Step 1: Self-Reflection</h3>
+          <p>Please enter your marks for <span id="lock-exam-name" style="font-weight:bold;"></span>.</p>
+        </div>
+        
+        <div id="native-form-container" class="native-form-container" style="border: 1px solid #ddd; border-top: none; padding: 30px; border-radius: 0 0 12px 12px; background: white;">
+        </div>
+      </div>
+
+      <div id="pending-area" style="display:none; margin-top:30px; background-color: #fff3cd; padding: 30px; border-radius: 12px; border: 1px solid #ffeeba;">
+          <span style="font-size: 60px; display: block;">⌚</span>
+          <h3 style="margin-top:0;">Step 2: Patiently Wait for Clev's Marks</h3>
+          <p style="font-size:1.1em; color:#555;">Your reflection has been received.</p>
+          <button onclick="startEditing()" class="btn-edit">✏️ Edit My Marks</button>
+      </div>
+
+      <div id="error-box" style="display:none; margin-top:20px; background:#fff3e0; color:#e65100; padding:20px; border-radius:8px; border:1px solid #ffcc80;"></div>
+    </div>
+
+    <!-- TEACHER OVERRIDE MODAL -->
+    <div id="override-modal" class="override-modal-bg">
+      <div class="override-modal-card">
+        <button class="override-close-x" onclick="closeOverrideModal()" title="Cancel">✕</button>
+
+        <!-- Screen 1: Password -->
+        <div id="override-auth-screen">
+          <h2 style="margin-top:0; color:#1a237e;">🔑 Teacher Score Override</h2>
+          <p style="color:#555; margin-bottom:5px;">Enter the teacher password to adjust scores for this exam. This session will expire automatically in <strong>5 minutes</strong>.</p>
+          <input type="password" id="override-password-input" class="override-pw-input"
+                 placeholder="Enter teacher password..."
+                 onkeydown="if(event.key==='Enter') submitOverridePassword()">
+          <button class="btn-override-unlock" onclick="submitOverridePassword()">🔓 Unlock</button>
+          <div id="override-auth-error" style="color:#c62828; margin-top:10px; display:none; font-weight:bold; padding:8px; background:#ffebee; border-radius:5px;"></div>
+          <div style="margin-top:18px; padding:12px 15px; background:#f5f5f5; border-radius:8px; font-size:0.8em; color:#666; text-align:left; line-height:1.6;">
+            🔒 <strong>Security:</strong> Your password is validated on Google's servers and is <em>never stored in this browser</em>. Failed attempts are logged. The safest option is to make adjustments from your own device (teacher view, student dropdown) — this override exists for when you are already sitting with the student.
+          </div>
+        </div>
+
+        <!-- Screen 2: Score editing -->
+        <div id="override-edit-screen" style="display:none;">
+          <h2 style="margin-top:0; color:#1a237e;">✏️ Adjust Teacher Scores</h2>
+          <p id="override-context" style="color:#555; margin:0 0 5px 0; font-size:0.9em;"></p>
+          <div id="override-timer-bar" class="override-timer-bar">
+            ⏱ Session expires in: <strong id="override-timer-val">5:00</strong> — click DONE when finished.
+          </div>
+          <div style="overflow-y:auto; max-height:42vh;">
+            <table class="override-table">
+              <thead><tr><th>Question</th><th>Max</th><th>Clev's Score</th></tr></thead>
+              <tbody id="override-score-body"></tbody>
+            </table>
+          </div>
+          <button class="btn-override-done" onclick="submitOverrideDone()">✅ DONE — Save &amp; Log Out</button>
+          <p style="font-size:0.78em; color:#999; text-align:center; margin:8px 0 0 0;">Clicking DONE immediately ends this teacher session and returns to the student's view.</p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var currentExamId = "";
+      var lastResponseData = null; 
+      var uploadTimer; 
+
+      function goHome() {
+        localStorage.removeItem('savedExamId');
+        localStorage.removeItem('savedStudentEmail');
+        window.location.reload();
+      }
+
+      function toggleGuide() {
+        var panel = document.getElementById('guide-panel');
+        panel.classList.toggle('open');
+      }
+
+      function updateStepTracker(step) {
+        // step: 0=hidden, 1=self-grade, 2=pending/compare, 3=upload, 4=done
+        // For teacher views, hide the tracker
+        var tracker = document.getElementById('step-tracker');
+        if (step <= 0) { tracker.style.display = 'none'; return; }
+        tracker.style.display = 'flex';
+
+        for (var i = 1; i <= 4; i++) {
+          var circle = document.getElementById('step-' + i);
+          var label = document.getElementById('step-' + i + '-label');
+          circle.className = 'step-circle';
+          label.className = 'step-label';
+          if (i < step) { circle.classList.add('done'); label.classList.add('done'); }
+          else if (i === step) { circle.classList.add('active'); label.classList.add('active'); }
+        }
+        for (var j = 1; j <= 3; j++) {
+          var line = document.getElementById('step-line-' + j);
+          line.className = (j < step) ? 'step-line done' : 'step-line';
+        }
+      }
+
+      function updateFileName() {
+        var input = document.getElementById('file-input');
+        var display = document.getElementById('file-name-display');
+        var btn = document.getElementById('btn-submit-upload');
+        if (input.files && input.files.length > 0) {
+           var f = input.files[0];
+           display.innerText = "📄 " + f.name + " (" + (f.size/1024/1024).toFixed(2) + " MB)";
+           btn.disabled = false;
+        } else {
+           display.innerText = "No file selected";
+           btn.disabled = true;
+        }
+      }
+
+      function submitFile() {
+        var input = document.getElementById('file-input');
+        var file = input.files[0];
+        if (!file) { alert("Please select a file first."); return; }
+
+        const statusDiv = document.getElementById('statusMsg');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const btn = document.getElementById('btn-submit-upload');
+
+        statusDiv.innerHTML = "⏳ Uploading... Please do not close this window.";
+        statusDiv.style.color = "blue";
+        btn.disabled = true;
+        
+        progressContainer.style.display = "block";
+        progressText.style.display = "block";
+        progressBar.style.width = "0%";
+        progressBar.style.backgroundColor = "#2196F3"; 
+        progressText.innerText = "0%";
+
+        let percent = 0;
+        if (uploadTimer) clearInterval(uploadTimer);
+
+        uploadTimer = setInterval(function() {
+            if (percent < 30) percent += 5; 
+            else if (percent < 70) percent += 2; 
+            else if (percent < 95) percent += 0.5; 
+            else percent = 99; 
+            progressBar.style.width = percent + "%";
+            progressText.innerText = Math.round(percent) + "%";
+        }, 400);
+
+        var currentStudentEmail = document.getElementById('student-selector').value;
+        if (currentStudentEmail === "" || currentStudentEmail === "👥 Whole Class View") currentStudentEmail = ""; 
+
+        var reader = new FileReader();
+        reader.onload = function(e) {
+           var data = e.target.result.split(',')[1];
+           var payload = {
+              fileData: data,
+              mimeType: file.type,
+              fileName: file.name,
+              examName: currentExamId,
+              studentEmail: currentStudentEmail
+           };
+
+           google.script.run.withSuccessHandler(function(res) {
+              clearInterval(uploadTimer);
+              progressBar.style.width = "100%";
+              progressText.innerText = "100%";
+
+              if (res.success) {
+                 statusDiv.innerHTML = "✅ Success! File uploaded.";
+                 statusDiv.style.color = "green";
+                 setTimeout(() => { 
+                     progressContainer.style.display = "none"; 
+                     progressText.style.display = "none"; 
+                     loadExam(); 
+                 }, 1500);
+              } else {
+                 statusDiv.innerHTML = "❌ Error: " + res.error;
+                 statusDiv.style.color = "red";
+                 progressBar.style.backgroundColor = "red"; 
+                 btn.disabled = false;
+              }
+           }).withFailureHandler(function(error) {
+                 clearInterval(uploadTimer);
+                 progressBar.style.width = "100%";
+                 progressBar.style.backgroundColor = "red";
+                 statusDiv.innerHTML = "❌ Critical Error: " + error.message;
+                 statusDiv.style.color = "red";
+                 btn.disabled = false;
+           }).processDirectUpload(payload);
+        };
+        reader.readAsDataURL(file);
+      }
+      
+      function resetUpload() {
+          if(!confirm("Are you sure you want to remove this upload and submit a new file? The old file will be kept in Drive, but the link here will be replaced.")) return;
+          document.getElementById('loading').style.display = 'block';
+          
+          var currentStudentEmail = document.getElementById('student-selector').value;
+          if (currentStudentEmail === "" || currentStudentEmail === "👥 Whole Class View") currentStudentEmail = ""; 
+          
+          var payload = { examName: currentExamId, studentEmail: currentStudentEmail };
+          
+          google.script.run.withSuccessHandler(function(res) {
+              if (res.success) loadExam(); 
+              else {
+                  alert("Error resetting: " + res.error);
+                  document.getElementById('loading').style.display = 'none';
+              }
+          }).clearPdfLink(payload);
+      }
+
+      function submitNativeForm() {
+        var formContainer = document.getElementById('native-form-container');
+        var inputs = formContainer.querySelectorAll('.form-input');
+        var answers = [];
+        inputs.forEach(input => {
+           var val = input.value;
+           answers.push(val === "" ? "-" : val);
+           input.style.borderColor = "#ccc";
+        });
+
+        var btn = document.getElementById('btn-native-submit');
+        btn.disabled = true;
+        btn.innerText = "Saving...";
+        sendMarks(answers, btn, "🚀 Submit Marks");
+      }
+
+      function submitTableEdits() {
+        var table = document.getElementById('score-table');
+        var inputs = table.querySelectorAll('.table-input');
+        var answers = [];
+        
+        var arrayLength = (lastResponseData && lastResponseData.results) ? lastResponseData.results.length : inputs.length;
+        for (var i = 0; i < arrayLength; i++) {
+            answers.push("-");
+        }
+
+        inputs.forEach(input => {
+            var idx = parseInt(input.getAttribute('data-index'));
+            var val = input.value;
+            if (idx >= 0 && idx < answers.length) {
+                answers[idx] = (val === "" ? "-" : val);
+            }
+        });
+
+        var btn = document.getElementById('btn-table-update');
+        btn.disabled = true;
+        btn.innerText = "Saving...";
+        sendMarks(answers, btn, "🔄 Update & Recalculate");
+      }
+
+      function sendMarks(answers, btn, resetText) {
+        var currentStudentEmail = document.getElementById('student-selector').value;
+        if (currentStudentEmail === "" || currentStudentEmail === "👥 Whole Class View") currentStudentEmail = ""; 
+
+        var payload = {
+           examName: currentExamId,
+           answers: answers,
+           email: currentStudentEmail
+        };
+
+        google.script.run.withSuccessHandler(function(res) {
+           if (res.success) {
+              loadExam(); 
+           } else {
+              alert("Error Saving: " + res.error);
+              btn.disabled = false;
+              btn.innerText = resetText;
+           }
+        }).submitWebExam(payload);
+      }
+      
+      function startEditing() {
+          if (lastResponseData && lastResponseData.structure) {
+              document.getElementById('pending-area').style.display = 'none';
+              renderNativeForm(lastResponseData, lastResponseData.savedAnswers);
+          }
+      }
+
+      google.script.run.withSuccessHandler(populateExamList).getExamList();
+
+      function populateExamList(exams) {
+        var selector = document.getElementById('exam-selector');
+        selector.innerHTML = ""; 
+        var defaultOption = document.createElement("option");
+        defaultOption.text = "-- Select an Exam --";
+        defaultOption.value = "";
+        defaultOption.disabled = true;
+        defaultOption.selected = true;
+        selector.add(defaultOption);
+
+        exams.forEach(function(exam) {
+          var option = document.createElement("option");
+          option.value = exam.sheetId; 
+          option.text = exam.displayName;
+          selector.add(option);
+        });
+
+        var savedExam = localStorage.getItem('savedExamId');
+        if (savedExam) { 
+           var exists = [...selector.options].some(o => o.value === savedExam);
+           if(exists) { selector.value = savedExam; loadExam(); }
+        }
+      }
+
+      function loadExam() {
+        var examId = document.getElementById('exam-selector').value;
+        var studentEmail = document.getElementById('student-selector').value;
+        currentExamId = examId; 
+        
+        if (examId) localStorage.setItem('savedExamId', examId);
+        localStorage.setItem('savedStudentEmail', studentEmail); 
+        
+        if(!examId) return;
+        
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('teacher-area').style.display = 'none';
+        document.getElementById('results-area').style.display = 'none';
+        document.getElementById('gatekeeper-area').style.display = 'none';
+        document.getElementById('pending-area').style.display = 'none';
+        document.getElementById('teacher-status-box').style.display = 'none';
+        document.getElementById('error-box').style.display = 'none';
+        
+        google.script.run.withSuccessHandler(routeResponse).getStudentData(examId, studentEmail);
+      }
+
+      function routeResponse(response) {
+        document.getElementById('loading').style.display = 'none';
+        lastResponseData = response; 
+
+        if (response.isTeacher) {
+           document.getElementById('student-selector').style.display = 'block';
+        }
+
+        if (response.status === "teacher_view") {
+          updateStepTracker(0);
+          renderTeacherDashboard(response);
+        } else if (response.status === "no_submission_teacher_view") {
+           updateStepTracker(0);
+           document.getElementById('teacher-status-box').style.display = 'block';
+           var sel = document.getElementById('student-selector');
+           if (sel.selectedIndex > -1) {
+              document.getElementById('ts-name').innerText = sel.options[sel.selectedIndex].text;
+           } else {
+              document.getElementById('ts-name').innerText = response.studentName;
+           }
+        } else if (response.status === "gatekeeper_locked") {
+          updateStepTracker(1);
+          renderNativeForm(response);
+        } else if (response.status === "pending") {
+          updateStepTracker(2);
+          document.getElementById('pending-area').style.display = 'block';
+        } else if (response.status === "found") {
+          renderStudentResults(response);
+        } else {
+          updateStepTracker(0);
+          document.getElementById('error-box').style.display = 'block';
+          var rawMsg = response.message || "Unknown Error";
+          var friendlyMsg = rawMsg;
+          if (rawMsg.indexOf("Server Error") !== -1) friendlyMsg = "Something went wrong on the server. Please try again or contact your teacher.";
+          else if (rawMsg.indexOf("not found") !== -1) friendlyMsg = "This exam could not be found. It may have been renamed or removed.";
+          document.getElementById('error-box').innerHTML = "⚠️ " + friendlyMsg + "<br><span style='font-size:0.8em; color:#999;'>(" + rawMsg + ")</span>";
+        }
+      }
+
+      function renderNativeForm(data, prefillValues) {
+         document.getElementById('gatekeeper-area').style.display = 'block';
+         document.getElementById('lock-exam-name').innerText = data.examName;
+         
+         var container = document.getElementById('native-form-container');
+         container.innerHTML = ""; 
+
+         if (!data.structure || data.structure.length === 0) {
+            container.innerHTML = "<p>Error: Exam structure not found.</p>";
+            return;
+         }
+
+         data.structure.forEach((item, index) => {
+            var div = document.createElement("div");
+            div.className = "form-item";
+            
+            var label = document.createElement("label");
+            label.className = "form-label";
+            label.innerText = item.label; 
+            
+            var sub = document.createElement("div");
+            sub.className = "form-sub";
+            sub.innerText = "Max Points: " + item.max;
+            
+            var input = document.createElement("input");
+            input.type = "number";
+            input.className = "form-input";
+            input.min = "0";
+            input.max = item.max;
+            input.placeholder = "Leave blank if not attempted"; 
+            
+            if (prefillValues && prefillValues[index] !== undefined) {
+                if (prefillValues[index] !== "-") input.value = prefillValues[index];
+            }
+            
+            div.appendChild(label);
+            div.appendChild(sub);
+            div.appendChild(input);
+            container.appendChild(div);
+         });
+
+         var btn = document.createElement("button");
+         btn.id = "btn-native-submit";
+         btn.className = "btn-submit-form";
+         btn.innerText = prefillValues ? "💾 Update Marks" : "🚀 Submit Marks";
+         btn.onclick = submitNativeForm;
+         container.appendChild(btn);
+      }
+      
+      function renderTeacherDashboard(data) {
+        document.getElementById('teacher-area').style.display = 'block';
+        document.getElementById('teacher-exam-title').innerText = data.examName;
+        
+        var sSelect = document.getElementById('student-selector');
+        sSelect.innerHTML = "";
+        var defOpt = document.createElement("option");
+        defOpt.text = "👥 Whole Class View";
+        defOpt.value = "";
+        sSelect.add(defOpt);
+        
+        data.students.forEach(s => {
+            var opt = document.createElement("option");
+            opt.value = s.email;
+            opt.text = s.name;
+            sSelect.add(opt);
+        });
+        sSelect.style.display = 'block';
+
+        var savedStudent = localStorage.getItem('savedStudentEmail');
+        if (savedStudent && sSelect.value !== savedStudent) {
+            var exists = [...sSelect.options].some(o => o.value === savedStudent);
+            if (exists) { sSelect.value = savedStudent; loadExam(); return; }
+        }
+
+        var table = document.getElementById('teacher-table');
+        table.innerHTML = "";
+        var thead = table.insertRow();
+        var thName = document.createElement("th");
+        thName.innerText = "Student";
+        thName.className = "name-col";
+        thead.appendChild(thName);
+        data.headers.forEach(h => {
+          var th = document.createElement("th");
+          th.innerHTML = h.label + "<br><span style='font-size:0.7em; opacity:0.8'>/" + h.max + "</span>";
+          thead.appendChild(th);
+        });
+        
+        data.students.forEach(rosterStudent => {
+          var row = table.insertRow();
+          var studentEmail = rosterStudent.email.toLowerCase().trim();
+          var studentScores = [];
+          var pdfUrl = "";
+          var disagreement = "-";
+          
+          if (data.gradesMap && data.gradesMap[studentEmail]) {
+             var record = data.gradesMap[studentEmail];
+             studentScores = record.scores;
+             pdfUrl = record.pdfUrl;
+             disagreement = record.disagreement;
+          } else {
+             data.headers.forEach(h => { studentScores.push({t: "-", s: "-"}); });
+          }
+
+          var cellName = row.insertCell();
+          cellName.className = "name-col";
+          var nameHtml = `<div>${rosterStudent.name}`;
+          if (pdfUrl) nameHtml += `<a href="${pdfUrl}" target="_blank" class="pdf-clip" title="View Corrected Work">📎</a>`;
+          nameHtml += `</div>`;
+          if (disagreement !== "-" && disagreement !== undefined) {
+             var dVal = parseFloat(disagreement);
+             var dClass = "d-low"; 
+             if (dVal > 10) dClass = "d-med";
+             if (dVal > 20) dClass = "d-high";
+             nameHtml += `<span class="d-badge ${dClass}">Δ ${disagreement}%</span>`;
+          }
+          cellName.innerHTML = nameHtml;
+          
+          studentScores.forEach(score => {
+            var cell = row.insertCell();
+            var tVal = score.t === "" ? "-" : score.t;
+            var sVal = score.s === "" ? "-" : score.s;
+            var sClass = "s-score";
+            if (sVal !== "-" && tVal !== "-" && String(sVal) !== String(tVal)) sClass += " mismatch";
+            else if (sVal !== "-" && String(sVal) === String(tVal)) sClass += " match";
+            cell.innerHTML = `<div class="score-stack"><span class="t-score">${tVal}</span><span class="${sClass}">${sVal}</span></div>`;
+          });
+        });
+      }
+
+      // ============================================================
+      // TEACHER OVERRIDE LOGIC
+      // ============================================================
+      var overrideToken = null;
+      var overrideTimerInterval = null;
+      var overrideSecondsLeft = 300;
+
+      function openOverrideModal() {
+        overrideToken = null;
+        document.getElementById('override-modal').style.display = 'block';
+        document.getElementById('override-auth-screen').style.display = 'block';
+        document.getElementById('override-edit-screen').style.display = 'none';
+        document.getElementById('override-auth-error').style.display = 'none';
+        document.getElementById('override-password-input').value = '';
+        setTimeout(function() { document.getElementById('override-password-input').focus(); }, 150);
+      }
+
+      function closeOverrideModal() {
+        document.getElementById('override-modal').style.display = 'none';
+        document.getElementById('override-password-input').value = '';
+        clearInterval(overrideTimerInterval);
+        if (overrideToken) {
+          var t = overrideToken;
+          overrideToken = null;
+          google.script.run.revokeOverrideToken(t);
+        }
+      }
+
+      function submitOverridePassword() {
+        var pw = document.getElementById('override-password-input').value;
+        if (!pw) {
+          document.getElementById('override-auth-error').style.display = 'block';
+          document.getElementById('override-auth-error').innerText = 'Please enter the password.';
+          return;
+        }
+        var btn = document.querySelector('.btn-override-unlock');
+        btn.disabled = true;
+        btn.innerText = 'Verifying...';
+        document.getElementById('override-auth-error').style.display = 'none';
+        // Copy then immediately wipe the field so it is not visible longer than needed
+        var pwCopy = pw;
+        document.getElementById('override-password-input').value = '';
+        google.script.run
+          .withSuccessHandler(function(res) {
+            btn.disabled = false;
+            btn.innerText = '🔓 Unlock';
+            if (res.success) {
+              overrideToken = res.token;
+              showOverrideEditScreen();
+            } else {
+              document.getElementById('override-auth-error').style.display = 'block';
+              document.getElementById('override-auth-error').innerText = '❌ ' + res.error;
+            }
+          })
+          .withFailureHandler(function(err) {
+            btn.disabled = false;
+            btn.innerText = '🔓 Unlock';
+            document.getElementById('override-auth-error').style.display = 'block';
+            document.getElementById('override-auth-error').innerText = '❌ Server error: ' + err.message;
+          })
+          .verifyOverridePassword(pwCopy);
+      }
+
+      function showOverrideEditScreen() {
+        document.getElementById('override-auth-screen').style.display = 'none';
+        document.getElementById('override-edit-screen').style.display = 'block';
+        if (lastResponseData) {
+          var examLabel = lastResponseData.examName || currentExamId;
+          var studentLabel = lastResponseData.studentEmail || document.getElementById('student-selector').value || 'this student';
+          document.getElementById('override-context').innerText = 'Exam: ' + examLabel + '  |  Student: ' + studentLabel;
+          var tbody = document.getElementById('override-score-body');
+          tbody.innerHTML = '';
+          (lastResponseData.results || []).forEach(function(item, i) {
+            var tVal = (item.teacherScore === '-' || item.teacherScore === null || item.teacherScore === undefined) ? '' : item.teacherScore;
+            var row = tbody.insertRow();
+            row.innerHTML = '<td style="font-weight:bold;">' + item.question + '</td>' +
+                            '<td style="color:#999;">/' + item.max + '</td>' +
+                            '<td><input type="number" class="override-score-input" id="override-input-' + i + '" ' +
+                            'value="' + tVal + '" min="0" max="' + item.max + '"></td>';
+          });
+        }
+        // 5-minute countdown
+        overrideSecondsLeft = 300;
+        clearInterval(overrideTimerInterval);
+        var timerBar = document.getElementById('override-timer-bar');
+        overrideTimerInterval = setInterval(function() {
+          overrideSecondsLeft--;
+          var m = Math.floor(overrideSecondsLeft / 60);
+          var s = overrideSecondsLeft % 60;
+          document.getElementById('override-timer-val').innerText = m + ':' + (s < 10 ? '0' : '') + s;
+          timerBar.className = (overrideSecondsLeft <= 60) ? 'override-timer-bar urgent' : 'override-timer-bar';
+          if (overrideSecondsLeft <= 0) {
+            clearInterval(overrideTimerInterval);
+            overrideToken = null;
+            document.getElementById('override-modal').style.display = 'none';
+            alert('Teacher session expired. Please re-open the override if you still need to make changes.');
+            loadExam();
+          }
+        }, 1000);
+      }
+
+      function submitOverrideDone() {
+        var numQ = (lastResponseData && lastResponseData.results) ? lastResponseData.results.length : 0;
+        var scores = [];
+        for (var i = 0; i < numQ; i++) {
+          var inp = document.getElementById('override-input-' + i);
+          var v = inp ? inp.value : '';
+          scores.push(v === '' ? '-' : (isNaN(parseFloat(v)) ? '-' : parseFloat(v)));
+        }
+        var tokenCopy = overrideToken;
+        var examIdCopy = currentExamId;
+        var studentEmailCopy = (lastResponseData && lastResponseData.studentEmail)
+          ? lastResponseData.studentEmail
+          : (document.getElementById('student-selector').value || '');
+        var btn = document.querySelector('.btn-override-done');
+        btn.disabled = true;
+        btn.innerText = 'Saving...';
+        // Wipe token from memory before the async call completes
+        overrideToken = null;
+        clearInterval(overrideTimerInterval);
+        google.script.run
+          .withSuccessHandler(function(res) {
+            document.getElementById('override-modal').style.display = 'none';
+            if (res.success) {
+              loadExam();
+            } else {
+              alert('Error saving scores: ' + res.error);
+              btn.disabled = false;
+              btn.innerText = '✅ DONE — Save & Log Out';
+            }
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('override-modal').style.display = 'none';
+            alert('Server error: ' + err.message);
+          })
+          .saveTeacherOverride(tokenCopy, examIdCopy, studentEmailCopy, scores);
+      }
+
+      function renderStudentResults(response) {
+        document.getElementById('results-area').style.display = 'block';
+        document.getElementById('exam-display-title').innerText = response.examName;
+        // Show override trigger for all student result views
+        document.getElementById('btn-override-trigger').style.display = 'block';
+        
+        if (response.isImpersonating) {
+           var banner = document.getElementById('impersonation-msg');
+           banner.style.display = 'block';
+           banner.innerText = "👀 Viewing as: " + document.getElementById('student-selector').value;
+        } else {
+           document.getElementById('impersonation-msg').style.display = 'none';
+        }
+
+        var isLocked = false;
+        var disagVal = parseFloat(response.disagreement);
+
+        if (response.uploadComplete) {
+          updateStepTracker(4);
+          document.getElementById('corrections-area').style.display = 'none';
+          document.getElementById('locked-msg').style.display = 'none';
+          document.getElementById('upload-done-msg').style.display = 'block';
+          
+          var pdfLink = `<a href="${response.uploadedPdf}" target="_blank" class="btn-pdf">📄 View Corrected Work</a>`;
+          document.getElementById('celebration-pdf-container').innerHTML = pdfLink;
+        } 
+        else if (disagVal === 0) {
+          updateStepTracker(3);
+          document.getElementById('corrections-area').style.display = 'block';
+          document.getElementById('locked-msg').style.display = 'none';
+          document.getElementById('upload-done-msg').style.display = 'none';
+          document.getElementById('btn-table-update').style.display = 'none';
+        } 
+        else {
+          // LOCKED MODE — still on step 2, comparing marks
+          updateStepTracker(2);
+          isLocked = true;
+          document.getElementById('corrections-area').style.display = 'none';
+          document.getElementById('upload-done-msg').style.display = 'none';
+          document.getElementById('locked-msg').style.display = 'block';
+          document.getElementById('btn-table-update').style.display = 'block';
+        }
+
+        if (response.disagreement && response.disagreement !== "-") {
+          document.getElementById('student-summary').style.display = 'inline-block';
+          document.getElementById('student-diff-val').innerText = response.disagreement;
+        } else {
+          document.getElementById('student-summary').style.display = 'none';
+        }
+
+        // --- UPDATED TABLE HEADER ORDER ---
+        var table = document.getElementById('score-table');
+        table.innerHTML = `
+          <tr>
+            <th>Question</th>
+            <th>You Said</th>
+            <th>Clev's Marks</th>
+            <th>Max</th>
+            <th>Syllabus Code</th>
+            <th>Syllabus Description</th>
+          </tr>
+        `;
+        
+        response.results.forEach((item, index) => {
+          var row = table.insertRow();
+          var sVal = (item.studentScore === "" || item.studentScore === null) ? "-" : item.studentScore;
+          
+          // RENDER LOGIC
+          var sValHtml = "";
+          if (isLocked) {
+              var valForInput = (sVal === "-") ? "" : sVal;
+              sValHtml = `<input type="number" class="table-input" value="${valForInput}" data-index="${index}" min="0" max="${item.max}">`;
+          } else {
+              var mismatchClass = "";
+              if (sVal !== "-" && item.teacherScore !== "" && item.teacherScore !== null) {
+                  if (String(sVal) !== String(item.teacherScore)) mismatchClass = "discrepancy";
+              }
+              sValHtml = `<span class="${mismatchClass}">${sVal}</span>`;
+          }
+
+          // --- REARRANGED COLUMN ORDER ---
+          row.innerHTML = `
+            <td style="font-weight:bold;">${item.question}</td>
+            <td>${sValHtml}</td>
+            <td style="font-weight:bold; color:#0288d1; font-size:1.2em;">${item.teacherScore}</td>
+            <td style="color:#999;">/ ${item.max}</td>
+            <td style="font-size:0.9em; font-style:italic; color:#666;">${item.syllabus || "-"}</td>
+            <td class="desc-col">${item.syllabusDesc || "-"}</td>
+          `;
+        });
+      }
+    </script>
+  </body>
+</html>
