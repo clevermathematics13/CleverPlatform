@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import type { ReflectionItem, SelfScore } from "@/lib/reflection-types";
 
 interface NativeFormProps {
   items: ReflectionItem[];
   onSubmit: (scores: SelfScore[]) => Promise<void>;
+  paperUrl?: string | null;
+  markSchemeUrl?: string | null;
+  onOpenDoc?: (title: string, url: string) => void;
 }
 
-export function NativeForm({ items, onSubmit }: NativeFormProps) {
+export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc }: NativeFormProps) {
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [scores, setScores] = useState<Record<string, number>>(() => {
     const init: Record<string, number> = {};
     for (const item of items) {
@@ -43,6 +47,31 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-bold text-da-amber">Self-Grade Your Answers</h3>
+
+      {/* Exam paper / mark scheme links */}
+      {(paperUrl || markSchemeUrl) && (
+        <div className="flex flex-wrap gap-2">
+          {paperUrl && (
+            <button
+              type="button"
+              onClick={() => onOpenDoc ? onOpenDoc("Exam Paper", paperUrl) : window.open(paperUrl, "_blank")}
+              className="flex items-center gap-1.5 rounded-lg border border-da-border bg-da-surface px-3 py-1.5 text-sm font-medium text-da-text hover:bg-da-hover transition-colors"
+            >
+              📄 Exam Paper
+            </button>
+          )}
+          {markSchemeUrl && (
+            <button
+              type="button"
+              onClick={() => onOpenDoc ? onOpenDoc("Mark Scheme", markSchemeUrl) : window.open(markSchemeUrl, "_blank")}
+              className="flex items-center gap-1.5 rounded-lg border border-da-border bg-da-surface px-3 py-1.5 text-sm font-medium text-da-text hover:bg-da-hover transition-colors"
+            >
+              📝 Mark Scheme
+            </button>
+          )}
+        </div>
+      )}
+
       <p className="text-base text-da-text">
         For each question, enter the marks you think you earned based on the
         mark scheme.
@@ -69,6 +98,7 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
                 <td className="px-3 py-2 text-center font-bold text-da-text">{item.max_marks}</td>
                 <td className="px-3 py-2 text-center">
                   <input
+                    ref={(el) => { inputRefs.current[items.indexOf(item)] = el; }}
                     type="number"
                     min={0}
                     max={item.max_marks}
@@ -80,7 +110,15 @@ export function NativeForm({ items, onSubmit }: NativeFormProps) {
                         item.max_marks
                       )
                     }
-                    className="w-16 rounded border-2 border-da-border bg-da-surface px-2 py-1 text-center text-da-text font-bold focus:ring-2 focus:ring-da-accent focus:border-da-accent"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const idx = items.indexOf(item);
+                        const next = inputRefs.current[idx + 1];
+                        if (next) next.focus();
+                      }
+                    }}
+                    className="w-16 rounded border-2 border-da-border bg-da-surface px-2 py-1 text-center text-da-text font-bold focus:ring-2 focus:ring-da-accent focus:border-da-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </td>
               </tr>

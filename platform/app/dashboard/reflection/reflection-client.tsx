@@ -178,30 +178,6 @@ export function ReflectionClient({
         </select>
       </div>
 
-      {/* Exam paper / mark scheme quick-access buttons */}
-      {selectedTest && (selectedTest.paper_url || selectedTest.mark_scheme_url) && (
-        <div className="mb-4 flex flex-wrap gap-2">
-          {selectedTest.paper_url && (
-            <button
-              type="button"
-              onClick={() => setDocPanel({ title: "Exam Paper", url: selectedTest.paper_url! })}
-              className="flex items-center gap-1.5 rounded-lg border border-da-border bg-da-surface px-3 py-1.5 text-sm font-medium text-da-text hover:bg-da-hover transition-colors"
-            >
-              📄 Exam Paper
-            </button>
-          )}
-          {selectedTest.mark_scheme_url && (
-            <button
-              type="button"
-              onClick={() => setDocPanel({ title: "Mark Scheme", url: selectedTest.mark_scheme_url! })}
-              className="flex items-center gap-1.5 rounded-lg border border-da-border bg-da-surface px-3 py-1.5 text-sm font-medium text-da-text hover:bg-da-hover transition-colors"
-            >
-              📝 Mark Scheme
-            </button>
-          )}
-        </div>
-      )}
-
       {docPanel && (
         <DocPanel
           title={docPanel.title}
@@ -215,7 +191,13 @@ export function ReflectionClient({
 
       {/* Step content */}
       {step === 1 && (
-        <NativeForm items={items} onSubmit={handleSubmitSelfGrades} />
+        <NativeForm
+          items={items}
+          onSubmit={handleSubmitSelfGrades}
+          paperUrl={selectedTest?.paper_url}
+          markSchemeUrl={selectedTest?.mark_scheme_url}
+          onOpenDoc={(title, url) => setDocPanel({ title, url })}
+        />
       )}
 
       {step === 2 && (
