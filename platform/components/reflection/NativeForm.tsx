@@ -102,9 +102,9 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
             {items.map((item) => (
               <tr key={item.test_item_id} className="border-b border-da-border/25">
                 <td className="px-3 py-2">
-                  <span className="font-bold text-da-amber">Q{item.question_number}</span>
+                  <span className="font-bold text-da-amber">{item.question_number}</span>
                   {item.part_label && (
-                    <span className="ml-1 font-bold text-da-muted">({item.part_label})</span>
+                    <span className="font-bold text-da-muted">({item.part_label})</span>
                   )}
                 </td>
                 <td className="px-3 py-2 text-center font-bold text-da-text">{item.max_marks}</td>
