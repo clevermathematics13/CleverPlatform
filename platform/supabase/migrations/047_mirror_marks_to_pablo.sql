@@ -11,24 +11,15 @@ SELECT
   sm.recorded_at,
   sm.recorded_by
 FROM public.student_marks sm
-
--- source student (Camilla)
 JOIN public.students camilla_stud ON camilla_stud.id = sm.student_id
 JOIN public.profiles camilla_prof ON camilla_prof.id = camilla_stud.profile_id
   AND lower(camilla_prof.display_name) ILIKE '%camilla%'
-
--- test must belong to a K06 course
-JOIN public.tests t ON t.id = (
-  SELECT ti.test_id FROM public.test_items ti WHERE ti.id = sm.test_item_id LIMIT 1
-)
-WHERE t.name ILIKE '%K06%'
-
--- Pablo's student row in the same course
-JOIN public.students pablo_stud
-  ON pablo_stud.course_id = camilla_stud.course_id
+JOIN public.test_items ti ON ti.id = sm.test_item_id
+JOIN public.tests t ON t.id = ti.test_id
+  AND t.name ILIKE '%K06%'
+JOIN public.students pablo_stud ON pablo_stud.course_id = camilla_stud.course_id
 JOIN public.profiles pablo_prof ON pablo_prof.id = pablo_stud.profile_id
   AND pablo_prof.email = 'pcleveng@amersol.edu.pe'
-
 ON CONFLICT (student_id, test_item_id) DO UPDATE
   SET marks_awarded = EXCLUDED.marks_awarded,
       recorded_at   = EXCLUDED.recorded_at;
