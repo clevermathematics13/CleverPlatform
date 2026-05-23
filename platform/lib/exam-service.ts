@@ -327,7 +327,7 @@ export async function getClassReflectionData(
   // Get test items
   const { data: items } = await supabase
     .from("test_items")
-    .select("id, question_number, part_label, max_marks")
+    .select("id, question_number, part_label, max_marks, subtopic_codes")
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
 
@@ -402,7 +402,7 @@ export async function getClassReflectionData(
       question_number: items[idx].question_number,
       part_label: items[idx].part_label,
       max_marks: items[idx].max_marks,
-      subtopic_codes: [],
+      subtopic_codes: items[idx].subtopic_codes ?? [],
       marks_awarded: ri.marks_awarded,
       self_marks: ri.self_marks,
     }));

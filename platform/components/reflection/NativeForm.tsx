@@ -106,6 +106,9 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
                   {item.part_label && (
                     <span className="font-bold text-da-muted">({item.part_label})</span>
                   )}
+                  {item.subtopic_codes.length > 0 && (
+                    <span className="ml-2 text-xs text-da-muted">[{item.subtopic_codes.join(", ")}]</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-center font-bold text-da-text">{item.max_marks}</td>
                 <td className="px-3 py-2 text-center">
