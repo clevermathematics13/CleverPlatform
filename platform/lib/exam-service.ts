@@ -60,6 +60,7 @@ export async function getAllTests(): Promise<ReflectionTest[]> {
   const { data: tests, error } = await supabase
     .from("tests")
     .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url, hidden")
+    .eq("hidden", false)
     .order("test_date", { ascending: false });
 
   if (error) {
