@@ -79,18 +79,11 @@ export function ReflectionClient({
           { onConflict: "test_item_id,student_id" }
         );
       }
-      // Update local state
-      setItems((prev) =>
-        prev.map((item) => {
-          const score = scores.find(
-            (s) => s.test_item_id === item.test_item_id
-          );
-          return score ? { ...item, self_marks: score.self_marks } : item;
-        })
-      );
+      // Refresh server component so teacher marks are now transmitted
+      router.refresh();
       setStep(2);
     },
-    [profile.id]
+    [profile.id, router]
   );
 
   const handleSaveComparison = useCallback(

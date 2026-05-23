@@ -46,6 +46,15 @@ export default async function ReflectionPage({
   if (selectedTestId && effectiveStudentId) {
     items = await getReflectionItems(selectedTestId, effectiveStudentId);
     pdfUpload = await getPdfUpload(effectiveStudentId, selectedTestId);
+
+    // Students must self-assess before seeing teacher marks
+    const viewerIsStudent = !isTeacher;
+    if (viewerIsStudent && items) {
+      const hasSelfAssessed = items.some((i) => i.self_marks !== null);
+      if (!hasSelfAssessed) {
+        items = items.map((i) => ({ ...i, marks_awarded: null }));
+      }
+    }
   }
 
   return (
