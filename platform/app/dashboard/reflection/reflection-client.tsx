@@ -207,12 +207,7 @@ export function ReflectionClient({
             editable={true}
             onSave={handleSaveComparison}
           />
-          {hasTeacherMarks && disagreement !== 0 && (
-            <p className="text-sm text-orange-300/80">
-              Bring disagreement to 0% to unlock the upload step. Edit your
-              self marks above and hit &ldquo;Save Changes&rdquo;.
-            </p>
-          )}
+
           {!hasTeacherMarks && (
             <p className="text-sm text-da-muted">
               Waiting for your teacher to enter marks — come back once grading is

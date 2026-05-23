@@ -83,7 +83,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
             <strong>{disagreement.toFixed(1)}%</strong>
             {disagreement === 0
               ? " — ready to upload corrections"
-              : " — bring this to 0% before uploading"}
+              : ""}
           </span>
         </div>
       )}
