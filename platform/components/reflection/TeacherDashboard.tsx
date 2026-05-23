@@ -16,6 +16,7 @@ interface ClassData {
     part_label: string;
     max_marks: number;
     subtopic_codes: string[];
+    subtopic_labels: string[];
   }[];
   rows: StudentReflectionRow[];
 }
@@ -298,8 +299,8 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                   <th key={item.id} className="px-3 py-2 text-center font-bold text-da-amber whitespace-nowrap">
                     Q{item.question_number}{item.part_label}
                     <span className="block text-xs font-normal text-da-muted">/{item.max_marks}</span>
-                    {item.subtopic_codes.length > 0 && (
-                      <span className="block text-[10px] font-normal text-da-muted">[{item.subtopic_codes.join(", ")}]</span>
+                    {item.subtopic_labels.length > 0 && (
+                      <span className="block text-[10px] font-normal text-da-muted">[{item.subtopic_labels.join(", ")}]</span>
                     )}
                   </th>
                 ))}
@@ -468,6 +469,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             part_label: item.part_label,
             max_marks: item.max_marks,
             subtopic_codes: item.subtopic_codes ?? [],
+            subtopic_labels: item.subtopic_labels ?? [],
             marks_awarded: mark?.marks_awarded ?? null,
             self_marks: mark?.self_marks ?? null,
           };

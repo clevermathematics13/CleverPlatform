@@ -85,6 +85,14 @@ export async function getReflectionItems(
 ): Promise<ReflectionItem[]> {
   const supabase = await createClient();
 
+  const { data: subtopics } = await supabase
+    .from("subtopics")
+    .select("code, descriptor");
+
+  const subtopicMap = new Map(
+    (subtopics ?? []).map((s) => [s.code, s.descriptor])
+  );
+
   // Get test items
   const { data: items, error: itemsError } = await supabase
     .from("test_items")
@@ -124,6 +132,9 @@ export async function getReflectionItems(
     part_label: item.part_label,
     max_marks: item.max_marks,
     subtopic_codes: item.subtopic_codes ?? [],
+    subtopic_labels: (item.subtopic_codes ?? []).map(
+      (code) => `${code} — ${subtopicMap.get(code) ?? code}`
+    ),
     marks_awarded: marksMap.get(item.id) ?? null,
     self_marks: selfMap.get(item.id) ?? null,
   }));
@@ -321,7 +332,7 @@ export async function getStudentMastery(
 /** Get class-wide reflection data for teacher dashboard. */
 export async function getClassReflectionData(
   testId: string
-): Promise<{ items: { id: string; question_number: number; part_label: string; max_marks: number }[]; rows: StudentReflectionRow[] }> {
+): Promise<{ items: { id: string; question_number: number; part_label: string; max_marks: number; subtopic_codes: string[]; subtopic_labels: string[] }[]; rows: StudentReflectionRow[] }> {
   const supabase = await createClient();
 
   // Get test items
@@ -330,6 +341,14 @@ export async function getClassReflectionData(
     .select("id, question_number, part_label, max_marks, subtopic_codes")
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
+
+  const { data: subtopics } = await supabase
+    .from("subtopics")
+    .select("code, descriptor");
+
+  const subtopicMap = new Map(
+    (subtopics ?? []).map((s) => [s.code, s.descriptor])
+  );
 
   if (!items || items.length === 0) return { items: [], rows: [] };
 
@@ -403,6 +422,9 @@ export async function getClassReflectionData(
       part_label: items[idx].part_label,
       max_marks: items[idx].max_marks,
       subtopic_codes: items[idx].subtopic_codes ?? [],
+      subtopic_labels: (items[idx].subtopic_codes ?? []).map(
+        (code) => `${code} — ${subtopicMap.get(code) ?? code}`
+      ),
       marks_awarded: ri.marks_awarded,
       self_marks: ri.self_marks,
     }));

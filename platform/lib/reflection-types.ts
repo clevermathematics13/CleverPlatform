@@ -8,6 +8,7 @@ export interface ReflectionItem {
   part_label: string;
   max_marks: number;
   subtopic_codes: string[];
+  subtopic_labels: string[];
   marks_awarded: number | null; // teacher mark from student_marks
   self_marks: number | null;    // student self-assessment
 }
