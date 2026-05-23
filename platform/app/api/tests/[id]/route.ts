@@ -43,13 +43,14 @@ export async function PATCH(
   const { id } = await params;
 
   const body = await request.json();
-  const { name, test_date, total_marks, course_id } = body;
+  const { name, test_date, total_marks, course_id, hidden } = body;
 
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (test_date !== undefined) updates.test_date = test_date;
   if (total_marks !== undefined) updates.total_marks = total_marks;
   if (course_id !== undefined) updates.course_id = course_id;
+  if (hidden !== undefined) updates.hidden = hidden;
 
   const { data, error } = await supabase
     .from("tests")

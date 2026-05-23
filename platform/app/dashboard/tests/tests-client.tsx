@@ -46,6 +46,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
 
   // Deleting
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null);
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) =>
@@ -107,6 +108,21 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
       if (res.ok) setTests((prev) => prev.filter((t) => t.id !== testId));
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleToggleHidden = async (testId: string, hidden: boolean) => {
+    setUpdatingVisibility(testId);
+    try {
+      const res = await fetch(`/api/tests/${testId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hidden }),
+      });
+      if (!res.ok) return;
+      setTests((prev) => prev.map((t) => (t.id === testId ? { ...t, hidden } : t)));
+    } finally {
+      setUpdatingVisibility(null);
     }
   };
 
@@ -323,6 +339,15 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                     {test.test_date && ` · ${test.test_date}`}
                     {` · ${test.test_items.length} questions · ${totalMax} marks`}
                   </p>
+                  <label className="mt-1 inline-flex items-center gap-2 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={test.hidden}
+                      disabled={updatingVisibility === test.id}
+                      onChange={(e) => handleToggleHidden(test.id, e.target.checked)}
+                    />
+                    Hide this exam from student reflection dropdown
+                  </label>
                 </div>
                 <div className="flex items-center gap-2">
                   <a

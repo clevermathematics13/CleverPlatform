@@ -21,6 +21,7 @@ export interface ReflectionTest {
   course_id: string | null;
   paper_url: string | null;
   mark_scheme_url: string | null;
+  hidden: boolean;
 }
 
 /** Student self-score record */

@@ -30,22 +30,23 @@ export async function getTestsForStudent(
 
   const { data: tests, error } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url")
+    .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url, hidden")
     .in("course_id", courseIds)
-    .ilike("name", "%K06%")
+    .ilike("name", "%K06%P1%")
+    .eq("hidden", false)
     .order("test_date", { ascending: false });
 
   if (error) {
-    // Fallback if migration 045 (paper_url/mark_scheme_url columns) hasn't been applied yet
-    if (/paper_url|mark_scheme_url/.test(error.message)) {
+    // Fallback if migration 045/049 columns haven't been applied yet
+    if (/paper_url|mark_scheme_url|hidden/.test(error.message)) {
       const { data: fallback, error: fallbackError } = await supabase
         .from("tests")
         .select("id, name, test_date, total_marks, course_id")
         .in("course_id", courseIds)
-        .ilike("name", "%K06%")
+        .ilike("name", "%K06%P1%")
         .order("test_date", { ascending: false });
       if (fallbackError) throw fallbackError;
-      return (fallback ?? []).map((t) => ({ ...t, paper_url: null, mark_scheme_url: null })) as ReflectionTest[];
+      return (fallback ?? []).map((t) => ({ ...t, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
     }
     throw error;
   }
@@ -58,18 +59,18 @@ export async function getAllTests(): Promise<ReflectionTest[]> {
 
   const { data: tests, error } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url")
+    .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url, hidden")
     .order("test_date", { ascending: false });
 
   if (error) {
-    // Fallback if migration 045 (paper_url/mark_scheme_url columns) hasn't been applied yet
-    if (/paper_url|mark_scheme_url/.test(error.message)) {
+    // Fallback if migration 045/049 columns haven't been applied yet
+    if (/paper_url|mark_scheme_url|hidden/.test(error.message)) {
       const { data: fallback, error: fallbackError } = await supabase
         .from("tests")
         .select("id, name, test_date, total_marks, course_id")
         .order("test_date", { ascending: false });
       if (fallbackError) throw fallbackError;
-      return (fallback ?? []).map((t) => ({ ...t, paper_url: null, mark_scheme_url: null })) as ReflectionTest[];
+      return (fallback ?? []).map((t) => ({ ...t, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
     }
     throw error;
   }
