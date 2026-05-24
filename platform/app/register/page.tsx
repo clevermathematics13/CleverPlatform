@@ -91,19 +91,19 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-8 shadow-lg">
+    <div className="flex min-h-screen items-center justify-center bg-da-bg px-4">
+      <div className="w-full max-w-md space-y-8 rounded-2xl border border-da-border bg-da-surface/90 p-8 shadow-2xl shadow-black/55 wood-surface">
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+          <h1 className="font-serif text-3xl font-bold tracking-tight text-da-text">
             Parent Registration
           </h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-da-muted">
             Enter the registration code provided by the teacher
           </p>
         </div>
 
         {error && (
-          <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
+          <div className="rounded-md border border-red-500/40 bg-red-900/35 p-4 text-sm text-red-100">
             {error}
           </div>
         )}
@@ -112,7 +112,7 @@ export default function RegisterPage() {
           <div>
             <label
               htmlFor="code"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-da-text"
             >
               Registration Code
             </label>
@@ -123,14 +123,14 @@ export default function RegisterPage() {
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="e.g. ABC123"
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-lg border border-da-border bg-da-bg/70 px-3 py-2 text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
             />
           </div>
 
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-da-text"
             >
               Email Address
             </label>
@@ -141,14 +141,14 @@ export default function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="parent@example.com"
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-lg border border-da-border bg-da-bg/70 px-3 py-2 text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
             />
           </div>
 
           <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-da-text"
             >
               Password
             </label>
@@ -160,14 +160,14 @@ export default function RegisterPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Min. 8 characters"
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="mt-1 block w-full rounded-lg border border-da-border bg-da-bg/70 px-3 py-2 text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+            className="w-full rounded-lg border border-da-accent/40 bg-da-accent px-4 py-3 text-sm font-semibold text-[#2b1408] shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface disabled:opacity-50"
           >
             {loading ? "Creating account..." : "Register"}
           </button>
@@ -176,7 +176,7 @@ export default function RegisterPage() {
         <div className="text-center">
           <a
             href="/login"
-            className="text-sm font-medium text-blue-600 hover:text-blue-500"
+            className="text-sm font-medium text-da-accent hover:text-da-amber"
           >
             Already have an account? Sign in
           </a>

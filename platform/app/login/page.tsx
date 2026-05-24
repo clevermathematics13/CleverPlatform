@@ -51,8 +51,8 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-da-bg">
-      <div className="w-full max-w-md space-y-8 rounded-xl border border-da-border bg-da-surface p-8 shadow-2xl shadow-black/50">
+    <div className="flex min-h-screen items-center justify-center bg-da-bg px-4">
+      <div className="w-full max-w-md space-y-8 rounded-2xl border border-da-border bg-da-surface/90 p-8 shadow-2xl shadow-black/55 wood-surface">
         {/* Logo / Brand */}
         <div className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-da-accent font-serif">
@@ -64,13 +64,13 @@ function LoginForm() {
         </div>
 
         {error && (
-          <div className="rounded-md bg-red-50 p-4 text-sm text-red-700">
+          <div className="rounded-md border border-red-500/40 bg-red-900/35 p-4 text-sm text-red-100">
             {getErrorMessage(error)}
           </div>
         )}
 
         {invitedEmail && (
-          <div className="rounded-md bg-blue-50 p-4 text-sm text-blue-800">
+          <div className="rounded-md border border-da-border bg-da-bg/55 p-4 text-sm text-da-text">
             Invite email: <span className="font-semibold">{invitedEmail}</span>
           </div>
         )}
@@ -88,7 +88,7 @@ function LoginForm() {
           </label>
           <button
             onClick={handleGoogleLogin}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-da-border bg-da-hover px-4 py-3 text-sm font-medium text-da-text shadow-sm transition-colors hover:bg-da-border hover:text-da-amber text-gray-900 focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-da-accent/40 bg-da-accent px-4 py-3 text-sm font-semibold text-[#2b1408] shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path
@@ -128,7 +128,7 @@ function LoginForm() {
         <div className="text-center">
           <a
             href="/register"
-            className="text-sm font-medium text-da-accent hover:text-da-amber"
+            className="text-sm font-medium text-da-accent transition-colors hover:text-da-amber"
           >
             Register as a parent with your access code
           </a>

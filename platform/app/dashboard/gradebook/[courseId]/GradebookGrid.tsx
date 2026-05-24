@@ -392,7 +392,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
   }
 
   return (
-    <div className="rounded-xl border border-da-border bg-da-surface overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-da-border bg-da-surface/85 shadow-sm shadow-black/25">
       <div className="overflow-x-auto">
         <table className="border-collapse min-w-full text-da-text text-sm">
           {/* ── Header ─────────────────────────────────────────────────── */}
@@ -400,7 +400,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
             <tr>
               {/* Student name */}
               <th
-                className={`${thBase} text-left sticky left-0 z-20 min-w-[160px] bg-da-surface border-r border-da-border px-4`}
+                className={`${thBase} text-left sticky left-0 z-20 min-w-40 bg-da-surface border-r border-da-border px-4`}
               >
                 Student
               </th>
@@ -424,7 +424,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                 ))
               ) : (
                 <th
-                  className={`${thBtn} min-w-[80px]`}
+                  className={`${thBtn} min-w-20`}
                   title="Click to expand into P1, P2, P3, IA"
                   onClick={() => setExpandedOverall(true)}
                 >
@@ -466,12 +466,12 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                       {test.items.map((item, idx) => (
                         <th
                           key={item.id}
-                          className={`${thBtn} min-w-[52px]`}
+                          className={`${thBtn} min-w-13`}
                           title={idx === 0 ? "Click to collapse" : item.question_code ? `Open ${item.question_code} in question editor` : undefined}
                         >
                           {idx === 0 && (
                             <span
-                              className="block text-[10px] text-da-accent/70 max-w-[100px] truncate cursor-pointer"
+                              className="block text-[10px] text-da-accent/70 max-w-25 truncate cursor-pointer"
                               onClick={() => toggleTest(test.id)}
                               title="Click to collapse"
                             >
@@ -498,11 +498,11 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                       ))}
                       {hasA && (
                         <>
-                          <th className={`${thBase} min-w-[64px] bg-indigo-950/40 border-l border-indigo-800/40`}>
+                          <th className={`${thBase} min-w-16 bg-indigo-950/40 border-l border-indigo-800/40`}>
                             <span className="block text-[10px] text-indigo-300/70">Sec A</span>
                             <span className="text-indigo-300">/{aMax}</span>
                           </th>
-                          <th className={`${thBase} min-w-[56px] bg-indigo-950/40`}>
+                          <th className={`${thBase} min-w-14 bg-indigo-950/40`}>
                             <span className="block text-[10px] text-indigo-300/70">Sec A</span>
                             <span className="text-indigo-300">%</span>
                           </th>
@@ -510,11 +510,11 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                       )}
                       {hasB && (
                         <>
-                          <th className={`${thBase} min-w-[64px] bg-violet-950/40 border-l border-violet-800/40`}>
+                          <th className={`${thBase} min-w-16 bg-violet-950/40 border-l border-violet-800/40`}>
                             <span className="block text-[10px] text-violet-300/70">Sec B</span>
                             <span className="text-violet-300">/{bMax}</span>
                           </th>
-                          <th className={`${thBase} min-w-[56px] bg-violet-950/40 border-r border-violet-800/40`}>
+                          <th className={`${thBase} min-w-14 bg-violet-950/40 border-r border-violet-800/40`}>
                             <span className="block text-[10px] text-violet-300/70">Sec B</span>
                             <span className="text-violet-300">%</span>
                           </th>
@@ -527,7 +527,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                 return (
                   <th
                     key={test.id}
-                    className={`${thBtn} min-w-[90px] max-w-[130px]`}
+                    className={`${thBtn} min-w-22.5 max-w-32.5`}
                     onClick={() => toggleTest(test.id)}
                     title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nClick to expand`}
                   >
@@ -563,7 +563,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
             {students.map((student, rowIdx) => {
               const evenRow = rowIdx % 2 === 0;
               const rowBg = evenRow ? "bg-da-surface" : "bg-da-bg/50";
-              const stickyBg = evenRow ? "bg-da-surface" : "bg-[#1b1b33]";
+              const stickyBg = evenRow ? "bg-da-surface" : "bg-da-bg/65";
               const { grade: overallGrade, pct: overallPct } =
                 computeOverallGrade(student.profile_id, tests, marks);
 
