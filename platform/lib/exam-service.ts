@@ -375,7 +375,7 @@ export async function getClassReflectionData(
     .select("profile_id, hidden, profiles(display_name)")
     .eq("course_id", test.course_id);
 
-  if (!students || students.length === 0) return { items, rows: [] };
+  if (!students || students.length === 0) return { items: itemsWithLabels, rows: [] };
 
   const studentIds = students.map((s) => s.profile_id);
   const itemIds = itemsWithLabels.map((i) => i.id);
