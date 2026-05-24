@@ -350,7 +350,15 @@ export async function getClassReflectionData(
     (subtopics ?? []).map((s) => [s.code, s.descriptor])
   );
 
-  if (!items || items.length === 0) return { items: [], rows: [] };
+  const itemsWithLabels = (items ?? []).map((item) => ({
+    ...item,
+    subtopic_codes: item.subtopic_codes ?? [],
+    subtopic_labels: (item.subtopic_codes ?? []).map(
+      (code: string) => `${code} — ${subtopicMap.get(code) ?? code}`
+    ),
+  }));
+
+  if (!itemsWithLabels.length) return { items: [], rows: [] };
 
   // Get the test to find course
   const { data: test } = await supabase
@@ -359,7 +367,7 @@ export async function getClassReflectionData(
     .eq("id", testId)
     .single();
 
-  if (!test) return { items, rows: [] };
+  if (!test) return { items: itemsWithLabels, rows: [] };
 
   // Get all students in the course
   const { data: students } = await supabase
@@ -370,7 +378,7 @@ export async function getClassReflectionData(
   if (!students || students.length === 0) return { items, rows: [] };
 
   const studentIds = students.map((s) => s.profile_id);
-  const itemIds = items.map((i) => i.id);
+  const itemIds = itemsWithLabels.map((i) => i.id);
 
   // Get all marks
   const { data: allMarks } = await supabase
@@ -400,7 +408,7 @@ export async function getClassReflectionData(
   // Build rows with disagreement computed server-side
   const rows: StudentReflectionRow[] = students.map((s) => {
     const profile = s.profiles as unknown as { display_name: string } | null;
-    const rowItems = items.map((item) => ({
+    const rowItems = itemsWithLabels.map((item) => ({
       test_item_id: item.id,
       marks_awarded:
         allMarks?.find(
@@ -416,15 +424,13 @@ export async function getClassReflectionData(
 
     // Compute disagreement for this student
     const reflectionItems: ReflectionItem[] = rowItems.map((ri, idx) => ({
-      id: items[idx].id,
+      id: itemsWithLabels[idx].id,
       test_item_id: ri.test_item_id,
-      question_number: items[idx].question_number,
-      part_label: items[idx].part_label,
-      max_marks: items[idx].max_marks,
-      subtopic_codes: items[idx].subtopic_codes ?? [],
-      subtopic_labels: (items[idx].subtopic_codes ?? []).map(
-        (code: string) => `${code} — ${subtopicMap.get(code) ?? code}`
-      ),
+      question_number: itemsWithLabels[idx].question_number,
+      part_label: itemsWithLabels[idx].part_label,
+      max_marks: itemsWithLabels[idx].max_marks,
+      subtopic_codes: itemsWithLabels[idx].subtopic_codes ?? [],
+      subtopic_labels: itemsWithLabels[idx].subtopic_labels ?? [],
       marks_awarded: ri.marks_awarded,
       self_marks: ri.self_marks,
     }));
