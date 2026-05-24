@@ -17,6 +17,7 @@ function getColor(pct: number): string {
 
 export function Heatmap({ cells }: HeatmapProps) {
   const [selectedCell, setSelectedCell] = useState<{
+    studentId: string;
     student: string;
     subtopic: string;
   } | null>(null);
@@ -26,7 +27,7 @@ export function Heatmap({ cells }: HeatmapProps) {
   // Get unique students and subtopics
   const students = Array.from(
     new Map(
-      cells.map((c) => [c.student_id, { id: c.student_id, name: c.display_name, hidden: c.hidden }])
+      cells.map((c) => [c.student_id, { id: c.student_id, name: c.display_name }])
     ).values()
   ).sort((a, b) => a.name.localeCompare(b.name));
   const subtopics = [
@@ -92,9 +93,6 @@ export function Heatmap({ cells }: HeatmapProps) {
                     >
                       {student.name}
                     </button>
-                    {student.hidden && (
-                      <span className="ml-1 text-xs font-normal text-da-muted">(hidden)</span>
-                    )}
                     {menuForStudentId === student.id && (
                       <div className="absolute left-0 top-full z-30 mt-1 min-w-45 rounded-lg border border-da-border bg-da-surface py-1 shadow-lg">
                         <a
@@ -117,7 +115,7 @@ export function Heatmap({ cells }: HeatmapProps) {
                       }`}
                       onClick={() =>
                         pct !== undefined &&
-                        setSelectedCell({ student: student.name, subtopic: st })
+                        setSelectedCell({ studentId: student.id, student: student.name, subtopic: st })
                       }
                       title={
                         pct !== undefined
@@ -173,7 +171,7 @@ export function Heatmap({ cells }: HeatmapProps) {
           <p className="mt-1 text-sm text-da-muted">
             Mastery:{" "}
             {cellMap.get(
-              `${selectedCell.student}:${selectedCell.subtopic}`
+              `${selectedCell.studentId}:${selectedCell.subtopic}`
             ) ?? 0}
             %
           </p>

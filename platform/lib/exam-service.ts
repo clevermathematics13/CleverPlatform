@@ -461,25 +461,49 @@ export async function getClassReflectionData(
 export async function getClassHeatmap(): Promise<HeatmapCell[]> {
   const supabase = await createClient();
 
-  // Get all students
+  // Get visible students only
   const { data: students } = await supabase
     .from("students")
     .select("profile_id, hidden, profiles(display_name)");
+    .eq("hidden", false);
 
   if (!students || students.length === 0) return [];
 
-  const cells: HeatmapCell[] = [];
+  const roster = students.map((s) => ({
+    student_id: s.profile_id,
+    display_name:
+      (s.profiles as unknown as { display_name: string } | null)?.display_name ??
+      "Unknown",
+  }));
 
-  for (const s of students) {
-    const profile = s.profiles as unknown as { display_name: string } | null;
-    const mastery = await getStudentMastery(s.profile_id);
-    for (const m of mastery) {
+  const masteryByStudent = new Map<string, SubtopicMastery[]>();
+  const subtopicSet = new Set<string>();
+
+  for (const s of roster) {
+    const mastery = await getStudentMastery(s.student_id);
+    masteryByStudent.set(s.student_id, mastery);
+    for (const m of mastery) subtopicSet.add(m.code);
+  }
+
+  const subtopics = [...subtopicSet].sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true })
+  );
+
+  // If no mastery data exists yet, return empty to keep existing empty-state UX.
+  if (subtopics.length === 0) return [];
+
+  const cells: HeatmapCell[] = [];
+  for (const s of roster) {
+    const mastery = masteryByStudent.get(s.student_id) ?? [];
+    const masteryMap = new Map(mastery.map((m) => [m.code, m.percentage]));
+
+    for (const code of subtopics) {
       cells.push({
-        student_id: s.profile_id,
-        display_name: profile?.display_name ?? "Unknown",
-        subtopic_code: m.code,
-        percentage: m.percentage,
-        hidden: s.hidden ?? false,
+        student_id: s.student_id,
+        display_name: s.display_name,
+        subtopic_code: code,
+        percentage: masteryMap.get(code) ?? 0,
+        hidden: false,
       });
     }
   }
