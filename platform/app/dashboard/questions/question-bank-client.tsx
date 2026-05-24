@@ -144,10 +144,33 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     } catch {}
   }, []);
 
-  // Detect Google Drive connection status from URL params; also clean ?search= if present
+  // Detect URL params (Drive status and deep-link to a test item) then clean query string.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     let dirty = false;
+
+    const testItemId = params.get("testItemId");
+    if (testItemId) {
+      fetch(`/api/questions/from-test-item?testItemId=${encodeURIComponent(testItemId)}`)
+        .then((r) => r.json())
+        .then((d: { code?: string; questionId?: string | null; error?: string }) => {
+          if (d.error) return;
+          if (d.questionId) setPendingOpenQuestionId(d.questionId);
+          if (d.code) {
+            setSearch(d.code);
+            setSearchContent(false);
+            setSession("");
+            setPaper("");
+            setLevel("");
+            setTimezone("");
+            setSubtopic("");
+            setPage(1);
+          }
+        })
+        .catch(() => {});
+      dirty = true;
+    }
+
     if (params.get("drive_connected") === "true") {
       setDriveConnected(true);
       dirty = true;
