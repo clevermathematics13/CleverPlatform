@@ -464,7 +464,7 @@ export async function getClassHeatmap(): Promise<HeatmapCell[]> {
   // Get visible students only
   const { data: students } = await supabase
     .from("students")
-    .select("profile_id, hidden, profiles(display_name)");
+    .select("profile_id, hidden, profiles(display_name)")
     .eq("hidden", false);
 
   if (!students || students.length === 0) return [];
