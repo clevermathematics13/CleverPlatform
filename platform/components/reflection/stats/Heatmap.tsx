@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { HeatmapCell } from "@/lib/reflection-types";
 
 interface HeatmapProps {
@@ -20,19 +20,34 @@ export function Heatmap({ cells }: HeatmapProps) {
     student: string;
     subtopic: string;
   } | null>(null);
+  const [menuForStudentId, setMenuForStudentId] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Get unique students and subtopics
-  const students = [...new Set(cells.map((c) => c.display_name))].sort();
+  const students = Array.from(
+    new Map(
+      cells.map((c) => [c.student_id, { id: c.student_id, name: c.display_name, hidden: c.hidden }])
+    ).values()
+  ).sort((a, b) => a.name.localeCompare(b.name));
   const subtopics = [
     ...new Set(cells.map((c) => c.subtopic_code)),
   ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
-  const hiddenSet = new Set(cells.filter((c) => c.hidden).map((c) => c.display_name));
-
   const cellMap = new Map<string, number>();
   for (const c of cells) {
-    cellMap.set(`${c.display_name}:${c.subtopic_code}`, c.percentage);
+    cellMap.set(`${c.student_id}:${c.subtopic_code}`, c.percentage);
   }
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(e.target as Node)) {
+        setMenuForStudentId(null);
+      }
+    };
+    document.addEventListener("click", onClick);
+    return () => document.removeEventListener("click", onClick);
+  }, []);
 
   if (cells.length === 0) {
     return (
@@ -43,7 +58,7 @@ export function Heatmap({ cells }: HeatmapProps) {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5" ref={containerRef}>
       <div className="overflow-x-auto rounded-xl border border-da-border bg-da-bg/65 shadow-inner shadow-black/30">
         <table className="min-w-full border-separate border-spacing-0 text-xs">
           <thead>
@@ -64,13 +79,36 @@ export function Heatmap({ cells }: HeatmapProps) {
           </thead>
           <tbody>
             {students.map((student) => (
-              <tr key={student}>
+              <tr key={student.id}>
                 <td className="sticky left-0 z-10 border-b border-da-border bg-da-surface px-3 py-1.5 font-medium whitespace-nowrap text-da-text">
-                  {student}
-                  {hiddenSet.has(student) && <span className="ml-1 text-xs font-normal text-da-muted">(hidden)</span>}
+                  <div className="relative inline-block">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuForStudentId((prev) => (prev === student.id ? null : student.id));
+                      }}
+                      className="text-left hover:text-da-amber hover:underline"
+                    >
+                      {student.name}
+                    </button>
+                    {student.hidden && (
+                      <span className="ml-1 text-xs font-normal text-da-muted">(hidden)</span>
+                    )}
+                    {menuForStudentId === student.id && (
+                      <div className="absolute left-0 top-full z-30 mt-1 min-w-45 rounded-lg border border-da-border bg-da-surface py-1 shadow-lg">
+                        <a
+                          href={`/dashboard/mastery?studentId=${student.id}`}
+                          className="block px-3 py-2 text-sm text-da-text hover:bg-da-hover"
+                        >
+                          View student&apos;s mastery
+                        </a>
+                      </div>
+                    )}
+                  </div>
                 </td>
                 {subtopics.map((st) => {
-                  const pct = cellMap.get(`${student}:${st}`);
+                  const pct = cellMap.get(`${student.id}:${st}`);
                   return (
                     <td
                       key={st}
@@ -79,11 +117,11 @@ export function Heatmap({ cells }: HeatmapProps) {
                       }`}
                       onClick={() =>
                         pct !== undefined &&
-                        setSelectedCell({ student, subtopic: st })
+                        setSelectedCell({ student: student.name, subtopic: st })
                       }
                       title={
                         pct !== undefined
-                          ? `${student} — ${st}: ${pct}%`
+                          ? `${student.name} — ${st}: ${pct}%`
                           : "No data"
                       }
                     >
