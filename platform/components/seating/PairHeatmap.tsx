@@ -40,13 +40,13 @@ function getPairCounts(assignments: Assignment[], classGroup: string): Map<strin
 }
 
 function colorForCount(count: number, max: number): string {
-  if (count === 0) return 'bg-gray-100 text-gray-400';
+  if (count === 0) return 'bg-da-bg/70 text-da-muted';
   const intensity = Math.round((count / Math.max(max, 1)) * 4);
   switch (intensity) {
-    case 1: return 'bg-blue-100 text-blue-800';
-    case 2: return 'bg-blue-300 text-blue-900';
-    case 3: return 'bg-blue-500 text-white';
-    default: return 'bg-blue-700 text-white';
+    case 1: return 'bg-amber-200 text-amber-950';
+    case 2: return 'bg-amber-400 text-amber-950';
+    case 3: return 'bg-orange-500 text-white';
+    default: return 'bg-rose-600 text-white';
   }
 }
 
@@ -56,14 +56,14 @@ export default function PairHeatmap({ assignments, students, classGroup }: Props
     .sort((a, b) => a.name.localeCompare(b.name));
 
   if (classStudents.length === 0) {
-    return <p className="text-gray-500 italic py-8 text-center">No students for {classGroup || 'this class'}.</p>;
+    return <p className="py-8 text-center italic text-da-muted">No students for {classGroup || 'this class'}.</p>;
   }
 
   const classAssignments = assignments.filter((a) => a.class_group === classGroup);
   const runCount = new Set(classAssignments.map((a) => a.run_id)).size;
 
   if (runCount === 0) {
-    return <p className="text-gray-500 italic py-8 text-center">No seating history yet — generate a seating to see the heatmap.</p>;
+    return <p className="py-8 text-center italic text-da-muted">No seating history yet — generate a seating to see the heatmap.</p>;
   }
 
   const pairCounts = getPairCounts(assignments, classGroup);
@@ -72,11 +72,11 @@ export default function PairHeatmap({ assignments, students, classGroup }: Props
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-da-muted">
           Pair frequency over <strong>{runCount}</strong> seating{runCount !== 1 ? 's' : ''}.
           Darker = sat together more often.
         </p>
-        <div className="flex items-center gap-1 text-xs text-gray-500">
+        <div className="flex items-center gap-1 text-xs text-da-muted">
           <span>Rare</span>
           {[1, 2, 3, 4].map((i) => (
             <div
@@ -92,11 +92,11 @@ export default function PairHeatmap({ assignments, students, classGroup }: Props
         <table className="text-xs border-collapse">
           <thead>
             <tr>
-              <th className="sticky top-0 left-0 z-20 bg-white border border-gray-200 p-1 min-w-[80px]" />
+              <th className="sticky top-0 left-0 z-20 border border-da-border bg-da-bg p-1 min-w-20" />
               {classStudents.map((s) => (
                 <th
                   key={s.student_id}
-                  className="sticky top-0 z-10 bg-white border border-gray-200 p-1 font-semibold text-gray-700 min-w-[52px] max-w-[52px] whitespace-nowrap overflow-hidden"
+                  className="sticky top-0 z-10 border border-da-border bg-da-bg p-1 font-semibold text-da-text min-w-13 max-w-13 whitespace-nowrap overflow-hidden"
                   style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)', height: 64 }}
                   title={s.name}
                 >
@@ -108,13 +108,13 @@ export default function PairHeatmap({ assignments, students, classGroup }: Props
           <tbody>
             {classStudents.map((rowStudent, ri) => (
               <tr key={rowStudent.student_id}>
-                <td className="sticky left-0 z-10 bg-white border border-gray-200 px-2 py-1 font-semibold text-gray-800 whitespace-nowrap">
+                <td className="sticky left-0 z-10 border border-da-border bg-da-surface px-2 py-1 font-semibold text-da-text whitespace-nowrap">
                   {rowStudent.name}
                 </td>
                 {classStudents.map((colStudent, ci) => {
                   if (ci === ri) {
                     return (
-                      <td key={colStudent.student_id} className="border border-gray-200 bg-gray-200 w-12 h-8" />
+                      <td key={colStudent.student_id} className="h-8 w-12 border border-da-border bg-da-bg/70" />
                     );
                   }
                   const key =
@@ -126,7 +126,7 @@ export default function PairHeatmap({ assignments, students, classGroup }: Props
                     <td
                       key={colStudent.student_id}
                       title={`${rowStudent.name} & ${colStudent.name}: ${count}×`}
-                      className={`border border-gray-100 w-12 h-8 text-center font-bold cursor-default select-none ${colorForCount(count, max)}`}
+                      className={`h-8 w-12 border border-da-border/70 text-center font-bold cursor-default select-none ${colorForCount(count, max)}`}
                     >
                       {count > 0 ? count : ''}
                     </td>

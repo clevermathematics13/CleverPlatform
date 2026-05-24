@@ -2,8 +2,8 @@
 @import "katex/dist/katex.min.css";
 
 :root {
-  --background: #1a0c06;
-  --foreground: #f0dfc0;
+  --background: #160904;
+  --foreground: #f6e9d4;
 }
 
 @theme inline {
@@ -14,12 +14,12 @@
   --font-serif: var(--font-playfair);
 
   /* Wood · Leather · Whiskey palette */
-  --color-da-bg:      #1a0c06;   /* deep walnut dark */
-  --color-da-surface: #231108;   /* dark wood plank */
-  --color-da-hover:   #2e1a0d;   /* warm hover */
+  --color-da-bg:      #160904;   /* deep walnut dark */
+  --color-da-surface: #241007;   /* dark wood plank */
+  --color-da-hover:   #30180d;   /* warm hover */
   --color-da-border:  #6b3d1c;   /* walnut grain border */
-  --color-da-text:    #f0dfc0;   /* warm parchment */
-  --color-da-muted:   #9b7555;   /* saddle leather tan */
+  --color-da-text:    #f6e9d4;   /* warm parchment */
+  --color-da-muted:   #c49a78;   /* saddle leather tan */
   --color-da-accent:  #c88a1a;   /* whiskey amber */
   --color-da-amber:   #e8a030;   /* golden bourbon */
 }
@@ -28,6 +28,12 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  line-height: 1.45;
+  background-image:
+    radial-gradient(circle at 12% 18%, rgba(200, 138, 26, 0.08), transparent 34%),
+    radial-gradient(circle at 88% 6%, rgba(232, 160, 48, 0.07), transparent 26%),
+    linear-gradient(160deg, #120702 0%, #1a0c06 48%, #100501 100%);
+  background-attachment: fixed;
 }
 
 /* ── Wood-grain texture overlay ─────────────────────────────────────────────

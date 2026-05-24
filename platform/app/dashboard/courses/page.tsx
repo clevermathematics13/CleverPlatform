@@ -44,8 +44,8 @@ export default async function CoursesPage() {
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">Courses</h1>
-          <p className="mt-1 text-base font-medium text-blue-700">
+          <h1 className="font-serif text-3xl font-bold text-da-text">Courses</h1>
+          <p className="mt-1 text-base text-da-muted">
             Manage class groups and their enrollments.
           </p>
         </div>

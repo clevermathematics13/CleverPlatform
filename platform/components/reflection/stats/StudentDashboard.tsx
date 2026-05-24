@@ -8,11 +8,11 @@ interface StudentDashboardProps {
 }
 
 function getBarColor(pct: number): string {
-  if (pct >= 80) return "bg-green-500";
-  if (pct >= 60) return "bg-green-300";
-  if (pct >= 40) return "bg-yellow-400";
+  if (pct >= 80) return "bg-emerald-500";
+  if (pct >= 60) return "bg-emerald-300";
+  if (pct >= 40) return "bg-amber-400";
   if (pct >= 20) return "bg-orange-400";
-  return "bg-red-500";
+  return "bg-rose-500";
 }
 
 export function StudentDashboard({
@@ -21,9 +21,9 @@ export function StudentDashboard({
 }: StudentDashboardProps) {
   if (mastery.length === 0) {
     return (
-      <div className="text-center text-gray-500 py-8">
-        <p className="text-lg">No mastery data yet</p>
-        <p className="text-sm mt-1">
+      <div className="rounded-xl border border-da-border bg-da-bg/60 py-8 text-center text-da-muted">
+        <p className="text-lg text-da-text">No mastery data yet</p>
+        <p className="mt-1 text-sm">
           Complete some reflections to see your progress here.
         </p>
       </div>
@@ -40,32 +40,32 @@ export function StudentDashboard({
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">{studentName}&apos;s Mastery</h2>
-        <div className="text-right">
-          <p className="text-2xl font-bold text-blue-600">{avgPct}%</p>
-          <p className="text-xs text-gray-500">Average Mastery</p>
+        <h2 className="text-xl font-bold text-da-text">{studentName}&apos;s Mastery</h2>
+        <div className="rounded-lg border border-da-border bg-da-bg/60 px-4 py-2 text-right">
+          <p className="text-2xl font-bold text-da-amber">{avgPct}%</p>
+          <p className="text-xs text-da-muted">Average Mastery</p>
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2.5">
         {mastery.map((m) => (
-          <div key={m.code} className="flex items-center gap-3">
-            <div className="w-16 text-xs font-mono text-gray-600 shrink-0">
+          <div key={m.code} className="flex items-center gap-3 rounded-lg border border-da-border/70 bg-da-bg/45 px-3 py-2">
+            <div className="w-16 shrink-0 text-xs font-mono text-da-muted">
               {m.code}
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <div className="flex-1 h-5 bg-gray-100 rounded-full overflow-hidden">
+                <div className="h-5 flex-1 overflow-hidden rounded-full border border-da-border bg-da-bg/70">
                   <div
                     className={`h-full rounded-full ${getBarColor(m.percentage)}`}
                     style={{ width: `${m.percentage}%` }}
                   />
                 </div>
-                <span className="text-xs font-semibold w-10 text-right">
+                <span className="w-10 text-right text-xs font-semibold text-da-text">
                   {m.percentage}%
                 </span>
               </div>
-              <p className="text-[10px] text-gray-400 truncate">
+              <p className="truncate text-[10px] text-da-muted">
                 {m.descriptor}
               </p>
             </div>

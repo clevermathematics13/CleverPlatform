@@ -8,11 +8,11 @@ interface HeatmapProps {
 }
 
 function getColor(pct: number): string {
-  if (pct >= 80) return "bg-green-500 text-white";
-  if (pct >= 60) return "bg-green-300 text-green-900";
-  if (pct >= 40) return "bg-yellow-300 text-yellow-900";
-  if (pct >= 20) return "bg-orange-300 text-orange-900";
-  return "bg-red-400 text-white";
+  if (pct >= 80) return "bg-emerald-500 text-white";
+  if (pct >= 60) return "bg-emerald-300 text-emerald-950";
+  if (pct >= 40) return "bg-amber-300 text-amber-950";
+  if (pct >= 20) return "bg-orange-300 text-orange-950";
+  return "bg-rose-500 text-white";
 }
 
 export function Heatmap({ cells }: HeatmapProps) {
@@ -36,25 +36,25 @@ export function Heatmap({ cells }: HeatmapProps) {
 
   if (cells.length === 0) {
     return (
-      <p className="text-sm text-gray-500">
+      <p className="rounded-xl border border-da-border bg-da-bg/60 px-4 py-5 text-sm text-da-muted">
         No mastery data available yet.
       </p>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="overflow-x-auto">
-        <table className="text-xs">
+    <div className="space-y-5">
+      <div className="overflow-x-auto rounded-xl border border-da-border bg-da-bg/65 shadow-inner shadow-black/30">
+        <table className="min-w-full border-separate border-spacing-0 text-xs">
           <thead>
             <tr>
-              <th className="sticky left-0 bg-white px-2 py-1 text-left">
+              <th className="sticky left-0 top-0 z-30 border-b border-da-border bg-da-bg px-3 py-2 text-left font-semibold text-da-text">
                 Student
               </th>
               {subtopics.map((st) => (
                 <th
                   key={st}
-                  className="px-1 py-1 text-center"
+                  className="sticky top-0 z-20 border-b border-da-border bg-da-bg px-1.5 py-2 text-center font-semibold text-da-muted"
                   style={{ writingMode: "vertical-rl", minWidth: "24px" }}
                 >
                   {st}
@@ -64,18 +64,18 @@ export function Heatmap({ cells }: HeatmapProps) {
           </thead>
           <tbody>
             {students.map((student) => (
-              <tr key={student} className="border-t">
-                <td className="sticky left-0 bg-white px-2 py-1 font-medium whitespace-nowrap">
+              <tr key={student}>
+                <td className="sticky left-0 z-10 border-b border-da-border bg-da-surface px-3 py-1.5 font-medium whitespace-nowrap text-da-text">
                   {student}
-                  {hiddenSet.has(student) && <span className="ml-1 text-xs font-normal text-gray-400">(hidden)</span>}
+                  {hiddenSet.has(student) && <span className="ml-1 text-xs font-normal text-da-muted">(hidden)</span>}
                 </td>
                 {subtopics.map((st) => {
                   const pct = cellMap.get(`${student}:${st}`);
                   return (
                     <td
                       key={st}
-                      className={`px-1 py-1 text-center cursor-pointer ${
-                        pct !== undefined ? getColor(pct) : "bg-gray-100"
+                      className={`border-b border-da-border px-1 py-1.5 text-center font-semibold cursor-pointer transition-opacity hover:opacity-85 ${
+                        pct !== undefined ? getColor(pct) : "bg-da-bg/70 text-da-muted"
                       }`}
                       onClick={() =>
                         pct !== undefined &&
@@ -98,41 +98,41 @@ export function Heatmap({ cells }: HeatmapProps) {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-3 text-xs">
-        <span className="font-medium">Legend:</span>
-        <span className="rounded bg-green-500 px-2 py-0.5 text-white">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-da-text">
+        <span className="mr-1 font-medium text-da-muted">Legend</span>
+        <span className="rounded-md bg-emerald-500 px-2 py-1 font-semibold text-white">
           80%+
         </span>
-        <span className="rounded bg-green-300 px-2 py-0.5 text-green-900">
+        <span className="rounded-md bg-emerald-300 px-2 py-1 font-semibold text-emerald-950">
           60–79%
         </span>
-        <span className="rounded bg-yellow-300 px-2 py-0.5 text-yellow-900">
+        <span className="rounded-md bg-amber-300 px-2 py-1 font-semibold text-amber-950">
           40–59%
         </span>
-        <span className="rounded bg-orange-300 px-2 py-0.5 text-orange-900">
+        <span className="rounded-md bg-orange-300 px-2 py-1 font-semibold text-orange-950">
           20–39%
         </span>
-        <span className="rounded bg-red-400 px-2 py-0.5 text-white">
+        <span className="rounded-md bg-rose-500 px-2 py-1 font-semibold text-white">
           &lt;20%
         </span>
       </div>
 
       {/* Drill-down */}
       {selectedCell && (
-        <div className="rounded-lg border bg-gray-50 p-4">
+        <div className="rounded-xl border border-da-border bg-da-bg/70 p-4">
           <div className="flex items-center justify-between">
-            <h4 className="font-semibold">
+            <h4 className="font-semibold text-da-text">
               {selectedCell.student} — {selectedCell.subtopic}
             </h4>
             <button
               type="button"
               onClick={() => setSelectedCell(null)}
-              className="text-gray-400 hover:text-gray-600"
+              className="text-da-muted hover:text-da-text"
             >
               ✕
             </button>
           </div>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-da-muted">
             Mastery:{" "}
             {cellMap.get(
               `${selectedCell.student}:${selectedCell.subtopic}`

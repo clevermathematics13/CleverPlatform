@@ -86,32 +86,32 @@ export default function SeatingApp() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Seating Chart</h1>
-        <p className="text-sm text-gray-600 mt-1">Generate and manage class seating arrangements.</p>
+        <h1 className="font-serif text-3xl font-bold text-da-text">Seating Chart</h1>
+        <p className="mt-1 text-sm text-da-muted">Generate and manage class seating arrangements.</p>
       </div>
 
       <div className="space-y-4">
         {/* Controls */}
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-gray-300 bg-white p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-surface/80 p-4 shadow-sm shadow-black/25">
           <ClassPicker selected={classGroup} onChange={setClassGroup} />
           <button
             onClick={handleGenerate}
             disabled={!classGroup || generating}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
           >
             {generating ? 'Generating…' : '🎲 Generate Seating'}
           </button>
           <button
             onClick={loadData}
             disabled={loading}
-            className="rounded-lg border border-gray-400 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+            className="rounded-lg border border-da-border px-3 py-2 text-sm text-da-text transition-colors hover:bg-da-hover disabled:opacity-50"
           >
             {loading ? '…' : '↻ Refresh'}
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-gray-300">
+        <div className="border-b border-da-border">
           <nav className="flex gap-0 -mb-px">
             {tabs.map(({ key, label }) => (
               <button
@@ -119,8 +119,8 @@ export default function SeatingApp() {
                 onClick={() => setTab(key)}
                 className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   tab === key
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
+                    ? 'border-da-accent text-da-accent'
+                    : 'border-transparent text-da-muted hover:text-da-text'
                 }`}
               >
                 {label}
@@ -130,8 +130,8 @@ export default function SeatingApp() {
         </div>
 
         {/* Tab content */}
-        <div className="rounded-xl border border-gray-300 bg-white p-6 shadow-sm">
-          {loading && <p className="text-center text-gray-500 py-12">Loading data…</p>}
+        <div className="rounded-xl border border-da-border bg-da-surface/80 p-6 shadow-sm shadow-black/25">
+          {loading && <p className="py-12 text-center text-da-muted">Loading data…</p>}
 
           {!loading && tab === 'chart' && (
             <>
