@@ -22,6 +22,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
   );
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [openQuestionMenuFor, setOpenQuestionMenuFor] = useState<string | null>(null);
 
   const totalTeacher = items.reduce(
     (sum, i) => sum + (i.marks_awarded ?? 0),
@@ -123,13 +124,35 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
                   className={`border-b ${getDiffClass(item.marks_awarded, self)}`}
                 >
                   <td className="px-3 py-2">
-                    <span className="font-bold text-da-amber">{item.question_number}</span>
-                    {item.part_label && (
-                      <span className="font-bold text-da-muted">({item.part_label})</span>
-                    )}
-                    {item.subtopic_labels.length > 0 && (
-                      <span className="ml-2 text-xs text-da-muted">[{item.subtopic_labels.join(", ")}]</span>
-                    )}
+                    <div className="relative inline-block">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setOpenQuestionMenuFor((prev) =>
+                            prev === item.test_item_id ? null : item.test_item_id
+                          )
+                        }
+                        className="text-left hover:opacity-80"
+                      >
+                        <span className="font-bold text-da-amber">{item.question_number}</span>
+                        {item.part_label && (
+                          <span className="font-bold text-da-muted">({item.part_label})</span>
+                        )}
+                        {item.subtopic_labels.length > 0 && (
+                          <span className="ml-2 text-xs text-da-muted">[{item.subtopic_labels.join(", ")}]</span>
+                        )}
+                      </button>
+                      {openQuestionMenuFor === item.test_item_id && (
+                        <div className="absolute left-0 top-full z-20 mt-1 min-w-[140px] rounded-lg border border-da-border bg-da-surface py-1 shadow-lg">
+                          <a
+                            href={`/dashboard/questions?testItemId=${item.test_item_id}`}
+                            className="block px-3 py-1.5 text-sm text-da-text hover:bg-da-hover"
+                          >
+                            Edit Question
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-center font-bold text-da-text">{item.max_marks}</td>
                   <td className="px-3 py-2 text-center">
