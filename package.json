@@ -1,0 +1,10 @@
+{
+  "name": "cleverplatform-root-tools",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "gas:login": "npx --yes @google/clasp login --no-localhost",
+    "gas:deploy": "./scripts/deploy-gas-webapp.sh",
+    "gas:deploy:update": "./scripts/deploy-gas-webapp.sh --description \"prod update\""
+  }
+}

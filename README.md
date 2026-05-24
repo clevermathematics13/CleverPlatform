@@ -6,6 +6,21 @@ Interactive text/notebook, including the **exam-portal** Google Apps Script add-
 
 See Main.js, ExamService.js, DriveService.js, SyllabusService.js, StatsService.js, and Utils.js for the server-side Apps Script code.
 
+### Deploy Web App
+
+From the repository root:
+
+```bash
+npm run gas:login
+npm run gas:deploy
+```
+
+To update an existing deployment description:
+
+```bash
+npm run gas:deploy:update
+```
+
 ## Auto-push to GitHub
 
 This repository includes a local watcher that can automatically commit and push every file change to origin.
