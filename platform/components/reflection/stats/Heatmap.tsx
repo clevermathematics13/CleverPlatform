@@ -81,8 +81,8 @@ export function Heatmap({ cells }: HeatmapProps) {
           <tbody>
             {students.map((student) => (
               <tr key={student.id}>
-                <td className="sticky left-0 z-10 border-b border-da-border bg-da-surface px-3 py-1.5 font-medium whitespace-nowrap text-da-text">
-                  <div className="relative inline-block">
+                <td className="sticky left-0 z-40 overflow-visible border-b border-da-border bg-da-surface px-3 py-1.5 font-medium whitespace-nowrap text-da-text">
+                  <div className="relative z-50 inline-block overflow-visible">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -94,7 +94,7 @@ export function Heatmap({ cells }: HeatmapProps) {
                       {student.name}
                     </button>
                     {menuForStudentId === student.id && (
-                      <div className="absolute left-0 top-full z-30 mt-1 min-w-45 rounded-lg border border-da-border bg-da-surface py-1 shadow-lg">
+                      <div className="absolute left-0 top-full z-60 mt-1 min-w-45 rounded-lg border border-da-border bg-da-surface py-1 shadow-lg">
                         <a
                           href={`/dashboard/mastery?studentId=${student.id}`}
                           className="block px-3 py-2 text-sm text-da-text hover:bg-da-hover"
