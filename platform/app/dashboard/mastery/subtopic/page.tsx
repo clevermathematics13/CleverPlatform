@@ -131,12 +131,18 @@ export default async function SubtopicMasteryPage({
                       Part {part.part_label || "—"} · {part.marks} marks
                     </p>
                   </div>
-                  <a
-                    href={`/dashboard/questions/review?focus=${part.question_id}`}
-                    className="rounded-lg border border-da-border bg-da-hover px-3 py-1.5 text-sm font-medium text-da-accent hover:opacity-90"
-                  >
-                    Open question
-                  </a>
+                  {isTeacher ? (
+                    <a
+                      href={`/dashboard/questions/review?focus=${part.question_id}`}
+                      className="rounded-lg border border-da-border bg-da-hover px-3 py-1.5 text-sm font-medium text-da-accent hover:opacity-90"
+                    >
+                      Open question
+                    </a>
+                  ) : (
+                    <span className="rounded-lg border border-da-border/70 bg-da-bg/60 px-3 py-1.5 text-sm font-medium text-da-muted">
+                      Question access disabled
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
