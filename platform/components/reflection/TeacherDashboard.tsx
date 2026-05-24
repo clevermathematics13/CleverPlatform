@@ -237,7 +237,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-da-border/40 bg-da-surface">
-                <th className="sticky left-0 bg-da-surface px-3 py-2 text-left font-bold text-da-amber min-w-[180px]">
+                <th className="sticky left-0 bg-da-surface px-3 py-2 text-left font-bold text-da-amber min-w-45">
                   Student
                 </th>
                 {data.items.map((item) => (
@@ -413,7 +413,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
           {/* Right-side first-name quick menu */}
           <aside className="w-40 shrink-0 rounded-lg border border-da-border bg-da-surface p-2">
             <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-da-muted">Students</p>
-            <div className="max-h-[520px] space-y-1 overflow-y-auto">
+            <div className="max-h-130 space-y-1 overflow-y-auto">
               {visibleRows
                 .slice()
                 .sort((a, b) => a.display_name.localeCompare(b.display_name))
