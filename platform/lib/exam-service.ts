@@ -133,7 +133,7 @@ export async function getReflectionItems(
     max_marks: item.max_marks,
     subtopic_codes: item.subtopic_codes ?? [],
     subtopic_labels: (item.subtopic_codes ?? []).map(
-      (code) => `${code} — ${subtopicMap.get(code) ?? code}`
+      (code: string) => `${code} — ${subtopicMap.get(code) ?? code}`
     ),
     marks_awarded: marksMap.get(item.id) ?? null,
     self_marks: selfMap.get(item.id) ?? null,
@@ -423,7 +423,7 @@ export async function getClassReflectionData(
       max_marks: items[idx].max_marks,
       subtopic_codes: items[idx].subtopic_codes ?? [],
       subtopic_labels: (items[idx].subtopic_codes ?? []).map(
-        (code) => `${code} — ${subtopicMap.get(code) ?? code}`
+        (code: string) => `${code} — ${subtopicMap.get(code) ?? code}`
       ),
       marks_awarded: ri.marks_awarded,
       self_marks: ri.self_marks,

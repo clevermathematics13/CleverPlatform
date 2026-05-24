@@ -21,6 +21,7 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
     }
   );
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const totalTeacher = items.reduce(
     (sum, i) => sum + (i.marks_awarded ?? 0),
@@ -42,12 +43,15 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
   const handleSave = async () => {
     if (!onSave) return;
     setSaving(true);
+    setSaveError(null);
     try {
       const scores: SelfScore[] = items.map((item) => ({
         test_item_id: item.test_item_id,
         self_marks: editedScores[item.test_item_id] ?? item.self_marks ?? 0,
       }));
       await onSave(scores);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to save changes");
     } finally {
       setSaving(false);
     }
@@ -195,14 +199,17 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
       </div>
 
       {editable && onSave && (
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50"
-        >
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+          {saveError && <p className="text-sm text-red-400">{saveError}</p>}
+        </div>
       )}
     </div>
   );

@@ -41,6 +41,7 @@ export function ReflectionClient({
   viewStudentName,
 }: ReflectionClientProps) {
   const router = useRouter();
+  const targetStudentId = isTeacher && viewStudentId ? viewStudentId : profile.id;
   const [items, setItems] = useState<ReflectionItem[]>(initialItems ?? []);
   const [pdfUpload, setPdfUpload] = useState<PdfUpload | null>(initialUpload);
   const hasSelfScores = items.some((i) => i.self_marks !== null);
@@ -69,36 +70,38 @@ export function ReflectionClient({
     async (scores: SelfScore[]) => {
       const supabase = createClient();
       for (const score of scores) {
-        await supabase.from("student_self_scores").upsert(
+        const { error } = await supabase.from("student_self_scores").upsert(
           {
             test_item_id: score.test_item_id,
-            student_id: profile.id,
+            student_id: targetStudentId,
             self_marks: score.self_marks,
             submitted_at: new Date().toISOString(),
           },
           { onConflict: "test_item_id,student_id" }
         );
+        if (error) throw error;
       }
       // Refresh server component so teacher marks are now transmitted
       router.refresh();
       setStep(2);
     },
-    [profile.id, router]
+    [router, targetStudentId]
   );
 
   const handleSaveComparison = useCallback(
     async (scores: SelfScore[]) => {
       const supabase = createClient();
       for (const score of scores) {
-        await supabase.from("student_self_scores").upsert(
+        const { error } = await supabase.from("student_self_scores").upsert(
           {
             test_item_id: score.test_item_id,
-            student_id: profile.id,
+            student_id: targetStudentId,
             self_marks: score.self_marks,
             submitted_at: new Date().toISOString(),
           },
           { onConflict: "test_item_id,student_id" }
         );
+        if (error) throw error;
       }
       const updatedItems = items.map((item) => {
         const score = scores.find((s) => s.test_item_id === item.test_item_id);
@@ -109,7 +112,7 @@ export function ReflectionClient({
       const newDisagreement = computeDisagreement(updatedItems);
       if (newDisagreement === 0) setStep(3);
     },
-    [profile.id, items]
+    [items, targetStudentId]
   );
 
   if (tests.length === 0) {
