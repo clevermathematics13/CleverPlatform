@@ -4,6 +4,111 @@
 :root {
   --background: #160904;
   --foreground: #f6e9d4;
+
+  --color-da-bg: #160904;
+  --color-da-surface: #241007;
+  --color-da-hover: #30180d;
+  --color-da-border: #6b3d1c;
+  --color-da-text: #f6e9d4;
+  --color-da-muted: #c49a78;
+  --color-da-accent: #c88a1a;
+  --color-da-amber: #e8a030;
+
+  --color-da-success: #7fd38f;
+  --color-da-warning: #f2c66d;
+  --color-da-danger: #ef8f7f;
+  --color-da-info: #79bbf7;
+
+  --color-da-button-bg: #2f180c;
+  --color-da-button-hover: #3d2010;
+  --color-da-button-border: #8a5529;
+  --color-da-button-text: #f6e9d4;
+
+  --color-module-dashboard: #c88a1a;
+  --color-module-reflection: #d29b2a;
+  --color-module-questions: #dba346;
+  --color-module-seating: #c17334;
+  --color-module-mastery: #b98e4b;
+
+  --da-bg-glow-a: rgba(200, 138, 26, 0.08);
+  --da-bg-glow-b: rgba(232, 160, 48, 0.07);
+  --da-bg-grad-start: #120702;
+  --da-bg-grad-mid: #1a0c06;
+  --da-bg-grad-end: #100501;
+}
+
+/* Palette 2: oceanic midnight */
+[data-theme="ocean"] {
+  --background: #041525;
+  --foreground: #dff3ff;
+
+  --color-da-bg: #041525;
+  --color-da-surface: #082238;
+  --color-da-hover: #0f2f49;
+  --color-da-border: #1f5b82;
+  --color-da-text: #dff3ff;
+  --color-da-muted: #8fc0df;
+  --color-da-accent: #2fb0de;
+  --color-da-amber: #54c6ea;
+
+  --color-da-success: #7fe0bf;
+  --color-da-warning: #ffc46e;
+  --color-da-danger: #ff8f8b;
+  --color-da-info: #88c8ff;
+
+  --color-da-button-bg: #11324b;
+  --color-da-button-hover: #18435f;
+  --color-da-button-border: #2c6f96;
+  --color-da-button-text: #e6f7ff;
+
+  --color-module-dashboard: #2fb0de;
+  --color-module-reflection: #5dbde8;
+  --color-module-questions: #7cb5ff;
+  --color-module-seating: #53a3d0;
+  --color-module-mastery: #74c4d9;
+
+  --da-bg-glow-a: rgba(47, 176, 222, 0.13);
+  --da-bg-glow-b: rgba(124, 181, 255, 0.12);
+  --da-bg-grad-start: #02101a;
+  --da-bg-grad-mid: #06233a;
+  --da-bg-grad-end: #04121f;
+}
+
+/* Palette 3: slate graphite */
+[data-theme="slate"] {
+  --background: #141619;
+  --foreground: #eceef2;
+
+  --color-da-bg: #141619;
+  --color-da-surface: #1f242a;
+  --color-da-hover: #2a3139;
+  --color-da-border: #566172;
+  --color-da-text: #eceef2;
+  --color-da-muted: #b1bac7;
+  --color-da-accent: #8ba4c8;
+  --color-da-amber: #a2b7d5;
+
+  --color-da-success: #95d3a4;
+  --color-da-warning: #e0c283;
+  --color-da-danger: #e3a19a;
+  --color-da-info: #9fc2e8;
+
+  --color-da-button-bg: #2a3037;
+  --color-da-button-hover: #333b45;
+  --color-da-button-border: #667486;
+  --color-da-button-text: #eceef2;
+
+  --color-module-dashboard: #8ba4c8;
+  --color-module-reflection: #a4b3cf;
+  --color-module-questions: #9cbde7;
+  --color-module-seating: #8bb4b0;
+  --color-module-mastery: #b7afc7;
+
+  --da-bg-glow-a: rgba(139, 164, 200, 0.1);
+  --da-bg-glow-b: rgba(183, 175, 199, 0.1);
+  --da-bg-grad-start: #111317;
+  --da-bg-grad-mid: #1a1e24;
+  --da-bg-grad-end: #12151a;
 }
 
 @theme inline {
@@ -13,15 +118,11 @@
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-playfair);
 
-  /* Wood · Leather · Whiskey palette */
-  --color-da-bg:      #160904;   /* deep walnut dark */
-  --color-da-surface: #241007;   /* dark wood plank */
-  --color-da-hover:   #30180d;   /* warm hover */
-  --color-da-border:  #6b3d1c;   /* walnut grain border */
-  --color-da-text:    #f6e9d4;   /* warm parchment */
-  --color-da-muted:   #c49a78;   /* saddle leather tan */
-  --color-da-accent:  #c88a1a;   /* whiskey amber */
-  --color-da-amber:   #e8a030;   /* golden bourbon */
+  /* Semantic color tokens available to all modules */
+  --color-da-success: var(--color-da-success);
+  --color-da-warning: var(--color-da-warning);
+  --color-da-danger: var(--color-da-danger);
+  --color-da-info: var(--color-da-info);
 }
 
 body {
@@ -30,10 +131,70 @@ body {
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   line-height: 1.45;
   background-image:
-    radial-gradient(circle at 12% 18%, rgba(200, 138, 26, 0.08), transparent 34%),
-    radial-gradient(circle at 88% 6%, rgba(232, 160, 48, 0.07), transparent 26%),
-    linear-gradient(160deg, #120702 0%, #1a0c06 48%, #100501 100%);
+    radial-gradient(circle at 12% 18%, var(--da-bg-glow-a), transparent 34%),
+    radial-gradient(circle at 88% 6%, var(--da-bg-glow-b), transparent 26%),
+    linear-gradient(160deg, var(--da-bg-grad-start) 0%, var(--da-bg-grad-mid) 48%, var(--da-bg-grad-end) 100%);
   background-attachment: fixed;
+}
+
+/* Shared semantic controls so button/link styling can be unified app-wide */
+.da-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-da-button-border);
+  background: var(--color-da-button-bg);
+  color: var(--color-da-button-text);
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+
+.da-btn:hover {
+  background: var(--color-da-button-hover);
+}
+
+.da-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.da-btn-ghost {
+  border-color: var(--color-da-border);
+  background: var(--color-da-hover);
+  color: var(--color-da-text);
+}
+
+.da-btn-link {
+  color: var(--color-da-accent);
+  font-weight: 600;
+}
+
+.da-btn-link:hover {
+  text-decoration: underline;
+}
+
+.module-accent-dashboard {
+  color: var(--color-module-dashboard);
+}
+
+.module-accent-reflection {
+  color: var(--color-module-reflection);
+}
+
+.module-accent-questions {
+  color: var(--color-module-questions);
+}
+
+.module-accent-seating {
+  color: var(--color-module-seating);
+}
+
+.module-accent-mastery {
+  color: var(--color-module-mastery);
 }
 
 /* ── Wood-grain texture overlay ─────────────────────────────────────────────

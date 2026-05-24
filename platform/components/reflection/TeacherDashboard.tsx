@@ -68,16 +68,35 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   }, [selectedCourse]);
 
   useEffect(() => {
-    if (!selectedTest) { setData(null); return; }
-    setLoading(true);
-    setEditingCell(null);
-    setSavedCells(new Set());
-    setSelectedStudentId("");
+    if (!selectedTest) {
+      return;
+    }
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setLoading(true);
+      setEditingCell(null);
+      setSavedCells(new Set());
+      setSelectedStudentId("");
+    });
     fetch(`/api/reflection/class-data?testId=${encodeURIComponent(selectedTest)}`)
       .then((r) => r.json())
-      .then((d: ClassData) => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then((d: ClassData) => {
+        if (!active) return;
+        setData(d);
+      })
+      .catch(() => {
+        if (!active) return;
+        setData(null);
+      })
+      .finally(() => {
+        if (!active) return;
+        setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [selectedTest]);
 
   const saveCell = useCallback(
@@ -193,7 +212,11 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             <label className="text-base font-semibold text-da-amber">Class:</label>
             <select
               value={selectedCourse}
-              onChange={(e) => setSelectedCourse(e.target.value)}
+              onChange={(e) => {
+                setData(null);
+                setSelectedStudentId("");
+                setSelectedCourse(e.target.value);
+              }}
               className="rounded border border-da-border px-3 py-1.5 text-sm font-semibold text-da-text bg-da-surface focus:ring-2 focus:ring-da-accent"
             >
               <option value="">All classes</option>
@@ -223,7 +246,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
 
         <a
           href="/dashboard/tests"
-          className="ml-auto text-sm text-da-accent hover:underline"
+          className="ml-auto da-btn-link text-sm"
         >
           + Manage Tests
         </a>
@@ -488,7 +511,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                     href={row.pdf_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 rounded-lg border border-green-700 bg-green-900/30 px-3 py-1.5 text-sm font-medium text-green-300 hover:bg-green-900/50"
+                    className="da-btn"
                   >
                     📎 View corrections PDF
                   </a>
@@ -497,14 +520,14 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                   href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${selectedStudentId}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1.5 rounded-lg border border-da-border bg-da-hover px-3 py-1.5 text-sm font-medium text-da-accent hover:opacity-80"
+                  className="da-btn"
                 >
                   ↗ Open full student view
                 </a>
                 <button
                   type="button"
                   onClick={() => setSelectedStudentId("")}
-                  className="rounded-lg border border-da-border bg-da-bg px-3 py-1.5 text-sm text-da-muted hover:bg-da-hover"
+                  className="da-btn da-btn-ghost"
                 >
                   ✕ Close
                 </button>
