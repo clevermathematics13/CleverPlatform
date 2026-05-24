@@ -40,8 +40,6 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [editValue, setEditValue] = useState("");
   const [saving, setSaving] = useState<CellKey | null>(null);
   const [savedCells, setSavedCells] = useState<Set<CellKey>>(new Set());
-  const [menuFor, setMenuFor] = useState<string | null>(null);
-  const [showHidden, setShowHidden] = useState(false);
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -55,17 +53,6 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
       })
       .catch(() => {});
   }, []);
-
-  // Close menu on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setMenuFor(null);
-      }
-    };
-    if (menuFor) document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [menuFor]);
 
   // Filter tests by selected course
   const filteredTests = selectedCourse
@@ -85,7 +72,6 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
     setLoading(true);
     setEditingCell(null);
     setSavedCells(new Set());
-    setMenuFor(null);
     setSelectedStudentId("");
     fetch(`/api/reflection/class-data?testId=${encodeURIComponent(selectedTest)}`)
       .then((r) => r.json())
@@ -163,28 +149,33 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
     else if (e.key === "Escape") setEditingCell(null);
   };
 
-  const toggleStudent = useCallback(async (studentProfileId: string, hidden: boolean) => {
-    setMenuFor(null);
-    const res = await fetch("/api/reflection/toggle-student", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ studentProfileId, hidden }),
-    });
-    if (res.ok) {
-      setData((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          rows: prev.rows.map((row) =>
-            row.student_id === studentProfileId ? { ...row, hidden } : row
-          ),
-        };
-      });
-    }
-  }, []);
+  const visibleRows = data?.rows.filter((r) => !r.hidden) ?? [];
+  const firstName = (fullName: string) => fullName.trim().split(/\s+/)[0] ?? fullName;
 
-  const visibleRows = data?.rows.filter((r) => showHidden || !r.hidden) ?? [];
-  const hiddenCount = data?.rows.filter((r) => r.hidden).length ?? 0;
+  const classAverageByItem = data?.items.map((item) => {
+    const idx = data.items.findIndex((i) => i.id === item.id);
+    const teacherVals = visibleRows
+      .map((r) => r.items[idx]?.marks_awarded)
+      .filter((v): v is number => v !== null && v !== undefined);
+    const selfVals = visibleRows
+      .map((r) => r.items[idx]?.self_marks)
+      .filter((v): v is number => v !== null && v !== undefined);
+    const teacherAvg = teacherVals.length
+      ? teacherVals.reduce((a, b) => a + b, 0) / teacherVals.length
+      : null;
+    const selfAvg = selfVals.length
+      ? selfVals.reduce((a, b) => a + b, 0) / selfVals.length
+      : null;
+    return { teacherAvg, selfAvg };
+  }) ?? [];
+
+  const classAverageDisagreement = (() => {
+    const vals = visibleRows
+      .map((r) => r.disagreement)
+      .filter((v): v is number => v !== null && v !== undefined);
+    if (!vals.length) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  })();
 
   const disagreementColor = (d: number | null) => {
     if (d === null) return "text-da-muted";
@@ -236,59 +227,13 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
         >
           + Manage Tests
         </a>
-
-        {hiddenCount > 0 && (
-          <label className="flex items-center gap-1.5 text-sm text-da-muted">
-            <input
-              type="checkbox"
-              checked={showHidden}
-              onChange={(e) => setShowHidden(e.target.checked)}
-              className="rounded"
-            />
-            Show hidden ({hiddenCount})
-          </label>
-        )}
-
-        {/* Student selector — appears once class data is loaded */}
-        {data && data.rows.length > 0 && (
-          <>
-            <span className="text-da-muted">|</span>
-            <label htmlFor="student-select" className="text-base font-semibold text-da-amber">
-              Student:
-            </label>
-            <select
-              id="student-select"
-              value={selectedStudentId}
-              onChange={(e) => setSelectedStudentId(e.target.value)}
-              className="rounded border border-da-border px-3 py-1.5 text-sm font-semibold text-da-text bg-da-surface focus:ring-2 focus:ring-da-accent"
-            >
-              <option value="">— select to preview —</option>
-              {[...data.rows]
-                .sort((a, b) => a.display_name.localeCompare(b.display_name))
-                .map((row) => (
-                  <option key={row.student_id} value={row.student_id}>
-                    {row.display_name}
-                  </option>
-                ))}
-            </select>
-            {selectedStudentId && (
-              <a
-                href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${selectedStudentId}`}
-                className="text-sm text-da-accent hover:underline"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                ↗ Open full view
-              </a>
-            )}
-          </>
-        )}
       </div>
 
       {loading && <p className="text-sm text-da-muted">Loading…</p>}
 
       {data && data.items.length > 0 && (
-        <div className="overflow-x-auto">
+        <div className="flex items-start gap-4">
+          <div className="min-w-0 flex-1 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-da-border/40 bg-da-surface">
@@ -312,44 +257,19 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
               {visibleRows.map((row) => (
                 <tr
                   key={row.student_id}
-                  className={`border-b border-da-border/20 ${row.hidden ? "opacity-50" : ""}`}
+                  className="border-b border-da-border/20"
                 >
                   {/* Name cell */}
                   <td
-                    className={`sticky left-0 bg-da-bg px-3 py-2 font-medium text-da-text ${
-                      menuFor === row.student_id ? "z-30" : "z-10"
-                    }`}
+                    className="sticky left-0 z-10 bg-da-bg px-3 py-2 font-medium text-da-text"
                   >
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuFor(menuFor === row.student_id ? null : row.student_id);
-                        }}
-                        className="text-left hover:text-da-amber hover:underline"
-                      >
-                        {row.display_name}
-                        {row.hidden && <span className="ml-1 text-xs text-da-muted">(hidden)</span>}
-                      </button>
-                      {menuFor === row.student_id && (
-                        <div className="absolute left-0 top-full z-20 mt-1 w-52 rounded-lg border border-da-border bg-da-surface py-1 shadow-lg">
-                          <a
-                            href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${row.student_id}`}
-                            className="flex items-center gap-2 px-3 py-2 text-sm text-da-text hover:bg-da-hover"
-                          >
-                            👤 View student reflection
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => toggleStudent(row.student_id, !row.hidden)}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-da-text hover:bg-da-hover"
-                          >
-                            {row.hidden ? "👁 Unhide student" : "🙈 Hide student"}
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedStudentId(row.student_id)}
+                      className="text-left hover:text-da-amber hover:underline"
+                    >
+                      {row.display_name}
+                    </button>
                   </td>
 
                   {/* Mark cells */}
@@ -449,14 +369,76 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                   </td>
                 </tr>
               ))}
+
+              {/* Class average row */}
+              <tr className="border-t-2 border-da-border/60 bg-da-surface/70">
+                <td className="sticky left-0 z-10 bg-da-surface/70 px-3 py-2 font-bold text-da-amber">
+                  Class Average
+                </td>
+                {classAverageByItem.map((avg, idx) => {
+                  const diff = avg.teacherAvg !== null && avg.selfAvg !== null
+                    ? avg.selfAvg - avg.teacherAvg
+                    : null;
+                  return (
+                    <td key={`avg-${data.items[idx].id}`} className="px-3 py-2 text-center text-da-text">
+                      {avg.teacherAvg !== null ? (
+                        <span>
+                          <span className="font-semibold">{avg.teacherAvg.toFixed(1)}</span>
+                          {avg.selfAvg !== null && (
+                            <span className="ml-1 text-xs text-da-muted">
+                              /{avg.selfAvg.toFixed(1)}
+                              {diff !== null && diff !== 0 && (
+                                <span className={diff > 0 ? "text-yellow-400" : "text-red-400"}>
+                                  ({diff > 0 ? "+" : ""}{diff.toFixed(1)})
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="text-da-muted">—</span>
+                      )}
+                    </td>
+                  );
+                })}
+                <td className={`px-3 py-2 text-center font-semibold ${disagreementColor(classAverageDisagreement)}`}>
+                  {classAverageDisagreement !== null ? `${classAverageDisagreement.toFixed(1)}%` : "—"}
+                </td>
+                <td className="px-3 py-2 text-center text-da-muted">—</td>
+              </tr>
             </tbody>
           </table>
+          </div>
+
+          {/* Right-side first-name quick menu */}
+          <aside className="w-40 shrink-0 rounded-lg border border-da-border bg-da-surface p-2">
+            <p className="px-2 pb-1 text-xs font-semibold uppercase tracking-wide text-da-muted">Students</p>
+            <div className="max-h-[520px] space-y-1 overflow-y-auto">
+              {visibleRows
+                .slice()
+                .sort((a, b) => a.display_name.localeCompare(b.display_name))
+                .map((row) => (
+                  <button
+                    key={`menu-${row.student_id}`}
+                    type="button"
+                    onClick={() => setSelectedStudentId(row.student_id)}
+                    className={`w-full rounded px-2 py-1 text-left text-sm ${
+                      selectedStudentId === row.student_id
+                        ? "bg-da-accent text-da-bg font-semibold"
+                        : "text-da-text hover:bg-da-hover"
+                    }`}
+                  >
+                    {firstName(row.display_name)}
+                  </button>
+                ))}
+            </div>
+          </aside>
         </div>
       )}
 
       {/* ── Student preview panel ────────────────────────────────────────── */}
       {selectedStudentId && data && (() => {
-        const row = data.rows.find((r) => r.student_id === selectedStudentId);
+        const row = visibleRows.find((r) => r.student_id === selectedStudentId);
         if (!row) return null;
 
         // Build ReflectionItem[] by merging test items with the student's marks
