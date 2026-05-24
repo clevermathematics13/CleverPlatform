@@ -454,7 +454,7 @@ export async function getClassReflectionData(
   });
 
   rows.sort((a, b) => a.display_name.localeCompare(b.display_name));
-  return { items, rows };
+  return { items: itemsWithLabels, rows };
 }
 
 /** Get heatmap data for class mastery. */
