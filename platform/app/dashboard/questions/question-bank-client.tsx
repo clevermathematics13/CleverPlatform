@@ -1435,10 +1435,10 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       {!testBuilderOpen && (
         <div>
           <h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">
-            Question Bank
+            Past Paper Questions (PPQ)
           </h1>
           <p className="mt-1 text-base font-medium text-blue-700">
-            Browse, search, and filter IB questions.
+            Browse, search, and filter past paper questions.
           </p>
         </div>
       )}

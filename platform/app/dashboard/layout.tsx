@@ -68,7 +68,7 @@ function getNavigation(role: string) {
   if (role === "teacher") {
     return [
       ...shared,
-      { href: "/dashboard/questions", label: "Question Bank", icon: "❓" },
+      { href: "/dashboard/questions", label: "PPQ Bank", icon: "❓" },
 
       { href: "/dashboard/assignments", label: "Assignments", icon: "📋" },
       { href: "/dashboard/tests", label: "Tests", icon: "📝" },

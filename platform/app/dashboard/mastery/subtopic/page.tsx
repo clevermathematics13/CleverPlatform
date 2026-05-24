@@ -3,14 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 import { getStudentMastery } from "@/lib/exam-service";
 import { redirect } from "next/navigation";
 
-interface SubtopicQuestionPart {
-  id: string;
-  question_id: string;
-  part_label: string;
-  marks: number;
-  sort_order: number;
-}
-
 export default async function SubtopicMasteryPage({
   searchParams,
 }: {
@@ -43,37 +35,6 @@ export default async function SubtopicMasteryPage({
   const selected = mastery.find((m) => m.code === code);
   const studentName = studentProfile?.display_name ?? "Student";
   const subtopicDescriptor = subtopicRow?.descriptor ?? code;
-
-  const { data: matchingParts } = await supabase
-    .from("question_parts")
-    .select("id, question_id, part_label, marks, sort_order, subtopic_codes")
-    .overlaps("subtopic_codes", [code])
-    .order("sort_order", { ascending: true });
-
-  const partRows = (matchingParts ?? []) as SubtopicQuestionPart[];
-  const questionIds = [...new Set(partRows.map((part) => part.question_id))];
-
-  const { data: questions } = await supabase
-    .from("ib_questions")
-    .select("id, code, session, paper, level")
-    .in("id", questionIds);
-
-  const questionMap = new Map(
-    (questions ?? []).map((question) => [question.id, question])
-  );
-
-  const linkedParts = partRows
-    .map((part) => ({
-      ...part,
-      question: questionMap.get(part.question_id) ?? null,
-    }))
-    .filter((part) => part.question);
-
-  linkedParts.sort((a, b) => {
-    const qa = a.question?.code ?? "";
-    const qb = b.question?.code ?? "";
-    return qa.localeCompare(qb, undefined, { numeric: true }) || a.part_label.localeCompare(b.part_label, undefined, { numeric: true });
-  });
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -115,44 +76,27 @@ export default async function SubtopicMasteryPage({
       </section>
 
       <section className="rounded-2xl border border-da-border bg-da-surface/90 p-5 shadow-lg shadow-black/30 wood-surface space-y-4">
-        <h2 className="text-xl font-bold text-da-text">Related Questions</h2>
-        {linkedParts.length === 0 ? (
-          <p className="text-sm text-da-muted">No questions are tagged with this subtopic yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {linkedParts.map((part) => (
-              <div key={part.id} className="rounded-lg border border-da-border/70 bg-da-bg/50 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-da-text">
-                      {questionLabel(part.question?.code ?? "Question")}
-                    </p>
-                    <p className="text-sm text-da-muted">
-                      Part {part.part_label || "—"} · {part.marks} marks
-                    </p>
-                  </div>
-                  {isTeacher ? (
-                    <a
-                      href={`/dashboard/questions/review?focus=${part.question_id}`}
-                      className="rounded-lg border border-da-border bg-da-hover px-3 py-1.5 text-sm font-medium text-da-accent hover:opacity-90"
-                    >
-                      Open question
-                    </a>
-                  ) : (
-                    <span className="rounded-lg border border-da-border/70 bg-da-bg/60 px-3 py-1.5 text-sm font-medium text-da-muted">
-                      Question access disabled
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
+        <h2 className="text-xl font-bold text-da-text">Question Links</h2>
+        <p className="text-sm text-da-muted">
+          This page is active, but question lists are temporarily unpopulated while we split banks into
+          Past Paper Questions (PPQ) and IB-inspired questions.
+        </p>
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-da-border/70 bg-da-bg/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">Current Bank</p>
+            <p className="mt-1 font-semibold text-da-text">Past Paper Questions (PPQ)</p>
+            <p className="mt-1 text-sm text-da-muted">Legacy question set retained and relabeled.</p>
           </div>
+          <div className="rounded-lg border border-da-border/70 bg-da-bg/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">New Bank</p>
+            <p className="mt-1 font-semibold text-da-text">IB-inspired Questions</p>
+            <p className="mt-1 text-sm text-da-muted">Question mapping for this subtopic will be added after setup.</p>
+          </div>
+        </div>
+        {!isTeacher && (
+          <p className="text-sm text-da-muted">Student question access remains disabled during this transition.</p>
         )}
       </section>
     </div>
   );
-}
-
-function questionLabel(code: string): string {
-  return code;
 }

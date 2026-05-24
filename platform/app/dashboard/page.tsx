@@ -78,9 +78,9 @@ async function TeacherDashboard({ supabase }: { supabase: Awaited<ReturnType<typ
         href="/dashboard/assignments"
       />
       <DashboardCard
-        title="Questions"
+        title="PPQ Questions"
         value={String(questionsRes.count ?? 0)}
-        description="In question bank"
+        description="In Past Paper Questions bank"
         href="/dashboard/questions"
       />
       <DashboardCard
