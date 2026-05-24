@@ -36,7 +36,7 @@ export default async function MasteryPage({
             </p>
           </header>
           <section className="rounded-2xl border border-da-border bg-da-surface/90 p-5 shadow-lg shadow-black/30 wood-surface">
-            <StudentDashboard mastery={mastery} studentName={studentName} />
+            <StudentDashboard mastery={mastery} studentName={studentName} studentId={studentId} />
           </section>
         </div>
       );
@@ -71,6 +71,7 @@ export default async function MasteryPage({
         <StudentDashboard
           mastery={mastery}
           studentName={profile.display_name}
+          studentId={profile.id}
         />
       </section>
     </div>

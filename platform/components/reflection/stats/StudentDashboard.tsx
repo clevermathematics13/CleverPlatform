@@ -5,6 +5,7 @@ import type { SubtopicMastery } from "@/lib/reflection-types";
 interface StudentDashboardProps {
   mastery: SubtopicMastery[];
   studentName: string;
+  studentId?: string | null;
 }
 
 function getBarColor(pct: number): string {
@@ -18,6 +19,7 @@ function getBarColor(pct: number): string {
 export function StudentDashboard({
   mastery,
   studentName,
+  studentId,
 }: StudentDashboardProps) {
   if (mastery.length === 0) {
     return (
@@ -49,7 +51,11 @@ export function StudentDashboard({
 
       <div className="space-y-2.5">
         {mastery.map((m) => (
-          <div key={m.code} className="flex items-center gap-3 rounded-lg border border-da-border/70 bg-da-bg/45 px-3 py-2">
+          <a
+            key={m.code}
+            href={`/dashboard/mastery/subtopic?code=${encodeURIComponent(m.code)}${studentId ? `&studentId=${encodeURIComponent(studentId)}` : ""}`}
+            className="flex items-center gap-3 rounded-lg border border-da-border/70 bg-da-bg/45 px-3 py-2 transition-colors hover:bg-da-hover"
+          >
             <div className="w-16 shrink-0 text-xs font-mono text-da-muted">
               {m.code}
             </div>
@@ -69,7 +75,7 @@ export function StudentDashboard({
                 {m.descriptor}
               </p>
             </div>
-          </div>
+          </a>
         ))}
       </div>
     </div>
