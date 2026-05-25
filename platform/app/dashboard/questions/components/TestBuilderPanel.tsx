@@ -566,7 +566,7 @@ export function TestBuilderPanel({
                 : "border-gray-300 text-gray-600 bg-white hover:bg-gray-100"
             }`}
           >
-            📂 {showSavedExams ? "Hide" : "Load Exam"}
+            📂 {showSavedExams ? "Hide Exams" : "Load Exams"}
           </button>
         </div>
 
