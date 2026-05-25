@@ -95,6 +95,73 @@ function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
   ));
 }
 
+function renderCornerMark(position: "top-left" | "top-right" | "bottom-left" | "bottom-right") {
+  const verticalSide = position.includes("left") ? "left" : "right";
+  const horizontalSide = position.includes("top") ? "top" : "bottom";
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "absolute",
+        [verticalSide]: "5mm",
+        [horizontalSide]: "4mm",
+        width: "5mm",
+        height: "5mm",
+        borderTop: horizontalSide === "top" ? "0.7px solid #444" : undefined,
+        borderBottom: horizontalSide === "bottom" ? "0.7px solid #444" : undefined,
+        borderLeft: verticalSide === "left" ? "0.7px solid #444" : undefined,
+        borderRight: verticalSide === "right" ? "0.7px solid #444" : undefined,
+      }}
+    />
+  );
+}
+
+function renderPageChrome(pageNumber: number, paperCode: string, footerText?: string) {
+  return (
+    <>
+      {renderCornerMark("top-left")}
+      {renderCornerMark("top-right")}
+      {renderCornerMark("bottom-left")}
+      {renderCornerMark("bottom-right")}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: "4.5mm",
+          left: "0",
+          right: "0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 10mm",
+          fontFamily: '"Arial", sans-serif',
+          fontSize: "8.5pt",
+          color: "#333",
+        }}
+      >
+        <span style={{ width: "16mm" }} />
+        <span style={{ letterSpacing: "0.2mm", fontWeight: 600 }}>- {pageNumber} -</span>
+        <span style={{ width: "30mm", textAlign: "right", fontWeight: 600 }}>{paperCode}</span>
+      </div>
+      {footerText && (
+        <div
+          style={{
+            position: "absolute",
+            left: "10mm",
+            bottom: "9mm",
+            fontFamily: '"Arial", sans-serif',
+            fontSize: "8.5pt",
+            fontWeight: 700,
+            color: "#333",
+          }}
+        >
+          {footerText}
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Module-level exam data cache (survives component re-mounts) ─────────────
 
 interface ExamDataCache {
@@ -354,6 +421,7 @@ export function TestPreviewClient() {
   }
 
   const examLabel = `${config?.curriculum} ${config?.level} Paper ${config?.paper}`;
+  const paperCode = `${config?.curriculum}${config?.level} P${config?.paper}`;
 
   return (
     <div className="preview-root" style={{ position: "fixed", inset: 0, zIndex: 100, overflow: "hidden", display: "flex", flexDirection: "column", background: "white", color: "#111827" }}>
@@ -494,6 +562,7 @@ export function TestPreviewClient() {
         )}
         {orderedQuestions.map((q, qIdx) => {
           const globalNum = qIdx + 1;
+          const pageNumber = thumbnailUrl ? qIdx + 2 : qIdx + 1;
           const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
           const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
           const showSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
@@ -507,8 +576,9 @@ export function TestPreviewClient() {
               {isFirstSectionB && (
                 <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
               )}
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "15mm 20mm 10mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm", display: "flex", flexDirection: "column" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm" }}>
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "13mm 20mm 10mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm", display: "flex", flexDirection: "column" }}>
+                {renderPageChrome(pageNumber, paperCode)}
+                <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
                   <button
@@ -584,6 +654,7 @@ export function TestPreviewClient() {
               )}
               {orderedQuestions.map((q, qIdx) => {
                 const globalNum = qIdx + 1;
+                const pageNumber = (thumbnailUrl ? 2 : 1) + sIdx * orderedQuestions.length + qIdx;
                 const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
                 const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
                 const qrUrl = qrCodes[student.id]?.[q.code] ?? "";
@@ -602,7 +673,7 @@ export function TestPreviewClient() {
                     <div
                       className="question-page"
                       style={{
-                        padding: `15mm 20mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "10mm"}`,
+                        padding: `13mm 20mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "10mm"}`,
                         breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page",
                         breakInside: "avoid",
                         position: "relative",
@@ -611,7 +682,8 @@ export function TestPreviewClient() {
                         flexDirection: "column",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm" }}>
+                      {renderPageChrome(pageNumber, paperCode, qIdx < orderedQuestions.length - 1 ? "(This question continues on the following page)" : undefined)}
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
                       </div>
