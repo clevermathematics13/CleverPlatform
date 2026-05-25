@@ -94,10 +94,10 @@ export function Heatmap({ cells }: HeatmapProps) {
                       {student.name}
                     </button>
                     {menuForStudentId === student.id && (
-                      <div className="absolute left-0 top-full z-60 mt-1 min-w-45 rounded-lg border border-da-border bg-da-surface py-1 shadow-lg">
+                      <div className="absolute left-0 top-full z-60 mt-1 min-w-45 rounded-lg border border-da-border bg-da-surface p-1 shadow-lg">
                         <a
                           href={`/dashboard/mastery?studentId=${student.id}`}
-                          className="block px-3 py-2 text-sm text-da-text hover:bg-da-hover"
+                          className="da-btn flex w-full justify-start"
                         >
                           View student&apos;s mastery
                         </a>
