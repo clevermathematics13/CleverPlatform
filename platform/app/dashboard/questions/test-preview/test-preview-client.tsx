@@ -368,7 +368,7 @@ export function TestPreviewClient() {
   const examLabel = `${config?.curriculum} ${config?.level} Paper ${config?.paper}`;
 
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 100, overflow: "hidden", display: "flex", flexDirection: "column", background: "white", color: "#111827" }}>
+    <div className="preview-root" style={{ position: "fixed", inset: 0, zIndex: 100, overflow: "hidden", display: "flex", flexDirection: "column", background: "white", color: "#111827" }}>
       {/* ── Print controls (hidden in print) ── */}
       <div
         className="no-print"
@@ -420,7 +420,7 @@ export function TestPreviewClient() {
       </div>
 
       {/* ── Single scrollable body ── */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      <div className="preview-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
 
       {/* ── Table of contents (screen only) ── */}
       {orderedQuestions.length > 0 && (
@@ -757,6 +757,23 @@ export function TestPreviewClient() {
           body {
             margin: 0;
             padding: 0;
+          }
+
+          .preview-root {
+            position: static !important;
+            inset: auto !important;
+            z-index: auto !important;
+            overflow: visible !important;
+            display: block !important;
+            height: auto !important;
+            background: white !important;
+          }
+
+          .preview-scroll {
+            overflow: visible !important;
+            height: auto !important;
+            min-height: 0 !important;
+            display: block !important;
           }
 
           .cover-page {
