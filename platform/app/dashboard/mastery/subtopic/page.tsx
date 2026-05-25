@@ -3,6 +3,19 @@ import { createClient } from "@/lib/supabase/server";
 import { getStudentMastery } from "@/lib/exam-service";
 import { redirect } from "next/navigation";
 
+type LinkedAssessmentRow = {
+  testItemId: string;
+  questionCode: string;
+  questionNumber: number;
+  partLabel: string;
+  testName: string;
+  testDate: string | null;
+  maxMarks: number;
+  teacherMarks: number | null;
+  selfMarks: number | null;
+  subtopicCodes: string[];
+};
+
 export default async function SubtopicMasteryPage({
   searchParams,
 }: {
@@ -18,7 +31,14 @@ export default async function SubtopicMasteryPage({
   }
 
   const supabase = await createClient();
-  const [{ data: studentProfile }, { data: subtopicRow }, mastery] = await Promise.all([
+  const [
+    { data: studentProfile },
+    { data: subtopicRow },
+    mastery,
+    { data: allSubtopics },
+    { data: markRows },
+    { data: selfRows },
+  ] = await Promise.all([
     supabase
       .from("profiles")
       .select("display_name")
@@ -30,11 +50,118 @@ export default async function SubtopicMasteryPage({
       .eq("code", code)
       .maybeSingle(),
     getStudentMastery(targetStudentId),
+    supabase.from("subtopics").select("code, descriptor"),
+    supabase
+      .from("student_marks")
+      .select(`
+        marks_awarded,
+        test_item_id,
+        test_items(
+          id,
+          ib_question_code,
+          question_number,
+          part_label,
+          max_marks,
+          subtopic_codes,
+          tests(name, test_date)
+        )
+      `)
+      .eq("student_id", targetStudentId),
+    supabase
+      .from("student_self_scores")
+      .select(`
+        self_marks,
+        test_item_id,
+        test_items(
+          id,
+          ib_question_code,
+          question_number,
+          part_label,
+          max_marks,
+          subtopic_codes,
+          tests(name, test_date)
+        )
+      `)
+      .eq("student_id", targetStudentId),
   ]);
 
   const selected = mastery.find((m) => m.code === code);
   const studentName = studentProfile?.display_name ?? "Student";
   const subtopicDescriptor = subtopicRow?.descriptor ?? code;
+
+  const subtopicDescriptorMap = new Map(
+    (allSubtopics ?? []).map((s) => [s.code, s.descriptor])
+  );
+
+  const linkedByItem = new Map<string, LinkedAssessmentRow>();
+
+  for (const row of markRows ?? []) {
+    const item = row.test_items as {
+      id: string;
+      ib_question_code: string | null;
+      question_number: number;
+      part_label: string;
+      max_marks: number;
+      subtopic_codes: string[] | null;
+      tests: { name: string; test_date: string | null } | null;
+    } | null;
+    if (!item) continue;
+    const subtopicCodes = item.subtopic_codes ?? [];
+    if (!subtopicCodes.includes(code)) continue;
+
+    linkedByItem.set(item.id, {
+      testItemId: item.id,
+      questionCode: item.ib_question_code ?? "—",
+      questionNumber: item.question_number,
+      partLabel: item.part_label ?? "",
+      testName: item.tests?.name ?? "Untitled Test",
+      testDate: item.tests?.test_date ?? null,
+      maxMarks: item.max_marks,
+      teacherMarks: row.marks_awarded ?? null,
+      selfMarks: null,
+      subtopicCodes,
+    });
+  }
+
+  for (const row of selfRows ?? []) {
+    const item = row.test_items as {
+      id: string;
+      ib_question_code: string | null;
+      question_number: number;
+      part_label: string;
+      max_marks: number;
+      subtopic_codes: string[] | null;
+      tests: { name: string; test_date: string | null } | null;
+    } | null;
+    if (!item) continue;
+    const subtopicCodes = item.subtopic_codes ?? [];
+    if (!subtopicCodes.includes(code)) continue;
+
+    const existing = linkedByItem.get(item.id);
+    if (existing) {
+      existing.selfMarks = row.self_marks ?? null;
+      continue;
+    }
+
+    linkedByItem.set(item.id, {
+      testItemId: item.id,
+      questionCode: item.ib_question_code ?? "—",
+      questionNumber: item.question_number,
+      partLabel: item.part_label ?? "",
+      testName: item.tests?.name ?? "Untitled Test",
+      testDate: item.tests?.test_date ?? null,
+      maxMarks: item.max_marks,
+      teacherMarks: null,
+      selfMarks: row.self_marks ?? null,
+      subtopicCodes,
+    });
+  }
+
+  const linkedQuestions = [...linkedByItem.values()].sort((a, b) => {
+    const ad = a.testDate ? Date.parse(a.testDate) : 0;
+    const bd = b.testDate ? Date.parse(b.testDate) : 0;
+    return bd - ad;
+  });
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -78,23 +205,74 @@ export default async function SubtopicMasteryPage({
       <section className="rounded-2xl border border-da-border bg-da-surface/90 p-5 shadow-lg shadow-black/30 wood-surface space-y-4">
         <h2 className="text-xl font-bold text-da-text">Question Links</h2>
         <p className="text-sm text-da-muted">
-          This page is active, but question lists are temporarily unpopulated while we split banks into
-          Past Paper Questions (PPQ) and IB-inspired questions.
+          Showing linked question parts from this student&apos;s assessments where the selected subtopic appears.
+          Each row includes all subtopics tagged on that question part.
         </p>
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-lg border border-da-border/70 bg-da-bg/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">Current Bank</p>
-            <p className="mt-1 font-semibold text-da-text">Past Paper Questions (PPQ)</p>
-            <p className="mt-1 text-sm text-da-muted">Legacy question set retained and relabeled.</p>
+
+        {linkedQuestions.length === 0 ? (
+          <div className="rounded-lg border border-da-border/70 bg-da-bg/50 p-4 text-sm text-da-muted">
+            No linked assessment questions were found for subtopic {code}.
           </div>
-          <div className="rounded-lg border border-da-border/70 bg-da-bg/50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">New Bank</p>
-            <p className="mt-1 font-semibold text-da-text">IB-inspired Questions</p>
-            <p className="mt-1 text-sm text-da-muted">Question mapping for this subtopic will be added after setup.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-da-border/70">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="bg-da-bg/60 text-left text-da-muted">
+                  <th className="px-3 py-2 font-semibold">Assessment</th>
+                  <th className="px-3 py-2 font-semibold">Question</th>
+                  <th className="px-3 py-2 font-semibold">Marks</th>
+                  <th className="px-3 py-2 font-semibold">All Subtopics On Part</th>
+                </tr>
+              </thead>
+              <tbody>
+                {linkedQuestions.map((q) => (
+                  <tr key={q.testItemId} className="border-t border-da-border/50">
+                    <td className="px-3 py-2 text-da-text">
+                      <div className="font-medium">{q.testName}</div>
+                      <div className="text-xs text-da-muted">{q.testDate ?? "No date"}</div>
+                    </td>
+                    <td className="px-3 py-2 text-da-text">
+                      <a
+                        href={`/dashboard/questions?search=${encodeURIComponent(q.questionCode)}`}
+                        className="da-btn-link"
+                      >
+                        {q.questionCode}
+                      </a>
+                      <div className="text-xs text-da-muted">
+                        Q{q.questionNumber}{q.partLabel ? q.partLabel : ""}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 text-da-text">
+                      <div className="text-xs text-da-muted">Teacher</div>
+                      <div>{q.teacherMarks !== null ? `${q.teacherMarks}/${q.maxMarks}` : "—"}</div>
+                      <div className="mt-1 text-xs text-da-muted">Self</div>
+                      <div>{q.selfMarks !== null ? `${q.selfMarks}/${q.maxMarks}` : "—"}</div>
+                    </td>
+                    <td className="px-3 py-2 text-da-text">
+                      <div className="flex flex-wrap gap-1">
+                        {q.subtopicCodes.map((subtopicCode) => {
+                          const descriptor = subtopicDescriptorMap.get(subtopicCode) ?? subtopicCode;
+                          const isSelected = subtopicCode === code;
+                          return (
+                            <span
+                              key={`${q.testItemId}-${subtopicCode}`}
+                              className={`rounded-full border px-2 py-0.5 text-xs ${
+                                isSelected
+                                  ? "border-da-accent bg-da-hover text-da-text"
+                                  : "border-da-border/70 bg-da-bg/60 text-da-muted"
+                              }`}
+                            >
+                              {subtopicCode} — {descriptor}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
-        {!isTeacher && (
-          <p className="text-sm text-da-muted">Student question access remains disabled during this transition.</p>
         )}
       </section>
     </div>
