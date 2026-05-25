@@ -1177,6 +1177,14 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     setExamDirty(true);
   };
 
+  const applyFixedAnswerBoxToSectionA = () => {
+    const mm = Math.max(20, Math.min(140, Math.round(examConfig.answerBoxFixedMm || 52)));
+    setTestQueue((prev) =>
+      prev.map((item) => (item.section === "A" ? { ...item, answerBoxMm: mm } : item))
+    );
+    setExamDirty(true);
+  };
+
   const autoSortQueue = () => {
     setTestQueue((prev) => {
       const a = prev.filter((q) => q.section === "A");
@@ -2122,6 +2130,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           onRemove={removeFromQueue}
           onUpdateSection={updateQueueSection}
           onUpdateAnswerBoxMm={updateQueueAnswerBoxMm}
+          onApplyFixedToSectionA={applyFixedAnswerBoxToSectionA}
           onAutoSort={autoSortQueue}
           onMoveUp={handleMoveUp}
           onPreviewTest={() => openPreview("question")}

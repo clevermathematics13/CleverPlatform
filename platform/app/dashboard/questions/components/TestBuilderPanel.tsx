@@ -162,6 +162,7 @@ export function TestBuilderPanel({
   onRemove,
   onUpdateSection,
   onUpdateAnswerBoxMm,
+  onApplyFixedToSectionA,
   onAutoSort,
   onMoveUp,
   onPreviewTest,
@@ -207,6 +208,7 @@ export function TestBuilderPanel({
   onRemove: (id: string) => void;
   onUpdateSection: (id: string, section: "A" | "B") => void;
   onUpdateAnswerBoxMm: (id: string, answerBoxMm: number | null) => void;
+  onApplyFixedToSectionA: () => void;
   onAutoSort: () => void;
   onMoveUp: (fromIndex: number, toIndex: number) => void;
   onPreviewTest: () => void;
@@ -385,6 +387,16 @@ export function TestBuilderPanel({
                   title="Default fixed answer-box height in mm"
                 />
               </div>
+              {examConfig.answerBoxMode === "fixed" && sectionAItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={onApplyFixedToSectionA}
+                  className="w-full rounded border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-700 hover:bg-indigo-100"
+                  title="Set all Section A question overrides to the fixed height"
+                >
+                  Apply {examConfig.answerBoxFixedMm}mm to all Section A
+                </button>
+              )}
               <p className="text-[10px] text-indigo-500">
                 Per-question overrides can be set on Section A rows.
               </p>

@@ -591,6 +591,7 @@ export function TestPreviewClient() {
                 const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
                 const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
                 const qrUrl = qrCodes[student.id]?.[q.code] ?? "";
+                const hasSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
                 return (
                   <div key={q.id}>
                     {isFirstSectionA && (
@@ -599,7 +600,16 @@ export function TestPreviewClient() {
                     {isFirstSectionB && (
                       <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
                     )}
-                    <div className="question-page" style={{ padding: "15mm 20mm 10mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm" }}>
+                    <div
+                      className="question-page"
+                      style={{
+                        padding: `15mm 20mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "10mm"}`,
+                        breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page",
+                        breakInside: "avoid",
+                        position: "relative",
+                        minHeight: "240mm",
+                      }}
+                    >
                       <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6mm" }}>
                         <p style={{ fontFamily: "serif", fontSize: "14pt", fontWeight: "bold", margin: 0, color: "#000" }}>{globalNum}.</p>
                       </div>
