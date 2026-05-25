@@ -99,6 +99,7 @@ function getSettingsNavigation(role: string) {
       { href: "/dashboard/students", label: "Students", icon: "👥" },
       { href: "/dashboard/courses", label: "Courses", icon: "📚" },
       { href: "/dashboard/syllabus", label: "Syllabus", icon: "📖" },
+      { href: "/dashboard/archived-exams", label: "Archived Exams", icon: "🗄️" },
       { href: "/dashboard/questions/review", label: "LaTeX Review", icon: "🔬" },
       { href: "/dashboard/graph-lab", label: "Graph Lab", icon: "📈" },
     ];
