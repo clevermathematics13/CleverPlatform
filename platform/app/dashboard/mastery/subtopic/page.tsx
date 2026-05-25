@@ -178,10 +178,12 @@ export default async function SubtopicMasteryPage({
     });
   }
 
-  const markGap = (row: LinkedAssessmentRow) =>
-    row.teacherMarks !== null && row.selfMarks !== null
-      ? Math.abs(row.teacherMarks - row.selfMarks)
-      : -1;
+  const effectiveSelfMarks = (row: LinkedAssessmentRow) => row.selfMarks ?? 0;
+
+  const markGap = (row: LinkedAssessmentRow) => {
+    if (row.teacherMarks === null) return -1;
+    return Math.abs(row.teacherMarks - effectiveSelfMarks(row));
+  };
 
   const linkedQuestions = [...linkedByItem.values()].sort((a, b) => {
     const ad = a.testDate ? Date.parse(a.testDate) : 0;
@@ -323,7 +325,10 @@ export default async function SubtopicMasteryPage({
                       <div className="text-xs text-da-muted">Teacher</div>
                       <div>{q.teacherMarks !== null ? `${q.teacherMarks}/${q.maxMarks}` : "—"}</div>
                       <div className="mt-1 text-xs text-da-muted">Self</div>
-                      <div>{q.selfMarks !== null ? `${q.selfMarks}/${q.maxMarks}` : "—"}</div>
+                      <div>{`${effectiveSelfMarks(q)}/${q.maxMarks}`}</div>
+                      {q.selfMarks === null && (
+                        <div className="text-[11px] text-da-muted">Not submitted (counted as 0)</div>
+                      )}
                       <div className="mt-1 text-xs text-da-muted">
                         Gap: {markGap(q) >= 0 ? markGap(q) : "—"}
                       </div>
