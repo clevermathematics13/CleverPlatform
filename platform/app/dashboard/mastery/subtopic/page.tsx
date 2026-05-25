@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 type LinkedAssessmentRow = {
   testItemId: string;
+  testId: string | null;
   questionCode: string;
   questionNumber: number;
   partLabel: string;
@@ -17,6 +18,7 @@ type LinkedAssessmentRow = {
 };
 
 type TestMeta = {
+  id?: string;
   name: string;
   test_date: string | null;
 };
@@ -98,7 +100,7 @@ export default async function SubtopicMasteryPage({
           part_label,
           max_marks,
           subtopic_codes,
-          tests(name, test_date)
+          tests(id, name, test_date)
         )
       `)
       .eq("student_id", targetStudentId),
@@ -114,7 +116,7 @@ export default async function SubtopicMasteryPage({
           part_label,
           max_marks,
           subtopic_codes,
-          tests(name, test_date)
+          tests(id, name, test_date)
         )
       `)
       .eq("student_id", targetStudentId),
@@ -139,6 +141,7 @@ export default async function SubtopicMasteryPage({
 
     linkedByItem.set(item.id, {
       testItemId: item.id,
+      testId: testMeta?.id ?? null,
       questionCode: item.ib_question_code ?? "—",
       questionNumber: item.question_number,
       partLabel: item.part_label ?? "",
@@ -166,6 +169,7 @@ export default async function SubtopicMasteryPage({
 
     linkedByItem.set(item.id, {
       testItemId: item.id,
+      testId: testMeta?.id ?? null,
       questionCode: item.ib_question_code ?? "—",
       questionNumber: item.question_number,
       partLabel: item.part_label ?? "",
@@ -307,7 +311,18 @@ export default async function SubtopicMasteryPage({
                 {visibleQuestions.map((q) => (
                   <tr key={q.testItemId} className="border-t border-da-border/50">
                     <td className="px-3 py-2 text-da-text">
-                      <div className="font-medium">{q.testName}</div>
+                      <div className="font-medium">
+                        {q.testId ? (
+                          <a
+                            href={`/dashboard/reflection?testId=${encodeURIComponent(q.testId)}${isTeacher ? `&viewStudent=${encodeURIComponent(targetStudentId)}` : ""}`}
+                            className="da-btn-link"
+                          >
+                            {q.testName}
+                          </a>
+                        ) : (
+                          q.testName
+                        )}
+                      </div>
                       <div className="text-xs text-da-muted">{q.testDate ?? "No date"}</div>
                     </td>
                     <td className="px-3 py-2 text-da-text">
