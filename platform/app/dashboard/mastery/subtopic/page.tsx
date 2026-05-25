@@ -19,12 +19,18 @@ type LinkedAssessmentRow = {
 export default async function SubtopicMasteryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ code?: string; studentId?: string }>;
+  searchParams: Promise<{ code?: string; studentId?: string; limit?: string; sort?: string }>;
 }) {
   const profile = await getProfile();
   const isTeacher = profile.role === "teacher";
-  const { code, studentId } = await searchParams;
+  const { code, studentId, limit: rawLimit, sort: rawSort } = await searchParams;
   const targetStudentId = isTeacher && studentId ? studentId : profile.id;
+  const sortMode: "date_desc" | "date_asc" | "gap_desc" =
+    rawSort === "date_asc" || rawSort === "gap_desc" ? rawSort : "date_desc";
+  const limitCount =
+    rawLimit && rawLimit !== "all" && Number.isFinite(Number(rawLimit))
+      ? Math.max(1, Number(rawLimit))
+      : null;
 
   if (!code) {
     redirect("/dashboard/mastery");
@@ -157,11 +163,26 @@ export default async function SubtopicMasteryPage({
     });
   }
 
+  const markGap = (row: LinkedAssessmentRow) =>
+    row.teacherMarks !== null && row.selfMarks !== null
+      ? Math.abs(row.teacherMarks - row.selfMarks)
+      : -1;
+
   const linkedQuestions = [...linkedByItem.values()].sort((a, b) => {
     const ad = a.testDate ? Date.parse(a.testDate) : 0;
     const bd = b.testDate ? Date.parse(b.testDate) : 0;
+
+    if (sortMode === "date_asc") return ad - bd;
+    if (sortMode === "gap_desc") {
+      const gapDiff = markGap(b) - markGap(a);
+      if (gapDiff !== 0) return gapDiff;
+      return bd - ad;
+    }
     return bd - ad;
   });
+
+  const visibleQuestions =
+    limitCount !== null ? linkedQuestions.slice(0, limitCount) : linkedQuestions;
 
   return (
     <div className="mx-auto max-w-5xl space-y-5">
@@ -209,6 +230,47 @@ export default async function SubtopicMasteryPage({
           Each row includes all subtopics tagged on that question part.
         </p>
 
+        <form method="GET" className="flex flex-wrap items-end gap-3 rounded-lg border border-da-border/70 bg-da-bg/50 p-3">
+          <input type="hidden" name="code" value={code} />
+          {isTeacher && studentId && <input type="hidden" name="studentId" value={studentId} />}
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-da-muted">Last N Assessments</span>
+            <select
+              name="limit"
+              defaultValue={limitCount === null ? "all" : String(limitCount)}
+              className="rounded border border-da-border bg-da-surface px-2 py-1 text-sm text-da-text"
+            >
+              <option value="5">5</option>
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-da-muted">Sort</span>
+            <select
+              name="sort"
+              defaultValue={sortMode}
+              className="rounded border border-da-border bg-da-surface px-2 py-1 text-sm text-da-text"
+            >
+              <option value="date_desc">Newest First</option>
+              <option value="date_asc">Oldest First</option>
+              <option value="gap_desc">Highest Disagreement</option>
+            </select>
+          </label>
+
+          <button type="submit" className="da-btn">
+            Apply
+          </button>
+
+          <p className="ml-auto text-xs text-da-muted">
+            Showing {visibleQuestions.length} of {linkedQuestions.length}
+          </p>
+        </form>
+
         {linkedQuestions.length === 0 ? (
           <div className="rounded-lg border border-da-border/70 bg-da-bg/50 p-4 text-sm text-da-muted">
             No linked assessment questions were found for subtopic {code}.
@@ -225,7 +287,7 @@ export default async function SubtopicMasteryPage({
                 </tr>
               </thead>
               <tbody>
-                {linkedQuestions.map((q) => (
+                {visibleQuestions.map((q) => (
                   <tr key={q.testItemId} className="border-t border-da-border/50">
                     <td className="px-3 py-2 text-da-text">
                       <div className="font-medium">{q.testName}</div>
@@ -247,6 +309,9 @@ export default async function SubtopicMasteryPage({
                       <div>{q.teacherMarks !== null ? `${q.teacherMarks}/${q.maxMarks}` : "—"}</div>
                       <div className="mt-1 text-xs text-da-muted">Self</div>
                       <div>{q.selfMarks !== null ? `${q.selfMarks}/${q.maxMarks}` : "—"}</div>
+                      <div className="mt-1 text-xs text-da-muted">
+                        Gap: {markGap(q) >= 0 ? markGap(q) : "—"}
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-da-text">
                       <div className="flex flex-wrap gap-1">
