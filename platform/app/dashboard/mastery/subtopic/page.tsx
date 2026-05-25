@@ -16,6 +16,35 @@ type LinkedAssessmentRow = {
   subtopicCodes: string[];
 };
 
+type TestMeta = {
+  name: string;
+  test_date: string | null;
+};
+
+type JoinedTestItem = {
+  id: string;
+  ib_question_code: string | null;
+  question_number: number;
+  part_label: string;
+  max_marks: number;
+  subtopic_codes: string[] | null;
+  tests: TestMeta | TestMeta[] | null;
+};
+
+const normalizeTestMeta = (value: JoinedTestItem["tests"]): TestMeta | null => {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+};
+
+const normalizeJoinedTestItem = (value: unknown): JoinedTestItem | null => {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    return (value[0] as JoinedTestItem | undefined) ?? null;
+  }
+  return value as JoinedTestItem;
+};
+
 export default async function SubtopicMasteryPage({
   searchParams,
 }: {
@@ -102,16 +131,9 @@ export default async function SubtopicMasteryPage({
   const linkedByItem = new Map<string, LinkedAssessmentRow>();
 
   for (const row of markRows ?? []) {
-    const item = row.test_items as {
-      id: string;
-      ib_question_code: string | null;
-      question_number: number;
-      part_label: string;
-      max_marks: number;
-      subtopic_codes: string[] | null;
-      tests: { name: string; test_date: string | null } | null;
-    } | null;
+    const item = normalizeJoinedTestItem(row.test_items);
     if (!item) continue;
+    const testMeta = normalizeTestMeta(item.tests);
     const subtopicCodes = item.subtopic_codes ?? [];
     if (!subtopicCodes.includes(code)) continue;
 
@@ -120,8 +142,8 @@ export default async function SubtopicMasteryPage({
       questionCode: item.ib_question_code ?? "—",
       questionNumber: item.question_number,
       partLabel: item.part_label ?? "",
-      testName: item.tests?.name ?? "Untitled Test",
-      testDate: item.tests?.test_date ?? null,
+      testName: testMeta?.name ?? "Untitled Test",
+      testDate: testMeta?.test_date ?? null,
       maxMarks: item.max_marks,
       teacherMarks: row.marks_awarded ?? null,
       selfMarks: null,
@@ -130,16 +152,9 @@ export default async function SubtopicMasteryPage({
   }
 
   for (const row of selfRows ?? []) {
-    const item = row.test_items as {
-      id: string;
-      ib_question_code: string | null;
-      question_number: number;
-      part_label: string;
-      max_marks: number;
-      subtopic_codes: string[] | null;
-      tests: { name: string; test_date: string | null } | null;
-    } | null;
+    const item = normalizeJoinedTestItem(row.test_items);
     if (!item) continue;
+    const testMeta = normalizeTestMeta(item.tests);
     const subtopicCodes = item.subtopic_codes ?? [];
     if (!subtopicCodes.includes(code)) continue;
 
@@ -154,8 +169,8 @@ export default async function SubtopicMasteryPage({
       questionCode: item.ib_question_code ?? "—",
       questionNumber: item.question_number,
       partLabel: item.part_label ?? "",
-      testName: item.tests?.name ?? "Untitled Test",
-      testDate: item.tests?.test_date ?? null,
+      testName: testMeta?.name ?? "Untitled Test",
+      testDate: testMeta?.test_date ?? null,
       maxMarks: item.max_marks,
       teacherMarks: null,
       selfMarks: row.self_marks ?? null,
