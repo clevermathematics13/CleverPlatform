@@ -1376,13 +1376,13 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   };
 
   const deleteExam = async (id: string) => {
-    if (!confirm("Delete this saved exam?")) return;
+    if (!confirm("Archive this saved exam?")) return;
     setDeletingExamId(id);
     try {
       const res = await fetch(`/api/exams?id=${id}`, { method: "DELETE" });
       if (!res.ok) {
         const body = await res.text();
-        throw new Error(body || "Delete failed");
+        throw new Error(body || "Archive failed");
       }
       setSavedExams((prev) => prev.filter((e) => e.id !== id));
       if (activeExamId === id) {
@@ -1390,7 +1390,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         setExamDirty(false);
       }
     } catch (err) {
-      setSaveExamError(`Failed to delete exam: ${err instanceof Error ? err.message : String(err)}`);
+      setSaveExamError(`Failed to archive exam: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setDeletingExamId(null);
     }

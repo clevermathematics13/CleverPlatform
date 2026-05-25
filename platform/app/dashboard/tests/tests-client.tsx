@@ -120,7 +120,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
   };
 
   const handleDelete = async (testId: string) => {
-    if (!confirm("Delete this test and all its marks? This cannot be undone.")) return;
+    if (!confirm("Archive this exam and remove it from active tests?")) return;
     setDeleting(testId);
     try {
       const res = await fetch(`/api/tests/${testId}`, { method: "DELETE" });
@@ -400,7 +400,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                     disabled={isDeleting}
                     className="rounded border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
                   >
-                    {isDeleting ? "…" : "Delete"}
+                    {isDeleting ? "…" : "Archive"}
                   </button>
                 </div>
               </div>

@@ -576,9 +576,9 @@ export function TestBuilderPanel({
             onClick={() => onDeleteExam(activeExamId)}
             disabled={deletingExam}
             className="w-full rounded border border-red-300 bg-red-50 text-red-700 text-xs font-bold py-1.5 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Delete this saved exam from Question Bank"
+            title="Archive this saved exam from Question Bank"
           >
-            {deletingExam ? "Deleting…" : "🗑 Delete Saved Exam"}
+            {deletingExam ? "Archiving…" : "🗄 Archive Saved Exam"}
           </button>
         )}
 
@@ -623,7 +623,7 @@ export function TestBuilderPanel({
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onDeleteExam(exam.id); }}
                   className="text-gray-400 hover:text-red-600 font-bold ml-0.5 shrink-0"
-                  title="Delete saved exam"
+                  title="Archive saved exam"
                 >
                   ×
                 </button>
