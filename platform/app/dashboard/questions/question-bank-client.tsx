@@ -1244,11 +1244,21 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 
   const fetchSavedExams = async () => {
     setLoadingExams(true);
+    setSaveExamError(null);
     try {
       const res = await fetch("/api/exams");
-      const data = await res.json();
-      if (data.exams) setSavedExams(data.exams);
-    } catch { /* ignore */ } finally {
+      const raw = await res.text();
+      let data: { exams?: SavedExam[]; error?: string } = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        throw new Error(`Invalid response while loading saved exams (${res.status})`);
+      }
+      if (!res.ok) throw new Error(data.error || `Failed to load saved exams (${res.status})`);
+      setSavedExams(Array.isArray(data.exams) ? data.exams : []);
+    } catch (err) {
+      setSaveExamError(`Failed to load saved exams: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
       setLoadingExams(false);
     }
   };
@@ -1262,8 +1272,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   // caused by the Dashlane extension injecting child nodes into form elements)
   useEffect(() => {
     setTestBuilderOpen(true);
-    setShowSavedExams(true);
-    fetchSavedExams();
+    setShowSavedExams(false);
    
   }, []);
 
