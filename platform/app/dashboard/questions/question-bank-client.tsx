@@ -1272,8 +1272,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   // caused by the Dashlane extension injecting child nodes into form elements)
   useEffect(() => {
     setTestBuilderOpen(true);
-    setShowSavedExams(false);
-   
+    setShowSavedExams(true);
+    fetchSavedExams();
+
   }, []);
 
   const saveExam = async (queueOverride?: TestQueueItem[]) => {
