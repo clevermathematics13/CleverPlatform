@@ -98,6 +98,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     courseId: "",
     date: "",
     time: "",
+    answerBoxMode: "auto",
+    answerBoxFixedMm: 52,
   });
   const [courses, setCourses] = useState<Course[]>([]);
   // Set default courseId to 27AH if present and not already set
@@ -1111,6 +1113,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         hasQuestion: q.has_question_images,
         hasMarkscheme: q.has_markscheme_images,
         marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
+        answerBoxMm: null,
         subtopicCodes: [...new Set(q.question_parts.flatMap((p) => filterPriorLearning(p.subtopic_codes ?? [])))],
         partSubtopics: q.question_parts
           .map((p) => ({ partLabel: p.part_label ?? "", codes: filterPriorLearning(p.subtopic_codes ?? []) }))
@@ -1141,6 +1144,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       hasQuestion: q.has_question_images,
       hasMarkscheme: q.has_markscheme_images,
       marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0),
+      answerBoxMm: null,
       subtopicCodes: [...new Set(q.question_parts.flatMap((p) => filterPriorLearning(p.subtopic_codes ?? [])))],
       partSubtopics: q.question_parts
         .map((p) => ({ partLabel: p.part_label ?? "", codes: filterPriorLearning(p.subtopic_codes ?? []) }))
@@ -1162,6 +1166,13 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const updateQueueSection = (id: string, section: "A" | "B") => {
     setTestQueue((prev) =>
       prev.map((item) => (item.id === id ? { ...item, section } : item))
+    );
+    setExamDirty(true);
+  };
+
+  const updateQueueAnswerBoxMm = (id: string, answerBoxMm: number | null) => {
+    setTestQueue((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, answerBoxMm } : item))
     );
     setExamDirty(true);
   };
@@ -1211,6 +1222,12 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   };
 
   const openPreview = (imageType: "question" | "markscheme") => {
+    const questionAnswerBoxMm: Record<string, number> = {};
+    for (const q of testQueue) {
+      if (typeof q.answerBoxMm === "number" && Number.isFinite(q.answerBoxMm)) {
+        questionAnswerBoxMm[q.id] = q.answerBoxMm;
+      }
+    }
     const config = {
       questionIds: testQueue.map((q) => q.id),
       imageType,
@@ -1221,6 +1238,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       courseId: examConfig.courseId,
       date: examConfig.date,
       time: examConfig.time,
+      answerBoxMode: examConfig.answerBoxMode,
+      answerBoxFixedMm: examConfig.answerBoxFixedMm,
+      questionAnswerBoxMm,
     };
     sessionStorage.setItem("testBuilderConfig", JSON.stringify(config));
     window.open("/dashboard/questions/test-preview", "_blank");
@@ -1303,6 +1323,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         hasQuestion: item.hasQuestion,
         hasMarkscheme: item.hasMarkscheme,
         marks: item.marks,
+        answerBoxMm: item.answerBoxMm ?? null,
         subtopicCodes: item.subtopicCodes,
         partSubtopics: item.partSubtopics,
       }));
@@ -1370,7 +1391,15 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 
   const loadExam = (exam: SavedExam) => {
     // Guard: questions must be a real Array (older DB rows may have non-array JSONB)
-    setTestQueue(Array.isArray(exam.questions) ? exam.questions : []);
+    const queue = Array.isArray(exam.questions) ? exam.questions : [];
+    const sectionAHeights = queue
+      .filter((item) => item.section === "A" && typeof item.answerBoxMm === "number")
+      .map((item) => Number(item.answerBoxMm));
+    const uniqueHeights = [...new Set(sectionAHeights)];
+    const inferredMode: "auto" | "fixed" = uniqueHeights.length === 1 ? "fixed" : "auto";
+    const inferredFixedMm = uniqueHeights.length === 1 ? uniqueHeights[0] : 52;
+
+    setTestQueue(queue);
     setExamConfig({
       name: exam.name,
       curriculum: exam.curriculum,
@@ -1379,6 +1408,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       courseId: exam.course_id ?? "",
       date: exam.exam_date ?? "",
       time: exam.exam_time ?? "",
+      answerBoxMode: inferredMode,
+      answerBoxFixedMm: inferredFixedMm,
     });
     setActiveExamId(exam.id);
     setExamDirty(false);
@@ -2090,6 +2121,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           }}
           onRemove={removeFromQueue}
           onUpdateSection={updateQueueSection}
+          onUpdateAnswerBoxMm={updateQueueAnswerBoxMm}
           onAutoSort={autoSortQueue}
           onMoveUp={handleMoveUp}
           onPreviewTest={() => openPreview("question")}

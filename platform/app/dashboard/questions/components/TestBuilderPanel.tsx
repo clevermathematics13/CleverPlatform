@@ -20,18 +20,24 @@ function QueueRow({
   number,
   showSection,
   minutesPerMark,
+  answerBoxMode,
+  answerBoxFixedMm,
   onOpenQuestion,
   onRemove,
   onUpdateSection,
+  onUpdateAnswerBoxMm,
   onMoveUp,
 }: {
   item: TestQueueItem;
   number: number;
   showSection: boolean;
   minutesPerMark: number;
+  answerBoxMode: "auto" | "fixed";
+  answerBoxFixedMm: number;
   onOpenQuestion: () => void;
   onRemove: () => void;
   onUpdateSection: (section: "A" | "B") => void;
+  onUpdateAnswerBoxMm: (answerBoxMm: number | null) => void;
   onMoveUp: () => void;
 }) {
   return (
@@ -105,6 +111,33 @@ function QueueRow({
           </button>
         </div>
       )}
+      {showSection && item.section === "A" && (
+        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <span className="text-[10px] text-gray-500 font-semibold">
+            {answerBoxMode === "fixed" ? `Box ${answerBoxFixedMm}mm` : "Box"}
+          </span>
+          <input
+            type="number"
+            min={20}
+            max={140}
+            step={1}
+            value={typeof item.answerBoxMm === "number" ? item.answerBoxMm : ""}
+            onChange={(e) => {
+              const raw = e.target.value.trim();
+              if (!raw) {
+                onUpdateAnswerBoxMm(null);
+                return;
+              }
+              const n = Number(raw);
+              if (!Number.isFinite(n)) return;
+              onUpdateAnswerBoxMm(Math.max(20, Math.min(140, Math.round(n))));
+            }}
+            placeholder={answerBoxMode === "fixed" ? String(answerBoxFixedMm) : "auto"}
+            title="Section A answer-box override (mm). Leave blank to use global setting."
+            className="w-14 rounded border border-gray-300 px-1 py-0.5 text-[10px] font-semibold text-gray-700 bg-white"
+          />
+        </div>
+      )}
       {/* Remove */}
       <button
         type="button"
@@ -128,6 +161,7 @@ export function TestBuilderPanel({
   onConfigChange,
   onRemove,
   onUpdateSection,
+  onUpdateAnswerBoxMm,
   onAutoSort,
   onMoveUp,
   onPreviewTest,
@@ -172,6 +206,7 @@ export function TestBuilderPanel({
   onConfigChange: (updates: Partial<ExamConfig>) => void;
   onRemove: (id: string) => void;
   onUpdateSection: (id: string, section: "A" | "B") => void;
+  onUpdateAnswerBoxMm: (id: string, answerBoxMm: number | null) => void;
   onAutoSort: () => void;
   onMoveUp: (fromIndex: number, toIndex: number) => void;
   onPreviewTest: () => void;
@@ -323,6 +358,38 @@ export function TestBuilderPanel({
             className="w-full rounded border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-900 bg-white"
             suppressHydrationWarning
           />
+          {showSections && (
+            <div className="rounded border border-indigo-200 bg-white p-2 space-y-1">
+              <p className="text-[11px] font-bold text-indigo-800">Section A Answer Boxes</p>
+              <div className="flex gap-2">
+                <select
+                  value={examConfig.answerBoxMode}
+                  onChange={(e) => onConfigChange({ answerBoxMode: e.target.value as "auto" | "fixed" })}
+                  className="flex-1 rounded border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-900"
+                >
+                  <option value="auto">Auto by marks</option>
+                  <option value="fixed">Fixed height</option>
+                </select>
+                <input
+                  type="number"
+                  min={20}
+                  max={140}
+                  step={1}
+                  value={examConfig.answerBoxFixedMm}
+                  onChange={(e) => {
+                    const n = Number(e.target.value);
+                    if (!Number.isFinite(n)) return;
+                    onConfigChange({ answerBoxFixedMm: Math.max(20, Math.min(140, Math.round(n))) });
+                  }}
+                  className="w-20 rounded border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-900"
+                  title="Default fixed answer-box height in mm"
+                />
+              </div>
+              <p className="text-[10px] text-indigo-500">
+                Per-question overrides can be set on Section A rows.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Section controls (P1/P2 AA only) */}
@@ -426,9 +493,12 @@ export function TestBuilderPanel({
                       number={globalIdx + 1}
                       showSection={true}
                       minutesPerMark={mpm}
+                      answerBoxMode={examConfig.answerBoxMode}
+                      answerBoxFixedMm={examConfig.answerBoxFixedMm}
                       onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
+                      onUpdateAnswerBoxMm={(answerBoxMm) => onUpdateAnswerBoxMm(item.id, answerBoxMm)}
                       onMoveUp={() => onMoveUp(idx, prevIdx)}
                     />
                   );
@@ -456,9 +526,12 @@ export function TestBuilderPanel({
                       number={sectionAItems.length + bIdx + 1}
                       showSection={true}
                       minutesPerMark={mpm}
+                      answerBoxMode={examConfig.answerBoxMode}
+                      answerBoxFixedMm={examConfig.answerBoxFixedMm}
                       onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                       onRemove={() => onRemove(item.id)}
                       onUpdateSection={(s) => onUpdateSection(item.id, s)}
+                      onUpdateAnswerBoxMm={(answerBoxMm) => onUpdateAnswerBoxMm(item.id, answerBoxMm)}
                       onMoveUp={() => onMoveUp(idx, prevIdx)}
                     />
                   );
@@ -477,9 +550,12 @@ export function TestBuilderPanel({
                   number={sectionAItems.length + sectionBItems.length + uIdx + 1}
                   showSection={true}
                   minutesPerMark={mpm}
+                  answerBoxMode={examConfig.answerBoxMode}
+                  answerBoxFixedMm={examConfig.answerBoxFixedMm}
                   onOpenQuestion={() => onOpenQuestionFromQueue(item)}
                   onRemove={() => onRemove(item.id)}
                   onUpdateSection={(s) => onUpdateSection(item.id, s)}
+                  onUpdateAnswerBoxMm={(answerBoxMm) => onUpdateAnswerBoxMm(item.id, answerBoxMm)}
                   onMoveUp={() => onMoveUp(idx, prevIdx)}
                 />
               );
@@ -493,9 +569,12 @@ export function TestBuilderPanel({
               number={idx + 1}
               showSection={false}
               minutesPerMark={mpm}
+              answerBoxMode={examConfig.answerBoxMode}
+              answerBoxFixedMm={examConfig.answerBoxFixedMm}
               onOpenQuestion={() => onOpenQuestionFromQueue(item)}
               onRemove={() => onRemove(item.id)}
               onUpdateSection={(s) => onUpdateSection(item.id, s)}
+              onUpdateAnswerBoxMm={(answerBoxMm) => onUpdateAnswerBoxMm(item.id, answerBoxMm)}
               onMoveUp={() => onMoveUp(idx, idx - 1)}
             />
           ))

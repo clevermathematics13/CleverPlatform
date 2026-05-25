@@ -88,6 +88,8 @@ export interface TestQueueItem {
   hasQuestion: boolean;
   hasMarkscheme: boolean;
   marks: number;
+  /** Optional per-question answer-box height override (mm) for Section A print output. */
+  answerBoxMm?: number | null;
   subtopicCodes: string[];
   partSubtopics: { partLabel: string; codes: string[] }[];
 }
@@ -100,6 +102,8 @@ export interface ExamConfig {
   courseId: string;
   date: string;
   time: string;
+  answerBoxMode: "auto" | "fixed";
+  answerBoxFixedMm: number;
 }
 
 export interface SavedExam {

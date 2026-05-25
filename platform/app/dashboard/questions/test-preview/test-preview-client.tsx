@@ -14,6 +14,9 @@ interface TestBuilderConfig {
   paper: number;       // 1 | 2 | 3
   courseId: string;
   date: string;        // ISO date string e.g. "2026-05-12"
+  answerBoxMode?: "auto" | "fixed";
+  answerBoxFixedMm?: number;
+  questionAnswerBoxMm?: Record<string, number>;
 }
 
 interface QuestionPart {
@@ -73,7 +76,10 @@ function questionTotalMarks(q: TestQuestion): number {
   return (q.parts ?? []).reduce((sum, part) => sum + (Number(part.marks) || 0), 0);
 }
 
-function sectionAAnswerBoxHeightMm(totalMarks: number): number {
+function sectionAAnswerBoxHeightMm(totalMarks: number, mode: "auto" | "fixed", fixedMm: number): number {
+  if (mode === "fixed") {
+    return Math.max(20, Math.min(140, Number(fixedMm) || 52));
+  }
   // Legacy-friendly default: predictable answer space by mark weight.
   const marks = Number.isFinite(totalMarks) ? totalMarks : 0;
   const raw = 24 + marks * 4;
@@ -527,7 +533,12 @@ export function TestPreviewClient() {
                 {showSections && q.section === "A" && config?.imageType === "question" && (
                   (() => {
                     const totalMarks = questionTotalMarks(q);
-                    const boxHeightMm = sectionAAnswerBoxHeightMm(totalMarks);
+                    const mode = config?.answerBoxMode === "fixed" ? "fixed" : "auto";
+                    const fixedMm = config?.answerBoxFixedMm ?? 52;
+                    const overrideMm = config?.questionAnswerBoxMm?.[q.id];
+                    const boxHeightMm = typeof overrideMm === "number"
+                      ? Math.max(20, Math.min(140, overrideMm))
+                      : sectionAAnswerBoxHeightMm(totalMarks, mode, fixedMm);
                     const lineCount = sectionAAnswerLineCount(boxHeightMm);
                     return (
                       <div style={{ marginTop: "6mm", width: "170mm" }}>
@@ -605,7 +616,12 @@ export function TestPreviewClient() {
                       {showSections && q.section === "A" && config?.imageType === "question" && (
                         (() => {
                           const totalMarks = questionTotalMarks(q);
-                          const boxHeightMm = sectionAAnswerBoxHeightMm(totalMarks);
+                          const mode = config?.answerBoxMode === "fixed" ? "fixed" : "auto";
+                          const fixedMm = config?.answerBoxFixedMm ?? 52;
+                          const overrideMm = config?.questionAnswerBoxMm?.[q.id];
+                          const boxHeightMm = typeof overrideMm === "number"
+                            ? Math.max(20, Math.min(140, overrideMm))
+                            : sectionAAnswerBoxHeightMm(totalMarks, mode, fixedMm);
                           const lineCount = sectionAAnswerLineCount(boxHeightMm);
                           return (
                             <div style={{ marginTop: "6mm", width: "170mm" }}>
