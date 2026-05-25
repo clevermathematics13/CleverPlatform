@@ -312,9 +312,9 @@ export default async function SubtopicMasteryPage({
                   <tr key={q.testItemId} className="border-t border-da-border/50">
                     <td className="px-3 py-2 text-da-text">
                       <div className="font-medium">
-                        {q.testId ? (
+                        {isTeacher && q.testId ? (
                           <a
-                            href={`/dashboard/reflection?testId=${encodeURIComponent(q.testId)}${isTeacher ? `&viewStudent=${encodeURIComponent(targetStudentId)}` : ""}`}
+                            href={`/dashboard/questions?testId=${encodeURIComponent(q.testId)}`}
                             className="da-btn-link"
                           >
                             {q.testName}

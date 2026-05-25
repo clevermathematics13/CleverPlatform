@@ -150,6 +150,48 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     const params = new URLSearchParams(window.location.search);
     let dirty = false;
 
+    const testId = params.get("testId");
+    if (testId) {
+      fetch(`/api/questions/from-test?testId=${encodeURIComponent(testId)}`)
+        .then((r) => r.json())
+        .then((d: {
+          test?: { name?: string; courseId?: string | null; date?: string | null };
+          queue?: TestQueueItem[];
+          missingCodes?: string[];
+          error?: string;
+        }) => {
+          if (d.error) {
+            setError(d.error);
+            return;
+          }
+
+          if (Array.isArray(d.queue)) {
+            setTestQueue(d.queue);
+            setTestBuilderOpen(true);
+            setActiveExamId(null);
+            setExamDirty(false);
+            setShowSavedExams(false);
+          }
+
+          if (d.test) {
+            setExamConfig((prev) => ({
+              ...prev,
+              name: d.test?.name ?? prev.name,
+              courseId: d.test?.courseId ?? prev.courseId,
+              date: d.test?.date ?? prev.date,
+            }));
+          }
+
+          if (Array.isArray(d.missingCodes) && d.missingCodes.length > 0) {
+            setError(`Some test question codes are no longer in the bank and were skipped: ${d.missingCodes.join(", ")}`);
+          }
+        })
+        .catch(() => {
+          setError("Failed to load linked exam in Question Bank.");
+        });
+      dirty = true;
+    }
+
     const testItemId = params.get("testItemId");
     if (testItemId) {
       fetch(`/api/questions/from-test-item?testItemId=${encodeURIComponent(testItemId)}`)
