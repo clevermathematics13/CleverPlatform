@@ -140,6 +140,7 @@ export function TestBuilderPanel({
   showSavedExams,
   savingExam,
   loadingExams,
+  deletingExam,
   activeExamId,
   examDirty,
   saveExamError,
@@ -183,6 +184,7 @@ export function TestBuilderPanel({
   showSavedExams: boolean;
   savingExam: boolean;
   loadingExams: boolean;
+  deletingExam: boolean;
   activeExamId: string | null;
   examDirty: boolean;
   saveExamError: string | null;
@@ -568,6 +570,18 @@ export function TestBuilderPanel({
           </button>
         </div>
 
+        {activeExamId && (
+          <button
+            type="button"
+            onClick={() => onDeleteExam(activeExamId)}
+            disabled={deletingExam}
+            className="w-full rounded border border-red-300 bg-red-50 text-red-700 text-xs font-bold py-1.5 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Delete this saved exam from Question Bank"
+          >
+            {deletingExam ? "Deleting…" : "🗑 Delete Saved Exam"}
+          </button>
+        )}
+
         {/* Save to Gradebook */}
         <button
           type="button"
@@ -609,6 +623,7 @@ export function TestBuilderPanel({
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onDeleteExam(exam.id); }}
                   className="text-gray-400 hover:text-red-600 font-bold ml-0.5 shrink-0"
+                  title="Delete saved exam"
                 >
                   ×
                 </button>

@@ -118,6 +118,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [showSavedExams, setShowSavedExams] = useState(false);
   const [savingExam, setSavingExam] = useState(false);
   const [loadingExams, setLoadingExams] = useState(false);
+  const [deletingExamId, setDeletingExamId] = useState<string | null>(null);
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [examDirty, setExamDirty] = useState(false);
   const [saveExamError, setSaveExamError] = useState<string | null>(null);
@@ -1376,9 +1377,23 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 
   const deleteExam = async (id: string) => {
     if (!confirm("Delete this saved exam?")) return;
-    await fetch(`/api/exams?id=${id}`, { method: "DELETE" });
-    setSavedExams((prev) => prev.filter((e) => e.id !== id));
-    if (activeExamId === id) setActiveExamId(null);
+    setDeletingExamId(id);
+    try {
+      const res = await fetch(`/api/exams?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(body || "Delete failed");
+      }
+      setSavedExams((prev) => prev.filter((e) => e.id !== id));
+      if (activeExamId === id) {
+        setActiveExamId(null);
+        setExamDirty(false);
+      }
+    } catch (err) {
+      setSaveExamError(`Failed to delete exam: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setDeletingExamId(null);
+    }
   };
 
   const saveToGradebook = async () => {
@@ -2079,6 +2094,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           showSavedExams={showSavedExams}
           savingExam={savingExam}
           loadingExams={loadingExams}
+          deletingExam={Boolean(deletingExamId)}
           activeExamId={activeExamId}
           examDirty={examDirty}
           saveExamError={saveExamError}
