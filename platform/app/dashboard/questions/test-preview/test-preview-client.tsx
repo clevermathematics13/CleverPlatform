@@ -69,6 +69,22 @@ function studentDisplayName(s: Student): string {
   return s.profiles?.nickname ?? s.profiles?.display_name ?? "Student";
 }
 
+function questionTotalMarks(q: TestQuestion): number {
+  return (q.parts ?? []).reduce((sum, part) => sum + (Number(part.marks) || 0), 0);
+}
+
+function sectionAAnswerBoxHeightMm(totalMarks: number): number {
+  // Legacy-friendly default: predictable answer space by mark weight.
+  const marks = Number.isFinite(totalMarks) ? totalMarks : 0;
+  const raw = 24 + marks * 4;
+  return Math.max(28, Math.min(120, raw));
+}
+
+function sectionAAnswerLineCount(heightMm: number): number {
+  const lines = Math.floor(heightMm / 8) - 1;
+  return Math.max(2, lines);
+}
+
 // ─── Module-level exam data cache (survives component re-mounts) ─────────────
 
 interface ExamDataCache {
@@ -508,6 +524,32 @@ export function TestPreviewClient() {
                     ) : null)
                   )}
                 </div>
+                {showSections && q.section === "A" && config?.imageType === "question" && (
+                  (() => {
+                    const totalMarks = questionTotalMarks(q);
+                    const boxHeightMm = sectionAAnswerBoxHeightMm(totalMarks);
+                    const lineCount = sectionAAnswerLineCount(boxHeightMm);
+                    return (
+                      <div style={{ marginTop: "6mm", width: "170mm" }}>
+                        <div
+                          style={{
+                            border: "1.2px solid #111",
+                            height: `${boxHeightMm}mm`,
+                            boxSizing: "border-box",
+                            padding: "2mm 2.5mm",
+                            backgroundImage:
+                              "repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, rgba(17,24,39,0.2) 7.1mm, rgba(17,24,39,0.2) 7.4mm)",
+                            backgroundClip: "content-box",
+                          }}
+                          aria-label={`Section A answer box for question ${globalNum}`}
+                        />
+                        <p style={{ margin: "1.5mm 0 0", fontSize: "8pt", color: "#4b5563", fontFamily: "serif" }}>
+                          Answer space ({totalMarks || "-"} marks, {lineCount} lines)
+                        </p>
+                      </div>
+                    );
+                  })()
+                )}
               </div>
             </div>
           );
@@ -560,6 +602,32 @@ export function TestPreviewClient() {
                           ) : null)
                         )}
                       </div>
+                      {showSections && q.section === "A" && config?.imageType === "question" && (
+                        (() => {
+                          const totalMarks = questionTotalMarks(q);
+                          const boxHeightMm = sectionAAnswerBoxHeightMm(totalMarks);
+                          const lineCount = sectionAAnswerLineCount(boxHeightMm);
+                          return (
+                            <div style={{ marginTop: "6mm", width: "170mm" }}>
+                              <div
+                                style={{
+                                  border: "1.2px solid #111",
+                                  height: `${boxHeightMm}mm`,
+                                  boxSizing: "border-box",
+                                  padding: "2mm 2.5mm",
+                                  backgroundImage:
+                                    "repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, rgba(17,24,39,0.2) 7.1mm, rgba(17,24,39,0.2) 7.4mm)",
+                                  backgroundClip: "content-box",
+                                }}
+                                aria-label={`Section A answer box for question ${globalNum}`}
+                              />
+                              <p style={{ margin: "1.5mm 0 0", fontSize: "8pt", color: "#4b5563", fontFamily: "serif" }}>
+                                Answer space ({totalMarks || "-"} marks, {lineCount} lines)
+                              </p>
+                            </div>
+                          );
+                        })()
+                      )}
                       {qrUrl && (
                         <div style={{ position: "absolute", bottom: "8mm", right: "15mm", display: "flex", flexDirection: "column", alignItems: "center", gap: "1mm" }}>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
