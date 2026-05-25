@@ -190,6 +190,55 @@ export async function DELETE(request: NextRequest) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
 
+  const { data: examRow, error: examError } = await supabase
+    .from("saved_exams")
+    .select("id, teacher_id, name, curriculum, level, paper, course_id, exam_date, exam_time, questions, created_at, updated_at")
+    .eq("id", id)
+    .eq("teacher_id", user!.id)
+    .single();
+
+  let savedExam = examRow;
+  if (examError) {
+    if (!isMissingExamTimeColumnError(examError.message)) {
+      return NextResponse.json({ error: examError.message }, { status: 500 });
+    }
+    const fallback = await supabase
+      .from("saved_exams")
+      .select("id, teacher_id, name, curriculum, level, paper, course_id, exam_date, questions, created_at, updated_at")
+      .eq("id", id)
+      .eq("teacher_id", user!.id)
+      .single();
+    if (fallback.error || !fallback.data) {
+      return NextResponse.json({ error: fallback.error?.message ?? "Saved exam not found" }, { status: 404 });
+    }
+    savedExam = { ...fallback.data, exam_time: null };
+  }
+
+  if (!savedExam) {
+    return NextResponse.json({ error: "Saved exam not found" }, { status: 404 });
+  }
+
+  const { error: archiveError } = await supabase
+    .from("archived_saved_exams")
+    .insert({
+      teacher_id: savedExam.teacher_id,
+      original_saved_exam_id: savedExam.id,
+      archived_by: user.id,
+      exam_name: savedExam.name,
+      curriculum: savedExam.curriculum,
+      level: savedExam.level,
+      paper: savedExam.paper,
+      course_id: savedExam.course_id,
+      exam_date: savedExam.exam_date,
+      exam_time: savedExam.exam_time,
+      archived_payload: savedExam,
+      questions: Array.isArray(savedExam.questions) ? savedExam.questions : [],
+    });
+
+  if (archiveError) {
+    return NextResponse.json({ error: archiveError.message }, { status: 500 });
+  }
+
   const { error: dbError } = await supabase
     .from("saved_exams")
     .delete()
