@@ -19,7 +19,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("tests")
     .select(`
-      id, name, test_date, total_marks, course_id,
+      id, name, test_date, exam_time, release_at, total_marks, course_id, hidden,
       courses(name),
       test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order)
     `)
@@ -43,11 +43,13 @@ export async function PATCH(
   const { id } = await params;
 
   const body = await request.json();
-  const { name, test_date, total_marks, course_id, hidden } = body;
+  const { name, test_date, exam_time, release_at, total_marks, course_id, hidden } = body;
 
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
   if (test_date !== undefined) updates.test_date = test_date;
+  if (exam_time !== undefined) updates.exam_time = exam_time;
+  if (release_at !== undefined) updates.release_at = release_at;
   if (total_marks !== undefined) updates.total_marks = total_marks;
   if (course_id !== undefined) updates.course_id = course_id;
   if (hidden !== undefined) updates.hidden = hidden;

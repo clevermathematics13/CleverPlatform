@@ -18,6 +18,8 @@ export interface ReflectionTest {
   id: string;
   name: string;
   test_date: string | null;
+  exam_time: string | null;
+  release_at: string | null;
   total_marks: number | null;
   course_id: string | null;
   paper_url: string | null;

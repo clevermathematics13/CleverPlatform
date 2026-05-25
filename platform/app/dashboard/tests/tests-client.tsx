@@ -37,6 +37,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
   const [name, setName] = useState("");
   const [courseId, setCourseId] = useState(courses[0]?.id ?? "");
   const [testDate, setTestDate] = useState("");
+  const [testTime, setTestTime] = useState("");
   const [paperUrl, setPaperUrl] = useState("");
   const [markSchemeUrl, setMarkSchemeUrl] = useState("");
   const [items, setItems] = useState<ItemDraft[]>([emptyItem()]);
@@ -47,6 +48,11 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
   // Deleting
   const [deleting, setDeleting] = useState<string | null>(null);
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null);
+
+  const formattedExamTime = (value: string | null) => {
+    if (!value) return null;
+    return value.slice(0, 5);
+  };
 
   const addItem = () => setItems((prev) => [...prev, emptyItem()]);
   const removeItem = (i: number) =>
@@ -74,6 +80,11 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
           name: name.trim(),
           course_id: courseId,
           test_date: testDate || null,
+          exam_time: testTime || null,
+          release_at:
+            testDate && testTime
+              ? new Date(new Date(`${testDate}T${testTime}:00`).getTime() + 80 * 60 * 1000).toISOString()
+              : null,
           paper_url: paperUrl.trim() || null,
           mark_scheme_url: markSchemeUrl.trim() || null,
           items: items.map((it, i) => ({
@@ -86,10 +97,18 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create test");
-      setTests((prev) => [data as TestRow, ...prev]);
+      const createdId = data?.id as string | undefined;
+      if (createdId) {
+        const detailRes = await fetch(`/api/tests/${createdId}`);
+        const detail = await detailRes.json();
+        if (detailRes.ok) {
+          setTests((prev) => [{ ...detail, hidden: detail.hidden ?? false } as TestRow, ...prev]);
+        }
+      }
       setShowCreate(false);
       setName("");
       setTestDate("");
+      setTestTime("");
       setPaperUrl("");
       setMarkSchemeUrl("");
       setItems([emptyItem()]);
@@ -144,7 +163,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
         <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4">
           <h2 className="font-bold text-blue-900 text-lg">New Test</h2>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <label className="flex flex-col gap-1">
               <span className="text-xs font-semibold text-gray-600 uppercase">Test Name *</span>
               <input
@@ -172,6 +191,15 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                 type="date"
                 value={testDate}
                 onChange={(e) => setTestDate(e.target.value)}
+                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-gray-600 uppercase">Exam Time</span>
+              <input
+                type="time"
+                value={testTime}
+                onChange={(e) => setTestTime(e.target.value)}
                 className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
               />
             </label>
@@ -337,6 +365,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                   <p className="text-xs text-gray-500">
                     {test.courses?.name ?? "—"}
                     {test.test_date && ` · ${test.test_date}`}
+                    {formattedExamTime(test.exam_time) && ` ${formattedExamTime(test.exam_time)}`}
                     {` · ${test.test_items.length} questions · ${totalMax} marks`}
                   </p>
                   <label className="mt-1 inline-flex items-center gap-2 text-xs text-gray-600">

@@ -99,6 +99,7 @@ export interface ExamConfig {
   paper: 1 | 2 | 3;
   courseId: string;
   date: string;
+  time: string;
 }
 
 export interface SavedExam {
@@ -109,6 +110,7 @@ export interface SavedExam {
   paper: 1 | 2 | 3;
   course_id: string | null;
   exam_date: string | null;
+  exam_time: string | null;
   questions: TestQueueItem[];
   created_at: string;
   updated_at: string;

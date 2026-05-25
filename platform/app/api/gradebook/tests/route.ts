@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { name, courseId, testDate, questions } = body as Record<string, unknown>;
+  const { name, courseId, testDate, examTime, releaseAt, questions } = body as Record<string, unknown>;
 
   if (
     typeof name !== "string" ||
@@ -38,6 +38,16 @@ export async function POST(req: NextRequest) {
 
   const qs = questions as QueueItemInput[];
   const questionIds = qs.map((q) => q.id);
+
+  let derivedReleaseAt: string | null = null;
+  if (typeof releaseAt === "string" && releaseAt) {
+    derivedReleaseAt = releaseAt;
+  } else if (typeof testDate === "string" && testDate && typeof examTime === "string" && examTime) {
+    const dt = new Date(`${testDate}T${examTime}:00`);
+    if (!Number.isNaN(dt.getTime())) {
+      derivedReleaseAt = new Date(dt.getTime() + 80 * 60 * 1000).toISOString();
+    }
+  }
 
   // Fetch question parts so we can create per-part test_items with accurate marks
   const { data: parts, error: partsError } = await supabase
@@ -66,6 +76,8 @@ export async function POST(req: NextRequest) {
       course_id: courseId,
       name: name.trim(),
       test_date: typeof testDate === "string" && testDate ? testDate : null,
+      exam_time: typeof examTime === "string" && examTime ? examTime : null,
+      release_at: derivedReleaseAt,
       total_marks: totalMarks,
     })
     .select("id")

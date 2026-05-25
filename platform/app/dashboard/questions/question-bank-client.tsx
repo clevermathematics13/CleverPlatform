@@ -97,6 +97,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     paper: 1,
     courseId: "",
     date: "",
+    time: "",
   });
   const [courses, setCourses] = useState<Course[]>([]);
   // Set default courseId to 27AH if present and not already set
@@ -1176,6 +1177,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       paper: examConfig.paper,
       courseId: examConfig.courseId,
       date: examConfig.date,
+      time: examConfig.time,
     };
     sessionStorage.setItem("testBuilderConfig", JSON.stringify(config));
     window.open("/dashboard/questions/test-preview", "_blank");
@@ -1258,6 +1260,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         paper: examConfig.paper,
         course_id: examConfig.courseId || null,
         exam_date: examConfig.date || null,
+        exam_time: examConfig.time || null,
         questions: sanitizedQueue,
       };
       const now = new Date().toISOString();
@@ -1271,7 +1274,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         // Optimistic update: reflect changes immediately in the list
         setSavedExams((prev) => prev.map((e) =>
           e.id === activeExamId
-            ? { ...e, name: payload.name.trim(), curriculum: payload.curriculum, level: payload.level, paper: payload.paper, course_id: payload.course_id, exam_date: payload.exam_date, questions: sanitizedQueue, updated_at: now }
+            ? { ...e, name: payload.name.trim(), curriculum: payload.curriculum, level: payload.level, paper: payload.paper, course_id: payload.course_id, exam_date: payload.exam_date, exam_time: payload.exam_time, questions: sanitizedQueue, updated_at: now }
             : e
         ));
       } else {
@@ -1293,6 +1296,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
             paper: payload.paper,
             course_id: payload.course_id,
             exam_date: payload.exam_date,
+            exam_time: payload.exam_time,
             questions: sanitizedQueue,
             created_at: now,
             updated_at: now,
@@ -1321,6 +1325,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       paper: exam.paper,
       courseId: exam.course_id ?? "",
       date: exam.exam_date ?? "",
+      time: exam.exam_time ?? "",
     });
     setActiveExamId(exam.id);
     setExamDirty(false);
@@ -1356,6 +1361,11 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           name: examConfig.name.trim(),
           courseId: examConfig.courseId,
           testDate: examConfig.date || null,
+          examTime: examConfig.time || null,
+          releaseAt:
+            examConfig.date && examConfig.time
+              ? new Date(new Date(`${examConfig.date}T${examConfig.time}:00`).getTime() + 80 * 60 * 1000).toISOString()
+              : null,
           questions: testQueue.map((q) => ({
             id: q.id,
             code: q.code,
@@ -1390,7 +1400,6 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           courseId: examConfig.courseId,
           paper: examConfig.paper,
           targetMinutes: randomTargetMinutes,
-          excludeIds: [...new Set(savedExams.flatMap((e) => e.questions.map((q) => q.id)))],
         }),
       });
       const data = await res.json();
@@ -1661,7 +1670,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
         <div suppressHydrationWarning className="flex flex-wrap items-end gap-3">
           {/* Search */}
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-50">
             <label className="block text-sm font-bold text-blue-900 mb-1">
               {searchContent ? "Search LaTeX Content" : "Search Code"}
             </label>
@@ -1751,7 +1760,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           </div>
 
           {/* Subtopic */}
-          <div className="min-w-[220px]">
+          <div className="min-w-55">
             <label className="block text-sm font-bold text-blue-900 mb-1">
               Subtopic
             </label>
@@ -2093,7 +2102,7 @@ function AddToExamModal({
   saving: boolean;
 }) {
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
+    <div className="fixed inset-0 z-200 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-2xl p-6 w-80 flex flex-col gap-4">
         <h2 className="text-base font-bold text-gray-800">Add to saved exam?</h2>
         <p className="text-sm text-gray-600">

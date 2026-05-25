@@ -12,6 +12,21 @@ import type {
 
 export { computeDisagreement };
 
+function computeReleaseTimestamp(
+  testDate: string | null,
+  examTime: string | null,
+  releaseAt: string | null
+): number | null {
+  if (releaseAt) {
+    const parsed = Date.parse(releaseAt);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  if (!testDate || !examTime) return null;
+  const parsed = Date.parse(`${testDate}T${examTime.slice(0, 5)}:00`);
+  if (Number.isNaN(parsed)) return null;
+  return parsed + 80 * 60 * 1000;
+}
+
 /** Fetch all tests visible to a student (via their course enrollment). */
 export async function getTestsForStudent(
   studentProfileId: string
@@ -30,7 +45,7 @@ export async function getTestsForStudent(
 
   const { data: tests, error } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url, hidden")
+    .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden")
     .in("course_id", courseIds)
     .ilike("name", "%K06%P1%")
     .eq("hidden", false)
@@ -38,7 +53,7 @@ export async function getTestsForStudent(
 
   if (error) {
     // Fallback if migration 045/049 columns haven't been applied yet
-    if (/paper_url|mark_scheme_url|hidden/.test(error.message)) {
+    if (/paper_url|mark_scheme_url|hidden|exam_time|release_at/.test(error.message)) {
       const { data: fallback, error: fallbackError } = await supabase
         .from("tests")
         .select("id, name, test_date, total_marks, course_id")
@@ -46,11 +61,15 @@ export async function getTestsForStudent(
         .ilike("name", "%K06%P1%")
         .order("test_date", { ascending: false });
       if (fallbackError) throw fallbackError;
-      return (fallback ?? []).map((t) => ({ ...t, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
+      return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
     }
     throw error;
   }
-  return (tests ?? []) as ReflectionTest[];
+  const now = Date.now();
+  return ((tests ?? []) as ReflectionTest[]).filter((t) => {
+    const unlockAt = computeReleaseTimestamp(t.test_date, t.exam_time, t.release_at);
+    return unlockAt === null || unlockAt <= now;
+  });
 }
 
 /** Fetch all tests (teacher view). */
@@ -59,19 +78,19 @@ export async function getAllTests(): Promise<ReflectionTest[]> {
 
   const { data: tests, error } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks, course_id, paper_url, mark_scheme_url, hidden")
+    .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden")
     .eq("hidden", false)
     .order("test_date", { ascending: false });
 
   if (error) {
     // Fallback if migration 045/049 columns haven't been applied yet
-    if (/paper_url|mark_scheme_url|hidden/.test(error.message)) {
+    if (/paper_url|mark_scheme_url|hidden|exam_time|release_at/.test(error.message)) {
       const { data: fallback, error: fallbackError } = await supabase
         .from("tests")
         .select("id, name, test_date, total_marks, course_id")
         .order("test_date", { ascending: false });
       if (fallbackError) throw fallbackError;
-      return (fallback ?? []).map((t) => ({ ...t, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
+      return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
     }
     throw error;
   }

@@ -46,12 +46,12 @@ function QueueRow({
         onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
         disabled={number === 1}
         title="Move up"
-        className="text-indigo-400 hover:text-indigo-700 disabled:opacity-20 flex-shrink-0 leading-none"
+        className="text-indigo-400 hover:text-indigo-700 disabled:opacity-20 shrink-0 leading-none"
       >
         ▲
       </button>
       {/* Number */}
-      <span className="font-bold text-indigo-700 w-5 text-right flex-shrink-0">
+      <span className="font-bold text-indigo-700 w-5 text-right shrink-0">
         {number}.
       </span>
       {/* Code + marks/minutes + section label */}
@@ -60,7 +60,7 @@ function QueueRow({
           <span className="flex-1 text-left font-semibold text-gray-800 truncate">
             {item.code}
           </span>
-          <span className="text-xs text-indigo-500 font-semibold flex-shrink-0">
+          <span className="text-xs text-indigo-500 font-semibold shrink-0">
             {item.marks} marks / {(item.marks * minutesPerMark).toFixed(2)} minutes
           </span>
         </div>
@@ -80,7 +80,7 @@ function QueueRow({
       </div>
       {/* Section toggle (P1/P2 AA only) */}
       {showSection && (
-        <div className="flex gap-0.5 flex-shrink-0">
+        <div className="flex gap-0.5 shrink-0">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onUpdateSection("A"); }}
@@ -109,7 +109,7 @@ function QueueRow({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
-        className="text-gray-400 hover:text-red-600 font-bold ml-0.5 flex-shrink-0"
+        className="text-gray-400 hover:text-red-600 font-bold ml-0.5 shrink-0"
       >
         ×
       </button>
@@ -219,7 +219,7 @@ export function TestBuilderPanel({
 
   return (
     <div
-      className="flex-shrink-0 rounded-xl border-2 border-indigo-300 bg-indigo-50 flex flex-col transition-[width] duration-200"
+      className="shrink-0 rounded-xl border-2 border-indigo-300 bg-indigo-50 flex flex-col transition-[width] duration-200"
       style={{
         width: "var(--exam-builder-width, 20rem)",
         position: "sticky",
@@ -311,6 +311,13 @@ export function TestBuilderPanel({
             type="date"
             value={examConfig.date}
             onChange={(e) => onConfigChange({ date: e.target.value })}
+            className="w-full rounded border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-900 bg-white"
+            suppressHydrationWarning
+          />
+          <input
+            type="time"
+            value={examConfig.time}
+            onChange={(e) => onConfigChange({ time: e.target.value })}
             className="w-full rounded border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-900 bg-white"
             suppressHydrationWarning
           />
@@ -595,12 +602,13 @@ export function TestBuilderPanel({
                   <p className="text-xs text-gray-500">
                     {exam.curriculum}{exam.level} P{exam.paper} · {exam.questions.length}q
                     {exam.exam_date ? ` · ${exam.exam_date}` : ""}
+                    {exam.exam_time ? ` ${exam.exam_time.slice(0, 5)}` : ""}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onDeleteExam(exam.id); }}
-                  className="text-gray-400 hover:text-red-600 font-bold ml-0.5 flex-shrink-0"
+                  className="text-gray-400 hover:text-red-600 font-bold ml-0.5 shrink-0"
                 >
                   ×
                 </button>
@@ -635,7 +643,7 @@ export function TestBuilderPanel({
               const key = `${curriculum}-${level}-${paper}`;
               return (
                 <div key={key} className="flex items-center gap-1">
-                  <span className="text-xs font-semibold text-gray-600 w-16 flex-shrink-0">
+                  <span className="text-xs font-semibold text-gray-600 w-16 shrink-0">
                     {curriculum}{level} P{paper}
                   </span>
                   <input

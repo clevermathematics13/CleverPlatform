@@ -35,7 +35,11 @@ export default async function ReflectionPage({
     ? await getAllTests()
     : await getTestsForStudent(profile.id);
 
-  const selectedTestId = params.testId ?? tests[0]?.id ?? null;
+  const requestedTestId = params.testId ?? null;
+  const selectedTestId =
+    !isTeacher && requestedTestId && !tests.some((t) => t.id === requestedTestId)
+      ? tests[0]?.id ?? null
+      : requestedTestId ?? tests[0]?.id ?? null;
 
   // For student or teacher-viewing-student, fetch items
   const effectiveStudentId = viewStudentId ?? (isTeacher ? null : profile.id);

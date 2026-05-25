@@ -22,6 +22,8 @@ export async function GET(_request: NextRequest) {
       id,
       name,
       test_date,
+      exam_time,
+      release_at,
       total_marks,
       course_id,
       courses(name),
@@ -54,10 +56,12 @@ export async function POST(request: NextRequest) {
   const { supabase, user } = auth;
 
   const body = await request.json();
-  const { name, course_id, test_date, total_marks, paper_url, mark_scheme_url, items } = body as {
+  const { name, course_id, test_date, exam_time, release_at, total_marks, paper_url, mark_scheme_url, items } = body as {
     name: string;
     course_id: string;
     test_date?: string | null;
+    exam_time?: string | null;
+    release_at?: string | null;
     total_marks?: number | null;
     paper_url?: string | null;
     mark_scheme_url?: string | null;
@@ -77,6 +81,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let derivedReleaseAt: string | null = null;
+  if (typeof release_at === "string" && release_at) {
+    derivedReleaseAt = release_at;
+  } else if (typeof test_date === "string" && test_date && typeof exam_time === "string" && exam_time) {
+    const dt = new Date(`${test_date}T${exam_time}:00`);
+    if (!Number.isNaN(dt.getTime())) {
+      derivedReleaseAt = new Date(dt.getTime() + 80 * 60 * 1000).toISOString();
+    }
+  }
+
   // Create the test
   const { data: test, error: testError } = await supabase
     .from("tests")
@@ -85,6 +99,8 @@ export async function POST(request: NextRequest) {
       course_id,
       teacher_id: user.id,
       test_date: test_date ?? null,
+      exam_time: exam_time ?? null,
+      release_at: derivedReleaseAt,
       total_marks: total_marks ?? items.reduce((s, i) => s + i.max_marks, 0),
       paper_url: paper_url ?? null,
       mark_scheme_url: mark_scheme_url ?? null,

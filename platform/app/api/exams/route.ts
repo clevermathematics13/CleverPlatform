@@ -9,7 +9,7 @@ export async function GET() {
 
   const { data, error: dbError } = await supabase
     .from("saved_exams")
-    .select("id, name, curriculum, level, paper, course_id, exam_date, questions, created_at, updated_at")
+    .select("id, name, curriculum, level, paper, course_id, exam_date, exam_time, questions, created_at, updated_at")
     .eq("teacher_id", user!.id)
     .order("updated_at", { ascending: false });
 
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const { name, curriculum, level, paper, course_id, exam_date, questions } = body;
+  const { name, curriculum, level, paper, course_id, exam_date, exam_time, questions } = body;
 
   if (typeof name !== "string" || !name.trim()) return NextResponse.json({ error: "name is required" }, { status: 400 });
   if (!["AA", "AI"].includes(curriculum as string)) return NextResponse.json({ error: "Invalid curriculum" }, { status: 400 });
@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
       paper,
       course_id: course_id ?? null,
       exam_date: exam_date ?? null,
+      exam_time: exam_time ?? null,
       questions,
     })
     .select("id")
@@ -109,7 +110,7 @@ export async function PATCH(request: NextRequest) {
   let body: Record<string, unknown>;
   try { body = await request.json(); } catch { return NextResponse.json({ error: "Invalid JSON" }, { status: 400 }); }
 
-  const { id, name, curriculum, level, paper, course_id, exam_date, questions } = body;
+  const { id, name, curriculum, level, paper, course_id, exam_date, exam_time, questions } = body;
   if (typeof id !== "string") return NextResponse.json({ error: "id is required" }, { status: 400 });
 
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -119,6 +120,7 @@ export async function PATCH(request: NextRequest) {
   if ([1, 2, 3].includes(paper as number)) updates.paper = paper;
   if (course_id !== undefined) updates.course_id = course_id ?? null;
   if (exam_date !== undefined) updates.exam_date = exam_date ?? null;
+  if (exam_time !== undefined) updates.exam_time = exam_time ?? null;
   if (Array.isArray(questions)) updates.questions = questions;
 
   const { error: dbError } = await supabase
