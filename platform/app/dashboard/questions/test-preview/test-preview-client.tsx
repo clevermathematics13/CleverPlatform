@@ -91,6 +91,22 @@ function sectionAAnswerLineCount(heightMm: number): number {
   return Math.max(2, lines);
 }
 
+function resolveAnswerBoxHeightMm(config: TestBuilderConfig | null, q: TestQuestion): number {
+  const totalMarks = questionTotalMarks(q);
+  const mode = config?.answerBoxMode === "fixed" ? "fixed" : "auto";
+  const fixedMm = config?.answerBoxFixedMm ?? 52;
+  const overrideMm = config?.questionAnswerBoxMm?.[q.id];
+  if (typeof overrideMm === "number") {
+    return Math.max(20, Math.min(140, overrideMm));
+  }
+  return sectionAAnswerBoxHeightMm(totalMarks, mode, fixedMm);
+}
+
+function shouldSplitAnswerBoxToContinuationPage(q: TestQuestion, boxHeightMm: number): boolean {
+  // Heuristic safeguard: heavy image stacks or tall boxes move to a clean continuation page.
+  return q.images.length > 1 || boxHeightMm >= 86;
+}
+
 // ─── Module-level exam data cache (survives component re-mounts) ─────────────
 
 interface ExamDataCache {
@@ -492,6 +508,11 @@ export function TestPreviewClient() {
           const globalNum = qIdx + 1;
           const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
           const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
+          const showSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
+          const totalMarks = questionTotalMarks(q);
+          const boxHeightMm = showSectionAAnswerBox ? resolveAnswerBoxHeightMm(config, q) : 0;
+          const lineCount = showSectionAAnswerBox ? sectionAAnswerLineCount(boxHeightMm) : 0;
+          const splitToContinuation = showSectionAAnswerBox ? shouldSplitAnswerBoxToContinuationPage(q, boxHeightMm) : false;
           return (
             <div key={q.id}>
               {isFirstSectionA && (
@@ -530,38 +551,55 @@ export function TestPreviewClient() {
                     ) : null)
                   )}
                 </div>
-                {showSections && q.section === "A" && config?.imageType === "question" && (
-                  (() => {
-                    const totalMarks = questionTotalMarks(q);
-                    const mode = config?.answerBoxMode === "fixed" ? "fixed" : "auto";
-                    const fixedMm = config?.answerBoxFixedMm ?? 52;
-                    const overrideMm = config?.questionAnswerBoxMm?.[q.id];
-                    const boxHeightMm = typeof overrideMm === "number"
-                      ? Math.max(20, Math.min(140, overrideMm))
-                      : sectionAAnswerBoxHeightMm(totalMarks, mode, fixedMm);
-                    const lineCount = sectionAAnswerLineCount(boxHeightMm);
-                    return (
-                      <div style={{ marginTop: "6mm", width: "170mm" }}>
-                        <div
-                          style={{
-                            border: "1.2px solid #111",
-                            height: `${boxHeightMm}mm`,
-                            boxSizing: "border-box",
-                            padding: "2mm 2.5mm",
-                            backgroundImage:
-                              "repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, rgba(17,24,39,0.2) 7.1mm, rgba(17,24,39,0.2) 7.4mm)",
-                            backgroundClip: "content-box",
-                          }}
-                          aria-label={`Section A answer box for question ${globalNum}`}
-                        />
-                        <p style={{ margin: "1.5mm 0 0", fontSize: "8pt", color: "#4b5563", fontFamily: "serif" }}>
-                          Answer space ({totalMarks || "-"} marks, {lineCount} lines)
-                        </p>
-                      </div>
-                    );
-                  })()
+                {showSectionAAnswerBox && !splitToContinuation && (
+                  <div style={{ marginTop: "6mm", width: "170mm" }}>
+                    <div
+                      style={{
+                        border: "1.2px solid #111",
+                        height: `${boxHeightMm}mm`,
+                        boxSizing: "border-box",
+                        padding: "2mm 2.5mm",
+                        backgroundImage:
+                          "repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, rgba(17,24,39,0.2) 7.1mm, rgba(17,24,39,0.2) 7.4mm)",
+                        backgroundClip: "content-box",
+                      }}
+                      aria-label={`Section A answer box for question ${globalNum}`}
+                    />
+                    <p style={{ margin: "1.5mm 0 0", fontSize: "8pt", color: "#4b5563", fontFamily: "serif" }}>
+                      Answer space ({totalMarks || "-"} marks, {lineCount} lines)
+                    </p>
+                  </div>
+                )}
+                {showSectionAAnswerBox && splitToContinuation && (
+                  <p style={{ marginTop: "6mm", fontSize: "9pt", color: "#4b5563", fontFamily: "serif", fontStyle: "italic" }}>
+                    Answer space continues on next page.
+                  </p>
                 )}
               </div>
+              {showSectionAAnswerBox && splitToContinuation && (
+                <div className="question-page" style={{ padding: "15mm 20mm 10mm", breakBefore: "page", breakInside: "avoid", position: "relative", minHeight: "240mm" }}>
+                  <p style={{ fontFamily: "serif", fontSize: "13pt", fontWeight: "bold", margin: "0 0 4mm", color: "#000" }}>
+                    Question {globalNum} (Section A) — Continuation Space
+                  </p>
+                  <div style={{ width: "170mm" }}>
+                    <div
+                      style={{
+                        border: "1.2px solid #111",
+                        height: `${boxHeightMm}mm`,
+                        boxSizing: "border-box",
+                        padding: "2mm 2.5mm",
+                        backgroundImage:
+                          "repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, rgba(17,24,39,0.2) 7.1mm, rgba(17,24,39,0.2) 7.4mm)",
+                        backgroundClip: "content-box",
+                      }}
+                      aria-label={`Section A continuation answer box for question ${globalNum}`}
+                    />
+                    <p style={{ margin: "1.5mm 0 0", fontSize: "8pt", color: "#4b5563", fontFamily: "serif" }}>
+                      Answer space ({totalMarks || "-"} marks, {lineCount} lines)
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -591,7 +629,12 @@ export function TestPreviewClient() {
                 const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
                 const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
                 const qrUrl = qrCodes[student.id]?.[q.code] ?? "";
-                const hasSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
+                const showSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
+                const totalMarks = questionTotalMarks(q);
+                const boxHeightMm = showSectionAAnswerBox ? resolveAnswerBoxHeightMm(config, q) : 0;
+                const lineCount = showSectionAAnswerBox ? sectionAAnswerLineCount(boxHeightMm) : 0;
+                const splitToContinuation = showSectionAAnswerBox ? shouldSplitAnswerBoxToContinuationPage(q, boxHeightMm) : false;
+                const hasSectionAAnswerBox = showSectionAAnswerBox && !splitToContinuation;
                 return (
                   <div key={q.id}>
                     {isFirstSectionA && (
@@ -623,36 +666,29 @@ export function TestPreviewClient() {
                           ) : null)
                         )}
                       </div>
-                      {showSections && q.section === "A" && config?.imageType === "question" && (
-                        (() => {
-                          const totalMarks = questionTotalMarks(q);
-                          const mode = config?.answerBoxMode === "fixed" ? "fixed" : "auto";
-                          const fixedMm = config?.answerBoxFixedMm ?? 52;
-                          const overrideMm = config?.questionAnswerBoxMm?.[q.id];
-                          const boxHeightMm = typeof overrideMm === "number"
-                            ? Math.max(20, Math.min(140, overrideMm))
-                            : sectionAAnswerBoxHeightMm(totalMarks, mode, fixedMm);
-                          const lineCount = sectionAAnswerLineCount(boxHeightMm);
-                          return (
-                            <div style={{ marginTop: "6mm", width: "170mm" }}>
-                              <div
-                                style={{
-                                  border: "1.2px solid #111",
-                                  height: `${boxHeightMm}mm`,
-                                  boxSizing: "border-box",
-                                  padding: "2mm 2.5mm",
-                                  backgroundImage:
-                                    "repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, rgba(17,24,39,0.2) 7.1mm, rgba(17,24,39,0.2) 7.4mm)",
-                                  backgroundClip: "content-box",
-                                }}
-                                aria-label={`Section A answer box for question ${globalNum}`}
-                              />
-                              <p style={{ margin: "1.5mm 0 0", fontSize: "8pt", color: "#4b5563", fontFamily: "serif" }}>
-                                Answer space ({totalMarks || "-"} marks, {lineCount} lines)
-                              </p>
-                            </div>
-                          );
-                        })()
+                      {showSectionAAnswerBox && !splitToContinuation && (
+                        <div style={{ marginTop: "6mm", width: "170mm" }}>
+                          <div
+                            style={{
+                              border: "1.2px solid #111",
+                              height: `${boxHeightMm}mm`,
+                              boxSizing: "border-box",
+                              padding: "2mm 2.5mm",
+                              backgroundImage:
+                                "repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, rgba(17,24,39,0.2) 7.1mm, rgba(17,24,39,0.2) 7.4mm)",
+                              backgroundClip: "content-box",
+                            }}
+                            aria-label={`Section A answer box for question ${globalNum}`}
+                          />
+                          <p style={{ margin: "1.5mm 0 0", fontSize: "8pt", color: "#4b5563", fontFamily: "serif" }}>
+                            Answer space ({totalMarks || "-"} marks, {lineCount} lines)
+                          </p>
+                        </div>
+                      )}
+                      {showSectionAAnswerBox && splitToContinuation && (
+                        <p style={{ marginTop: "6mm", fontSize: "9pt", color: "#4b5563", fontFamily: "serif", fontStyle: "italic" }}>
+                          Answer space continues on next page.
+                        </p>
                       )}
                       {qrUrl && (
                         <div style={{ position: "absolute", bottom: "8mm", right: "15mm", display: "flex", flexDirection: "column", alignItems: "center", gap: "1mm" }}>
@@ -661,6 +697,30 @@ export function TestPreviewClient() {
                         </div>
                       )}
                     </div>
+                    {showSectionAAnswerBox && splitToContinuation && (
+                      <div className="question-page" style={{ padding: "15mm 20mm 10mm", breakBefore: "page", breakInside: "avoid", position: "relative", minHeight: "240mm" }}>
+                        <p style={{ fontFamily: "serif", fontSize: "13pt", fontWeight: "bold", margin: "0 0 4mm", color: "#000" }}>
+                          Question {globalNum} (Section A) — Continuation Space
+                        </p>
+                        <div style={{ width: "170mm" }}>
+                          <div
+                            style={{
+                              border: "1.2px solid #111",
+                              height: `${boxHeightMm}mm`,
+                              boxSizing: "border-box",
+                              padding: "2mm 2.5mm",
+                              backgroundImage:
+                                "repeating-linear-gradient(to bottom, transparent 0, transparent 7.1mm, rgba(17,24,39,0.2) 7.1mm, rgba(17,24,39,0.2) 7.4mm)",
+                              backgroundClip: "content-box",
+                            }}
+                            aria-label={`Section A continuation answer box for question ${globalNum}`}
+                          />
+                          <p style={{ margin: "1.5mm 0 0", fontSize: "8pt", color: "#4b5563", fontFamily: "serif" }}>
+                            Answer space ({totalMarks || "-"} marks, {lineCount} lines)
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
