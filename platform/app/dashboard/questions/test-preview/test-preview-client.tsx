@@ -83,6 +83,18 @@ function ibdpDottedLineCount(q: TestQuestion): number {
   return 16;
 }
 
+function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
+  return Array.from({ length: lineCount }).map((_, lineIdx) => (
+    <div
+      key={`${keyPrefix}-${lineIdx}`}
+      style={{
+        borderBottom: "1.4px dotted #6f6f6f",
+        width: "100%",
+      }}
+    />
+  ));
+}
+
 // ─── Module-level exam data cache (survives component re-mounts) ─────────────
 
 interface ExamDataCache {
@@ -490,14 +502,15 @@ export function TestPreviewClient() {
           return (
             <div key={q.id}>
               {isFirstSectionA && (
-                <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: qIdx === 0 ? undefined : "page" }}>Section A</div>
+                <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: qIdx === 0 ? undefined : "page" }}>Section A</div>
               )}
               {isFirstSectionB && (
-                <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
+                <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
               )}
               <div className="question-page" id={`q-${globalNum}`} style={{ padding: "15mm 20mm 10mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm", display: "flex", flexDirection: "column" }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6mm" }}>
-                  <p style={{ fontFamily: "serif", fontSize: "14pt", fontWeight: "bold", margin: 0, color: "#000" }}>{globalNum}.</p>
+                <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm" }}>
+                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
+                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
                   <button
                     className="no-print"
                     onClick={() => setOpenEditors((prev) => { const next = new Set(prev); if (next.has(q.id)) next.delete(q.id); else next.add(q.id); return next; })}
@@ -532,17 +545,15 @@ export function TestPreviewClient() {
                         border: "1.2px solid #8b8b8b",
                         flex: 1,
                         boxSizing: "border-box",
-                        padding: "3mm 3.5mm 2.5mm",
+                        padding: "4mm 4mm 3mm",
                         display: "flex",
                         flexDirection: "column",
                         justifyContent: "space-between",
-                        gap: "2.5mm",
+                        gap: "3.1mm",
                       }}
                       aria-label={`Section A answer box for question ${globalNum}`}
                     >
-                      {Array.from({ length: lineCount }).map((_, lineIdx) => (
-                        <div key={`line-${q.id}-${lineIdx}`} style={{ borderBottom: "1.6px dotted #6b7280", width: "100%" }} />
-                      ))}
+                      {renderIbdpDottedLines(`line-${q.id}`, lineCount)}
                     </div>
                   </div>
                 )}
@@ -583,10 +594,10 @@ export function TestPreviewClient() {
                 return (
                   <div key={q.id}>
                     {isFirstSectionA && (
-                      <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: sIdx === 0 && qIdx === 0 ? undefined : "page" }}>Section A</div>
+                      <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: sIdx === 0 && qIdx === 0 ? undefined : "page" }}>Section A</div>
                     )}
                     {isFirstSectionB && (
-                      <div className="section-header" style={{ borderTop: "2px solid #000", padding: "8mm 20mm 4mm", fontFamily: "serif", fontSize: "16pt", fontWeight: "bold", color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
+                      <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
                     )}
                     <div
                       className="question-page"
@@ -600,8 +611,9 @@ export function TestPreviewClient() {
                         flexDirection: "column",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "baseline", gap: "8px", marginBottom: "6mm" }}>
-                        <p style={{ fontFamily: "serif", fontSize: "14pt", fontWeight: "bold", margin: 0, color: "#000" }}>{globalNum}.</p>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm" }}>
+                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
+                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
                         {q.images.length === 0 ? (
@@ -620,17 +632,15 @@ export function TestPreviewClient() {
                               border: "1.2px solid #8b8b8b",
                               flex: 1,
                               boxSizing: "border-box",
-                              padding: "3mm 3.5mm 2.5mm",
+                              padding: "4mm 4mm 3mm",
                               display: "flex",
                               flexDirection: "column",
                               justifyContent: "space-between",
-                              gap: "2.5mm",
+                              gap: "3.1mm",
                             }}
                             aria-label={`Section A answer box for question ${globalNum}`}
                           >
-                            {Array.from({ length: lineCount }).map((_, lineIdx) => (
-                              <div key={`line-batched-${q.id}-${lineIdx}`} style={{ borderBottom: "1.6px dotted #6b7280", width: "100%" }} />
-                            ))}
+                            {renderIbdpDottedLines(`line-batched-${q.id}`, lineCount)}
                           </div>
                         </div>
                       )}
