@@ -83,81 +83,157 @@ function ibdpDottedLineCount(q: TestQuestion): number {
   return 16;
 }
 
+// IB answer lines are actual ". . . . ." dot text, not CSS borders (matches IB paper 2225-7106)
+const IB_DOT_ROW =
+  ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .";
+
 function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
   return Array.from({ length: lineCount }).map((_, lineIdx) => (
     <div
       key={`${keyPrefix}-${lineIdx}`}
       style={{
-        borderBottom: "1.4px dotted #6f6f6f",
-        width: "100%",
+        fontFamily: '"Arial", sans-serif',
+        fontSize: "8.5pt",
+        color: "#444",
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+        lineHeight: "1",
+        marginBottom: lineIdx < lineCount - 1 ? "3.8mm" : "0",
       }}
-    />
+    >
+      {IB_DOT_ROW}
+    </div>
   ));
 }
 
 function renderCornerMark(position: "top-left" | "top-right" | "bottom-left" | "bottom-right") {
-  const verticalSide = position.includes("left") ? "left" : "right";
-  const horizontalSide = position.includes("top") ? "top" : "bottom";
+  const isLeft = position.includes("left");
+  const isTop = position.includes("top");
   return (
     <div
       aria-hidden="true"
       style={{
         position: "absolute",
-        [verticalSide]: "5mm",
-        [horizontalSide]: "4mm",
-        width: "5mm",
-        height: "5mm",
-        borderTop: horizontalSide === "top" ? "0.7px solid #444" : undefined,
-        borderBottom: horizontalSide === "bottom" ? "0.7px solid #444" : undefined,
-        borderLeft: verticalSide === "left" ? "0.7px solid #444" : undefined,
-        borderRight: verticalSide === "right" ? "0.7px solid #444" : undefined,
+        [isLeft ? "left" : "right"]: "4mm",
+        [isTop ? "top" : "bottom"]: "3.5mm",
+        width: "6mm",
+        height: "6mm",
+        borderTop: isTop ? "1px solid #222" : undefined,
+        borderBottom: !isTop ? "1px solid #222" : undefined,
+        borderLeft: isLeft ? "1px solid #222" : undefined,
+        borderRight: !isLeft ? "1px solid #222" : undefined,
       }}
     />
   );
 }
 
-function renderPageChrome(pageNumber: number, paperCode: string, footerText?: string) {
+function renderPageChrome(
+  pageNumber: number,
+  paperCode: string,
+  opts?: { turnOver?: boolean }
+) {
+  // Page code used in barcode label, e.g. "16EP02" (IB format: index * 2 + page)
+  const pageCode = `${String(pageNumber).padStart(2, "0")}EP${String(pageNumber * 2).padStart(2, "0")}`;
   return (
     <>
       {renderCornerMark("top-left")}
       {renderCornerMark("top-right")}
       {renderCornerMark("bottom-left")}
       {renderCornerMark("bottom-right")}
+
+      {/* Right-edge perforated binding strip — matches IB booklet outer edge */}
       <div
         aria-hidden="true"
         style={{
           position: "absolute",
-          top: "4.5mm",
-          left: "0",
+          top: "0",
           right: "0",
+          width: "8mm",
+          height: "100%",
+          backgroundImage:
+            "repeating-linear-gradient(to bottom, #555 0px, #555 1.5px, transparent 1.5px, transparent 3.5px, #555 3.5px, #555 5px, transparent 5px, transparent 8px)",
+          backgroundSize: "8mm 8px",
+          opacity: 0.45,
+        }}
+      />
+
+      {/* Page header: – N – centred, paper code right (IB en-dash format) */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          top: "5mm",
+          left: "0",
+          right: "8mm",
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          padding: "0 10mm",
+          padding: "0 12mm",
           fontFamily: '"Arial", sans-serif',
-          fontSize: "8.5pt",
-          color: "#333",
+          fontSize: "9pt",
+          color: "#222",
         }}
       >
-        <span style={{ width: "16mm" }} />
-        <span style={{ letterSpacing: "0.2mm", fontWeight: 600 }}>- {pageNumber} -</span>
-        <span style={{ width: "30mm", textAlign: "right", fontWeight: 600 }}>{paperCode}</span>
+        <span style={{ width: "22mm" }} />
+        <span style={{ fontWeight: 600, letterSpacing: "0.5mm" }}>
+          {"\u2013"}\u00a0{pageNumber}\u00a0{"\u2013"}
+        </span>
+        <span style={{ width: "22mm", textAlign: "right", fontWeight: 600 }}>{paperCode}</span>
       </div>
-      {footerText && (
+
+      {/* "Turn over" — italic bold, bottom-right, on all but last question page */}
+      {opts?.turnOver && (
         <div
           style={{
             position: "absolute",
-            left: "10mm",
-            bottom: "9mm",
+            bottom: "13mm",
+            right: "14mm",
             fontFamily: '"Arial", sans-serif',
-            fontSize: "8.5pt",
+            fontSize: "9pt",
             fontWeight: 700,
-            color: "#333",
+            fontStyle: "italic",
+            color: "#222",
           }}
         >
-          {footerText}
+          Turn over
         </div>
       )}
+
+      {/* Bottom-center barcode placeholder (IB prints a real barcode here) */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          bottom: "4mm",
+          left: "50%",
+          transform: "translateX(-50%)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "0.5mm",
+        }}
+      >
+        <div
+          style={{
+            width: "22mm",
+            height: "7mm",
+            backgroundImage:
+              "repeating-linear-gradient(to right, #111 0px, #111 1px, white 1px, white 2px, #111 2px, #111 2.5px, white 2.5px, white 4px, #111 4px, #111 5px, white 5px, white 6.5px)",
+            backgroundSize: "6.5px 100%",
+            border: "0.5px solid #555",
+          }}
+        />
+        <span
+          style={{
+            fontFamily: '"Courier New", monospace',
+            fontSize: "6pt",
+            color: "#333",
+            letterSpacing: "0.2mm",
+          }}
+        >
+          {pageCode}
+        </span>
+      </div>
     </>
   );
 }
@@ -568,16 +644,33 @@ export function TestPreviewClient() {
           const showSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
           const totalMarks = questionTotalMarks(q);
           const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
+          const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
               {isFirstSectionA && (
-                <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: qIdx === 0 ? undefined : "page" }}>Section A</div>
+                <div className="section-header" style={{ padding: "14mm 20mm 0", breakBefore: qIdx === 0 ? undefined : "page" }}>
+                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>
+                    Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.
+                  </p>
+                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "4mm 0 2mm", textAlign: "center" }}>Section A</p>
+                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0", color: "#222" }}>
+                    Answer <strong>all</strong> questions. Answers must be written within the answer boxes provided. Working may be continued below the lines, if necessary.
+                  </p>
+                </div>
               )}
               {isFirstSectionB && (
-                <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
+                <div className="section-header" style={{ padding: "14mm 20mm 0", breakBefore: "page" }}>
+                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0" }}>
+                    Do <strong>not</strong> write solutions on this page.
+                  </p>
+                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "4mm 0 2mm", textAlign: "center" }}>Section B</p>
+                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0", color: "#222" }}>
+                    Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.
+                  </p>
+                </div>
               )}
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "13mm 20mm 10mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm", display: "flex", flexDirection: "column" }}>
-                {renderPageChrome(pageNumber, paperCode)}
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "15mm 20mm 14mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm", display: "flex", flexDirection: "column" }}>
+                {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
@@ -612,14 +705,13 @@ export function TestPreviewClient() {
                   <div style={{ marginTop: "6mm", width: "170mm", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
                     <div
                       style={{
-                        border: "1.2px solid #8b8b8b",
+                        border: "1px solid #000",
                         flex: 1,
                         boxSizing: "border-box",
-                        padding: "4mm 4mm 3mm",
+                        padding: "3.5mm 4mm 2mm",
                         display: "flex",
                         flexDirection: "column",
-                        justifyContent: "space-between",
-                        gap: "3.1mm",
+                        justifyContent: "flex-start",
                       }}
                       aria-label={`Section A answer box for question ${globalNum}`}
                     >
@@ -662,18 +754,35 @@ export function TestPreviewClient() {
                 const totalMarks = questionTotalMarks(q);
                 const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
                 const hasSectionAAnswerBox = showSectionAAnswerBox;
+                const isLastQuestion = qIdx === orderedQuestions.length - 1;
                 return (
                   <div key={q.id}>
                     {isFirstSectionA && (
-                      <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: sIdx === 0 && qIdx === 0 ? undefined : "page" }}>Section A</div>
+                      <div className="section-header" style={{ padding: "14mm 20mm 0", breakBefore: sIdx === 0 && qIdx === 0 ? undefined : "page" }}>
+                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>
+                          Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.
+                        </p>
+                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "4mm 0 2mm", textAlign: "center" }}>Section A</p>
+                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0", color: "#222" }}>
+                          Answer <strong>all</strong> questions. Answers must be written within the answer boxes provided. Working may be continued below the lines, if necessary.
+                        </p>
+                      </div>
                     )}
                     {isFirstSectionB && (
-                      <div className="section-header" style={{ padding: "6mm 20mm 2mm", fontFamily: '"Times New Roman", serif', fontSize: "11pt", fontWeight: 600, color: "#000", textAlign: "center", breakBefore: "page" }}>Section B</div>
+                      <div className="section-header" style={{ padding: "14mm 20mm 0", breakBefore: "page" }}>
+                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0" }}>
+                          Do <strong>not</strong> write solutions on this page.
+                        </p>
+                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "4mm 0 2mm", textAlign: "center" }}>Section B</p>
+                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0", color: "#222" }}>
+                          Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.
+                        </p>
+                      </div>
                     )}
                     <div
                       className="question-page"
                       style={{
-                        padding: `13mm 20mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "10mm"}`,
+                        padding: `15mm 20mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "14mm"}`,
                         breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page",
                         breakInside: "avoid",
                         position: "relative",
@@ -682,7 +791,7 @@ export function TestPreviewClient() {
                         flexDirection: "column",
                       }}
                     >
-                      {renderPageChrome(pageNumber, paperCode, qIdx < orderedQuestions.length - 1 ? "(This question continues on the following page)" : undefined)}
+                      {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
                       <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
@@ -701,14 +810,13 @@ export function TestPreviewClient() {
                         <div style={{ marginTop: "6mm", width: "170mm", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
                           <div
                             style={{
-                              border: "1.2px solid #8b8b8b",
+                              border: "1px solid #000",
                               flex: 1,
                               boxSizing: "border-box",
-                              padding: "4mm 4mm 3mm",
+                              padding: "3.5mm 4mm 2mm",
                               display: "flex",
                               flexDirection: "column",
-                              justifyContent: "space-between",
-                              gap: "3.1mm",
+                              justifyContent: "flex-start",
                             }}
                             aria-label={`Section A answer box for question ${globalNum}`}
                           >
