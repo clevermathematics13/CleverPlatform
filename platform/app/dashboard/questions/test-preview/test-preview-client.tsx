@@ -658,19 +658,15 @@ export function TestPreviewClient() {
                   </p>
                 </div>
               )}
-              {isFirstSectionB && (
-                <div className="section-header" style={{ padding: "14mm 20mm 0", breakBefore: "page" }}>
-                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0" }}>
-                    Do <strong>not</strong> write solutions on this page.
-                  </p>
-                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "4mm 0 2mm", textAlign: "center" }}>Section B</p>
-                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0", color: "#222" }}>
-                    Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.
-                  </p>
-                </div>
-              )}
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "15mm 20mm 14mm", breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: "240mm", display: "flex", flexDirection: "column" }}>
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "15mm 20mm 14mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: q.section === "B" ? undefined : "240mm", height: q.section === "B" ? "297mm" : undefined, boxSizing: q.section === "B" ? "border-box" : undefined, display: "flex", flexDirection: "column" }}>
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
+                {isFirstSectionB && (
+                  <div style={{ marginBottom: "4mm" }}>
+                    <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Do <strong>not</strong> write solutions on this page.</p>
+                    <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "0 0 4mm", textAlign: "center" }}>Section B</p>
+                    <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.</p>
+                  </div>
+                )}
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
@@ -768,30 +764,28 @@ export function TestPreviewClient() {
                         </p>
                       </div>
                     )}
-                    {isFirstSectionB && (
-                      <div className="section-header" style={{ padding: "14mm 20mm 0", breakBefore: "page" }}>
-                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0" }}>
-                          Do <strong>not</strong> write solutions on this page.
-                        </p>
-                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "4mm 0 2mm", textAlign: "center" }}>Section B</p>
-                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0", color: "#222" }}>
-                          Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.
-                        </p>
-                      </div>
-                    )}
                     <div
                       className="question-page"
                       style={{
                         padding: `15mm 20mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "14mm"}`,
-                        breakBefore: isFirstSectionA || isFirstSectionB ? undefined : "page",
+                        breakBefore: isFirstSectionA ? undefined : "page",
                         breakInside: "avoid",
                         position: "relative",
-                        minHeight: "240mm",
+                        minHeight: q.section === "B" ? undefined : "240mm",
+                        height: q.section === "B" ? "297mm" : undefined,
+                        boxSizing: q.section === "B" ? "border-box" : undefined,
                         display: "flex",
                         flexDirection: "column",
                       }}
                     >
                       {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
+                      {isFirstSectionB && (
+                        <div style={{ marginBottom: "4mm" }}>
+                          <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Do <strong>not</strong> write solutions on this page.</p>
+                          <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "0 0 4mm", textAlign: "center" }}>Section B</p>
+                          <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.</p>
+                        </div>
+                      )}
                       <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
