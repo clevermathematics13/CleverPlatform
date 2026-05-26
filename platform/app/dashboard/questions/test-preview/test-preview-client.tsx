@@ -159,41 +159,7 @@ function renderPageChrome(
 
 
 
-      {/* Bottom-center barcode placeholder (IB prints a real barcode here) */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          bottom: "4mm",
-          left: "50%",
-          transform: "translateX(-50%)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "0.5mm",
-        }}
-      >
-        <div
-          style={{
-            width: "22mm",
-            height: "7mm",
-            backgroundImage:
-              "repeating-linear-gradient(to right, #111 0px, #111 1px, white 1px, white 2px, #111 2px, #111 2.5px, white 2.5px, white 4px, #111 4px, #111 5px, white 5px, white 6.5px)",
-            backgroundSize: "6.5px 100%",
-            border: "0.5px solid #555",
-          }}
-        />
-        <span
-          style={{
-            fontFamily: '"Courier New", monospace',
-            fontSize: "6pt",
-            color: "#333",
-            letterSpacing: "0.2mm",
-          }}
-        >
-          {pageCode}
-        </span>
-      </div>
+
     </>
   );
 }
@@ -298,7 +264,6 @@ export function TestPreviewClient() {
   });
   const [error, setError] = useState<string | null>(null);
   const [printMode, setPrintMode] = useState<"general" | "batched">("general");
-  const [openEditors, setOpenEditors] = useState<Set<string>>(new Set());
   const [tocEditors, setTocEditors] = useState<Set<string>>(new Set());
   const printTriggered = useRef(false);
 
@@ -607,7 +572,7 @@ export function TestPreviewClient() {
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "15mm 20mm 14mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: q.section === "B" ? undefined : "240mm", height: q.section === "B" ? "297mm" : undefined, boxSizing: q.section === "B" ? "border-box" : undefined, display: "flex", flexDirection: "column" }}>
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "8mm 12mm 14mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: q.section === "B" ? undefined : "240mm", height: q.section === "B" ? "297mm" : undefined, boxSizing: q.section === "B" ? "border-box" : undefined, display: "flex", flexDirection: "column" }}>
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
                 {isFirstSectionA && (
                   <div style={{ marginBottom: "4mm" }}>
@@ -626,35 +591,19 @@ export function TestPreviewClient() {
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
-                  <button
-                    className="no-print"
-                    onClick={() => setOpenEditors((prev) => { const next = new Set(prev); if (next.has(q.id)) next.delete(q.id); else next.add(q.id); return next; })}
-                    style={{ fontSize: "9pt", color: "#6366f1", background: "none", border: "1px solid #c7d2fe", borderRadius: "4px", padding: "1px 6px", lineHeight: 1.4, cursor: "pointer" }}
-                  >
-                    ✏️ {openEditors.has(q.id) ? "Close editor" : `Edit ${q.code}`}
-                  </button>
                 </div>
-                {openEditors.has(q.id) && (
-                  <div className="no-print" style={{ marginBottom: "6mm" }}>
-                    <iframe
-                      src={`/dashboard/questions/review?focus=${q.id}`}
-                      style={{ width: "100%", height: "640px", border: "1px solid #e5e7eb", borderRadius: "8px" }}
-                      title={`Editor for ${q.code}`}
-                    />
-                  </div>
-                )}
                 <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
                   {q.images.length === 0 ? (
                     <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>[No images available for this question]</p>
                   ) : (
                     q.images.map((img) => img.url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "170mm", height: "auto", display: "block" }} />
+                      <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "186mm", height: "auto", display: "block" }} />
                     ) : null)
                   )}
                 </div>
                 {showSectionAAnswerBox && (
-                  <div style={{ marginTop: "6mm", width: "170mm", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
+                  <div style={{ marginTop: "6mm", width: "186mm", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
                     <div
                       style={{
                         border: "1px solid #000",
@@ -712,7 +661,7 @@ export function TestPreviewClient() {
                     <div
                       className="question-page"
                       style={{
-                        padding: `15mm 20mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "14mm"}`,
+                        padding: `8mm 12mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "14mm"}`,
                         breakBefore: isFirstSectionA ? undefined : "page",
                         breakInside: "avoid",
                         position: "relative",
@@ -748,12 +697,12 @@ export function TestPreviewClient() {
                         ) : (
                           q.images.map((img) => img.url ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "170mm", height: "auto", display: "block" }} />
+                            <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "186mm", height: "auto", display: "block" }} />
                           ) : null)
                         )}
                       </div>
                       {showSectionAAnswerBox && (
-                        <div style={{ marginTop: "6mm", width: "170mm", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
+                        <div style={{ marginTop: "6mm", width: "186mm", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
                           <div
                             style={{
                               border: "1px solid #000",
