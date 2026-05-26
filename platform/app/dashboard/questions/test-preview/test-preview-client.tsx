@@ -647,19 +647,15 @@ export function TestPreviewClient() {
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
-              {isFirstSectionA && (
-                <div className="section-header" style={{ padding: "14mm 20mm 0", breakBefore: qIdx === 0 ? undefined : "page" }}>
-                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>
-                    Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.
-                  </p>
-                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "4mm 0 2mm", textAlign: "center" }}>Section A</p>
-                  <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0", color: "#222" }}>
-                    Answer <strong>all</strong> questions. Answers must be written within the answer boxes provided. Working may be continued below the lines, if necessary.
-                  </p>
-                </div>
-              )}
               <div className="question-page" id={`q-${globalNum}`} style={{ padding: "15mm 20mm 14mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: q.section === "B" ? undefined : "240mm", height: q.section === "B" ? "297mm" : undefined, boxSizing: q.section === "B" ? "border-box" : undefined, display: "flex", flexDirection: "column" }}>
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
+                {isFirstSectionA && (
+                  <div style={{ marginBottom: "4mm" }}>
+                    <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.</p>
+                    <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "0 0 4mm", textAlign: "center" }}>Section A</p>
+                    <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Answer <strong>all</strong> questions. Answers must be written within the answer boxes provided. Working may be continued below the lines, if necessary.</p>
+                  </div>
+                )}
                 {isFirstSectionB && (
                   <div style={{ marginBottom: "4mm" }}>
                     <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Do <strong>not</strong> write solutions on this page.</p>
@@ -753,17 +749,6 @@ export function TestPreviewClient() {
                 const isLastQuestion = qIdx === orderedQuestions.length - 1;
                 return (
                   <div key={q.id}>
-                    {isFirstSectionA && (
-                      <div className="section-header" style={{ padding: "14mm 20mm 0", breakBefore: sIdx === 0 && qIdx === 0 ? undefined : "page" }}>
-                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>
-                          Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.
-                        </p>
-                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "4mm 0 2mm", textAlign: "center" }}>Section A</p>
-                        <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0", color: "#222" }}>
-                          Answer <strong>all</strong> questions. Answers must be written within the answer boxes provided. Working may be continued below the lines, if necessary.
-                        </p>
-                      </div>
-                    )}
                     <div
                       className="question-page"
                       style={{
@@ -779,6 +764,13 @@ export function TestPreviewClient() {
                       }}
                     >
                       {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
+                      {isFirstSectionA && (
+                        <div style={{ marginBottom: "4mm" }}>
+                          <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.</p>
+                          <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "0 0 4mm", textAlign: "center" }}>Section A</p>
+                          <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Answer <strong>all</strong> questions. Answers must be written within the answer boxes provided. Working may be continued below the lines, if necessary.</p>
+                        </div>
+                      )}
                       {isFirstSectionB && (
                         <div style={{ marginBottom: "4mm" }}>
                           <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Do <strong>not</strong> write solutions on this page.</p>
