@@ -109,13 +109,16 @@ function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
 function renderCornerMark(position: "top-left" | "top-right" | "bottom-left" | "bottom-right") {
   const isLeft = position.includes("left");
   const isTop = position.includes("top");
+  // Top marks: close to top edge and sides; bottom marks: higher on the page
+  const edgeOffset = isTop ? "1.5mm" : "9mm";
+  const sideOffset = "1.5mm";
   return (
     <div
       aria-hidden="true"
       style={{
         position: "absolute",
-        [isLeft ? "left" : "right"]: "4mm",
-        [isTop ? "top" : "bottom"]: "4mm",
+        [isLeft ? "left" : "right"]: sideOffset,
+        [isTop ? "top" : "bottom"]: edgeOffset,
         width: "6mm",
         height: "6mm",
         borderTop: isTop ? "1px solid #222" : undefined,
