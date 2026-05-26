@@ -799,11 +799,6 @@ export function TestPreviewClient() {
             break-before: page !important;
             page-break-before: always !important;
           }
-
-          /* Hide any elements injected outside our root (e.g. browser extension overlays with position:fixed) */
-          body > *:not(.preview-root) {
-            display: none !important;
-          }
         }
       `}</style>
       </div> {/* end scrollable body */}
