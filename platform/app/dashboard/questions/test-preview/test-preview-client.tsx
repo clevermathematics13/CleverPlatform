@@ -109,8 +109,8 @@ function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
 function renderCornerMark(position: "top-left" | "top-right" | "bottom-left" | "bottom-right") {
   const isLeft = position.includes("left");
   const isTop = position.includes("top");
-  // Top marks: close to top edge and sides; bottom marks: higher on the page
-  const edgeOffset = isTop ? "1.5mm" : "9mm";
+  // Top marks: close to top edge and sides; bottom marks: well inset from the bottom edge
+  const edgeOffset = isTop ? "1.5mm" : "22mm";
   const sideOffset = "1.5mm";
   return (
     <div
@@ -575,7 +575,7 @@ export function TestPreviewClient() {
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box", overflow: "hidden", display: "flex", flexDirection: "column" }}>
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
                 {isFirstSectionA && (
                   <div style={{ marginBottom: "4mm" }}>
@@ -670,6 +670,7 @@ export function TestPreviewClient() {
                         position: "relative",
                         height: "297mm",
                         boxSizing: "border-box",
+                        overflow: "hidden",
                         display: "flex",
                         flexDirection: "column",
                       }}
@@ -797,6 +798,11 @@ export function TestPreviewClient() {
           .section-header {
             break-before: page !important;
             page-break-before: always !important;
+          }
+
+          /* Hide any elements injected outside our root (e.g. browser extension overlays with position:fixed) */
+          body > *:not(.preview-root) {
+            display: none !important;
           }
         }
       `}</style>
