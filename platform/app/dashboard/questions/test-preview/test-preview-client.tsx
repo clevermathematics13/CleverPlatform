@@ -157,47 +157,7 @@ function renderPageChrome(
         }}
       />
 
-      {/* Page header: – N – centred, paper code right (IB en-dash format) */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: "absolute",
-          top: "5mm",
-          left: "0",
-          right: "8mm",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 12mm",
-          fontFamily: '"Arial", sans-serif',
-          fontSize: "9pt",
-          color: "#222",
-        }}
-      >
-        <span style={{ width: "22mm" }} />
-        <span style={{ fontWeight: 600, letterSpacing: "0.5mm" }}>
-          {"\u2013"}\u00a0{pageNumber}\u00a0{"\u2013"}
-        </span>
-        <span style={{ width: "22mm", textAlign: "right", fontWeight: 600 }}>{paperCode}</span>
-      </div>
 
-      {/* "Turn over" — italic bold, bottom-right, on all but last question page */}
-      {opts?.turnOver && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "13mm",
-            right: "14mm",
-            fontFamily: '"Arial", sans-serif',
-            fontSize: "9pt",
-            fontWeight: 700,
-            fontStyle: "italic",
-            color: "#222",
-          }}
-        >
-          Turn over
-        </div>
-      )}
 
       {/* Bottom-center barcode placeholder (IB prints a real barcode here) */}
       <div
