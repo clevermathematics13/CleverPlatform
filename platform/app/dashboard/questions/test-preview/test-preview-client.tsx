@@ -115,7 +115,7 @@ function renderCornerMark(position: "top-left" | "top-right" | "bottom-left" | "
       style={{
         position: "absolute",
         [isLeft ? "left" : "right"]: "4mm",
-        [isTop ? "top" : "bottom"]: "3.5mm",
+        [isTop ? "top" : "bottom"]: "4mm",
         width: "6mm",
         height: "6mm",
         borderTop: isTop ? "1px solid #222" : undefined,
@@ -572,7 +572,7 @@ export function TestPreviewClient() {
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "8mm 12mm 14mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", minHeight: q.section === "B" ? undefined : "240mm", height: q.section === "B" ? "297mm" : undefined, boxSizing: q.section === "B" ? "border-box" : undefined, display: "flex", flexDirection: "column" }}>
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
                 {isFirstSectionA && (
                   <div style={{ marginBottom: "4mm" }}>
@@ -603,7 +603,7 @@ export function TestPreviewClient() {
                   )}
                 </div>
                 {showSectionAAnswerBox && (
-                  <div style={{ marginTop: "6mm", width: "186mm", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
+                  <div style={{ marginTop: "6mm", width: "100%", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
                     <div
                       style={{
                         border: "1px solid #000",
@@ -661,13 +661,12 @@ export function TestPreviewClient() {
                     <div
                       className="question-page"
                       style={{
-                        padding: `8mm 12mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "14mm"}`,
+                        padding: `10mm 12mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "12mm"}`,
                         breakBefore: isFirstSectionA ? undefined : "page",
                         breakInside: "avoid",
                         position: "relative",
-                        minHeight: q.section === "B" ? undefined : "240mm",
-                        height: q.section === "B" ? "297mm" : undefined,
-                        boxSizing: q.section === "B" ? "border-box" : undefined,
+                        height: "297mm",
+                        boxSizing: "border-box",
                         display: "flex",
                         flexDirection: "column",
                       }}
@@ -702,7 +701,7 @@ export function TestPreviewClient() {
                         )}
                       </div>
                       {showSectionAAnswerBox && (
-                        <div style={{ marginTop: "6mm", width: "186mm", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
+                        <div style={{ marginTop: "6mm", width: "100%", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
                           <div
                             style={{
                               border: "1px solid #000",
