@@ -610,7 +610,7 @@ export function TestPreviewClient() {
                 </div>
                 </div>
                 {showSectionAAnswerBox && (
-                  <div style={{ position: "absolute", left: "12mm", right: "12mm", bottom: "12mm" }}>
+                  <div style={{ marginTop: "6mm" }}>
                     <div
                       style={{
                         border: "1px solid #000",
@@ -658,15 +658,15 @@ export function TestPreviewClient() {
                 const totalMarks = questionTotalMarks(q);
                 const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
                 const hasSectionAAnswerBox = showSectionAAnswerBox;
-                // Cap content height so answer box always fits: inner=261mm, answerBox=14.5+(lineCount-1)*6.8mm
-                const contentMaxHeightMm = hasSectionAAnswerBox ? 246.5 - (lineCount - 1) * 6.8 : undefined;
+                // Cap content height so answer box always fits: inner=275mm, answerBox=8.5+(lineCount-1)*6.8mm
+                const contentMaxHeightMm = hasSectionAAnswerBox ? 260.5 - (lineCount - 1) * 6.8 : undefined;
                 const isLastQuestion = qIdx === orderedQuestions.length - 1;
                 return (
                   <div key={q.id}>
                     <div
                       className="question-page"
                       style={{
-                        padding: `10mm 12mm ${hasSectionAAnswerBox || qrUrl ? "26mm" : "12mm"}`,
+                        padding: `10mm 12mm 12mm`,
                         breakBefore: isFirstSectionA ? undefined : "page",
                         breakInside: "avoid",
                         position: "relative",
@@ -706,7 +706,7 @@ export function TestPreviewClient() {
                       </div>
                       </div>
                       {showSectionAAnswerBox && (
-                        <div style={{ position: "absolute", left: "12mm", right: "12mm", bottom: "26mm" }}>
+                        <div style={{ marginTop: "6mm" }}>
                           <div
                             style={{
                               border: "1px solid #000",
