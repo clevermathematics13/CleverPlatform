@@ -577,9 +577,9 @@ export function TestPreviewClient() {
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box" }}>
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
-                <div style={{ flex: "none", maxHeight: contentMaxHeightMm != null ? `${contentMaxHeightMm}mm` : undefined, overflow: "hidden" }}>
+                <div style={{ maxHeight: contentMaxHeightMm != null ? `${contentMaxHeightMm}mm` : undefined, overflow: "hidden" }}>
                 {isFirstSectionA && (
                   <div style={{ marginBottom: "4mm" }}>
                     <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.</p>
@@ -610,16 +610,12 @@ export function TestPreviewClient() {
                 </div>
                 </div>
                 {showSectionAAnswerBox && (
-                  <div style={{ marginTop: "6mm", width: "100%", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
+                  <div style={{ position: "absolute", left: "12mm", right: "12mm", bottom: "12mm" }}>
                     <div
                       style={{
                         border: "1px solid #000",
-                        flex: 1,
                         boxSizing: "border-box",
                         padding: "3.5mm 4mm 2mm",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "flex-start",
                       }}
                       aria-label={`Section A answer box for question ${globalNum}`}
                     >
@@ -676,12 +672,10 @@ export function TestPreviewClient() {
                         position: "relative",
                         height: "297mm",
                         boxSizing: "border-box",
-                        display: "flex",
-                        flexDirection: "column",
                       }}
                     >
                       {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
-                      <div style={{ flex: "none", maxHeight: contentMaxHeightMm != null ? `${contentMaxHeightMm}mm` : undefined, overflow: "hidden" }}>
+                      <div style={{ maxHeight: contentMaxHeightMm != null ? `${contentMaxHeightMm}mm` : undefined, overflow: "hidden" }}>
                       {isFirstSectionA && (
                         <div style={{ marginBottom: "4mm" }}>
                           <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.</p>
@@ -712,16 +706,12 @@ export function TestPreviewClient() {
                       </div>
                       </div>
                       {showSectionAAnswerBox && (
-                        <div style={{ marginTop: "6mm", width: "100%", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
+                        <div style={{ position: "absolute", left: "12mm", right: "12mm", bottom: "26mm" }}>
                           <div
                             style={{
                               border: "1px solid #000",
-                              flex: 1,
                               boxSizing: "border-box",
                               padding: "3.5mm 4mm 2mm",
-                              display: "flex",
-                              flexDirection: "column",
-                              justifyContent: "flex-start",
                             }}
                             aria-label={`Section A answer box for question ${globalNum}`}
                           >
