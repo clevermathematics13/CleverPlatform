@@ -572,11 +572,14 @@ export function TestPreviewClient() {
           const showSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
           const totalMarks = questionTotalMarks(q);
           const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
+          // Cap content height so answer box always fits: inner=275mm, answerBox=14.5+(lineCount-1)*6.8mm
+          const contentMaxHeightMm = showSectionAAnswerBox ? 260.5 - (lineCount - 1) * 6.8 : undefined;
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
               <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
+                <div style={{ flex: "none", maxHeight: contentMaxHeightMm != null ? `${contentMaxHeightMm}mm` : undefined, overflow: "hidden" }}>
                 {isFirstSectionA && (
                   <div style={{ marginBottom: "4mm" }}>
                     <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.</p>
@@ -595,7 +598,7 @@ export function TestPreviewClient() {
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4mm", minHeight: 0, overflow: "hidden" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
                   {q.images.length === 0 ? (
                     <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>[No images available for this question]</p>
                   ) : (
@@ -604,6 +607,7 @@ export function TestPreviewClient() {
                       <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "186mm", height: "auto", display: "block" }} />
                     ) : null)
                   )}
+                </div>
                 </div>
                 {showSectionAAnswerBox && (
                   <div style={{ marginTop: "6mm", width: "100%", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
@@ -658,6 +662,8 @@ export function TestPreviewClient() {
                 const totalMarks = questionTotalMarks(q);
                 const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
                 const hasSectionAAnswerBox = showSectionAAnswerBox;
+                // Cap content height so answer box always fits: inner=261mm, answerBox=14.5+(lineCount-1)*6.8mm
+                const contentMaxHeightMm = hasSectionAAnswerBox ? 246.5 - (lineCount - 1) * 6.8 : undefined;
                 const isLastQuestion = qIdx === orderedQuestions.length - 1;
                 return (
                   <div key={q.id}>
@@ -675,6 +681,7 @@ export function TestPreviewClient() {
                       }}
                     >
                       {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
+                      <div style={{ flex: "none", maxHeight: contentMaxHeightMm != null ? `${contentMaxHeightMm}mm` : undefined, overflow: "hidden" }}>
                       {isFirstSectionA && (
                         <div style={{ marginBottom: "4mm" }}>
                           <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.</p>
@@ -693,7 +700,7 @@ export function TestPreviewClient() {
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4mm", minHeight: 0, overflow: "hidden" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
                         {q.images.length === 0 ? (
                           <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>[No images available for this question]</p>
                         ) : (
@@ -702,6 +709,7 @@ export function TestPreviewClient() {
                             <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "186mm", height: "auto", display: "block" }} />
                           ) : null)
                         )}
+                      </div>
                       </div>
                       {showSectionAAnswerBox && (
                         <div style={{ marginTop: "6mm", width: "100%", flex: 1, minHeight: "36mm", display: "flex", flexDirection: "column" }}>
