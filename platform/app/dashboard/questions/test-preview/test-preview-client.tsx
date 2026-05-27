@@ -575,7 +575,7 @@ export function TestPreviewClient() {
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
                 {isFirstSectionA && (
                   <div style={{ marginBottom: "4mm" }}>
@@ -595,7 +595,7 @@ export function TestPreviewClient() {
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                   <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4mm", minHeight: 0, overflow: "hidden" }}>
                   {q.images.length === 0 ? (
                     <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>[No images available for this question]</p>
                   ) : (
@@ -670,7 +670,6 @@ export function TestPreviewClient() {
                         position: "relative",
                         height: "297mm",
                         boxSizing: "border-box",
-                        overflow: "hidden",
                         display: "flex",
                         flexDirection: "column",
                       }}
@@ -694,7 +693,7 @@ export function TestPreviewClient() {
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "11pt", fontWeight: 700, margin: 0, color: "#000" }}>{globalNum}.</p>
                         <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10.5pt", fontWeight: 700, margin: 0, color: "#000" }}>[Maximum mark: {totalMarks}]</p>
                       </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4mm" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4mm", minHeight: 0, overflow: "hidden" }}>
                         {q.images.length === 0 ? (
                           <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>[No images available for this question]</p>
                         ) : (
