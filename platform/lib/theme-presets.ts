@@ -1,4 +1,4 @@
-export type ThemeName = "whiskey" | "ocean" | "slate";
+export type ThemeName = "whiskey" | "ocean" | "slate" | "forest" | "midnight";
 
 export interface ThemePreset {
   id: ThemeName;
@@ -22,9 +22,19 @@ export const THEME_PRESETS: ThemePreset[] = [
     label: "Slate",
     description: "Neutral graphite and steel",
   },
+  {
+    id: "forest",
+    label: "Forest",
+    description: "Deep emerald and moss greens",
+  },
+  {
+    id: "midnight",
+    label: "Midnight",
+    description: "Rich violet and indigo dusk",
+  },
 ];
 
 export const DEFAULT_THEME: ThemeName = "whiskey";
 
 export const isThemeName = (value: string | null): value is ThemeName =>
-  value === "whiskey" || value === "ocean" || value === "slate";
+  value === "whiskey" || value === "ocean" || value === "slate" || value === "forest" || value === "midnight";

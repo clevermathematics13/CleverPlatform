@@ -4,6 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ImpersonateMenu } from "./impersonate-menu";
 import { MandelbrotBg } from "@/components/MandelbrotBg";
+import {
+  DEFAULT_THEME,
+  isThemeName,
+  THEME_PRESETS,
+  type ThemeName,
+} from "@/lib/theme-presets";
+
+const THEME_STORAGE_KEY = "cleverplatform-theme";
 
 interface NavigationItem {
   href: string;
@@ -38,6 +46,18 @@ export function DashboardShell({
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsHover, setSettingsHover] = useState(false);
   const [gradebookOpen, setGradebookOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeName>(DEFAULT_THEME);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+    if (isThemeName(stored)) setTheme(stored);
+  }, []);
+
+  function applyTheme(t: ThemeName) {
+    setTheme(t);
+    document.documentElement.setAttribute("data-theme", t);
+    window.localStorage.setItem(THEME_STORAGE_KEY, t);
+  }
 
   useEffect(() => {
     const handleExamBuilderOpen = () => setSidebarVisible(false);
@@ -181,6 +201,27 @@ export function DashboardShell({
               ))}
 
               <div className="pt-2 border-t border-da-border mt-1">
+                {/* Theme picker */}
+                <div className="px-3 pt-1 pb-2">
+                  <p className="text-xs font-semibold text-da-muted mb-1.5">🎨 Theme</p>
+                  <div className="grid grid-cols-2 gap-1">
+                    {THEME_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        onClick={() => applyTheme(preset.id)}
+                        className={`rounded-lg border px-2 py-1.5 text-left transition-colors ${
+                          theme === preset.id
+                            ? "border-da-accent bg-da-hover text-da-text"
+                            : "border-da-border bg-da-bg text-da-muted hover:bg-da-hover hover:text-da-text"
+                        }`}
+                      >
+                        <p className="text-xs font-semibold leading-tight">{preset.label}</p>
+                        <p className="text-[10px] opacity-70 leading-tight">{preset.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <ImpersonateMenu
                   currentRole={profile.role}
                   impersonating={impersonating}

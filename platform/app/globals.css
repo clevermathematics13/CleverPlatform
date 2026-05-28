@@ -111,6 +111,80 @@
   --da-bg-grad-end: #12151a;
 }
 
+/* Palette 4: deep forest emerald */
+[data-theme="forest"] {
+  --background: #0d1f14;
+  --foreground: #e0f0e8;
+
+  --color-da-bg: #0d1f14;
+  --color-da-surface: #152b1e;
+  --color-da-hover: #1f3d2c;
+  --color-da-border: #2d6640;
+  --color-da-text: #e0f0e8;
+  --color-da-muted: #85b898;
+  --color-da-accent: #4caf78;
+  --color-da-amber: #7dd69a;
+
+  --color-da-success: #a8e6b8;
+  --color-da-warning: #f0d080;
+  --color-da-danger: #f09090;
+  --color-da-info: #80ccee;
+
+  --color-da-button-bg: #1c3a28;
+  --color-da-button-hover: #264d36;
+  --color-da-button-border: #3d8050;
+  --color-da-button-text: #e0f0e8;
+
+  --color-module-dashboard: #4caf78;
+  --color-module-reflection: #68c48e;
+  --color-module-questions: #85d4a8;
+  --color-module-seating: #4aa86a;
+  --color-module-mastery: #6cbd90;
+
+  --da-bg-glow-a: rgba(76, 175, 120, 0.1);
+  --da-bg-glow-b: rgba(125, 214, 154, 0.08);
+  --da-bg-grad-start: #0a1810;
+  --da-bg-grad-mid: #122019;
+  --da-bg-grad-end: #0b1913;
+}
+
+/* Palette 5: midnight violet */
+[data-theme="midnight"] {
+  --background: #0f0b1e;
+  --foreground: #e8e0ff;
+
+  --color-da-bg: #0f0b1e;
+  --color-da-surface: #19142e;
+  --color-da-hover: #261f42;
+  --color-da-border: #4a3c78;
+  --color-da-text: #e8e0ff;
+  --color-da-muted: #9b8fc4;
+  --color-da-accent: #8b5cf6;
+  --color-da-amber: #a78bfa;
+
+  --color-da-success: #7ddbb0;
+  --color-da-warning: #fbbf60;
+  --color-da-danger: #f08080;
+  --color-da-info: #7eb8f8;
+
+  --color-da-button-bg: #221b3a;
+  --color-da-button-hover: #2f274d;
+  --color-da-button-border: #604d9a;
+  --color-da-button-text: #e8e0ff;
+
+  --color-module-dashboard: #8b5cf6;
+  --color-module-reflection: #a07cf8;
+  --color-module-questions: #b89cf6;
+  --color-module-seating: #7a6cde;
+  --color-module-mastery: #9e8ae0;
+
+  --da-bg-glow-a: rgba(139, 92, 246, 0.12);
+  --da-bg-glow-b: rgba(167, 139, 250, 0.1);
+  --da-bg-grad-start: #0c0918;
+  --da-bg-grad-mid: #150f28;
+  --da-bg-grad-end: #0d0a1c;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
