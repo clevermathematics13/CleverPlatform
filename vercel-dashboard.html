@@ -29,11 +29,45 @@
       border: 1px solid #222;
       border-radius: 10px;
       padding: 20px;
-      margin-bottom: 28px;
+      margin-bottom: 16px;
       display: flex;
       gap: 10px;
       align-items: center;
       flex-wrap: wrap;
+    }
+
+    /* Toolbar */
+    #toolbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: #888;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle-row input[type="checkbox"] {
+      accent-color: #fff;
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+      min-width: unset;
+      flex: unset;
+    }
+
+    #refresh-indicator {
+      font-size: 0.78rem;
+      color: #555;
+      margin-left: auto;
     }
 
     label {
@@ -145,6 +179,44 @@
     .badge.CANCELED { background: #1f2937; color: #9ca3af; }
     .badge.unknown  { background: #1f2937; color: #9ca3af; }
 
+    /* Preview section inside card */
+    .preview-section {
+      background: #0d0d0d;
+      border: 1px solid #1e3a5f;
+      border-radius: 7px;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .preview-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #3b82f6;
+    }
+
+    .preview-url {
+      font-size: 0.78rem;
+      color: #60a5fa;
+      text-decoration: none;
+      word-break: break-all;
+    }
+
+    .preview-url:hover { text-decoration: underline; }
+
+    .promote-btn {
+      background: #1d4ed8 !important;
+      color: #fff !important;
+      border: none !important;
+      margin-top: 4px;
+      align-self: flex-start;
+    }
+
+    .promote-btn:hover { opacity: 0.85; }
+
     .meta {
       font-size: 0.78rem;
       color: #666;
@@ -225,6 +297,14 @@
     <button class="secondary" onclick="clearToken()">Clear</button>
   </div>
 
+  <div id="toolbar">
+    <label class="toggle-row">
+      <input type="checkbox" id="auto-refresh-toggle" onchange="toggleAutoRefresh()" />
+      Auto-refresh every 30s
+    </label>
+    <span id="refresh-indicator"></span>
+  </div>
+
   <div id="message"></div>
 
   <div id="projects-grid">
@@ -261,9 +341,50 @@
     function clearToken() {
       document.getElementById("token-input").value = "";
       sessionStorage.removeItem(TOKEN_KEY);
+      stopAutoRefresh();
+      document.getElementById("auto-refresh-toggle").checked = false;
       document.getElementById("projects-grid").innerHTML =
         '<div id="empty">Enter your API token above and click <strong>Load Projects</strong>.</div>';
       hideMessage();
+    }
+
+    // ── Auto-refresh ───────────────────────────────────────────────────────
+    let refreshTimer = null;
+    let nextRefreshAt = null;
+    let countdownTimer = null;
+
+    function toggleAutoRefresh() {
+      if (document.getElementById("auto-refresh-toggle").checked) {
+        scheduleRefresh(30);
+      } else {
+        stopAutoRefresh();
+      }
+    }
+
+    function scheduleRefresh(seconds) {
+      stopAutoRefresh();
+      nextRefreshAt = Date.now() + seconds * 1000;
+      refreshTimer = setTimeout(() => {
+        loadProjects();
+      }, seconds * 1000);
+      countdownTimer = setInterval(updateCountdown, 1000);
+      updateCountdown();
+    }
+
+    function stopAutoRefresh() {
+      clearTimeout(refreshTimer);
+      clearInterval(countdownTimer);
+      refreshTimer = null;
+      countdownTimer = null;
+      nextRefreshAt = null;
+      document.getElementById("refresh-indicator").textContent = "";
+    }
+
+    function updateCountdown() {
+      if (!nextRefreshAt) return;
+      const secs = Math.max(0, Math.round((nextRefreshAt - Date.now()) / 1000));
+      document.getElementById("refresh-indicator").textContent =
+        `Next refresh in ${secs}s`;
     }
 
     // ── Vercel API helpers ─────────────────────────────────────────────────
@@ -299,44 +420,63 @@
       return all;
     }
 
-    async function fetchLatestDeployment(projectId) {
-      try {
-        const data = await vercelFetch(
-          `/v6/deployments?projectId=${projectId}&limit=1&target=production`
-        );
-        return (data.deployments || [])[0] || null;
-      } catch {
-        return null;
-      }
+    async function fetchDeployments(projectId) {
+      const [prodData, previewData] = await Promise.all([
+        vercelFetch(`/v6/deployments?projectId=${projectId}&limit=1&target=production`).catch(() => null),
+        vercelFetch(`/v6/deployments?projectId=${projectId}&limit=1&target=preview`).catch(() => null),
+      ]);
+      return {
+        production: (prodData?.deployments || [])[0] || null,
+        preview:    (previewData?.deployments || [])[0] || null,
+      };
     }
 
-    // ── Redeploy ───────────────────────────────────────────────────────────
-    async function redeploy(projectId, projectName, btn) {
-      if (!confirm(`Redeploy "${projectName}"?\n\nThis will trigger a new production deployment.`)) return;
+    // ── Deploy to Preview ──────────────────────────────────────────────────
+    async function deployPreview(projectId, projectName, btn) {
+      if (!confirm(`Deploy "${projectName}" to Preview?\n\nThis creates a preview URL for you to review. Your live site will NOT change until you click "Promote to Live".`)) return;
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span>Deploying…';
       try {
-        // Get the latest deployment to reuse its git source / ref
+        // Find the latest deployment (prod or preview) to redeploy from
         const data = await vercelFetch(
-          `/v6/deployments?projectId=${projectId}&limit=1&target=production`
+          `/v6/deployments?projectId=${projectId}&limit=1`
         );
         const latest = (data.deployments || [])[0];
-        if (!latest) throw new Error("No existing deployment found to redeploy from.");
+        if (!latest) throw new Error("No existing deployment found to build from.");
 
         await vercelFetch("/v13/deployments", {
           method: "POST",
           body: JSON.stringify({
             name: projectName,
             deploymentId: latest.uid,
-            target: "production",
+            target: "preview",
           }),
         });
-        showMessage(`Redeploy triggered for "${projectName}". Refreshing in 4s…`, "ok");
-        setTimeout(loadProjects, 4000);
+        showMessage(`Preview deployment started for "${projectName}". Refreshing in 5s…`, "ok");
+        setTimeout(loadProjects, 5000);
       } catch (err) {
-        showMessage("Redeploy failed: " + err.message, "error");
+        showMessage("Preview deploy failed: " + err.message, "error");
         btn.disabled = false;
-        btn.innerHTML = "↺ Redeploy";
+        btn.innerHTML = "↗ Deploy Preview";
+      }
+    }
+
+    // ── Promote to Production ──────────────────────────────────────────────
+    async function promoteToLive(deploymentId, projectName, btn) {
+      if (!confirm(`Promote this preview to LIVE for "${projectName}"?\n\nThis will replace your current production deployment immediately.`)) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Promoting…';
+      try {
+        await vercelFetch(`/v10/deployments/${deploymentId}/promote`, {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
+        showMessage(`"${projectName}" is now live! Refreshing in 5s…`, "ok");
+        setTimeout(loadProjects, 5000);
+      } catch (err) {
+        showMessage("Promote failed: " + err.message, "error");
+        btn.disabled = false;
+        btn.innerHTML = "🚀 Promote to Live";
       }
     }
 
@@ -369,12 +509,18 @@
         .join("");
     }
 
-    function renderCard(project, deployment) {
-      const state = deployment?.readyState || "unknown";
-      const url = deployment?.url ? "https://" + deployment.url : null;
-      const age = timeAgo(deployment?.createdAt);
+    function renderCard(project, { production, preview }) {
+      const state = production?.readyState || "unknown";
+      const prodUrl = production?.url ? "https://" + production.url : null;
+      const age = timeAgo(production?.createdAt);
       const bid = badgeClass(state);
       const label = state === "unknown" ? "No deploys" : state;
+
+      // Show preview section only if there's a ready preview that differs from production
+      const showPreview = preview &&
+        preview.uid !== production?.uid &&
+        preview.readyState === "READY";
+      const previewUrl = showPreview ? "https://" + preview.url : null;
 
       return `
         <div class="card">
@@ -383,26 +529,38 @@
             <span class="badge ${bid}">${escHtml(label)}</span>
           </div>
           <div class="meta">
-            ${url ? `<a href="${escHtml(url)}" target="_blank" rel="noopener">${escHtml(url)}</a>` : "<span>No URL</span>"}
-            <span>Last deploy: ${age}</span>
+            ${prodUrl
+              ? `<a href="${escHtml(prodUrl)}" target="_blank" rel="noopener">🟢 ${escHtml(prodUrl)}</a>`
+              : "<span>No production URL</span>"}
+            <span>Live deploy: ${age}</span>
             ${project.framework ? `<span>Framework: ${escHtml(project.framework)}</span>` : ""}
           </div>
+
+          ${showPreview ? `
+          <div class="preview-section">
+            <span class="preview-label">⬡ Preview ready — not yet live</span>
+            <a class="preview-url" href="${escHtml(previewUrl)}" target="_blank" rel="noopener">${escHtml(previewUrl)}</a>
+            <button
+              class="secondary promote-btn"
+              onclick="promoteById('${escHtml(preview.uid)}', '${escHtml(project.name)}', this)"
+            >🚀 Promote to Live</button>
+          </div>` : ""}
+
           <div class="card-footer">
             <button
               class="secondary"
-              onclick="redeployById('${escHtml(project.id)}', '${escHtml(project.name)}', this)"
-            >↺ Redeploy</button>
-            ${url ? `<a href="${escHtml(url)}" target="_blank" rel="noopener" style="display:flex">
-              <button class="secondary" style="background:transparent;">↗ Open</button>
+              onclick="deployPreviewById('${escHtml(project.id)}', '${escHtml(project.name)}', this)"
+            >↗ Deploy Preview</button>
+            ${prodUrl ? `<a href="${escHtml(prodUrl)}" target="_blank" rel="noopener" style="display:flex">
+              <button class="secondary" style="background:transparent;">↗ Open Live</button>
             </a>` : ""}
           </div>
         </div>`;
     }
 
-    // thin wrapper so onclick strings work
-    function redeployById(id, name, btn) {
-      redeploy(id, name, btn);
-    }
+    // thin wrappers so onclick attribute strings work
+    function deployPreviewById(id, name, btn) { deployPreview(id, name, btn); }
+    function promoteById(uid, name, btn)       { promoteToLive(uid, name, btn); }
 
     function escHtml(str) {
       return String(str)
@@ -435,14 +593,25 @@
           return;
         }
 
-        // Fetch latest deployment for every project in parallel
-        const deployments = await Promise.all(
-          projects.map((p) => fetchLatestDeployment(p.id))
+        // Fetch prod + preview deployments for every project in parallel
+        const deploymentPairs = await Promise.all(
+          projects.map((p) => fetchDeployments(p.id))
         );
 
         document.getElementById("projects-grid").innerHTML = projects
-          .map((p, i) => renderCard(p, deployments[i]))
+          .map((p, i) => renderCard(p, deploymentPairs[i]))
           .join("");
+
+        // If any project is currently building, refresh faster
+        const anyBuilding = deploymentPairs.some(({ production, preview }) =>
+          ["BUILDING", "INITIALIZING", "QUEUED"].includes(production?.readyState) ||
+          ["BUILDING", "INITIALIZING", "QUEUED"].includes(preview?.readyState)
+        );
+        if (anyBuilding && document.getElementById("auto-refresh-toggle").checked) {
+          scheduleRefresh(8); // poll every 8s while building
+        } else if (document.getElementById("auto-refresh-toggle").checked) {
+          scheduleRefresh(30);
+        }
       } catch (err) {
         showMessage(err.message, "error");
         document.getElementById("projects-grid").innerHTML =
