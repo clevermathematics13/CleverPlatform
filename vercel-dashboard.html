@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vercel Dashboard</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0a0a0a;
+      color: #ededed;
+      min-height: 100vh;
+      padding: 32px 20px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 24px;
+      color: #fff;
+    }
+
+    /* Token section */
+    #token-section {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 28px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    label {
+      font-size: 0.85rem;
+      color: #888;
+      white-space: nowrap;
+    }
+
+    input[type="password"], input[type="text"] {
+      flex: 1;
+      min-width: 260px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 6px;
+      color: #ededed;
+      font-size: 0.9rem;
+      padding: 9px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    input:focus { border-color: #555; }
+
+    button {
+      background: #fff;
+      color: #000;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 9px 18px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: opacity 0.15s;
+    }
+
+    button:hover { opacity: 0.85; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    button.secondary {
+      background: #1a1a1a;
+      color: #ededed;
+      border: 1px solid #333;
+    }
+
+    /* Error / info bar */
+    #message {
+      display: none;
+      padding: 10px 14px;
+      border-radius: 7px;
+      font-size: 0.85rem;
+      margin-bottom: 20px;
+    }
+
+    #message.error { background: #2a0a0a; border: 1px solid #7f1d1d; color: #fca5a5; }
+    #message.info  { background: #0a1a2a; border: 1px solid #1e3a5f; color: #93c5fd; }
+    #message.ok    { background: #0a1f0a; border: 1px solid #1a4a1a; color: #86efac; }
+
+    /* Grid */
+    #projects-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 16px;
+    }
+
+    /* Card */
+    .card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 10px;
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.15s;
+    }
+
+    .card:hover { border-color: #333; }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .project-name {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #fff;
+      word-break: break-all;
+    }
+
+    .badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 999px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge.READY    { background: #14532d; color: #86efac; }
+    .badge.ERROR    { background: #7f1d1d; color: #fca5a5; }
+    .badge.BUILDING, .badge.INITIALIZING, .badge.QUEUED
+                    { background: #1c1917; color: #fbbf24; }
+    .badge.CANCELED { background: #1f2937; color: #9ca3af; }
+    .badge.unknown  { background: #1f2937; color: #9ca3af; }
+
+    .meta {
+      font-size: 0.78rem;
+      color: #666;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .meta a {
+      color: #888;
+      text-decoration: none;
+      transition: color 0.1s;
+    }
+
+    .meta a:hover { color: #ededed; }
+
+    .card-footer {
+      display: flex;
+      gap: 8px;
+      margin-top: 2px;
+    }
+
+    .card-footer button {
+      font-size: 0.8rem;
+      padding: 7px 14px;
+    }
+
+    /* Skeleton */
+    .skeleton {
+      background: linear-gradient(90deg, #1a1a1a 25%, #222 50%, #1a1a1a 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 6px;
+      height: 18px;
+    }
+
+    @keyframes shimmer {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    #empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: #555;
+      padding: 60px 0;
+      font-size: 0.9rem;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #444;
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+  <h1>▲ Vercel Dashboard</h1>
+
+  <div id="token-section">
+    <label for="token-input">API Token</label>
+    <input
+      type="password"
+      id="token-input"
+      placeholder="Paste your Vercel API token here…"
+      autocomplete="off"
+    />
+    <button id="load-btn" onclick="loadProjects()">Load Projects</button>
+    <button class="secondary" onclick="clearToken()">Clear</button>
+  </div>
+
+  <div id="message"></div>
+
+  <div id="projects-grid">
+    <div id="empty">Enter your API token above and click <strong>Load Projects</strong>.</div>
+  </div>
+
+  <script>
+    const TOKEN_KEY = "vercel_api_token";
+
+    // ── Restore token from sessionStorage on load ──────────────────────────
+    window.addEventListener("DOMContentLoaded", () => {
+      const saved = sessionStorage.getItem(TOKEN_KEY);
+      if (saved) {
+        document.getElementById("token-input").value = saved;
+        loadProjects();
+      }
+    });
+
+    function getToken() {
+      return document.getElementById("token-input").value.trim();
+    }
+
+    function showMessage(text, type = "info") {
+      const el = document.getElementById("message");
+      el.textContent = text;
+      el.className = type;
+      el.style.display = "block";
+    }
+
+    function hideMessage() {
+      document.getElementById("message").style.display = "none";
+    }
+
+    function clearToken() {
+      document.getElementById("token-input").value = "";
+      sessionStorage.removeItem(TOKEN_KEY);
+      document.getElementById("projects-grid").innerHTML =
+        '<div id="empty">Enter your API token above and click <strong>Load Projects</strong>.</div>';
+      hideMessage();
+    }
+
+    // ── Vercel API helpers ─────────────────────────────────────────────────
+    async function vercelFetch(path, options = {}) {
+      const token = getToken();
+      if (!token) throw new Error("No token entered.");
+      const res = await fetch("https://api.vercel.com" + path, {
+        ...options,
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+          ...(options.headers || {}),
+        },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data?.error?.message || res.statusText;
+        throw new Error(`API error ${res.status}: ${msg}`);
+      }
+      return data;
+    }
+
+    async function fetchAllProjects() {
+      let all = [];
+      let url = "/v9/projects?limit=100";
+      while (url) {
+        const data = await vercelFetch(url);
+        all = all.concat(data.projects || []);
+        url = data.pagination?.next
+          ? "/v9/projects?limit=100&until=" + data.pagination.next
+          : null;
+      }
+      return all;
+    }
+
+    async function fetchLatestDeployment(projectId) {
+      try {
+        const data = await vercelFetch(
+          `/v6/deployments?projectId=${projectId}&limit=1&target=production`
+        );
+        return (data.deployments || [])[0] || null;
+      } catch {
+        return null;
+      }
+    }
+
+    // ── Redeploy ───────────────────────────────────────────────────────────
+    async function redeploy(projectId, projectName, btn) {
+      if (!confirm(`Redeploy "${projectName}"?\n\nThis will trigger a new production deployment.`)) return;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Deploying…';
+      try {
+        // Get the latest deployment to reuse its git source / ref
+        const data = await vercelFetch(
+          `/v6/deployments?projectId=${projectId}&limit=1&target=production`
+        );
+        const latest = (data.deployments || [])[0];
+        if (!latest) throw new Error("No existing deployment found to redeploy from.");
+
+        await vercelFetch("/v13/deployments", {
+          method: "POST",
+          body: JSON.stringify({
+            name: projectName,
+            deploymentId: latest.uid,
+            target: "production",
+          }),
+        });
+        showMessage(`Redeploy triggered for "${projectName}". Refreshing in 4s…`, "ok");
+        setTimeout(loadProjects, 4000);
+      } catch (err) {
+        showMessage("Redeploy failed: " + err.message, "error");
+        btn.disabled = false;
+        btn.innerHTML = "↺ Redeploy";
+      }
+    }
+
+    // ── Render ─────────────────────────────────────────────────────────────
+    function badgeClass(state) {
+      const known = ["READY", "ERROR", "BUILDING", "INITIALIZING", "QUEUED", "CANCELED"];
+      return known.includes(state) ? state : "unknown";
+    }
+
+    function timeAgo(ms) {
+      if (!ms) return "—";
+      const secs = Math.floor((Date.now() - ms) / 1000);
+      if (secs < 60) return "just now";
+      if (secs < 3600) return Math.floor(secs / 60) + "m ago";
+      if (secs < 86400) return Math.floor(secs / 3600) + "h ago";
+      return Math.floor(secs / 86400) + "d ago";
+    }
+
+    function renderSkeletons(n) {
+      const grid = document.getElementById("projects-grid");
+      grid.innerHTML = Array.from({ length: n })
+        .map(
+          () => `
+          <div class="card">
+            <div class="skeleton" style="width:60%;height:16px"></div>
+            <div class="skeleton" style="width:40%;height:12px;margin-top:4px"></div>
+            <div class="skeleton" style="width:80%;height:12px"></div>
+          </div>`
+        )
+        .join("");
+    }
+
+    function renderCard(project, deployment) {
+      const state = deployment?.readyState || "unknown";
+      const url = deployment?.url ? "https://" + deployment.url : null;
+      const age = timeAgo(deployment?.createdAt);
+      const bid = badgeClass(state);
+      const label = state === "unknown" ? "No deploys" : state;
+
+      return `
+        <div class="card">
+          <div class="card-header">
+            <span class="project-name">${escHtml(project.name)}</span>
+            <span class="badge ${bid}">${escHtml(label)}</span>
+          </div>
+          <div class="meta">
+            ${url ? `<a href="${escHtml(url)}" target="_blank" rel="noopener">${escHtml(url)}</a>` : "<span>No URL</span>"}
+            <span>Last deploy: ${age}</span>
+            ${project.framework ? `<span>Framework: ${escHtml(project.framework)}</span>` : ""}
+          </div>
+          <div class="card-footer">
+            <button
+              class="secondary"
+              onclick="redeployById('${escHtml(project.id)}', '${escHtml(project.name)}', this)"
+            >↺ Redeploy</button>
+            ${url ? `<a href="${escHtml(url)}" target="_blank" rel="noopener" style="display:flex">
+              <button class="secondary" style="background:transparent;">↗ Open</button>
+            </a>` : ""}
+          </div>
+        </div>`;
+    }
+
+    // thin wrapper so onclick strings work
+    function redeployById(id, name, btn) {
+      redeploy(id, name, btn);
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    // ── Main load ──────────────────────────────────────────────────────────
+    async function loadProjects() {
+      const token = getToken();
+      if (!token) {
+        showMessage("Please enter your Vercel API token first.", "error");
+        return;
+      }
+
+      sessionStorage.setItem(TOKEN_KEY, token);
+      hideMessage();
+      renderSkeletons(6);
+      document.getElementById("load-btn").disabled = true;
+
+      try {
+        const projects = await fetchAllProjects();
+
+        if (projects.length === 0) {
+          document.getElementById("projects-grid").innerHTML =
+            '<div id="empty">No projects found in this Vercel account.</div>';
+          return;
+        }
+
+        // Fetch latest deployment for every project in parallel
+        const deployments = await Promise.all(
+          projects.map((p) => fetchLatestDeployment(p.id))
+        );
+
+        document.getElementById("projects-grid").innerHTML = projects
+          .map((p, i) => renderCard(p, deployments[i]))
+          .join("");
+      } catch (err) {
+        showMessage(err.message, "error");
+        document.getElementById("projects-grid").innerHTML =
+          '<div id="empty">Failed to load projects.</div>';
+      } finally {
+        document.getElementById("load-btn").disabled = false;
+      }
+    }
+
+    // Allow pressing Enter in the token field
+    document.getElementById("token-input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") loadProjects();
+    });
+  </script>
+</body>
+</html>
