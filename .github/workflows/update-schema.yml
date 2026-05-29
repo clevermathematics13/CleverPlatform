@@ -1,0 +1,25 @@
+name: Update SCHEMA.md
+on:
+  schedule:
+    - cron: '0 2 * * *'  # runs daily at 2am
+  workflow_dispatch:       # allows manual trigger
+jobs:
+  update-schema:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Query Supabase schema and write to SCHEMA.md
+        run: |
+          curl -s "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/rest/v1/rpc/get_schema" \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            > SCHEMA.md
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add SCHEMA.md
+          git diff --cached --quiet || git commit -m "chore: update SCHEMA.md"
+          git push
