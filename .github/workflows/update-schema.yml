@@ -7,7 +7,7 @@ jobs:
   update-schema:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Query Supabase schema and write to SCHEMA.md
         run: |
