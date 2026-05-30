@@ -1,5 +1,8 @@
 name: CV Quality Gate
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   push:
     branches: [main]
@@ -20,25 +23,20 @@ on:
 jobs:
   cv-quality-gate:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - name: Install CV dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r platform/cv-service/requirements.txt
-
       - name: Run extractor self-tests
         run: |
           python platform/scripts/cv_graph_extract.py --self-test
-
       - name: Run benchmark quality gate
         run: |
           python platform/scripts/cv_benchmark.py \
@@ -47,7 +45,6 @@ jobs:
             --min-required-pass-rate 1.0 \
             --fail-on-case \
             --report platform/cv_benchmark_report.json
-
       - name: Upload benchmark report
         if: always()
         uses: actions/upload-artifact@v4
