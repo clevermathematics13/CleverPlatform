@@ -1,0 +1,1 @@
+{"code":"PGRST202","details":"Searched for the function public.get_schema without parameters, but no matches were found in the schema cache.","hint":"Perhaps you meant to call the function public.get_public_schema","message":"Could not find the function public.get_schema without parameters in the schema cache"}
