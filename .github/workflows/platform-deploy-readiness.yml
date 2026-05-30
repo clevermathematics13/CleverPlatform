@@ -1,6 +1,9 @@
 name: Platform Deploy Readiness
 
-"on":
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
   push:
     branches: [main]
     paths:
@@ -14,26 +17,21 @@ name: Platform Deploy Readiness
 jobs:
   build-and-schema-check:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: platform/package-lock.json
-
       - name: Install platform dependencies
         working-directory: platform
         run: npm ci
-
       - name: Build platform
         working-directory: platform
         run: npm run build
-
       - name: Check production Supabase schema
         working-directory: platform
         env:
