@@ -22,7 +22,6 @@ function parseJudgment(text: string): { status: string; comment: string } {
     const p = JSON.parse(clean);
     return { status: p.status ?? "missing", comment: p.comment ?? "" };
   } catch {
-    // Fallback: extract via regex
     const statusMatch = clean.match(/"status"\s*:\s*"(addressed|partial|missing)"/);
     const commentMatch = clean.match(/"comment"\s*:\s*"((?:[^"\\]|\\.)*)"/);
     return {
