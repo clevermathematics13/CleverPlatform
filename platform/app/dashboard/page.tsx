@@ -1,6 +1,7 @@
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getImpersonatedRole } from "./impersonate-actions";
+import { DeployCard } from "./deploy-card";
 
 export default async function DashboardPage() {
   const profile = await getProfile();
@@ -24,6 +25,7 @@ export default async function DashboardPage() {
         {viewRole === "teacher" && <TeacherDashboard supabase={supabase} />}
         {viewRole === "student" && <StudentDashboard supabase={supabase} profileId={profile.id} />}
         {viewRole === "parent" && <ParentDashboard supabase={supabase} profileId={profile.id} />}
+        {viewRole === "teacher" && <DeployCard />}
       </div>
     </div>
   );
