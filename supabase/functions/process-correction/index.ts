@@ -5,6 +5,17 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
+// Safe base64 encoding for large files — avoids stack overflow from spread operator
+function uint8ToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 8192;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 async function extractWorking(pdfBase64: string, unearned: any[]): Promise<Record<string, string>> {
   const questionList = unearned.map((item) => {
     const label = item.part_label ? `Q${item.question_number}(${item.part_label})` : `Q${item.question_number}`;
@@ -27,7 +38,7 @@ async function extractWorking(pdfBase64: string, unearned: any[]): Promise<Recor
     }),
   });
 
-  if (!response.ok) throw new Error(`Anthropic error: ${response.status}`);
+  if (!response.ok) throw new Error(`Anthropic error: ${response.status} ${await response.text()}`);
   const data = await response.json();
   const text = data.content?.[0]?.text ?? "{}";
   try { return JSON.parse(text.replace(/```json|```/g, "").trim()); } catch { return {}; }
@@ -119,10 +130,11 @@ Deno.serve(async (req: Request) => {
         content_latex: lt?.content ?? null, markscheme_latex: lt?.markscheme ?? null };
     });
 
+    // Download PDF and convert to base64 safely (chunked to avoid stack overflow)
     const { data: fileData, error: dlErr } = await supabase.storage.from("corrections").download(storagePath);
     if (dlErr || !fileData) throw new Error(dlErr?.message ?? "PDF download failed");
     const pdfBytes = new Uint8Array(await fileData.arrayBuffer());
-    const pdfBase64 = btoa(String.fromCharCode(...pdfBytes));
+    const pdfBase64 = uint8ToBase64(pdfBytes);
 
     const extractedLatex = await extractWorking(pdfBase64, unearned);
     const questionFeedback = [];
