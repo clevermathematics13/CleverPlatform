@@ -5,7 +5,6 @@ const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-// Safe base64 encoding for large files — avoids stack overflow from spread operator
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 8192;
@@ -14,6 +13,23 @@ function uint8ToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...chunk);
   }
   return btoa(binary);
+}
+
+// Robust JSON parser — falls back to regex extraction if JSON.parse fails
+function parseJudgment(text: string): { status: string; comment: string } {
+  const clean = text.replace(/```json|```/g, "").trim();
+  try {
+    const p = JSON.parse(clean);
+    return { status: p.status ?? "missing", comment: p.comment ?? "" };
+  } catch {
+    // Fallback: extract via regex
+    const statusMatch = clean.match(/"status"\s*:\s*"(addressed|partial|missing)"/);
+    const commentMatch = clean.match(/"comment"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    return {
+      status: statusMatch?.[1] ?? "missing",
+      comment: commentMatch?.[1]?.replace(/\\"/g, '"').replace(/\\n/g, " ") ?? "Could not parse AI judgment.",
+    };
+  }
 }
 
 async function extractWorking(pdfBase64: string, unearned: any[]): Promise<Record<string, string>> {
@@ -29,7 +45,7 @@ async function extractWorking(pdfBase64: string, unearned: any[]): Promise<Recor
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
     body: JSON.stringify({
-      model: "claude-opus-4-5",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 4096,
       messages: [{ role: "user", content: [
         { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
@@ -49,20 +65,21 @@ async function judgeOne(item: any, studentLatex: string): Promise<any> {
     return { ...item, extracted_latex: "", status: "missing", comment: "No working found in the uploaded document for this question." };
   }
 
-  const prompt = `You are an IB Mathematics examiner reviewing a student's correction.\n\nQuestion:\n${item.content_latex ?? "(unavailable)"}\n\nMark scheme:\n${item.markscheme_latex ?? "(unavailable)"}\n\nStudent correction:\n${studentLatex}\n\nThe student was awarded ${item.marks_awarded} out of ${item.max_marks} marks.\n\nClassify as addressed/partial/missing and write a 1-2 sentence comment referencing specific mathematics.\n\nReturn ONLY: { "status": "addressed"|"partial"|"missing", "comment": "..." }`;
+  const prompt = `You are an IB Mathematics examiner reviewing a student's correction.\n\nQuestion:\n${item.content_latex ?? "(unavailable)"}\n\nMark scheme:\n${item.markscheme_latex ?? "(unavailable)"}\n\nStudent correction:\n${studentLatex}\n\nThe student was awarded ${item.marks_awarded} out of ${item.max_marks} marks.\n\nClassify as addressed/partial/missing and write a 1-2 sentence comment referencing specific mathematics.\n\nReturn ONLY valid JSON with no extra text: { "status": "addressed"|"partial"|"missing", "comment": "your comment here" }`;
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
-    body: JSON.stringify({ model: "claude-opus-4-5", max_tokens: 512, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 512, messages: [{ role: "user", content: prompt }] }),
   });
 
   let status = "missing", comment = "";
   if (response.ok) {
     const data = await response.json();
     const text = data.content?.[0]?.text ?? "{}";
-    try { const p = JSON.parse(text.replace(/```json|```/g, "").trim()); status = p.status ?? "missing"; comment = p.comment ?? ""; }
-    catch { comment = "Could not parse AI judgment."; }
+    const parsed = parseJudgment(text);
+    status = parsed.status;
+    comment = parsed.comment;
   }
   return { ...item, extracted_latex: studentLatex, status, comment };
 }
@@ -130,7 +147,6 @@ Deno.serve(async (req: Request) => {
         content_latex: lt?.content ?? null, markscheme_latex: lt?.markscheme ?? null };
     });
 
-    // Download PDF and convert to base64 safely (chunked to avoid stack overflow)
     const { data: fileData, error: dlErr } = await supabase.storage.from("corrections").download(storagePath);
     if (dlErr || !fileData) throw new Error(dlErr?.message ?? "PDF download failed");
     const pdfBytes = new Uint8Array(await fileData.arrayBuffer());
