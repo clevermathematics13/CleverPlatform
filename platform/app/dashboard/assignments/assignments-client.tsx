@@ -6,8 +6,9 @@ import { Grade10PdfSandbox } from "./grade10-pdf-sandbox";
 import { Grade11PdfSandbox } from "./grade11-pdf-sandbox";
 import { Grade12PdfSandbox } from "./grade12-pdf-sandbox";
 import { DPQuestionDesigner } from "./dp-question-designer";
+import { NuancedAnalysisSandbox } from "./nuanced-analysis-sandbox";
 
-type TabId = "grade9" | "grade10" | "grade11" | "grade12" | "dp-designer";
+type TabId = "dp-designer" | "nuanced-analysis" | "grade9" | "grade10" | "grade11" | "grade12";
 
 type TabOption = {
   id: TabId;
@@ -16,11 +17,12 @@ type TabOption = {
 };
 
 const TABS: TabOption[] = [
-  { id: "dp-designer", label: "DP Designer", emoji: "🎓" },
-  { id: "grade9", label: "Grade 9", emoji: "9️⃣" },
-  { id: "grade10", label: "Grade 10", emoji: "🔟" },
-  { id: "grade11", label: "Grade 11", emoji: "11" },
-  { id: "grade12", label: "Grade 12", emoji: "12" },
+  { id: "dp-designer",       label: "DP Designer",      emoji: "🎓" },
+  { id: "nuanced-analysis",  label: "Nuanced Analysis",  emoji: "🔬" },
+  { id: "grade9",            label: "Grade 9",           emoji: "9️⃣" },
+  { id: "grade10",           label: "Grade 10",          emoji: "🔟" },
+  { id: "grade11",           label: "Grade 11",          emoji: "11" },
+  { id: "grade12",           label: "Grade 12",          emoji: "12" },
 ];
 
 export function AssignmentsClient() {
@@ -41,6 +43,10 @@ export function AssignmentsClient() {
               tab.id === "dp-designer" && activeTab === "dp-designer"
                 ? "ring-2 ring-indigo-400 ring-offset-1"
                 : ""
+            } ${
+              tab.id === "nuanced-analysis" && activeTab === "nuanced-analysis"
+                ? "ring-2 ring-amber-400 ring-offset-1"
+                : ""
             }`}
           >
             {tab.emoji} {tab.label}
@@ -48,11 +54,12 @@ export function AssignmentsClient() {
         ))}
       </div>
 
-      {activeTab === "dp-designer" && <DPQuestionDesigner />}
-      {activeTab === "grade9" && <Grade9PdfSandbox />}
-      {activeTab === "grade10" && <Grade10PdfSandbox />}
-      {activeTab === "grade11" && <Grade11PdfSandbox />}
-      {activeTab === "grade12" && <Grade12PdfSandbox />}
+      {activeTab === "dp-designer"      && <DPQuestionDesigner />}
+      {activeTab === "nuanced-analysis" && <NuancedAnalysisSandbox />}
+      {activeTab === "grade9"           && <Grade9PdfSandbox />}
+      {activeTab === "grade10"          && <Grade10PdfSandbox />}
+      {activeTab === "grade11"          && <Grade11PdfSandbox />}
+      {activeTab === "grade12"          && <Grade12PdfSandbox />}
     </div>
   );
 }
