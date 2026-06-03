@@ -10,7 +10,7 @@ import {
   sanitizeDraft,
 } from "@/lib/assignments";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Types ───────────────────────────────────────────────────────────────────
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 type PendingImage = { base64: string; mimeType: ImageMimeType; previewUrl: string; name: string };
@@ -20,10 +20,11 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   draftTitle?: string; // short label shown in history for assistant turns
-  imageCount?: number; // number of images attached to this user message
+  imageCount?: number; // number of files attached to this user message
 };
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+type DriveImportStatus = "idle" | "fetching" | "done" | "error";
 
 type Props = {
   gradeLevel: "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
@@ -31,7 +32,7 @@ type Props = {
   onDraftGenerated: (draft: AssignmentDraft) => void;
 };
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────────
 
 export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated }: Props) {
   const [description, setDescription] = useState("");
@@ -46,14 +47,61 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const historyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Image handling ─────────────────────────────────────────────────────────
+  // ── Google Drive import ────────────────────────────────────────────
+
+  const [showDriveInput, setShowDriveInput] = useState(false);
+  const [driveUrl, setDriveUrl] = useState("");
+  const [driveImportStatus, setDriveImportStatus] = useState<DriveImportStatus>("idle");
+  const [driveImportError, setDriveImportError] = useState<string | null>(null);
+
+  async function handleDriveImport() {
+    const input = driveUrl.trim();
+    if (!input) return;
+
+    setDriveImportStatus("fetching");
+    setDriveImportError(null);
+
+    try {
+      const res = await fetch("/api/assignments/fetch-drive-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId: input }),
+      });
+
+      const data = (await res.json()) as {
+        base64?: string;
+        name?: string;
+        sizeMb?: number;
+        error?: string;
+      };
+
+      if (!res.ok || !data.base64) {
+        throw new Error(data.error ?? `Drive fetch failed (${res.status})`);
+      }
+
+      setPendingPdfs((prev) => [
+        ...prev,
+        { base64: data.base64!, name: data.name ?? "document.pdf" },
+      ]);
+
+      setDriveImportStatus("done");
+      setDriveUrl("");
+      setShowDriveInput(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Drive import failed";
+      setDriveImportError(msg);
+      setDriveImportStatus("error");
+    }
+  }
+
+  // ── Local file handling ─────────────────────────────────────────────
 
   function addImageFile(file: File) {
     if (!file.type.startsWith("image/")) return;
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(",")[1];
+      const base64 = dataUrl.split(",")[1]!;
       setPendingImages((prev) => [
         ...prev,
         { base64, mimeType: file.type as ImageMimeType, previewUrl: dataUrl, name: file.name || "image" },
@@ -65,13 +113,15 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   function addPdfFile(file: File) {
     if (file.type !== "application/pdf") return;
     if (file.size > 3 * 1024 * 1024) {
-      setError(`PDF "${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)} MB — please use a file under 3 MB.`);
+      setError(
+        `PDF "${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)} MB — too large for direct upload. Use the 🔗 Google Drive button instead.`
+      );
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(",")[1];
+      const base64 = dataUrl.split(",")[1]!;
       setPendingPdfs((prev) => [...prev, { base64, name: file.name || "document.pdf" }]);
     };
     reader.readAsDataURL(file);
@@ -101,11 +151,11 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setPendingImages((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // ── Generate / Refine ──────────────────────────────────────────────────────
+  // ── Generate / Refine ────────────────────────────────────────────
 
   async function handleGenerate() {
     const userText = description.trim();
-    if ((!userText && pendingImages.length === 0) || isGenerating) return;
+    if ((!userText && pendingImages.length === 0 && pendingPdfs.length === 0) || isGenerating) return;
 
     setIsGenerating(true);
     setError(null);
@@ -117,7 +167,6 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
     const attachmentCount = snapshotImages.length + snapshotPdfs.length;
 
-    // Optimistically add user message to history
     const nextHistory: ChatMessage[] = [
       ...history,
       { role: "user", content: userText, imageCount: attachmentCount || undefined },
@@ -125,9 +174,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setHistory(nextHistory);
     setDescription("");
 
-    // Build messages for Claude: send full conversation so it can refine prior drafts
     const apiMessages = nextHistory.map((m) => {
-      // Attach images and PDFs to this user turn
       if (m === nextHistory[nextHistory.length - 1] && (snapshotImages.length > 0 || snapshotPdfs.length > 0)) {
         return {
           role: m.role,
@@ -178,13 +225,11 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       setLastDraft(sanitized);
       onDraftGenerated(sanitized);
 
-      // Store full raw JSON as assistant message so Claude can refine it in follow-ups
       setHistory([
         ...nextHistory,
         { role: "assistant", content: rawText, draftTitle: sanitized.title },
       ]);
 
-      // Scroll history to bottom
       setTimeout(() => {
         if (historyRef.current) {
           historyRef.current.scrollTop = historyRef.current.scrollHeight;
@@ -193,7 +238,6 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unexpected error";
       setError(msg);
-      // Revert last user message on failure
       setHistory(history);
       setDescription(userText);
       setPendingImages(snapshotImages);
@@ -206,11 +250,24 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
-      handleGenerate();
+      void handleGenerate();
     }
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  function handleDriveKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void handleDriveImport();
+    }
+    if (e.key === "Escape") {
+      setShowDriveInput(false);
+      setDriveUrl("");
+      setDriveImportError(null);
+      setDriveImportStatus("idle");
+    }
+  }
+
+  // ── Save ──────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     if (!lastDraft || saveStatus === "saving") return;
@@ -303,7 +360,9 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                     <span className="line-clamp-2">
                       {msg.content}
                       {msg.imageCount ? (
-                        <span className="ml-1 text-indigo-400">[+{msg.imageCount} image{msg.imageCount > 1 ? "s" : ""}]</span>
+                        <span className="ml-1 text-indigo-400">
+                          [+{msg.imageCount} file{msg.imageCount > 1 ? "s" : ""}]
+                        </span>
                       ) : null}
                     </span>
                   </div>
@@ -314,7 +373,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                       Generated: &ldquo;{msg.draftTitle}&rdquo;
                     </span>
                   </div>
-                ),
+                )
               )}
               {isGenerating && (
                 <div className="flex items-center gap-2 text-xs text-indigo-400/70 italic">
@@ -327,7 +386,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
           {/* Input area */}
           <div className="space-y-2">
-            {/* Pending image thumbnails and PDF chips */}
+            {/* Pending attachments */}
             {(pendingImages.length > 0 || pendingPdfs.length > 0) && (
               <div className="flex flex-wrap gap-2">
                 {pendingImages.map((img, i) => (
@@ -348,7 +407,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                   </div>
                 ))}
                 {pendingPdfs.map((pdf, i) => (
-                  <div key={`pdf-${i}`} className="relative group flex items-center gap-1.5 rounded-md border border-indigo-500/40 bg-da-bg/50 px-2 py-1">
+                  <div
+                    key={`pdf-${i}`}
+                    className="relative group flex items-center gap-1.5 rounded-md border border-indigo-500/40 bg-da-bg/50 px-2 py-1"
+                  >
                     <span className="text-xs">📄</span>
                     <span className="max-w-[120px] truncate text-xs text-da-text">{pdf.name}</span>
                     <button
@@ -363,6 +425,62 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               </div>
             )}
 
+            {/* Google Drive URL input (inline, collapsible) */}
+            {showDriveInput && (
+              <div className="rounded-md border border-indigo-500/30 bg-da-bg/50 p-2.5 space-y-1.5">
+                <p className="text-[10px] text-da-muted leading-relaxed">
+                  Paste a Google Drive file URL or file ID — any size PDF is supported.
+                </p>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={driveUrl}
+                    onChange={(e) => {
+                      setDriveUrl(e.target.value);
+                      setDriveImportError(null);
+                      setDriveImportStatus("idle");
+                    }}
+                    onKeyDown={handleDriveKeyDown}
+                    placeholder="https://drive.google.com/file/d/…"
+                    disabled={driveImportStatus === "fetching"}
+                    autoFocus
+                    className="flex-1 rounded border border-indigo-500/30 bg-da-bg/60 px-2.5 py-1.5 text-xs text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleDriveImport()}
+                    disabled={!driveUrl.trim() || driveImportStatus === "fetching"}
+                    className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                  >
+                    {driveImportStatus === "fetching" ? (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="inline-block h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" />
+                        Fetching…
+                      </span>
+                    ) : (
+                      "Import"
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDriveInput(false);
+                      setDriveUrl("");
+                      setDriveImportError(null);
+                      setDriveImportStatus("idle");
+                    }}
+                    className="rounded border border-da-border px-2.5 py-1.5 text-xs text-da-muted hover:text-da-text transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                {driveImportError && (
+                  <p className="text-[10px] text-red-400 leading-relaxed">{driveImportError}</p>
+                )}
+              </div>
+            )}
+
+            {/* Textarea + attach buttons */}
             <div className="relative">
               <textarea
                 value={description}
@@ -376,18 +494,42 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                 }
                 rows={isRefinement ? 2 : 3}
                 disabled={isGenerating}
-                className="w-full resize-none rounded-md border border-indigo-500/30 bg-da-bg/50 px-3 py-2.5 pr-10 text-sm text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
+                className="w-full resize-none rounded-md border border-indigo-500/30 bg-da-bg/50 px-3 py-2.5 pr-16 text-sm text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
               />
-              {/* Attach image button */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isGenerating}
-                title="Attach image (or paste a screenshot)"
-                className="absolute bottom-2 right-2 text-indigo-400/60 hover:text-indigo-300 transition-colors disabled:opacity-40"
-              >
-                📎
-              </button>
+
+              {/* Attach buttons — stacked in bottom-right corner */}
+              <div className="absolute bottom-2 right-2 flex items-center gap-1">
+                {/* Google Drive button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDriveInput((v) => !v);
+                    setDriveImportError(null);
+                    setDriveImportStatus("idle");
+                  }}
+                  disabled={isGenerating}
+                  title="Import PDF from Google Drive (no size limit)"
+                  className={`text-sm transition-colors disabled:opacity-40 ${
+                    showDriveInput
+                      ? "text-indigo-300"
+                      : "text-indigo-400/60 hover:text-indigo-300"
+                  }`}
+                >
+                  🔗
+                </button>
+
+                {/* Local file attach */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isGenerating}
+                  title="Attach image or PDF (under 3 MB)"
+                  className="text-indigo-400/60 hover:text-indigo-300 transition-colors disabled:opacity-40"
+                >
+                  📎
+                </button>
+              </div>
+
               <input
                 ref={fileInputRef}
                 type="file"
@@ -398,92 +540,102 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               />
             </div>
 
-            {/* Action buttons */}
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleGenerate}
-                disabled={isGenerating || (!description.trim() && pendingImages.length === 0 && pendingPdfs.length === 0)}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-indigo-500/60 bg-indigo-600/30 px-4 py-2 text-sm font-semibold text-indigo-200 transition-colors hover:bg-indigo-600/40 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isGenerating ? (
-                  <>
-                    <span className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-                    Generating…
-                  </>
-                ) : isRefinement ? (
-                  "↺ Refine Activity"
-                ) : (
-                  "⚡ Generate Activity"
-                )}
-              </button>
-
-              {lastDraft && (
-                <button
-                  type="button"
-                  onClick={handleSave}
-                  disabled={saveStatus === "saving" || saveStatus === "saved"}
-                  className={`rounded-lg border px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    saveStatus === "saved"
-                      ? "border-green-500/50 bg-green-500/20 text-green-300"
-                      : "border-da-border/60 bg-da-bg/30 text-da-text hover:bg-da-hover"
-                  }`}
-                >
-                  {saveStatus === "saving"
-                    ? "Saving…"
-                    : saveStatus === "saved"
-                      ? "✓ Saved"
-                      : "Save Activity"}
-                </button>
-              )}
-
-              {hasHistory && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setHistory([]);
-                    setLastDraft(null);
-                    setSaveStatus("idle");
-                    setError(null);
-                  }}
-                  className="rounded-lg border border-da-border/40 px-3 py-2 text-xs text-da-muted hover:text-da-text transition-colors"
-                  title="Start over"
-                >
-                  ✕ Reset
-                </button>
-              )}
+            {/* Hint row */}
+            <div className="flex items-center gap-3 text-[10px] text-da-muted/60">
+              <span>📎 image or PDF under 3 MB</span>
+              <span className="text-da-muted/30">·</span>
+              <span>🔗 Google Drive (any size)</span>
+              <span className="text-da-muted/30">·</span>
+              <span>Ctrl+Enter to send</span>
             </div>
           </div>
 
           {/* Error */}
           {error && (
-            <button
-              type="button"
-              title="Click to copy full error"
-              onClick={() => navigator.clipboard.writeText(error)}
-              className="w-full cursor-copy rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-left text-xs text-red-300 hover:bg-red-500/20 transition-colors"
-            >
-              <span className="block break-all">{error}</span>
-              <span className="mt-1 block text-[10px] text-red-400/60">Click to copy</span>
-            </button>
+            <p className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              {error}
+            </p>
           )}
 
-          {/* Feature hints */}
+          {/* Action buttons */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleGenerate()}
+              disabled={
+                isGenerating ||
+                (!description.trim() && pendingImages.length === 0 && pendingPdfs.length === 0)
+              }
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-indigo-500/60 bg-indigo-600/30 px-4 py-2 text-sm font-semibold text-indigo-200 transition-colors hover:bg-indigo-600/40 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isGenerating ? (
+                <>
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Generating…
+                </>
+              ) : (
+                <>⚡ {isRefinement ? "Refine Activity" : "Generate Activity"}</>
+              )}
+            </button>
+
+            {lastDraft && (
+              <button
+                type="button"
+                onClick={() => void handleSave()}
+                disabled={saveStatus === "saving" || saveStatus === "saved"}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                  saveStatus === "saved"
+                    ? "border-green-500/40 bg-green-500/10 text-green-300"
+                    : saveStatus === "error"
+                    ? "border-red-500/40 bg-red-500/10 text-red-300"
+                    : "border-da-border bg-da-bg/40 text-da-muted hover:text-da-text"
+                }`}
+              >
+                {saveStatus === "saving"
+                  ? "Saving…"
+                  : saveStatus === "saved"
+                  ? "✓ Saved"
+                  : saveStatus === "error"
+                  ? "Save failed"
+                  : "💾 Save"}
+              </button>
+            )}
+
+            {hasHistory && (
+              <button
+                type="button"
+                onClick={() => {
+                  setHistory([]);
+                  setLastDraft(null);
+                  setSaveStatus("idle");
+                  setError(null);
+                  setPendingImages([]);
+                  setPendingPdfs([]);
+                  setDriveUrl("");
+                  setShowDriveInput(false);
+                  setDriveImportStatus("idle");
+                  setDriveImportError(null);
+                }}
+                className="rounded-lg border border-da-border bg-da-bg/40 px-3 py-2 text-xs text-da-muted hover:text-da-text transition-colors"
+              >
+                ↺ New
+              </button>
+            )}
+          </div>
+
+          {/* Feature tags */}
           {!hasHistory && (
             <div className="flex flex-wrap gap-1.5">
-              {[
-                "Marks auto-assigned",
-                "CCSS standards tagged",
-                "Answer key generated",
-                "Iterative refinement",
-              ].map((hint) => (
-                <span
-                  key={hint}
-                  className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400/80"
-                >
-                  {hint}
-                </span>
-              ))}
+              {["Marks auto-assigned", "CCSS standards tagged", "Answer key generated", "Iterative refinement", "Google Drive PDFs"].map(
+                (tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400/80"
+                  >
+                    {tag}
+                  </span>
+                )
+              )}
             </div>
           )}
         </div>
