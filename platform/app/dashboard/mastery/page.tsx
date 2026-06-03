@@ -4,6 +4,19 @@ import { StudentDashboard } from "@/components/reflection/stats/StudentDashboard
 import { Heatmap } from "@/components/reflection/stats/Heatmap";
 import { createClient } from "@/lib/supabase/server";
 
+/** Fetch the saved nuanced analysis for a student (null if not yet generated). */
+async function getSavedAnalysis(
+  studentId: string
+): Promise<{ analysis_text: string; generated_at: string } | null> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("mastery_analyses")
+    .select("analysis_text, generated_at")
+    .eq("student_id", studentId)
+    .maybeSingle();
+  return data ?? null;
+}
+
 export default async function MasteryPage({
   searchParams,
 }: {
@@ -21,7 +34,10 @@ export default async function MasteryPage({
         .select("display_name")
         .eq("id", studentId)
         .single();
-      const mastery = await getStudentMastery(studentId);
+      const [mastery, savedAnalysis] = await Promise.all([
+        getStudentMastery(studentId),
+        getSavedAnalysis(studentId),
+      ]);
       const studentName = studentProfile?.display_name ?? "Student";
 
       return (
@@ -36,7 +52,12 @@ export default async function MasteryPage({
             </p>
           </header>
           <section className="rounded-2xl border border-da-border bg-da-surface/90 p-5 shadow-lg shadow-black/30 wood-surface">
-            <StudentDashboard mastery={mastery} studentName={studentName} studentId={studentId} />
+            <StudentDashboard
+              mastery={mastery}
+              studentName={studentName}
+              studentId={studentId}
+              savedAnalysis={savedAnalysis}
+            />
           </section>
         </div>
       );
@@ -58,7 +79,11 @@ export default async function MasteryPage({
     );
   }
 
-  const mastery = await getStudentMastery(profile.id);
+  const [mastery, savedAnalysis] = await Promise.all([
+    getStudentMastery(profile.id),
+    getSavedAnalysis(profile.id),
+  ]);
+
   return (
     <div className="mx-auto max-w-5xl space-y-5">
       <header>
@@ -72,6 +97,7 @@ export default async function MasteryPage({
           mastery={mastery}
           studentName={profile.display_name}
           studentId={profile.id}
+          savedAnalysis={savedAnalysis}
         />
       </section>
     </div>
