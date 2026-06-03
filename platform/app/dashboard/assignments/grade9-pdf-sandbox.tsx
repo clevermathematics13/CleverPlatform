@@ -345,7 +345,7 @@ function makeUnitInput(unit: number): AssignmentInput {
   const meta = UNIT_META[unit]!;
   return {
     gradeLevel: "Grade 9",
-    documentKind: "review-packet",
+    documentKind: "practice-set",
     title: meta.title,
     topic: meta.topic,
     learningGoals: meta.learningGoals,
