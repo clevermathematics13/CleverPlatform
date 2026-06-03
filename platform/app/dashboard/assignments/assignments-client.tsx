@@ -37,7 +37,11 @@ export function AssignmentsClient() {
               activeTab === tab.id
                 ? "border-da-accent bg-da-accent/20 text-da-accent"
                 : "border-da-border bg-da-bg/40 text-da-text hover:border-da-accent/60 hover:bg-da-hover"
-            } ${tab.id === "dp-designer" ? "ring-2 ring-indigo-400 ring-offset-1" : ""}`}
+            } ${
+              tab.id === "dp-designer" && activeTab === "dp-designer"
+                ? "ring-2 ring-indigo-400 ring-offset-1"
+                : ""
+            }`}
           >
             {tab.emoji} {tab.label}
           </button>
