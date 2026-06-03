@@ -60,6 +60,8 @@ export interface OverrideToken {
 export interface SubtopicMastery {
   code: string;
   descriptor: string;
+  /** IB section number (1–5). 0 = unknown. */
+  section: number;
   total_marks: number;
   marks_awarded: number;
   self_marks: number;

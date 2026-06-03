@@ -264,7 +264,7 @@ export async function getPdfUpload(
   return (data as PdfUpload | null) ?? null;
 }
 
-/** Get mastery stats for a student. */
+/** Get mastery stats for a student, grouped by subtopic with section info. */
 export async function getStudentMastery(
   studentId: string
 ): Promise<SubtopicMastery[]> {
@@ -284,13 +284,13 @@ export async function getStudentMastery(
     .select("self_marks, test_item_id, test_items(max_marks, subtopic_codes)")
     .eq("student_id", studentId);
 
-  // Get subtopic descriptors
+  // Get subtopic descriptors AND section numbers
   const { data: subtopics } = await supabase
     .from("subtopics")
-    .select("code, descriptor");
+    .select("code, descriptor, section");
 
   const subtopicMap = new Map(
-    (subtopics ?? []).map((s) => [s.code, s.descriptor])
+    (subtopics ?? []).map((s) => [s.code, { descriptor: s.descriptor, section: s.section as number }])
   );
 
   // Aggregate by subtopic
@@ -333,9 +333,11 @@ export async function getStudentMastery(
   const results: SubtopicMastery[] = [];
   for (const [code, data] of agg) {
     if (data.total === 0) continue;
+    const meta = subtopicMap.get(code);
     results.push({
       code,
-      descriptor: subtopicMap.get(code) ?? code,
+      descriptor: meta?.descriptor ?? code,
+      section: meta?.section ?? 0,
       total_marks: data.total,
       marks_awarded: data.awarded,
       self_marks: data.self,
