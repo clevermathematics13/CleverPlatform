@@ -182,7 +182,7 @@ Generate the FULL packet (1500–2500 words of student-facing content). Follow e
   };
 
   // File content blocks (PDFs as documents, images as images)
-  const fileBlocks: (Anthropic.Base64PDFSourceParam extends infer T ? Anthropic.DocumentBlockParam | Anthropic.ImageBlockParam : never)[] = [];
+  const fileBlocks: Array<Anthropic.DocumentBlockParam | Anthropic.ImageBlockParam> = [];
 
   for (const f of attachedFiles) {
     if (f.type === "application/pdf") {
@@ -313,7 +313,7 @@ ${
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   // Build the user message: file blocks first (so Claude "reads" them), then the text prompt
-  const userContent: (Anthropic.DocumentBlockParam | Anthropic.ImageBlockParam | Anthropic.TextBlockParam)[] = [
+  const userContent: Array<Anthropic.DocumentBlockParam | Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [
     ...fileBlocks,
     textBlock,
   ];
