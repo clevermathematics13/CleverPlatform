@@ -1,0 +1,815 @@
+% ============================================================
+%  CleverMathematics — Nuanced Analysis LaTeX Template
+%  Overleaf-compatible. Compile twice with pdflatex.
+%  Based on the Polynomial Analysis & Quadratics PDF examples.
+% ============================================================
+\documentclass[11pt,a4paper]{article}
+
+% ── Packages ──────────────────────────────────────────────────────────────────
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[a4paper,top=22mm,bottom=22mm,left=18mm,right=18mm,headheight=14pt]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage[dvipsnames,svgnames,table]{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
+\usepackage{array,booktabs,multirow,colortbl}
+\usepackage{enumitem}
+\setlist[enumerate,1]{label=\textbf{\arabic*.},leftmargin=*,itemsep=4pt}
+\setlist[enumerate,2]{label=(\alph*),leftmargin=2em,itemsep=2pt}
+\setlist[itemize]{leftmargin=*,itemsep=2pt}
+\usepackage{framed}        % for \shaded boxes — fast, no TikZ
+\usepackage{parskip}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=NavyBlue,urlcolor=NavyBlue}
+
+% ── Colour Palette ────────────────────────────────────────────────────────────
+\definecolor{CMBlue}{RGB}{13,71,161}
+\definecolor{CMAmber}{RGB}{200,110,0}
+\definecolor{CMRed}{RGB}{183,28,28}
+\definecolor{CMGray}{RGB}{245,245,245}
+\definecolor{CMDark}{RGB}{55,65,81}
+\definecolor{BoxBlue}{RGB}{227,242,253}
+\definecolor{BoxBlueBd}{RGB}{30,136,229}
+\definecolor{BoxAmber}{RGB}{255,248,225}
+\definecolor{BoxAmberBd}{RGB}{200,130,0}
+\definecolor{BoxRed}{RGB}{255,235,238}
+\definecolor{BoxRedBd}{RGB}{183,28,28}
+\definecolor{BoxGreen}{RGB}{232,245,233}
+\definecolor{BoxGreenBd}{RGB}{46,125,50}
+\definecolor{BoxPurple}{RGB}{243,229,245}
+\definecolor{BoxPurpleBd}{RGB}{106,27,154}
+\definecolor{BoxYellow}{RGB}{255,253,231}
+
+% ── Box title helper ──────────────────────────────────────────────────────────
+\newcommand{\boxtitle}[2]{%
+  \noindent\colorbox{#1}{\parbox{\linewidth}{\vspace{1.5pt}\hspace{5pt}%
+    {\small\bfseries\color{white}#2}\hspace{5pt}\vspace{1.5pt}}}\par\nobreak}
+
+% ── Named Box Environments (framed shaded) ────────────────────────────────────
+% Blue: command term, compulsory core, micro-box
+\newenvironment{ctbox}[1][Command Term Spotlight]{%
+  \vspace{4pt}\boxtitle{BoxBlueBd}{#1}%
+  \colorlet{shadecolor}{BoxBlue}\begin{shaded}\vspace{-2pt}}%
+  {\vspace{-2pt}\end{shaded}\vspace{2pt}}
+
+\newenvironment{microbox}[1][What you need to start this Part]{%
+  \vspace{4pt}\boxtitle{BoxBlueBd!80}{#1}%
+  \colorlet{shadecolor}{BoxBlue!40}\begin{shaded}\vspace{-2pt}}%
+  {\vspace{-2pt}\end{shaded}\vspace{2pt}}
+
+% Amber: working required / first line given
+\newenvironment{amberbox}[1][]{%
+  \vspace{4pt}%
+  \ifx&#1&\else\boxtitle{BoxAmberBd}{#1}\fi%
+  \colorlet{shadecolor}{BoxAmber}\begin{shaded}\vspace{-2pt}}%
+  {\vspace{-2pt}\end{shaded}\vspace{2pt}}
+
+% Green: exploration / worked example / geometric reading
+\newenvironment{greenbox}[1][Exploration for Self-Discovery]{%
+  \vspace{4pt}\boxtitle{BoxGreenBd}{#1}%
+  \colorlet{shadecolor}{BoxGreen}\begin{shaded}\vspace{-2pt}}%
+  {\vspace{-2pt}\end{shaded}\vspace{2pt}}
+
+\newenvironment{workedex}[1][Worked Example]{\begin{greenbox}[#1]}{\end{greenbox}}
+\newenvironment{georeading}[1][Geometric \& Physical Reading]{\begin{greenbox}[#1]}{\end{greenbox}}
+
+% Purple: TOK
+\newenvironment{tokbox}[1][Theory of Knowledge]{%
+  \vspace{4pt}\boxtitle{BoxPurpleBd}{#1}%
+  \colorlet{shadecolor}{BoxPurple}\begin{shaded}\vspace{-2pt}}%
+  {\vspace{-2pt}\end{shaded}\vspace{2pt}}
+
+% Gray: info / note / international mindedness
+\newenvironment{infobox}[1][Note]{%
+  \vspace{4pt}\boxtitle{CMDark!70}{#1}%
+  \colorlet{shadecolor}{CMGray}\begin{shaded}\vspace{-2pt}}%
+  {\vspace{-2pt}\end{shaded}\vspace{2pt}}
+
+% Red: broken math critique
+\newenvironment{brokenmath}[1][The ``Broken Math'' Critique]{%
+  \vspace{4pt}\boxtitle{BoxRedBd}{#1}%
+  \colorlet{shadecolor}{BoxRed!50}\begin{shaded}\vspace{-2pt}}%
+  {\vspace{-2pt}\end{shaded}\vspace{2pt}}
+
+% ── Question environment ──────────────────────────────────────────────────────
+\newcounter{qnum}
+\newenvironment{question}[3]{%
+  \refstepcounter{qnum}%
+  \ifnum#1=1 \def\qshade{BoxBlue!20}\def\qtc{CMBlue}\def\qtier{$\bigstar$}%
+  \else\ifnum#1=2 \def\qshade{BoxAmber!35}\def\qtc{CMAmber}\def\qtier{$\bigstar\bigstar$}%
+  \else \def\qshade{BoxRed!20}\def\qtc{CMRed}\def\qtier{$\bigstar\bigstar\bigstar$}%
+  \fi\fi
+  \par\vspace{3pt}%
+  \colorlet{shadecolor}{\qshade}%
+  \begin{shaded}%
+  \noindent\textbf{#3}\hfill\textcolor{\qtc}{\qtier}\par\smallskip}%
+  {\end{shaded}\vspace{2pt}}
+
+% ── Tearoff rule ──────────────────────────────────────────────────────────────
+\newcommand{\tearoff}{\noindent\rule{\linewidth}{1.2pt}\par}
+
+% ── Demand scale ──────────────────────────────────────────────────────────────
+\newcommand{\demandscale}{%
+\vspace{3pt}\noindent\small
+\textbf{Demand scale (low $\to$ high):}\quad
+\textcolor{CMBlue}{Write down} $<$
+\textcolor{CMBlue}{State} $<$
+\textcolor{CMBlue}{Describe} $<$
+\textcolor{CMBlue}{Explain} $<$
+\textcolor{CMBlue}{Determine} $<$
+\textcolor{CMBlue}{Deduce} $<$
+\textcolor{CMBlue}{Show that} $<$
+\textcolor{CMRed}{\textbf{Prove}}%
+\par\vspace{3pt}}
+
+% ── Progress tracker ──────────────────────────────────────────────────────────
+\newcommand{\progresstracker}{%
+\noindent\small\textbf{Progress:}\enspace
+P0~$\square$\enspace P1~$\square$\enspace P2~$\square$\enspace
+P3~$\square$\enspace P4~$\square$\enspace P5~$\square$\enspace
+P6~$\square$\enspace P7~$\square$\enspace P8~$\square$%
+\par}
+
+% ── Compulsory core ───────────────────────────────────────────────────────────
+\newcommand{\compulsorycore}[1]{%
+\vspace{2pt}%
+\noindent\colorbox{BoxBlueBd}{\parbox{\linewidth}{\vspace{2pt}\hspace{5pt}%
+  {\small\bfseries\color{white}Compulsory core
+  ($\bigstar$ and $\bigstar\bigstar$):}\enspace
+  {\small\color{white}Questions #1. \quad
+  All $\bigstar\bigstar\bigstar$ questions are optional extensions.}%
+  \vspace{2pt}}}\par\vspace{3pt}}
+
+% ── Document metadata ─────────────────────────────────────────────────────────
+\newcommand{\NATitle}{[Packet Title]}
+\newcommand{\NASubtitle}{[Subtitle / Unifying Idea]}
+\newcommand{\NACourse}{IBDP Mathematics AA HL}
+\newcommand{\NATopics}{Topic [X]: [Name] \& Topic [Y]: [Name]}
+\newcommand{\NAPrereqs}{[Prior activity names]}
+\newcommand{\NAMaterials}{TI-84 Plus CE (or equivalent GDC).
+Parts~0--5: Paper~1 style (non-calculator). GDC permitted in Part~6 only.}
+
+% ── Title header ──────────────────────────────────────────────────────────────
+\newcommand{\naheader}{%
+  \noindent\colorbox{CMBlue}{\parbox{\linewidth}{%
+    \vspace{3pt}\hspace{5mm}{\large\bfseries\color{white}CleverMathematics}%
+    \hfill{\small\color{white!90!CMBlue}\NACourse}\hspace{5mm}\vspace{3pt}}}%
+  \vspace{4mm}\par
+  \noindent\begin{tabular}{@{}p{11cm}r@{}}
+    \textbf{Student Name:}\quad\underline{\hspace{6cm}} &
+    \textbf{Date:}\quad\underline{\hspace{3cm}}
+  \end{tabular}\\[1mm]
+  \noindent\textbf{Course:} \NACourse\\
+  \noindent\textbf{Syllabus Topic(s):} \NATopics
+  \vspace{3mm}\hrule\vspace{4mm}
+  \begin{center}
+    {\LARGE\bfseries\NATitle}\\[3pt]
+    {\large\itshape\NASubtitle}
+  \end{center}
+  \vspace{2mm}
+  \noindent\textbf{Materials:} \NAMaterials\\[1mm]
+  \noindent\textbf{Prerequisites:} \NAPrereqs
+  \vspace{2mm}
+  \progresstracker
+  \vspace{2mm}\hrule\vspace{4mm}}
+
+% ── Part heading ──────────────────────────────────────────────────────────────
+\newcounter{partnum}
+\newcommand{\napart}[2]{%
+  \refstepcounter{partnum}\label{part:#2}%
+  \vspace{5pt}%
+  \noindent\colorbox{CMBlue}{\parbox{\linewidth}{%
+    \vspace{2pt}\hspace{5pt}{\large\bfseries\color{white}Part~\thepartnum: #1}\vspace{2pt}}}%
+  \vspace{4pt}\par}
+
+% ── Axis grid ──────────────────────────────────────────────────────────────────
+% \axesgrid{xmin}{xmax}{ymin}{ymax}{width_cm}{height_cm}
+\newcommand{\axesgrid}[6]{%
+\begin{tikzpicture}[x=1cm,y=1cm]
+  \draw[gray!30] (0,0) rectangle (#5,#6);
+  \draw[gray!18,thin] (#5*0.2,0)--(#5*0.2,#6);
+  \draw[gray!18,thin] (#5*0.4,0)--(#5*0.4,#6);
+  \draw[gray!18,thin] (#5*0.6,0)--(#5*0.6,#6);
+  \draw[gray!18,thin] (#5*0.8,0)--(#5*0.8,#6);
+  \draw[gray!18,thin] (0,#6*0.2)--(#5,#6*0.2);
+  \draw[gray!18,thin] (0,#6*0.4)--(#5,#6*0.4);
+  \draw[gray!18,thin] (0,#6*0.6)--(#5,#6*0.6);
+  \draw[gray!18,thin] (0,#6*0.8)--(#5,#6*0.8);
+  \draw[-{Stealth[scale=0.7]},thick](0,#6*0.5)--(#5,#6*0.5)
+      node[right,font=\footnotesize]{$x$};
+  \draw[-{Stealth[scale=0.7]},thick](#5*0.5,0)--(#5*0.5,#6)
+      node[above,font=\footnotesize]{$y$};
+  \node[below,font=\tiny,gray] at (0,#6*0.5) {$#1$};
+  \node[below,font=\tiny,gray] at (#5,#6*0.5) {$#2$};
+  \node[left,font=\tiny,gray]  at (#5*0.5,0) {$#3$};
+  \node[left,font=\tiny,gray]  at (#5*0.5,#6) {$#4$};
+\end{tikzpicture}}
+
+% ── Translation Table ─────────────────────────────────────────────────────────
+% Usage:  \translationtable{Title}{Left Col}{Right Col}
+%           row & row \\ row & row \\
+%         \closett
+\newcommand{\translationtable}[3]{%
+  \vspace{4pt}%
+  \noindent\colorbox{CMDark!25}{\parbox{\linewidth}{\vspace{1pt}\hspace{5pt}%
+    {\small\bfseries Translation Table: #1}\vspace{1pt}}}\par\nobreak
+  \colorlet{shadecolor}{CMGray}%
+  \begin{shaded}\vspace{-4pt}%
+  \begin{tabular}{@{}p{0.46\linewidth}@{\hspace{3pt}\vrule\hspace{3pt}}p{0.46\linewidth}@{}}%
+  \rowcolor{CMDark!12}\small\textbf{#2} & \small\textbf{#3}\\
+  \hline}
+\newcommand{\closett}{\end{tabular}\vspace{-4pt}\end{shaded}\vspace{2pt}}
+
+% ── Induction template ────────────────────────────────────────────────────────
+\newcommand{\inductiontemplate}{%
+  \vspace{3pt}%
+  \colorlet{shadecolor}{BoxRed!20}%
+  \begin{shaded}%
+  \textbf{Proof by Mathematical Induction}\\[4pt]
+  \textbf{Claim:}\hrulefill\\[10pt]
+  \textbf{Base case} ($n=1$):\\[16pt]
+  \rule{\linewidth}{0.2pt}\\[3pt]
+  \textbf{Inductive hypothesis:} Assume the statement holds for $n=k$:\\[16pt]
+  \rule{\linewidth}{0.2pt}\\[3pt]
+  \textbf{Inductive step} (show true for $n=k+1$):\\[28pt]
+  \rule{\linewidth}{0.2pt}\\[3pt]
+  \textbf{Conclusion:} By the principle of mathematical induction, the statement
+  holds for all $n\in\mathbb{Z}^+$.\hfill$\square$
+  \end{shaded}\vspace{2pt}}
+
+% ── Page style ────────────────────────────────────────────────────────────────
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[L]{\small\itshape Nuanced Analysis: \NATitle}
+\fancyhead[R]{\small\itshape CleverMathematics}
+\fancyfoot[C]{\small\thepage}
+
+% ============================================================
+\begin{document}
+
+\naheader
+
+% ── Tear-off Command Terms Strip ──────────────────────────────────────────────
+\tearoff
+\boxtitle{BoxBlueBd}{Command Terms --- Tear-off Reference Strip}
+\colorlet{shadecolor}{BoxBlue}
+\begin{shaded}\small
+\begin{tabular}{@{}>{\bfseries\color{CMBlue}}p{2.2cm}p{4.6cm}
+                   >{\bfseries\color{CMBlue}}p{2.2cm}p{4.6cm}@{}}
+Write down & No working required. A short answer.
+  & Describe & Give a detailed account or picture.\\[1pt]
+State      & Give a specific answer; no justification needed.
+  & Explain  & Detailed account \emph{including reasons or causes.}\\[1pt]
+Determine  & Obtain the only possible answer. Show your method.
+  & Show that & Every step must appear. No shortcuts.\\[1pt]
+Deduce     & Reach a conclusion from logical reasoning.
+  & Prove    & Complete, rigorous chain of reasoning.\\[1pt]
+Sketch     & Diagram with key features; relative scale required.
+  & Hence    & \textbf{Must} use the immediately preceding result.\\[1pt]
+Evaluate   & Find a numerical value or expression.
+  & Hence or otherwise & Use previous result or any valid method.\\
+\end{tabular}
+\vspace{2pt}
+\demandscale
+\end{shaded}
+
+\begin{ctbox}[Command-Term Spotlight: [TERM A] vs.\ [TERM B]]
+\textbf{[TERM A]:} [Definition and what it demands from the student.]\\
+\textbf{[TERM B]:} [Definition and what it demands from the student.]\\[2pt]
+\textit{Key distinction:} [One sentence explaining when to use each and what the examiner
+expects differently from each command in this packet.]
+\end{ctbox}
+
+\tearoff
+
+\noindent\textbf{Vocabulary:}
+\textbf{[Term 1]}, \textbf{[Term 2]}, \textbf{[Term 3]}, \textbf{[Term 4]},
+\textbf{[Term 5]}, \textbf{[Term 6]}, \textbf{[Term 7]}.
+
+\medskip
+\noindent\textbf{ATLs:} \textit{Thinking \& Transfer Skills --- [One sentence naming the
+Approaches to Learning skill built across this packet.]}
+
+\begin{tokbox}[TOK Provocations --- Return to these in the Reflection (Q19)]
+\begin{enumerate}
+\item \textbf{[TOK Question 1.]} [Answerable using a specific result proven in this packet.]
+\item \textbf{[TOK Question 2.]} [About discovery vs.\ invention, aesthetic beauty, or cultural attribution.]
+\end{enumerate}
+\end{tokbox}
+
+\begin{infobox}[International Mindedness]
+[Historical attribution. Include at least one non-European mathematician where genuinely
+connected. Example: ``The series here were anticipated by \textbf{M\={a}dhava of
+Sangam\={a}gr\={a}ma} (Kerala, India, c.\ 1400) --- roughly 250 years before Newton.'']
+\end{infobox}
+
+\compulsorycore{[Q1, Q2(a), Q2(b), Q3, Q4, Q5, Q6, Q8, Q9(a), Q9(b), Q10, Q12, Q13, Q15, Q17]}
+
+\hrule
+
+% ============================================================
+%  PART 0: ACTIVATING PRIOR KNOWLEDGE
+% ============================================================
+\napart{Activating Prior Knowledge}{0}
+
+\begin{microbox}
+\begin{itemize}
+  \item [Key fact or formula from the previous activity.]
+  \item [Key formula: e.g., $z = r(\cos\theta + i\sin\theta)$, where $r=|z|$ and $\theta=\arg(z)$.]
+  \item [Key concept 3.]
+  \item [Key concept 4.]
+\end{itemize}
+\end{microbox}
+
+\begin{question}{1}{1}{Q1 --- Write down}
+\textbf{Write down} the [object] in [required form] for each of the following.\\[2pt]
+(a)~$[z_1 = \ldots]$\quad(b)~$[z_2 = \ldots]$\quad(c)~$[z_3 = \ldots]$
+
+\vspace{18pt}
+\noindent
+(a)\underline{\hspace{4.2cm}}\quad
+(b)\underline{\hspace{4.2cm}}\quad
+(c)\underline{\hspace{4.2cm}}
+\end{question}
+
+\begin{question}{1}{2}{Q2 --- Describe}
+\textbf{Describe}, in one sentence each, what [the two quantities] tell you geometrically.
+\textit{(You may answer with an annotated diagram.)}\\[2pt]
+\textit{Sentence starter:} ``The [quantity] is [geometric meaning]\ldots''
+\begin{enumerate}
+  \item \underline{\hspace{\linewidth}}\\[10pt]\underline{\hspace{\linewidth}}
+  \item \underline{\hspace{\linewidth}}\\[10pt]\underline{\hspace{\linewidth}}
+\end{enumerate}
+\end{question}
+
+\begin{georeading}
+[1--2 sentences translating Part~0's algebra into spatial language. Example: ``The modulus
+$r$ gives the distance from the origin; $\theta$ gives the anticlockwise angle from the
+positive real axis.'']
+\end{georeading}
+
+% ============================================================
+%  PART 1: [CONJECTURE PHASE]
+% ============================================================
+\napart{[Part 1 Title --- Conjecture Phase]}{1}
+
+\begin{microbox}
+\begin{itemize}
+  \item [Prerequisite A.]
+  \item [Key formula from formula booklet: page X.]
+  \item [Prerequisite C.]
+\end{itemize}
+\end{microbox}
+
+\begin{question}{1}{3}{Q3 --- Numerical Warm-up}
+[Context sentence.] Let $[z_1 = \text{specific value}]$ and $[z_2 = \text{specific value}]$.
+
+\textbf{Compute} [the product/result] and \textbf{write down} its [property A] and [property B].
+
+\vspace{12pt}
+\noindent[Property A]${}=\underline{\hspace{2.8cm}}$\hfill
+[Property B]${}=\underline{\hspace{2.8cm}}$
+\end{question}
+
+\begin{question}{2}{4}{Q4 --- Conjecture}
+Based on Q3, \textbf{write} a conjecture relating [the result] to [its components].
+
+\textit{Sentence starter:} ``I conjecture that\ldots''
+
+\vspace{34pt}
+\end{question}
+
+\begin{question}{2}{5}{Q5 --- Show that}
+\textbf{Show that} your conjecture from Q4 holds in general by [method], using
+the \textbf{[formula name]} from the formula booklet.
+
+\begin{amberbox}[First line given --- working required from here]
+$[z_1\cdot z_2] = [r_1][r_2](\cos\alpha+i\sin\alpha)(\cos\beta+i\sin\beta)$
+\end{amberbox}
+
+\vspace{52pt}
+\end{question}
+
+\begin{georeading}
+[Geometric interpretation. Example: ``Multiplying two complex numbers \emph{rotates} by
+the sum of arguments and \emph{scales} by the product of moduli.'']
+\end{georeading}
+
+\translationtable{[Domain Transfer Name: e.g., Roots and Multiplicity]}
+{What you observe on screen\ldots}{What you write on the exam paper\ldots}
+[Observation 1] & [Formal IB phrasing 1]\\[3pt]
+[Observation 2] & [Formal IB phrasing 2]\\[3pt]
+[Observation 3] & [Formal IB phrasing 3]\\
+\closett
+
+% ============================================================
+%  PART 2: [PROOF PHASE]
+% ============================================================
+\napart{[Part 2 Title --- Proof Phase]}{2}
+
+\begin{microbox}
+\begin{itemize}
+  \item [Key result from Part~1.]
+  \item [Formula booklet reference: page X.]
+\end{itemize}
+\end{microbox}
+
+\begin{question}{1}{6}{Q6 --- Numerical Investigation}
+Restrict to [the unit circle / a specific case]. Using your Part~1 result repeatedly,
+\textbf{write} a conjecture for $[\text{expression}]^n$ where $n\in\mathbb{Z}^+$.
+
+\vspace{34pt}
+\end{question}
+
+\begin{question}{3}{7}{Q7 --- Prove by Mathematical Induction}
+\textbf{Prove} that for all $n\in\mathbb{Z}^+$,
+\[
+[\text{claim, e.g., }(\cos\theta+i\sin\theta)^n = \cos n\theta + i\sin n\theta]
+\]
+\inductiontemplate
+\end{question}
+
+\begin{question}{2}{8}{Q8 --- Deduce}
+\textbf{Deduce} (using Q7) [the extended general version of the result].
+
+\textit{Hint:} [One-sentence minimal hint.]
+
+\vspace{34pt}
+\end{question}
+
+\begin{brokenmath}
+\textit{The following working was submitted by a student. Your job is not to judge
+the student --- errors like this reveal important mathematical distinctions. Find
+the slip and explain its consequence.}
+
+\bigskip
+\noindent\textbf{The problem:} [State the problem clearly.]
+
+\medskip
+\noindent\textbf{Student's working:}
+\begin{align*}
+  [\text{Step 1}] &= [\text{correct intermediate result}]\\
+  [\text{Step 2}] &= [\text{result with FATAL ERROR}]\quad\text{[student's comment]}\\
+  [\text{Step 3}] &= [\text{wrong final answer}]
+\end{align*}
+\end{brokenmath}
+
+\begin{question}{2}{9}{Q9(a) --- Explain}
+\textbf{Explain} the fatal conceptual error. \textit{(You may answer in bullet points.)}
+
+\textit{Sentence starter:} ``This error occurs because\ldots, which means that\ldots''
+
+\vspace{28pt}
+\end{question}
+
+\begin{question}{2}{9}{Q9(b) --- Determine}
+\textbf{Determine} the correct value and state it in [required form].
+
+\vspace{28pt}
+\end{question}
+
+\begin{georeading}
+[Geometric/physical interpretation of Part~2's main result. 1--2 sentences.]
+\end{georeading}
+
+% ============================================================
+%  PART 3: [APPLICATION PHASE]
+% ============================================================
+\napart{[Part 3 Title --- Application Phase]}{3}
+
+\begin{microbox}
+\begin{itemize}
+  \item [Key result from Part~2.]
+  \item [Formula booklet reference: page X.]
+\end{itemize}
+\end{microbox}
+
+\begin{question}{2}{10}{Q10 --- Worked Example then Practice}
+\begin{workedex}
+[Simpler analogous problem fully worked, one level below the target difficulty.]\par
+\textbf{Find} [simpler case, e.g., $n=2$]:
+\begin{align*}
+  [\text{Step 1}] &= [\text{intermediate result}]\\
+  [\text{Step 2}] &= [\text{final result}]
+\end{align*}
+\end{workedex}
+
+\textbf{Hence} (using the result above), \textbf{find} [the harder full case].
+
+\vspace{40pt}
+\end{question}
+
+\begin{question}{2}{11}{Q11 --- Show that}
+\textbf{Show that} [second result at full difficulty; no model provided].
+
+\vspace{40pt}
+\end{question}
+
+\begin{question}{1}{12}{Q12 --- Sketch}
+\textbf{Sketch} $y=[f(x)]$ on the axes provided. Label all intercepts, extrema, inflection points.
+\textit{(You may attach an annotated GeoGebra screenshot.)}
+
+\begin{center}
+\axesgrid{-5}{5}{-4}{4}{9}{7}
+\end{center}
+\end{question}
+
+% ============================================================
+%  PART 4: [CALCULUS / ANALYSIS PHASE]
+% ============================================================
+\napart{[Part 4 Title --- Calculus/Analysis Phase]}{4}
+
+\begin{microbox}
+\begin{itemize}
+  \item [Key algebraic result from Part~3.]
+  \item $\displaystyle f'(x)=\lim_{h\to 0}\dfrac{f(x+h)-f(x)}{h}$
+  \item [Formula booklet reference: page X.]
+\end{itemize}
+\end{microbox}
+
+\begin{question}{2}{13}{Q13 --- Numerical Estimate}
+Consider $f(x)=[g(x)]$. Find the [slope/derivative] at $x=[a]$.
+\begin{enumerate}
+  \item \textbf{Evaluate} $f([a])$ and $f([a]+0.1)$. Calculate the secant slope.
+  \vspace{16pt}
+  \item \textbf{Determine} a simplified expression for the secant slope from $x=[a]$ to $x=[a]+\Delta x$.
+  \vspace{30pt}
+  \item \textbf{Evaluate} $\displaystyle\lim_{\Delta x\to 0}$ [your expression from (b)].
+  \vspace{16pt}
+\end{enumerate}
+\end{question}
+
+\begin{question}{3}{14}{Q14 --- First Principles Proof}
+\textbf{Show that} the derivative of $f(x)=[g(x)]$ is $f'(x)=[g'(x)]$:
+\[f'(x)=\lim_{h\to 0}\frac{f(x+h)-f(x)}{h}\]
+
+\begin{amberbox}[Scaffold --- fold under if not needed]
+Expand using [Binomial Theorem]. The $f(x)$ terms cancel. Factor $h$, then evaluate.
+\end{amberbox}
+
+\vspace{52pt}
+\end{question}
+
+\begin{georeading}
+[$f'(x)$ gives the tangent gradient at any point $x$. At a local extremum: $f'(x)=0$.]
+\end{georeading}
+
+\translationtable{Calculus Features in Context}
+{Algebraic feature}{Applied context}
+$x$-intercepts ($y=0$)  & ``Break-even'', ``Hits the ground'', ``Sea level''\\[3pt]
+$f'(x)=0$ (turning point) & ``Max profit'', ``Particle at rest'', ``Peak height''\\[3pt]
+$f''(x)=0$ (inflection)   & ``Diminishing returns'', ``Max acceleration''\\[3pt]
+[Feature 4] & [Context 4]\\
+\closett
+
+% ============================================================
+%  PART 5: [SYNTHESIS PHASE]
+% ============================================================
+\napart{[Part 5 Title --- Synthesis Phase]}{5}
+
+\begin{microbox}
+\begin{itemize}
+  \item [Key result from Part~4.]
+  \item [How algebraic and geometric routes converge.]
+\end{itemize}
+\end{microbox}
+
+\begin{question}{2}{15}{Q15 --- Two Representations}
+\textbf{Explain} why [Methods A and B] give the same result.
+\textit{(You may answer in bullet points.)}
+
+\textit{Sentence starter:} ``Both methods agree because\ldots''
+
+\vspace{34pt}
+\end{question}
+
+\begin{question}{3}{16}{Q16 --- Third Representation}
+[Optional $\bigstar\bigstar\bigstar$. Push the same object into a third form.]
+
+\textbf{Determine} [third representation or application].
+
+\vspace{40pt}
+\end{question}
+
+% ============================================================
+%  PART 6: GDC MASTERY
+% ============================================================
+\napart{GDC Mastery}{6}\label{part:gdc}
+
+\begin{microbox}
+\begin{itemize}
+  \item [Calculus result from Part~4 for window optimisation.]
+  \item GDC permitted throughout this Part.
+  \item Store your function as \texttt{Y1}.
+\end{itemize}
+\end{microbox}
+
+\begin{infobox}[GDC Efficiency: The Window Wars]
+Use calculus to determine the optimal viewing window \emph{before} pressing \textsc{Graph}.
+Store complex functions as \texttt{Y1} so you never retype them.
+\end{infobox}
+
+\begin{question}{2}{17}{Q17 --- Optimising the GDC Window}
+Consider $f(x)=[expression]$. A standard window shows nothing.
+\begin{enumerate}
+  \item \textbf{Determine} $f'(x)$ and the exact $x$-coordinates of all local extrema.
+  \vspace{16pt}
+  \item \textbf{Evaluate} $y$-values at each extremum. \textbf{State} the required $y$-range.
+  \vspace{16pt}
+  \item \textbf{State} an appropriate window:
+  \vspace{4pt}\\
+  \begin{tabular}{@{}ll@{\qquad}ll@{}}
+    Xmin${}=\underline{\hspace{2cm}}$ & Xmax${}=\underline{\hspace{2cm}}$ &
+    Ymin${}=\underline{\hspace{2cm}}$ & Ymax${}=\underline{\hspace{2cm}}$
+  \end{tabular}
+\end{enumerate}
+\end{question}
+
+\begin{question}{1}{18}{Q18 --- GDC Sketch}
+Using your window from Q17(c), \textbf{sketch} $f(x)$ below.
+\textit{(You may attach a GeoGebra screenshot.)}
+
+\begin{center}
+\axesgrid{-2}{15}{-6}{4}{10}{7}
+\end{center}
+\end{question}
+
+% ============================================================
+%  PART 7: REFLECTION
+% ============================================================
+\napart{Reflection (Metacognition)}{7}
+
+\noindent\textit{You may respond orally --- ask your teacher to record a voice memo.
+Bullet points are acceptable throughout.}
+
+\begin{question}{1}{19}{Q19 --- Concept Map}
+\textbf{List} the major concepts and connections. Aim for six; one from each syllabus topic.
+
+\vspace{5pt}
+\begin{tabular}{@{}>{\centering\arraybackslash}p{3cm}
+                    >{\centering\arraybackslash}p{4cm}
+                    >{\centering\arraybackslash}p{7cm}@{}}
+\rowcolor{CMGray}
+\small\textbf{Concept} & \small\textbf{Where it appeared} &
+\small\textbf{How it connected to another concept}\\
+\hline
+& &\\[9pt]\hline
+& &\\[9pt]\hline
+& &\\[9pt]\hline
+& &\\[9pt]\hline
+& &\\[9pt]\hline
+& &\\[9pt]\hline
+\end{tabular}
+\end{question}
+
+\begin{question}{2}{20}{Q20 --- Multiple Representations}
+\textbf{Explain} what is gained by two independent proofs of one result.
+Does a second proof make the result \emph{more true}?
+\textit{(You may answer in bullet points.)}
+
+\textit{Sentence starter:} ``A second proof is valuable because\ldots''
+
+\vspace{40pt}
+\end{question}
+
+\begin{question}{3}{21}{Q21 --- TOK Position Statement}
+Return to \textbf{TOK Provocation~1} and \textbf{take and defend a position}.
+
+\vspace{4pt}
+\colorlet{shadecolor}{BoxPurple!60}
+\begin{shaded}\itshape\small
+``I argue that \underline{\hspace{5.5cm}}. My evidence from this packet is
+\underline{\hspace{4.5cm}}. A counterargument would be \underline{\hspace{4cm}},
+but I respond that \underline{\hspace{5cm}}.''
+\end{shaded}
+
+\vspace{3pt}
+\noindent\textit{Modelled mentor text (different result --- read, then write your own):}\\
+\textit{``[One example paragraph using a result the student will NOT choose, showing the genre.]''}
+
+\vspace{32pt}
+\end{question}
+
+% ============================================================
+%  EXTENSION & IA-SEEDING
+% ============================================================
+\napart{Extension \& IA-Seeding --- \textit{Optional: choose one}}{8}
+
+\begin{infobox}[Note for Students]
+These branches are deliberately \emph{under-specified}, in the spirit of the IB Internal
+Assessment. There is no single correct approach.
+\end{infobox}
+
+\begin{question}{3}{E1}{Branch E1 --- [Topic Area A]}
+\textbf{[Opening sentence connecting to a different IB topic area.]}
+
+[2--3 sentences. Keep deliberately open-ended.]
+
+\textit{IA relevance:} [One sentence.]
+\end{question}
+
+\begin{question}{3}{E2}{Branch E2 --- [Topic Area B]}
+\textbf{[Opening sentence connecting to a second IB topic area.]}
+
+[2--3 sentences.]
+
+\textit{IA relevance:} [One sentence.]
+\end{question}
+
+% ============================================================
+%  TEACHER'S COMPANION  (Remove before distributing to students)
+% ============================================================
+\newpage
+\noindent\colorbox{CMBlue}{\parbox{\linewidth}{%
+  \vspace{4pt}\hspace{6pt}{\Large\bfseries\color{white}Teacher's Companion}\\[2pt]
+  \hspace{6pt}{\small\itshape\color{white!80!CMBlue}Remove before distributing. Instructor use only.}%
+  \vspace{4pt}}}
+\vspace{5pt}
+
+\subsection*{A. Integration Map}
+\begin{tabular}{@{}>{\bfseries}p{4cm}p{10.5cm}@{}}
+\toprule
+IB Element & Location in packet\\
+\midrule
+Topic [X] & [Q numbers]\\
+Topic [Y] & [Q numbers]\\
+TOK & [Header + Q21]\\
+ATL & [Q15, Q20, Q21]\\
+International Mindedness & [IM box + Q[N]]\\
+GDC Technology & [Q17--Q18]\\
+IA Seeding & [Branches E1, E2]\\
+Paper 1 & [Parts~0--5]\\
+Paper 3 & [Parts~1--4]\\
+Command terms & [Write down, Describe, Explain, Determine, Deduce, Show that, Prove, Hence, Sketch]\\
+\bottomrule
+\end{tabular}
+
+\subsection*{B. Model's Moves}
+\begin{itemize}
+  \item \textbf{Conjecture-before-rule:} Q4$\to$Q5 and Q6$\to$Q7.
+  \item \textbf{Numerical warm-up:} Q3 (specific) $\to$ Q4--5 (general).
+  \item \textbf{Worked example $\to$ practice:} Q10 $\to$ Q11.
+  \item \textbf{Planted error:} Q9 ([Misconception name]).
+  \item \textbf{Translation tables:} Part~1 and Part~4.
+  \item \textbf{Rule of four:} algebraic (Q5), geometric (Q12), numerical (Q3), verbal (Q15).
+  \item \textbf{Proof scaffolds:} Q7 (induction template), Q14 (first line given).
+  \item \textbf{GDC window from calculus:} Q17--Q18.
+  \item \textbf{Metacognition:} Q19, Q20, Q21.
+  \item \textbf{IA seeding:} E1, E2 (under-specified).
+\end{itemize}
+
+\subsection*{C. Answer Sketches \& Planted-Error Key}
+\begin{itemize}
+  \item \textbf{Q1:} [(a) (b) (c)]
+  \item \textbf{Q2:} (a)~[Answer] (b)~[Answer]
+  \item \textbf{Q3:} [Property A]$=[\ldots]$; [Property B]$=[\ldots]$
+  \item \textbf{Q4:} [Expected conjecture]
+  \item \textbf{Q5:} [Proof outline]
+  \item \textbf{Q6:} [Conjecture]
+  \item \textbf{Q7:} [Base case: $n=1$ straightforward. Inductive step: applies Q5 with [substitution]. Conclusion.]
+  \item \textbf{Q8:} [Deduction: $r^n$ carries through.]
+  \item \textbf{Q9:} Correct: $[\ldots]$. Misconception: ``[Name]''. HL concept: [distinguished idea].
+  \item \textbf{Q10--Q11:} [Answers]
+  \item \textbf{Q12:} [Intercepts, extrema, end behaviour]
+  \item \textbf{Q13:} (a)~$[\ldots]$ (b)~$[\ldots]$ (c)~$[\ldots]$
+  \item \textbf{Q14:} [First-principles outline]
+  \item \textbf{Q17:} $f'(x)=[\ldots]$; extrema $x=[\ldots]$; window $[\ldots]$
+\end{itemize}
+
+\subsection*{D. Tiered Deadline Guidance}
+\begin{tabular}{@{}p{3.8cm}p{10.8cm}@{}}
+\toprule
+\textbf{Session} & \textbf{Parts}\\
+\midrule
+50-min lesson & Parts~0--2 (Q1--Q9).\\
+Double period & Parts~0--4 (Q1--Q14).\\
+Take-home & Full packet + one extension branch.\\
+Reduced workload & Compulsory core only.\\
+\bottomrule
+\end{tabular}
+
+\subsection*{E. Compulsory Core}
+Q1, Q2, Q3, Q4, Q5, Q6, Q8, Q9(a), Q9(b), Q10, Q12, Q13, Q17.
+
+\subsection*{F. Differentiation Note}
+\begin{tabular}{@{}p{3.8cm}p{10.8cm}@{}}
+\toprule
+\textbf{Profile} & \textbf{Guidance}\\
+\midrule
+ELL & Tear-off strip essential. Sentence starters reduce language demand. Accept diagrams.\\[4pt]
+ADHD/dyslexia & Progress tracker front page. Frame Q9 positively.\\[4pt]
+Gaps & Verify Part~0 first. Run [prior activity] if needed.\\[4pt]
+Gifted & Hide scaffolds. Direct to $\bigstar\bigstar\bigstar$ and IA branches.\\
+\bottomrule
+\end{tabular}
+
+\subsection*{G. Design Note}
+\textbf{Genuinely integrated:} [Topic X] and [Topic Y] --- [explain the mathematical thread].
+
+\textbf{Extension-level only:} [Topic Z] --- [honest reason why it isn't in the core].
+
+\end{document}
