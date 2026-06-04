@@ -32,12 +32,53 @@ export type AssignmentQuestion = {
   prompt: string;
   marks?: number;
   answer?: string;
-  ccss?: string[];  // Common Core State Standards codes, e.g. "CCSS.MATH.CONTENT.HSA.CED.A.1"
+  ccss?: string[];
+  // ── Nuanced Analysis fields (optional, backward-compatible) ──────────────
+  /** 1 = ★ (entry, compulsory)  2 = ★★ (standard)  3 = ★★★ (extension) */
+  tier?: 1 | 2 | 3;
+  /** Italic hint shown below the question stem */
+  hint?: string;
+  /** Sub-parts (a), (b), (c) … */
+  subparts?: Array<{ prompt: string; marks?: number; hint?: string; tier?: 1 | 2 | 3 }>;
+};
+
+// ── Nuanced Analysis section enrichments ─────────────────────────────────────
+
+export type SpotlightBox = {
+  title: string;
+  body: string;
+};
+
+export type PrerequisiteBox = {
+  items: string[];
+};
+
+export type TranslationTable = {
+  caption: string;
+  rows: Array<{ informal: string; formal: string }>;
+};
+
+export type GeometricReading = {
+  body: string;
+};
+
+export type CommandTermEntry = {
+  term: string;
+  definition: string;
 };
 
 export type AssignmentSection = {
   heading: string;
   questions: AssignmentQuestion[];
+  // ── Nuanced Analysis fields (optional, backward-compatible) ──────────────
+  /** Teal micro-box: "What you need to start this Part" */
+  prerequisiteBox?: PrerequisiteBox;
+  /** Teal Command-Term Spotlight callout */
+  spotlight?: SpotlightBox;
+  /** Translation table (informal ↔ formal language) */
+  translationTable?: TranslationTable;
+  /** Grey "Geometric / Physical Reading" callout */
+  geometricReading?: GeometricReading;
 };
 
 export type AssignmentDraft = {
@@ -45,6 +86,12 @@ export type AssignmentDraft = {
   subtitle: string;
   instructions: string[];
   sections: AssignmentSection[];
+  // ── Nuanced Analysis header fields (optional, backward-compatible) ────────
+  course?: string;
+  syllabusTopics?: string;
+  prerequisites?: string;
+  materials?: string;
+  commandTerms?: CommandTermEntry[];
 };
 
 export type ClaudeTextBlock = {
@@ -73,72 +120,80 @@ export function clampInt(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, rounded));
 }
 
-// ── Activity Generator (bypass-form, full-draft, CCSS-tagged) ────────────────
+// ── Activity Generator (Nuanced Analysis format) ──────────────────────────────
 
 export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
+  const isIB = gradeLevel === "Grade 12" || gradeLevel === "Grade 11";
   return [
-    `You are a world-class mathematics activity designer for ${gradeLevel} education.`,
-    "Your task: generate a complete, print-ready mathematics activity sheet from a brief description.",
+    `You are an expert IBDP Mathematics teacher creating a Nuanced Analysis activity packet for ${gradeLevel}.`,
+    "A Nuanced Analysis is a structured, multi-part guided investigation that:",
+    "- Spans multiple IB syllabus topics woven into a single mathematical thread",
+    "- Moves through conjecture → investigation → proof → application → reflection",
+    "- Builds representational fluency: the same object seen as algebra, geometry, and real-world model",
+    "- Uses IB command terms precisely throughout",
     "",
-    "## Output Format",
-    "Return ONLY valid JSON — no markdown fences, no explanation — with this exact shape:",
+    "CRITICAL: Respond with ONLY a valid JSON object matching the schema below. No markdown, no backticks, no preamble.",
+    "",
+    "JSON Schema:",
     "{",
-    '  "title": string,',
-    '  "subtitle": string,',
-    '  "instructions": string[],',
-    '  "sections": [',
+    "  \"title\": \"string — packet title (e.g. 'Polynomial Analysis')\",",
+    "  \"subtitle\": \"string — e.g. 'Mastery Packet: IBDP Mathematics AA HL'\",",
+    "  \"course\": \"string — e.g. 'IBDP Mathematics AA HL'\",",
+    "  \"syllabusTopics\": \"string — e.g. 'Topic 2: Functions & Topic 5: Calculus'\",",
+    "  \"prerequisites\": \"string — names of prior activities students need\",",
+    "  \"materials\": \"string — GDC, software, whether Paper 1 (no calc) or mixed\",",
+    "  \"instructions\": [\"string\", ...],",
+    "  \"commandTerms\": [",
+    "    { \"term\": \"Write down\", \"definition\": \"A short answer with no working required.\" },",
+    "    { \"term\": \"Sketch\", \"definition\": \"Clear diagram with relative scale; label exact coordinates of intercepts, extrema, and special points.\" }",
+    "  ],",
+    "  \"sections\": [",
     "    {",
-    '      "heading": string,',
-    '      "questions": [',
+    "      \"heading\": \"Part 0 — Activating Prior Knowledge\",",
+    "      \"prerequisiteBox\": { \"items\": [\"bullet 1\", \"bullet 2\"] },",
+    "      \"spotlight\": { \"title\": \"Sketch vs. Draw\", \"body\": \"Draw requires millimeter precision on grid paper. Sketch does not require grid paper, but the axes MUST show relative scale.\" },",
+    "      \"questions\": [",
     "        {",
-    '          "prompt": string,',
-    '          "marks": number,',
-    '          "answer": string,',
-    '          "ccss": string[]',
+    "          \"prompt\": \"Full question text. Bold command terms: **Write down** the...\",",
+    "          \"marks\": 2,",
+    "          \"tier\": 1,",
+    "          \"hint\": \"Optional italic hint.\",",
+    "          \"subparts\": [",
+    "            { \"prompt\": \"(a) first sub-part\", \"marks\": 1 },",
+    "            { \"prompt\": \"(b) second sub-part\", \"marks\": 1 }",
+    "          ]",
     "        }",
-    "      ]",
+    "      ],",
+    "      \"translationTable\": {",
+    "        \"caption\": \"The Translation Table: Polynomial Roots\",",
+    "        \"rows\": [",
+    "          { \"informal\": \"The graph bounces off the axis.\", \"formal\": \"The polynomial has a root with even multiplicity.\" }",
+    "        ]",
+    "      },",
+    "      \"geometricReading\": { \"body\": \"Multiplying by a complex number is a rotation combined with a scaling.\" }",
     "    }",
     "  ]",
     "}",
     "",
-    "## Mark Allocation Rules",
-    "Assign marks based on the cognitive demand of each question part:",
-    "- 1 mark: Recall, definition, direct substitution, identify/state",
-    "- 2 marks: Two-step procedure, basic application, simple reasoning, calculate with method shown",
-    "- 3 marks: Multi-step problem, deeper application, brief explanation required",
-    "- 4 marks: Extended reasoning, proof outline, multi-part calculation",
-    "- 5+ marks: Only for investigations or open-ended problems with multiple valid paths",
-    "Total marks for a standard activity should be 20-40. Individual sections 5-15 marks each.",
-    "",
-    "## Common Core State Standards Tagging",
-    "Tag EVERY question with the most precise applicable CCSS codes.",
-    "Use standard formats:",
-    "  K-8: CCSS.MATH.CONTENT.{Grade}.{Domain}.{Cluster}.{Standard}",
-    "  HS: CCSS.MATH.CONTENT.HS{Domain}.{Cluster}.{Standard}",
-    "Domain codes: N (Number), A (Algebra), F (Functions), G (Geometry), S (Statistics)",
-    "Sub-domains: REI (Reasoning with Equations), CED (Creating Equations), IF (Interpreting Functions),",
-    "  BF (Building Functions), LE (Linear/Exp Models), SSE (Structure in Expressions),",
-    "  APR (Arithmetic with Polynomials), Q (Quantities), CN (Complex Numbers),",
-    "  VM (Vector & Matrix), CO (Congruence), SRT (Similarity), C (Circles),",
-    "  GPE (Expressing Geometric Properties), MG (Geometric Measurement), ID (Interpreting Data),",
-    "  IC (Inference), CP (Conditional Probability), MD (Making Decisions)",
-    "Examples: CCSS.MATH.CONTENT.HSA.CED.A.1, CCSS.MATH.CONTENT.HSF.IF.A.2",
-    "Every question must have at least one CCSS code. Related questions share codes.",
-    "",
-    "## Quality Requirements",
-    "- Every question must be mathematically correct and unambiguous",
-    "- Prompts must be plain text only (no LaTeX, no markdown, no asterisks)",
-    "- Answers must be complete model solutions, step-by-step where marks > 2",
-    "- Sections must build progressively: concrete → procedural → reasoning → extension",
-    "- Include variety: procedural fluency, conceptual understanding, application, reasoning",
-    "- Instructions should be 3-5 numbered imperatives",
-    `- Language must be age-appropriate for ${gradeLevel}`,
-    "- Subtitles should state grade level and mathematical strand",
-    "",
-    "## Refinement",
-    "If the conversation history shows a prior draft (assistant message = JSON),",
-    "modify that draft based on the new user instruction. Keep what is good, improve what is asked.",
-    "Return the complete updated JSON — not a diff.",
+    "DESIGN RULES:",
+    "1. Always include Part 0 as Activating Prior Knowledge.",
+    "2. tier: 1=★ (compulsory/entry), 2=★★ (standard), 3=★★★ (optional extension). All questions must have a tier.",
+    "3. commandTerms: include only terms actually used in the packet.",
+    "4. spotlight: add at the top of the part where a command-term distinction is most important.",
+    "5. prerequisiteBox: 2-4 bullet items. Required for every part except Part 0.",
+    "6. translationTable: include where informal→formal language translation adds value.",
+    "7. geometricReading: include at end of parts where geometric/physical interpretation follows algebraic work.",
+    "8. hints: use for proof scaffolding and complex multi-step questions.",
+    "9. subparts: use (a),(b),(c) labelling for questions with distinct phases.",
+    "10. instructions: 4-6 crisp sentences covering showing working and command terms.",
+    "11. Marks: write-down=1-2, show that/prove=3-5, extended investigation=4-8.",
+    "12. Use strict IB vocabulary: 'intersects' not 'crosses through'; 'even multiplicity' not 'bounces'.",
+    "13. Never include answers in the student-facing questions. 'answer' field is teacher-only.",
+    "14. The packet must have a coherent arc: last section connects back to opening ideas.",
+    isIB
+      ? "15. For IBDP: include at least one proof question (Show that/Prove), one Broken Math Critique error-analysis, and one GDC Mastery part."
+      : `15. For ${gradeLevel}: include at least one real-world application and one error-analysis question.`,
+    "16. Refinement: if conversation history shows a prior JSON draft, modify it per the new instruction. Return complete updated JSON.",
   ].join("\n");
 }
 
@@ -149,7 +204,7 @@ export function buildActivityGeneratorUserPrompt(
   return [
     `Grade level: ${gradeLevel}`,
     `Activity description: ${description}`,
-    "Generate a complete activity sheet. Return only JSON.",
+    "Generate a complete Nuanced Analysis activity sheet. Return only JSON.",
   ].join("\n");
 }
 
@@ -228,9 +283,16 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
                   marks: clampInt(Number(question.marks ?? 0), 0, 20),
                   answer: typeof question.answer === "string" ? question.answer.trim() : "",
                   ...(Array.isArray(question.ccss) ? { ccss: (question.ccss as unknown[]).filter((s): s is string => typeof s === "string") } : {}),
+                  ...(question.tier !== undefined ? { tier: question.tier } : {}),
+                  ...(question.hint ? { hint: question.hint } : {}),
+                  ...(Array.isArray(question.subparts) ? { subparts: question.subparts } : {}),
                 }))
                 .filter((question) => question.prompt.length > 0)
             : [],
+          ...(section.prerequisiteBox ? { prerequisiteBox: section.prerequisiteBox } : {}),
+          ...(section.spotlight ? { spotlight: section.spotlight } : {}),
+          ...(section.translationTable ? { translationTable: section.translationTable } : {}),
+          ...(section.geometricReading ? { geometricReading: section.geometricReading } : {}),
         }))
         .filter((section) => section.questions.length > 0)
     : [];
@@ -248,6 +310,11 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
     subtitle: (draft.subtitle || "Mathematics").trim(),
     instructions: instructions.length > 0 ? instructions : ["Complete all questions and show working."],
     sections,
+    ...(draft.course ? { course: draft.course } : {}),
+    ...(draft.syllabusTopics ? { syllabusTopics: draft.syllabusTopics } : {}),
+    ...(draft.prerequisites ? { prerequisites: draft.prerequisites } : {}),
+    ...(draft.materials ? { materials: draft.materials } : {}),
+    ...(Array.isArray(draft.commandTerms) ? { commandTerms: draft.commandTerms } : {}),
   };
 }
 
