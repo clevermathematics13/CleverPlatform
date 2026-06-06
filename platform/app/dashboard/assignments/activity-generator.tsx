@@ -25,7 +25,7 @@ type ChatMessage = {
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type DriveConnectionStatus = "checking" | "connected" | "disconnected";
-type DriveImportStatus = "idle" | "fetching" | "done" | "error";
+type DriveImportStatus = "idle" | "fetching" | "picking" | "done" | "error";
 
 type Props = {
   gradeLevel: "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
@@ -87,20 +87,45 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     window.location.href = "/api/questions/connect-drive";
   }
 
-  // ── Google Drive PDF import ─────────────────────────────────────────
+  // ── Google Picker (file browser) ────────────────────────────────────────────────
 
-  async function handleDriveImport() {
-    const input = driveUrl.trim();
-    if (!input) return;
+  function openGooglePicker() {
+    if (typeof window === "undefined" || !(window as any).google) {
+      setDriveImportError("Google Picker library not loaded");
+      return;
+    }
 
-    setDriveImportStatus("fetching");
-    setDriveImportError(null);
+    const picker = new (window as any).google.picker.PickerBuilder()
+      .enableFeature((window as any).google.picker.Feature.MULTISELECT_ENABLED)
+      .setDiacriticsMode((window as any).google.picker.DialogDiacriticsMode.OFF)
+      .setLocale("en")
+      .addView((window as any).google.picker.ViewId.PDFS)
+      .addView((window as any).google.picker.ViewId.DOCS)
+      .setCallback((data: any) => {
+        if (data.action === "cancel") {
+          setDriveImportStatus("idle");
+          return;
+        }
+        if (data.action === "picked" && data.docs) {
+          setDriveImportStatus("fetching");
+          setDriveImportError(null);
+          // Import the first selected file
+          const doc = data.docs[0];
+          void importDriveFile(doc.id);
+        }
+      })
+      .build();
 
+    setDriveImportStatus("picking");
+    picker.setVisible(true);
+  }
+
+  async function importDriveFile(fileId: string) {
     try {
       const res = await fetch("/api/assignments/fetch-drive-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileId: input }),
+        body: JSON.stringify({ fileId }),
       });
 
       const data = (await res.json()) as {
@@ -129,7 +154,18 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Local file handling ─────────────────────────────────────────────
+  // ── Google Drive PDF import (URL fallback) ──────────────────────────────────
+
+  async function handleDriveImport() {
+    const input = driveUrl.trim();
+    if (!input) return;
+
+    setDriveImportStatus("fetching");
+    setDriveImportError(null);
+    await importDriveFile(input);
+  }
+
+  // ── Local file handling ─────────────────────────────────────────────────────
 
   function addImageFile(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -149,7 +185,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     if (file.type !== "application/pdf") return;
     if (file.size > 3 * 1024 * 1024) {
       setError(
-        `PDF "${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)} MB — too large for direct upload. Use the Google Drive button instead.`
+        `PDF "${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)} MB — too large for direct upload. Use Google Drive import instead.`
       );
       return;
     }
@@ -186,7 +222,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setPendingImages((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // ── Generate / Refine ────────────────────────────────────────────
+  // ── Generate / Refine ────────────────────────────────────────────────────────
 
   async function handleGenerate() {
     const userText = description.trim();
@@ -299,7 +335,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────
+  // ── Save ──────────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     if (!lastDraft || saveStatus === "saving") return;
@@ -328,7 +364,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────────
 
   const hasHistory = history.length > 0;
   const isRefinement = hasHistory;
@@ -357,93 +393,122 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       {isExpanded && (
         <div className="space-y-3 border-t border-indigo-500/20 px-4 pb-4 pt-3">
 
-          {/* ── Google Drive connection banner ────────────────────────── */}
-          {driveStatus === "disconnected" && (
-            <div className="flex items-center gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-              <span className="text-base flex-shrink-0">📂</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-amber-300">Google Drive not connected</p>
-                <p className="text-[10px] text-amber-300/70 leading-relaxed">
-                  Connect once to import PDFs of any size directly from Drive.
-                </p>
+          {/* ── File upload options (Google Drive + Computer) ─────────────────────── */}
+          <div className="space-y-2">
+            {driveStatus === "checking" && (
+              <div className="flex items-center gap-2 rounded-lg border border-da-border/30 bg-da-bg/30 px-3 py-2">
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border border-da-muted border-t-transparent flex-shrink-0" />
+                <p className="text-[10px] text-da-muted">Checking Drive connection…</p>
               </div>
-              <button
-                type="button"
-                onClick={handleConnectDrive}
-                className="flex-shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-600 transition-colors"
-              >
-                Connect Drive
-              </button>
-            </div>
-          )}
+            )}
 
-          {driveStatus === "connected" && (
-            <div className="flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-2">
-              <span className="text-xs text-green-400">✅</span>
-              <p className="flex-1 text-[11px] font-medium text-green-300">Google Drive connected</p>
-              <button
-                type="button"
-                onClick={() => {
-                  if (driveStatus !== "connected") return;
-                  setShowDriveInput((v) => !v);
-                  setDriveImportError(null);
-                  setDriveImportStatus("idle");
-                }}
-                disabled={isGenerating}
-                className="rounded border border-green-500/30 bg-green-500/10 px-2.5 py-1 text-[10px] font-semibold text-green-300 hover:bg-green-500/20 transition-colors disabled:opacity-40"
-              >
-                {showDriveInput ? "Cancel" : "📂 Import PDF"}
-              </button>
-            </div>
-          )}
+            {driveStatus === "disconnected" && (
+              <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+                <span className="text-base flex-shrink-0">📂</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-semibold text-amber-300">Connect Google Drive</p>
+                  <p className="text-[10px] text-amber-300/70 leading-tight">Import large PDFs directly from Drive with no size limits.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleConnectDrive}
+                  className="flex-shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-600 transition-colors whitespace-nowrap"
+                >
+                  Connect
+                </button>
+              </div>
+            )}
 
-          {driveStatus === "checking" && (
-            <div className="flex items-center gap-2 rounded-lg border border-da-border/30 bg-da-bg/30 px-3 py-2">
-              <span className="inline-block h-3 w-3 animate-spin rounded-full border border-da-muted border-t-transparent flex-shrink-0" />
-              <p className="text-[10px] text-da-muted">Checking Drive connection…</p>
-            </div>
-          )}
-
-          {/* ── Drive URL input panel (shown when connected and Import PDF clicked) ── */}
-          {driveStatus === "connected" && showDriveInput && (
-            <div className="rounded-md border border-indigo-500/30 bg-da-bg/50 p-2.5 space-y-1.5">
-              <p className="text-[10px] text-da-muted leading-relaxed">
-                Paste a Google Drive file URL or file ID — any size PDF is supported.
-              </p>
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  value={driveUrl}
-                  onChange={(e) => {
-                    setDriveUrl(e.target.value);
+            {driveStatus === "connected" && (
+              <div className="flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-2">
+                <span className="text-xs text-green-400">✅</span>
+                <p className="flex-1 text-[10px] font-medium text-green-300">Google Drive connected</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Load Google Picker API
+                    const script = document.createElement("script");
+                    script.src = "https://apis.google.com/js/picker-api.js";
+                    script.async = true;
+                    script.onload = openGooglePicker;
+                    document.head.appendChild(script);
+                  }}
+                  disabled={isGenerating}
+                  className="flex-shrink-0 rounded border border-green-500/30 bg-green-500/10 px-2.5 py-1 text-[10px] font-semibold text-green-300 hover:bg-green-500/20 transition-colors disabled:opacity-40 whitespace-nowrap"
+                >
+                  {driveImportStatus === "picking" ? "Opening picker…" : "📂 Browse Drive"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (driveStatus !== "connected") return;
+                    setShowDriveInput((v) => !v);
                     setDriveImportError(null);
                     setDriveImportStatus("idle");
                   }}
-                  onKeyDown={handleDriveKeyDown}
-                  placeholder="https://drive.google.com/file/d/…"
-                  disabled={driveImportStatus === "fetching"}
-                  autoFocus
-                  className="flex-1 rounded border border-indigo-500/30 bg-da-bg/60 px-2.5 py-1.5 text-xs text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleDriveImport()}
-                  disabled={!driveUrl.trim() || driveImportStatus === "fetching"}
-                  className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                  disabled={isGenerating}
+                  className="flex-shrink-0 rounded border border-green-500/30 bg-green-500/10 px-2 py-1 text-[10px] font-semibold text-green-300 hover:bg-green-500/20 transition-colors disabled:opacity-40 whitespace-nowrap"
                 >
-                  {driveImportStatus === "fetching" ? (
-                    <span className="inline-flex items-center gap-1">
-                      <span className="inline-block h-3 w-3 animate-spin rounded-full border border-white border-t-transparent" />
-                      Fetching…
-                    </span>
-                  ) : "Import"}
+                  {showDriveInput ? "Cancel" : "🔗 Paste URL"}
                 </button>
               </div>
-              {driveImportError && (
-                <p className="text-[10px] text-red-400 leading-relaxed">{driveImportError}</p>
-              )}
-            </div>
-          )}
+            )}
+
+            {/* Drive URL input panel */}
+            {driveStatus === "connected" && showDriveInput && (
+              <div className="rounded-md border border-indigo-500/30 bg-da-bg/50 p-2.5 space-y-1.5">
+                <p className="text-[10px] text-da-muted leading-relaxed">
+                  Paste a Google Drive file URL or file ID — any size PDF is supported.
+                </p>
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={driveUrl}
+                    onChange={(e) => {
+                      setDriveUrl(e.target.value);
+                      setDriveImportError(null);
+                      setDriveImportStatus("idle");
+                    }}
+                    onKeyDown={handleDriveKeyDown}
+                    placeholder="https://drive.google.com/file/d/…"
+                    disabled={driveImportStatus === "fetching"}
+                    autoFocus
+                    className="flex-1 rounded border border-indigo-500/30 bg-da-bg/60 px-2.5 py-1.5 text-xs text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleDriveImport()}
+                    disabled={!driveUrl.trim() || driveImportStatus === "fetching"}
+                    className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors"
+                  >
+                    {driveImportStatus === "fetching" ? "Fetching…" : "Import"}
+                  </button>
+                </div>
+                {driveImportError && (
+                  <p className="text-[10px] text-red-400 leading-relaxed">{driveImportError}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Upload from Computer button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isGenerating}
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/15 transition-colors disabled:opacity-50"
+          >
+            💻 Upload from Computer
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+          <p className="text-[10px] text-da-muted/60 text-center">Images or PDFs up to 3 MB</p>
 
           {/* Description */}
           {!hasHistory && (
@@ -497,7 +562,8 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={img.previewUrl} alt={img.name} className="h-16 w-16 rounded-md object-cover border border-indigo-500/40" />
                     <button type="button" onClick={() => removeImage(i)}
-                      className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
                       ✕
                     </button>
                   </div>
@@ -507,7 +573,8 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                     <span className="text-xs">📄</span>
                     <span className="max-w-[120px] truncate text-xs text-da-text">{pdf.name}</span>
                     <button type="button" onClick={() => setPendingPdfs((prev) => prev.filter((_, j) => j !== i))}
-                      className="ml-1 text-red-400 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">
+                      className="ml-1 text-red-400 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
                       ✕
                     </button>
                   </div>
@@ -515,37 +582,22 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               </div>
             )}
 
-            {/* Textarea + local attach */}
-            <div className="relative">
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onPaste={handlePaste}
-                placeholder={
-                  isRefinement
-                    ? "Describe what to change or add… (Ctrl+Enter to refine)"
-                    : 'e.g. "A Grade 9 activity on solving two-step linear equations with 10 questions, two real-world word problems, one error-analysis question, increasing difficulty, exam tone."'
-                }
-                rows={isRefinement ? 2 : 3}
-                disabled={isGenerating}
-                className="w-full resize-none rounded-md border border-indigo-500/30 bg-da-bg/50 px-3 py-2.5 pr-10 text-sm text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isGenerating}
-                title="Attach image or PDF (under 3 MB)"
-                className="absolute bottom-2 right-2 text-indigo-400/60 hover:text-indigo-300 transition-colors disabled:opacity-40"
-              >
-                📎
-              </button>
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileChange} />
-            </div>
-
-            <div className="text-[10px] text-da-muted/60">
-              📎 attach image or small PDF · use “Import PDF” above for large Drive files · Ctrl+Enter to send
-            </div>
+            {/* Textarea */}
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              placeholder={
+                isRefinement
+                  ? "Describe what to change or add… (Ctrl+Enter to refine)"
+                  : 'e.g. "A Grade 9 activity on solving two-step linear equations with 10 questions, two real-world word problems, one error-analysis question, increasing difficulty, exam tone."'
+              }
+              rows={isRefinement ? 2 : 3}
+              disabled={isGenerating}
+              className="w-full resize-none rounded-md border border-indigo-500/30 bg-da-bg/50 px-3 py-2.5 text-sm text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
+            />
+            <div className="text-[10px] text-da-muted/60 text-center">Ctrl+Enter to send</div>
           </div>
 
           {/* Error */}
@@ -602,7 +654,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
           {/* Feature tags */}
           {!hasHistory && (
             <div className="flex flex-wrap gap-1.5">
-              {["Marks auto-assigned", "CCSS standards tagged", "Answer key generated", "Iterative refinement", "Google Drive PDFs"].map(
+              {["Marks auto-assigned", "CCSS standards tagged", "Answer key generated", "Iterative refinement", "Google Drive support"].map(
                 (tag) => (
                   <span key={tag} className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400/80">
                     {tag}
