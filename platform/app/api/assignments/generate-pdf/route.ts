@@ -1,7 +1,6 @@
 import { getApiTeacher } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import type { AssignmentPdfRequest } from "@/lib/assignments";
-import { generateAssignmentHtml } from "@/lib/assignments";
+import { DocumentOrchestratorService } from "@/lib/document-orchestrator";
 import puppeteer from "puppeteer";
 
 export const runtime = "nodejs";
@@ -11,13 +10,23 @@ export async function POST(req: Request) {
   try {
     const auth = await getApiTeacher();
     if (!auth.ok) return auth.response;
-    const body = (await req.json()) as AssignmentPdfRequest;
 
-    const html = generateAssignmentHtml(body);
-    const safeFilename = (body.title || "assignment")
+    const raw = await req.json();
+
+    // Phase 1 — validate + Phase 4 — server-side KaTeX render
+    const orchestrated = DocumentOrchestratorService.render(raw);
+    if (!orchestrated.success) {
+      return NextResponse.json({ error: orchestrated.error }, { status: 422 });
+    }
+
+    const { html } = orchestrated;
+    const safeFilename = ((raw as { title?: string }).title ?? "assignment")
       .replace(/[^a-z0-9]/gi, "_")
       .replace(/_+/g, "_")
       .replace(/^_|_$/g, "");
+
+    const pageMarginsMm =
+      (raw as { formatting?: { pageMarginsMm?: number } }).formatting?.pageMarginsMm ?? 16;
 
     let browser;
     try {
@@ -32,18 +41,21 @@ export async function POST(req: Request) {
       });
 
       const page = await browser.newPage();
+
+      // KaTeX CSS is loaded via @import in the <style> block;
+      // networkidle0 ensures the font has loaded before PDF capture.
       await page.setContent(html, {
-        waitUntil: "domcontentloaded" as const,
+        waitUntil: "networkidle0" as const,
         timeout: 30000,
       });
 
       const pdf = await page.pdf({
         format: "A4",
         margin: {
-          top: `${body.formatting?.pageMarginsMm ?? 16}mm`,
-          right: `${body.formatting?.pageMarginsMm ?? 16}mm`,
-          bottom: `${body.formatting?.pageMarginsMm ?? 16}mm`,
-          left: `${body.formatting?.pageMarginsMm ?? 16}mm`,
+          top: `${pageMarginsMm}mm`,
+          right: `${pageMarginsMm}mm`,
+          bottom: `${pageMarginsMm}mm`,
+          left: `${pageMarginsMm}mm`,
         },
         printBackground: true,
         displayHeaderFooter: false,
@@ -71,8 +83,7 @@ export async function POST(req: Request) {
       }
     }
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "PDF generation error";
+    const message = err instanceof Error ? err.message : "PDF generation error";
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
