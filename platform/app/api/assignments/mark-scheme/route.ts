@@ -14,7 +14,6 @@ export async function POST(req: Request) {
 
     const body = (await req.json()) as MarkSchemeRequest;
 
-    // Validate formatting portion
     const fmtResult = FormattingRequirementsSchema.safeParse(body.formatting);
     if (!fmtResult.success) {
       return NextResponse.json({ error: "Invalid formatting" }, { status: 422 });
@@ -34,15 +33,10 @@ export async function POST(req: Request) {
         args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
       });
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+      await page.setContent(html, { waitUntil: "load" as const, timeout: 30000 });
       const pdf = await page.pdf({
         format: "A4",
-        margin: {
-          top: `${fmtResult.data.pageMarginsMm}mm`,
-          right: `${fmtResult.data.pageMarginsMm}mm`,
-          bottom: `${fmtResult.data.pageMarginsMm}mm`,
-          left: `${fmtResult.data.pageMarginsMm}mm`,
-        },
+        margin: { top: `${fmtResult.data.pageMarginsMm}mm`, right: `${fmtResult.data.pageMarginsMm}mm`, bottom: `${fmtResult.data.pageMarginsMm}mm`, left: `${fmtResult.data.pageMarginsMm}mm` },
         printBackground: true,
         displayHeaderFooter: false,
         preferCSSPageSize: true,

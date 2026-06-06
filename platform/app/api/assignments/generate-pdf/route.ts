@@ -13,7 +13,6 @@ export async function POST(req: Request) {
 
     const raw = await req.json();
 
-    // Phase 1 — validate + Phase 4 — server-side KaTeX render
     const orchestrated = DocumentOrchestratorService.render(raw);
     if (!orchestrated.success) {
       return NextResponse.json({ error: orchestrated.error }, { status: 422 });
@@ -32,31 +31,18 @@ export async function POST(req: Request) {
     try {
       browser = await puppeteer.launch({
         headless: true,
-        args: [
-          "--no-sandbox",
-          "--disable-setuid-sandbox",
-          "--disable-dev-shm-usage",
-          "--disable-gpu",
-        ],
+        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
       });
 
       const page = await browser.newPage();
-
-      // KaTeX CSS is loaded via @import in the <style> block;
-      // networkidle0 ensures the font has loaded before PDF capture.
       await page.setContent(html, {
-        waitUntil: "networkidle0" as const,
+        waitUntil: "load" as const,
         timeout: 30000,
       });
 
       const pdf = await page.pdf({
         format: "A4",
-        margin: {
-          top: `${pageMarginsMm}mm`,
-          right: `${pageMarginsMm}mm`,
-          bottom: `${pageMarginsMm}mm`,
-          left: `${pageMarginsMm}mm`,
-        },
+        margin: { top: `${pageMarginsMm}mm`, right: `${pageMarginsMm}mm`, bottom: `${pageMarginsMm}mm`, left: `${pageMarginsMm}mm` },
         printBackground: true,
         displayHeaderFooter: false,
         preferCSSPageSize: true,
@@ -74,16 +60,9 @@ export async function POST(req: Request) {
         },
       });
     } finally {
-      if (browser) {
-        try {
-          await browser.close();
-        } catch {
-          // ignore
-        }
-      }
+      if (browser) { try { await browser.close(); } catch { /* ignore */ } }
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "PDF generation error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "PDF generation error" }, { status: 500 });
   }
 }
