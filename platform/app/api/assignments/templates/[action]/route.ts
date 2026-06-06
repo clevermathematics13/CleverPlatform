@@ -11,6 +11,17 @@ type TemplateData = {
   assignmentInput: Record<string, unknown>;
 };
 
+type SavedTemplate = {
+  id: string;
+  template_name: string;
+  grade_level: string;
+  document_kind: string;
+  formatting_requirements: Record<string, unknown>;
+  assignment_input: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
 export async function GET(req: Request, context: { params: { action: string } }) {
   try {
     const auth = await getApiTeacher();
@@ -20,7 +31,7 @@ export async function GET(req: Request, context: { params: { action: string } })
 
     if (action === "list") {
       const { searchParams } = new URL(req.url);
-      const gradeLevel = searchParams.get("grade") ?? "Grade 9";
+      const gradeLevel = searchParams.get("grade") ?? "Grade 12";
 
       const { data, error } = await supabase
         .from("assignment_templates")
@@ -31,7 +42,19 @@ export async function GET(req: Request, context: { params: { action: string } })
 
       if (error) throw error;
 
-      return NextResponse.json({ templates: data }, { status: 200 });
+      // Map database response to expected format
+      const templates = (data ?? []).map((row: SavedTemplate) => ({
+        id: row.id,
+        template_name: row.template_name,
+        grade_level: row.grade_level,
+        document_kind: row.document_kind,
+        formatting_requirements: row.formatting_requirements,
+        assignment_input: row.assignment_input,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+      }));
+
+      return NextResponse.json({ templates }, { status: 200 });
     }
 
     if (action === "get") {
