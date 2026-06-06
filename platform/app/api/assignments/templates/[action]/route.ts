@@ -22,12 +22,17 @@ type SavedTemplate = {
   updated_at: string;
 };
 
-export async function GET(req: Request, context: { params: { action: string } }) {
+// Next.js 15+: params is a Promise — must be awaited before use
+export async function GET(
+  req: Request,
+  context: { params: Promise<{ action: string }> }
+) {
   try {
     const auth = await getApiTeacher();
     if (!auth.ok) return auth.response;
     const { supabase, profile } = auth;
-    const action = context.params.action;
+
+    const { action } = await context.params;
 
     if (action === "list") {
       const { searchParams } = new URL(req.url);
@@ -48,7 +53,6 @@ export async function GET(req: Request, context: { params: { action: string } })
 
       if (error) throw error;
 
-      // Map database response to expected format
       const templates = (data ?? []).map((row: SavedTemplate) => ({
         id: row.id,
         template_name: row.template_name,
@@ -86,7 +90,7 @@ export async function GET(req: Request, context: { params: { action: string } })
       return NextResponse.json({ template: data }, { status: 200 });
     }
 
-    return NextResponse.json({ error: "Unknown action" }, { status: 400 });
+    return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Template fetch error";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -104,7 +108,7 @@ export async function POST(req: Request) {
 
     if (!templateName || !gradeLevel || !documentKind) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Missing required fields: templateName, gradeLevel, documentKind" },
         { status: 400 }
       );
     }
@@ -144,7 +148,6 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Missing template id" }, { status: 400 });
     }
 
-    // Verify ownership
     const { data: existing } = await supabase
       .from("assignment_templates")
       .select("user_id")
@@ -190,7 +193,6 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Missing template id" }, { status: 400 });
     }
 
-    // Verify ownership
     const { data: existing } = await supabase
       .from("assignment_templates")
       .select("user_id")
