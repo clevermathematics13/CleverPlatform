@@ -35,11 +35,42 @@ export function GenericAssignmentSandbox({
   const [input, setInput] = useState<AssignmentInput>(defaultInput);
   const [draft, setDraft] = useState<AssignmentDraft>(defaultDraft);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  // Answer box lines: how many ruled lines per question answer box
+  const [answerBoxLines, setAnswerBoxLines] = useState(4);
+  // Paper type: affects header badge on the exported PDF
+  const [paperType, setPaperType] = useState<"paper1" | "paper2" | "mixed" | "investigation">("mixed");
+  // Cohort tag: surfaced in the PDF subtitle and template metadata
+  const [cohortTag, setCohortTag] = useState<"26AH" | "27AH" | "custom">("26AH");
+
+  // ── Derived: total marks across current draft ─────────────────────────────
+  const totalMarks = useMemo(() => {
+    return draft.sections.reduce((sectionSum, section) =>
+      sectionSum +
+      section.questions.reduce((qSum, q) => {
+        const subpartTotal = Array.isArray(q.subparts)
+          ? q.subparts.reduce((sp, s) => sp + (s.marks ?? 0), 0)
+          : 0;
+        return qSum + (subpartTotal > 0 ? subpartTotal : (q.marks ?? 0));
+      }, 0)
+    , 0);
+  }, [draft]);
+
+  const totalQuestions = useMemo(() =>
+    draft.sections.reduce((sum, s) => sum + s.questions.length, 0)
+  , [draft]);
+
+  const paperTypeLabel: Record<string, string> = {
+    paper1: "Paper 1 — No Calculator",
+    paper2: "Paper 2 — GDC Required",
+    mixed: "Mixed (P1 + P2)",
+    investigation: "Investigation / Paper 3 Style",
+  };
 
   async function loadTemplates() {
     try {
@@ -58,10 +89,7 @@ export function GenericAssignmentSandbox({
   }
 
   async function saveAsTemplate() {
-    if (!templateName.trim()) {
-      setError("Please enter a template name");
-      return;
-    }
+    if (!templateName.trim()) { setError("Please enter a template name"); return; }
     setIsSavingTemplate(true);
     setError(null);
     try {
@@ -112,24 +140,35 @@ export function GenericAssignmentSandbox({
       const sanitized = sanitizeDraft(parsed);
       setDraft(sanitized);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unexpected AI generation error.";
-      setError(message);
+      setError(err instanceof Error ? err.message : "Unexpected AI generation error.");
     } finally {
       setIsGenerating(false);
     }
   }
 
   async function handleExportPdf() {
+    setIsExporting(true);
+    setError(null);
     try {
       const res = await fetch("/api/assignments/generate-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: draft.title,
-          subtitle: draft.subtitle,
+          subtitle: [
+            draft.subtitle,
+            cohortTag !== "custom" ? cohortTag : null,
+            paperTypeLabel[paperType],
+          ].filter(Boolean).join(" · "),
           instructions: draft.instructions,
           sections: draft.sections,
-          formatting,
+          formatting: { ...formatting, answerBoxLines },
+          // pass Nuanced Analysis header fields through if present
+          ...(draft.course ? { course: draft.course } : {}),
+          ...(draft.syllabusTopics ? { syllabusTopics: draft.syllabusTopics } : {}),
+          ...(draft.prerequisites ? { prerequisites: draft.prerequisites } : {}),
+          ...(draft.materials ? { materials: draft.materials } : {}),
+          ...(draft.commandTerms ? { commandTerms: draft.commandTerms } : {}),
         }),
       });
       if (!res.ok) {
@@ -147,6 +186,8 @@ export function GenericAssignmentSandbox({
       URL.revokeObjectURL(url);
     } catch (err) {
       setError(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setIsExporting(false);
     }
   }
 
@@ -164,11 +205,12 @@ export function GenericAssignmentSandbox({
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h2 className="text-lg font-semibold font-serif text-da-text">{gradeLevel} PDF Sandbox</h2>
             <p className="text-xs text-da-muted">
-              Or configure the form below and use &ldquo;Generate With AI&rdquo; for more control over
-              formatting and topic.
+              Configure the form below and use &ldquo;Generate With AI&rdquo; for manual control,
+              or use the AI Activity Generator above.
             </p>
           </div>
 
+          {/* Templates */}
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Templates</h3>
             <button
@@ -215,28 +257,43 @@ export function GenericAssignmentSandbox({
             </div>
           </div>
 
+          {/* Assignment Input */}
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Assignment Input</h3>
             <LabeledInput label="Title" value={input.title} onChange={(v) => setInput((p) => ({ ...p, title: v }))} />
-            <LabeledSelect
-              label="Document Type"
-              value={input.documentKind}
-              onChange={(v) => setInput((p) => ({ ...p, documentKind: v as DocumentKind }))}
-              options={[
-                { value: "activity-sheet", label: "Activity Sheet" },
-                { value: "practice-set", label: "Practice Set" },
-                { value: "investigation", label: "Investigation Task" },
-              ]}
-            />
-            <LabeledTextArea label="Topic" value={input.topic} onChange={(v) => setInput((p) => ({ ...p, topic: v }))} rows={2} />
-            <LabeledTextArea label="Learning Goals" value={input.learningGoals} onChange={(v) => setInput((p) => ({ ...p, learningGoals: v }))} rows={3} />
-            <LabeledTextArea label="Special Constraints" value={input.contextNotes} onChange={(v) => setInput((p) => ({ ...p, contextNotes: v }))} rows={2} />
             <div className="grid grid-cols-2 gap-3">
-              <LabeledInput
-                label="Question Count"
-                type="number"
-                value={String(input.questionCount)}
-                onChange={(v) => setInput((p) => ({ ...p, questionCount: clampInt(Number(v), 4, 30) }))}
+              <LabeledSelect
+                label="Document Type"
+                value={input.documentKind}
+                onChange={(v) => setInput((p) => ({ ...p, documentKind: v as DocumentKind }))}
+                options={[
+                  { value: "activity-sheet", label: "Activity Sheet" },
+                  { value: "practice-set", label: "Practice Set" },
+                  { value: "investigation", label: "Investigation Task" },
+                ]}
+              />
+              <LabeledSelect
+                label="Paper Type"
+                value={paperType}
+                onChange={(v) => setPaperType(v as typeof paperType)}
+                options={[
+                  { value: "paper1", label: "Paper 1 (No Calc)" },
+                  { value: "paper2", label: "Paper 2 (GDC)" },
+                  { value: "mixed", label: "Mixed" },
+                  { value: "investigation", label: "Investigation" },
+                ]}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <LabeledSelect
+                label="Cohort"
+                value={cohortTag}
+                onChange={(v) => setCohortTag(v as typeof cohortTag)}
+                options={[
+                  { value: "26AH", label: "26AH (Year 12)" },
+                  { value: "27AH", label: "27AH (Year 11)" },
+                  { value: "custom", label: "Custom / No Tag" },
+                ]}
               />
               <LabeledSelect
                 label="Challenge Mix"
@@ -249,7 +306,16 @@ export function GenericAssignmentSandbox({
                 ]}
               />
             </div>
+            <LabeledTextArea label="Topic" value={input.topic} onChange={(v) => setInput((p) => ({ ...p, topic: v }))} rows={2} />
+            <LabeledTextArea label="Learning Goals" value={input.learningGoals} onChange={(v) => setInput((p) => ({ ...p, learningGoals: v }))} rows={3} />
+            <LabeledTextArea label="Special Constraints" value={input.contextNotes} onChange={(v) => setInput((p) => ({ ...p, contextNotes: v }))} rows={2} />
             <div className="grid grid-cols-2 gap-3">
+              <LabeledInput
+                label="Question Count"
+                type="number"
+                value={String(input.questionCount)}
+                onChange={(v) => setInput((p) => ({ ...p, questionCount: clampInt(Number(v), 4, 30) }))}
+              />
               <LabeledSelect
                 label="Tone"
                 value={input.tone}
@@ -260,14 +326,15 @@ export function GenericAssignmentSandbox({
                   { value: "discovery", label: "Discovery" },
                 ]}
               />
-              <ToggleField
-                label="Real-world context"
-                checked={input.includeRealWorldContext}
-                onChange={(c) => setInput((p) => ({ ...p, includeRealWorldContext: c }))}
-              />
             </div>
+            <ToggleField
+              label="Include real-world context"
+              checked={input.includeRealWorldContext}
+              onChange={(c) => setInput((p) => ({ ...p, includeRealWorldContext: c }))}
+            />
           </div>
 
+          {/* Formatting Requirements */}
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Formatting Requirements</h3>
             <LabeledInput label="School Header" value={formatting.schoolName} onChange={(v) => setFormatting((p) => ({ ...p, schoolName: v }))} />
@@ -315,6 +382,30 @@ export function GenericAssignmentSandbox({
                 ]}
               />
             </div>
+
+            {/* Answer Box Lines slider */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-da-muted">Answer Box Lines</span>
+                <span className="rounded-md border border-da-border/60 bg-da-bg/60 px-2 py-0.5 text-xs font-semibold tabular-nums text-da-text">
+                  {answerBoxLines} {answerBoxLines === 1 ? "line" : "lines"}
+                </span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={12}
+                step={1}
+                value={answerBoxLines}
+                onChange={(e) => setAnswerBoxLines(Number(e.target.value))}
+                className="w-full accent-amber-500"
+              />
+              <div className="flex justify-between text-[10px] text-da-muted/60">
+                <span>Short answer</span>
+                <span>Extended response</span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-3">
               <ToggleField label="Student name line" checked={formatting.includeNameLine} onChange={(c) => setFormatting((p) => ({ ...p, includeNameLine: c }))} />
               <ToggleField label="Date line" checked={formatting.includeDateLine} onChange={(c) => setFormatting((p) => ({ ...p, includeDateLine: c }))} />
@@ -323,6 +414,7 @@ export function GenericAssignmentSandbox({
             </div>
           </div>
 
+          {/* Actions */}
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
@@ -335,9 +427,20 @@ export function GenericAssignmentSandbox({
             <button
               type="button"
               onClick={handleExportPdf}
-              className="rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60"
+              disabled={isExporting}
+              className="flex items-center gap-2 rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Download PDF
+              {isExporting ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                  </svg>
+                  Generating PDF…
+                </>
+              ) : (
+                "Download PDF"
+              )}
             </button>
           </div>
 
@@ -348,21 +451,62 @@ export function GenericAssignmentSandbox({
           )}
         </div>
 
-        {/* ── Right panel: Nuanced Analysis live preview ───────────────── */}
-        <div className="rounded-xl border border-da-border bg-da-bg/30 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Live PDF Preview</h3>
-            <span className="text-xs text-da-muted">Editable before export</span>
+        {/* ── Right panel: live preview ────────────────────────────────── */}
+        <div className="space-y-3">
+          {/* Marks summary strip */}
+          <div className="flex items-center gap-3 rounded-xl border border-da-border bg-da-bg/60 px-4 py-2.5">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-da-muted">Total marks</span>
+              <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-sm font-bold tabular-nums text-amber-300">
+                [{totalMarks}]
+              </span>
+            </div>
+            <div className="h-4 w-px bg-da-border" />
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-da-muted">Questions</span>
+              <span className="rounded-md border border-da-border/60 bg-da-bg/60 px-2 py-0.5 text-sm font-semibold tabular-nums text-da-text">
+                {totalQuestions}
+              </span>
+            </div>
+            <div className="h-4 w-px bg-da-border" />
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                  paperType === "paper1"
+                    ? "border border-blue-500/40 bg-blue-500/10 text-blue-300"
+                    : paperType === "paper2"
+                    ? "border border-green-500/40 bg-green-500/10 text-green-300"
+                    : paperType === "investigation"
+                    ? "border border-purple-500/40 bg-purple-500/10 text-purple-300"
+                    : "border border-da-border/60 bg-da-bg/60 text-da-muted"
+                }`}
+              >
+                {paperTypeLabel[paperType]}
+              </span>
+            </div>
+            {cohortTag !== "custom" && (
+              <>
+                <div className="h-4 w-px bg-da-border" />
+                <span className="rounded-full border border-indigo-500/40 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-300">
+                  {cohortTag}
+                </span>
+              </>
+            )}
+            <div className="ml-auto text-[10px] text-da-muted/60">Editable before export</div>
           </div>
-          <div
-            className="overflow-auto rounded-lg border border-da-border bg-white shadow-inner"
-            style={{ minHeight: 860, padding: "32px 40px" }}
-          >
-            <NuancedAnalysisPreview
-              draft={draft}
-              formatting={formatting}
-              onDraftChange={(updated) => setDraft(updated)}
-            />
+
+          {/* Preview canvas */}
+          <div className="rounded-xl border border-da-border bg-da-bg/30 p-4">
+            <div
+              className="overflow-auto rounded-lg border border-da-border bg-white shadow-inner"
+              style={{ minHeight: 860, padding: "32px 40px" }}
+            >
+              <NuancedAnalysisPreview
+                draft={draft}
+                formatting={formatting}
+                onDraftChange={(updated) => setDraft(updated)}
+              />
+            </div>
           </div>
         </div>
       </div>
