@@ -188,7 +188,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Google Drive PDF import (URL fallback) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  // ── Google Drive PDF import (URL fallback) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   async function handleDriveImport() {
     const input = driveUrl.trim();
@@ -459,7 +459,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                 <p className="flex-1 text-[10px] font-medium text-green-300">Google Drive connected</p>
                 <button
                   type="button"
-                  onClick={void openGooglePicker}
+                  onClick={() => void openGooglePicker()}
                   disabled={isGenerating || driveImportStatus === "picking"}
                   className="flex-shrink-0 rounded border border-green-500/30 bg-green-500/10 px-2.5 py-1 text-[10px] font-semibold text-green-300 hover:bg-green-500/20 transition-colors disabled:opacity-40 whitespace-nowrap"
                 >
