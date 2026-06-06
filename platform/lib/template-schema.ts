@@ -31,8 +31,8 @@ export const FormattingRequirementsSchema = z.object({
   numberingStyle: z.enum(["numeric", "lettered"]),
   /** Optional: number of ruled writing lines per answer box (default 4) */
   answerBoxLines: z.number().int().min(1).max(20).optional(),
-  /** Optional: height of each answer line in mm (default 10mm) */
-  answerLineHeightMm: z.number().min(6).max(16).default(10),
+  /** Optional: height of each answer line in mm (default 12mm) */
+  answerLineHeightMm: z.number().min(6).max(16).default(12),
 });
 
 export type ValidatedFormattingRequirements = z.infer<typeof FormattingRequirementsSchema>;
