@@ -10,7 +10,7 @@ import {
   sanitizeDraft,
 } from "@/lib/assignments";
 
-// ── Types ──────────────────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 type PendingImage = { base64: string; mimeType: ImageMimeType; previewUrl: string; name: string };
@@ -33,7 +33,7 @@ type Props = {
   onDraftGenerated: (draft: AssignmentDraft) => void;
 };
 
-// ── Component ──────────────────────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated }: Props) {
   const [description, setDescription] = useState("");
@@ -49,7 +49,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickerLoadingRef = useRef(false);
 
-  // ── Google Drive connection state ──────────────────────────────────────────────────────────
+  // ── Google Drive connection state ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   const [driveStatus, setDriveStatus] = useState<DriveConnectionStatus>("checking");
   const [showDriveInput, setShowDriveInput] = useState(false);
@@ -88,7 +88,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     window.location.href = "/api/questions/connect-drive";
   }
 
-  // ── Google Picker (file browser) ───────────────────────────────────────────────────────────
+  // ── Google Picker (file browser) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   async function openGooglePicker() {
     // Prevent double-loading
@@ -98,6 +98,13 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setDriveImportError(null);
 
     try {
+      // Get the Google access token from our secure endpoint
+      const tokenRes = await fetch("/api/assignments/google-picker-token");
+      if (!tokenRes.ok) {
+        throw new Error("Failed to get authentication token");
+      }
+      const { token } = (await tokenRes.json()) as { token: string };
+
       // Check if Picker API is already loaded
       if (!(window as any).google?.picker) {
         // Load the Picker API script
@@ -111,17 +118,17 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
         });
       }
 
-      // Initialize and show the picker
+      // Initialize and show the picker with the OAuth token
       if (typeof window === "undefined" || !(window as any).google?.picker) {
         throw new Error("Google Picker API not available");
       }
 
       const picker = new (window as any).google.picker.PickerBuilder()
-        .enableFeature((window as any).google.picker.Feature.MULTISELECT_ENABLED)
-        .setDiacriticsMode((window as any).google.picker.DialogDiacriticsMode.OFF)
-        .setLocale("en")
         .addView((window as any).google.picker.ViewId.PDFS)
         .addView((window as any).google.picker.ViewId.DOCS)
+        .setOAuthToken(token)
+        .setDiacriticsMode((window as any).google.picker.DialogDiacriticsMode.OFF)
+        .setLocale("en")
         .setCallback((data: any) => {
           pickerLoadingRef.current = false;
           if (data.action === "cancel") {
@@ -181,7 +188,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Google Drive PDF import (URL fallback) ─────────────────────────────────────────────────
+  // ── Google Drive PDF import (URL fallback) ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   async function handleDriveImport() {
     const input = driveUrl.trim();
@@ -192,7 +199,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     await importDriveFile(input);
   }
 
-  // ── Local file handling ────────────────────────────────────────────────────────────────────
+  // ── Local file handling ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   function addImageFile(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -249,7 +256,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setPendingImages((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // ── Generate / Refine ──────────────────────────────────────────────────────────────────────
+  // ── Generate / Refine ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   async function handleGenerate() {
     const userText = description.trim();
@@ -362,7 +369,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Save ───────────────────────────────────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     if (!lastDraft || saveStatus === "saving") return;
@@ -391,7 +398,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   const hasHistory = history.length > 0;
   const isRefinement = hasHistory;
@@ -420,7 +427,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       {isExpanded && (
         <div className="space-y-3 border-t border-indigo-500/20 px-4 pb-4 pt-3">
 
-          {/* ── File upload options (Google Drive + Computer) ──────────────────────────────── */}
+          {/* ── File upload options (Google Drive + Computer) ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── */}
           <div className="space-y-2">
             {driveStatus === "checking" && (
               <div className="flex items-center gap-2 rounded-lg border border-da-border/30 bg-da-bg/30 px-3 py-2">
@@ -666,7 +673,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                 }}
                 className="rounded-lg border border-da-border bg-da-bg/40 px-3 py-2 text-xs text-da-muted hover:text-da-text transition-colors"
               >
-                ↺ New
+                ↻ New
               </button>
             )}
           </div>
