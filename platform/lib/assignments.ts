@@ -13,6 +13,8 @@ export type FormattingRequirements = {
   lineSpacing: "compact" | "normal" | "relaxed";
   pageMarginsMm: 12 | 16 | 20;
   numberingStyle: "numeric" | "lettered";
+  /** Number of ruled writing lines per answer box (default 4) */
+  answerBoxLines?: number;
 };
 
 export type AssignmentInput = {
@@ -33,51 +35,30 @@ export type AssignmentQuestion = {
   marks?: number;
   answer?: string;
   ccss?: string[];
-  // ── Nuanced Analysis fields (optional, backward-compatible) ──────────────
   /** 1 = ★ (entry, compulsory)  2 = ★★ (standard)  3 = ★★★ (extension) */
   tier?: 1 | 2 | 3;
   /** Italic hint shown below the question stem */
   hint?: string;
   /** Sub-parts (a), (b), (c) … */
   subparts?: Array<{ prompt: string; marks?: number; hint?: string; tier?: 1 | 2 | 3 }>;
+  /** Per-question answer box line count override (falls back to global answerBoxLines) */
+  answerBoxLines?: number;
 };
 
 // ── Nuanced Analysis section enrichments ─────────────────────────────────────
 
-export type SpotlightBox = {
-  title: string;
-  body: string;
-};
-
-export type PrerequisiteBox = {
-  items: string[];
-};
-
-export type TranslationTable = {
-  caption: string;
-  rows: Array<{ informal: string; formal: string }>;
-};
-
-export type GeometricReading = {
-  body: string;
-};
-
-export type CommandTermEntry = {
-  term: string;
-  definition: string;
-};
+export type SpotlightBox = { title: string; body: string };
+export type PrerequisiteBox = { items: string[] };
+export type TranslationTable = { caption: string; rows: Array<{ informal: string; formal: string }> };
+export type GeometricReading = { body: string };
+export type CommandTermEntry = { term: string; definition: string };
 
 export type AssignmentSection = {
   heading: string;
   questions: AssignmentQuestion[];
-  // ── Nuanced Analysis fields (optional, backward-compatible) ──────────────
-  /** Teal micro-box: "What you need to start this Part" */
   prerequisiteBox?: PrerequisiteBox;
-  /** Teal Command-Term Spotlight callout */
   spotlight?: SpotlightBox;
-  /** Translation table (informal ↔ formal language) */
   translationTable?: TranslationTable;
-  /** Grey "Geometric / Physical Reading" callout */
   geometricReading?: GeometricReading;
 };
 
@@ -86,7 +67,6 @@ export type AssignmentDraft = {
   subtitle: string;
   instructions: string[];
   sections: AssignmentSection[];
-  // ── Nuanced Analysis header fields (optional, backward-compatible) ────────
   course?: string;
   syllabusTopics?: string;
   prerequisites?: string;
@@ -94,14 +74,8 @@ export type AssignmentDraft = {
   commandTerms?: CommandTermEntry[];
 };
 
-export type ClaudeTextBlock = {
-  type: string;
-  text?: string;
-};
-
-export type ClaudeResponse = {
-  content?: ClaudeTextBlock[];
-};
+export type ClaudeTextBlock = { type: string; text?: string };
+export type ClaudeResponse = { content?: ClaudeTextBlock[] };
 
 export type SavedTemplate = {
   id: string;
@@ -118,6 +92,78 @@ export function clampInt(value: number, min: number, max: number): number {
   if (Number.isNaN(value)) return min;
   const rounded = Math.round(value);
   return Math.min(max, Math.max(min, rounded));
+}
+
+// ── Tier distribution ─────────────────────────────────────────────────────────
+
+export type TierDistribution = { t1: number; t2: number; t3: number; untiered: number };
+
+export function computeTierDistribution(draft: AssignmentDraft): TierDistribution {
+  const dist: TierDistribution = { t1: 0, t2: 0, t3: 0, untiered: 0 };
+  for (const section of draft.sections) {
+    for (const q of section.questions) {
+      if (q.tier === 1) dist.t1++;
+      else if (q.tier === 2) dist.t2++;
+      else if (q.tier === 3) dist.t3++;
+      else dist.untiered++;
+    }
+  }
+  return dist;
+}
+
+// ── Duplicate detection ───────────────────────────────────────────────────────
+
+/** Returns pairs of (sectionIdx, questionIdx) for near-duplicate question stems. */
+export type DuplicatePair = {
+  a: { sectionIdx: number; questionIdx: number; prompt: string };
+  b: { sectionIdx: number; questionIdx: number; prompt: string };
+  similarity: number;
+};
+
+function normalise(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 3); // strip short words like "the", "and"
+}
+
+function jaccardSimilarity(a: string[], b: string[]): number {
+  if (a.length === 0 && b.length === 0) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  let intersection = 0;
+  for (const word of setA) if (setB.has(word)) intersection++;
+  const union = new Set([...a, ...b]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
+export function detectDuplicateQuestions(
+  draft: AssignmentDraft,
+  threshold = 0.55
+): DuplicatePair[] {
+  // Build a flat list of (sectionIdx, questionIdx, normalisedTokens)
+  const items: { sectionIdx: number; questionIdx: number; prompt: string; tokens: string[] }[] = [];
+  draft.sections.forEach((section, si) => {
+    section.questions.forEach((q, qi) => {
+      items.push({ sectionIdx: si, questionIdx: qi, prompt: q.prompt, tokens: normalise(q.prompt) });
+    });
+  });
+
+  const pairs: DuplicatePair[] = [];
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const sim = jaccardSimilarity(items[i].tokens, items[j].tokens);
+      if (sim >= threshold) {
+        pairs.push({
+          a: { sectionIdx: items[i].sectionIdx, questionIdx: items[i].questionIdx, prompt: items[i].prompt },
+          b: { sectionIdx: items[j].sectionIdx, questionIdx: items[j].questionIdx, prompt: items[j].prompt },
+          similarity: Math.round(sim * 100),
+        });
+      }
+    }
+  }
+  return pairs;
 }
 
 // ── Activity Generator (Nuanced Analysis format) ──────────────────────────────
@@ -197,10 +243,7 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
   ].join("\n");
 }
 
-export function buildActivityGeneratorUserPrompt(
-  description: string,
-  gradeLevel: string,
-): string {
+export function buildActivityGeneratorUserPrompt(description: string, gradeLevel: string): string {
   return [
     `Grade level: ${gradeLevel}`,
     `Activity description: ${description}`,
@@ -263,9 +306,7 @@ export function buildUserPrompt(input: AssignmentInput, formatting: FormattingRe
 export function extractJsonObject(input: string): string {
   const first = input.indexOf("{");
   const last = input.lastIndexOf("}");
-  if (first < 0 || last <= first) {
-    throw new Error("AI response did not include a JSON object.");
-  }
+  if (first < 0 || last <= first) throw new Error("AI response did not include a JSON object.");
   return input.slice(first, last + 1);
 }
 
@@ -286,6 +327,7 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
                   ...(question.tier !== undefined ? { tier: question.tier } : {}),
                   ...(question.hint ? { hint: question.hint } : {}),
                   ...(Array.isArray(question.subparts) ? { subparts: question.subparts } : {}),
+                  ...(question.answerBoxLines !== undefined ? { answerBoxLines: question.answerBoxLines } : {}),
                 }))
                 .filter((question) => question.prompt.length > 0)
             : [],
@@ -297,9 +339,7 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
         .filter((section) => section.questions.length > 0)
     : [];
 
-  if (sections.length === 0) {
-    throw new Error("AI response did not include any usable questions.");
-  }
+  if (sections.length === 0) throw new Error("AI response did not include any usable questions.");
 
   const instructions = Array.isArray(draft.instructions)
     ? draft.instructions.filter((line) => typeof line === "string" && line.trim().length > 0)
@@ -346,55 +386,29 @@ export type AssignmentPdfRequest = {
   instructions: string[];
   sections: Array<{
     heading: string;
-    questions: Array<{
-      prompt: string;
-      marks?: number;
-      answer?: string;
-    }>;
+    questions: Array<{ prompt: string; marks?: number; answer?: string; answerBoxLines?: number }>;
   }>;
   formatting: FormattingRequirements;
 };
 
 export function generateAssignmentHtml(request: AssignmentPdfRequest): string {
   const { title, subtitle, instructions, sections, formatting } = request;
-
-  const instructionsHtml = instructions
-    .map((line, index) => `<li>${escapeHtml(`${index + 1}. ${line}`)}</li>`)
-    .join("");
-
+  const instructionsHtml = instructions.map((line, index) => `<li>${escapeHtml(`${index + 1}. ${line}`)}</li>`).join("");
   const sectionsHtml = sections
     .map((section, sectionIndex) => {
       const questionRows = section.questions
         .map((question, questionIndex) => {
           const label = formatQuestionLabel(sectionIndex, questionIndex, formatting.numberingStyle);
-          const marks = formatting.includeMarksColumn
-            ? `<span class="marks">[${question.marks ?? 0}]</span>`
-            : "";
-          return `<div class="q-row"><span class="q-label">${escapeHtml(label)}</span><span class="q-text">${escapeHtml(
-            question.prompt
-          )}</span>${marks}</div>`;
+          const marks = formatting.includeMarksColumn ? `<span class="marks">[${question.marks ?? 0}]</span>` : "";
+          return `<div class="q-row"><span class="q-label">${escapeHtml(label)}</span><span class="q-text">${escapeHtml(question.prompt)}</span>${marks}</div>`;
         })
         .join("");
-
       return `<section><h3>${escapeHtml(section.heading)}</h3>${questionRows}</section>`;
     })
     .join("");
-
   const answersHtml = formatting.includeAnswerKey
-    ? `<section class="answers"><h3>Answer Key</h3>${sections
-        .map((section, sectionIndex) =>
-          section.questions
-            .map((question, questionIndex) => {
-              const label = formatQuestionLabel(sectionIndex, questionIndex, formatting.numberingStyle);
-              return `<div class="answer-row"><span class="q-label">${escapeHtml(label)}</span><span>${escapeHtml(
-                question.answer ?? ""
-              )}</span></div>`;
-            })
-            .join("")
-        )
-        .join("")}</section>`
+    ? `<section class="answers"><h3>Answer Key</h3>${sections.map((section, sectionIndex) => section.questions.map((question, questionIndex) => { const label = formatQuestionLabel(sectionIndex, questionIndex, formatting.numberingStyle); return `<div class="answer-row"><span class="q-label">${escapeHtml(label)}</span><span>${escapeHtml(question.answer ?? "")}</span></div>`; }).join("")).join("")}</section>`
     : "";
-
   return `<!doctype html>
 <html>
 <head>
@@ -403,9 +417,7 @@ export function generateAssignmentHtml(request: AssignmentPdfRequest): string {
   <style>
     @page { size: A4; margin: ${formatting.pageMarginsMm}mm; }
     * { margin: 0; padding: 0; }
-    body { font-family: Georgia, "Times New Roman", serif; color: #111; font-size: ${formatting.fontSize}pt; line-height: ${
-      formatting.lineSpacing === "compact" ? "1.3" : formatting.lineSpacing === "relaxed" ? "1.7" : "1.5"
-    }; }
+    body { font-family: Georgia, "Times New Roman", serif; color: #111; font-size: ${formatting.fontSize}pt; line-height: ${formatting.lineSpacing === "compact" ? "1.3" : formatting.lineSpacing === "relaxed" ? "1.7" : "1.5"}; }
     h1, h2, h3 { margin: 0; margin-top: 0.5em; }
     h3 { margin-top: 1em; }
     .doc-head { border-bottom: 1px solid #cfcfcf; padding-bottom: 8px; margin-bottom: 14px; }
@@ -416,11 +428,14 @@ export function generateAssignmentHtml(request: AssignmentPdfRequest): string {
     .meta-line { min-width: 200px; }
     ul { margin: 8px 0 12px 18px; padding: 0; }
     li { margin: 2px 0; }
-    section { margin-top: 12px; page-break-inside: avoid; }
+    section { margin-top: 12px; }
     .q-row { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; margin: 6px 0; align-items: start; }
+    .question-block { break-inside: avoid; page-break-inside: avoid; margin: 10px 0 4px 0; padding-bottom: 4px; }
     .q-label { font-weight: 600; min-width: 30px; }
     .q-text { white-space: pre-wrap; word-wrap: break-word; }
     .marks { font-size: 9pt; color: #555; text-align: right; }
+    .answer-box { margin: 6px 0 10px 0; break-inside: avoid; page-break-inside: avoid; }
+    .answer-line { border-bottom: 0.5pt solid #bbb; height: 8mm; min-height: 8mm; }
     .answers { border-top: 1px solid #cfcfcf; margin-top: 18px; padding-top: 10px; }
     .answer-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 4px 0; }
   </style>
@@ -436,7 +451,6 @@ export function generateAssignmentHtml(request: AssignmentPdfRequest): string {
       ${formatting.teacherName ? `<div class="meta-line">Teacher: ${escapeHtml(formatting.teacherName)}</div>` : ""}
     </div>
   </div>
-
   <h3>Instructions</h3>
   <ul>${instructionsHtml}</ul>
   ${sectionsHtml}
