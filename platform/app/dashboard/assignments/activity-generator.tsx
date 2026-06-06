@@ -10,7 +10,7 @@ import {
   sanitizeDraft,
 } from "@/lib/assignments";
 
-// ── Types ───────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────────────────
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 type PendingImage = { base64: string; mimeType: ImageMimeType; previewUrl: string; name: string };
@@ -33,7 +33,7 @@ type Props = {
   onDraftGenerated: (draft: AssignmentDraft) => void;
 };
 
-// ── Component ──────────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────────────────────
 
 export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated }: Props) {
   const [description, setDescription] = useState("");
@@ -47,8 +47,9 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const [pendingPdfs, setPendingPdfs] = useState<PendingPdf[]>([]);
   const historyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickerLoadingRef = useRef(false);
 
-  // ── Google Drive connection state ───────────────────────────────────────
+  // ── Google Drive connection state ──────────────────────────────────────────────────────────
 
   const [driveStatus, setDriveStatus] = useState<DriveConnectionStatus>("checking");
   const [showDriveInput, setShowDriveInput] = useState(false);
@@ -87,37 +88,63 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     window.location.href = "/api/questions/connect-drive";
   }
 
-  // ── Google Picker (file browser) ────────────────────────────────────────────────
+  // ── Google Picker (file browser) ───────────────────────────────────────────────────────────
 
-  function openGooglePicker() {
-    if (typeof window === "undefined" || !(window as any).google) {
-      setDriveImportError("Google Picker library not loaded");
-      return;
-    }
-
-    const picker = new (window as any).google.picker.PickerBuilder()
-      .enableFeature((window as any).google.picker.Feature.MULTISELECT_ENABLED)
-      .setDiacriticsMode((window as any).google.picker.DialogDiacriticsMode.OFF)
-      .setLocale("en")
-      .addView((window as any).google.picker.ViewId.PDFS)
-      .addView((window as any).google.picker.ViewId.DOCS)
-      .setCallback((data: any) => {
-        if (data.action === "cancel") {
-          setDriveImportStatus("idle");
-          return;
-        }
-        if (data.action === "picked" && data.docs) {
-          setDriveImportStatus("fetching");
-          setDriveImportError(null);
-          // Import the first selected file
-          const doc = data.docs[0];
-          void importDriveFile(doc.id);
-        }
-      })
-      .build();
-
+  async function openGooglePicker() {
+    // Prevent double-loading
+    if (pickerLoadingRef.current) return;
+    pickerLoadingRef.current = true;
     setDriveImportStatus("picking");
-    picker.setVisible(true);
+    setDriveImportError(null);
+
+    try {
+      // Check if Picker API is already loaded
+      if (!(window as any).google?.picker) {
+        // Load the Picker API script
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://apis.google.com/js/picker-api.js";
+          script.async = true;
+          script.onerror = () => reject(new Error("Failed to load Google Picker API"));
+          script.onload = () => resolve();
+          document.head.appendChild(script);
+        });
+      }
+
+      // Initialize and show the picker
+      if (typeof window === "undefined" || !(window as any).google?.picker) {
+        throw new Error("Google Picker API not available");
+      }
+
+      const picker = new (window as any).google.picker.PickerBuilder()
+        .enableFeature((window as any).google.picker.Feature.MULTISELECT_ENABLED)
+        .setDiacriticsMode((window as any).google.picker.DialogDiacriticsMode.OFF)
+        .setLocale("en")
+        .addView((window as any).google.picker.ViewId.PDFS)
+        .addView((window as any).google.picker.ViewId.DOCS)
+        .setCallback((data: any) => {
+          pickerLoadingRef.current = false;
+          if (data.action === "cancel") {
+            setDriveImportStatus("idle");
+            return;
+          }
+          if (data.action === "picked" && data.docs && data.docs.length > 0) {
+            setDriveImportStatus("fetching");
+            setDriveImportError(null);
+            // Import the first selected file
+            const doc = data.docs[0];
+            void importDriveFile(doc.id);
+          }
+        })
+        .build();
+
+      picker.setVisible(true);
+    } catch (err) {
+      pickerLoadingRef.current = false;
+      const msg = err instanceof Error ? err.message : "Failed to open file picker";
+      setDriveImportError(msg);
+      setDriveImportStatus("idle");
+    }
   }
 
   async function importDriveFile(fileId: string) {
@@ -154,7 +181,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Google Drive PDF import (URL fallback) ──────────────────────────────────
+  // ── Google Drive PDF import (URL fallback) ─────────────────────────────────────────────────
 
   async function handleDriveImport() {
     const input = driveUrl.trim();
@@ -165,7 +192,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     await importDriveFile(input);
   }
 
-  // ── Local file handling ─────────────────────────────────────────────────────
+  // ── Local file handling ────────────────────────────────────────────────────────────────────
 
   function addImageFile(file: File) {
     if (!file.type.startsWith("image/")) return;
@@ -222,7 +249,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setPendingImages((prev) => prev.filter((_, i) => i !== idx));
   }
 
-  // ── Generate / Refine ────────────────────────────────────────────────────────
+  // ── Generate / Refine ──────────────────────────────────────────────────────────────────────
 
   async function handleGenerate() {
     const userText = description.trim();
@@ -335,7 +362,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     if (!lastDraft || saveStatus === "saving") return;
@@ -364,7 +391,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────────────────────
 
   const hasHistory = history.length > 0;
   const isRefinement = hasHistory;
@@ -393,7 +420,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       {isExpanded && (
         <div className="space-y-3 border-t border-indigo-500/20 px-4 pb-4 pt-3">
 
-          {/* ── File upload options (Google Drive + Computer) ─────────────────────── */}
+          {/* ── File upload options (Google Drive + Computer) ──────────────────────────────── */}
           <div className="space-y-2">
             {driveStatus === "checking" && (
               <div className="flex items-center gap-2 rounded-lg border border-da-border/30 bg-da-bg/30 px-3 py-2">
@@ -425,15 +452,8 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                 <p className="flex-1 text-[10px] font-medium text-green-300">Google Drive connected</p>
                 <button
                   type="button"
-                  onClick={() => {
-                    // Load Google Picker API
-                    const script = document.createElement("script");
-                    script.src = "https://apis.google.com/js/picker-api.js";
-                    script.async = true;
-                    script.onload = openGooglePicker;
-                    document.head.appendChild(script);
-                  }}
-                  disabled={isGenerating}
+                  onClick={void openGooglePicker}
+                  disabled={isGenerating || driveImportStatus === "picking"}
                   className="flex-shrink-0 rounded border border-green-500/30 bg-green-500/10 px-2.5 py-1 text-[10px] font-semibold text-green-300 hover:bg-green-500/20 transition-colors disabled:opacity-40 whitespace-nowrap"
                 >
                   {driveImportStatus === "picking" ? "Opening picker…" : "📂 Browse Drive"}
