@@ -36,12 +36,10 @@ export function renderMath(input: string): string {
 
 // ── Answer box ────────────────────────────────────────────────────────────────
 
-const ANSWER_LINE_HEIGHT_MM = 8;
-
-function renderAnswerBox(lines: number): string {
+function renderAnswerBox(lines: number, lineHeightMm: number): string {
   const lineHtml = Array.from(
     { length: lines },
-    () => `<div style="border-bottom:0.5pt solid #bbb;height:${ANSWER_LINE_HEIGHT_MM}mm;min-height:${ANSWER_LINE_HEIGHT_MM}mm;"></div>`
+    () => `<div style="border-bottom:0.5pt solid #bbb;height:${lineHeightMm}mm;min-height:${lineHeightMm}mm;"></div>`
   ).join("");
   return `<div class="answer-box">${lineHtml}</div>`;
 }
@@ -93,11 +91,11 @@ function renderQuestion(
               <span class="q-text">${renderMath(escapeHtml(sp.prompt))}</span>
               ${spMarks}
             </div>
-            ${renderAnswerBox(Math.max(2, Math.ceil(answerLines / 2)))}`;
+            ${renderAnswerBox(Math.max(2, Math.ceil(answerLines / 2)), formatting.answerLineHeightMm)}`;
         }).join("")
       : "";
 
-  const mainAnswerBox = !subpartsHtml ? renderAnswerBox(answerLines) : "";
+  const mainAnswerBox = !subpartsHtml ? renderAnswerBox(answerLines, formatting.answerLineHeightMm) : "";
 
   return `
     <div class="question-block">
@@ -328,7 +326,7 @@ export const DocumentOrchestratorService = {
     const validation = validatePdfRequest(raw);
     if (!validation.success) return { success: false, error: validation.error };
     const validated = validation.data;
-    const answerLines = (validated.formatting as { answerBoxLines?: number }).answerBoxLines ?? 4;
+    const answerLines = validated.formatting.answerBoxLines ?? 4;
     try {
       const html = buildHtml(validated, answerLines);
       return { success: true, html };
