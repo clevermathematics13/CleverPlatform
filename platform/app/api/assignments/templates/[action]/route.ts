@@ -31,14 +31,20 @@ export async function GET(req: Request, context: { params: { action: string } })
 
     if (action === "list") {
       const { searchParams } = new URL(req.url);
-      const gradeLevel = searchParams.get("grade") ?? "Grade 12";
+      const gradeParam = searchParams.get("grade");
 
-      const { data, error } = await supabase
+      let query = supabase
         .from("assignment_templates")
         .select("*")
-        .eq("user_id", profile.id)
-        .eq("grade_level", gradeLevel)
-        .order("created_at", { ascending: false });
+        .eq("user_id", profile.id);
+
+      // If grade is "all" or not provided, fetch from all grades
+      // Otherwise filter to specific grade
+      if (gradeParam && gradeParam !== "all") {
+        query = query.eq("grade_level", gradeParam);
+      }
+
+      const { data, error } = await query.order("created_at", { ascending: false });
 
       if (error) throw error;
 
