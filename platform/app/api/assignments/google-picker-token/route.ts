@@ -1,10 +1,12 @@
 /**
  * GET /api/assignments/google-picker-token
  *
- * Returns the Google access token for initializing the Google Picker.
- * Only returns token if user is authenticated and has Drive connected.
+ * Returns the Google access token AND API key for initializing the Google Picker.
+ * The Picker requires both:
+ *   - OAuth token (user auth, from Drive cookie)
+ *   - API key / developer key (project auth, from env)
  *
- * Returns: { token: string } or { error: string }
+ * Returns: { token: string; apiKey: string } or { error: string }
  */
 
 import { NextResponse } from "next/server";
@@ -22,5 +24,13 @@ export async function GET() {
     return NextResponse.json({ error: "Google Drive not connected" }, { status: 401 });
   }
 
-  return NextResponse.json({ token });
+  const apiKey = process.env.GOOGLE_PICKER_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Google Picker API key not configured (GOOGLE_PICKER_API_KEY)" },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ token, apiKey });
 }
