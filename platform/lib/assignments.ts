@@ -15,6 +15,8 @@ export type FormattingRequirements = {
   numberingStyle: "numeric" | "lettered";
   /** Number of ruled writing lines per answer box (default 4) */
   answerBoxLines?: number;
+  /** Answer space style: bordered boxes, bare lines, or no space (default: "boxes") */
+  answerStyle?: "boxes" | "lines" | "none";
 };
 
 export type AssignmentInput = {
@@ -125,7 +127,7 @@ function normalise(text: string): string[] {
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((w) => w.length > 3); // strip short words like "the", "and"
+    .filter((w) => w.length > 3);
 }
 
 function jaccardSimilarity(a: string[], b: string[]): number {
@@ -142,7 +144,6 @@ export function detectDuplicateQuestions(
   draft: AssignmentDraft,
   threshold = 0.55
 ): DuplicatePair[] {
-  // Build a flat list of (sectionIdx, questionIdx, normalisedTokens)
   const items: { sectionIdx: number; questionIdx: number; prompt: string; tokens: string[] }[] = [];
   draft.sections.forEach((section, si) => {
     section.questions.forEach((q, qi) => {
@@ -182,41 +183,41 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
     "",
     "JSON Schema:",
     "{",
-    "  \"title\": \"string — packet title (e.g. 'Polynomial Analysis')\",",
-    "  \"subtitle\": \"string — e.g. 'Mastery Packet: IBDP Mathematics AA HL'\",",
-    "  \"course\": \"string — e.g. 'IBDP Mathematics AA HL'\",",
-    "  \"syllabusTopics\": \"string — e.g. 'Topic 2: Functions & Topic 5: Calculus'\",",
-    "  \"prerequisites\": \"string — names of prior activities students need\",",
-    "  \"materials\": \"string — GDC, software, whether Paper 1 (no calc) or mixed\",",
-    "  \"instructions\": [\"string\", ...],",
-    "  \"commandTerms\": [",
-    "    { \"term\": \"Write down\", \"definition\": \"A short answer with no working required.\" },",
-    "    { \"term\": \"Sketch\", \"definition\": \"Clear diagram with relative scale; label exact coordinates of intercepts, extrema, and special points.\" }",
+    '  "title": "string — packet title (e.g. \'Polynomial Analysis\')",',
+    '  "subtitle": "string — e.g. \'Mastery Packet: IBDP Mathematics AA HL\'",',
+    '  "course": "string — e.g. \'IBDP Mathematics AA HL\'",',
+    '  "syllabusTopics": "string — e.g. \'Topic 2: Functions & Topic 5: Calculus\'",',
+    '  "prerequisites": "string — names of prior activities students need",',
+    '  "materials": "string — GDC, software, whether Paper 1 (no calc) or mixed",',
+    '  "instructions": ["string", ...],',
+    '  "commandTerms": [',
+    '    { "term": "Write down", "definition": "A short answer with no working required." },',
+    '    { "term": "Sketch", "definition": "Clear diagram with relative scale; label exact coordinates of intercepts, extrema, and special points." }',
     "  ],",
-    "  \"sections\": [",
+    '  "sections": [',
     "    {",
-    "      \"heading\": \"Part 0 — Activating Prior Knowledge\",",
-    "      \"prerequisiteBox\": { \"items\": [\"bullet 1\", \"bullet 2\"] },",
-    "      \"spotlight\": { \"title\": \"Sketch vs. Draw\", \"body\": \"Draw requires millimeter precision on grid paper. Sketch does not require grid paper, but the axes MUST show relative scale.\" },",
-    "      \"questions\": [",
+    '      "heading": "Part 0 — Activating Prior Knowledge",',
+    '      "prerequisiteBox": { "items": ["bullet 1", "bullet 2"] },',
+    '      "spotlight": { "title": "Sketch vs. Draw", "body": "Draw requires millimeter precision on grid paper. Sketch does not require grid paper, but the axes MUST show relative scale." },',
+    '      "questions": [',
     "        {",
-    "          \"prompt\": \"Full question text. Bold command terms: **Write down** the...\",",
-    "          \"marks\": 2,",
-    "          \"tier\": 1,",
-    "          \"hint\": \"Optional italic hint.\",",
-    "          \"subparts\": [",
-    "            { \"prompt\": \"(a) first sub-part\", \"marks\": 1 },",
-    "            { \"prompt\": \"(b) second sub-part\", \"marks\": 1 }",
+    '          "prompt": "Full question text. Bold command terms: **Write down** the...",',
+    '          "marks": 2,',
+    '          "tier": 1,',
+    '          "hint": "Optional italic hint.",',
+    '          "subparts": [',
+    '            { "prompt": "(a) first sub-part", "marks": 1 },',
+    '            { "prompt": "(b) second sub-part", "marks": 1 }',
     "          ]",
     "        }",
     "      ],",
-    "      \"translationTable\": {",
-    "        \"caption\": \"The Translation Table: Polynomial Roots\",",
-    "        \"rows\": [",
-    "          { \"informal\": \"The graph bounces off the axis.\", \"formal\": \"The polynomial has a root with even multiplicity.\" }",
+    '      "translationTable": {',
+    '        "caption": "The Translation Table: Polynomial Roots",',
+    '        "rows": [',
+    '          { "informal": "The graph bounces off the axis.", "formal": "The polynomial has a root with even multiplicity." }',
     "        ]",
     "      },",
-    "      \"geometricReading\": { \"body\": \"Multiplying by a complex number is a rotation combined with a scaling.\" }",
+    '      "geometricReading": { "body": "Multiplying by a complex number is a rotation combined with a scaling." }',
     "    }",
     "  ]",
     "}",
@@ -400,7 +401,16 @@ export function generateAssignmentHtml(request: AssignmentPdfRequest): string {
         .map((question, questionIndex) => {
           const label = formatQuestionLabel(sectionIndex, questionIndex, formatting.numberingStyle);
           const marks = formatting.includeMarksColumn ? `<span class="marks">[${question.marks ?? 0}]</span>` : "";
-          return `<div class="q-row"><span class="q-label">${escapeHtml(label)}</span><span class="q-text">${escapeHtml(question.prompt)}</span>${marks}</div>`;
+          const answerStyle = formatting.answerStyle ?? "boxes";
+          const lines = question.answerBoxLines ?? formatting.answerBoxLines ?? 4;
+          let answerHtml = "";
+          if (answerStyle !== "none") {
+            const ruledLines = Array.from({ length: lines }, () => '<div class="answer-line"></div>').join("");
+            answerHtml = answerStyle === "boxes"
+              ? `<div class="answer-box-bordered">${ruledLines}</div>`
+              : `<div class="answer-bare-lines">${ruledLines}</div>`;
+          }
+          return `<div class="question-block"><div class="q-row"><span class="q-label">${escapeHtml(label)}</span><span class="q-text">${escapeHtml(question.prompt)}</span>${marks}</div>${answerHtml}</div>`;
         })
         .join("");
       return `<section><h3>${escapeHtml(section.heading)}</h3>${questionRows}</section>`;
@@ -434,8 +444,11 @@ export function generateAssignmentHtml(request: AssignmentPdfRequest): string {
     .q-label { font-weight: 600; min-width: 30px; }
     .q-text { white-space: pre-wrap; word-wrap: break-word; }
     .marks { font-size: 9pt; color: #555; text-align: right; }
-    .answer-box { margin: 6px 0 10px 0; break-inside: avoid; page-break-inside: avoid; }
-    .answer-line { border-bottom: 0.5pt solid #bbb; height: 8mm; min-height: 8mm; }
+    .answer-box-bordered { margin: 6px 0 14px 38px; border: 1pt solid #999; border-radius: 2px; break-inside: avoid; page-break-inside: avoid; }
+    .answer-box-bordered .answer-line { border-bottom: 0.5pt solid #ddd; height: 8mm; min-height: 8mm; }
+    .answer-box-bordered .answer-line:last-child { border-bottom: none; }
+    .answer-bare-lines { margin: 4px 0 12px 38px; }
+    .answer-bare-lines .answer-line { border-bottom: 0.5pt solid #bbb; height: 8mm; min-height: 8mm; }
     .answers { border-top: 1px solid #cfcfcf; margin-top: 18px; padding-top: 10px; }
     .answer-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 4px 0; }
   </style>
