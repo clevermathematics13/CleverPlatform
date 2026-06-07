@@ -129,7 +129,7 @@ function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
   if (!terms.length) return null;
   return (
     <div className="my-4 border-y-2 border-gray-400">
-      <div className="bg-teal-600 px-3 py-1"><span className="text-xs font-bold text-white uppercase tracking-wide">Command Terms (tear-off strip)</span></div>
+      <div className="bg-teal-600 px-3 py-1"><span className="text-xs font-bold text-white uppercase tracking-wide">Command Terms</span></div>
       <div className="bg-teal-50 px-3 py-2">
         <table className="w-full text-[9.5pt]">
           <tbody>
