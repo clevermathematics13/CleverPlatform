@@ -5,6 +5,7 @@
  * ──────────────────────
  * Live editable preview of an AssignmentDraft with:
  *  - Per-question answer box line count override (± spinner)
+ *  - Answer style: bordered boxes, bare lines, or no space
  *  - Inline duplicate-question warnings
  *  - Per-section Regenerate button
  */
@@ -156,7 +157,7 @@ function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
 function QuestionRow({
   q, number, indent = false,
   onChangePrompt, onChangeMarks, onChangeAnswerLines,
-  includeMarksColumn, globalAnswerLines, isDuplicate,
+  includeMarksColumn, globalAnswerLines, isDuplicate, answerStyle = "boxes",
 }: {
   q: NuancedQuestion; number: string; indent?: boolean;
   onChangePrompt?: (val: string) => void;
@@ -165,6 +166,7 @@ function QuestionRow({
   includeMarksColumn: boolean;
   globalAnswerLines: number;
   isDuplicate?: boolean;
+  answerStyle?: "boxes" | "lines" | "none";
 }) {
   const lines = q.answerBoxLines ?? globalAnswerLines;
   const isOverridden = q.answerBoxLines !== undefined;
@@ -200,6 +202,7 @@ function QuestionRow({
         )}
       </div>
       {/* Answer box lines per-question control */}
+      {answerStyle !== "none" && (
       <div className="mt-1 ml-10 flex items-center gap-2">
         <span className="text-[8.5pt] text-gray-400">Lines:</span>
         <button
@@ -220,7 +223,7 @@ function QuestionRow({
         {isOverridden && (
           <button
             type="button"
-            onClick={() => onChangeAnswerLines?.(-1)} // -1 = sentinel to clear override
+            onClick={() => onChangeAnswerLines?.(-1)}
             className="text-[8pt] text-gray-400 hover:text-red-400"
             aria-label="Reset to global"
           >reset</button>
@@ -233,12 +236,22 @@ function QuestionRow({
           {lines > 8 && <span className="text-[8pt] text-gray-400">+{lines - 8}</span>}
         </div>
       </div>
-      {/* Ruled writing lines */}
-      <div className="mt-1 ml-10 space-y-0">
-        {Array.from({ length: lines }, (_, i) => (
-          <div key={i} className="border-b border-gray-200" style={{ height: "20px" }} />
-        ))}
-      </div>
+      )}
+      {/* Answer space — boxes, lines, or none */}
+      {answerStyle === "boxes" && (
+        <div className="mt-2 ml-10 border border-gray-400 rounded-sm overflow-hidden">
+          {Array.from({ length: lines }, (_, i) => (
+            <div key={i} className={`border-gray-200 ${i < lines - 1 ? "border-b" : ""}`} style={{ height: "22px" }} />
+          ))}
+        </div>
+      )}
+      {answerStyle === "lines" && (
+        <div className="mt-1 ml-10 space-y-0">
+          {Array.from({ length: lines }, (_, i) => (
+            <div key={i} className="border-b border-gray-200" style={{ height: "20px" }} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -359,7 +372,6 @@ export function NuancedAnalysisPreview({ draft, formatting, onDraftChange, globa
 
   function handleAnswerLinesChange(si: number, qi: number, val: number) {
     if (val === -1) {
-      // Clear override
       const updated = [...draft.sections];
       const qs = [...updated[si].questions];
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -464,6 +476,7 @@ export function NuancedAnalysisPreview({ draft, formatting, onDraftChange, globa
                       includeMarksColumn={formatting.includeMarksColumn ?? true}
                       globalAnswerLines={globalAnswerLines}
                       isDuplicate={isDuplicate}
+                      answerStyle={formatting.answerStyle ?? "boxes"}
                       onChangePrompt={(val) => updateQuestionField(si, qi, { prompt: val })}
                       onChangeMarks={(val) => updateQuestionField(si, qi, { marks: val })}
                       onChangeAnswerLines={(val) => handleAnswerLinesChange(si, qi, val)}
@@ -476,6 +489,7 @@ export function NuancedAnalysisPreview({ draft, formatting, onDraftChange, globa
                             number={`${globalQNum}(${String.fromCharCode(97 + subi)})`}
                             indent includeMarksColumn={formatting.includeMarksColumn ?? true}
                             globalAnswerLines={Math.max(2, Math.ceil((nq.answerBoxLines ?? globalAnswerLines) / 2))}
+                            answerStyle={formatting.answerStyle ?? "boxes"}
                           />
                         ))}
                       </div>
