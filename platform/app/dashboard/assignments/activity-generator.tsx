@@ -83,80 +83,67 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   }, []);
 
   function handleConnectDrive() {
-    // Opens the OAuth flow in the same tab; on return the focus listener
-    // above will re-check and flip the status to connected.
     window.location.href = "/api/questions/connect-drive";
   }
 
   // ── Google Picker (file browser) ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
   async function openGooglePicker() {
-    // Prevent double-loading
     if (pickerLoadingRef.current) return;
     pickerLoadingRef.current = true;
     setDriveImportStatus("picking");
     setDriveImportError(null);
 
     try {
-      // Get the Google access token from our secure endpoint
       const tokenRes = await fetch("/api/assignments/google-picker-token");
-      if (!tokenRes.ok) {
-        throw new Error("Failed to get authentication token");
-      }
+      if (!tokenRes.ok) throw new Error("Failed to get authentication token");
       const { token } = (await tokenRes.json()) as { token: string };
 
-      // Load the standard gapi loader if not already present.
-      // NOTE: "picker-api.js" is not a real Google URL. The correct approach is
-      // to load api.js (the gapi loader) then call gapi.load("picker", ...).
+      // Step 1: load the gapi loader script if not present
       if (!(window as any).gapi) {
         await new Promise<void>((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://apis.google.com/js/api.js";
-          script.async = true;
-          script.onerror = () => reject(new Error("Failed to load Google API"));
-          script.onload = () => resolve();
-          document.head.appendChild(script);
+          const s = document.createElement("script");
+          s.src = "https://apis.google.com/js/api.js";
+          s.async = true;
+          s.onerror = () => reject(new Error("Failed to load Google API script"));
+          s.onload = () => resolve();
+          document.head.appendChild(s);
         });
       }
 
-      // Load the picker module via gapi if not already present
-      if (!(window as any).gapi?.picker) {
+      // Step 2: call gapi.load("picker") — this populates window.google.picker,
+      // NOT window.gapi.picker. Always check window.google.picker after loading.
+      if (!(window as any).google?.picker) {
         await new Promise<void>((resolve, reject) => {
           (window as any).gapi.load("picker", {
             callback: () => resolve(),
-            onerror: () => reject(new Error("Failed to load Picker module")),
+            onerror: () => reject(new Error("gapi.load('picker') failed")),
             timeout: 10000,
-            ontimeout: () => reject(new Error("Picker load timed out")),
+            ontimeout: () => reject(new Error("gapi.load('picker') timed out")),
           });
         });
       }
 
+      // Step 3: use window.google.picker (the correct namespace after gapi.load)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const gapi = (window as any).gapi;
-      if (!gapi?.picker) {
-        throw new Error("Google Picker API not available after loading");
-      }
+      const GP = (window as any).google?.picker;
+      if (!GP) throw new Error("Google Picker API unavailable");
 
-      // ViewId.PDFS does not exist — use DocsView with a MIME type filter instead
-      const docsView = new gapi.picker.DocsView(gapi.picker.ViewId.DOCS);
-      docsView.setMimeTypes("application/pdf,image/jpeg,image/png,image/gif,image/webp");
+      // DocsView() with no ViewId shows all Drive files; setMimeTypes filters to PDFs + images
+      const view = new GP.DocsView();
+      view.setMimeTypes("application/pdf,image/jpeg,image/png,image/gif,image/webp");
 
-      const picker = new gapi.picker.PickerBuilder()
-        .addView(docsView)
+      const picker = new GP.PickerBuilder()
+        .addView(view)
         .setOAuthToken(token)
         .setLocale("en")
         .setCallback((data: any) => {
           pickerLoadingRef.current = false;
-          if (data.action === "cancel") {
-            setDriveImportStatus("idle");
-            return;
-          }
-          if (data.action === "picked" && data.docs && data.docs.length > 0) {
+          if (data.action === "cancel") { setDriveImportStatus("idle"); return; }
+          if (data.action === "picked" && data.docs?.length > 0) {
             setDriveImportStatus("fetching");
             setDriveImportError(null);
-            // Import the first selected file
-            const doc = data.docs[0];
-            void importDriveFile(doc.id);
+            void importDriveFile(data.docs[0].id);
           }
         })
         .build();
@@ -164,8 +151,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       picker.setVisible(true);
     } catch (err) {
       pickerLoadingRef.current = false;
-      const msg = err instanceof Error ? err.message : "Failed to open file picker";
-      setDriveImportError(msg);
+      setDriveImportError(err instanceof Error ? err.message : "Failed to open file picker");
       setDriveImportStatus("idle");
     }
   }
@@ -209,7 +195,6 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   async function handleDriveImport() {
     const input = driveUrl.trim();
     if (!input) return;
-
     setDriveImportStatus("fetching");
     setDriveImportError(null);
     await importDriveFile(input);
@@ -443,7 +428,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       {isExpanded && (
         <div className="space-y-3 border-t border-indigo-500/20 px-4 pb-4 pt-3">
 
-          {/* ── File upload options (Google Drive + Computer) ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────── */}
+          {/* ── File upload options ────────────────────────────────────────────────────────── */}
           <div className="space-y-2">
             {driveStatus === "checking" && (
               <div className="flex items-center gap-2 rounded-lg border border-da-border/30 bg-da-bg/30 px-3 py-2">
@@ -497,7 +482,6 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               </div>
             )}
 
-            {/* Drive URL input panel */}
             {driveStatus === "connected" && showDriveInput && (
               <div className="rounded-md border border-indigo-500/30 bg-da-bg/50 p-2.5 space-y-1.5">
                 <p className="text-[10px] text-da-muted leading-relaxed">
@@ -507,11 +491,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                   <input
                     type="text"
                     value={driveUrl}
-                    onChange={(e) => {
-                      setDriveUrl(e.target.value);
-                      setDriveImportError(null);
-                      setDriveImportStatus("idle");
-                    }}
+                    onChange={(e) => { setDriveUrl(e.target.value); setDriveImportError(null); setDriveImportStatus("idle"); }}
                     onKeyDown={handleDriveKeyDown}
                     placeholder="https://drive.google.com/file/d/…"
                     disabled={driveImportStatus === "fetching"}
@@ -533,7 +513,6 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               </div>
             )}
 
-            {/* Drive picker error (shown below the connected bar) */}
             {driveStatus === "connected" && !showDriveInput && driveImportError && (
               <p className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[10px] text-red-400 leading-relaxed">
                 {driveImportError}
@@ -550,17 +529,9 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
           >
             💻 Upload from Computer
           </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,application/pdf"
-            multiple
-            className="hidden"
-            onChange={handleFileChange}
-          />
+          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileChange} />
           <p className="text-[10px] text-da-muted/60 text-center">Images or PDFs up to 3 MB</p>
 
-          {/* Description */}
           {!hasHistory && (
             <p className="text-xs text-da-muted leading-relaxed">
               Describe any mathematics activity in plain English. Claude generates a complete,
@@ -569,21 +540,15 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
             </p>
           )}
 
-          {/* Conversation history */}
           {hasHistory && (
-            <div
-              ref={historyRef}
-              className="max-h-36 overflow-y-auto rounded-lg border border-indigo-500/20 bg-da-bg/40 p-2.5 space-y-1.5"
-            >
+            <div ref={historyRef} className="max-h-36 overflow-y-auto rounded-lg border border-indigo-500/20 bg-da-bg/40 p-2.5 space-y-1.5">
               {history.map((msg, i) =>
                 msg.role === "user" ? (
                   <div key={i} className="flex items-start gap-2 text-xs text-da-text/90">
                     <span className="mt-0.5 shrink-0 text-indigo-400 font-bold">▶</span>
                     <span className="line-clamp-2">
                       {msg.content}
-                      {msg.imageCount ? (
-                        <span className="ml-1 text-indigo-400">[+{msg.imageCount} file{msg.imageCount > 1 ? "s" : ""}]</span>
-                      ) : null}
+                      {msg.imageCount ? <span className="ml-1 text-indigo-400">[+{msg.imageCount} file{msg.imageCount > 1 ? "s" : ""}]</span> : null}
                     </span>
                   </div>
                 ) : (
@@ -602,9 +567,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
             </div>
           )}
 
-          {/* Input area */}
           <div className="space-y-2">
-            {/* Pending attachments */}
             {(pendingImages.length > 0 || pendingPdfs.length > 0) && (
               <div className="flex flex-wrap gap-2">
                 {pendingImages.map((img, i) => (
@@ -612,10 +575,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={img.previewUrl} alt={img.name} className="h-16 w-16 rounded-md object-cover border border-indigo-500/40" />
                     <button type="button" onClick={() => removeImage(i)}
-                      className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      ✕
-                    </button>
+                      className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
                   </div>
                 ))}
                 {pendingPdfs.map((pdf, i) => (
@@ -623,26 +583,18 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                     <span className="text-xs">📄</span>
                     <span className="max-w-[120px] truncate text-xs text-da-text">{pdf.name}</span>
                     <button type="button" onClick={() => setPendingPdfs((prev) => prev.filter((_, j) => j !== i))}
-                      className="ml-1 text-red-400 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      ✕
-                    </button>
+                      className="ml-1 text-red-400 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Textarea */}
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder={
-                isRefinement
-                  ? "Describe what to change or add… (Ctrl+Enter to refine)"
-                  : 'e.g. "A Grade 9 activity on solving two-step linear equations with 10 questions, two real-world word problems, one error-analysis question, increasing difficulty, exam tone."'
-              }
+              placeholder={isRefinement ? "Describe what to change or add… (Ctrl+Enter to refine)" : 'e.g. "A Grade 9 activity on solving two-step linear equations with 10 questions, two real-world word problems, one error-analysis question, increasing difficulty, exam tone."'}
               rows={isRefinement ? 2 : 3}
               disabled={isGenerating}
               className="w-full resize-none rounded-md border border-indigo-500/30 bg-da-bg/50 px-3 py-2.5 text-sm text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50"
@@ -650,12 +602,8 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
             <div className="text-[10px] text-da-muted/60 text-center">Ctrl+Enter to send</div>
           </div>
 
-          {/* Error */}
-          {error && (
-            <p className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>
-          )}
+          {error && <p className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
 
-          {/* Action buttons */}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -671,46 +619,26 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
             </button>
 
             {lastDraft && (
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saveStatus === "saving" || saveStatus === "saved"}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                  saveStatus === "saved" ? "border-green-500/40 bg-green-500/10 text-green-300"
-                  : saveStatus === "error" ? "border-red-500/40 bg-red-500/10 text-red-300"
-                  : "border-da-border bg-da-bg/40 text-da-muted hover:text-da-text"
-                }`}
-              >
+              <button type="button" onClick={() => void handleSave()} disabled={saveStatus === "saving" || saveStatus === "saved"}
+                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${saveStatus === "saved" ? "border-green-500/40 bg-green-500/10 text-green-300" : saveStatus === "error" ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-da-border bg-da-bg/40 text-da-muted hover:text-da-text"}`}>
                 {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved" : saveStatus === "error" ? "Save failed" : "💾 Save"}
               </button>
             )}
 
             {hasHistory && (
-              <button
-                type="button"
-                onClick={() => {
-                  setHistory([]); setLastDraft(null); setSaveStatus("idle"); setError(null);
-                  setPendingImages([]); setPendingPdfs([]);
-                  setDriveUrl(""); setShowDriveInput(false);
-                  setDriveImportStatus("idle"); setDriveImportError(null);
-                }}
-                className="rounded-lg border border-da-border bg-da-bg/40 px-3 py-2 text-xs text-da-muted hover:text-da-text transition-colors"
-              >
+              <button type="button"
+                onClick={() => { setHistory([]); setLastDraft(null); setSaveStatus("idle"); setError(null); setPendingImages([]); setPendingPdfs([]); setDriveUrl(""); setShowDriveInput(false); setDriveImportStatus("idle"); setDriveImportError(null); }}
+                className="rounded-lg border border-da-border bg-da-bg/40 px-3 py-2 text-xs text-da-muted hover:text-da-text transition-colors">
                 ↻ New
               </button>
             )}
           </div>
 
-          {/* Feature tags */}
           {!hasHistory && (
             <div className="flex flex-wrap gap-1.5">
-              {["Marks auto-assigned", "CCSS standards tagged", "Answer key generated", "Iterative refinement", "Google Drive support"].map(
-                (tag) => (
-                  <span key={tag} className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400/80">
-                    {tag}
-                  </span>
-                )
-              )}
+              {["Marks auto-assigned", "CCSS standards tagged", "Answer key generated", "Iterative refinement", "Google Drive support"].map((tag) => (
+                <span key={tag} className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400/80">{tag}</span>
+              ))}
             </div>
           )}
         </div>
