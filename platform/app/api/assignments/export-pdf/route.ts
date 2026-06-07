@@ -13,6 +13,7 @@ type ExportRequest = {
       prompt: string;
       marks?: number;
       answer?: string;
+      answerBoxLines?: number;
     }>;
   }>;
   formatting: {
@@ -26,6 +27,8 @@ type ExportRequest = {
     lineSpacing: "compact" | "normal" | "relaxed";
     pageMarginsMm: 12 | 16 | 20;
     numberingStyle: "numeric" | "lettered";
+    answerBoxLines?: number;
+    answerStyle?: "boxes" | "lines" | "none";
   };
 };
 
@@ -65,9 +68,18 @@ function generatePdfHtml(request: ExportRequest): string {
           const marks = formatting.includeMarksColumn
             ? `<span class="marks">[${question.marks ?? 0}]</span>`
             : "";
-          return `<div class="q-row"><span class="q-label">${escapeHtml(label)}</span><span class="q-text">${escapeHtml(
+          const answerStyle = formatting.answerStyle ?? "boxes";
+          const lines = question.answerBoxLines ?? formatting.answerBoxLines ?? 4;
+          let answerHtml = "";
+          if (answerStyle !== "none") {
+            const ruledLines = Array.from({ length: lines }, () => '<div class="answer-line"></div>').join("");
+            answerHtml = answerStyle === "boxes"
+              ? `<div class="answer-box-bordered">${ruledLines}</div>`
+              : `<div class="answer-bare-lines">${ruledLines}</div>`;
+          }
+          return `<div class="question-block"><div class="q-row"><span class="q-label">${escapeHtml(label)}</span><span class="q-text">${escapeHtml(
             question.prompt
-          )}</span>${marks}</div>`;
+          )}</span>${marks}</div>${answerHtml}</div>`;
         })
         .join("");
 
@@ -116,6 +128,12 @@ function generatePdfHtml(request: ExportRequest): string {
     .q-label { font-weight: 600; min-width: 30px; }
     .q-text { white-space: pre-wrap; word-wrap: break-word; }
     .marks { font-size: 9pt; color: #555; text-align: right; }
+    .question-block { break-inside: avoid; page-break-inside: avoid; margin: 8px 0; }
+    .answer-box-bordered { margin: 6px 0 14px 38px; border: 1pt solid #999; border-radius: 2px; break-inside: avoid; page-break-inside: avoid; }
+    .answer-box-bordered .answer-line { border-bottom: 0.5pt solid #ddd; height: 8mm; min-height: 8mm; }
+    .answer-box-bordered .answer-line:last-child { border-bottom: none; }
+    .answer-bare-lines { margin: 4px 0 12px 38px; }
+    .answer-bare-lines .answer-line { border-bottom: 0.5pt solid #bbb; height: 8mm; min-height: 8mm; }
     .answers { border-top: 1px solid #cfcfcf; margin-top: 18px; padding-top: 10px; }
     .answer-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 4px 0; }
   </style>
