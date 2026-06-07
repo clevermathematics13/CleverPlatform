@@ -33,6 +33,8 @@ export const FormattingRequirementsSchema = z.object({
   answerBoxLines: z.number().int().min(1).max(20).optional(),
   /** Optional: height of each answer line in mm (default 12mm) */
   answerLineHeightMm: z.number().min(6).max(16).default(12),
+  /** Optional: answer space style — bordered boxes, bare lines, or none */
+  answerStyle: z.enum(["boxes", "lines", "none"]).optional(),
 });
 
 export type ValidatedFormattingRequirements = z.infer<typeof FormattingRequirementsSchema>;
@@ -132,8 +134,17 @@ export const AssignmentPdfRequestSchema = z.object({
           prompt: z.string().min(1),
           marks: z.number().int().min(0).max(20).optional(),
           answer: z.string().optional(),
+          tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+          hint: z.string().optional(),
+          answerBoxLines: z.number().int().min(1).max(20).optional(),
+          subparts: z.array(z.object({
+            prompt: z.string().min(1),
+            marks: z.number().int().min(0).max(20).optional(),
+            hint: z.string().optional(),
+            tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+          })).optional(),
         })
-      ),
+      ).min(1),
     })
   ),
   formatting: FormattingRequirementsSchema,
