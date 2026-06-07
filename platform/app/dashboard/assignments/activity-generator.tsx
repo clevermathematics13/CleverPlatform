@@ -112,22 +112,8 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       await new Promise<void>((resolve) => gapi.load("picker", resolve));
 
       // ── 4. Build and show the picker ──────────────────────────────────
-      const pickerLib = (window as unknown as {
-        google: {
-          picker: {
-            PickerBuilder: new () => {
-              addView: (v: unknown) => unknown;
-              setOAuthToken: (t: string) => unknown;
-              setDeveloperKey: (k: string) => unknown;
-              setCallback: (cb: (data: { action: string; docs?: Array<{ id: string; name: string }> }) => void) => unknown;
-              build: () => { setVisible: (v: boolean) => void };
-            };
-            ViewId: { DOCS: string };
-            DocsView: new (id: string) => { setMimeTypes: (t: string) => unknown };
-            Action: { PICKED: string; CANCEL: string };
-          };
-        };
-      }).google.picker;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pickerLib = ((window as any).google as any).picker as any;
 
       const view = new pickerLib.DocsView(pickerLib.ViewId.DOCS);
       view.setMimeTypes("application/pdf");
@@ -136,7 +122,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
         .addView(view)
         .setOAuthToken(token)
         .setDeveloperKey(apiKey)
-        .setCallback(async (data) => {
+        .setCallback(async (data: { action: string; docs?: Array<{ id: string; name: string }> }) => {
           if (data.action === pickerLib.Action.PICKED && data.docs?.[0]) {
             const file = data.docs[0];
             setDriveImportStatus("fetching");
