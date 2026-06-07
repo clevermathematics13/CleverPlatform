@@ -26,23 +26,13 @@ type GenericSandboxProps = {
   defaultDraft: AssignmentDraft;
 };
 
-const IB_TOPICS = [
-  { code: "1", label: "Topic 1: Number & Algebra" },
-  { code: "2", label: "Topic 2: Functions" },
-  { code: "3", label: "Topic 3: Geometry & Trigonometry" },
-  { code: "4", label: "Topic 4: Statistics & Probability" },
-  { code: "5", label: "Topic 5: Calculus" },
-];
-
-function extractTopicCodes(syllabusTopics?: string): Set<string> {
-  if (!syllabusTopics) return new Set();
-  const codes = new Set<string>();
-  for (const topic of IB_TOPICS) {
-    if (syllabusTopics.includes(`Topic ${topic.code}`) || syllabusTopics.includes(`topic ${topic.code}`)) {
-      codes.add(topic.code);
-    }
-  }
-  return codes;
+function parseSubtopics(syllabusTopics?: string): string[] {
+  if (!syllabusTopics) return [];
+  // Split on & · , | / and clean up each segment
+  return syllabusTopics
+    .split(/[&·,|/]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
 }
 
 export function GenericAssignmentSandbox({
@@ -81,7 +71,7 @@ export function GenericAssignmentSandbox({
 
   const tierDist = useMemo(() => computeTierDistribution(draft), [draft]);
   const duplicates = useMemo(() => detectDuplicateQuestions(draft), [draft]);
-  const coveredTopics = useMemo(() => extractTopicCodes((draft as { syllabusTopics?: string }).syllabusTopics), [draft]);
+  const subtopics = useMemo(() => parseSubtopics((draft as { syllabusTopics?: string }).syllabusTopics), [draft]);
 
   const paperTypeLabel: Record<string, string> = {
     paper1: "Paper 1 — No Calculator",
@@ -212,7 +202,7 @@ export function GenericAssignmentSandbox({
   return (
     <section className="rounded-2xl border border-da-border bg-da-surface/80 p-6 shadow-lg shadow-black/30">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
-        {/* ── Left panel ────────────────────────────────────────────────── */}
+        {/* ── Left panel ─────────────────────────────────────────────────────────── */}
         <div className="space-y-5">
           <ActivityGeneratorPanel gradeLevel={gradeLevel} formatting={formatting} onDraftGenerated={(g) => setDraft(g)} />
 
@@ -352,7 +342,7 @@ export function GenericAssignmentSandbox({
           )}
         </div>
 
-        {/* ── Right panel ───────────────────────────────────────────────── */}
+        {/* ── Right panel ───────────────────────────────────────────────────────── */}
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/60 px-4 py-2.5">
             <Stat label="Total marks" value={`[${totalMarks}]`} accent="amber" />
@@ -382,22 +372,28 @@ export function GenericAssignmentSandbox({
             {duplicates.length > 0 && (
               <><Divider /><span className="rounded-full border border-yellow-500/40 bg-yellow-500/10 px-2 py-0.5 text-[10px] font-semibold text-yellow-300">⚠ {duplicates.length} duplicate{duplicates.length > 1 ? "s" : ""}</span></>
             )}
-            <div className="ml-auto text-[10px] text-da-muted/60">Editable before export</div>
+            <div className="ml-auto flex items-center gap-3">
+              <span className="text-[10px] text-da-muted/60">Editable before export</span>
+              <button
+                type="button"
+                onClick={handleExportPdf}
+                disabled={isExporting}
+                className="flex items-center gap-1.5 rounded-lg border border-da-accent/60 bg-da-accent/15 px-3 py-1.5 text-xs font-semibold text-da-text transition-colors hover:bg-da-accent/25 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isExporting ? <><Spinner /><span>Generating…</span></> : <><span>↓</span><span>Download PDF</span></>}
+              </button>
+            </div>
           </div>
 
-          {coveredTopics.size > 0 && (
+          {subtopics.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 px-1">
-              <span className="text-[10px] font-semibold text-da-muted uppercase tracking-wide">Topics covered:</span>
-              {IB_TOPICS.map((topic) => (
+              <span className="text-[10px] font-semibold text-da-muted uppercase tracking-wide">Subtopics:</span>
+              {subtopics.map((sub) => (
                 <span
-                  key={topic.code}
-                  className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold transition-all ${
-                    coveredTopics.has(topic.code)
-                      ? "border border-emerald-500/50 bg-emerald-500/15 text-emerald-300"
-                      : "border border-da-border/30 bg-da-bg/30 text-da-muted/40"
-                  }`}
+                  key={sub}
+                  className="rounded-full border border-emerald-500/50 bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300"
                 >
-                  T{topic.code}
+                  {sub}
                 </span>
               ))}
             </div>
@@ -420,7 +416,7 @@ export function GenericAssignmentSandbox({
   );
 }
 
-// ── Small reusable UI atoms ───────────────────────────────────────────────────
+// ── Small reusable UI atoms ──────────────────────────────────────────────────────────────────────
 
 function Spinner() {
   return (
