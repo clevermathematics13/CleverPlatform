@@ -97,194 +97,184 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       if (!apiKey) throw new Error("Google Picker API key not configured");
 
       // ── 2. Load the gapi script if not already loaded ─────────────────
-      if (!(window as any).gapi) {
+      if (!(window as unknown as { gapi?: unknown }).gapi) {
         await new Promise<void>((resolve, reject) => {
-          const s = document.createElement("script");
-          s.src = "https://apis.google.com/js/api.js";
-          s.async = true;
-          s.onerror = () => reject(new Error("Failed to load Google API script"));
-          s.onload = () => resolve();
-          document.head.appendChild(s);
+          const script = document.createElement("script");
+          script.src = "https://apis.google.com/js/api.js";
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error("Failed to load Google API"));
+          document.head.appendChild(script);
         });
       }
 
-      // ── 3. Load the picker module via gapi ────────────────────────────
-      if (!(window as any).google?.picker) {
-        await new Promise<void>((resolve, reject) => {
-          (window as any).gapi.load("picker", {
-            callback: () => resolve(),
-            onerror: () => reject(new Error("gapi.load('picker') failed")),
-            timeout: 10000,
-            ontimeout: () => reject(new Error("gapi.load('picker') timed out")),
-          });
-        });
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const GP = (window as any).google?.picker;
-      if (!GP) throw new Error("Google Picker API unavailable after loading");
+      // ── 3. Load picker library ────────────────────────────────────────
+      const gapi = (window as unknown as { gapi: { load: (lib: string, cb: () => void) => void; client?: unknown } }).gapi;
+      await new Promise<void>((resolve) => gapi.load("picker", resolve));
 
       // ── 4. Build and show the picker ──────────────────────────────────
-      const view = new GP.DocsView();
-      view.setMimeTypes("application/pdf,image/jpeg,image/png,image/gif,image/webp");
+      const pickerLib = (window as unknown as {
+        google: {
+          picker: {
+            PickerBuilder: new () => {
+              addView: (v: unknown) => unknown;
+              setOAuthToken: (t: string) => unknown;
+              setDeveloperKey: (k: string) => unknown;
+              setCallback: (cb: (data: { action: string; docs?: Array<{ id: string; name: string }> }) => void) => unknown;
+              build: () => { setVisible: (v: boolean) => void };
+            };
+            ViewId: { DOCS: string };
+            DocsView: new (id: string) => { setMimeTypes: (t: string) => unknown };
+            Action: { PICKED: string; CANCEL: string };
+          };
+        };
+      }).google.picker;
 
-      const picker = new GP.PickerBuilder()
+      const view = new pickerLib.DocsView(pickerLib.ViewId.DOCS);
+      view.setMimeTypes("application/pdf");
+
+      const picker = new pickerLib.PickerBuilder()
         .addView(view)
         .setOAuthToken(token)
         .setDeveloperKey(apiKey)
-        .setOrigin(window.location.protocol + "//" + window.location.host)
-        .setLocale("en")
-        .setCallback((data: any) => {
-          pickerLoadingRef.current = false;
-          if (data.action === "cancel") {
-            setDriveImportStatus("idle");
-            return;
-          }
-          if (data.action === "picked" && data.docs?.length > 0) {
+        .setCallback(async (data) => {
+          if (data.action === pickerLib.Action.PICKED && data.docs?.[0]) {
+            const file = data.docs[0];
             setDriveImportStatus("fetching");
-            setDriveImportError(null);
-            void importDriveFile(data.docs[0].id);
+            await fetchDriveFile(file.id, file.name);
+          } else if (data.action === pickerLib.Action.CANCEL) {
+            setDriveImportStatus("idle");
           }
         })
         .build();
 
       picker.setVisible(true);
     } catch (err) {
+      setDriveImportError(err instanceof Error ? err.message : "Google Picker failed");
+      setDriveImportStatus("error");
+    } finally {
       pickerLoadingRef.current = false;
-      setDriveImportError(err instanceof Error ? err.message : "Failed to open file picker");
-      setDriveImportStatus("idle");
     }
   }
 
-  async function importDriveFile(fileId: string) {
+  async function fetchDriveFile(fileId: string, fileName: string) {
+    setDriveImportStatus("fetching");
+    setDriveImportError(null);
     try {
       const res = await fetch("/api/assignments/fetch-drive-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileId }),
       });
-      const data = (await res.json()) as { base64?: string; name?: string; sizeMb?: number; error?: string };
-      if (!res.ok || !data.base64) throw new Error(data.error ?? `Drive fetch failed (${res.status})`);
-      setPendingPdfs((prev) => [...prev, { base64: data.base64!, name: data.name ?? "document.pdf" }]);
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error ?? `Failed to fetch file (${res.status})`);
+      }
+      const data = (await res.json()) as { base64: string; mimeType: string };
+      setPendingPdfs((prev) => [...prev, { base64: data.base64, name: fileName }]);
       setDriveImportStatus("done");
-      setDriveUrl("");
       setShowDriveInput(false);
     } catch (err) {
-      setDriveImportError(err instanceof Error ? err.message : "Drive import failed");
+      setDriveImportError(err instanceof Error ? err.message : "Failed to fetch from Drive");
       setDriveImportStatus("error");
     }
   }
 
-  async function handleDriveImport() {
-    const input = driveUrl.trim();
-    if (!input) return;
+  async function handleFetchDriveUrl() {
+    if (!driveUrl.trim()) return;
     setDriveImportStatus("fetching");
     setDriveImportError(null);
-    await importDriveFile(input);
-  }
-
-  function addImageFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(",")[1]!;
-      setPendingImages((prev) => [...prev, { base64, mimeType: file.type as ImageMimeType, previewUrl: dataUrl, name: file.name || "image" }]);
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function addPdfFile(file: File) {
-    if (file.type !== "application/pdf") return;
-    if (file.size > 3 * 1024 * 1024) {
-      setError(`PDF "${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)} MB — too large for direct upload. Use Google Drive import instead.`);
-      return;
+    try {
+      const res = await fetch("/api/assignments/fetch-drive-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: driveUrl.trim() }),
+      });
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as { base64: string; mimeType: string; fileName?: string };
+      const name = data.fileName ?? driveUrl.split("/").pop() ?? "drive-file.pdf";
+      setPendingPdfs((prev) => [...prev, { base64: data.base64, name }]);
+      setDriveUrl("");
+      setShowDriveInput(false);
+      setDriveImportStatus("done");
+    } catch (err) {
+      setDriveImportError(err instanceof Error ? err.message : "Fetch failed");
+      setDriveImportStatus("error");
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setPendingPdfs((prev) => [...prev, { base64: dataUrl.split(",")[1]!, name: file.name || "document.pdf" }]);
-    };
-    reader.readAsDataURL(file);
   }
 
-  function handlePaste(e: React.ClipboardEvent) {
-    const imageItems = Array.from(e.clipboardData.items).filter((item) => item.type.startsWith("image/"));
-    if (imageItems.length === 0) return;
-    e.preventDefault();
-    imageItems.forEach((item) => { const file = item.getAsFile(); if (file) addImageFile(file); });
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
+    const newImages: PendingImage[] = [];
+    const newPdfs: PendingPdf[] = [];
+    for (const file of files) {
+      const base64 = await new Promise<string>((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res((r.result as string).split(",")[1]);
+        r.onerror = () => rej(new Error("Read failed"));
+        r.readAsDataURL(file);
+      });
+      if (file.type === "application/pdf") {
+        newPdfs.push({ base64, name: file.name });
+      } else {
+        newImages.push({ base64, mimeType: file.type as ImageMimeType, previewUrl: URL.createObjectURL(file), name: file.name });
+      }
+    }
+    setPendingImages((prev) => [...prev, ...newImages]);
+    setPendingPdfs((prev) => [...prev, ...newPdfs]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    Array.from(e.target.files ?? []).forEach((file) => {
-      if (file.type === "application/pdf") addPdfFile(file); else addImageFile(file);
-    });
-    e.target.value = "";
-  }
-
-  function removeImage(idx: number) {
-    setPendingImages((prev) => prev.filter((_, i) => i !== idx));
-  }
-
-  async function handleGenerate() {
-    const userText = description.trim();
-    if ((!userText && pendingImages.length === 0 && pendingPdfs.length === 0) || isGenerating) return;
-
+  async function handleSend() {
+    if (!description.trim() && !pendingImages.length && !pendingPdfs.length) return;
     setIsGenerating(true);
     setError(null);
-    setSaveStatus("idle");
-    const snapshotImages = [...pendingImages];
-    const snapshotPdfs = [...pendingPdfs];
+
+    const userContent: Array<{ type: string; text?: string; source?: unknown }> = [];
+    for (const img of pendingImages) {
+      userContent.push({ type: "image", source: { type: "base64", media_type: img.mimeType, data: img.base64 } });
+    }
+    for (const pdf of pendingPdfs) {
+      userContent.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.base64 } });
+    }
+    if (description.trim()) {
+      userContent.push({ type: "text", text: description.trim() });
+    }
+
+    const nextHistory: ChatMessage[] = [...history, {
+      role: "user",
+      content: description.trim(),
+      imageCount: pendingImages.length + pendingPdfs.length,
+    }];
+
+    setHistory(nextHistory);
+    setDescription("");
     setPendingImages([]);
     setPendingPdfs([]);
 
-    const attachmentCount = snapshotImages.length + snapshotPdfs.length;
-    const nextHistory: ChatMessage[] = [
-      ...history,
-      { role: "user", content: userText, imageCount: attachmentCount || undefined },
-    ];
-    setHistory(nextHistory);
-    setDescription("");
-
-    const apiMessages = nextHistory.map((m) => {
-      // Last message with attachments: build a multimodal content array
-      if (m === nextHistory[nextHistory.length - 1] && (snapshotImages.length > 0 || snapshotPdfs.length > 0)) {
-        return {
-          role: m.role,
-          content: [
-            ...snapshotPdfs.map((pdf) => ({
-              type: "document" as const,
-              source: { type: "base64" as const, media_type: "application/pdf" as const, data: pdf.base64 },
-            })),
-            ...snapshotImages.map((img) => ({
-              type: "image" as const,
-              source: { type: "base64" as const, media_type: img.mimeType, data: img.base64 },
-            })),
-            ...(userText ? [{ type: "text" as const, text: userText }] : []),
-          ],
-        };
-      }
-      // All other messages: ensure content is never an empty string.
-      // File-only turns (no text) are stored with content="" in history;
-      // the Anthropic API rejects empty-string content with a 400.
-      return { role: m.role, content: m.content || "[file attached]" };
-    });
-
     try {
+      const messages = [
+        ...history.map((m) => ({ role: m.role, content: m.content })),
+        { role: "user" as const, content: userContent },
+      ];
+
       const res = await fetch("/api/claude", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: buildActivityGeneratorSystemPrompt(gradeLevel),
-          messages: apiMessages,
+          system: buildActivityGeneratorSystemPrompt(gradeLevel, formatting),
+          messages,
         }),
       });
 
       if (!res.ok) {
-        let errorMsg = `Generation failed (${res.status})`;
+        let errorMsg = `Request failed (${res.status})`;
         try {
-          const data = (await res.json()) as { error?: string };
-          errorMsg = data.error ?? errorMsg;
+          const errData = (await res.json()) as { error?: string };
+          if (errData.error) errorMsg = errData.error;
         } catch {
           const text = await res.text().catch(() => "");
           if (text) errorMsg = text;
@@ -293,7 +283,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       }
 
       const data = (await res.json()) as ClaudeResponse;
-      const rawText = data.content?.find((b) => b.type === "text")?.text ?? "";
+      const rawText = data.content?.find((b: { type: string; text?: string }) => b.type === "text")?.text ?? "";
       const json = extractJsonObject(rawText);
       const parsed = JSON.parse(json) as AssignmentDraft;
       const sanitized = sanitizeDraft(parsed);
@@ -308,201 +298,201 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unexpected error";
       setError(msg);
-      setHistory(history);
-      setDescription(userText);
-      setPendingImages(snapshotImages);
-      setPendingPdfs(snapshotPdfs);
+      setHistory(nextHistory);
     } finally {
       setIsGenerating(false);
     }
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); void handleGenerate(); }
-  }
-
-  function handleDriveKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") { e.preventDefault(); void handleDriveImport(); }
-    if (e.key === "Escape") { setShowDriveInput(false); setDriveUrl(""); setDriveImportError(null); setDriveImportStatus("idle"); }
-  }
-
-  async function handleSave() {
-    if (!lastDraft || saveStatus === "saving") return;
+  async function handleSaveTemplate() {
+    if (!lastDraft) return;
     setSaveStatus("saving");
-    const allUserPrompts = history.filter((m) => m.role === "user").map((m) => m.content).join(" → ");
     try {
-      const res = await fetch("/api/assignments/templates/list", {
+      const res = await fetch("/api/assignments/templates/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          templateName: lastDraft.title,
+          templateName: lastDraft.title || "Untitled",
           gradeLevel,
-          documentKind: "activity-generator",
+          documentKind: "activity-sheet",
           formattingRequirements: formatting,
-          assignmentInput: { description: allUserPrompts, draft: lastDraft },
+          assignmentInput: { title: lastDraft.title, topic: "", learningGoals: "", contextNotes: "", questionCount: 10, challengeMix: "balanced", includeRealWorldContext: true, tone: "clear", gradeLevel, documentKind: "activity-sheet" },
         }),
       });
-      if (!res.ok) { const data = (await res.json()) as { error?: string }; throw new Error(data.error ?? "Save failed"); }
-      setSaveStatus("saved");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Save failed");
+      setSaveStatus(res.ok ? "saved" : "error");
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch {
       setSaveStatus("error");
+      setTimeout(() => setSaveStatus("idle"), 2000);
     }
   }
 
-  const hasHistory = history.length > 0;
-  const isRefinement = hasHistory;
+  const driveButtonLabel =
+    driveStatus === "checking" ? "Checking…"
+    : driveStatus === "connected" ? "📎 Import from Drive"
+    : "Connect Drive";
 
   return (
-    <div className="rounded-xl border-2 border-indigo-500/50 bg-gradient-to-b from-indigo-950/50 to-da-bg/20 shadow-lg shadow-indigo-950/20">
-      <button type="button" onClick={() => setIsExpanded((v) => !v)} className="flex w-full items-center gap-2.5 px-4 py-3 text-left">
-        <span className="text-base" aria-hidden>⚡</span>
-        <span className="text-sm font-bold text-indigo-300 uppercase tracking-wider">AI Activity Generator</span>
-        <span className="ml-1 rounded-full border border-indigo-500/40 bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold text-indigo-300">Claude</span>
-        {lastDraft && <span className="ml-1 rounded-full border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-[10px] text-green-300">✓ active</span>}
-        <span className="ml-auto text-xs text-da-muted/60">{isExpanded ? "▲" : "▼"}</span>
+    <div className="rounded-xl border border-da-border bg-da-bg/40">
+      {/* Header / toggle */}
+      <button
+        type="button"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left"
+      >
+        <span className="text-sm font-semibold text-da-amber uppercase tracking-wide">AI Activity Generator</span>
+        <span className="text-da-muted text-xs">{isExpanded ? "▲ hide" : "▼ show"}</span>
       </button>
 
       {isExpanded && (
-        <div className="space-y-3 border-t border-indigo-500/20 px-4 pb-4 pt-3">
-          <div className="space-y-2">
-            {driveStatus === "checking" && (
-              <div className="flex items-center gap-2 rounded-lg border border-da-border/30 bg-da-bg/30 px-3 py-2">
-                <span className="inline-block h-3 w-3 animate-spin rounded-full border border-da-muted border-t-transparent flex-shrink-0" />
-                <p className="text-[10px] text-da-muted">Checking Drive connection…</p>
-              </div>
-            )}
-            {driveStatus === "disconnected" && (
-              <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-                <span className="text-base flex-shrink-0">📂</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-semibold text-amber-300">Connect Google Drive</p>
-                  <p className="text-[10px] text-amber-300/70 leading-tight">Import large PDFs directly from Drive with no size limits.</p>
-                </div>
-                <button type="button" onClick={handleConnectDrive} className="flex-shrink-0 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-600 transition-colors whitespace-nowrap">Connect</button>
-              </div>
-            )}
-            {driveStatus === "connected" && (
-              <div className="flex items-center gap-2 rounded-lg border border-green-500/20 bg-green-500/10 px-3 py-2">
-                <span className="text-xs text-green-400">✅</span>
-                <p className="flex-1 text-[10px] font-medium text-green-300">Google Drive connected</p>
-                <button type="button" onClick={() => void openGooglePicker()} disabled={isGenerating || driveImportStatus === "picking"}
-                  className="flex-shrink-0 rounded border border-green-500/30 bg-green-500/10 px-2.5 py-1 text-[10px] font-semibold text-green-300 hover:bg-green-500/20 transition-colors disabled:opacity-40 whitespace-nowrap">
-                  {driveImportStatus === "picking" ? "Opening picker…" : "📂 Browse Drive"}
-                </button>
-                <button type="button" onClick={() => { if (driveStatus !== "connected") return; setShowDriveInput((v) => !v); setDriveImportError(null); setDriveImportStatus("idle"); }} disabled={isGenerating}
-                  className="flex-shrink-0 rounded border border-green-500/30 bg-green-500/10 px-2 py-1 text-[10px] font-semibold text-green-300 hover:bg-green-500/20 transition-colors disabled:opacity-40 whitespace-nowrap">
-                  {showDriveInput ? "Cancel" : "🔗 Paste URL"}
-                </button>
-              </div>
-            )}
-            {driveStatus === "connected" && showDriveInput && (
-              <div className="rounded-md border border-indigo-500/30 bg-da-bg/50 p-2.5 space-y-1.5">
-                <p className="text-[10px] text-da-muted leading-relaxed">Paste a Google Drive file URL or file ID — any size PDF is supported.</p>
-                <div className="flex gap-1.5">
-                  <input type="text" value={driveUrl} onChange={(e) => { setDriveUrl(e.target.value); setDriveImportError(null); setDriveImportStatus("idle"); }} onKeyDown={handleDriveKeyDown}
-                    placeholder="https://drive.google.com/file/d/…" disabled={driveImportStatus === "fetching"} autoFocus
-                    className="flex-1 rounded border border-indigo-500/30 bg-da-bg/60 px-2.5 py-1.5 text-xs text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50" />
-                  <button type="button" onClick={() => void handleDriveImport()} disabled={!driveUrl.trim() || driveImportStatus === "fetching"}
-                    className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-                    {driveImportStatus === "fetching" ? "Fetching…" : "Import"}
-                  </button>
-                </div>
-                {driveImportError && <p className="text-[10px] text-red-400 leading-relaxed">{driveImportError}</p>}
-              </div>
-            )}
-            {driveStatus === "connected" && !showDriveInput && driveImportError && (
-              <p className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-[10px] text-red-400 leading-relaxed">{driveImportError}</p>
-            )}
-          </div>
-
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isGenerating}
-            className="w-full flex items-center justify-center gap-2 rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-3 py-2.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/15 transition-colors disabled:opacity-50">
-            💻 Upload from Computer
-          </button>
-          <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleFileChange} />
-          <p className="text-[10px] text-da-muted/60 text-center">Images or PDFs up to 3 MB</p>
-
-          {!hasHistory && <p className="text-xs text-da-muted leading-relaxed">Describe any mathematics activity in plain English. Claude generates a complete, mark-schemed, CCSS-tagged activity sheet instantly — bypassing the form below. Type again to refine iteratively.</p>}
-
-          {hasHistory && (
-            <div ref={historyRef} className="max-h-36 overflow-y-auto rounded-lg border border-indigo-500/20 bg-da-bg/40 p-2.5 space-y-1.5">
-              {history.map((msg, i) =>
-                msg.role === "user" ? (
-                  <div key={i} className="flex items-start gap-2 text-xs text-da-text/90">
-                    <span className="mt-0.5 shrink-0 text-indigo-400 font-bold">▶</span>
-                    <span className="line-clamp-2">
-                      {msg.content || <em className="text-da-muted/60">[file attached]</em>}
-                      {msg.imageCount ? <span className="ml-1 text-indigo-400">[+{msg.imageCount} file{msg.imageCount > 1 ? "s" : ""}]</span> : null}
-                    </span>
+        <div className="px-4 pb-4 space-y-3">
+          {/* Chat history */}
+          {history.length > 0 && (
+            <div ref={historyRef} className="max-h-56 overflow-y-auto space-y-2 rounded-lg border border-da-border bg-da-bg/30 p-3">
+              {history.map((msg, i) => (
+                <div key={i} className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div className={`rounded-lg px-3 py-1.5 text-xs max-w-[80%] ${
+                    msg.role === "user"
+                      ? "bg-da-accent/20 text-da-text border border-da-accent/30"
+                      : "bg-da-bg/60 text-da-muted border border-da-border/40"
+                  }`}>
+                    {msg.role === "user" && msg.imageCount && msg.imageCount > 0 && (
+                      <span className="mr-1 text-da-muted">📎×{msg.imageCount}</span>
+                    )}
+                    {msg.role === "assistant" && msg.draftTitle
+                      ? <span>✅ Generated: <em>{msg.draftTitle}</em></span>
+                      : msg.content.slice(0, 120) + (msg.content.length > 120 ? "…" : "")}
                   </div>
-                ) : (
-                  <div key={i} className="flex items-start gap-2 text-xs text-indigo-300">
-                    <span className="mt-0.5 shrink-0 text-green-400 font-bold">✓</span>
-                    <span className="italic">Generated: &ldquo;{msg.draftTitle}&rdquo;</span>
-                  </div>
-                )
-              )}
-              {isGenerating && (
-                <div className="flex items-center gap-2 text-xs text-indigo-400/70 italic">
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-                  Thinking...
                 </div>
-              )}
+              ))}
             </div>
           )}
 
-          <div className="space-y-2">
-            {(pendingImages.length > 0 || pendingPdfs.length > 0) && (
-              <div className="flex flex-wrap gap-2">
-                {pendingImages.map((img, i) => (
-                  <div key={`img-${i}`} className="relative group">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={img.previewUrl} alt={img.name} className="h-16 w-16 rounded-md object-cover border border-indigo-500/40" />
-                    <button type="button" onClick={() => removeImage(i)} className="absolute -top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-white text-[10px] leading-none flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-                  </div>
-                ))}
-                {pendingPdfs.map((pdf, i) => (
-                  <div key={`pdf-${i}`} className="relative group flex items-center gap-1.5 rounded-md border border-indigo-500/40 bg-da-bg/50 px-2 py-1">
-                    <span className="text-xs">📄</span>
-                    <span className="max-w-[120px] truncate text-xs text-da-text">{pdf.name}</span>
-                    <button type="button" onClick={() => setPendingPdfs((prev) => prev.filter((_, j) => j !== i))} className="ml-1 text-red-400 text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-            <textarea value={description} onChange={(e) => setDescription(e.target.value)} onKeyDown={handleKeyDown} onPaste={handlePaste}
-              placeholder={isRefinement ? "Describe what to change or add… (Ctrl+Enter to refine)" : 'e.g. "A Grade 9 activity on solving two-step linear equations with 10 questions, two real-world word problems, one error-analysis question, increasing difficulty, exam tone."'}
-              rows={isRefinement ? 2 : 3} disabled={isGenerating}
-              className="w-full resize-none rounded-md border border-indigo-500/30 bg-da-bg/50 px-3 py-2.5 text-sm text-da-text placeholder-da-muted/50 focus:border-indigo-400/60 focus:outline-none disabled:opacity-50" />
-            <div className="text-[10px] text-da-muted/60 text-center">Ctrl+Enter to send</div>
-          </div>
-
-          {error && <p className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">{error}</p>}
-
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => void handleGenerate()} disabled={isGenerating || (!description.trim() && pendingImages.length === 0 && pendingPdfs.length === 0)}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-indigo-500/60 bg-indigo-600/30 px-4 py-2 text-sm font-semibold text-indigo-200 transition-colors hover:bg-indigo-600/40 disabled:cursor-not-allowed disabled:opacity-50">
-              {isGenerating ? (<><span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />Generating…</>) : (<>⚡ {isRefinement ? "Refine Activity" : "Generate Activity"}</>)}
-            </button>
-            {lastDraft && (
-              <button type="button" onClick={() => void handleSave()} disabled={saveStatus === "saving" || saveStatus === "saved"}
-                className={`rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${saveStatus === "saved" ? "border-green-500/40 bg-green-500/10 text-green-300" : saveStatus === "error" ? "border-red-500/40 bg-red-500/10 text-red-300" : "border-da-border bg-da-bg/40 text-da-muted hover:text-da-text"}`}>
-                {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved" : saveStatus === "error" ? "Save failed" : "💾 Save"}
-              </button>
-            )}
-            {hasHistory && (
-              <button type="button" onClick={() => { setHistory([]); setLastDraft(null); setSaveStatus("idle"); setError(null); setPendingImages([]); setPendingPdfs([]); setDriveUrl(""); setShowDriveInput(false); setDriveImportStatus("idle"); setDriveImportError(null); }}
-                className="rounded-lg border border-da-border bg-da-bg/40 px-3 py-2 text-xs text-da-muted hover:text-da-text transition-colors">↻ New</button>
-            )}
-          </div>
-
-          {!hasHistory && (
-            <div className="flex flex-wrap gap-1.5">
-              {["Marks auto-assigned", "CCSS standards tagged", "Answer key generated", "Iterative refinement", "Google Drive support"].map((tag) => (
-                <span key={tag} className="rounded-full border border-indigo-500/20 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-400/80">{tag}</span>
+          {/* Pending attachments */}
+          {(pendingImages.length > 0 || pendingPdfs.length > 0) && (
+            <div className="flex flex-wrap gap-1">
+              {pendingImages.map((img, i) => (
+                <div key={i} className="relative h-12 w-12 rounded border border-da-border overflow-hidden group">
+                  <img src={img.previewUrl} alt={img.name} className="h-full w-full object-cover" />
+                  <button
+                    type="button"
+                    onClick={() => setPendingImages((prev) => prev.filter((_: PendingImage, j: number) => j !== i))}
+                    className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 text-white text-xs font-bold"
+                  >✕</button>
+                </div>
+              ))}
+              {pendingPdfs.map((pdf, i) => (
+                <div key={i} className="flex items-center gap-1 rounded border border-da-border bg-da-bg/60 px-2 py-1 text-[10px] text-da-muted group">
+                  <span>📄</span>
+                  <span className="max-w-[80px] truncate">{pdf.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPendingPdfs((prev: PendingPdf[]) => prev.filter((_: PendingPdf, j: number) => j !== i))}
+                    className="text-da-muted/50 hover:text-red-400 font-bold ml-1"
+                  >✕</button>
+                </div>
               ))}
             </div>
+          )}
+
+          {/* Drive import row */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={driveStatus === "connected" ? openGooglePicker : handleConnectDrive}
+              disabled={driveImportStatus === "fetching" || driveImportStatus === "picking" || driveStatus === "checking"}
+              className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
+                driveStatus === "connected"
+                  ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                  : "border-da-border/50 bg-da-bg/30 text-da-muted hover:bg-da-hover"
+              }`}
+            >
+              {driveImportStatus === "fetching" ? "Fetching…" : driveImportStatus === "picking" ? "Opening picker…" : driveButtonLabel}
+            </button>
+            {driveStatus === "connected" && (
+              <button
+                type="button"
+                onClick={() => setShowDriveInput(!showDriveInput)}
+                className="rounded-lg border border-da-border/50 bg-da-bg/30 px-2 py-1.5 text-[10px] text-da-muted hover:bg-da-hover transition-colors"
+                title="Paste a Drive URL instead"
+              >URL</button>
+            )}
+            {driveImportStatus === "done" && <span className="text-[10px] text-emerald-400">✓ Imported</span>}
+            {driveImportStatus === "error" && driveImportError && <span className="text-[10px] text-red-400">{driveImportError}</span>}
+          </div>
+
+          {showDriveInput && (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={driveUrl}
+                onChange={(e) => setDriveUrl(e.target.value)}
+                placeholder="Paste Google Drive PDF URL…"
+                className="flex-1 rounded-lg border border-da-border/50 bg-da-bg/30 px-2 py-1.5 text-xs text-da-text placeholder-da-muted/50 focus:border-da-accent/60 focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleFetchDriveUrl}
+                disabled={!driveUrl.trim() || driveImportStatus === "fetching"}
+                className="rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-1.5 text-xs font-medium text-da-text hover:bg-da-hover disabled:opacity-50 transition-colors"
+              >
+                {driveImportStatus === "fetching" ? "Fetching…" : "Fetch"}
+              </button>
+            </div>
+          )}
+
+          {/* Input + send */}
+          <div className="flex gap-2 items-end">
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void handleSend(); } }}
+              placeholder={history.length === 0
+                ? `Describe an activity for ${gradeLevel}… (Enter to send, Shift+Enter for newline)`
+                : "Follow-up or refinement…"}
+              rows={2}
+              className="flex-1 rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-2 text-sm text-da-text placeholder-da-muted/50 focus:border-da-accent/60 focus:outline-none resize-none"
+            />
+            <div className="flex flex-col gap-1">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-lg border border-da-border/50 bg-da-bg/30 p-2 text-da-muted hover:bg-da-hover transition-colors"
+                title="Attach image or PDF"
+              >📎</button>
+              <button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={isGenerating || (!description.trim() && !pendingImages.length && !pendingPdfs.length)}
+                className="rounded-lg border border-da-accent/70 bg-da-accent/20 px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:bg-da-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isGenerating ? "…" : "Send"}
+              </button>
+            </div>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileUpload}
+          />
+
+          {error && (
+            <p className="text-xs text-red-400 border border-red-500/30 bg-red-500/10 rounded px-2 py-1">{error}</p>
+          )}
+
+          {lastDraft && (
+            <button
+              type="button"
+              onClick={() => void handleSaveTemplate()}
+              disabled={saveStatus === "saving"}
+              className="w-full rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-1.5 text-xs font-medium text-da-muted transition-colors hover:bg-da-hover disabled:opacity-50"
+            >
+              {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved as template" : saveStatus === "error" ? "Save failed" : "Save as template"}
+            </button>
           )}
         </div>
       )}
