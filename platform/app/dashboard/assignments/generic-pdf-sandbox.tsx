@@ -57,16 +57,16 @@ export function GenericAssignmentSandbox({
   const [cohortTag, setCohortTag] = useState<"26AH" | "27AH" | "custom">("26AH");
 
   const totalMarks = useMemo(() =>
-    draft.sections.reduce((sSum, s) =>
-      sSum + s.questions.reduce((qSum, q) => {
-        const subTotal = Array.isArray(q.subparts) ? q.subparts.reduce((sp, s) => sp + (s.marks ?? 0), 0) : 0;
+    draft.sections.reduce((sSum: number, s) =>
+      sSum + s.questions.reduce((qSum: number, q) => {
+        const subTotal = Array.isArray(q.subparts) ? q.subparts.reduce((sp: number, sub) => sp + (sub.marks ?? 0), 0) : 0;
         return qSum + (subTotal > 0 ? subTotal : (q.marks ?? 0));
       }, 0)
     , 0)
   , [draft]);
 
   const totalQuestions = useMemo(() =>
-    draft.sections.reduce((sum, s) => sum + s.questions.length, 0)
+    draft.sections.reduce((sum: number, s) => sum + s.questions.length, 0)
   , [draft]);
 
   const tierDist = useMemo(() => computeTierDistribution(draft), [draft]);
@@ -104,7 +104,7 @@ export function GenericAssignmentSandbox({
     if (!templateName.trim()) { setError("Please enter a template name"); return; }
     setIsSavingTemplate(true); setError(null);
     try {
-      const res = await fetch("/api/assignments/templates/save", {
+      const res = await fetch("/api/assignments/templates/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ templateName: templateName.trim(), gradeLevel, documentKind: input.documentKind, formattingRequirements: formatting, assignmentInput: input }),
