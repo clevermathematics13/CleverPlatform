@@ -10,7 +10,7 @@ import {
   sanitizeDraft,
 } from "@/lib/assignments";
 
-// ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 type PendingImage = { base64: string; mimeType: ImageMimeType; previewUrl: string; name: string };
@@ -86,10 +86,17 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setDriveImportError(null);
 
     try {
+      // ── 1. Fetch OAuth token AND API key from our server ──────────────
       const tokenRes = await fetch("/api/assignments/google-picker-token");
-      if (!tokenRes.ok) throw new Error("Failed to get authentication token");
-      const { token } = (await tokenRes.json()) as { token: string };
+      if (!tokenRes.ok) {
+        const errData = (await tokenRes.json().catch(() => ({}))) as { error?: string };
+        throw new Error(errData.error ?? "Failed to get authentication token");
+      }
+      const { token, apiKey } = (await tokenRes.json()) as { token: string; apiKey: string };
 
+      if (!apiKey) throw new Error("Google Picker API key not configured");
+
+      // ── 2. Load the gapi script if not already loaded ─────────────────
       if (!(window as any).gapi) {
         await new Promise<void>((resolve, reject) => {
           const s = document.createElement("script");
@@ -101,6 +108,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
         });
       }
 
+      // ── 3. Load the picker module via gapi ────────────────────────────
       if (!(window as any).google?.picker) {
         await new Promise<void>((resolve, reject) => {
           (window as any).gapi.load("picker", {
@@ -114,18 +122,24 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const GP = (window as any).google?.picker;
-      if (!GP) throw new Error("Google Picker API unavailable");
+      if (!GP) throw new Error("Google Picker API unavailable after loading");
 
+      // ── 4. Build and show the picker ──────────────────────────────────
       const view = new GP.DocsView();
       view.setMimeTypes("application/pdf,image/jpeg,image/png,image/gif,image/webp");
 
       const picker = new GP.PickerBuilder()
         .addView(view)
         .setOAuthToken(token)
+        .setDeveloperKey(apiKey)
+        .setOrigin(window.location.protocol + "//" + window.location.host)
         .setLocale("en")
         .setCallback((data: any) => {
           pickerLoadingRef.current = false;
-          if (data.action === "cancel") { setDriveImportStatus("idle"); return; }
+          if (data.action === "cancel") {
+            setDriveImportStatus("idle");
+            return;
+          }
           if (data.action === "picked" && data.docs?.length > 0) {
             setDriveImportStatus("fetching");
             setDriveImportError(null);
