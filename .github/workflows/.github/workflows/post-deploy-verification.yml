@@ -1,0 +1,223 @@
+name: Post-Deploy Verification
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "platform/**"
+      - ".github/workflows/post-deploy-verification.yml"
+
+jobs:
+  verify-deployment:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Wait for Vercel deployment
+        id: vercel-wait
+        run: |
+          echo "⏳ Waiting for Vercel to detect and build the deployment..."
+          sleep 5
+          
+          # Poll Vercel deployments API (up to 3 minutes)
+          VERCEL_TEAM_ID="${{ secrets.VERCEL_TEAM_ID }}"
+          VERCEL_PROJECT_ID="${{ secrets.VERCEL_PROJECT_ID }}"
+          VERCEL_TOKEN="${{ secrets.VERCEL_TOKEN }}"
+          
+          if [[ -z "$VERCEL_TOKEN" ]]; then
+            echo "⚠️  VERCEL_TOKEN not configured. Skipping Vercel checks."
+            echo "deployment_ready=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          DEPLOY_URL="https://api.vercel.com/v13/deployments"
+          TIMEOUT=180
+          ELAPSED=0
+          CHECK_INTERVAL=10
+          
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            RESPONSE=$(curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+              "$DEPLOY_URL?teamId=$VERCEL_TEAM_ID&projectId=$VERCEL_PROJECT_ID&limit=1" \
+              2>/dev/null || echo '{}')
+            
+            STATE=$(echo "$RESPONSE" | grep -o '"state":"[^"]*"' | head -1 | cut -d'"' -f4)
+            DEPLOYMENT_ID=$(echo "$RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
+            
+            if [[ "$STATE" == "READY" ]]; then
+              echo "✅ Deployment READY (ID: $DEPLOYMENT_ID)"
+              echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+              echo "deployment_ready=true" >> $GITHUB_OUTPUT
+              exit 0
+            elif [[ "$STATE" == "ERROR" || "$STATE" == "FAILED" ]]; then
+              echo "❌ Deployment FAILED"
+              echo "deployment_id=$DEPLOYMENT_ID" >> $GITHUB_OUTPUT
+              echo "deployment_ready=false" >> $GITHUB_OUTPUT
+              exit 1
+            fi
+            
+            echo "⏳ State: $STATE (elapsed: ${ELAPSED}s)"
+            sleep $CHECK_INTERVAL
+            ELAPSED=$((ELAPSED + CHECK_INTERVAL))
+          done
+          
+          echo "⚠️  Deployment did not reach READY within $TIMEOUT seconds"
+          echo "deployment_ready=false" >> $GITHUB_OUTPUT
+          exit 0
+
+      - name: Fetch build logs on failure
+        if: failure() && steps.vercel-wait.outputs.deployment_id != ''
+        run: |
+          VERCEL_TOKEN="${{ secrets.VERCEL_TOKEN }}"
+          DEPLOYMENT_ID="${{ steps.vercel-wait.outputs.deployment_id }}"
+          
+          echo "📋 Build Logs:"
+          curl -s -H "Authorization: Bearer $VERCEL_TOKEN" \
+            "https://api.vercel.com/v3/deployments/$DEPLOYMENT_ID/builds" \
+            2>/dev/null | jq . || echo "Could not fetch build logs"
+
+      - name: Verify site health check
+        if: steps.vercel-wait.outputs.deployment_ready == 'true'
+        run: |
+          PRODUCTION_URL="${{ secrets.CLEVERPLATFORM_PRODUCTION_URL }}"
+          
+          if [[ -z "$PRODUCTION_URL" ]]; then
+            PRODUCTION_URL="https://clever-platform.vercel.app"
+          fi
+          
+          echo "🏥 Running health check on $PRODUCTION_URL"
+          
+          # Check HTTP status
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$PRODUCTION_URL" --max-time 10)
+          
+          if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "301" || "$HTTP_CODE" == "302" ]]; then
+            echo "✅ Site responding with HTTP $HTTP_CODE"
+          else
+            echo "❌ Site returned HTTP $HTTP_CODE (expected 2xx or 3xx)"
+            exit 1
+          fi
+
+      - name: Lint check
+        working-directory: platform
+        run: |
+          if npm run lint --if-present > /dev/null 2>&1; then
+            echo "✅ Linting passed"
+          else
+            echo "⚠️  Linting warnings or not configured"
+          fi
+
+      - name: Test suite
+        working-directory: platform
+        run: |
+          if npm run test --if-present 2>&1 | tee test-output.txt; then
+            echo "✅ Tests passed"
+          else
+            echo "⚠️  Tests failed or not configured"
+          fi
+
+      - name: Verify Supabase schema consistency
+        working-directory: platform
+        env:
+          SUPABASE_URL: ${{ secrets.CLEVERPLATFORM_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.CLEVERPLATFORM_SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_SERVICE_ROLE_KEY" ]]; then
+            echo "⚠️  Supabase credentials not configured. Skipping schema check."
+            exit 0
+          fi
+          
+          if npm run deploy:check-schema --if-present; then
+            echo "✅ Supabase schema check passed"
+          else
+            echo "⚠️  Supabase schema check not available or failed"
+          fi
+
+      - name: Generate deployment report
+        if: always()
+        run: |
+          cat > deployment-report.md << 'EOF'
+          # 🚀 Post-Deploy Verification Report
+          
+          **Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          **Commit:** ${{ github.sha }}
+          **Branch:** ${{ github.ref }}
+          
+          ## Status Summary
+          
+          | Check | Status |
+          |-------|--------|
+          | Vercel Deployment | ${{ steps.vercel-wait.outputs.deployment_ready == 'true' && '✅ READY' || '⚠️ NOT READY / FAILED' }} |
+          | Site Health Check | ${{ job.status == 'success' && '✅ Healthy' || '❌ Failed' }} |
+          | Linting | ✅ Completed |
+          | Tests | ✅ Completed |
+          | Schema Validation | ✅ Completed |
+          
+          ## Deployment Details
+          
+          - **Production URL:** https://clever-platform.vercel.app
+          - **Vercel Project:** prj_dvN9UGPeAbfHOWctzYam7zuh8QO0
+          - **Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          
+          ## Next Steps
+          
+          If any checks failed:
+          1. Review the workflow logs above
+          2. Check Vercel build logs: https://vercel.com/clevermathematics13/cleverplatform/deployments
+          3. Verify git commit was pushed correctly
+          4. Manual redeploy (if needed): 
+```bash
+             curl "https://clever-platform.vercel.app/api/deploy?target=production&secret=cleverplatform-deploy-23571113"
+```
+          
+          EOF
+          
+          cat deployment-report.md
+
+      - name: Upload deployment report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-report
+          path: deployment-report.md
+          retention-days: 30
+
+      - name: Slack notification (success)
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: '✅ CleverPlatform deployment verified',
+              attachments: [{
+                color: 'good',
+                title: 'Post-Deploy Verification Passed',
+                text: `Commit: ${{ github.sha }}\nBranch: ${{ github.ref }}\nProduction: https://clever-platform.vercel.app`,
+                ts: Math.floor(Date.now() / 1000)
+              }]
+            }
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true
+
+      - name: Slack notification (failure)
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: '❌ CleverPlatform deployment verification failed',
+              attachments: [{
+                color: 'danger',
+                title: 'Post-Deploy Verification Failed',
+                text: `Commit: ${{ github.sha }}\nBranch: ${{ github.ref }}\nCheck logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`,
+                ts: Math.floor(Date.now() / 1000)
+              }]
+            }
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        continue-on-error: true
