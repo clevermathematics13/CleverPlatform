@@ -26,7 +26,6 @@ type GenericSandboxProps = {
   defaultDraft: AssignmentDraft;
 };
 
-// IB AA HL syllabus topic list for coverage chips
 const IB_TOPICS = [
   { code: "1", label: "Topic 1: Number & Algebra" },
   { code: "2", label: "Topic 2: Functions" },
@@ -67,7 +66,6 @@ export function GenericAssignmentSandbox({
   const [paperType, setPaperType] = useState<"paper1" | "paper2" | "mixed" | "investigation">("mixed");
   const [cohortTag, setCohortTag] = useState<"26AH" | "27AH" | "custom">("26AH");
 
-  // Derived stats
   const totalMarks = useMemo(() =>
     draft.sections.reduce((sSum, s) =>
       sSum + s.questions.reduce((qSum, q) => {
@@ -94,7 +92,6 @@ export function GenericAssignmentSandbox({
 
   async function loadTemplates() {
     try {
-      // Load templates from ALL grades (not filtered by current gradeLevel)
       const res = await fetch(`/api/assignments/templates/list?grade=all`);
       if (!res.ok) {
         const d = (await res.json()) as { error?: string };
@@ -297,10 +294,22 @@ export function GenericAssignmentSandbox({
                 options={[{ value: "numeric", label: "1, 2, 3" }, { value: "lettered", label: "a, b, c" }]} />
             </div>
 
+            <LabeledSelect
+              label="Answer Style"
+              value={formatting.answerStyle ?? "boxes"}
+              onChange={(v) => setFormatting((p) => ({ ...p, answerStyle: v as "boxes" | "lines" | "none" }))}
+              options={[
+                { value: "boxes", label: "Answer Boxes (bordered)" },
+                { value: "lines", label: "Answer Lines (bare)" },
+                { value: "none", label: "No Answer Space" },
+              ]}
+            />
+
             {/* Answer Box Lines slider */}
+            {(formatting.answerStyle ?? "boxes") !== "none" && (
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-medium text-da-muted">Answer Box Lines (global default)</span>
+                <span className="text-xs font-medium text-da-muted">{(formatting.answerStyle ?? "boxes") === "boxes" ? "Answer Box Lines" : "Answer Lines"} (global default)</span>
                 <span className="rounded-md border border-da-border/60 bg-da-bg/60 px-2 py-0.5 text-xs font-semibold tabular-nums text-da-text">
                   {answerBoxLines} {answerBoxLines === 1 ? "line" : "lines"}
                 </span>
@@ -312,6 +321,7 @@ export function GenericAssignmentSandbox({
                 <span>Short answer</span><span>Extended response</span>
               </div>
             </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <ToggleField label="Student name line" checked={formatting.includeNameLine} onChange={(c) => setFormatting((p) => ({ ...p, includeNameLine: c }))} />
@@ -344,13 +354,11 @@ export function GenericAssignmentSandbox({
 
         {/* ── Right panel ───────────────────────────────────────────────── */}
         <div className="space-y-3">
-          {/* Marks / stats strip */}
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/60 px-4 py-2.5">
             <Stat label="Total marks" value={`[${totalMarks}]`} accent="amber" />
             <Divider />
             <Stat label="Questions" value={String(totalQuestions)} />
             <Divider />
-            {/* Tier histogram */}
             <div className="flex items-center gap-1.5">
               {tierDist.t1 > 0 && <TierPill count={tierDist.t1} tier={1} />}
               {tierDist.t2 > 0 && <TierPill count={tierDist.t2} tier={2} />}
@@ -377,7 +385,6 @@ export function GenericAssignmentSandbox({
             <div className="ml-auto text-[10px] text-da-muted/60">Editable before export</div>
           </div>
 
-          {/* Syllabus topic coverage chips */}
           {coveredTopics.size > 0 && (
             <div className="flex flex-wrap items-center gap-2 px-1">
               <span className="text-[10px] font-semibold text-da-muted uppercase tracking-wide">Topics covered:</span>
@@ -396,7 +403,6 @@ export function GenericAssignmentSandbox({
             </div>
           )}
 
-          {/* Preview canvas */}
           <div className="rounded-xl border border-da-border bg-da-bg/30 p-4">
             <div className="overflow-auto rounded-lg border border-da-border bg-white shadow-inner" style={{ minHeight: 860, padding: "32px 40px" }}>
               <NuancedAnalysisPreview
