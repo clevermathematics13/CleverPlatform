@@ -55,6 +55,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const [driveImportStatus, setDriveImportStatus] = useState<DriveImportStatus>("idle");
   const [driveImportError, setDriveImportError] = useState<string | null>(null);
 
+  // formatting is accepted as a prop for future use but currently the system prompt
+  // does not consume it — suppress unused-variable warning
+  void formatting;
+
   useEffect(() => {
     async function checkDrive() {
       try {
@@ -251,7 +255,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: buildActivityGeneratorSystemPrompt(gradeLevel, formatting),
+          system: buildActivityGeneratorSystemPrompt(gradeLevel),
           messages,
         }),
       });
