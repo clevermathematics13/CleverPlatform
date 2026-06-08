@@ -10,7 +10,7 @@ import {
   sanitizeDraft,
 } from "@/lib/assignments";
 
-// ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 type PendingImage = { base64: string; mimeType: ImageMimeType; previewUrl: string; name: string };
@@ -33,7 +33,7 @@ type Props = {
   onDraftGenerated: (draft: AssignmentDraft) => void;
 };
 
-// ── Component ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Component ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated }: Props) {
   const [description, setDescription] = useState("");
@@ -55,8 +55,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const [driveImportStatus, setDriveImportStatus] = useState<DriveImportStatus>("idle");
   const [driveImportError, setDriveImportError] = useState<string | null>(null);
 
-  // formatting is accepted as a prop for future use but currently the system prompt
-  // does not consume it — suppress unused-variable warning
+  // formatting accepted for future use
   void formatting;
 
   useEffect(() => {
@@ -90,7 +89,6 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setDriveImportError(null);
 
     try {
-      // ── 1. Fetch OAuth token AND API key from our server ──────────────
       const tokenRes = await fetch("/api/assignments/google-picker-token");
       if (!tokenRes.ok) {
         const errData = (await tokenRes.json().catch(() => ({}))) as { error?: string };
@@ -100,7 +98,6 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
       if (!apiKey) throw new Error("Google Picker API key not configured");
 
-      // ── 2. Load the gapi script if not already loaded ─────────────────
       if (!(window as unknown as { gapi?: unknown }).gapi) {
         await new Promise<void>((resolve, reject) => {
           const script = document.createElement("script");
@@ -111,11 +108,9 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
         });
       }
 
-      // ── 3. Load picker library ────────────────────────────────────────
       const gapi = (window as unknown as { gapi: { load: (lib: string, cb: () => void) => void; client?: unknown } }).gapi;
       await new Promise<void>((resolve) => gapi.load("picker", resolve));
 
-      // ── 4. Build and show the picker ──────────────────────────────────
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const pickerLib = ((window as any).google as any).picker as any;
 
@@ -246,9 +241,24 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setPendingPdfs([]);
 
     try {
+      // Build the API message list — Anthropic rejects empty content strings.
+      // Prior history assistant turns store display text; rebuild with safe fallbacks.
       const messages = [
-        ...history.map((m) => ({ role: m.role, content: m.content })),
-        { role: "user" as const, content: userContent },
+        ...history
+          .filter((m) => typeof m.content === "string" ? m.content.trim().length > 0 : true)
+          .map((m) => ({
+            role: m.role,
+            content: m.role === "assistant"
+              ? (m.draftTitle ? `Generated draft: ${m.draftTitle}` : (m.content.trim() || "Draft generated."))
+              : (m.content.trim() || "[attachment only]"),
+          })),
+        {
+          role: "user" as const,
+          // Ensure the current user turn always has at least one text block
+          content: userContent.length > 0
+            ? userContent
+            : [{ type: "text", text: description.trim() || "Please refine the previous draft." }],
+        },
       ];
 
       const res = await fetch("/api/claude", {
