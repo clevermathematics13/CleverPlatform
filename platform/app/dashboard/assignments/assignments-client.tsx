@@ -26,7 +26,7 @@ const TABS: TabOption[] = [
 ];
 
 export function AssignmentsClient() {
-  const [activeTab, setActiveTab] = useState<TabId>("dp-designer");
+  const [activeTab, setActiveTab] = useState<TabId>("nuanced-analysis");
 
   return (
     <div className="space-y-6">
