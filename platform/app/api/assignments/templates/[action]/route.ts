@@ -9,6 +9,7 @@ type TemplateData = {
   documentKind: string;
   formattingRequirements: Record<string, unknown>;
   assignmentInput: Record<string, unknown>;
+  draftContent?: Record<string, unknown> | null;
 };
 
 type SavedTemplate = {
@@ -18,6 +19,7 @@ type SavedTemplate = {
   document_kind: string;
   formatting_requirements: Record<string, unknown>;
   assignment_input: Record<string, unknown>;
+  draft_content?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
 };
@@ -60,6 +62,7 @@ export async function GET(
         document_kind: row.document_kind,
         formatting_requirements: row.formatting_requirements,
         assignment_input: row.assignment_input,
+        draft_content: row.draft_content ?? null,
         created_at: row.created_at,
         updated_at: row.updated_at,
       }));
@@ -122,6 +125,7 @@ export async function POST(req: Request) {
         document_kind: documentKind,
         formatting_requirements: formattingRequirements,
         assignment_input: assignmentInput,
+        draft_content: body.draftContent ?? null,
       })
       .select()
       .single();
@@ -166,6 +170,7 @@ export async function PUT(req: Request) {
         document_kind: documentKind,
         formatting_requirements: formattingRequirements,
         assignment_input: assignmentInput,
+        draft_content: body.draftContent ?? null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
