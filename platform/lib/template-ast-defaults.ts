@@ -1,0 +1,121 @@
+/**
+ * template-ast-defaults.ts
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Default TemplateAst values for CleverPlatform Nuanced Analysis activities.
+ *
+ * These are valid, fully-specified objects that pass Zod validation.
+ * Use them as the starting point for all new templates.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+import type { TemplateAst } from "./template-ast.schema";
+
+export const DEFAULT_NUANCED_ANALYSIS_TEMPLATE: TemplateAst = {
+  schemaVersion: "2025-06-01.1",
+  templateId: "nuanced-analysis-default-v1",
+  templateName: "Nuanced Analysis — Default (IBDP AA HL)",
+
+  document: {
+    pageSize: "a4",
+    orientation: "portrait",
+    marginTopMm: 18,
+    marginRightMm: 18,
+    marginBottomMm: 20,
+    marginLeftMm: 18,
+  },
+
+  typography: {
+    bodyFont: "Georgia",
+    headingFont: "Georgia",
+    bodySizePt: 11,
+    smallSizePt: 9,
+    headingScale: 1.25,
+    lineHeight: 1.55,
+  },
+
+  colors: {
+    primary: "#1a3a5c",
+    secondary: "#0e7490",
+    accent: "#7c3aed",
+    muted: "#6b7280",
+    text: "#111827",
+    border: "#d1d5db",
+    commandTermStrip: "#0e7490",
+    tokBox: "#f5f3ff",
+    imBox: "#f0fdf4",
+  },
+
+  spacing: {
+    sectionGapMm: 8,
+    questionGapMm: 5,
+    promptToAnswerGapMm: 3,
+    paragraphGapMm: 3,
+  },
+
+  header: {
+    enabled: true,
+    leftTextMode: "documentTitle",
+    rightTextMode: "pageNumber",
+  },
+
+  footer: {
+    enabled: true,
+    showPageNumber: true,
+    showTemplateVersion: false,
+  },
+
+  questionBlocks: {
+    keepPromptWithAnswerBox: true,
+    keepStemWithFirstSubQuestion: true,
+    allowAnswerContinuation: true,
+    minimumUsefulAnswerBoxHeightMm: 28,
+    preferMoveWholeBlockOverTinyContinuation: true,
+    showMarks: true,
+    showEstimatedMinutes: true,
+    minutesPerMarkNumerator: 12,
+    minutesPerMarkDenominator: 11,
+  },
+
+  answerBoxes: {
+    defaultKind: "lined",
+    defaultHeightMm: 55,
+    lineSpacingMm: 7,
+    borderWidthPt: 0.5,
+    continuationEnabled: true,
+    continuationLabel: "Continue your response here",
+    continuationBoxMinHeightMm: 35,
+  },
+
+  math: {
+    engine: "typst",
+    displayMathSpacingMm: 3,
+    inlineMathScale: 1.0,
+    displayMathScale: 1.0,
+    measureBeforePlacement: true,
+  },
+
+  graphs: {
+    defaultWidthMm: 90,
+    defaultHeightMm: 70,
+    keepGraphWithPrompt: true,
+    allowSideBySideComparison: true,
+  },
+
+  connections: {
+    enabled: true,
+    allowedTypes: ["tok", "interdisciplinary", "realWorld", "technology"],
+    defaultLabel: "Thinking Lens",
+    maxWords: 120,
+  },
+
+  cohesion: {
+    continuationThresholdMm: 40,
+    continuationBoxMinHeightMm: 35,
+    keepSectionHeadingWithFirstQuestion: true,
+  },
+
+  progressTracker: {
+    enabled: true,
+    label: "Progress tracker",
+  },
+};
