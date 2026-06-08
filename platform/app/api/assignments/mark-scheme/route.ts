@@ -2,10 +2,14 @@ import { getApiTeacher } from "@/lib/auth";
 import { NextResponse } from "next/server";
 import { generateMarkSchemeHtml, type MarkSchemeRequest } from "@/lib/document-orchestrator";
 import { FormattingRequirementsSchema } from "@/lib/template-schema";
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium-min";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const CHROMIUM_REMOTE_URL =
+  "https://github.com/Sparticuz/chromium/releases/download/v133.0.0/chromium-v133.0.0-pack.tar";
 
 export async function POST(req: Request) {
   try {
@@ -26,12 +30,25 @@ export async function POST(req: Request) {
     const html = generateMarkSchemeHtml({ ...body, formatting: fmtResult.data });
     const safeFilename = `${(body.title || "assignment").replace(/[^a-z0-9]/gi, "_")}_mark_scheme`;
 
+    const isVercel = Boolean(process.env.VERCEL);
+
     let browser;
     try {
-      browser = await puppeteer.launch({
-        headless: true,
-        args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-      });
+      if (isVercel) {
+        const executablePath = await chromium.executablePath(CHROMIUM_REMOTE_URL);
+        browser = await puppeteer.launch({
+          args: chromium.args,
+          defaultViewport: chromium.defaultViewport,
+          executablePath,
+          headless: chromium.headless,
+        });
+      } else {
+        browser = await puppeteer.launch({
+          headless: true,
+          args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+          executablePath: process.env.CHROME_EXECUTABLE_PATH,
+        });
+      }
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "load" as const, timeout: 30000 });
       const pdf = await page.pdf({
