@@ -314,9 +314,22 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
         body: JSON.stringify({
           templateName: lastDraft.title || "Untitled",
           gradeLevel,
-          documentKind: "activity-sheet",
+          documentKind: "investigation",
           formattingRequirements: formatting,
-          assignmentInput: { title: lastDraft.title, topic: "", learningGoals: "", contextNotes: "", questionCount: 10, challengeMix: "balanced", includeRealWorldContext: true, tone: "clear", gradeLevel, documentKind: "activity-sheet" },
+          assignmentInput: {
+            title: lastDraft.title,
+            topic: (lastDraft as { syllabusTopics?: string }).syllabusTopics ?? "",
+            learningGoals: "",
+            contextNotes: "",
+            questionCount: lastDraft.sections.reduce((s, sec) => s + sec.questions.length, 0),
+            challengeMix: "challenge-forward",
+            includeRealWorldContext: true,
+            tone: "exam-style",
+            gradeLevel,
+            documentKind: "investigation",
+          },
+          // Persist the full draft so the editor and sandbox can reload it
+          draftContent: lastDraft,
         }),
       });
       setSaveStatus(res.ok ? "saved" : "error");
@@ -491,7 +504,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               disabled={saveStatus === "saving"}
               className="w-full rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-1.5 text-xs font-medium text-da-muted transition-colors hover:bg-da-hover disabled:opacity-50"
             >
-              {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved as template" : saveStatus === "error" ? "Save failed" : "Save as template"}
+              {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved as Nuanced Analysis" : saveStatus === "error" ? "Save failed" : "Save as Nuanced Analysis"}
             </button>
           )}
         </div>
