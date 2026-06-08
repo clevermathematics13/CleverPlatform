@@ -86,6 +86,7 @@ export type SavedTemplate = {
   document_kind: string;
   formatting_requirements: FormattingRequirements;
   assignment_input: AssignmentInput;
+  draft_content?: AssignmentDraft | null;
   created_at: string;
   updated_at: string;
 };
@@ -419,55 +420,5 @@ export function generateAssignmentHtml(request: AssignmentPdfRequest): string {
   const answersHtml = formatting.includeAnswerKey
     ? `<section class="answers"><h3>Answer Key</h3>${sections.map((section, sectionIndex) => section.questions.map((question, questionIndex) => { const label = formatQuestionLabel(sectionIndex, questionIndex, formatting.numberingStyle); return `<div class="answer-row"><span class="q-label">${escapeHtml(label)}</span><span>${escapeHtml(question.answer ?? "")}</span></div>`; }).join("")).join("")}</section>`
     : "";
-  return `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>${escapeHtml(title)}</title>
-  <style>
-    @page { size: A4; margin: ${formatting.pageMarginsMm}mm; }
-    * { margin: 0; padding: 0; }
-    body { font-family: Georgia, "Times New Roman", serif; color: #111; font-size: ${formatting.fontSize}pt; line-height: ${formatting.lineSpacing === "compact" ? "1.3" : formatting.lineSpacing === "relaxed" ? "1.7" : "1.5"}; }
-    h1, h2, h3 { margin: 0; margin-top: 0.5em; }
-    h3 { margin-top: 1em; }
-    .doc-head { border-bottom: 1px solid #cfcfcf; padding-bottom: 8px; margin-bottom: 14px; }
-    .school { text-align: center; text-transform: uppercase; font-size: 9pt; letter-spacing: 0.08em; margin-bottom: 4px; }
-    .title { text-align: center; margin-top: 6px; margin-bottom: 2px; font-size: 18pt; font-weight: bold; }
-    .subtitle { text-align: center; margin-top: 2px; margin-bottom: 8px; font-size: 10pt; color: #444; }
-    .meta { margin-bottom: 8px; font-size: 10pt; display: flex; gap: 20px; flex-wrap: wrap; }
-    .meta-line { min-width: 200px; }
-    ul { margin: 8px 0 12px 18px; padding: 0; }
-    li { margin: 2px 0; }
-    section { margin-top: 12px; }
-    .q-row { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; margin: 6px 0; align-items: start; }
-    .question-block { break-inside: avoid; page-break-inside: avoid; margin: 10px 0 4px 0; padding-bottom: 4px; }
-    .q-label { font-weight: 600; min-width: 30px; }
-    .q-text { white-space: pre-wrap; word-wrap: break-word; }
-    .marks { font-size: 9pt; color: #555; text-align: right; }
-    .answer-box-bordered { margin: 6px 0 14px 38px; border: 1pt solid #999; border-radius: 2px; break-inside: avoid; page-break-inside: avoid; }
-    .answer-box-bordered .answer-line { border-bottom: 0.5pt solid #ddd; height: 8mm; min-height: 8mm; }
-    .answer-box-bordered .answer-line:last-child { border-bottom: none; }
-    .answer-bare-lines { margin: 4px 0 12px 38px; }
-    .answer-bare-lines .answer-line { border-bottom: 0.5pt solid #bbb; height: 8mm; min-height: 8mm; }
-    .answers { border-top: 1px solid #cfcfcf; margin-top: 18px; padding-top: 10px; }
-    .answer-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 4px 0; }
-  </style>
-</head>
-<body>
-  <div class="doc-head">
-    <div class="school">${escapeHtml(formatting.schoolName)}</div>
-    <h1 class="title">${escapeHtml(title)}</h1>
-    <h2 class="subtitle">${escapeHtml(subtitle)}</h2>
-    <div class="meta">
-      ${formatting.includeNameLine ? `<div class="meta-line">Name: ____________________</div>` : ""}
-      ${formatting.includeDateLine ? `<div class="meta-line">Date: ____________________</div>` : ""}
-      ${formatting.teacherName ? `<div class="meta-line">Teacher: ${escapeHtml(formatting.teacherName)}</div>` : ""}
-    </div>
-  </div>
-  <h3>Instructions</h3>
-  <ul>${instructionsHtml}</ul>
-  ${sectionsHtml}
-  ${answersHtml}
-</body>
-</html>`;
+  return `<!doctype html>\n<html>\n<head>\n  <meta charset="utf-8" />\n  <title>${escapeHtml(title)}</title>\n  <style>\n    @page { size: A4; margin: ${formatting.pageMarginsMm}mm; }\n    * { margin: 0; padding: 0; }\n    body { font-family: Georgia, "Times New Roman", serif; color: #111; font-size: ${formatting.fontSize}pt; line-height: ${formatting.lineSpacing === "compact" ? "1.3" : formatting.lineSpacing === "relaxed" ? "1.7" : "1.5"}; }\n    h1, h2, h3 { margin: 0; margin-top: 0.5em; }\n    h3 { margin-top: 1em; }\n    .doc-head { border-bottom: 1px solid #cfcfcf; padding-bottom: 8px; margin-bottom: 14px; }\n    .school { text-align: center; text-transform: uppercase; font-size: 9pt; letter-spacing: 0.08em; margin-bottom: 4px; }\n    .title { text-align: center; margin-top: 6px; margin-bottom: 2px; font-size: 18pt; font-weight: bold; }\n    .subtitle { text-align: center; margin-top: 2px; margin-bottom: 8px; font-size: 10pt; color: #444; }\n    .meta { margin-bottom: 8px; font-size: 10pt; display: flex; gap: 20px; flex-wrap: wrap; }\n    .meta-line { min-width: 200px; }\n    ul { margin: 8px 0 12px 18px; padding: 0; }\n    li { margin: 2px 0; }\n    section { margin-top: 12px; }\n    .q-row { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; margin: 6px 0; align-items: start; }\n    .question-block { break-inside: avoid; page-break-inside: avoid; margin: 10px 0 4px 0; padding-bottom: 4px; }\n    .q-label { font-weight: 600; min-width: 30px; }\n    .q-text { white-space: pre-wrap; word-wrap: break-word; }\n    .marks { font-size: 9pt; color: #555; text-align: right; }\n    .answer-box-bordered { margin: 6px 0 14px 38px; border: 1pt solid #999; border-radius: 2px; break-inside: avoid; page-break-inside: avoid; }\n    .answer-box-bordered .answer-line { border-bottom: 0.5pt solid #ddd; height: 8mm; min-height: 8mm; }\n    .answer-box-bordered .answer-line:last-child { border-bottom: none; }\n    .answer-bare-lines { margin: 4px 0 12px 38px; }\n    .answer-bare-lines .answer-line { border-bottom: 0.5pt solid #bbb; height: 8mm; min-height: 8mm; }\n    .answers { border-top: 1px solid #cfcfcf; margin-top: 18px; padding-top: 10px; }\n    .answer-row { display: grid; grid-template-columns: auto 1fr; gap: 8px; margin: 4px 0; }\n  </style>\n</head>\n<body>\n  <div class="doc-head">\n    <div class="school">${escapeHtml(formatting.schoolName)}</div>\n    <h1 class="title">${escapeHtml(title)}</h1>\n    <h2 class="subtitle">${escapeHtml(subtitle)}</h2>\n    <div class="meta">\n      ${formatting.includeNameLine ? `<div class="meta-line">Name: ____________________</div>` : ""}\n      ${formatting.includeDateLine ? `<div class="meta-line">Date: ____________________</div>` : ""}\n      ${formatting.teacherName ? `<div class="meta-line">Teacher: ${escapeHtml(formatting.teacherName)}</div>` : ""}\n    </div>\n  </div>\n  <h3>Instructions</h3>\n  <ul>${instructionsHtml}</ul>\n  ${sectionsHtml}\n  ${answersHtml}\n</body>\n</html>`;
 }
