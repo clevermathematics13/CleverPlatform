@@ -23,6 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "@googleapis/classroom": "^11.1.0",
+    "@sparticuz/chromium-min": "^133.0.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.4",
     "@types/katex": "^0.16.8",
@@ -33,7 +34,7 @@
     "katex": "^0.16.45",
     "mafs": "^0.21.0",
     "next": "16.2.4",
-    "puppeteer": "^25.0.4",
+    "puppeteer-core": "^25.0.4",
     "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
