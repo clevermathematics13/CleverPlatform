@@ -17,14 +17,16 @@
  *   The JSON payload is passed into Typst using its native json() data loader.
  *
  * Current status:
- *   Typst WASM (via @myriaddreamin/typst.ts) is loaded lazily so it does not
- *   inflate the Next.js edge runtime. The first call initialises the compiler;
- *   subsequent calls reuse it.
+ *   @myriaddreamin/typst.ts is an OPTIONAL peer dependency.
+ *   It is NOT in package.json because it requires native WASM and is large.
+ *   The dynamic import uses the webpackIgnore magic comment so that neither
+ *   Webpack nor Turbopack tries to bundle or resolve this module at build time.
+ *   At runtime the service returns a clear error if the package is absent,
+ *   allowing callers to fall back to the KaTeX → Puppeteer path.
  *
- * Fallback:
- *   If the Typst WASM cannot be loaded (e.g. missing dependency), the service
- *   returns { success: false, error } with a clear message so callers can fall
- *   back to the KaTeX → Puppeteer path.
+ *   To enable Typst rendering, run:
+ *     npm install @myriaddreamin/typst.ts
+ *   inside the platform/ directory and redeploy.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
@@ -184,24 +186,26 @@ export type TypstRenderResult =
 
 // ── Lazy Typst compiler initialisation ───────────────────────────────────────
 
-// We store a reference to the compiler singleton so it is only
-// initialised once per server process.
+// Compiler singleton — initialised once per server process.
 let _typstCompilerPromise: Promise<unknown> | null = null;
 
 /**
  * Loads the Typst WASM compiler lazily.
  *
- * Returns the compiler instance, or throws if the package is not installed.
+ * The /* webpackIgnore: true * / comment inside the import() call tells both
+ * Webpack and Turbopack to skip this module at build time. The module is
+ * resolved only at runtime, so building without the package installed is safe.
+ *
+ * To install: npm install @myriaddreamin/typst.ts
  */
 async function getTypstCompiler(): Promise<unknown> {
   if (_typstCompilerPromise) return _typstCompilerPromise;
 
   _typstCompilerPromise = (async () => {
-    // Dynamic import so the package is not bundled into the client.
-    // The package is: npm install @myriaddreamin/typst.ts
-    const mod = await import("@myriaddreamin/typst.ts" as string);
-    // Initialise the WASM compiler.
-    // The exact API depends on the version — see typst.ts documentation.
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore — optional peer dependency; ignored at build time via webpackIgnore
+    // eslint-disable-next-line import/no-extraneous-dependencies
+    const mod = await import(/* webpackIgnore: true */ "@myriaddreamin/typst.ts");
     const compiler = new (mod as { NodeCompiler: new () => unknown }).NodeCompiler();
     return compiler;
   })();
@@ -274,7 +278,7 @@ export const TypstRenderService = {
    * Steps:
    *   1. Validate the template AST.
    *   2. Build the merged JSON payload.
-   *   3. Load the Typst WASM compiler.
+   *   3. Load the Typst WASM compiler (optional dep — fails gracefully).
    *   4. Compile the Typst source with the JSON payload injected.
    *   5. Return the PDF buffer.
    */
@@ -300,20 +304,15 @@ export const TypstRenderService = {
       return {
         success: false,
         error:
-          "Typst compiler not available. Run: npm install @myriaddreamin/typst.ts",
+          "Typst compiler not available. Install with: npm install @myriaddreamin/typst.ts",
         detail: err instanceof Error ? err.message : String(err),
       };
     }
 
     // Step 4 — Compile
-    // The Typst template reads the payload via:
-    //   #let data = json(sys.inputs.payload)
-    // We serialize payload to a temp string and pass via stdin/env.
     try {
       const payloadJson = JSON.stringify(typstPayload);
 
-      // typst.ts API: compiler.compile({ source, inputs })
-      // The compiler instance exposes a compile() method.
       const compile = (
         compiler as {
           compile: (opts: {
@@ -332,8 +331,6 @@ export const TypstRenderService = {
         };
       }
 
-      // Load the Typst source template from disk.
-      // In production this is embedded as a string constant.
       const typstSource = getActivityTypstSource();
 
       const result = await compile.call(compiler, {
@@ -367,49 +364,32 @@ export const TypstRenderService = {
 // ── Embedded Typst source ─────────────────────────────────────────────────────
 
 /**
- * Returns the Typst template source as a string.
- *
- * In development the file is read from platform/typst/activity.typ.
- * In production the source is inlined here so the API route has no file I/O.
- *
- * This function returns a minimal valid Typst document that reads the JSON
- * payload and renders a Nuanced Analysis packet.
- *
- * The full template lives in platform/typst/activity.typ.
+ * Returns the full Typst template source as a string.
+ * Embedded here so the API route has zero file I/O at runtime.
+ * The canonical source lives in platform/typst/activity.typ.
  */
 function getActivityTypstSource(): string {
   return `
 // ── CleverPlatform Nuanced Analysis — Typst template ────────────────────────
-// Reads a validated ActivityPayload JSON injected via sys.inputs.payload.
-// ─────────────────────────────────────────────────────────────────────────────
-
 #let raw = sys.inputs.at("payload", default: "{}")
 #let data = json(raw)
 #let tmpl = data.template
 #let content = data.content
 #let opts = data.at("renderOptions", default: (:))
 
-// Document settings
 #let page-size = if tmpl.document.pageSize == "a4" { "a4" } else { "us-letter" }
-#let margin-top = str(tmpl.document.marginTopMm) + "mm"
-#let margin-right = str(tmpl.document.marginRightMm) + "mm"
-#let margin-bottom = str(tmpl.document.marginBottomMm) + "mm"
-#let margin-left = str(tmpl.document.marginLeftMm) + "mm"
-
 #set page(
   paper: page-size,
-  margin: (top: margin-top, right: margin-right, bottom: margin-bottom, left: margin-left),
+  margin: (
+    top: str(tmpl.document.marginTopMm) + "mm",
+    right: str(tmpl.document.marginRightMm) + "mm",
+    bottom: str(tmpl.document.marginBottomMm) + "mm",
+    left: str(tmpl.document.marginLeftMm) + "mm",
+  ),
 )
-
-// Typography
-#set text(
-  font: tmpl.typography.bodyFont,
-  size: str(tmpl.typography.bodySizePt) + "pt",
-)
-
+#set text(font: tmpl.typography.bodyFont, size: str(tmpl.typography.bodySizePt) + "pt")
 #set par(leading: 0.65em)
 
-// Colour helpers
 #let col-primary = rgb(tmpl.colors.primary)
 #let col-secondary = rgb(tmpl.colors.secondary)
 #let col-accent = rgb(tmpl.colors.accent)
@@ -418,269 +398,151 @@ function getActivityTypstSource(): string {
 #let col-im = rgb(tmpl.colors.imBox)
 #let col-strip = rgb(tmpl.colors.commandTermStrip)
 
-// ── Tier badge helper ────────────────────────────────────────────────────────
 #let tier-badge(tier) = {
-  if tier == 1 { text(fill: rgb("#1a7a4a"), size: 8pt)[\u{2605}] }
-  else if tier == 2 { text(fill: rgb("#1a5c9e"), size: 8pt)[\u{2605}\u{2605}] }
-  else if tier == 3 { text(fill: rgb("#8b3a8b"), size: 8pt)[\u{2605}\u{2605}\u{2605}] }
+  if tier == 1 { text(fill: rgb("#1a7a4a"), size: 8pt)[\\u{2605}] }
+  else if tier == 2 { text(fill: rgb("#1a5c9e"), size: 8pt)[\\u{2605}\\u{2605}] }
+  else if tier == 3 { text(fill: rgb("#8b3a8b"), size: 8pt)[\\u{2605}\\u{2605}\\u{2605}] }
   else { [] }
 }
 
-// ── Answer box helper ────────────────────────────────────────────────────────
 #let answer-box(height-mm, label: none) = {
-  let box-height = str(height-mm) + "mm"
   block(breakable: false)[
-    #if label != none [
-      #block(inset: (x: 4pt, y: 2pt))[
-        #text(size: 7pt, fill: rgb("#6b7280"))[#label]
-      ]
-    ]
-    #rect(
-      width: 100%,
-      height: box-height,
-      stroke: 0.5pt + col-border,
-      radius: 1pt,
-    )
+    #if label != none [ #block(inset: (x:4pt,y:2pt))[#text(size:7pt,fill:rgb("#6b7280"))[#label]] ]
+    #rect(width: 100%, height: str(height-mm)+"mm", stroke: 0.5pt + col-border, radius: 1pt)
   ]
 }
 
-// ── Section callout helper ───────────────────────────────────────────────────
 #let callout-box(body, fill-color: white, border-color: col-border, label: none) = {
   block(breakable: false, width: 100%)[
-    #rect(
-      width: 100%,
-      fill: fill-color,
-      stroke: (left: 3pt + border-color, rest: 0.5pt + border-color),
-      inset: (x: 8pt, y: 6pt),
-      radius: (right: 2pt),
-    )[
-      #if label != none [
-        #text(size: 8pt, weight: "bold", fill: border-color)[#upper(label)]
-        #v(3pt)
-      ]
+    #rect(width:100%, fill:fill-color, stroke:(left:3pt+border-color, rest:0.5pt+border-color), inset:(x:8pt,y:6pt), radius:(right:2pt))[
+      #if label != none [ #text(size:8pt,weight:"bold",fill:border-color)[#upper(label)] #v(3pt) ]
       #body
     ]
   ]
 }
 
-// ── Document header ──────────────────────────────────────────────────────────
-#block(width: 100%)[
-  #align(center)[
-    #text(size: 8pt, weight: "bold", fill: col-secondary)[#upper(content.at("course", default: "CleverPlatform Mathematics"))]
-    #v(4pt)
-    #text(size: 16pt, weight: "bold", font: tmpl.typography.headingFont)[#content.title]
-    #v(2pt)
-    #text(size: 10pt, fill: rgb("#4b5563"), style: "italic")[#content.at("subtitle", default: "")]
-  ]
-  #v(6pt)
-  #line(length: 100%, stroke: 0.5pt + col-border)
+// Header
+#align(center)[
+  #text(size:9pt,weight:"bold",fill:col-secondary)[#upper(content.at("course", default:"CleverPlatform"))]
   #v(4pt)
-  #grid(columns: (1fr, 1fr), gutter: 8pt)[
-    *Student Name:* #h(6pt) #underline[#h(120pt)]
-  ][
-    *Date:* #h(6pt) #underline[#h(80pt)]
-  ]
-  #v(4pt)
-  #if content.has("syllabusTopics") [
-    #text(size: 9pt)[*Syllabus Topic(s):* #content.syllabusTopics]
-    #v(2pt)
-  ]
-  #if content.has("prerequisites") [
-    #text(size: 9pt)[*Prerequisites:* #content.prerequisites]
-    #v(2pt)
-  ]
-  #if content.has("materials") [
-    #text(size: 9pt, style: "italic")[#content.materials]
-    #v(2pt)
-  ]
-  #if content.has("compulsoryCore") [
-    #v(2pt)
-    #callout-box(
-      text(size: 9pt)[*Compulsory core:* #content.compulsoryCore],
-      fill-color: rgb("#f0fdf4"),
-      border-color: rgb("#059669"),
-    )
-  ]
+  #text(size:16pt,weight:"bold")[#content.title]
+  #v(2pt)
+  #text(size:10pt,fill:rgb("#4b5563"),style:"italic")[#content.at("subtitle",default:"")]
 ]
-
+#v(6pt)
+#line(length:100%,stroke:0.5pt+col-border)
+#v(4pt)
+#grid(columns:(1fr,1fr),gutter:8pt)[*Name:* #h(4pt)#underline[#h(120pt)]][*Date:* #h(4pt)#underline[#h(80pt)]]
 #v(8pt)
 
-// ── Progress tracker ─────────────────────────────────────────────────────────
+// Progress tracker
 #if tmpl.progressTracker.enabled [
-  #let part-count = content.sections.len()
-  #block(width: 100%)[
-    #text(size: 8pt, fill: rgb("#6b7280"))[
-      #tmpl.progressTracker.label #h(4pt)
-      #for i in range(part-count) [
-        Part #str(i + 1) #h(2pt) \u{25a1} #h(6pt)
-      ]
-    ]
+  #let n = content.sections.len()
+  #text(size:8pt,fill:rgb("#6b7280"))[
+    *#tmpl.progressTracker.label* #h(4pt)
+    #for i in range(n) [ Part #str(i+1) \\u{25a1} #h(4pt) ]
   ]
   #v(6pt)
 ]
 
-// ── Command Terms tear-off strip ─────────────────────────────────────────────
+// Command Terms strip
 #if content.has("commandTerms") and content.commandTerms.len() > 0 [
-  #v(4pt)
-  #line(length: 100%, stroke: (dash: "dashed", thickness: 0.5pt, paint: col-secondary))
-  #block(fill: col-strip.lighten(90%), width: 100%, inset: (x: 8pt, y: 6pt))[
-    #block(fill: col-strip, inset: (x: 6pt, y: 3pt), radius: (top: 2pt))[
-      #text(size: 8pt, weight: "bold", fill: white)[#upper("Command Terms — tear off and keep beside you")]
-    ]
-    #v(4pt)
-    #table(
-      columns: (80pt, 1fr),
-      stroke: 0.3pt + col-border,
-      ..for ct in content.commandTerms {
-        (text(weight: "bold", size: 9pt)[#ct.term], text(size: 9pt)[#ct.definition])
-      }
+  #line(length:100%,stroke:(dash:"dashed",thickness:0.5pt,paint:col-strip))
+  #block(fill:col-strip.lighten(90%),width:100%,inset:(x:8pt,y:6pt))[
+    #block(fill:col-strip,inset:(x:6pt,y:3pt))[#text(size:8pt,weight:"bold",fill:white)[#upper("Command Terms — tear off and keep beside you")]]
+    #v(3pt)
+    #table(columns:(80pt,1fr),stroke:0.3pt+col-border,
+      ..for ct in content.commandTerms { (text(weight:"bold",size:9pt)[#ct.term],text(size:9pt)[#ct.definition]) }
     )
-    #v(4pt)
-    #text(size: 8pt, fill: rgb("#4b5563"))[
-      *Output demand →* #h(4pt)
-      #text(style: "italic")[Write down] · State · Describe · Explain · Show that · #text(weight: "bold", style: "italic")[Prove]
-    ]
+    #v(3pt)
+    #text(size:8pt)[*Output demand →* Write down · State · Describe · Explain · Show that · *Prove*]
   ]
-  #line(length: 100%, stroke: (dash: "dashed", thickness: 0.5pt, paint: col-secondary))
+  #line(length:100%,stroke:(dash:"dashed",thickness:0.5pt,paint:col-strip))
   #v(6pt)
 ]
 
-// ── TOK Provocations ─────────────────────────────────────────────────────────
+// TOK
 #if content.has("tokProvocations") and content.tokProvocations.len() > 0 [
-  #callout-box(
-    label: "TOK Provocations — return to these in the Reflection",
-    fill-color: col-tok,
-    border-color: col-accent,
-  )[
-    #for (i, tok) in content.tokProvocations.enumerate() [
+  #callout-box(label:"TOK Provocations — return to these in the Reflection",fill-color:col-tok,border-color:col-accent)[
+    #for (i,tok) in content.tokProvocations.enumerate() [
       #v(2pt)
-      #text(size: 9.5pt)[*#str(i+1).* #tok.body]
+      #text(size:9.5pt)[*#str(i+1).* #tok.body]
       #v(2pt)
     ]
   ]
   #v(6pt)
 ]
 
-// ── International Mindedness ──────────────────────────────────────────────────
+// IM
 #if content.has("internationalMindedness") [
-  #callout-box(
-    label: "International Mindedness",
-    fill-color: col-im,
-    border-color: rgb("#059669"),
-  )[
-    #text(size: 9.5pt)[#content.internationalMindedness.body]
+  #callout-box(label:"International Mindedness",fill-color:col-im,border-color:rgb("#059669"))[
+    #text(size:9.5pt)[#content.internationalMindedness.body]
   ]
   #v(6pt)
 ]
 
-// ── Sections ─────────────────────────────────────────────────────────────────
+// Sections
 #for section in content.sections [
   #v(8pt)
-  // Section heading — kept with first question
-  #block(breakable: false)[
-    #line(length: 100%, stroke: 1.5pt + col-primary)
+  #block(breakable:false)[
+    #line(length:100%,stroke:1.5pt+col-primary)
     #v(3pt)
-    #text(size: 12pt, weight: "bold", font: tmpl.typography.headingFont)[#section.heading]
+    #text(size:12pt,weight:"bold")[#section.heading]
     #v(4pt)
-
-    // Prerequisite micro-box
     #if section.has("prerequisiteBox") [
-      #callout-box(
-        label: "What you need to start this Part",
-        fill-color: rgb("#eff6ff"),
-        border-color: rgb("#3b82f6"),
-      )[
-        #for item in section.prerequisiteBox.items [
-          - #text(size: 9pt)[#item]
-        ]
+      #callout-box(label:"What you need to start this Part",fill-color:rgb("#eff6ff"),border-color:rgb("#3b82f6"))[
+        #for item in section.prerequisiteBox.items [ - #text(size:9pt)[#item] ]
       ]
       #v(4pt)
     ]
   ]
-
-  // Command-Term Spotlight callout
   #if section.has("spotlight") [
-    #callout-box(
-      label: "Command-Term Spotlight: " + section.spotlight.title,
-      fill-color: col-strip.lighten(90%),
-      border-color: col-strip,
-    )[
-      #text(size: 9.5pt)[#section.spotlight.body]
+    #callout-box(label:"Command-Term Spotlight: "+section.spotlight.title,fill-color:col-strip.lighten(90%),border-color:col-strip)[
+      #text(size:9.5pt)[#section.spotlight.body]
     ]
     #v(4pt)
   ]
-
-  // Questions
   #for q in section.questions [
-    #block(breakable: false)[
-      // Question prompt row
-      #grid(columns: (24pt, 1fr, 36pt), gutter: 6pt)[
-        #text(weight: "bold")[#str(q.globalNumber).] #tier-badge(q.tier)
+    #block(breakable:false)[
+      #grid(columns:(24pt,1fr,36pt),gutter:6pt)[
+        #text(weight:"bold")[#str(q.globalNumber).] #tier-badge(q.tier)
       ][
-        #text(size: tmpl.typography.bodySizePt * 1pt)[#q.prompt]
+        #text[#q.prompt]
+        #if q.has("hint") [ #v(2pt)#text(size:9pt,style:"italic",fill:rgb("#6b7280"))[Hint: #q.hint] ]
       ][
-        #if tmpl.questionBlocks.showMarks [
-          #text(size: 8pt, fill: rgb("#6b7280"))[[#str(q.marks)M]]
-        ]
-        #if tmpl.questionBlocks.showEstimatedMinutes [
-          #v(1pt)
-          #text(size: 7pt, fill: rgb("#9ca3af"))[(~#str(q.estimatedMinutes) min)]
-        ]
-      ]
-      #if q.has("hint") [
-        #h(24pt)
-        #text(size: 9pt, style: "italic", fill: rgb("#6b7280"))[Hint: #q.hint]
+        #if tmpl.questionBlocks.showMarks [#text(size:8pt,fill:rgb("#6b7280"))[[#str(q.marks)M]]]
+        #if tmpl.questionBlocks.showEstimatedMinutes [#v(1pt)#text(size:7pt,fill:rgb("#9ca3af"))[(~#str(q.estimatedMinutes) min)]]
       ]
       #v(3pt)
-      // Answer box — unbreakable with prompt
       #answer-box(q.answerBox.heightMm)
     ]
     #v(4pt)
   ]
-
-  // Translation table
   #if section.has("translationTable") [
     #v(4pt)
-    #text(size: 9pt, weight: "bold")[#section.translationTable.caption]
+    #text(size:9pt,weight:"bold")[#section.translationTable.caption]
     #v(2pt)
-    #table(
-      columns: (1fr, 1fr),
-      stroke: 0.4pt + col-border,
-      table.header(
-        text(weight: "bold", size: 9pt)[What you say in your head...],
-        text(weight: "bold", size: 9pt)[What you write on the exam...],
-      ),
-      ..for row in section.translationTable.rows {
-        (text(size: 9pt, style: "italic")[#row.informal], text(size: 9pt)[#row.formal])
-      }
+    #table(columns:(1fr,1fr),stroke:0.4pt+col-border,
+      table.header(text(weight:"bold",size:9pt)[What you say in your head...],text(weight:"bold",size:9pt)[What you write on the exam...]),
+      ..for row in section.translationTable.rows { (text(size:9pt,style:"italic")[#row.informal],text(size:9pt)[#row.formal]) }
     )
   ]
-
-  // Geometric reading callout
   #if section.has("geometricReading") [
     #v(4pt)
-    #callout-box(
-      label: "Geometric / Physical Reading",
-      fill-color: rgb("#f9fafb"),
-      border-color: col-border,
-    )[
-      #text(size: 9.5pt, style: "italic")[#section.geometricReading.body]
+    #callout-box(label:"Geometric / Physical Reading",fill-color:rgb("#f9fafb"),border-color:col-border)[
+      #text(size:9.5pt,style:"italic")[#section.geometricReading.body]
     ]
   ]
 ]
 
-// ── Teacher's Companion ───────────────────────────────────────────────────────
-#if opts.at("includeTeacherCompanion", default: false) [
+// Teacher's Companion
+#if opts.at("includeTeacherCompanion",default:false) [
   #pagebreak()
-  #line(length: 100%, stroke: 2pt + col-accent)
+  #line(length:100%,stroke:2pt+col-accent)
   #v(4pt)
-  #text(size: 14pt, weight: "bold", fill: col-accent)[Teacher's Companion]
+  #text(size:14pt,weight:"bold",fill:col-accent)[Teacher's Companion]
   #v(2pt)
-  #callout-box(
-    text(size: 9pt)[*For the instructor only.* Remove this page before distributing to students.],
-    fill-color: rgb("#faf5ff"),
-    border-color: col-accent,
-  )
+  #callout-box(text(size:9pt)[*For the instructor only.* Remove before distributing.],fill-color:rgb("#faf5ff"),border-color:col-accent)
 ]
 `;
 }
