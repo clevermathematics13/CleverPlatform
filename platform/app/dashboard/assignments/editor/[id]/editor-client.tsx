@@ -10,7 +10,7 @@ import {
   computeTierDistribution,
   detectDuplicateQuestions,
 } from "@/lib/assignments";
-import { NuancedAnalysisPreview } from "../nuanced-analysis-preview";
+import { NuancedAnalysisPreview } from "../../nuanced-analysis-preview";
 import { useRouter } from "next/navigation";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
