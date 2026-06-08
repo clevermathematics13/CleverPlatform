@@ -7,6 +7,17 @@
  *   3. Render    — server-side KaTeX → static MathML/SVG strings in HTML
  *   4. Emit      — return the final HTML string ready for Puppeteer
  *
+ * The HTML/CSS produced here mirrors the NuancedAnalysisPreview component:
+ *   - Teal command-terms tear-off strip with dashed border
+ *   - Teal school name header, bold centred title, italic subtitle
+ *   - Full-width name/date write-in lines (border-bottom, with space above)
+ *   - Tier badges ★/★★/★★★ coloured (emerald/blue/purple)
+ *   - Amber prerequisite boxes ("What you need to start this Part")
+ *   - Purple TOK provocation block
+ *   - Emerald International Mindedness block
+ *   - Part sections with bold headings
+ *   - Styled hint lines
+ *
  * Also exports generateMarkSchemeHtml() for the separate mark-scheme endpoint.
  */
 
@@ -37,11 +48,13 @@ export function renderMath(input: string): string {
 // ── Answer box ────────────────────────────────────────────────────────────────
 
 function renderAnswerBox(lines: number, lineHeightMm: number): string {
+  if (lines <= 0) return "";
   const lineHtml = Array.from(
     { length: lines },
-    () => `<div style="border-bottom:0.5pt solid #bbb;height:${lineHeightMm}mm;min-height:${lineHeightMm}mm;"></div>`
+    (_, i) => `<div style="border-bottom:0.5pt solid #bbb;height:${lineHeightMm}mm;min-height:${lineHeightMm}mm;${i === 0 ? "border-top:0.5pt solid #bbb;" : ""}"></div>`
   ).join("");
-  return `<div class="answer-box">${lineHtml}</div>`;
+  return `<div class="answer-box">${lineHtml}</div>
+  <div class="continue-note">Continue on next page if needed</div>`;
 }
 
 // ── Tier badge ────────────────────────────────────────────────────────────────
@@ -49,8 +62,12 @@ function renderAnswerBox(lines: number, lineHeightMm: number): string {
 function tierBadge(tier?: 1 | 2 | 3): string {
   if (!tier) return "";
   const stars = "★".repeat(tier);
-  const colours: Record<number, string> = { 1: "#1a7a4a", 2: "#1a5c9e", 3: "#8b3a8b" };
-  return `<span class="tier-badge" style="color:${colours[tier]};font-size:9pt;margin-left:4px;">${stars}</span>`;
+  const styles: Record<number, string> = {
+    1: "color:#1a7a4a;background:#f0fdf4;border:1px solid #bbf7d0;",
+    2: "color:#1e40af;background:#eff6ff;border:1px solid #bfdbfe;",
+    3: "color:#6b21a8;background:#faf5ff;border:1px solid #e9d5ff;",
+  };
+  return `<span class="tier-badge" style="${styles[tier]}font-size:8pt;padding:1px 5px;border-radius:3px;margin-left:5px;font-family:serif;">${stars}</span>`;
 }
 
 // ── Question renderer ─────────────────────────────────────────────────────────
@@ -58,7 +75,7 @@ function tierBadge(tier?: 1 | 2 | 3): string {
 type QuestionWithExtras = ValidatedAssignmentPdfRequest["sections"][number]["questions"][number] & {
   tier?: 1 | 2 | 3;
   hint?: string;
-  subparts?: Array<{ prompt: string; marks?: number }>;
+  subparts?: Array<{ prompt: string; marks?: number; tier?: 1 | 2 | 3; hint?: string }>;
   answerBoxLines?: number;
 };
 
@@ -71,12 +88,11 @@ function renderQuestion(
 ): string {
   const label = formatQuestionLabel(sectionIndex, questionIndex, formatting.numberingStyle);
   const marksHtml = formatting.includeMarksColumn
-    ? `<span class="marks">[${question.marks ?? 0} mark${(question.marks ?? 0) !== 1 ? "s" : ""}]</span>`
+    ? `<span class="marks">[${question.marks ?? 0}]</span>`
     : "";
   const hintHtml = question.hint
-    ? `<div class="hint"><em>${renderMath(escapeHtml(question.hint))}</em></div>`
+    ? `<div class="hint"><em>Hint: ${renderMath(escapeHtml(question.hint))}</em></div>`
     : "";
-  // Per-question override, falling back to global
   const answerLines = question.answerBoxLines ?? globalAnswerLines;
 
   const subpartsHtml =
@@ -85,10 +101,12 @@ function renderQuestion(
           const spLabel = String.fromCharCode("a".charCodeAt(0) + spIdx);
           const spMarks = formatting.includeMarksColumn && sp.marks != null
             ? `<span class="marks">[${sp.marks}]</span>` : "";
+          const spTier = sp.tier ? tierBadge(sp.tier) : "";
+          const spHint = sp.hint ? `<div class="hint"><em>Hint: ${escapeHtml(sp.hint)}</em></div>` : "";
           return `
             <div class="subpart">
               <span class="subpart-label">(${spLabel})</span>
-              <span class="q-text">${renderMath(escapeHtml(sp.prompt))}</span>
+              <div><span class="q-text">${renderMath(escapeHtml(sp.prompt))}</span>${spTier}${spHint}</div>
               ${spMarks}
             </div>
             ${renderAnswerBox(Math.max(2, Math.ceil(answerLines / 2)), formatting.answerLineHeightMm)}`;
@@ -100,11 +118,10 @@ function renderQuestion(
   return `
     <div class="question-block">
       <div class="q-row">
-        <span class="q-label">${escapeHtml(label)}${tierBadge(question.tier as 1|2|3|undefined)}</span>
-        <span class="q-text">${renderMath(escapeHtml(question.prompt))}</span>
+        <span class="q-label">${escapeHtml(label)}</span>
+        <div class="q-body"><span class="q-text">${renderMath(escapeHtml(question.prompt))}</span>${tierBadge(question.tier as 1|2|3|undefined)}${hintHtml}</div>
         ${marksHtml}
       </div>
-      ${hintHtml}
       ${subpartsHtml}
       ${mainAnswerBox}
     </div>`;
@@ -118,39 +135,331 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     @import url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css');
     @page { size: A4; margin: ${formatting.pageMarginsMm}mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Georgia, "Times New Roman", serif; color: #111; font-size: ${formatting.fontSize}pt; line-height: ${lineHeight}; }
-    h1, h2, h3 { margin: 0; margin-top: 0.5em; }
-    h3 { margin-top: 1em; }
-    .doc-head { border-bottom: 1px solid #cfcfcf; padding-bottom: 8px; margin-bottom: 14px; }
-    .school { text-align: center; text-transform: uppercase; font-size: 9pt; letter-spacing: 0.08em; margin-bottom: 4px; }
-    .title { text-align: center; margin-top: 6px; margin-bottom: 2px; font-size: 18pt; font-weight: bold; }
-    .subtitle { text-align: center; margin-top: 2px; margin-bottom: 8px; font-size: 10pt; color: #444; }
-    .meta { margin-bottom: 8px; font-size: 10pt; display: flex; gap: 20px; flex-wrap: wrap; }
-    .meta-line { min-width: 200px; }
-    ul { margin: 8px 0 12px 18px; padding: 0; }
-    li { margin: 2px 0; }
-    .assignment-section { margin-top: 14px; }
-    .question-block { break-inside: avoid; page-break-inside: avoid; margin: 10px 0 4px 0; padding-bottom: 4px; }
-    .q-row { display: grid; grid-template-columns: 36px 1fr auto; gap: 8px; align-items: start; }
-    .q-label { font-weight: 600; font-size: ${formatting.fontSize}pt; }
+    body {
+      font-family: Georgia, "Times New Roman", serif;
+      color: #111;
+      font-size: ${formatting.fontSize}pt;
+      line-height: ${lineHeight};
+    }
+
+    /* ── Header ── */
+    .doc-head { margin-bottom: 18px; }
+    .school {
+      text-align: center;
+      text-transform: uppercase;
+      font-size: 9pt;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      color: #0f766e;
+      margin-bottom: 4px;
+    }
+    .title {
+      text-align: center;
+      font-size: 20pt;
+      font-weight: bold;
+      color: #111;
+      margin: 4px 0 2px;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 10.5pt;
+      font-style: italic;
+      color: #555;
+      margin-bottom: 10px;
+    }
+    .header-rule {
+      border: none;
+      border-top: 2pt solid #111;
+      margin: 0 0 8px 0;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 6px;
+    }
+    .meta-field strong {
+      font-size: 10pt;
+      display: block;
+      margin-bottom: 10px;
+    }
+    .meta-line-rule {
+      display: block;
+      border-bottom: 2pt solid #333;
+      margin-bottom: 4px;
+    }
+    .meta-row {
+      font-size: 9.5pt;
+      margin-top: 4px;
+    }
+    .meta-row strong { display: inline; }
+
+    /* ── Command terms tear-off strip ── */
+    .ct-wrap {
+      margin: 16px 0;
+    }
+    .ct-dashed-top {
+      border-top: 2pt dashed #0d9488;
+      margin-bottom: 3px;
+    }
+    .ct-dashed-bottom {
+      border-top: 2pt dashed #0d9488;
+      margin-top: 3px;
+    }
+    .ct-header {
+      background: #0f766e;
+      color: #fff;
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 5px 10px;
+    }
+    .ct-body {
+      background: #f0fdfa;
+      border: 0.5pt solid #99f6e4;
+      border-top: none;
+      padding: 6px 10px 8px;
+    }
+    .ct-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9.5pt;
+      margin-bottom: 6px;
+    }
+    .ct-table td {
+      padding: 2px 6px 2px 2px;
+      vertical-align: top;
+    }
+    .ct-table td:first-child {
+      font-weight: 700;
+      width: 110px;
+      white-space: nowrap;
+    }
+    .ct-table tr:nth-child(even) { background: rgba(204,251,241,0.4); }
+    .ct-demand-label {
+      font-size: 7.5pt;
+      color: #555;
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+    .ct-demand-scale {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      flex-wrap: nowrap;
+    }
+    .ct-demand-pill {
+      font-size: 7pt;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      white-space: nowrap;
+      color: #fff;
+    }
+    .ct-demand-arrow {
+      font-size: 7pt;
+      color: #aaa;
+      padding: 0 1px;
+    }
+
+    /* ── TOK block ── */
+    .tok-block {
+      border-left: 3px solid #7c3aed;
+      background: #faf5ff;
+      padding: 8px 10px;
+      margin: 10px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .tok-block .block-label {
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #6d28d9;
+      margin-bottom: 6px;
+    }
+    .tok-block ol { margin-left: 16px; }
+    .tok-block li { font-size: 10pt; margin-bottom: 4px; }
+
+    /* ── International Mindedness block ── */
+    .im-block {
+      border-left: 3px solid #059669;
+      background: #f0fdf4;
+      padding: 8px 10px;
+      margin: 10px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .im-block .block-label {
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #065f46;
+      margin-bottom: 4px;
+    }
+    .im-block p { font-size: 10pt; }
+
+    /* ── Instructions ── */
+    .instructions-section { margin: 0 0 14px 0; }
+    .instructions-section ol { margin-left: 18px; }
+    .instructions-section li { font-size: 10pt; margin: 2px 0; }
+
+    /* ── Sections ── */
+    .assignment-section { margin-top: 16px; }
+    .section-heading {
+      font-size: 13pt;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 8px;
+      padding-bottom: 2px;
+    }
+
+    /* ── Prerequisite box ── */
+    .prerequisite-box {
+      border-left: 4px solid #f59e0b;
+      background: #fffbeb;
+      padding: 6px 10px;
+      margin: 0 0 10px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .prerequisite-box .block-label {
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #92400e;
+      margin-bottom: 4px;
+    }
+    .prerequisite-box ul { margin-left: 16px; }
+    .prerequisite-box li { font-size: 9.5pt; }
+
+    /* ── Spotlight box ── */
+    .spotlight-box {
+      border-left: 4px solid #0ea5e9;
+      background: #f0f9ff;
+      padding: 6px 10px;
+      margin: 8px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .spotlight-box strong { font-size: 9pt; display: block; margin-bottom: 2px; }
+
+    /* ── Questions ── */
+    .question-block {
+      break-inside: avoid;
+      page-break-inside: avoid;
+      margin: 10px 0 2px 0;
+    }
+    .q-row {
+      display: grid;
+      grid-template-columns: 38px 1fr auto;
+      gap: 8px;
+      align-items: start;
+    }
+    .q-label {
+      font-weight: 600;
+      font-size: ${formatting.fontSize}pt;
+      padding-top: 1px;
+    }
+    .q-body { }
     .q-text { white-space: pre-wrap; word-wrap: break-word; }
-    .marks { font-size: 9pt; color: #555; text-align: right; white-space: nowrap; }
-    .hint { font-size: 9pt; color: #555; margin: 3px 0 3px 44px; }
-    .subpart { display: grid; grid-template-columns: 28px 1fr auto; gap: 6px; margin: 6px 0 2px 44px; align-items: start; }
+    .marks {
+      font-size: 9pt;
+      color: #555;
+      text-align: right;
+      white-space: nowrap;
+      padding-top: 1px;
+    }
+    .hint {
+      font-size: 9pt;
+      color: #6b7280;
+      margin: 3px 0 0 0;
+    }
+    .subpart {
+      display: grid;
+      grid-template-columns: 28px 1fr auto;
+      gap: 6px;
+      margin: 6px 0 2px 46px;
+      align-items: start;
+    }
     .subpart-label { font-weight: 500; font-size: ${formatting.fontSize}pt; }
-    .answer-box { margin: 6px 0 10px 0; border: 0.5pt solid #ccc; border-radius: 2px; padding: 2px 4px; break-inside: avoid; page-break-inside: avoid; }
+    .answer-box {
+      margin: 6px 0 2px 0;
+      background: #fafafa;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .continue-note {
+      font-size: 7.5pt;
+      color: #9ca3af;
+      font-style: italic;
+      text-align: right;
+      margin-bottom: 8px;
+    }
     .tier-badge { font-family: serif; }
-    .spotlight-box { border-left: 3px solid #0e7490; background: #f0f9ff; padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; break-inside: avoid; page-break-inside: avoid; }
-    .prerequisite-box { border-left: 3px solid #059669; background: #f0fdf4; padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; break-inside: avoid; page-break-inside: avoid; }
-    .translation-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9.5pt; break-inside: avoid; page-break-inside: avoid; }
-    .translation-table th, .translation-table td { border: 0.5pt solid #ccc; padding: 4px 8px; text-align: left; }
+
+    /* ── Translation table ── */
+    .translation-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0;
+      font-size: 9.5pt;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .translation-table th, .translation-table td {
+      border: 0.5pt solid #ccc;
+      padding: 4px 8px;
+      text-align: left;
+    }
     .translation-table th { background: #f3f4f6; font-weight: 600; }
-    .geometric-box { border: 0.5pt solid #d1d5db; background: #f9fafb; padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; break-inside: avoid; page-break-inside: avoid; }
-    .command-terms-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9.5pt; }
-    .command-terms-table th, .command-terms-table td { border: 0.5pt solid #ccc; padding: 3px 8px; }
-    .command-terms-table th { background: #f3f4f6; font-weight: 600; }
+
+    /* ── Geometric box ── */
+    .geometric-box {
+      border: 0.5pt solid #d1d5db;
+      background: #f9fafb;
+      padding: 6px 10px;
+      margin: 8px 0;
+      font-size: 9.5pt;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+
+    /* ── Answer key ── */
     .answers { border-top: 1pt solid #cfcfcf; margin-top: 18px; padding-top: 10px; }
-    .answer-row { display: grid; grid-template-columns: 36px 1fr; gap: 8px; margin: 4px 0; font-size: 9.5pt; }
+    .answer-row {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      gap: 8px;
+      margin: 4px 0;
+      font-size: 9.5pt;
+    }
+
+    /* ── Teacher companion ── */
+    .teacher-separator {
+      display: flex;
+      align-items: center;
+      margin: 24px 0 12px;
+      gap: 8px;
+    }
+    .teacher-separator-rule {
+      flex: 1;
+      border: none;
+      border-top: 1.5pt dashed #9ca3af;
+    }
+    .teacher-separator-label {
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #9ca3af;
+      white-space: nowrap;
+    }
+
     .katex { font-size: 1em; }
     .katex-display { margin: 4px 0; }
   `;
@@ -185,7 +494,42 @@ function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string
   `;
 }
 
+// ── Demand scale pills ────────────────────────────────────────────────────────
+
+const DEMAND_SCALE = [
+  { label: "Write down", bg: "#9ca3af", light: true },
+  { label: "State",      bg: "#6b7280", light: true },
+  { label: "Describe",   bg: "#4b8bbf", light: false },
+  { label: "Calculate",  bg: "#3b82f6", light: false },
+  { label: "Explain",    bg: "#22c55e", light: false },
+  { label: "Find",       bg: "#f59e0b", light: false },
+  { label: "Derive",     bg: "#f97316", light: false },
+  { label: "Show that",  bg: "#ef4444", light: false },
+  { label: "Prove",      bg: "#dc2626", light: false },
+  { label: "Justify",    bg: "#991b1b", light: false },
+];
+
+function buildDemandScale(): string {
+  return DEMAND_SCALE.map((item, idx) => {
+    const color = item.light ? "#374151" : "#fff";
+    const pill = `<span class="ct-demand-pill" style="background:${item.bg};color:${color};">${escapeHtml(item.label)}</span>`;
+    const arrow = idx < DEMAND_SCALE.length - 1 ? `<span class="ct-demand-arrow">›</span>` : "";
+    return pill + arrow;
+  }).join("");
+}
+
 // ── HTML assembly ─────────────────────────────────────────────────────────────
+
+type NuancedDraftExtras = {
+  commandTerms?: Array<{ term: string; definition: string }>;
+  tokProvocations?: Array<{ id?: string; question?: string; body?: string }>;
+  internationalMindedness?: { body: string };
+  course?: string;
+  syllabusTopics?: string;
+  prerequisites?: string;
+  materials?: string;
+  compulsoryCore?: string;
+};
 
 type ExtendedSection = ValidatedAssignmentPdfRequest["sections"][number] & {
   prerequisiteBox?: { items: string[] };
@@ -196,61 +540,170 @@ type ExtendedSection = ValidatedAssignmentPdfRequest["sections"][number] & {
 
 function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number): string {
   const { title, subtitle, instructions, sections, formatting } = validated;
-  const draft = validated as unknown as {
-    commandTerms?: Array<{ term: string; definition: string }>;
-    course?: string; syllabusTopics?: string; prerequisites?: string; materials?: string;
-  };
+  const nd = validated as unknown as NuancedDraftExtras;
 
-  const instructionsHtml = instructions.map((line, i) => `<li>${escapeHtml(`${i + 1}. ${line}`)}</li>`).join("");
+  // ── Header ──
+  const nameLineHtml = formatting.includeNameLine ? `
+    <div class="meta-field">
+      <strong>Student Name:</strong>
+      <span class="meta-line-rule"></span>
+    </div>` : "";
 
-  const commandTermsHtml = Array.isArray(draft.commandTerms) && draft.commandTerms.length > 0
-    ? `<table class="command-terms-table">
-         <tr><th>Command Term</th><th>Meaning</th></tr>
-         ${draft.commandTerms.map((ct) => `<tr><td><strong>${escapeHtml(ct.term)}</strong></td><td>${escapeHtml(ct.definition)}</td></tr>`).join("")}
-       </table>` : "";
+  const dateLineHtml = formatting.includeDateLine ? `
+    <div class="meta-field">
+      <strong>Date:</strong>
+      <span class="meta-line-rule"></span>
+    </div>` : "";
 
-  const metaLines = [
-    formatting.includeNameLine ? `<div class="meta-line">Name: ____________________</div>` : "",
-    formatting.includeDateLine ? `<div class="meta-line">Date: ____________________</div>` : "",
-    formatting.teacherName ? `<div class="meta-line">Teacher: ${escapeHtml(formatting.teacherName)}</div>` : "",
-    draft.course ? `<div class="meta-line">Course: ${escapeHtml(draft.course)}</div>` : "",
-    draft.syllabusTopics ? `<div class="meta-line">Topics: ${escapeHtml(draft.syllabusTopics)}</div>` : "",
+  const metaGridHtml = (nameLineHtml || dateLineHtml)
+    ? `<div class="meta-grid">${nameLineHtml}${dateLineHtml}</div>` : "";
+
+  const extraMetaHtml = [
+    nd.syllabusTopics ? `<div class="meta-row"><strong>Syllabus Topics:</strong> ${escapeHtml(nd.syllabusTopics)}</div>` : "",
+    nd.prerequisites   ? `<div class="meta-row"><strong>Prerequisites:</strong> ${escapeHtml(nd.prerequisites)}</div>` : "",
+    nd.materials       ? `<div class="meta-row" style="font-style:italic">${escapeHtml(nd.materials)}</div>` : "",
+    formatting.teacherName ? `<div class="meta-row"><strong>Teacher:</strong> ${escapeHtml(formatting.teacherName)}</div>` : "",
   ].filter(Boolean).join("\n");
+
+  // ── Command terms strip ──
+  const commandTermsHtml = Array.isArray(nd.commandTerms) && nd.commandTerms.length > 0
+    ? `<div class="ct-wrap">
+        <div class="ct-dashed-top"></div>
+        <div class="ct-header">Command Terms — Tear Off and Keep Beside You While Working</div>
+        <div class="ct-body">
+          <table class="ct-table">
+            <tbody>
+              ${nd.commandTerms.map((ct, i) =>
+                `<tr${i % 2 === 1 ? "" : ""}>
+                  <td><strong>${escapeHtml(ct.term)}</strong></td>
+                  <td>${escapeHtml(ct.definition)}</td>
+                </tr>`
+              ).join("")}
+            </tbody>
+          </table>
+          <div class="ct-demand-label">Output demand →</div>
+          <div class="ct-demand-scale">${buildDemandScale()}</div>
+        </div>
+        <div class="ct-dashed-bottom"></div>
+      </div>` : "";
+
+  // ── TOK provocations ──
+  const tokHtml = Array.isArray(nd.tokProvocations) && nd.tokProvocations.length > 0
+    ? `<div class="tok-block">
+        <div class="block-label">Theory of Knowledge Provocations</div>
+        <ol>
+          ${nd.tokProvocations.map((p) => {
+            const text = p.body ?? p.question ?? "";
+            return `<li>${renderMath(escapeHtml(text))}</li>`;
+          }).join("")}
+        </ol>
+      </div>` : "";
+
+  // ── International Mindedness ──
+  const imHtml = nd.internationalMindedness
+    ? `<div class="im-block">
+        <div class="block-label">International Mindedness</div>
+        <p>${escapeHtml(nd.internationalMindedness.body)}</p>
+      </div>` : "";
+
+  // ── Instructions ──
+  const instructionsHtml = instructions.length > 0
+    ? `<div class="instructions-section">
+        <ol>
+          ${instructions.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}
+        </ol>
+      </div>` : "";
+
+  // ── Sections ──
+  // Detect teacher companion boundary
+  const teacherIdx = sections.findIndex((s) => /teacher.{0,10}companion/i.test(s.heading));
 
   const sectionsHtml = sections.map((section, sectionIndex) => {
     const sec = section as ExtendedSection;
+
+    // Teacher companion separator
+    const separatorHtml = (teacherIdx !== -1 && sectionIndex === teacherIdx)
+      ? `<div class="teacher-separator">
+          <hr class="teacher-separator-rule"/>
+          <span class="teacher-separator-label">Teacher's Companion — Do Not Distribute</span>
+          <hr class="teacher-separator-rule"/>
+        </div>` : "";
+
     const prereqHtml = sec.prerequisiteBox
-      ? `<div class="prerequisite-box"><strong>Before you start:</strong><ul>${sec.prerequisiteBox.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>` : "";
+      ? `<div class="prerequisite-box">
+          <div class="block-label">What you need to start this Part</div>
+          <ul>${sec.prerequisiteBox.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+        </div>` : "";
+
     const spotlightHtml = sec.spotlight
-      ? `<div class="spotlight-box"><strong>${escapeHtml(sec.spotlight.title)}</strong><p style="margin-top:3px">${renderMath(escapeHtml(sec.spotlight.body))}</p></div>` : "";
+      ? `<div class="spotlight-box">
+          <strong>${escapeHtml(sec.spotlight.title)}</strong>
+          <p>${renderMath(escapeHtml(sec.spotlight.body))}</p>
+        </div>` : "";
+
     const questionBlocksHtml = sec.questions.map((q, qIdx) =>
       renderQuestion(q as QuestionWithExtras, qIdx, sectionIndex, formatting, answerLines)
     ).join("");
+
     const translationHtml = sec.translationTable
-      ? `<table class="translation-table"><caption style="text-align:left;font-size:9pt;margin-bottom:3px;">${escapeHtml(sec.translationTable.caption)}</caption><tr><th>Informal</th><th>Formal</th></tr>${sec.translationTable.rows.map((row) => `<tr><td>${escapeHtml(row.informal)}</td><td>${escapeHtml(row.formal)}</td></tr>`).join("")}</table>` : "";
+      ? `<table class="translation-table">
+          <caption style="text-align:left;font-size:9pt;margin-bottom:3px;">${escapeHtml(sec.translationTable.caption)}</caption>
+          <tr><th>Informal</th><th>Formal</th></tr>
+          ${sec.translationTable.rows.map((row) => `<tr><td>${escapeHtml(row.informal)}</td><td>${escapeHtml(row.formal)}</td></tr>`).join("")}
+        </table>` : "";
+
     const geometricHtml = sec.geometricReading
-      ? `<div class="geometric-box"><strong>Geometric Reading:</strong><p style="margin-top:3px">${renderMath(escapeHtml(sec.geometricReading.body))}</p></div>` : "";
-    return `<div class="assignment-section"><h3>${escapeHtml(section.heading)}</h3>${prereqHtml}${spotlightHtml}${questionBlocksHtml}${translationHtml}${geometricHtml}</div>`;
+      ? `<div class="geometric-box">
+          <strong>Geometric Reading:</strong>
+          <p style="margin-top:3px">${renderMath(escapeHtml(sec.geometricReading.body))}</p>
+        </div>` : "";
+
+    return `${separatorHtml}<div class="assignment-section">
+      <div class="section-heading">${escapeHtml(section.heading)}</div>
+      ${prereqHtml}${spotlightHtml}${questionBlocksHtml}${translationHtml}${geometricHtml}
+    </div>`;
   }).join("");
 
+  // ── Answer key ──
   const answersHtml = formatting.includeAnswerKey
-    ? `<div class="answers"><h3>Answer Key</h3>${sections.map((section, sIdx) => section.questions.map((q, qIdx) => { const label = formatQuestionLabel(sIdx, qIdx, formatting.numberingStyle); return `<div class="answer-row"><span class="q-label">${escapeHtml(label)}</span><span>${escapeHtml(q.answer ?? "")}</span></div>`; }).join("")).join("")}</div>` : "";
+    ? `<div class="answers">
+        <div class="section-heading">Answer Key</div>
+        ${sections.map((section, sIdx) =>
+          section.questions.map((q, qIdx) => {
+            const label = formatQuestionLabel(sIdx, qIdx, formatting.numberingStyle);
+            return `<div class="answer-row">
+              <span class="q-label">${escapeHtml(label)}</span>
+              <span>${escapeHtml(q.answer ?? "")}</span>
+            </div>`;
+          }).join("")
+        ).join("")}
+      </div>` : "";
 
   return `<!doctype html>
 <html lang="en">
-<head><meta charset="utf-8" /><title>${escapeHtml(title)}</title><style>${buildCss(formatting)}</style></head>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(title)}</title>
+  <style>${buildCss(formatting)}</style>
+</head>
 <body>
   <div class="doc-head">
-    <div class="school">${escapeHtml(formatting.schoolName)}</div>
+    <div class="school">${escapeHtml(nd.course || formatting.schoolName)}</div>
     <h1 class="title">${escapeHtml(title)}</h1>
     <h2 class="subtitle">${escapeHtml(subtitle)}</h2>
-    <div class="meta">${metaLines}</div>
+    <hr class="header-rule"/>
+    ${metaGridHtml}
+    ${extraMetaHtml}
   </div>
+
   ${commandTermsHtml}
-  <h3>Instructions</h3><ul>${instructionsHtml}</ul>
+  ${tokHtml}
+  ${imHtml}
+  ${instructionsHtml}
   ${sectionsHtml}
   ${answersHtml}
-</body></html>`;
+</body>
+</html>`;
 }
 
 // ── Mark scheme HTML assembly ─────────────────────────────────────────────────
