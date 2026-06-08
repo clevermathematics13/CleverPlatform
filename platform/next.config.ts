@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
+  // Prevent webpack from bundling native/binary packages used in API routes
+  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium-min"],
   experimental: {
     serverActions: {
       allowedOrigins: [
