@@ -281,6 +281,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
   const [answerBoxLines, setAnswerBoxLines] = useState(4);
   const [paperType, setPaperType] = useState<"paper1" | "paper2" | "mixed" | "investigation">("mixed");
   const [cohortTag, setCohortTag] = useState<"26AH" | "27AH" | "custom">("26AH");
+  const [hasDraftContent, setHasDraftContent] = useState(false);
 
   // Computed stats
   const totalMarks = draft.sections.reduce((s, sec) =>
@@ -305,6 +306,16 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
         setFormatting(t.formatting_requirements);
         if (t.draft_content) {
           setDraft(t.draft_content as AssignmentDraft);
+          setHasDraftContent(true);
+        } else {
+          // No draft saved yet — pre-populate title from assignment_input so editor isn't blank
+          const ai = t.assignment_input as { title?: string; topic?: string };
+          setDraft((d) => ({
+            ...d,
+            title: ai.title ?? t.template_name,
+            subtitle: "IBDP Mathematics — Analysis & Approaches HL",
+            syllabusTopics: ai.topic ?? "",
+          }));
         }
         if (t.formatting_requirements.answerBoxLines) {
           setAnswerBoxLines(t.formatting_requirements.answerBoxLines);
@@ -350,6 +361,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
         const d = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(d.error ?? `Save failed (${res.status})`);
       }
+      setHasDraftContent(true);
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 2500);
     } catch (err) {
@@ -598,6 +610,20 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
               + Add instruction
             </button>
           </div>
+
+          {/* No-draft notice */}
+          {!hasDraftContent && (
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 space-y-1">
+              <p className="text-xs font-semibold text-amber-300">No packet content saved yet</p>
+              <p className="text-[11px] text-amber-400/80 leading-relaxed">
+                This analysis has no sections or questions yet. Two options:
+              </p>
+              <ul className="text-[11px] text-amber-400/80 space-y-0.5 ml-3 list-disc">
+                <li><strong className="text-amber-300">AI Generator</strong> — go back to the Activity Generator, describe the topic (e.g. &ldquo;Rational Functions & Differential Analysis for IB HL&rdquo;), generate, then click <em>Save as Nuanced Analysis</em>. That will overwrite this record with a full packet.</li>
+                <li><strong className="text-amber-300">Manual</strong> — use &ldquo;+ Add section&rdquo; below to build from scratch, then Save (⌘S).</li>
+              </ul>
+            </div>
+          )}
 
           {/* Sections */}
           <div className="space-y-3">
