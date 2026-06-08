@@ -100,6 +100,16 @@ export function GenericAssignmentSandbox({
     setShowTemplates(false);
   }
 
+  async function deleteTemplate(id: string) {
+    try {
+      const res = await fetch(`/api/assignments/templates/delete?id=${id}`, { method: "DELETE" });
+      if (!res.ok) { const d = (await res.json()) as { error?: string }; throw new Error(d.error ?? "Failed to delete"); }
+      await loadTemplates();
+    } catch (err) {
+      setError(`Delete failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  }
+
   async function saveAsTemplate() {
     if (!templateName.trim()) { setError("Please enter a template name"); return; }
     setIsSavingTemplate(true); setError(null);
@@ -211,31 +221,41 @@ export function GenericAssignmentSandbox({
             <p className="text-xs text-da-muted">Configure below and use &ldquo;Generate With AI&rdquo;, or use the AI Activity Generator above.</p>
           </div>
 
-          {/* Templates */}
+          {/* Nuanced Analyses */}
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Templates</h3>
+            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Nuanced Analyses</h3>
             <button type="button" onClick={() => { setShowTemplates(!showTemplates); if (!showTemplates) loadTemplates(); }}
               className="w-full rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-2 text-sm font-medium text-da-text transition-colors hover:border-da-accent/60 hover:bg-da-hover">
-              {showTemplates ? "Hide Templates" : "Load From Template"}
+              {showTemplates ? "Hide Nuanced Analyses" : "Load Nuanced Analysis"}
             </button>
             {showTemplates && (
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-lg border border-da-border bg-da-bg/30 p-3">
-                {templates.length === 0 ? <p className="text-xs text-da-muted">No templates saved yet.</p> :
+                {templates.length === 0 ? <p className="text-xs text-da-muted">No saved analyses yet.</p> :
                   templates.map((t) => (
-                    <button key={t.id} type="button" onClick={() => loadTemplate(t)}
-                      className="w-full rounded-md border border-da-border/40 bg-da-hover/30 px-3 py-1.5 text-left text-xs text-da-text transition-colors hover:bg-da-hover">
-                      {t.template_name}
-                    </button>
+                    <div key={t.id} className="flex items-center gap-1 group">
+                      <button type="button" onClick={() => loadTemplate(t)}
+                        className="flex-1 rounded-md border border-da-border/40 bg-da-hover/30 px-3 py-1.5 text-left text-xs text-da-text transition-colors hover:bg-da-hover truncate">
+                        {t.template_name}
+                      </button>
+                      <button type="button" onClick={() => { if (confirm(`Delete "${t.template_name}"?`)) void deleteTemplate(t.id); }}
+                        className="shrink-0 rounded border border-red-500/30 bg-red-500/10 px-1.5 py-1 text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500/20"
+                        title="Delete this Nuanced Analysis">
+                        ✕
+                      </button>
+                    </div>
                   ))}
               </div>
             )}
-            <div className="flex gap-2">
-              <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name…"
-                className="flex-1 rounded-lg border border-da-border/50 bg-da-bg/30 px-2 py-1.5 text-xs text-da-text placeholder-da-muted/50 focus:border-da-accent/60 focus:outline-none" />
-              <button type="button" onClick={saveAsTemplate} disabled={isSavingTemplate}
-                className="rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-1.5 text-xs font-medium text-da-text transition-colors hover:bg-da-hover disabled:opacity-50">
-                {isSavingTemplate ? "Saving..." : "Save As Template"}
-              </button>
+            <div className="border-t border-da-border/30 pt-3">
+              <p className="mb-1.5 text-[10px] font-semibold text-da-muted uppercase tracking-wide">Save current as Nuanced Analysis</p>
+              <div className="flex gap-2">
+                <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Name this analysis…"
+                  className="flex-1 rounded-lg border border-da-border/50 bg-da-bg/30 px-2 py-1.5 text-xs text-da-text placeholder-da-muted/50 focus:border-da-accent/60 focus:outline-none" />
+                <button type="button" onClick={saveAsTemplate} disabled={isSavingTemplate}
+                  className="rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-1.5 text-xs font-medium text-da-text transition-colors hover:bg-da-hover disabled:opacity-50">
+                  {isSavingTemplate ? "Saving…" : "Save"}
+                </button>
+              </div>
             </div>
           </div>
 
