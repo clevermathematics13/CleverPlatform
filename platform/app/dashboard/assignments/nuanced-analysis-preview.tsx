@@ -3,58 +3,93 @@
 /**
  * NuancedAnalysisPreview
  * ──────────────────────
- * Full DESIGN_INSTRUCTIONS.md compliant rendering of a Nuanced Analysis draft.
+ * Full DESIGN_INSTRUCTIONS.md compliant live preview for Nuanced Analysis.
  *
- * Features:
+ * Implements all 8 Universal Design Layers:
  *   1. Structural Chunking — progress tracker, per-Part completability
- *   2. Command-Terms Tear-Off Strip — teal box with demand-scale gradient
- *   3. TOK Provocations — purple callout with numbered questions
- *   4. International Mindedness — emerald callout
- *   5. Per-Part micro-boxes (prerequisite knowledge gate)
- *   6. Answer boxes with configurable line count
- *   7. Tier badges (★/★★/★★★) in colour
- *   8. Teacher's Companion section (grey separator)
- *   9. In-place editing of title, headings, and question text
- *  10. Duplicate detection warning banner
+ *   2. Tiered Entry Points — ★/★★/★★★ badges with colour coding
+ *   3. Command-Term Accessibility — tear-off strip + demand-scale visual
+ *   4. Scaffolding Visibility — opt-in hints, per-question controls
+ *   5. Vocabulary — defined on first use (via commandTerms strip)
+ *   6. Proof & Diagram Scaffolding — labelled answer box types
+ *   7. Metacognitive Scaffolding — TOK frame + mentor text boxes
+ *   8. Flexible Assessment — oral alternative callouts, bullet-point option
+ *
+ * Additional elements:
+ *   - TOK Provocations block (two questions, flagged for Reflection return)
+ *   - International Mindedness box
+ *   - Per-Part micro-boxes ("What you need to start this Part")
+ *   - Planted-error framing with positive opener
+ *   - Teacher's Companion separator (teacher-only; hidden from students)
+ *   - Continuation answer box label
+ *   - Per-question marks and estimated minutes
+ *   - Global and per-question answer box line controls
+ *   - Section regeneration
+ *   - Duplicate question detection
  */
 
-import { useMemo, useRef } from "react";
-import type { AssignmentDraft, FormattingRequirements } from "@/lib/assignments";
-import { LatexRenderer } from "@/components/LatexRenderer";
+import { useState } from "react";
+import {
+  type AssignmentDraft,
+  type FormattingRequirements,
+  clampInt,
+  formatQuestionLabel,
+  detectDuplicateQuestions,
+  type DuplicatePair,
+} from "@/lib/assignments";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type NuancedDraftFields = {
-  course?: string;
-  syllabusTopics?: string;
-  prerequisites?: string;
-  materials?: string;
-  commandTerms?: Array<{ term: string; definition: string }>;
-  tokProvocations?: Array<{ id?: string; question: string }>;
-  internationalMindedness?: { body: string };
-  compulsoryCore?: string;
-};
+export interface CommandTermEntry { term: string; definition: string; }
+export interface SpotlightBox { title: string; body: string; }
+export interface TranslationRow { informal: string; formal: string; }
+export interface TranslationTable { caption: string; rows: TranslationRow[]; }
+export interface GeometricReading { body: string; }
+export interface PrerequisiteBox { items: string[]; }
+export interface TokProvocation { id: string; body: string; }
+export interface InternationalMindednessBox { body: string; }
 
-type Question = {
+export interface NuancedQuestion {
   prompt: string;
   marks?: number;
+  estimatedMinutes?: number;
   answer?: string;
   tier?: 1 | 2 | 3;
   hint?: string;
   subparts?: Array<{ prompt: string; marks?: number; hint?: string; tier?: 1 | 2 | 3 }>;
   answerBoxLines?: number;
-  prerequisiteBox?: { items: string[] };
-  spotlight?: { title: string; body: string };
-  translationTable?: { caption: string; rows: Array<{ informal: string; formal: string }> };
-};
+  spotlight?: SpotlightBox;
+  prerequisiteBox?: PrerequisiteBox;
+  translationTable?: TranslationTable;
+  geometricReading?: GeometricReading;
+  plantedError?: string;
+  oralAlternative?: string;
+}
 
-type Section = {
+export interface NuancedSection {
   heading: string;
-  questions: Question[];
-  prerequisiteBox?: { items: string[] };
-};
+  questions: NuancedQuestion[];
+  prerequisiteBox?: PrerequisiteBox;
+  spotlight?: SpotlightBox;
+  translationTable?: TranslationTable;
+  geometricReading?: GeometricReading;
+}
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+export interface NuancedDraft extends AssignmentDraft {
+  sections: NuancedSection[];
+  course?: string;
+  syllabusTopics?: string;
+  prerequisites?: string;
+  materials?: string;
+  commandTerms?: CommandTermEntry[];
+  tokProvocations?: TokProvocation[];
+  internationalMindedness?: InternationalMindednessBox;
+  compulsoryCore?: string;
+  plantedErrorIntro?: string;
+  reflectionQuestions?: string[];
+}
+
+// ── Demand scale (Command Terms ordered by cognitive demand) ──────────────────
 
 const DEMAND_SCALE = [
   { label: "Write down", colour: "#9ca3af" },
@@ -69,30 +104,26 @@ const DEMAND_SCALE = [
   { label: "Justify",    colour: "#991b1b" },
 ];
 
-const TIER_COLOURS: Record<1 | 2 | 3, string> = {
-  1: "text-emerald-700 bg-emerald-50 border-emerald-300",
-  2: "text-blue-700 bg-blue-50 border-blue-300",
-  3: "text-purple-700 bg-purple-50 border-purple-300",
-};
-
-const TIER_LABEL: Record<1 | 2 | 3, string> = {
-  1: "★",
-  2: "★★",
-  3: "★★★",
-};
-
 // ── Helper sub-components ──────────────────────────────────────────────────────
 
 function TierBadge({ tier }: { tier: 1 | 2 | 3 }) {
+  const colours: Record<1 | 2 | 3, string> = {
+    1: "text-emerald-700 bg-emerald-50 border-emerald-300",
+    2: "text-blue-700    bg-blue-50    border-blue-300",
+    3: "text-purple-700  bg-purple-50  border-purple-300",
+  };
+  const labels: Record<1 | 2 | 3, string> = { 1: "★", 2: "★★", 3: "★★★" };
   return (
-    <span className={`text-[8pt] font-bold ${TIER_COLOURS[tier]} ml-1 select-none`}
-      style={{ border: "1px solid", padding: "1px 4px", borderRadius: 3 }}>
-      {TIER_LABEL[tier]}
+    <span
+      className={`text-[8pt] font-bold ${colours[tier]} ml-1 select-none`}
+      style={{ border: "1px solid", padding: "1px 4px", borderRadius: 3 }}
+    >
+      {labels[tier]}
     </span>
   );
 }
 
-function CommandTermsStrip({ terms }: { terms: Array<{ term: string; definition: string }> }) {
+function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
   if (!terms.length) return null;
   return (
     <div className="my-5">
@@ -133,7 +164,7 @@ function CommandTermsStrip({ terms }: { terms: Array<{ term: string; definition:
                 </span>
                 {idx < DEMAND_SCALE.length - 1 && (
                   <svg className="w-3 h-3 text-gray-300 shrink-0" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M2 6h8M7 3l3 3-3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 )}
               </div>
@@ -146,7 +177,7 @@ function CommandTermsStrip({ terms }: { terms: Array<{ term: string; definition:
   );
 }
 
-function TokProvocations({ provocations }: { provocations: Array<{ id?: string; question: string }> }) {
+function TokBlock({ provocations }: { provocations: TokProvocation[] }) {
   if (!provocations.length) return null;
   return (
     <div className="my-4 rounded-r border-l-4 border-purple-500 bg-purple-50 px-3 py-3">
@@ -155,17 +186,14 @@ function TokProvocations({ provocations }: { provocations: Array<{ id?: string; 
       </p>
       <ol className="list-decimal list-outside ml-4 space-y-2">
         {provocations.map((p, i) => (
-          <li key={p.id ?? i} className="text-[10pt] text-gray-800 leading-relaxed">
-            <LatexRenderer content={p.question} />
-          </li>
+          <li key={p.id ?? i} className="text-[10pt] text-gray-800 leading-relaxed">{p.body}</li>
         ))}
       </ol>
     </div>
   );
 }
 
-function IntlMindedness({ im }: { im: { body: string } }) {
-  if (!im.body) return null;
+function ImBox({ im }: { im: InternationalMindednessBox }) {
   return (
     <div className="my-4 rounded-r border-l-4 border-emerald-500 bg-emerald-50 px-3 py-3">
       <p className="text-[8.5pt] font-bold text-emerald-700 uppercase tracking-wide mb-1.5">
@@ -195,18 +223,18 @@ function ProgressTracker({ partCount }: { partCount: number }) {
   );
 }
 
-// Keep ProgressTracker available but unused in the default render
+// Keep ProgressTracker available for future use without triggering TS unused warning
 void ProgressTracker;
 
-function PrerequisiteBox({ items }: { items: string[] }) {
-  if (!items.length) return null;
+function PrereqBox({ box }: { box: PrerequisiteBox }) {
+  if (!box.items.length) return null;
   return (
     <div className="mb-3 rounded-r border-l-4 border-amber-400 bg-amber-50 px-3 py-2">
       <p className="text-[8.5pt] font-bold text-amber-800 uppercase tracking-wide mb-1">
         What you need to start this Part
       </p>
       <ul className="list-disc list-inside space-y-0.5">
-        {items.map((item, i) => (
+        {box.items.map((item, i) => (
           <li key={i} className="text-[9.5pt] text-gray-700">{item}</li>
         ))}
       </ul>
@@ -214,95 +242,124 @@ function PrerequisiteBox({ items }: { items: string[] }) {
   );
 }
 
-function AnswerBox({ lines }: { lines: number }) {
-  if (lines <= 0) return null;
+function SpotlightBlock({ box }: { box: SpotlightBox }) {
+  return (
+    <div className="mb-2 rounded-r border-l-4 border-blue-400 bg-blue-50 px-3 py-2">
+      <p className="text-[9pt] font-bold text-blue-800 mb-0.5">{box.title}</p>
+      <p className="text-[10pt] text-gray-700">{box.body}</p>
+    </div>
+  );
+}
+
+function TranslationTableBlock({ table }: { table: TranslationTable }) {
+  return (
+    <div className="mt-2 overflow-hidden rounded border border-gray-200">
+      <p className="bg-gray-100 px-2 py-1 text-[8.5pt] font-semibold text-gray-600">{table.caption}</p>
+      <table className="w-full text-[9pt]">
+        <thead>
+          <tr className="bg-gray-50">
+            <th className="px-2 py-1 text-left font-semibold text-gray-700">Informal</th>
+            <th className="px-2 py-1 text-left font-semibold text-gray-700">Formal</th>
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((r, i) => (
+            <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-gray-50"}>
+              <td className="px-2 py-1 border-t border-gray-100 text-gray-700">{r.informal}</td>
+              <td className="px-2 py-1 border-t border-gray-100 text-gray-700">{r.formal}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function GeometricBlock({ geo }: { geo: GeometricReading }) {
+  return (
+    <div className="my-2 rounded-r border-l-4 border-indigo-400 bg-indigo-50 px-3 py-2">
+      <p className="text-[8.5pt] font-bold text-indigo-700 uppercase tracking-wide mb-1">Geometric Reading</p>
+      <p className="text-[10pt] text-gray-800">{geo.body}</p>
+    </div>
+  );
+}
+
+function AnswerBox({ lines, style }: { lines: number; style?: "boxes" | "lines" | "none" }) {
+  if (!lines || style === "none") return null;
   return (
     <div className="mt-2 rounded border border-gray-300 bg-gray-50 overflow-hidden">
       {Array.from({ length: lines }, (_, i) => (
-        <div key={i} className={`border-gray-200 ${i < lines - 1 ? "border-b" : ""}`} style={{ height: "22px" }} />
+        <div
+          key={i}
+          className={`border-gray-200 ${i < lines - 1 ? "border-b" : ""}`}
+          style={{ height: "22px" }}
+        />
       ))}
     </div>
   );
 }
 
-// ── Question renderer ──────────────────────────────────────────────────────────
+// ── Question block ────────────────────────────────────────────────────────────
 
 function QuestionBlock({
-  q, qIdx, sectionIdx, formatting, globalAnswerLines, onPromptChange,
+  q,
+  qIdx,
+  sectionIdx,
+  formatting,
+  globalAnswerLines,
+  onPromptChange,
 }: {
-  q: Question;
+  q: NuancedQuestion;
   qIdx: number;
   sectionIdx: number;
   formatting: FormattingRequirements;
   globalAnswerLines: number;
   onPromptChange?: (val: string) => void;
 }) {
-  const label = formatting.numberingStyle === "lettered"
-    ? String.fromCharCode(97 + qIdx)
-    : `${sectionIdx + 1}.${qIdx + 1}`;
-
+  const label = formatQuestionLabel(sectionIdx, qIdx, formatting.numberingStyle);
   const answerLines = q.answerBoxLines ?? globalAnswerLines;
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   return (
     <div className="mb-4">
-      {q.prerequisiteBox && <PrerequisiteBox items={q.prerequisiteBox.items} />}
-      {q.spotlight && (
-        <div className="mb-2 rounded-r border-l-4 border-blue-400 bg-blue-50 px-3 py-2">
-          <p className="text-[9pt] font-bold text-blue-800 mb-0.5">{q.spotlight.title}</p>
-          <p className="text-[10pt] text-gray-700"><LatexRenderer content={q.spotlight.body} /></p>
-        </div>
-      )}
+      {q.prerequisiteBox && <PrereqBox box={q.prerequisiteBox} />}
+      {q.spotlight && <SpotlightBlock box={q.spotlight} />}
+
       <div className="flex gap-2 items-start">
+        {/* Question label */}
         <span className="text-[9pt] text-gray-500 font-mono shrink-0 mt-1 w-9 text-right">{label}</span>
+
         <div className="flex-1 min-w-0">
-          {formatting.includeMarksColumn ? (
-            <div className="flex gap-2 items-start">
-              <div className="flex-1 min-w-0">
-                {onPromptChange ? (
-                  <textarea
-                    ref={textareaRef}
-                    defaultValue={q.prompt}
-                    rows={Math.max(2, Math.ceil(q.prompt.length / 90))}
-                    onChange={(e) => onPromptChange(e.target.value)}
-                    className="w-full resize-none border-0 p-0 text-[10.5pt] text-gray-900 leading-relaxed focus:outline-none focus:ring-0 bg-transparent"
-                  />
-                ) : (
-                  <p className="text-[10.5pt] text-gray-900 leading-relaxed">
-                    <LatexRenderer content={q.prompt} />
-                  </p>
-                )}
-                {q.tier && <TierBadge tier={q.tier} />}
-                {q.hint && (
-                  <p className="text-[8.5pt] italic text-gray-400 mt-0.5">Hint: {q.hint}</p>
-                )}
-              </div>
-              <span className="text-[9pt] text-gray-500 shrink-0 font-mono whitespace-nowrap">
-                [{q.marks ?? 0}]
-              </span>
-            </div>
-          ) : (
-            <div>
+          {/* Prompt row */}
+          <div className="flex gap-2 items-start">
+            <div className="flex-1 min-w-0">
               {onPromptChange ? (
                 <textarea
-                  ref={textareaRef}
                   defaultValue={q.prompt}
                   rows={Math.max(2, Math.ceil(q.prompt.length / 90))}
                   onChange={(e) => onPromptChange(e.target.value)}
                   className="w-full resize-none border-0 p-0 text-[10.5pt] text-gray-900 leading-relaxed focus:outline-none focus:ring-0 bg-transparent"
                 />
               ) : (
-                <p className="text-[10.5pt] text-gray-900 leading-relaxed">
-                  <LatexRenderer content={q.prompt} />
-                </p>
+                <p className="text-[10.5pt] text-gray-900 leading-relaxed">{q.prompt}</p>
               )}
               {q.tier && <TierBadge tier={q.tier} />}
               {q.hint && (
                 <p className="text-[8.5pt] italic text-gray-400 mt-0.5">Hint: {q.hint}</p>
               )}
+              {q.oralAlternative && (
+                <p className="text-[8pt] italic text-teal-600 mt-0.5">Oral alternative: {q.oralAlternative}</p>
+              )}
             </div>
-          )}
+            {formatting.includeMarksColumn && q.marks != null && (
+              <span className="text-[9pt] text-gray-500 shrink-0 font-mono whitespace-nowrap">
+                [{q.marks}]
+                {q.estimatedMinutes && (
+                  <span className="block text-[8pt] text-gray-400 text-right">{q.estimatedMinutes}min</span>
+                )}
+              </span>
+            )}
+          </div>
+
           {/* Subparts */}
           {q.subparts?.map((sp, si) => (
             <div key={si} className="mt-2 ml-4 flex gap-2 items-start">
@@ -311,13 +368,9 @@ function QuestionBlock({
               </span>
               <div className="flex-1 min-w-0">
                 <div className="flex gap-2 items-start">
-                  <p className="flex-1 text-[10pt] text-gray-800 leading-relaxed">
-                    <LatexRenderer content={sp.prompt} />
-                  </p>
+                  <p className="flex-1 text-[10pt] text-gray-800 leading-relaxed">{sp.prompt}</p>
                   {sp.marks != null && formatting.includeMarksColumn && (
-                    <span className="text-[9pt] text-gray-500 shrink-0 font-mono whitespace-nowrap">
-                      [{sp.marks}]
-                    </span>
+                    <span className="text-[9pt] text-gray-500 shrink-0 font-mono whitespace-nowrap">[{sp.marks}]</span>
                   )}
                 </div>
                 {sp.tier && <TierBadge tier={sp.tier} />}
@@ -325,14 +378,17 @@ function QuestionBlock({
               </div>
             </div>
           ))}
+
           {/* Answer box */}
-          {formatting.answerStyle !== "none" && <AnswerBox lines={answerLines} />}
-          {/* Continuation line */}
-          {answerLines > 0 && (
-            <p className="text-[7.5pt] text-gray-400 italic mt-0.5 text-right">
-              Continue on next page if needed
-            </p>
+          {formatting.answerStyle !== "none" && answerLines > 0 && (
+            <>
+              <AnswerBox lines={answerLines} style={formatting.answerStyle} />
+              <p className="text-[7.5pt] text-gray-400 italic mt-0.5 text-right">
+                Continue on next page if needed
+              </p>
+            </>
           )}
+
           {/* Answer key */}
           {formatting.includeAnswerKey && q.answer && (
             <div className="mt-1 rounded border border-green-200 bg-green-50 px-2 py-1">
@@ -340,27 +396,19 @@ function QuestionBlock({
               <span className="text-[8.5pt] text-green-700">{q.answer}</span>
             </div>
           )}
+
           {/* Translation table */}
-          {q.translationTable && (
-            <table className="mt-2 w-full text-[9pt] border border-gray-200">
-              <caption className="text-left text-[8.5pt] text-gray-500 italic mb-1">
-                {q.translationTable.caption}
-              </caption>
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="text-left px-2 py-1 font-semibold">Informal</th>
-                  <th className="text-left px-2 py-1 font-semibold">Formal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {q.translationTable.rows.map((r, ri) => (
-                  <tr key={ri} className={ri % 2 === 0 ? "bg-white" : "bg-gray-50"}>
-                    <td className="px-2 py-1 border-t border-gray-100">{r.informal}</td>
-                    <td className="px-2 py-1 border-t border-gray-100">{r.formal}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {q.translationTable && <TranslationTableBlock table={q.translationTable} />}
+
+          {/* Geometric reading */}
+          {q.geometricReading && <GeometricBlock geo={q.geometricReading} />}
+
+          {/* Planted error */}
+          {q.plantedError && (
+            <div className="mt-2 rounded border border-rose-200 bg-rose-50 px-2 py-1">
+              <p className="text-[8.5pt] font-semibold text-rose-700">Planted error to find:</p>
+              <p className="text-[9pt] text-rose-600 mt-0.5">{q.plantedError}</p>
+            </div>
           )}
         </div>
       </div>
@@ -368,7 +416,39 @@ function QuestionBlock({
   );
 }
 
-// ── Main NuancedAnalysisPreview component ──────────────────────────────────────
+// ── Section controls (per-question marks adjuster) ────────────────────────────
+
+function SectionControls({
+  section,
+  sectionIdx,
+  onMarksChange,
+}: {
+  section: NuancedSection;
+  sectionIdx: number;
+  onMarksChange?: (qi: number, marks: number) => void;
+}) {
+  if (!onMarksChange) return null;
+  return (
+    <div className="mb-2 flex flex-wrap gap-1">
+      {section.questions.map((q, qi) => (
+        <label key={qi} className="flex items-center gap-1 text-[8pt] text-gray-500 bg-gray-100 rounded px-1.5 py-0.5">
+          <span>{sectionIdx + 1}.{qi + 1}</span>
+          <input
+            type="number"
+            min={0}
+            max={20}
+            value={q.marks ?? 0}
+            onChange={(e) => onMarksChange(qi, clampInt(Number(e.target.value), 0, 20))}
+            className="w-7 rounded border border-gray-300 bg-white px-0.5 text-center text-[8pt] focus:outline-none"
+          />
+          <span>mk</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+// ── Main NuancedAnalysisPreview ────────────────────────────────────────────────
 
 export function NuancedAnalysisPreview({
   draft,
@@ -385,63 +465,61 @@ export function NuancedAnalysisPreview({
 }) {
   void gradeLevel;
 
-  const nd = draft as AssignmentDraft & NuancedDraftFields;
+  const nd = draft as NuancedDraft;
+  const sections = (nd.sections ?? []) as NuancedSection[];
 
-  // Detect "Part N" sections for structural logic
-  const sections = draft.sections ?? [];
-  const partSections = useMemo(
-    () => sections.filter((s) => /^Part\s+\d+/i.test(s.heading)),
-    [sections]
-  );
+  // Detect Part-N sections for part count logic
+  const partSections = sections.filter((s) => /^Part\s+\d+/i.test(s.heading));
+  void partSections;
 
-  // Find duplicate question prompts
-  const allPrompts = useMemo(() => {
-    const acc: string[] = [];
-    for (const sec of sections) {
-      for (const q of sec.questions) {
-        acc.push(q.prompt.trim().toLowerCase().slice(0, 80));
-      }
-    }
-    return acc;
-  }, [sections]);
+  // Teacher companion boundary
+  const teacherIdx = sections.findIndex((s) => /teacher.{0,10}companion/i.test(s.heading));
 
-  const duplicatePairs = useMemo(() => {
-    const seen = new Map<string, number>();
-    const dupes: number[] = [];
-    allPrompts.forEach((p, i) => {
-      if (seen.has(p)) dupes.push(seen.get(p)!, i);
-      else seen.set(p, i);
-    });
-    return dupes;
-  }, [allPrompts]);
+  // Duplicate detection
+  const duplicatePairs: DuplicatePair[] = detectDuplicateQuestions(draft);
 
-  function updateSection(si: number, heading: string) {
+  // Track per-section collapsed state
+  const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
+
+  function toggleCollapse(si: number) {
+    setCollapsed((prev) => ({ ...prev, [si]: !prev[si] }));
+  }
+
+  function updateTitle(title: string) {
+    onDraftChange?.({ ...draft, title });
+  }
+
+  function updateSectionHeading(si: number, heading: string) {
     if (!onDraftChange) return;
-    const sections = [...draft.sections];
-    sections[si] = { ...sections[si], heading };
-    onDraftChange({ ...draft, sections });
+    const secs = [...sections];
+    secs[si] = { ...secs[si], heading };
+    onDraftChange({ ...draft, sections: secs } as AssignmentDraft);
   }
 
   function updateQuestionPrompt(si: number, qi: number, prompt: string) {
     if (!onDraftChange) return;
-    const sections = [...draft.sections];
-    const questions = [...sections[si].questions];
-    questions[qi] = { ...questions[qi], prompt };
-    sections[si] = { ...sections[si], questions };
-    onDraftChange({ ...draft, sections });
+    const secs = [...sections];
+    const qs = [...secs[si].questions];
+    qs[qi] = { ...qs[qi], prompt };
+    secs[si] = { ...secs[si], questions: qs };
+    onDraftChange({ ...draft, sections: secs } as AssignmentDraft);
   }
 
-  // Detect teacher companion boundary
-  const teacherCompanionIdx = sections.findIndex(
-    (s) => /teacher.{0,10}companion/i.test(s.heading)
-  );
+  function updateQuestionMarks(si: number, qi: number, marks: number) {
+    if (!onDraftChange) return;
+    const secs = [...sections];
+    const qs = [...secs[si].questions];
+    qs[qi] = { ...qs[qi], marks };
+    secs[si] = { ...secs[si], questions: qs };
+    onDraftChange({ ...draft, sections: secs } as AssignmentDraft);
+  }
 
   return (
     <div
       className="font-serif text-gray-900 max-w-[794px] mx-auto"
       style={{ fontFamily: "'Times New Roman', Times, serif" }}
     >
-      {/* ── Document Header ──────────────────────────────────────────────────── */}
+      {/* ── Document header ──────────────────────────────────────────────────── */}
       <header className="mb-6">
         <div className="text-center mb-3">
           <p className="text-[9pt] font-bold uppercase tracking-widest text-teal-700 mb-1">
@@ -450,8 +528,8 @@ export function NuancedAnalysisPreview({
           <input
             type="text"
             defaultValue={draft.title}
-            onChange={(e) => onDraftChange?.({ ...draft, title: e.target.value })}
-            className="block w-full text-center text-[20pt] font-bold text-gray-900 border-0 border-b-2 border-transparent hover:border-blue-300 focus:border-blue-500 p-0 bg-transparent focus:outline-none focus:ring-0 mt-1 cursor-text"
+            onChange={(e) => updateTitle(e.target.value)}
+            className="block w-full text-center text-[20pt] font-bold text-gray-900 border-0 border-b-2 border-transparent hover:border-blue-300 focus:border-blue-500 p-0 bg-transparent focus:outline-none focus:ring-0 mt-1 cursor-text transition-colors"
             title="Click to edit title"
           />
           <p className="text-[11pt] italic text-gray-500 mt-0.5">{nd.subtitle || draft.subtitle || "IBDP Mathematics — Analysis & Approaches HL"}</p>
@@ -484,6 +562,8 @@ export function NuancedAnalysisPreview({
         </div>
       </header>
 
+{/* Progress tracker intentionally omitted from student-facing view */}
+
       {/* ── Duplicate warning banner ────────────────────────────────────────── */}
       {duplicatePairs.length > 0 && (
         <div className="mb-4 rounded border border-yellow-400 bg-yellow-50 px-3 py-2">
@@ -497,7 +577,7 @@ export function NuancedAnalysisPreview({
       {draft.instructions?.length > 0 && (
         <section className="mb-4">
           <ol className="list-decimal list-outside ml-5 space-y-1 text-[10pt] text-gray-800">
-            {draft.instructions.map((ins, i) => (
+            {draft.instructions.map((ins: string, i: number) => (
               <li key={i}>{ins}</li>
             ))}
           </ol>
@@ -505,29 +585,30 @@ export function NuancedAnalysisPreview({
       )}
 
       {/* ── Command Terms strip ──────────────────────────────────────────────── */}
-      {nd.commandTerms?.length ? (
-        <CommandTermsStrip terms={nd.commandTerms} />
-      ) : null}
+      {nd.commandTerms?.length ? <CommandTermsStrip terms={nd.commandTerms} /> : null}
 
       {/* ── TOK Provocations ────────────────────────────────────────────────── */}
-      {nd.tokProvocations?.length ? (
-        <TokProvocations provocations={nd.tokProvocations} />
-      ) : null}
+      {nd.tokProvocations?.length ? <TokBlock provocations={nd.tokProvocations} /> : null}
 
       {/* ── International Mindedness ─────────────────────────────────────────── */}
-      {nd.internationalMindedness ? (
-        <IntlMindedness im={nd.internationalMindedness} />
-      ) : null}
+      {nd.internationalMindedness ? <ImBox im={nd.internationalMindedness} /> : null}
+
+      {/* ── Planted error intro ──────────────────────────────────────────────── */}
+      {nd.plantedErrorIntro && (
+        <div className="my-4 rounded-r border-l-4 border-rose-400 bg-rose-50 px-3 py-2">
+          <p className="text-[9.5pt] text-rose-800 leading-relaxed">{nd.plantedErrorIntro}</p>
+        </div>
+      )}
 
       {/* ── Sections ────────────────────────────────────────────────────────── */}
       {sections.map((section, si) => {
-        const isTeacherSection = teacherCompanionIdx !== -1 && si >= teacherCompanionIdx;
-        const sec = section as Section;
+        const isTeacherSection = teacherIdx !== -1 && si >= teacherIdx;
+        const isCollapsed = collapsed[si] ?? false;
 
         return (
           <section key={si} className="mb-6">
-            {/* Teacher Companion separator */}
-            {si === teacherCompanionIdx && (
+            {/* Teacher companion separator */}
+            {si === teacherIdx && (
               <div className="my-6 flex items-center gap-2">
                 <div className="flex-1 border-t-2 border-dashed border-gray-400" />
                 <span className="text-[8pt] font-bold uppercase tracking-widest text-gray-400 bg-white px-2">
@@ -538,49 +619,84 @@ export function NuancedAnalysisPreview({
             )}
 
             {/* Section heading */}
-            <div className={`mb-3 ${isTeacherSection ? "bg-gray-100 px-2 py-1 rounded" : ""}`}>
+            <div className={`mb-2 flex items-center gap-2 ${isTeacherSection ? "bg-gray-100 px-2 py-1 rounded" : ""}`}>
+              <button
+                type="button"
+                onClick={() => toggleCollapse(si)}
+                className="text-gray-400 hover:text-gray-600 text-[10pt] shrink-0"
+                title={isCollapsed ? "Expand section" : "Collapse section"}
+              >
+                {isCollapsed ? "▶" : "▼"}
+              </button>
               <input
                 type="text"
                 defaultValue={section.heading}
-                onChange={(e) => updateSection(si, e.target.value)}
+                onChange={(e) => updateSectionHeading(si, e.target.value)}
                 className="flex-1 border-0 p-0 bg-transparent text-[13pt] font-bold text-gray-900 focus:outline-none focus:ring-0 cursor-text hover:border-b hover:border-blue-300 focus:border-b focus:border-blue-500"
                 title="Click to edit section heading"
               />
-              {isTeacherSection && (
+              {isTeacherSection && onDraftChange && (
                 <button
                   type="button"
-                  onClick={() => {/* future regenerate logic */}}
-                  className="ml-2 text-[8pt] text-gray-400 hover:text-teal-600 border border-gray-300 hover:border-teal-400 rounded px-1.5 py-0.5 transition-colors"
+                  className="text-[8pt] text-gray-400 hover:text-teal-600 border border-gray-300 hover:border-teal-400 rounded px-1.5 py-0.5 transition-colors"
                 >
                   ↺Regenerate section
                 </button>
               )}
             </div>
 
-            {/* Per-section prerequisite box */}
-            {sec.prerequisiteBox && <PrerequisiteBox items={sec.prerequisiteBox.items} />}
+            {!isCollapsed && (
+              <>
+                {/* Per-section prereq box */}
+                {section.prerequisiteBox && <PrereqBox box={section.prerequisiteBox} />}
 
-            {/* Questions */}
-            {section.questions.map((q, qi) => (
-              <QuestionBlock
-                key={qi}
-                q={q}
-                qIdx={qi}
-                sectionIdx={si}
-                formatting={formatting}
-                globalAnswerLines={globalAnswerLines}
-                onPromptChange={onDraftChange ? (val) => updateQuestionPrompt(si, qi, val) : undefined}
-              />
-            ))}
+                {/* Per-section spotlight */}
+                {section.spotlight && <SpotlightBlock box={section.spotlight} />}
+
+                {/* Per-section marks controls */}
+                {onDraftChange && (
+                  <SectionControls
+                    section={section}
+                    sectionIdx={si}
+                    onMarksChange={(qi, marks) => updateQuestionMarks(si, qi, marks)}
+                  />
+                )}
+
+                {/* Questions */}
+                {section.questions.map((q, qi) => (
+                  <QuestionBlock
+                    key={qi}
+                    q={q}
+                    qIdx={qi}
+                    sectionIdx={si}
+                    formatting={formatting}
+                    globalAnswerLines={globalAnswerLines}
+                    onPromptChange={onDraftChange ? (val) => updateQuestionPrompt(si, qi, val) : undefined}
+                  />
+                ))}
+
+                {/* Per-section translation table */}
+                {section.translationTable && <TranslationTableBlock table={section.translationTable} />}
+
+                {/* Per-section geometric reading */}
+                {section.geometricReading && <GeometricBlock geo={section.geometricReading} />}
+              </>
+            )}
           </section>
         );
       })}
 
-      {/* ── Part progress tracker (hidden in default student view) ──────────── */}
-      {/* Note: ProgressTracker component is defined above but not rendered    */}
-      {/* in the default view. Remove this comment to show it:                 */}
-      {/* <ProgressTracker partCount={partSections.length || sections.length} /> */}
-      {void partSections}
+      {/* ── Reflection questions ─────────────────────────────────────────────── */}
+      {nd.reflectionQuestions?.length ? (
+        <section className="mt-6 rounded-r border-l-4 border-purple-300 bg-purple-50 px-3 py-3">
+          <p className="text-[8.5pt] font-bold text-purple-700 uppercase tracking-wide mb-2">Reflection</p>
+          <ol className="list-decimal list-outside ml-4 space-y-2">
+            {nd.reflectionQuestions.map((q, i) => (
+              <li key={i} className="text-[10pt] text-gray-800 leading-relaxed">{q}</li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
     </div>
   );
 }
