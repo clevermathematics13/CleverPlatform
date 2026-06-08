@@ -48,12 +48,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return new NextResponse(result.pdfBuffer, {
+  // NextResponse body must be BodyInit — convert Node.js Buffer to Uint8Array.
+  const pdfBytes = new Uint8Array(result.pdfBuffer);
+
+  return new NextResponse(pdfBytes, {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `attachment; filename="nuanced-analysis.pdf"`,
-      "Content-Length": String(result.pdfBuffer.length),
+      "Content-Length": String(pdfBytes.byteLength),
     },
   });
 }
