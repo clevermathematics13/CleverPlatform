@@ -77,6 +77,13 @@ export type AssignmentDraft = {
   materials?: string;
   commandTerms?: CommandTermEntry[];
   // ── Nuanced Analysis extras ──────────────────────────────────────────────
+  /**
+   * ATL (Approaches to Learning) statement — one sentence naming the skill
+   * being built across the whole packet. Required by DESIGN_INSTRUCTIONS §2.4.
+   * Example: "You will build representational fluency: the ability to move
+   * between algebraic, geometric, and analytic representations of one object."
+   */
+  atl?: string;
   tokProvocations?: TokProvocation[];
   internationalMindedness?: InternationalMindednessBox;
   compulsoryCore?: string;
@@ -185,39 +192,41 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
     "A Nuanced Analysis is a structured, multi-part guided investigation that:",
     "- Spans multiple IB syllabus topics woven into a single mathematical thread",
     "- Moves through conjecture → investigation → proof → application → reflection",
-    "- Builds representational fluency: the same object seen as algebra, geometry, and real-world model",
+    "- Builds representational fluency: the same object seen as algebra, geometry, series, diagram, and real-world model",
     "- Uses IB command terms precisely throughout",
     "",
     "CRITICAL: Respond with ONLY a valid JSON object matching the schema below. No markdown, no backticks, no preamble.",
     "",
     "JSON Schema:",
     "{",
-    '  "title": "string — packet title (e.g. \\"Polynomial Analysis\\")",',
+    '  "title": "string — packet title",',
     '  "subtitle": "string — e.g. \\"Mastery Packet: IBDP Mathematics AA HL\\"",',
     '  "course": "string — e.g. \\"IBDP Mathematics AA HL\\"",',
     '  "syllabusTopics": "string — e.g. \\"Topic 2: Functions & Topic 5: Calculus\\"",',
     '  "prerequisites": "string — names of prior activities students need",',
-    '  "materials": "string — GDC, software, whether Paper 1 (no calc) or mixed",',
-    '  "compulsoryCore": "string — brief sentence listing which parts / tiers are compulsory",',
-    '  "plantedErrorIntro": "string — a one-sentence framing for the Broken Math Critique task",',
+    '  "materials": "string — GDC model, software, whether Paper 1 (no calculator) or mixed",',
+    '  "atl": "string — one sentence naming the ATL skill built across the whole packet, e.g. \\"You will build representational fluency: the same object seen as algebra, geometry, and real-world model.\\"",',
+    '  "compulsoryCore": "string — brief sentence listing compulsory parts/tiers for accommodations",',
+    '  "plantedErrorIntro": "string — one-sentence positive framing for the Broken Math Critique task",',
     '  "instructions": ["string", ...],',
     '  "commandTerms": [',
     '    { "term": "Write down", "definition": "A short answer with no working required." }',
     '  ],',
     '  "tokProvocations": [',
-    '    { "id": "tok1", "body": "Full provocation sentence as a question or claim." },',
-    '    { "id": "tok2", "body": "Second provocation." }',
+    '    { "id": "tok1", "body": "Full provocation as a question or claim. Must be answerable using a specific result in this packet." },',
+    '    { "id": "tok2", "body": "Second provocation. Different philosophical angle. Also anchored to packet evidence." }',
     '  ],',
-    '  "internationalMindedness": { "body": "2-3 sentence box about historical or cultural context." },',
+    '  "internationalMindedness": { "body": "2–3 sentence box naming non-European mathematicians who contributed to this mathematics." },',
     '  "reflectionQuestions": [',
-    '    "Reflection question 1 (using command term).",',
-    '    "Reflection question 2."',
+    '    "Reflection Q1: concept-map list question using command term List or Describe.",',
+    '    "Reflection Q2: epistemological question about the value of two proofs or representations.",',
+    '    "Reflection Q3: TOK position statement using the frame: I argue that [claim]. My evidence is [specific result]."',
     '  ],',
     '  "sections": [',
     '    {',
     '      "heading": "Part 0 — Activating Prior Knowledge",',
     '      "prerequisiteBox": { "items": ["bullet 1", "bullet 2"] },',
-    '      "spotlight": { "title": "Show that vs. Prove", "body": "Show that fixes the target. Prove must hold for all cases." },',
+    '      "spotlight": { "title": "Show that vs. Prove", "body": "Distinction text here." },',
     '      "questions": [',
     '        {',
     '          "prompt": "Full question text with **bold** command terms.",',
@@ -234,35 +243,37 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
     '      "translationTable": {',
     '        "caption": "The Translation Table",',
     '        "rows": [',
-    '          { "informal": "The graph bounces off the axis.", "formal": "The polynomial has a root with even multiplicity." }',
+    '          { "informal": "informal phrase", "formal": "formal IB phrasing" }',
     '        ]',
     '      },',
-    '      "geometricReading": { "body": "Multiplying by a complex number is a rotation combined with a scaling." }',
+    '      "geometricReading": { "body": "Geometric or physical interpretation of the algebra just done." }',
     '    }',
     '  ]',
     '}',
     "",
-    "DESIGN RULES:",
-    "1. Always include Part 0 as Activating Prior Knowledge.",
-    "2. tier: 1=★ (compulsory/entry), 2=★★ (standard), 3=★★★ (optional extension). ALL questions must have a tier.",
-    "3. commandTerms: include only terms actually used in the packet.",
-    "4. spotlight: add at the top of the part where a command-term distinction is most important.",
-    "5. prerequisiteBox: 2–4 bullet items. Required for Parts 1 onwards; optional for Part 0.",
-    "6. translationTable: include where informal→formal language translation adds clear value.",
-    "7. geometricReading: include at end of parts where geometric/physical interpretation follows algebraic work.",
-    "8. hints: use for proof scaffolding and complex multi-step questions.",
-    "9. subparts: use (a),(b),(c) labelling for questions with distinct phases.",
-    "10. instructions: 4–6 crisp sentences covering showing working and command terms.",
-    "11. Marks: write-down=1–2, show-that/prove=3–5, extended investigation=4–8.",
-    "12. Use strict IB vocabulary: 'intersects' not 'crosses through'; 'even multiplicity' not 'bounces'.",
-    "13. tokProvocations: exactly 2 provocations per packet, both referencing a real philosophical tension in the mathematics.",
-    "14. internationalMindedness: name at least 2 mathematicians from non-European traditions who contributed.",
-    "15. reflectionQuestions: 3 questions — one concept-map, one epistemological, one TOK position statement.",
-    "16. plantedErrorIntro: open positively — e.g. 'Errors like this reveal important distinctions.'",
-    "17. Refinement: if conversation history shows a prior JSON draft, modify it per the new instruction. Return complete updated JSON.",
+    "DESIGN RULES — all are non-negotiable:",
+    "1. Part 0 is always Activating Prior Knowledge.",
+    "2. tier: 1=★ (compulsory/entry), 2=★★ (standard), 3=★★★ (optional extension). EVERY question and every subpart must have a tier.",
+    "3. commandTerms: include exactly the terms used in the packet — no extras, no omissions.",
+    "4. spotlight: add to the Part where the most important command-term distinction arises.",
+    "5. prerequisiteBox: 2–4 bullets. Required on Parts 1 onwards. Optional on Part 0.",
+    "6. translationTable: include in at least one Part where informal→formal language translation adds value.",
+    "7. geometricReading: include at the end of every Part containing algebraic derivation.",
+    "8. hints: required for all proof questions and any multi-step question with ≥4 marks.",
+    "9. subparts: label (a), (b), (c) for questions with distinct phases.",
+    "10. instructions: 4–6 sentences. Cover: show working, command terms strip, oral alternatives, compulsory core.",
+    "11. Marks: write-down/state = 1–2; describe/explain = 2–3; show that/prove = 3–5; extended = 4–8.",
+    "12. IB vocabulary: 'intersects', 'even multiplicity', 'strictly increasing' — never informal paraphrases.",
+    "13. tokProvocations: exactly 2. Each must cite a specific result from within this packet.",
+    "14. internationalMindedness: name ≥ 2 non-European mathematicians connected to this mathematics.",
+    "15. reflectionQuestions: exactly 3 — concept-map, epistemological, TOK-frame.",
+    "16. atl: one sentence, names the ATL skill category (e.g. Transfer Skills, Critical Thinking).",
+    "17. plantedErrorIntro: open positively — the framing sentence for the Broken Math Critique.",
+    "18. Refinement: if conversation history shows a prior JSON draft, modify it per the new instruction. Return the complete updated JSON.",
     isIB
-      ? "18. For IBDP: include at least one proof question (Show that/Prove), one Broken Math Critique part, and one technology task (GeoGebra/Desmos)."
-      : `18. For ${gradeLevel}: include at least one real-world application and one error-analysis question.`,
+      ? "19. IBDP requirement: include at least one Prove question, one Broken Math Critique section, and one GDC/Technology task. The final two sections must be Reflection and Extension & IA-Seeding."
+      : `19. ${gradeLevel} requirement: include at least one real-world application question and one error-analysis question.`,
+    "20. Packet arc: the final student-facing question before Reflection must explicitly connect back to the opening idea in Part 0.",
   ].join("\n");
 }
 
@@ -373,12 +384,13 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
     subtitle: (draft.subtitle || "Mathematics").trim(),
     instructions: instructions.length > 0 ? instructions : ["Complete all questions and show working."],
     sections,
-    // Metadata fields
+    // Header metadata
     ...(draft.course ? { course: draft.course } : {}),
     ...(draft.syllabusTopics ? { syllabusTopics: draft.syllabusTopics } : {}),
     ...(draft.prerequisites ? { prerequisites: draft.prerequisites } : {}),
     ...(draft.materials ? { materials: draft.materials } : {}),
     // Nuanced Analysis extras
+    ...(draft.atl ? { atl: draft.atl } : {}),
     ...(Array.isArray(draft.commandTerms) && draft.commandTerms.length > 0
       ? { commandTerms: draft.commandTerms }
       : {}),
