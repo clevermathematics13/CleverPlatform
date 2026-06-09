@@ -12,20 +12,20 @@
  *   4. Scaffolding Visibility — opt-in hints, per-question controls
  *   5. Vocabulary — defined on first use (via commandTerms strip)
  *   6. Proof & Diagram Scaffolding — labelled answer box types
- *   7. Metacognitive Scaffolding — TOK frame + mentor text boxes
+ *   7. Metacognitive Scaffolding — TOK frame + reflection questions
  *   8. Flexible Assessment — oral alternative callouts, bullet-point option
  *
- * Additional elements:
- *   - TOK Provocations block (two questions, flagged for Reflection return)
- *   - International Mindedness box
- *   - Per-Part micro-boxes ("What you need to start this Part")
- *   - Planted-error framing with positive opener
- *   - Teacher's Companion separator (teacher-only; hidden from students)
- *   - Continuation answer box label
- *   - Per-question marks and estimated minutes
- *   - Global and per-question answer box line controls
- *   - Section regeneration
- *   - Duplicate question detection
+ * Fixed structural components rendered per DESIGN_INSTRUCTIONS §2:
+ *   §2.1 Header: course, syllabusTopics, prerequisites, materials, name/date
+ *   §2.2 Command Terms glossary (tear-off strip) + demand-scale visual
+ *   §2.3 Vocabulary bold on first use (via commandTerms)
+ *   §2.4 ATL statement (atl field)
+ *   §2.5 TOK Provocations block (tokProvocations, exactly 2)
+ *   §2.6 International Mindedness box
+ *   §2.7 Parts with prerequisiteBox, spotlight, geometricReading
+ *   §2.8 Reflection questions block
+ *   §2.9 Extension/IA-Seeding section
+ *   §2.10 Teacher's Companion separator
  */
 
 import { useState } from "react";
@@ -81,6 +81,13 @@ export interface NuancedDraft extends AssignmentDraft {
   syllabusTopics?: string;
   prerequisites?: string;
   materials?: string;
+  /**
+   * ATL (Approaches to Learning) statement — §2.4 of DESIGN_INSTRUCTIONS.
+   * One sentence naming the skill built across the whole packet.
+   * Example: "You will build representational fluency: the same object seen as
+   * algebra, geometry, and real-world model."
+   */
+  atl?: string;
   commandTerms?: CommandTermEntry[];
   tokProvocations?: TokProvocation[];
   internationalMindedness?: InternationalMindednessBox;
@@ -144,10 +151,10 @@ function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
             ))}
           </tbody>
         </table>
-        {/* Demand scale visual */}
+        {/* Demand scale visual — Layer 3, §2.2 */}
         <div className="border-t border-teal-200 pt-2">
           <p className="text-[8pt] text-gray-600 mb-1 font-semibold">Output demand →</p>
-          <div className="flex items-center gap-0">
+          <div className="flex items-center gap-0 flex-wrap">
             {DEMAND_SCALE.map((item, idx) => (
               <div key={item.label} className="flex items-center">
                 <span
@@ -182,7 +189,7 @@ function TokBlock({ provocations }: { provocations: TokProvocation[] }) {
   return (
     <div className="my-4 rounded-r border-l-4 border-purple-500 bg-purple-50 px-3 py-3">
       <p className="text-[8.5pt] font-bold text-purple-700 uppercase tracking-wide mb-2">
-        Theory of Knowledge Provocations
+        Theory of Knowledge Provocations — return to these in the Reflection section
       </p>
       <ol className="list-decimal list-outside ml-4 space-y-2">
         {provocations.map((p, i) => (
@@ -204,27 +211,25 @@ function ImBox({ im }: { im: InternationalMindednessBox }) {
   );
 }
 
-function ProgressTracker({ partCount }: { partCount: number }) {
-  if (partCount === 0) return null;
+/** Progress tracker — Layer 1, §2.1 DESIGN_INSTRUCTIONS */
+function ProgressTracker({ sections }: { sections: NuancedSection[] }) {
+  const partSections = sections.filter((s) => /^Part\s*\d+/i.test(s.heading));
+  if (partSections.length === 0) return null;
   return (
-    <div className="mb-4 flex items-center gap-1 flex-wrap">
-      <span className="text-[8.5pt] text-gray-500 font-semibold mr-1">Progress:</span>
-      {Array.from({ length: partCount }, (_, i) => (
-        <span key={i} className="flex items-center gap-0.5">
-          <span className="text-[8pt] text-gray-500">Part {i + 1}</span>
+    <div className="mt-3 mb-1 flex items-center gap-1 flex-wrap text-[8.5pt] text-gray-500">
+      <span className="font-semibold mr-1">Progress tracker:</span>
+      {partSections.map((s, i) => (
+        <span key={i} className="flex items-center gap-0.5 mr-1">
+          <span>{s.heading.split("—")[0].trim()}</span>
           <span
-            className="inline-block w-4 h-4 border border-gray-400 rounded-sm"
-            title={`Part ${i + 1} completion checkbox`}
+            className="inline-block w-4 h-4 border border-gray-400 rounded-sm ml-0.5"
+            aria-label={`${s.heading} completion checkbox`}
           />
-          {i < partCount - 1 && <span className="text-gray-300 mx-1">·</span>}
         </span>
       ))}
     </div>
   );
 }
-
-// Keep ProgressTracker available for future use without triggering TS unused warning
-void ProgressTracker;
 
 function PrereqBox({ box }: { box: PrerequisiteBox }) {
   if (!box.items.length) return null;
@@ -325,11 +330,9 @@ function QuestionBlock({
       {q.spotlight && <SpotlightBlock box={q.spotlight} />}
 
       <div className="flex gap-2 items-start">
-        {/* Question label */}
         <span className="text-[9pt] text-gray-500 font-mono shrink-0 mt-1 w-9 text-right">{label}</span>
 
         <div className="flex-1 min-w-0">
-          {/* Prompt row */}
           <div className="flex gap-2 items-start">
             <div className="flex-1 min-w-0">
               {onPromptChange ? (
@@ -347,7 +350,9 @@ function QuestionBlock({
                 <p className="text-[8.5pt] italic text-gray-400 mt-0.5">Hint: {q.hint}</p>
               )}
               {q.oralAlternative && (
-                <p className="text-[8pt] italic text-teal-600 mt-0.5">Oral alternative: {q.oralAlternative}</p>
+                <p className="text-[8pt] italic text-teal-600 mt-0.5">
+                  You may respond to this question orally — ask your teacher.
+                </p>
               )}
             </div>
             {formatting.includeMarksColumn && q.marks != null && (
@@ -468,17 +473,10 @@ export function NuancedAnalysisPreview({
   const nd = draft as NuancedDraft;
   const sections = (nd.sections ?? []) as NuancedSection[];
 
-  // Detect Part-N sections for part count logic
-  const partSections = sections.filter((s) => /^Part\s+\d+/i.test(s.heading));
-  void partSections;
-
-  // Teacher companion boundary
   const teacherIdx = sections.findIndex((s) => /teacher.{0,10}companion/i.test(s.heading));
 
-  // Duplicate detection
   const duplicatePairs: DuplicatePair[] = detectDuplicateQuestions(draft);
 
-  // Track per-section collapsed state
   const [collapsed, setCollapsed] = useState<Record<number, boolean>>({});
 
   function toggleCollapse(si: number) {
@@ -532,7 +530,9 @@ export function NuancedAnalysisPreview({
             className="block w-full text-center text-[20pt] font-bold text-gray-900 border-0 border-b-2 border-transparent hover:border-blue-300 focus:border-blue-500 p-0 bg-transparent focus:outline-none focus:ring-0 mt-1 cursor-text transition-colors"
             title="Click to edit title"
           />
-          <p className="text-[11pt] italic text-gray-500 mt-0.5">{nd.subtitle || draft.subtitle || "IBDP Mathematics — Analysis & Approaches HL"}</p>
+          <p className="text-[11pt] italic text-gray-500 mt-0.5">
+            {nd.subtitle || draft.subtitle || "IBDP Mathematics — Analysis & Approaches HL"}
+          </p>
         </div>
         <div className="border-t-2 border-gray-800 pt-2">
           <div className="grid grid-cols-2 gap-4 text-[10pt]">
@@ -549,20 +549,33 @@ export function NuancedAnalysisPreview({
               </div>
             )}
           </div>
-          {nd.syllabusTopics && <p className="text-[9.5pt] mt-1"><strong>Syllabus Topics:</strong> {nd.syllabusTopics}</p>}
-          {nd.prerequisites && <p className="text-[9.5pt] mt-0.5"><strong>Prerequisites:</strong> {nd.prerequisites}</p>}
-          {nd.materials && <p className="text-[9.5pt] mt-0.5 italic">{nd.materials}</p>}
+          {nd.syllabusTopics && (
+            <p className="text-[9.5pt] mt-1"><strong>Syllabus Topics:</strong> {nd.syllabusTopics}</p>
+          )}
+          {nd.prerequisites && (
+            <p className="text-[9.5pt] mt-0.5"><strong>Prerequisites:</strong> {nd.prerequisites}</p>
+          )}
+          {nd.materials && (
+            <p className="text-[9.5pt] mt-0.5 italic">{nd.materials}</p>
+          )}
+          {/* ATL statement — §2.4 DESIGN_INSTRUCTIONS */}
+          {nd.atl && (
+            <p className="text-[9.5pt] mt-1 text-gray-600">
+              <strong className="text-gray-700">ATL skill:</strong> <em>{nd.atl}</em>
+            </p>
+          )}
           {nd.compulsoryCore && (
             <div className="mt-2 rounded-r border-l-4 border-emerald-500 bg-emerald-50 px-3 py-1.5">
               <p className="text-[9pt] font-bold text-emerald-800">
-                Compulsory core (★ and ★★ questions): <span className="font-normal">{nd.compulsoryCore}</span>
+                Compulsory core (★ and ★★ questions):{" "}
+                <span className="font-normal">{nd.compulsoryCore}</span>
               </p>
             </div>
           )}
         </div>
+        {/* Progress tracker — Layer 1, §2 DESIGN_INSTRUCTIONS */}
+        <ProgressTracker sections={sections} />
       </header>
-
-{/* Progress tracker intentionally omitted from student-facing view */}
 
       {/* ── Duplicate warning banner ────────────────────────────────────────── */}
       {duplicatePairs.length > 0 && (
@@ -584,13 +597,13 @@ export function NuancedAnalysisPreview({
         </section>
       )}
 
-      {/* ── Command Terms strip ──────────────────────────────────────────────── */}
+      {/* ── Command Terms strip — §2.2 ───────────────────────────────────────── */}
       {nd.commandTerms?.length ? <CommandTermsStrip terms={nd.commandTerms} /> : null}
 
-      {/* ── TOK Provocations ────────────────────────────────────────────────── */}
+      {/* ── TOK Provocations — §2.5 ─────────────────────────────────────────── */}
       {nd.tokProvocations?.length ? <TokBlock provocations={nd.tokProvocations} /> : null}
 
-      {/* ── International Mindedness ─────────────────────────────────────────── */}
+      {/* ── International Mindedness — §2.6 ──────────────────────────────────── */}
       {nd.internationalMindedness ? <ImBox im={nd.internationalMindedness} /> : null}
 
       {/* ── Planted error intro ──────────────────────────────────────────────── */}
@@ -600,14 +613,14 @@ export function NuancedAnalysisPreview({
         </div>
       )}
 
-      {/* ── Sections ────────────────────────────────────────────────────────── */}
+      {/* ── Sections — §2.7 ──────────────────────────────────────────────────── */}
       {sections.map((section, si) => {
         const isTeacherSection = teacherIdx !== -1 && si >= teacherIdx;
         const isCollapsed = collapsed[si] ?? false;
 
         return (
           <section key={si} className="mb-6">
-            {/* Teacher companion separator */}
+            {/* Teacher's Companion separator — §2.10 */}
             {si === teacherIdx && (
               <div className="my-6 flex items-center gap-2">
                 <div className="flex-1 border-t-2 border-dashed border-gray-400" />
@@ -619,7 +632,9 @@ export function NuancedAnalysisPreview({
             )}
 
             {/* Section heading */}
-            <div className={`mb-2 flex items-center gap-2 ${isTeacherSection ? "bg-gray-100 px-2 py-1 rounded" : ""}`}>
+            <div
+              className={`mb-2 flex items-center gap-2 ${isTeacherSection ? "bg-gray-100 px-2 py-1 rounded" : ""}`}
+            >
               <button
                 type="button"
                 onClick={() => toggleCollapse(si)}
@@ -635,25 +650,12 @@ export function NuancedAnalysisPreview({
                 className="flex-1 border-0 p-0 bg-transparent text-[13pt] font-bold text-gray-900 focus:outline-none focus:ring-0 cursor-text hover:border-b hover:border-blue-300 focus:border-b focus:border-blue-500"
                 title="Click to edit section heading"
               />
-              {isTeacherSection && onDraftChange && (
-                <button
-                  type="button"
-                  className="text-[8pt] text-gray-400 hover:text-teal-600 border border-gray-300 hover:border-teal-400 rounded px-1.5 py-0.5 transition-colors"
-                >
-                  ↺Regenerate section
-                </button>
-              )}
             </div>
 
             {!isCollapsed && (
               <>
-                {/* Per-section prereq box */}
                 {section.prerequisiteBox && <PrereqBox box={section.prerequisiteBox} />}
-
-                {/* Per-section spotlight */}
                 {section.spotlight && <SpotlightBlock box={section.spotlight} />}
-
-                {/* Per-section marks controls */}
                 {onDraftChange && (
                   <SectionControls
                     section={section}
@@ -661,8 +663,6 @@ export function NuancedAnalysisPreview({
                     onMarksChange={(qi, marks) => updateQuestionMarks(si, qi, marks)}
                   />
                 )}
-
-                {/* Questions */}
                 {section.questions.map((q, qi) => (
                   <QuestionBlock
                     key={qi}
@@ -671,28 +671,34 @@ export function NuancedAnalysisPreview({
                     sectionIdx={si}
                     formatting={formatting}
                     globalAnswerLines={globalAnswerLines}
-                    onPromptChange={onDraftChange ? (val) => updateQuestionPrompt(si, qi, val) : undefined}
+                    onPromptChange={
+                      onDraftChange ? (val) => updateQuestionPrompt(si, qi, val) : undefined
+                    }
                   />
                 ))}
-
-                {/* Per-section translation table */}
-                {section.translationTable && <TranslationTableBlock table={section.translationTable} />}
-
-                {/* Per-section geometric reading */}
-                {section.geometricReading && <GeometricBlock geo={section.geometricReading} />}
+                {section.translationTable && (
+                  <TranslationTableBlock table={section.translationTable} />
+                )}
+                {section.geometricReading && (
+                  <GeometricBlock geo={section.geometricReading} />
+                )}
               </>
             )}
           </section>
         );
       })}
 
-      {/* ── Reflection questions ─────────────────────────────────────────────── */}
+      {/* ── Reflection questions — §2.8 ──────────────────────────────────────── */}
       {nd.reflectionQuestions?.length ? (
         <section className="mt-6 rounded-r border-l-4 border-purple-300 bg-purple-50 px-3 py-3">
-          <p className="text-[8.5pt] font-bold text-purple-700 uppercase tracking-wide mb-2">Reflection</p>
+          <p className="text-[8.5pt] font-bold text-purple-700 uppercase tracking-wide mb-2">
+            Reflection
+          </p>
           <ol className="list-decimal list-outside ml-4 space-y-2">
             {nd.reflectionQuestions.map((q, i) => (
-              <li key={i} className="text-[10pt] text-gray-800 leading-relaxed">{q}</li>
+              <li key={i} className="text-[10pt] text-gray-800 leading-relaxed">
+                {q}
+              </li>
             ))}
           </ol>
         </section>
