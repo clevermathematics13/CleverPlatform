@@ -54,6 +54,8 @@ export type PrerequisiteBox = { items: string[] };
 export type TranslationTable = { caption: string; rows: Array<{ informal: string; formal: string }> };
 export type GeometricReading = { body: string };
 export type CommandTermEntry = { term: string; definition: string };
+export type TokProvocation = { id: string; body: string };
+export type InternationalMindednessBox = { body: string };
 
 export type AssignmentSection = {
   heading: string;
@@ -74,6 +76,12 @@ export type AssignmentDraft = {
   prerequisites?: string;
   materials?: string;
   commandTerms?: CommandTermEntry[];
+  // ── Nuanced Analysis extras ──────────────────────────────────────────────
+  tokProvocations?: TokProvocation[];
+  internationalMindedness?: InternationalMindednessBox;
+  compulsoryCore?: string;
+  plantedErrorIntro?: string;
+  reflectionQuestions?: string[];
 };
 
 export type ClaudeTextBlock = { type: string; text?: string };
@@ -184,64 +192,77 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
     "",
     "JSON Schema:",
     "{",
-    '  "title": "string — packet title (e.g. \'Polynomial Analysis\')",',
-    '  "subtitle": "string — e.g. \'Mastery Packet: IBDP Mathematics AA HL\'",',
-    '  "course": "string — e.g. \'IBDP Mathematics AA HL\'",',
-    '  "syllabusTopics": "string — e.g. \'Topic 2: Functions & Topic 5: Calculus\'",',
+    '  "title": "string — packet title (e.g. \\"Polynomial Analysis\\")",',
+    '  "subtitle": "string — e.g. \\"Mastery Packet: IBDP Mathematics AA HL\\"",',
+    '  "course": "string — e.g. \\"IBDP Mathematics AA HL\\"",',
+    '  "syllabusTopics": "string — e.g. \\"Topic 2: Functions & Topic 5: Calculus\\"",',
     '  "prerequisites": "string — names of prior activities students need",',
     '  "materials": "string — GDC, software, whether Paper 1 (no calc) or mixed",',
+    '  "compulsoryCore": "string — brief sentence listing which parts / tiers are compulsory",',
+    '  "plantedErrorIntro": "string — a one-sentence framing for the Broken Math Critique task",',
     '  "instructions": ["string", ...],',
     '  "commandTerms": [',
-    '    { "term": "Write down", "definition": "A short answer with no working required." },',
-    '    { "term": "Sketch", "definition": "Clear diagram with relative scale; label exact coordinates of intercepts, extrema, and special points." }',
-    "  ],",
+    '    { "term": "Write down", "definition": "A short answer with no working required." }',
+    '  ],',
+    '  "tokProvocations": [',
+    '    { "id": "tok1", "body": "Full provocation sentence as a question or claim." },',
+    '    { "id": "tok2", "body": "Second provocation." }',
+    '  ],',
+    '  "internationalMindedness": { "body": "2-3 sentence box about historical or cultural context." },',
+    '  "reflectionQuestions": [',
+    '    "Reflection question 1 (using command term).",',
+    '    "Reflection question 2."',
+    '  ],',
     '  "sections": [',
-    "    {",
+    '    {',
     '      "heading": "Part 0 — Activating Prior Knowledge",',
     '      "prerequisiteBox": { "items": ["bullet 1", "bullet 2"] },',
-    '      "spotlight": { "title": "Sketch vs. Draw", "body": "Draw requires millimeter precision on grid paper. Sketch does not require grid paper, but the axes MUST show relative scale." },',
+    '      "spotlight": { "title": "Show that vs. Prove", "body": "Show that fixes the target. Prove must hold for all cases." },',
     '      "questions": [',
-    "        {",
-    '          "prompt": "Full question text. Bold command terms: **Write down** the...",',
+    '        {',
+    '          "prompt": "Full question text with **bold** command terms.",',
     '          "marks": 2,',
     '          "tier": 1,',
     '          "hint": "Optional italic hint.",',
+    '          "answer": "Teacher-only answer sketch.",',
     '          "subparts": [',
-    '            { "prompt": "(a) first sub-part", "marks": 1 },',
-    '            { "prompt": "(b) second sub-part", "marks": 1 }',
-    "          ]",
-    "        }",
-    "      ],",
+    '            { "prompt": "(a) sub-part", "marks": 1, "tier": 1 },',
+    '            { "prompt": "(b) sub-part", "marks": 1, "tier": 2 }',
+    '          ]',
+    '        }',
+    '      ],',
     '      "translationTable": {',
-    '        "caption": "The Translation Table: Polynomial Roots",',
+    '        "caption": "The Translation Table",',
     '        "rows": [',
     '          { "informal": "The graph bounces off the axis.", "formal": "The polynomial has a root with even multiplicity." }',
-    "        ]",
-    "      },",
+    '        ]',
+    '      },',
     '      "geometricReading": { "body": "Multiplying by a complex number is a rotation combined with a scaling." }',
-    "    }",
-    "  ]",
-    "}",
+    '    }',
+    '  ]',
+    '}',
     "",
     "DESIGN RULES:",
     "1. Always include Part 0 as Activating Prior Knowledge.",
-    "2. tier: 1=★ (compulsory/entry), 2=★★ (standard), 3=★★★ (optional extension). All questions must have a tier.",
+    "2. tier: 1=★ (compulsory/entry), 2=★★ (standard), 3=★★★ (optional extension). ALL questions must have a tier.",
     "3. commandTerms: include only terms actually used in the packet.",
     "4. spotlight: add at the top of the part where a command-term distinction is most important.",
-    "5. prerequisiteBox: 2-4 bullet items. Required for every part except Part 0.",
-    "6. translationTable: include where informal→formal language translation adds value.",
+    "5. prerequisiteBox: 2–4 bullet items. Required for Parts 1 onwards; optional for Part 0.",
+    "6. translationTable: include where informal→formal language translation adds clear value.",
     "7. geometricReading: include at end of parts where geometric/physical interpretation follows algebraic work.",
     "8. hints: use for proof scaffolding and complex multi-step questions.",
     "9. subparts: use (a),(b),(c) labelling for questions with distinct phases.",
-    "10. instructions: 4-6 crisp sentences covering showing working and command terms.",
-    "11. Marks: write-down=1-2, show that/prove=3-5, extended investigation=4-8.",
+    "10. instructions: 4–6 crisp sentences covering showing working and command terms.",
+    "11. Marks: write-down=1–2, show-that/prove=3–5, extended investigation=4–8.",
     "12. Use strict IB vocabulary: 'intersects' not 'crosses through'; 'even multiplicity' not 'bounces'.",
-    "13. Never include answers in the student-facing questions. 'answer' field is teacher-only.",
-    "14. The packet must have a coherent arc: last section connects back to opening ideas.",
+    "13. tokProvocations: exactly 2 provocations per packet, both referencing a real philosophical tension in the mathematics.",
+    "14. internationalMindedness: name at least 2 mathematicians from non-European traditions who contributed.",
+    "15. reflectionQuestions: 3 questions — one concept-map, one epistemological, one TOK position statement.",
+    "16. plantedErrorIntro: open positively — e.g. 'Errors like this reveal important distinctions.'",
+    "17. Refinement: if conversation history shows a prior JSON draft, modify it per the new instruction. Return complete updated JSON.",
     isIB
-      ? "15. For IBDP: include at least one proof question (Show that/Prove), one Broken Math Critique error-analysis, and one GDC Mastery part."
-      : `15. For ${gradeLevel}: include at least one real-world application and one error-analysis question.`,
-    "16. Refinement: if conversation history shows a prior JSON draft, modify it per the new instruction. Return complete updated JSON.",
+      ? "18. For IBDP: include at least one proof question (Show that/Prove), one Broken Math Critique part, and one technology task (GeoGebra/Desmos)."
+      : `18. For ${gradeLevel}: include at least one real-world application and one error-analysis question.`,
   ].join("\n");
 }
 
@@ -352,11 +373,26 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
     subtitle: (draft.subtitle || "Mathematics").trim(),
     instructions: instructions.length > 0 ? instructions : ["Complete all questions and show working."],
     sections,
+    // Metadata fields
     ...(draft.course ? { course: draft.course } : {}),
     ...(draft.syllabusTopics ? { syllabusTopics: draft.syllabusTopics } : {}),
     ...(draft.prerequisites ? { prerequisites: draft.prerequisites } : {}),
     ...(draft.materials ? { materials: draft.materials } : {}),
-    ...(Array.isArray(draft.commandTerms) ? { commandTerms: draft.commandTerms } : {}),
+    // Nuanced Analysis extras
+    ...(Array.isArray(draft.commandTerms) && draft.commandTerms.length > 0
+      ? { commandTerms: draft.commandTerms }
+      : {}),
+    ...(Array.isArray(draft.tokProvocations) && draft.tokProvocations.length > 0
+      ? { tokProvocations: draft.tokProvocations }
+      : {}),
+    ...(draft.internationalMindedness
+      ? { internationalMindedness: draft.internationalMindedness }
+      : {}),
+    ...(draft.compulsoryCore ? { compulsoryCore: draft.compulsoryCore } : {}),
+    ...(draft.plantedErrorIntro ? { plantedErrorIntro: draft.plantedErrorIntro } : {}),
+    ...(Array.isArray(draft.reflectionQuestions) && draft.reflectionQuestions.length > 0
+      ? { reflectionQuestions: draft.reflectionQuestions }
+      : {}),
   };
 }
 

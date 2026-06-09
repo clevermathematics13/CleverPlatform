@@ -119,7 +119,7 @@
   ]
 ]
 
-// ── Document header block ────────────────────────────────────────────────────
+// ── Document header block ─────────────────────────────────────────────────────
 #block(width: 100%)[
   #align(center)[
     #text(size: 9pt, weight: "bold", fill: col-secondary)[
@@ -273,7 +273,7 @@
   #v(8pt)
 ]
 
-// ── Parts ────────────────────────────────────────────────────────────────────
+// ── Parts ─────────────────────────────────────────────────────────────────────
 #for section in content.sections [
   #v(str(tmpl.spacing.sectionGapMm) + "mm")
 
@@ -304,7 +304,7 @@
     ]
   ]
 
-  // Command-Term Spotlight (mid-section callout)
+  // Command-Term Spotlight (mid-section callout, skip Part 0 — shown in strip)
   #if section.has("spotlight") and section.partNumber > 0 [
     #callout-box(
       fill-color: col-strip.lighten(90%),

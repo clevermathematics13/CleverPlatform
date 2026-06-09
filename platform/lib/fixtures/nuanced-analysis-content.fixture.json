@@ -1,0 +1,194 @@
+{
+  "template": {
+    "schemaVersion": "2025-06-01.1",
+    "templateId": "nuanced-analysis-default-v1",
+    "templateName": "Nuanced Analysis — Default (IBDP AA HL)",
+    "document": {
+      "pageSize": "a4",
+      "orientation": "portrait",
+      "marginTopMm": 18,
+      "marginRightMm": 18,
+      "marginBottomMm": 20,
+      "marginLeftMm": 18
+    },
+    "typography": {
+      "bodyFont": "Georgia",
+      "headingFont": "Georgia",
+      "bodySizePt": 11,
+      "smallSizePt": 9,
+      "headingScale": 1.25,
+      "lineHeight": 1.55
+    },
+    "colors": {
+      "primary": "#1a3a5c",
+      "secondary": "#0e7490",
+      "accent": "#7c3aed",
+      "muted": "#6b7280",
+      "text": "#111827",
+      "border": "#d1d5db",
+      "commandTermStrip": "#0e7490",
+      "tokBox": "#f5f3ff",
+      "imBox": "#f0fdf4"
+    },
+    "spacing": {
+      "sectionGapMm": 8,
+      "questionGapMm": 5,
+      "promptToAnswerGapMm": 3,
+      "paragraphGapMm": 3
+    },
+    "header": {
+      "enabled": true,
+      "leftTextMode": "documentTitle",
+      "rightTextMode": "pageNumber"
+    },
+    "footer": {
+      "enabled": true,
+      "showPageNumber": true,
+      "showTemplateVersion": false
+    },
+    "questionBlocks": {
+      "keepPromptWithAnswerBox": true,
+      "keepStemWithFirstSubQuestion": true,
+      "allowAnswerContinuation": true,
+      "minimumUsefulAnswerBoxHeightMm": 28,
+      "preferMoveWholeBlockOverTinyContinuation": true,
+      "showMarks": true,
+      "showEstimatedMinutes": true,
+      "minutesPerMarkNumerator": 12,
+      "minutesPerMarkDenominator": 11
+    },
+    "answerBoxes": {
+      "defaultKind": "lined",
+      "defaultHeightMm": 55,
+      "lineSpacingMm": 7,
+      "borderWidthPt": 0.5,
+      "continuationEnabled": true,
+      "continuationLabel": "Continue your response here",
+      "continuationBoxMinHeightMm": 35
+    },
+    "math": {
+      "engine": "typst",
+      "displayMathSpacingMm": 3,
+      "inlineMathScale": 1.0,
+      "displayMathScale": 1.0,
+      "measureBeforePlacement": true
+    },
+    "graphs": {
+      "defaultWidthMm": 90,
+      "defaultHeightMm": 70,
+      "keepGraphWithPrompt": true,
+      "allowSideBySideComparison": true
+    },
+    "connections": {
+      "enabled": true,
+      "allowedTypes": ["tok", "interdisciplinary", "realWorld", "technology"],
+      "defaultLabel": "Thinking Lens",
+      "maxWords": 120
+    },
+    "cohesion": {
+      "continuationThresholdMm": 40,
+      "continuationBoxMinHeightMm": 35,
+      "keepSectionHeadingWithFirstQuestion": true
+    },
+    "progressTracker": {
+      "enabled": true,
+      "label": "Progress tracker"
+    }
+  },
+  "content": {
+    "title": "The Great Unification: From i to e^{i pi}",
+    "subtitle": "Nuanced Analysis · IBDP Mathematics AA HL",
+    "course": "IBDP Mathematics — Analysis & Approaches HL",
+    "syllabusTopics": "Topic 1 (Number & Algebra, HL) · Topic 3 (Geometry & Trigonometry, HL) · Topic 5 (Calculus, HL)",
+    "prerequisites": "Complex Numbers Part 1 & 2, Polynomial Analysis, Quadratics & The Calculus Transition",
+    "materials": "GDC (TI-84 Plus CE or equivalent) and GeoGebra or Desmos. This packet is designed largely without a calculator, in the spirit of Paper 1.",
+    "compulsoryCore": "Parts 0-3 (★ and ★★ questions). Parts 4-8 and extension branches are optional.",
+    "commandTerms": [
+      { "term": "Write down", "definition": "A short answer with no working required." },
+      { "term": "Describe", "definition": "Give a detailed account." },
+      { "term": "Explain", "definition": "Give a detailed account including reasons or causes." },
+      { "term": "Deduce", "definition": "Reach a conclusion by logical reasoning from results already established." },
+      { "term": "Show that", "definition": "Obtain a stated result; every logical step must appear." },
+      { "term": "Prove", "definition": "Establish truth by a rigorous, complete chain of reasoning." },
+      { "term": "Hence", "definition": "You must use the immediately preceding result. Starting over earns no marks." },
+      { "term": "Sketch", "definition": "A clear diagram showing key features and relative scale; label exact coordinates of intercepts, extrema, and special points." }
+    ],
+    "tokProvocations": [
+      { "id": "tok1", "body": "Euler's identity e^{i pi}+1=0 is routinely voted the most beautiful equation in mathematics. Can aesthetic appeal be evidence of mathematical truth, or is beauty merely a property we project onto results we have already accepted?" },
+      { "id": "tok2", "body": "The number i was introduced by definition (i^2 = -1) to make unsolvable equations solvable. When it later turned out to describe rotation, alternating current, and quantum states, was i discovered to be real, or did we invent a tool that we then chose to apply? Does usefulness make something real?" }
+    ],
+    "internationalMindedness": {
+      "body": "The geometric picture of a complex number was published independently by Caspar Wessel (Norwegian-Danish, 1799) and Jean-Robert Argand (Genevan-French, 1806). The series connecting e, i, and trigonometry were used by Euler (Swiss), but the underlying trigonometry rests on a thousand years of work by Indian (Aryabhata, Madhava of Sangamagrama) and Islamic-world (al-Battani, Abu al-Wafa) mathematicians. Notation is a poor historian."
+    },
+    "sections": [
+      {
+        "id": "part-0",
+        "heading": "Part 0 — Activating Prior Knowledge",
+        "partNumber": 0,
+        "questions": [
+          {
+            "id": "q1",
+            "globalNumber": 1,
+            "marks": 3,
+            "estimatedMinutes": 3,
+            "tier": 1,
+            "prompt": "Write down the polar form of each, with -pi < theta <= pi: (a) z = 1 + i*sqrt(3)  (b) z = -1  (c) z = -2 - 2i",
+            "answerBox": { "kind": "lined", "heightMm": 45, "lineSpacingMm": 7, "continuation": { "enabled": true, "label": "Continue your response here" } },
+            "answer": "(a) 2(cos(pi/3) + i*sin(pi/3))  (b) cos(pi) + i*sin(pi)  (c) 2*sqrt(2)*(cos(-3pi/4) + i*sin(-3pi/4))"
+          },
+          {
+            "id": "q2",
+            "globalNumber": 2,
+            "marks": 2,
+            "estimatedMinutes": 2,
+            "tier": 1,
+            "prompt": "Describe, in one sentence each, what the two numbers r and theta tell you geometrically about where z sits on the Argand plane.",
+            "answerBox": { "kind": "lined", "heightMm": 40, "lineSpacingMm": 7, "continuation": { "enabled": true, "label": "Continue your response here" } }
+          }
+        ]
+      },
+      {
+        "id": "part-1",
+        "heading": "Part 1 — The Geometry of Multiplication",
+        "partNumber": 1,
+        "prerequisiteBox": { "items": ["Polar form of complex numbers", "Compound-angle formulae (formula booklet)"] },
+        "spotlight": { "title": "Conjecture before rule", "body": "In this part you will discover the multiplication rule for complex numbers before being given it. Work numerically first, then prove the general case." },
+        "questions": [
+          {
+            "id": "q3",
+            "globalNumber": 3,
+            "marks": 3,
+            "estimatedMinutes": 3,
+            "tier": 1,
+            "prompt": "Numerical investigation (no formula yet). Using z1 = 2(cos 30 + i*sin 30) and z2 = 3(cos 45 + i*sin 45), compute the product z1*z2 and rewrite it in polar form. Write down its modulus and its argument.",
+            "answerBox": { "kind": "lined", "heightMm": 55, "lineSpacingMm": 7, "continuation": { "enabled": true, "label": "Continue your response here" } },
+            "answer": "z1*z2 = 6(cos 75 + i*sin 75) — modulus 6 = 2x3, argument 75 = 30+45."
+          },
+          {
+            "id": "q4",
+            "globalNumber": 4,
+            "marks": 2,
+            "estimatedMinutes": 2,
+            "tier": 1,
+            "prompt": "Conjecture. Based on Q3, write a conjecture relating the modulus and argument of a product z1*z2 to the moduli and arguments of z1 and z2.",
+            "answerBox": { "kind": "lined", "heightMm": 40, "lineSpacingMm": 7, "continuation": { "enabled": true, "label": "Continue your response here" } }
+          },
+          {
+            "id": "q5",
+            "globalNumber": 5,
+            "marks": 4,
+            "estimatedMinutes": 4,
+            "tier": 2,
+            "prompt": "Demonstrate. Show that your conjecture is correct in general by multiplying the two polar forms and applying the compound-angle formulae.",
+            "answerBox": { "kind": "lined", "heightMm": 65, "lineSpacingMm": 7, "continuation": { "enabled": true, "label": "Continue your response here" } }
+          }
+        ],
+        "geometricReading": { "body": "Multiplying by a complex number is a rotation (by its argument) combined with a scaling (by its modulus). Multiplication is a similarity transformation." }
+      }
+    ]
+  },
+  "renderOptions": {
+    "includeTeacherCompanion": false,
+    "includeAnswerKey": false
+  }
+}
