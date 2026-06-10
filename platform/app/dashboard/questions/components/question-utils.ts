@@ -147,9 +147,10 @@ export function chooseCommandTerms(input: {
     detectCommandTerms(input.markschemeLatex ?? ""),
     input.claudeCommandTerm ? [input.claudeCommandTerm] : [],
   );
-  const canonical = combined
+  // Filter to only approved canonical terms (undefined entries from .find() are dropped)
+  const canonical: string[] = combined
     .map((term) => DEFAULT_COMMAND_TERMS.find((t) => t.toLowerCase() === term.toLowerCase()))
-    .filter((t): t is string => Boolean(t));
+    .filter((t): t is string => t !== undefined);
   return mergeHighlightTerms([primary], canonical);
 }
 

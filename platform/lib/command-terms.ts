@@ -11,9 +11,10 @@
  * To add or remove a term:
  *   1. Edit this array.
  *   2. Run a Supabase migration to INSERT / DELETE the corresponding row.
- *   3. Update IB_CLASSIFY_SYSTEM in latex-utils.ts (it inlines the list).
+ *   3. IB_CLASSIFY_SYSTEM in latex-utils.ts rebuilds itself at module load
+ *      automatically from this array — no manual prompt edit needed.
  */
-export const DEFAULT_COMMAND_TERMS = [
+export const DEFAULT_COMMAND_TERMS: string[] = [
   "Calculate",
   "Classify",
   "Comment",
@@ -62,9 +63,7 @@ export const DEFAULT_COMMAND_TERMS = [
   "Using",
   "Verify",
   "Write down",
-] as const;
-
-export type CommandTerm = (typeof DEFAULT_COMMAND_TERMS)[number];
+];
 
 /**
  * Return the canonical form of a command term (case-insensitive lookup).
