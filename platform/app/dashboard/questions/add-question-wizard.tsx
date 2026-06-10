@@ -71,6 +71,10 @@ function detectPartLabels(text: string): string[] {
   return labels;
 }
 
+function isDuplicateKeyError(msg: string): boolean {
+  return msg.includes("duplicate key value violates unique constraint");
+}
+
 // ─── WizardStemEditor ────────────────────────────────────────────────────────
 
 function WizardStemEditor({
@@ -508,6 +512,8 @@ export function AddQuestionWizard({
   // ── Processing ──
   const [processingLog, setProcessingLog] = useState<string[]>([]);
   const [processingError, setProcessingError] = useState<string | null>(null);
+  const [deletingStub, setDeletingStub] = useState(false);
+  const [deleteStubError, setDeleteStubError] = useState<string | null>(null);
 
   // ── Step 2: review ──
   const [questionId, setQuestionId] = useState<string | null>(null);
@@ -600,6 +606,31 @@ export function AddQuestionWizard({
       }
     } catch {
       // Clipboard API unavailable; user can use Ctrl+V instead
+    }
+  }
+
+  // ── Stub deletion ──
+
+  async function handleDeleteStub() {
+    setDeletingStub(true);
+    setDeleteStubError(null);
+    try {
+      const res = await fetch(`/api/questions?code=${encodeURIComponent(code.trim())}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? `HTTP ${res.status}`);
+      }
+      // Stub deleted — reset processing state and retry
+      setProcessingError(null);
+      setProcessingLog([]);
+      setQuestionId(null);
+      await handleExtract();
+    } catch (e) {
+      setDeleteStubError(e instanceof Error ? e.message : "Failed to delete stub");
+    } finally {
+      setDeletingStub(false);
     }
   }
 
@@ -1230,11 +1261,38 @@ export function AddQuestionWizard({
                   <p className="text-sm font-semibold text-red-700">
                     Error: {processingError}
                   </p>
+
+                  {isDuplicateKeyError(processingError) && (
+                    <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-1.5">
+                      <p className="text-xs text-amber-800 font-medium">
+                        A content-less stub for <span className="font-mono font-bold">{code.trim()}</span> already exists in the database but is invisible in search. You can delete it and retry.
+                      </p>
+                      {deleteStubError && (
+                        <p className="text-xs text-red-600 font-medium">{deleteStubError}</p>
+                      )}
+                      <button
+                        onClick={handleDeleteStub}
+                        disabled={deletingStub}
+                        className="px-3 py-1.5 rounded bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 disabled:opacity-40 flex items-center gap-1.5"
+                      >
+                        {deletingStub ? (
+                          <>
+                            <span className="inline-block w-3 h-3 border border-white border-t-transparent rounded-full animate-spin" />
+                            Deleting stub…
+                          </>
+                        ) : (
+                          "🗑 Delete stub & retry"
+                        )}
+                      </button>
+                    </div>
+                  )}
+
                   <button
                     onClick={() => {
                       setStep("images");
                       setProcessingLog([]);
                       setProcessingError(null);
+                      setDeleteStubError(null);
                     }}
                     className="text-xs text-red-600 underline hover:no-underline"
                   >
