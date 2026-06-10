@@ -1,6 +1,9 @@
 // Pure utility functions extracted from question-bank-client.tsx
 // These have no React dependencies and can be tested independently.
 
+export { DEFAULT_COMMAND_TERMS } from "@/lib/command-terms";
+import { DEFAULT_COMMAND_TERMS } from "@/lib/command-terms";
+
 export const SECTION_NAMES: Record<number, string> = {
   1: "Number & Algebra",
   2: "Functions",
@@ -8,57 +11,6 @@ export const SECTION_NAMES: Record<number, string> = {
   4: "Stats & Probability",
   5: "Calculus",
 };
-
-export const DEFAULT_COMMAND_TERMS = [
-  "Calculate",
-  "Classify",
-  "Comment",
-  "Compare",
-  "Complete",
-  "Construct",
-  "Copy",
-  "Deduce",
-  "Demonstrate",
-  "Describe",
-  "Determine",
-  "Differentiate",
-  "Distinguish",
-  "Draw",
-  "Estimate",
-  "Evaluate",
-  "Expand",
-  "Explain",
-  "Express",
-  "Factorise",
-  "Find",
-  "Give",
-  "Hence",
-  "Identify",
-  "Integrate",
-  "Interpret",
-  "Investigate",
-  "Justify",
-  "Label",
-  "Let",
-  "List",
-  "Mark",
-  "Measure",
-  "Outline",
-  "Plot",
-  "Predict",
-  "Prove",
-  "Represent",
-  "Show",
-  "Simplify",
-  "Sketch",
-  "Solve",
-  "State",
-  "Suggest",
-  "Trace",
-  "Using",
-  "Verify",
-  "Write down",
-];
 
 /**
  * Infer the total mark value for a piece of LaTeX by summing all

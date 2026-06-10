@@ -7,6 +7,7 @@ import {
   stripUnsupportedColumns,
   omitUnsupportedColumns,
 } from "@/lib/question-parts-compat";
+import { DEFAULT_COMMAND_TERMS } from "@/lib/command-terms";
 
 type Body = {
   partId?: unknown;
@@ -45,57 +46,6 @@ type PartMetadataSnapshotRow = Pick<
 type CurrentPartRow = PartMetadataSnapshotRow & {
   content_latex: string | null;
 };
-
-const DEFAULT_COMMAND_TERMS = [
-  "Calculate",
-  "Classify",
-  "Comment",
-  "Compare",
-  "Complete",
-  "Construct",
-  "Copy",
-  "Deduce",
-  "Demonstrate",
-  "Describe",
-  "Determine",
-  "Differentiate",
-  "Distinguish",
-  "Draw",
-  "Estimate",
-  "Evaluate",
-  "Expand",
-  "Explain",
-  "Express",
-  "Factorise",
-  "Find",
-  "Give",
-  "Hence",
-  "Identify",
-  "Integrate",
-  "Interpret",
-  "Investigate",
-  "Justify",
-  "Label",
-  "Let",
-  "List",
-  "Mark",
-  "Measure",
-  "Outline",
-  "Plot",
-  "Predict",
-  "Prove",
-  "Represent",
-  "Show",
-  "Simplify",
-  "Sketch",
-  "Solve",
-  "State",
-  "Suggest",
-  "Trace",
-  "Using",
-  "Verify",
-  "Write down",
-] as const;
 
 const PART_SELECT = "id, part_label, marks, subtopic_codes, primary_subtopic_code, command_term, command_terms, instructional_context_terms, sort_order, is_hence, is_hence_or_otherwise, is_using, is_deduce, is_verify, content_latex, markscheme_latex, latex_verified";
 
@@ -171,7 +121,7 @@ function normalizeCommandTerm(commandTerm: unknown): string | null {
   );
 
   if (!canonical) {
-    throw new Error("commandTerm must be one of the allowed command terms");
+    throw new Error(`commandTerm "${trimmed}" is not an approved IB command term`);
   }
 
   return canonical;
