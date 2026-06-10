@@ -281,3 +281,66 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ id: question.id }, { status: 201 });
 }
+
+// DELETE /api/questions?code=XXX
+// Removes a content-less stub so a new question with the same code can be added.
+// Refuses to delete if the record has any real content (google_doc_id, source_pdf_path,
+// stem_latex, or any question_part with content_latex / markscheme_latex).
+export async function DELETE(request: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+  if (!profile || profile.role !== "teacher") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const code = request.nextUrl.searchParams.get("code")?.trim();
+  if (!code) return NextResponse.json({ error: "code is required" }, { status: 400 });
+
+  // Fetch the question including its parts
+  const { data: question, error: fetchError } = await supabase
+    .from("ib_questions")
+    .select("id, google_doc_id, source_pdf_path, stem_latex, stem_markscheme_latex, question_parts(id, content_latex, markscheme_latex)")
+    .eq("code", code)
+    .maybeSingle();
+
+  if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
+  if (!question) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  // Safety check: refuse if the record has any real content
+  const hasContent =
+    question.google_doc_id ||
+    (question.source_pdf_path && question.source_pdf_path !== "manual") ||
+    question.stem_latex ||
+    question.stem_markscheme_latex ||
+    (question.question_parts as { content_latex: string | null; markscheme_latex: string | null }[])
+      .some((p) => p.content_latex || p.markscheme_latex);
+
+  if (hasContent) {
+    return NextResponse.json(
+      { error: "This question has real content and cannot be deleted as a stub." },
+      { status: 409 }
+    );
+  }
+
+  // Delete parts first, then the question
+  const { error: partsError } = await supabase
+    .from("question_parts")
+    .delete()
+    .eq("question_id", question.id);
+  if (partsError) return NextResponse.json({ error: partsError.message }, { status: 500 });
+
+  const { error: deleteError } = await supabase
+    .from("ib_questions")
+    .delete()
+    .eq("id", question.id);
+  if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
+
+  return NextResponse.json({ deleted: true, code });
+}
