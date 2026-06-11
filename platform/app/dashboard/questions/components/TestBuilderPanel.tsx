@@ -19,7 +19,7 @@ function QueueRow({
   item,
   number,
   showSection,
-  minutesPerMark,
+  minutesPerMark: _minutesPerMark,
   answerBoxMode,
   answerBoxFixedMm,
   onOpenQuestion,
@@ -44,7 +44,7 @@ function QueueRow({
     <div
       className="flex items-center gap-1 rounded bg-white border border-indigo-200 px-2 py-1 text-xs hover:border-indigo-400 cursor-pointer"
       onClick={onOpenQuestion}
-      title="Open this question in the editor"
+      title="Open this question"
     >
       {/* Move up */}
       <button
@@ -60,15 +60,17 @@ function QueueRow({
       <span className="font-bold text-indigo-700 w-5 text-right shrink-0">
         {number}.
       </span>
-      {/* Code + marks/minutes + section label */}
+      {/* Code + subtopics */}
       <div className="flex-1 min-w-0 flex flex-col gap-0">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="flex-1 text-left font-semibold text-gray-800 truncate">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onOpenQuestion(); }}
+            className="flex-1 text-left font-semibold text-indigo-700 hover:text-indigo-900 hover:underline truncate"
+            title="Open question editor"
+          >
             {item.code}
-          </span>
-          <span className="text-xs text-indigo-500 font-semibold shrink-0">
-            {item.marks} marks / {(item.marks * minutesPerMark).toFixed(2)} minutes
-          </span>
+          </button>
         </div>
         {(item.partSubtopics?.length ?? 0) > 0 ? (
           <div className="flex flex-col">
@@ -243,7 +245,6 @@ export function TestBuilderPanel({
   savingToGradebook: boolean;
   onSaveToGradebook: () => void;
 }) {
-  // Build section groups for rendering placeholder dividers
   const sectionAItems = showSections ? queue.filter((q) => q.section === "A") : [];
   const sectionBItems = showSections ? queue.filter((q) => q.section === "B") : [];
   const unsectionedItems = showSections
@@ -252,7 +253,6 @@ export function TestBuilderPanel({
 
   const canPreview = queue.length > 0 && examConfig.courseId;
   const totalMarks = queue.reduce((sum, item) => sum + item.marks, 0);
-  // HL: 120 min / 110 marks = 12/11; SL: 90 min / 80 marks = 9/8
   const mpm = examConfig.level === "HL" ? 12 / 11 : 9 / 8;
   const totalMinutes = Math.ceil(mpm * totalMarks);
 
@@ -288,7 +288,6 @@ export function TestBuilderPanel({
       </div>
       <div className="flex-1 overflow-y-auto">
         <div className="px-4 pt-3 pb-2 border-b border-indigo-100" suppressHydrationWarning>
-        {/* Exam config form */}
         <div className="space-y-2" suppressHydrationWarning>
           <input
             type="text"
@@ -404,7 +403,6 @@ export function TestBuilderPanel({
           )}
         </div>
 
-        {/* Section controls (P1/P2 AA only) */}
         {showSections && queue.length > 0 && (
           <button
             type="button"
@@ -415,7 +413,6 @@ export function TestBuilderPanel({
           </button>
         )}
 
-        {/* Random Exam button */}
         <button
           type="button"
           onClick={onToggleRandomPanel}
@@ -428,19 +425,16 @@ export function TestBuilderPanel({
           🎲 Random Exam
         </button>
 
-        {/* Random exam panel */}
         {showRandomPanel && (
           <div className="mt-2 rounded-lg border border-violet-300 bg-violet-50 p-3 space-y-2">
             <p className="text-xs font-bold text-violet-900">
               Build a random exam within covered syllabus
             </p>
-
             {courseIdError && (
               <p className="text-xs font-semibold text-red-600">
                 ↑ Please select a class first
               </p>
             )}
-
             <div>
               <label className="text-xs font-semibold text-violet-800 block mb-0.5">
                 Target duration (minutes)
@@ -460,11 +454,9 @@ export function TestBuilderPanel({
                 </span>
               </div>
             </div>
-
             {randomError && (
               <p className="text-xs text-red-600 font-medium">{randomError}</p>
             )}
-
             <button
               type="button"
               onClick={onBuildRandom}
@@ -476,6 +468,7 @@ export function TestBuilderPanel({
           </div>
         )}
         </div>
+
         <div className="px-2 py-2 space-y-1">
         {queue.length === 0 && (
           <p className="text-center text-xs text-indigo-400 py-6">
@@ -489,9 +482,8 @@ export function TestBuilderPanel({
             {sectionAItems.length > 0 && (
               <>
                 <div className="px-2 py-1 text-xs font-bold text-blue-700 bg-blue-50 rounded border border-blue-200">
-                  Section A ({sectionAItems.length})
+                  Section A ({sectionAItems.length}) · {sectionAItems.reduce((s, q) => s + q.marks, 0)} marks
                 </div>
-                {/* TODO: Section A header image placeholder */}
                 <div className="px-2 py-1 text-xs text-gray-400 italic border border-dashed border-gray-300 rounded text-center">
                   [ Section A header image — coming soon ]
                 </div>
@@ -522,9 +514,8 @@ export function TestBuilderPanel({
             {sectionBItems.length > 0 && (
               <>
                 <div className="px-2 py-1 text-xs font-bold text-orange-700 bg-orange-50 rounded border border-orange-200 mt-1">
-                  Section B ({sectionBItems.length})
+                  Section B ({sectionBItems.length}) · {sectionBItems.reduce((s, q) => s + q.marks, 0)} marks
                 </div>
-                {/* TODO: Section B header image placeholder */}
                 <div className="px-2 py-1 text-xs text-gray-400 italic border border-dashed border-gray-300 rounded text-center">
                   [ Section B header image — coming soon ]
                 </div>
@@ -616,7 +607,6 @@ export function TestBuilderPanel({
           </button>
         </div>
 
-        {/* Save error — selectable so user can copy */}
         {saveExamError && (
           <div className="rounded border border-red-300 bg-red-50 px-2 py-1.5">
             <div className="flex items-center justify-between mb-1">
@@ -627,7 +617,6 @@ export function TestBuilderPanel({
           </div>
         )}
 
-        {/* Save / Load row */}
         {activeExamId && examDirty && (
           <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
             <span className="inline-block h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
@@ -667,13 +656,11 @@ export function TestBuilderPanel({
             onClick={() => onDeleteExam(activeExamId)}
             disabled={deletingExam}
             className="w-full rounded border border-red-300 bg-red-50 text-red-700 text-xs font-bold py-1.5 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Archive this saved exam from Question Bank"
           >
             {deletingExam ? "Archiving…" : "🗄 Archive Saved Exam"}
           </button>
         )}
 
-        {/* Save to Gradebook */}
         <button
           type="button"
           onClick={onSaveToGradebook}
@@ -684,7 +671,6 @@ export function TestBuilderPanel({
           {savingToGradebook ? "Saving…" : "📊 Save to Gradebook"}
         </button>
 
-        {/* Saved exams list */}
         {showSavedExams && (
           <div className="rounded border border-amber-200 bg-amber-50 p-2 space-y-1 max-h-48 overflow-y-auto">
             <p className="text-xs font-bold text-amber-800 mb-1">Saved Exams</p>
@@ -709,7 +695,7 @@ export function TestBuilderPanel({
                     {exam.exam_date ? ` · ${exam.exam_date}` : ""}
                     {exam.exam_time ? ` ${exam.exam_time.slice(0, 5)}` : ""}
                     {exam.notes === "no_datetime" && (
-                      <span className="ml-1 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 leading-none" title="No date or time set for this exam">
+                      <span className="ml-1 inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 leading-none">
                         no date/time
                       </span>
                     )}
@@ -746,7 +732,6 @@ export function TestBuilderPanel({
           </button>
         </div>
 
-        {/* Inline template editor */}
         {showTemplateEditor && (
           <div className="rounded border border-gray-200 bg-white p-2 space-y-1">
             <p className="text-xs font-bold text-gray-700 mb-1">Cover Slide Presentation IDs</p>
