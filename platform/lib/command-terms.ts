@@ -3,6 +3,9 @@
  *
  * THIS IS THE SINGLE SOURCE OF TRUTH.
  *
+ * Source: IB Mathematics: Analysis and Approaches subject guide (first
+ * assessment 2021), Appendix — Glossary of command terms. 36 terms total.
+ *
  * - The Supabase `command_terms` table is seeded from this list.
  * - All TypeScript consumers import DEFAULT_COMMAND_TERMS from here.
  * - The IB_CLASSIFY_SYSTEM prompt in latex-utils.ts inlines this list so
@@ -16,12 +19,11 @@
  */
 export const DEFAULT_COMMAND_TERMS: string[] = [
   "Calculate",
-  "Classify",
   "Comment",
   "Compare",
-  "Complete",
+  "Compare and contrast",
   "Construct",
-  "Copy",
+  "Contrast",
   "Deduce",
   "Demonstrate",
   "Describe",
@@ -30,37 +32,26 @@ export const DEFAULT_COMMAND_TERMS: string[] = [
   "Distinguish",
   "Draw",
   "Estimate",
-  "Evaluate",
-  "Expand",
   "Explain",
-  "Express",
-  "Factorise",
   "Find",
-  "Give",
   "Hence",
+  "Hence or otherwise",
   "Identify",
   "Integrate",
   "Interpret",
   "Investigate",
   "Justify",
   "Label",
-  "Let",
   "List",
-  "Mark",
-  "Measure",
-  "Outline",
   "Plot",
   "Predict",
   "Prove",
-  "Represent",
   "Show",
-  "Simplify",
+  "Show that",
   "Sketch",
   "Solve",
   "State",
   "Suggest",
-  "Trace",
-  "Using",
   "Verify",
   "Write down",
 ];
