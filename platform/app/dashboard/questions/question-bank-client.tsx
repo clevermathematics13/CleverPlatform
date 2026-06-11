@@ -1,1 +1,1 @@
-__CONTENT_QBC__
+$(cat /home/claude/question-bank-client.tsx)
