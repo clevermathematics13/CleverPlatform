@@ -23,7 +23,11 @@ export interface QuestionPart {
   sort_order: number;
   content_latex: string | null;
   markscheme_latex: string | null;
+  /** Shorthand alias for content_latex used in some UI components. */
+  latex?: string | null;
   latex_verified: boolean | null;
+  /** IB mark types for this part (M, A, R, AG, etc). */
+  mark_types?: string[] | null;
   /** Persisted mark-level subtopic attributions, keyed by token ID. */
   mark_attributions?: Record<string, MarkAttribution> | null;
 }
