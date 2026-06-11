@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 
-function isMissingExamTimeColumnError(message?: string | null): boolean {
-  if (!message) return false;
-  return /saved_exams\.exam_time/i.test(message) || /column\s+"?exam_time"?\s+does\s+not\s+exist/i.test(message);
+/** Derive the notes flag: set 'no_datetime' when neither date nor time is provided. */
+function computeNotes(examDate: unknown, examTime: unknown): string | null {
+  const hasDate = typeof examDate === "string" && examDate.trim() !== "";
+  const hasTime = typeof examTime === "string" && examTime.trim() !== "";
+  return !hasDate && !hasTime ? "no_datetime" : null;
 }
 
 // ─── GET /api/exams — list saved exams for current teacher ───────────────────
@@ -14,23 +16,15 @@ export async function GET() {
 
   const { data, error: dbError } = await supabase
     .from("saved_exams")
-    .select("id, name, curriculum, level, paper, course_id, exam_date, exam_time, questions, created_at, updated_at")
+    .select("id, name, curriculum, level, paper, course_id, exam_date, exam_time, notes, questions, created_at, updated_at")
     .eq("teacher_id", user!.id)
     .order("updated_at", { ascending: false });
 
-  let exams = data ?? [];
   if (dbError) {
-    if (!isMissingExamTimeColumnError(dbError.message)) {
-      return NextResponse.json({ error: dbError.message }, { status: 500 });
-    }
-    const fallback = await supabase
-      .from("saved_exams")
-      .select("id, name, curriculum, level, paper, course_id, exam_date, questions, created_at, updated_at")
-      .eq("teacher_id", user!.id)
-      .order("updated_at", { ascending: false });
-    if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 });
-    exams = (fallback.data ?? []).map((row) => ({ ...row, exam_time: null }));
+    return NextResponse.json({ error: dbError.message }, { status: 500 });
   }
+
+  const exams = data ?? [];
 
   // Re-hydrate marks from live question_parts so stale stored values don't show wrong minutes
   const allIds = [...new Set(
@@ -97,6 +91,8 @@ export async function POST(request: NextRequest) {
   if (![1, 2, 3].includes(paper as number)) return NextResponse.json({ error: "Invalid paper" }, { status: 400 });
   if (!Array.isArray(questions)) return NextResponse.json({ error: "questions must be array" }, { status: 400 });
 
+  const notes = computeNotes(exam_date, exam_time);
+
   const { data, error: dbError } = await supabase
     .from("saved_exams")
     .insert({
@@ -108,33 +104,14 @@ export async function POST(request: NextRequest) {
       course_id: course_id ?? null,
       exam_date: exam_date ?? null,
       exam_time: exam_time ?? null,
+      notes,
       questions,
     })
     .select("id")
     .single();
 
-  if (dbError) {
-    if (!isMissingExamTimeColumnError(dbError.message)) {
-      return NextResponse.json({ error: dbError.message }, { status: 500 });
-    }
-    const fallback = await supabase
-      .from("saved_exams")
-      .insert({
-        teacher_id: user!.id,
-        name: name.trim(),
-        curriculum,
-        level,
-        paper,
-        course_id: course_id ?? null,
-        exam_date: exam_date ?? null,
-        questions,
-      })
-      .select("id")
-      .single();
-    if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 });
-    return NextResponse.json({ id: fallback.data.id }, { status: 201 });
-  }
-  return NextResponse.json({ id: data.id }, { status: 201 });
+  if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
+  return NextResponse.json({ id: data.id, notes }, { status: 201 });
 }
 
 // ─── PATCH /api/exams — update an existing saved exam ───────────────────────
@@ -159,24 +136,20 @@ export async function PATCH(request: NextRequest) {
   if (exam_time !== undefined) updates.exam_time = exam_time ?? null;
   if (Array.isArray(questions)) updates.questions = questions;
 
+  // Recompute notes whenever date or time fields are touched
+  if (exam_date !== undefined || exam_time !== undefined) {
+    const effectiveDate = exam_date !== undefined ? exam_date : body.exam_date;
+    const effectiveTime = exam_time !== undefined ? exam_time : body.exam_time;
+    updates.notes = computeNotes(effectiveDate, effectiveTime);
+  }
+
   const { error: dbError } = await supabase
     .from("saved_exams")
     .update(updates)
     .eq("id", id)
     .eq("teacher_id", user!.id);
 
-  if (dbError) {
-    if (!isMissingExamTimeColumnError(dbError.message)) {
-      return NextResponse.json({ error: dbError.message }, { status: 500 });
-    }
-    const { exam_time: _ignored, ...fallbackUpdates } = updates;
-    const fallback = await supabase
-      .from("saved_exams")
-      .update(fallbackUpdates)
-      .eq("id", id)
-      .eq("teacher_id", user!.id);
-    if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 });
-  }
+  if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }
 
@@ -190,32 +163,15 @@ export async function DELETE(request: NextRequest) {
   const id = searchParams.get("id");
   if (!id) return NextResponse.json({ error: "id is required" }, { status: 400 });
 
-  const { data: examRow, error: examError } = await supabase
+  const { data: savedExam, error: examError } = await supabase
     .from("saved_exams")
-    .select("id, teacher_id, name, curriculum, level, paper, course_id, exam_date, exam_time, questions, created_at, updated_at")
+    .select("id, teacher_id, name, curriculum, level, paper, course_id, exam_date, exam_time, notes, questions, created_at, updated_at")
     .eq("id", id)
     .eq("teacher_id", user!.id)
     .single();
 
-  let savedExam = examRow;
-  if (examError) {
-    if (!isMissingExamTimeColumnError(examError.message)) {
-      return NextResponse.json({ error: examError.message }, { status: 500 });
-    }
-    const fallback = await supabase
-      .from("saved_exams")
-      .select("id, teacher_id, name, curriculum, level, paper, course_id, exam_date, questions, created_at, updated_at")
-      .eq("id", id)
-      .eq("teacher_id", user!.id)
-      .single();
-    if (fallback.error || !fallback.data) {
-      return NextResponse.json({ error: fallback.error?.message ?? "Saved exam not found" }, { status: 404 });
-    }
-    savedExam = { ...fallback.data, exam_time: null };
-  }
-
-  if (!savedExam) {
-    return NextResponse.json({ error: "Saved exam not found" }, { status: 404 });
+  if (examError || !savedExam) {
+    return NextResponse.json({ error: examError?.message ?? "Saved exam not found" }, { status: 404 });
   }
 
   const { error: archiveError } = await supabase
