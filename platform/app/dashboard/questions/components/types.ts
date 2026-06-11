@@ -72,6 +72,8 @@ export interface Question {
   parts_draft_latex: string | null;
   parts_draft_markscheme_latex: string | null;
   teacher_notes: string | null;
+  /** Short note field used in QuestionRow note panel. */
+  note?: string | null;
   question_parts: QuestionPart[];
 }
 
