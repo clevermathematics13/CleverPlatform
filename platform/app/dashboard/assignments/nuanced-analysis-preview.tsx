@@ -24,8 +24,16 @@
  *   §2.6 International Mindedness box
  *   §2.7 Parts with prerequisiteBox, spotlight, geometricReading
  *   §2.8 Reflection questions block
- *   §2.9 Extension/IA-Seeding section
- *   §2.10 Teacher's Companion separator
+ *
+ * Per-question content & skill tags:
+ *   Each question can carry a contentTag (IB syllabus reference, e.g.
+ *   "Topic 1.13 — De Moivre's Theorem") and a skillTag (ATL/mathematical
+ *   practice, e.g. "Proof by mathematical induction"). These render as a
+ *   subtle caption below the prompt — visible to students so they can see
+ *   what each question is building toward.
+ *
+ * Teacher's Companion is NOT rendered in this component. It is excluded
+ * from the student-facing packet entirely.
  */
 
 import { useState } from "react";
@@ -56,7 +64,26 @@ export interface NuancedQuestion {
   answer?: string;
   tier?: 1 | 2 | 3;
   hint?: string;
-  subparts?: Array<{ prompt: string; marks?: number; hint?: string; tier?: 1 | 2 | 3 }>;
+  /**
+   * IB syllabus content reference visible to the student.
+   * E.g. "Topic 1.13 — De Moivre's Theorem"
+   * or   "Topic 2.4 — Composite functions"
+   */
+  contentTag?: string;
+  /**
+   * Mathematical practice or ATL skill visible to the student.
+   * E.g. "Proof by mathematical induction"
+   * or   "Representational transfer: algebra → geometry"
+   */
+  skillTag?: string;
+  subparts?: Array<{
+    prompt: string;
+    marks?: number;
+    hint?: string;
+    tier?: 1 | 2 | 3;
+    contentTag?: string;
+    skillTag?: string;
+  }>;
   answerBoxLines?: number;
   spotlight?: SpotlightBox;
   prerequisiteBox?: PrerequisiteBox;
@@ -84,8 +111,6 @@ export interface NuancedDraft extends AssignmentDraft {
   /**
    * ATL (Approaches to Learning) statement — §2.4 of DESIGN_INSTRUCTIONS.
    * One sentence naming the skill built across the whole packet.
-   * Example: "You will build representational fluency: the same object seen as
-   * algebra, geometry, and real-world model."
    */
   atl?: string;
   commandTerms?: CommandTermEntry[];
@@ -96,7 +121,7 @@ export interface NuancedDraft extends AssignmentDraft {
   reflectionQuestions?: string[];
 }
 
-// ── Demand scale (Command Terms ordered by cognitive demand) ──────────────────
+// ── Demand scale ──────────────────────────────────────────────────────────────
 
 const DEMAND_SCALE = [
   { label: "Write down", colour: "#9ca3af" },
@@ -130,6 +155,41 @@ function TierBadge({ tier }: { tier: 1 | 2 | 3 }) {
   );
 }
 
+/**
+ * ContentSkillTag — renders the syllabus content reference and ATL skill
+ * as a subtle single-line caption below the question prompt.
+ *
+ * Design intent: small enough not to crowd the question, but prominent
+ * enough that students see what each question is building toward.
+ * Uses a book-icon for content and a wrench-icon for skill to distinguish
+ * the two at a glance without colour alone.
+ */
+function ContentSkillTag({
+  contentTag,
+  skillTag,
+}: {
+  contentTag?: string;
+  skillTag?: string;
+}) {
+  if (!contentTag && !skillTag) return null;
+  return (
+    <div className="mt-1 mb-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+      {contentTag && (
+        <span className="inline-flex items-center gap-1 text-[7.5pt] text-teal-700 font-medium">
+          <span aria-hidden="true" className="text-teal-400">◈</span>
+          {contentTag}
+        </span>
+      )}
+      {skillTag && (
+        <span className="inline-flex items-center gap-1 text-[7.5pt] text-indigo-600 font-medium">
+          <span aria-hidden="true" className="text-indigo-300">⌬</span>
+          {skillTag}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
   if (!terms.length) return null;
   return (
@@ -151,7 +211,6 @@ function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
             ))}
           </tbody>
         </table>
-        {/* Demand scale visual — Layer 3, §2.2 */}
         <div className="border-t border-teal-200 pt-2">
           <p className="text-[8pt] text-gray-600 mb-1 font-semibold">Output demand →</p>
           <div className="flex items-center gap-0 flex-wrap">
@@ -211,7 +270,6 @@ function ImBox({ im }: { im: InternationalMindednessBox }) {
   );
 }
 
-/** Progress tracker — Layer 1, §2.1 DESIGN_INSTRUCTIONS */
 function ProgressTracker({ sections }: { sections: NuancedSection[] }) {
   const partSections = sections.filter((s) => /^Part\s*\d+/i.test(s.heading));
   if (partSections.length === 0) return null;
@@ -346,6 +404,10 @@ function QuestionBlock({
                 <p className="text-[10.5pt] text-gray-900 leading-relaxed">{q.prompt}</p>
               )}
               {q.tier && <TierBadge tier={q.tier} />}
+
+              {/* Content and skill tags — visible to students */}
+              <ContentSkillTag contentTag={q.contentTag} skillTag={q.skillTag} />
+
               {q.hint && (
                 <p className="text-[8.5pt] italic text-gray-400 mt-0.5">Hint: {q.hint}</p>
               )}
@@ -379,6 +441,7 @@ function QuestionBlock({
                   )}
                 </div>
                 {sp.tier && <TierBadge tier={sp.tier} />}
+                <ContentSkillTag contentTag={sp.contentTag} skillTag={sp.skillTag} />
                 {sp.hint && <p className="text-[8.5pt] italic text-gray-400 mt-0.5">Hint: {sp.hint}</p>}
               </div>
             </div>
@@ -394,7 +457,7 @@ function QuestionBlock({
             </>
           )}
 
-          {/* Answer key */}
+          {/* Answer key — teacher toggle only */}
           {formatting.includeAnswerKey && q.answer && (
             <div className="mt-1 rounded border border-green-200 bg-green-50 px-2 py-1">
               <span className="text-[8.5pt] text-green-800 font-semibold">Answer: </span>
@@ -402,13 +465,9 @@ function QuestionBlock({
             </div>
           )}
 
-          {/* Translation table */}
           {q.translationTable && <TranslationTableBlock table={q.translationTable} />}
-
-          {/* Geometric reading */}
           {q.geometricReading && <GeometricBlock geo={q.geometricReading} />}
 
-          {/* Planted error */}
           {q.plantedError && (
             <div className="mt-2 rounded border border-rose-200 bg-rose-50 px-2 py-1">
               <p className="text-[8.5pt] font-semibold text-rose-700">Planted error to find:</p>
@@ -473,7 +532,11 @@ export function NuancedAnalysisPreview({
   const nd = draft as NuancedDraft;
   const sections = (nd.sections ?? []) as NuancedSection[];
 
-  const teacherIdx = sections.findIndex((s) => /teacher.{0,10}companion/i.test(s.heading));
+  // Filter out any Teacher's Companion sections — they do not belong in the
+  // student-facing packet.
+  const studentSections = sections.filter(
+    (s) => !/teacher.{0,10}companion/i.test(s.heading)
+  );
 
   const duplicatePairs: DuplicatePair[] = detectDuplicateQuestions(draft);
 
@@ -558,7 +621,6 @@ export function NuancedAnalysisPreview({
           {nd.materials && (
             <p className="text-[9.5pt] mt-0.5 italic">{nd.materials}</p>
           )}
-          {/* ATL statement — §2.4 DESIGN_INSTRUCTIONS */}
           {nd.atl && (
             <p className="text-[9.5pt] mt-1 text-gray-600">
               <strong className="text-gray-700">ATL skill:</strong> <em>{nd.atl}</em>
@@ -573,8 +635,7 @@ export function NuancedAnalysisPreview({
             </div>
           )}
         </div>
-        {/* Progress tracker — Layer 1, §2 DESIGN_INSTRUCTIONS */}
-        <ProgressTracker sections={sections} />
+        <ProgressTracker sections={studentSections} />
       </header>
 
       {/* ── Duplicate warning banner ────────────────────────────────────────── */}
@@ -586,7 +647,7 @@ export function NuancedAnalysisPreview({
         </div>
       )}
 
-      {/* ── Instructions ────────────────────────────────────────────────────── */}
+      {/* ── Instructions ─────────────────────────────────────────────────────── */}
       {draft.instructions?.length > 0 && (
         <section className="mb-4">
           <ol className="list-decimal list-outside ml-5 space-y-1 text-[10pt] text-gray-800">
@@ -597,44 +658,29 @@ export function NuancedAnalysisPreview({
         </section>
       )}
 
-      {/* ── Command Terms strip — §2.2 ───────────────────────────────────────── */}
+      {/* ── Command Terms strip ───────────────────────────────────────────────── */}
       {nd.commandTerms?.length ? <CommandTermsStrip terms={nd.commandTerms} /> : null}
 
-      {/* ── TOK Provocations — §2.5 ─────────────────────────────────────────── */}
+      {/* ── TOK Provocations ──────────────────────────────────────────────────── */}
       {nd.tokProvocations?.length ? <TokBlock provocations={nd.tokProvocations} /> : null}
 
-      {/* ── International Mindedness — §2.6 ──────────────────────────────────── */}
+      {/* ── International Mindedness ──────────────────────────────────────────── */}
       {nd.internationalMindedness ? <ImBox im={nd.internationalMindedness} /> : null}
 
-      {/* ── Planted error intro ──────────────────────────────────────────────── */}
+      {/* ── Planted error intro ───────────────────────────────────────────────── */}
       {nd.plantedErrorIntro && (
         <div className="my-4 rounded-r border-l-4 border-rose-400 bg-rose-50 px-3 py-2">
           <p className="text-[9.5pt] text-rose-800 leading-relaxed">{nd.plantedErrorIntro}</p>
         </div>
       )}
 
-      {/* ── Sections — §2.7 ──────────────────────────────────────────────────── */}
-      {sections.map((section, si) => {
-        const isTeacherSection = teacherIdx !== -1 && si >= teacherIdx;
+      {/* ── Sections (student-facing only; Teacher's Companion excluded) ─────── */}
+      {studentSections.map((section, si) => {
         const isCollapsed = collapsed[si] ?? false;
 
         return (
           <section key={si} className="mb-6">
-            {/* Teacher's Companion separator — §2.10 */}
-            {si === teacherIdx && (
-              <div className="my-6 flex items-center gap-2">
-                <div className="flex-1 border-t-2 border-dashed border-gray-400" />
-                <span className="text-[8pt] font-bold uppercase tracking-widest text-gray-400 bg-white px-2">
-                  Teacher&apos;s Companion — Do Not Distribute
-                </span>
-                <div className="flex-1 border-t-2 border-dashed border-gray-400" />
-              </div>
-            )}
-
-            {/* Section heading */}
-            <div
-              className={`mb-2 flex items-center gap-2 ${isTeacherSection ? "bg-gray-100 px-2 py-1 rounded" : ""}`}
-            >
+            <div className="mb-2 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => toggleCollapse(si)}
@@ -688,7 +734,7 @@ export function NuancedAnalysisPreview({
         );
       })}
 
-      {/* ── Reflection questions — §2.8 ──────────────────────────────────────── */}
+      {/* ── Reflection questions ──────────────────────────────────────────────── */}
       {nd.reflectionQuestions?.length ? (
         <section className="mt-6 rounded-r border-l-4 border-purple-300 bg-purple-50 px-3 py-3">
           <p className="text-[8.5pt] font-bold text-purple-700 uppercase tracking-wide mb-2">

@@ -1,4 +1,4 @@
-// ── CleverPlatform Nuanced Analysis — Typst template ────────────────────────
+// ── CleverPlatform Nuanced Analysis — Typst template ──────────────────────────
 //
 // This is the canonical Typst source file for Nuanced Analysis PDF generation.
 // It is also embedded as a string inside lib/typst-render.service.ts for
@@ -9,6 +9,10 @@
 //
 // Data contract: the JSON payload injected via sys.inputs.payload must conform
 // to the ActivityPayload interface in lib/typst-render.service.ts.
+//
+// Teacher's Companion is only rendered when
+//   renderOptions.includeTeacherCompanion === true
+// and is placed on a separate page at the end.
 // ─────────────────────────────────────────────────────────────────────────────
 
 #let raw = sys.inputs.at("payload", default: "{}")
@@ -17,7 +21,7 @@
 #let content = data.content
 #let opts = data.at("renderOptions", default: (:))
 
-// ── Page setup ───────────────────────────────────────────────────────────────
+// ── Page setup ────────────────────────────────────────────────────────────────
 #let page-size = if tmpl.document.pageSize == "a4" { "a4" } else { "us-letter" }
 #set page(
   paper: page-size,
@@ -73,6 +77,8 @@
 #let col-tok = rgb(tmpl.colors.tokBox)
 #let col-im = rgb(tmpl.colors.imBox)
 #let col-strip = rgb(tmpl.colors.commandTermStrip)
+#let col-content-tag = rgb("#0e7490")   // teal — matches commandTermStrip
+#let col-skill-tag   = rgb("#4338ca")   // indigo
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +86,25 @@
   #if tier == 1 [ #text(fill: rgb("#1a7a4a"), size: 8pt)[\u{2605}] ]
   else if tier == 2 [ #text(fill: rgb("#1a5c9e"), size: 8pt)[\u{2605}\u{2605}] ]
   else if tier == 3 [ #text(fill: rgb("#8b3a8b"), size: 8pt)[\u{2605}\u{2605}\u{2605}] ]
+]
+
+// content-skill-tag: small caption below question prompt.
+// Shows IB syllabus reference (teal) and ATL/skill (indigo).
+#let content-skill-tag(q) = [
+  #let has-content = q.has("contentTag") and q.contentTag != ""
+  #let has-skill   = q.has("skillTag")   and q.skillTag   != ""
+  #if has-content or has-skill [
+    #v(1pt)
+    #block(below: 2pt)[
+      #if has-content [
+        #text(size: 7.5pt, fill: col-content-tag, weight: "medium")[\u{25c8} #q.contentTag]
+        #if has-skill [ #h(8pt) ]
+      ]
+      #if has-skill [
+        #text(size: 7.5pt, fill: col-skill-tag, weight: "medium")[\u{2234} #q.skillTag]
+      ]
+    ]
+  ]
 ]
 
 #let answer-box(height-mm, continuation: none) = [
@@ -119,7 +144,7 @@
   ]
 ]
 
-// ── Document header block ─────────────────────────────────────────────────────
+// ── Document header ───────────────────────────────────────────────────────────
 #block(width: 100%)[
   #align(center)[
     #text(size: 9pt, weight: "bold", fill: col-secondary)[
@@ -140,14 +165,12 @@
   #v(8pt)
   #line(length: 100%, stroke: 1.5pt + col-primary)
   #v(5pt)
-  // Name and date fields
   #grid(columns: (1fr, 1fr), gutter: 16pt)[
     #text(size: 10pt)[*Student Name:* #h(4pt) #underline[#h(130pt)]]
   ][
     #text(size: 10pt)[*Date:* #h(4pt) #underline[#h(90pt)]]
   ]
   #v(4pt)
-  // Topic and prereq metadata
   #if content.has("syllabusTopics") [
     #text(size: 9pt)[*Syllabus Topics:* #content.syllabusTopics]
     #v(2pt)
@@ -160,7 +183,10 @@
     #text(size: 9pt, style: "italic")[#content.materials]
     #v(2pt)
   ]
-  // Compulsory core callout
+  #if content.has("atl") [
+    #text(size: 9pt)[*ATL skill:* #text(style: "italic")[#content.atl]]
+    #v(2pt)
+  ]
   #if content.has("compulsoryCore") [
     #v(2pt)
     #callout-box(
@@ -175,7 +201,7 @@
 
 #v(10pt)
 
-// ── Progress tracker ─────────────────────────────────────────────────────────
+// ── Progress tracker ──────────────────────────────────────────────────────────
 #if tmpl.progressTracker.enabled [
   #let part-count = content.sections.len()
   #block(width: 100%, fill: rgb("#f3f4f6"), inset: (x: 8pt, y: 4pt), radius: 2pt)[
@@ -194,19 +220,17 @@
   #v(8pt)
 ]
 
-// ── Command Terms tear-off strip ─────────────────────────────────────────────
+// ── Command Terms tear-off strip ──────────────────────────────────────────────
 #if content.has("commandTerms") and content.commandTerms.len() > 0 [
   #line(length: 100%, stroke: (dash: "dashed", thickness: 0.7pt, paint: col-strip))
   #v(2pt)
   #block(width: 100%, fill: col-strip.lighten(88%), inset: 0pt)[
-    // Header strip
     #block(fill: col-strip, width: 100%, inset: (x: 8pt, y: 3pt))[
       #text(size: 8pt, weight: "bold", fill: white)[
         #upper("Command Terms — Tear off and keep beside you while working")
       ]
     ]
     #block(inset: (x: 8pt, top: 6pt, bottom: 4pt))[
-      // Table of terms
       #table(
         columns: (90pt, 1fr),
         stroke: 0.3pt + col-strip.lighten(40%),
@@ -219,7 +243,6 @@
         }
       )
       #v(5pt)
-      // Demand-scale visual
       #block(width: 100%)[
         #text(size: 8pt, weight: "bold", fill: rgb("#4b5563"))[Output demand: ]
         #h(4pt)
@@ -228,7 +251,6 @@
           #sym.arrow.r Show that #sym.arrow.r #text(weight: "bold")[Prove]
         ]
       ]
-      // Command-Term Spotlight (if present in first section)
       #if content.sections.len() > 0 and content.sections.first().has("spotlight") [
         #v(4pt)
         #callout-box(
@@ -246,7 +268,7 @@
   #v(8pt)
 ]
 
-// ── TOK Provocations ─────────────────────────────────────────────────────────
+// ── TOK Provocations ──────────────────────────────────────────────────────────
 #if content.has("tokProvocations") and content.tokProvocations.len() > 0 [
   #callout-box(
     fill-color: col-tok,
@@ -261,7 +283,7 @@
   #v(8pt)
 ]
 
-// ── International Mindedness ──────────────────────────────────────────────────
+// ── International Mindedness ───────────────────────────────────────────────────
 #if content.has("internationalMindedness") [
   #callout-box(
     fill-color: col-im,
@@ -277,7 +299,7 @@
 #for section in content.sections [
   #v(str(tmpl.spacing.sectionGapMm) + "mm")
 
-  // Section heading — glued to prereq box and first question
+  // Section heading glued to prereq box and first question
   #block(breakable: false)[
     #line(length: 100%, stroke: 2pt + col-primary)
     #v(3pt)
@@ -289,7 +311,6 @@
     )[#section.heading]
     #v(4pt)
 
-    // Prerequisite micro-box
     #if section.has("prerequisiteBox") [
       #callout-box(
         fill-color: rgb("#eff6ff"),
@@ -304,7 +325,7 @@
     ]
   ]
 
-  // Command-Term Spotlight (mid-section callout, skip Part 0 — shown in strip)
+  // Command-Term Spotlight (mid-section, skip Part 0 — shown in strip)
   #if section.has("spotlight") and section.partNumber > 0 [
     #callout-box(
       fill-color: col-strip.lighten(90%),
@@ -319,7 +340,6 @@
   // Questions
   #for q in section.questions [
     #block(breakable: false)[
-      // Prompt + marks row
       #grid(
         columns: (28pt, 1fr, 48pt),
         gutter: 6pt,
@@ -329,6 +349,8 @@
         #tier-badge(q.tier)
       ][
         #text(size: str(tmpl.typography.bodySizePt) + "pt")[#q.prompt]
+        // Content and skill tags — visible to students
+        #content-skill-tag(q)
         #if q.has("hint") [
           #v(2pt)
           #text(size: 9pt, style: "italic", fill: rgb("#6b7280"))[_Hint:_ #q.hint]
@@ -343,7 +365,6 @@
         ]
       ]
       #v(str(tmpl.spacing.promptToAnswerGapMm) + "mm")
-      // Answer box — kept with prompt via breakable: false on parent block
       #answer-box(
         q.answerBox.heightMm,
         continuation: if q.answerBox.continuation.enabled { q.answerBox.continuation.label } else { none },
@@ -389,7 +410,9 @@
   ]
 ]
 
-// ── Teacher's Companion ───────────────────────────────────────────────────────
+// ── Teacher's Companion (conditional — separate page) ─────────────────────────
+// Only rendered when renderOptions.includeTeacherCompanion is explicitly true.
+// In normal student distribution this block is absent entirely.
 #if opts.at("includeTeacherCompanion", default: false) [
   #pagebreak(weak: false)
   #line(length: 100%, stroke: 2pt + col-accent)
