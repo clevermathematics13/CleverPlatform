@@ -115,6 +115,8 @@ export interface SavedExam {
   course_id: string | null;
   exam_date: string | null;
   exam_time: string | null;
+  /** Auto-set flag. 'no_datetime' means the exam was saved without a date or time. */
+  notes: string | null;
   questions: TestQueueItem[];
   created_at: string;
   updated_at: string;
