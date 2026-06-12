@@ -101,13 +101,13 @@ export function QuestionRow({
   const expandedRef = useRef(expanded);
   useEffect(() => { expandedRef.current = expanded; }, [expanded]);
 
-  // ── Part editing state ───────────────────────────────────────────────────────────────────
+  // ── Part editing state ───────────────────────────────────────────────────
   const [editingPartId, setEditingPartId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<"marks" | "label" | "latex" | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [savingField, setSavingField] = useState(false);
 
-  // ── New part state ───────────────────────────────────────────────────────────────────
+  // ── New part state ───────────────────────────────────────────────────────
   const [addingPart, setAddingPart] = useState(false);
   const [newPartLabel, setNewPartLabel] = useState("");
   const [newPartMarks, setNewPartMarks] = useState("1");
@@ -115,25 +115,25 @@ export function QuestionRow({
   const [savingNewPart, setSavingNewPart] = useState(false);
   const [newPartError, setNewPartError] = useState<string | null>(null);
 
-  // ── Delete part state ───────────────────────────────────────────────────────────────────
+  // ── Delete part state ────────────────────────────────────────────────────
   const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
   const [confirmDeletePartId, setConfirmDeletePartId] = useState<string | null>(null);
 
-  // ── Marks override for queue ─────────────────────────────────────────────────────────────────
+  // ── Marks override for queue ─────────────────────────────────────────────
   const [editingQueueMarks, setEditingQueueMarks] = useState(false);
   const [queueMarksDraft, setQueueMarksDraft] = useState("");
 
-  // ── Google Doc link editing ─────────────────────────────────────────────────────────────────
+  // ── Google Doc link editing ──────────────────────────────────────────────
   const [editingLinks, setEditingLinks] = useState(false);
   const [linkDraftQ, setLinkDraftQ] = useState(question.google_doc_id ?? "");
   const [linkDraftMS, setLinkDraftMS] = useState(question.google_ms_id ?? "");
   const [savingLinks, setSavingLinks] = useState(false);
   const [linkSaveResult, setLinkSaveResult] = useState<string | null>(null);
 
-  // ── Subtopic drag-reorder ─────────────────────────────────────────────────────────────────
+  // ── Subtopic drag-reorder ────────────────────────────────────────────────
   const [dragOverCode, setDragOverCode] = useState<string | null>(null);
 
-  // ── Note / comment state ───────────────────────────────────────────────────────────────────
+  // ── Note / comment state ─────────────────────────────────────────────────
   const [showNotePanel, setShowNotePanel] = useState(false);
   const [noteDraft, setNoteDraft] = useState(question.note ?? "");
   const [savingNote, setSavingNote] = useState(false);
@@ -600,7 +600,9 @@ export function QuestionRow({
               <button type="button" onClick={() => setPrimaryWarningDialog(null)} className="rounded px-3 py-1.5 text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-100">Cancel</button>
               <button
                 type="button"
-                onClick={() => { setPrimaryWarningDialog(null); }}
+                onClick={() => {
+                  setPrimaryWarningDialog(null);
+                }}
                 className="rounded px-3 py-1.5 text-sm font-semibold bg-red-600 text-white hover:bg-red-700"
               >
                 Remove anyway
@@ -614,7 +616,7 @@ export function QuestionRow({
   );
 }
 
-// ── QuestionPartRow sub-component ─────────────────────────────────────────────────────────────────
+// ── QuestionPartRow sub-component ─────────────────────────────────────────────
 
 function QuestionPartRow({
   part,
@@ -1024,7 +1026,7 @@ function QuestionPartRow({
   );
 }
 
-// ── ImageSection sub-component ────────────────────────────────────────────────────────────────
+// ── ImageSection sub-component ────────────────────────────────────────────────
 
 function ImageSection({
   question,
@@ -1060,8 +1062,17 @@ function ImageSection({
   onUploadImage: (imageType: "question" | "markscheme", file: File) => void;
 }) {
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
+  const [enlargedImageId, setEnlargedImageId] = useState<string | null>(null);
   const qFileRef = useRef<HTMLInputElement>(null);
   const msFileRef = useRef<HTMLInputElement>(null);
+
+  const enlargedImage = [...questionImages, ...msImages].find((img) => img.id === enlargedImageId);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") setEnlargedImageId(null); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -1143,8 +1154,9 @@ function ImageSection({
                     newOrder.splice(toIdx, 0, draggedId);
                     onReorderImages(type, newOrder);
                   }}
-                  className={`relative group rounded-lg overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${dragOverImageId === img.id ? "border-blue-500 scale-105" : "border-gray-200 hover:border-blue-300"}`}
-                  style={{ width: 160, height: 120 }}
+                  className={`relative group rounded-lg overflow-hidden border-2 transition-all ${dragOverImageId === img.id ? "border-blue-500 scale-105 cursor-grabbing" : "border-gray-200 hover:border-blue-400 hover:shadow-lg cursor-pointer"}`}
+                  style={{ width: 240, height: 180 }}
+                  onClick={(e) => { if ((e.target as HTMLElement).closest("button")) return; setEnlargedImageId(img.id); }}
                 >
                   <img
                     src={img.url ?? (img.storage_path.startsWith("http") ? img.storage_path : undefined)}
@@ -1175,6 +1187,37 @@ function ImageSection({
 
       {!driveConnected && questionImages.length === 0 && msImages.length === 0 && (
         <p className="text-xs text-gray-400 italic">Connect Google Drive to extract images from question documents.</p>
+      )}
+
+      {/* Image lightbox / enlargement modal */}
+      {enlargedImage && createPortal(
+        <div
+          className="fixed inset-0 z-[400] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setEnlargedImageId(null)}
+        >
+          <div
+            className="relative max-w-4xl max-h-[90vh] bg-white rounded-lg shadow-2xl overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setEnlargedImageId(null)}
+              className="absolute top-3 right-3 z-10 rounded-full bg-red-600 text-white w-8 h-8 font-bold flex items-center justify-center hover:bg-red-700 text-lg"
+              title="Close (Esc)"
+            >
+              ✕
+            </button>
+            <img
+              src={enlargedImage.url ?? (enlargedImage.storage_path.startsWith("http") ? enlargedImage.storage_path : undefined)}
+              alt={enlargedImage.alt_text ?? "Enlarged image"}
+              className="w-full h-full object-contain"
+            />
+            <div className="absolute bottom-3 left-3 bg-black/60 rounded px-2 py-1 text-xs text-white font-semibold">
+              {enlargedImage.image_type === "question" ? "Question" : "Markscheme"} — {enlargedImage.sort_order + 1}
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
