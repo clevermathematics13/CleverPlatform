@@ -49,6 +49,7 @@ export function QuestionRow({
   savedExamWithQuestion,
   onOpenSavedExam,
   onOpenEditor,
+  hideCollapsedRow,
   savingSection,
   onUpdateSection,
   onRefresh,
@@ -85,6 +86,8 @@ export function QuestionRow({
   onOpenSavedExam: (exam: import("./types").SavedExam) => void;
   /** Open this question as a full-editor modal overlay. */
   onOpenEditor?: () => void;
+  /** When rendered inside a modal that already shows header info, suppress the collapsed table row. */
+  hideCollapsedRow?: boolean;
   savingSection: boolean;
   onUpdateSection: (section: "A" | "B") => void;
   onRefresh: () => void;
@@ -98,13 +101,13 @@ export function QuestionRow({
   const expandedRef = useRef(expanded);
   useEffect(() => { expandedRef.current = expanded; }, [expanded]);
 
-  // ── Part editing state ───────────────────────────────────────────────────
+  // ── Part editing state ───────────────────────────────────────────────────────────────────
   const [editingPartId, setEditingPartId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<"marks" | "label" | "latex" | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [savingField, setSavingField] = useState(false);
 
-  // ── New part state ───────────────────────────────────────────────────────
+  // ── New part state ───────────────────────────────────────────────────────────────────
   const [addingPart, setAddingPart] = useState(false);
   const [newPartLabel, setNewPartLabel] = useState("");
   const [newPartMarks, setNewPartMarks] = useState("1");
@@ -112,25 +115,25 @@ export function QuestionRow({
   const [savingNewPart, setSavingNewPart] = useState(false);
   const [newPartError, setNewPartError] = useState<string | null>(null);
 
-  // ── Delete part state ────────────────────────────────────────────────────
+  // ── Delete part state ───────────────────────────────────────────────────────────────────
   const [deletingPartId, setDeletingPartId] = useState<string | null>(null);
   const [confirmDeletePartId, setConfirmDeletePartId] = useState<string | null>(null);
 
-  // ── Marks override for queue ─────────────────────────────────────────────
+  // ── Marks override for queue ─────────────────────────────────────────────────────────────────
   const [editingQueueMarks, setEditingQueueMarks] = useState(false);
   const [queueMarksDraft, setQueueMarksDraft] = useState("");
 
-  // ── Google Doc link editing ──────────────────────────────────────────────
+  // ── Google Doc link editing ─────────────────────────────────────────────────────────────────
   const [editingLinks, setEditingLinks] = useState(false);
   const [linkDraftQ, setLinkDraftQ] = useState(question.google_doc_id ?? "");
   const [linkDraftMS, setLinkDraftMS] = useState(question.google_ms_id ?? "");
   const [savingLinks, setSavingLinks] = useState(false);
   const [linkSaveResult, setLinkSaveResult] = useState<string | null>(null);
 
-  // ── Subtopic drag-reorder ────────────────────────────────────────────────
+  // ── Subtopic drag-reorder ─────────────────────────────────────────────────────────────────
   const [dragOverCode, setDragOverCode] = useState<string | null>(null);
 
-  // ── Note / comment state ─────────────────────────────────────────────────
+  // ── Note / comment state ───────────────────────────────────────────────────────────────────
   const [showNotePanel, setShowNotePanel] = useState(false);
   const [noteDraft, setNoteDraft] = useState(question.note ?? "");
   const [savingNote, setSavingNote] = useState(false);
@@ -217,8 +220,8 @@ export function QuestionRow({
 
   return (
     <>
-      {/* ── Collapsed row ── */}
-      <tr
+      {/* ── Collapsed row — hidden when rendered inside a modal that already has its own header ── */}
+      {!hideCollapsedRow && <tr
         className={`cursor-pointer hover:bg-blue-50 transition-colors ${expanded ? "bg-blue-50" : ""}`}
         onClick={() => { if (expanded) onClose(); else onOpen(); }}
       >
@@ -390,45 +393,45 @@ export function QuestionRow({
             )}
           </div>
         </td>
-      </tr>
+      </tr>}
 
       {/* ── Expanded detail row ── */}
       {expanded && (
         <tr>
-          <td colSpan={testBuilderOpen ? 11 : 10} className="px-0 py-0 bg-blue-50">
+          <td colSpan={hideCollapsedRow ? 1 : testBuilderOpen ? 11 : 10} className="px-0 py-0 bg-blue-50">
             <div className="border-t border-blue-200 px-4 py-3 space-y-4">
 
-              {/* Minimise toggle */}
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => setMinimized((v) => !v)}
-                    className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
-                  >
-                    {minimized ? "▼ Expand" : "▲ Minimise"}
-                  </button>
+              {/* Toolbar */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setMinimized((v) => !v)}
+                  className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                >
+                  {minimized ? "▼ Expand" : "▲ Minimise"}
+                </button>
+                {!hideCollapsedRow && (
                   <button type="button" onClick={onClose} className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">
                     ✕ Close
                   </button>
-                  {!editingLinks && (
-                    <button
-                      type="button"
-                      onClick={() => { setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); setEditingLinks(true); }}
-                      className={`rounded border px-2.5 py-1 text-xs font-semibold ${hasDocLinkConflict ? "border-red-400 bg-red-50 text-red-700 hover:bg-red-100" : "border-blue-300 bg-white text-blue-700 hover:bg-blue-50"}`}
-                    >
-                      {hasDocLinkConflict ? "⚠ Fix Links" : "🔗 Edit Doc Links"}
-                    </button>
-                  )}
+                )}
+                {!editingLinks && (
                   <button
                     type="button"
-                    onClick={deleteQuestion}
-                    disabled={deletingQuestion}
-                    className="rounded border border-red-300 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    onClick={() => { setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); setEditingLinks(true); }}
+                    className={`rounded border px-2.5 py-1 text-xs font-semibold ${hasDocLinkConflict ? "border-red-400 bg-red-50 text-red-700 hover:bg-red-100" : "border-blue-300 bg-white text-blue-700 hover:bg-blue-50"}`}
                   >
-                    {deletingQuestion ? "Deleting…" : "🗑 Delete"}
+                    {hasDocLinkConflict ? "⚠ Fix Links" : "🔗 Edit Doc Links"}
                   </button>
-                </div>
+                )}
+                <button
+                  type="button"
+                  onClick={deleteQuestion}
+                  disabled={deletingQuestion}
+                  className="rounded border border-red-300 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {deletingQuestion ? "Deleting…" : "🗑 Delete"}
+                </button>
               </div>
 
               {!minimized && (
@@ -554,7 +557,7 @@ export function QuestionRow({
                       onClick={() => setAddingPart(true)}
                       className="rounded-lg border-2 border-dashed border-emerald-300 bg-white px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 w-full"
                     >
-                      + Add Part button — stages locally, stays open
+                      + Add Part
                     </button>
                   )}
 
@@ -597,9 +600,7 @@ export function QuestionRow({
               <button type="button" onClick={() => setPrimaryWarningDialog(null)} className="rounded px-3 py-1.5 text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-100">Cancel</button>
               <button
                 type="button"
-                onClick={() => {
-                  setPrimaryWarningDialog(null);
-                }}
+                onClick={() => { setPrimaryWarningDialog(null); }}
                 className="rounded px-3 py-1.5 text-sm font-semibold bg-red-600 text-white hover:bg-red-700"
               >
                 Remove anyway
@@ -613,7 +614,7 @@ export function QuestionRow({
   );
 }
 
-// ── QuestionPartRow sub-component ─────────────────────────────────────────────
+// ── QuestionPartRow sub-component ─────────────────────────────────────────────────────────────────
 
 function QuestionPartRow({
   part,
@@ -1023,7 +1024,7 @@ function QuestionPartRow({
   );
 }
 
-// ── ImageSection sub-component ────────────────────────────────────────────────
+// ── ImageSection sub-component ────────────────────────────────────────────────────────────────
 
 function ImageSection({
   question,
@@ -1143,10 +1144,10 @@ function ImageSection({
                     onReorderImages(type, newOrder);
                   }}
                   className={`relative group rounded-lg overflow-hidden border-2 cursor-grab active:cursor-grabbing transition-all ${dragOverImageId === img.id ? "border-blue-500 scale-105" : "border-gray-200 hover:border-blue-300"}`}
-                  style={{ width: 120, height: 90 }}
+                  style={{ width: 160, height: 120 }}
                 >
                   <img
-                    src={img.storage_path.startsWith("http") ? img.storage_path : `/api/images/${img.id}`}
+                    src={img.url ?? (img.storage_path.startsWith("http") ? img.storage_path : undefined)}
                     alt={`${label} ${img.sort_order + 1}`}
                     className="w-full h-full object-contain bg-white"
                   />
