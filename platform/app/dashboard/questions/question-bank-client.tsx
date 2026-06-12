@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { AddQuestionWizard } from "./add-question-wizard";
 import { QuestionRow } from "./components/QuestionRow";
@@ -86,7 +86,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [docTroubleshootingCopied, setDocTroubleshootingCopied] = useState<Set<string>>(new Set());
   const [bulkTroubleshootingCopied, setBulkTroubleshootingCopied] = useState(false);
 
-  // ── ExamBuilder state ─────────────────────────────────────────────────────────────────
+  // ── ExamBuilder state ───────────────────────────────────────────────────────
   const [testBuilderOpen, setTestBuilderOpen] = useState(false);
   const [addQuestionOpen, setAddQuestionOpen] = useState(false);
   const [testQueue, setTestQueue] = useState<TestQueueItem[]>([]);
@@ -112,7 +112,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [templateEdits, setTemplateEdits] = useState<Record<string, string>>({});
   const [savingSection, setSavingSection] = useState<Set<string>>(new Set());
 
-  // ── Saved exams state ───────────────────────────────────────────────────────────────
+  // ── Saved exams state ───────────────────────────────────────────────────────
   const [savedExams, setSavedExams] = useState<SavedExam[]>([]);
   const [showSavedExams, setShowSavedExams] = useState(false);
   const [savingExam, setSavingExam] = useState(false);
@@ -125,10 +125,8 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   const [savingToGradebook, setSavingToGradebook] = useState(false);
   // Overlay: open a question editor modal on top when clicking a code in the queue
   const [questionOverlayItem, setQuestionOverlayItem] = useState<TestQueueItem | null>(null);
-  // Full-editor modal: open when clicking a question code in the table
-  const [questionEditorModalId, setQuestionEditorModalId] = useState<string | null>(null);
 
-  // ── Random exam state ──────────────────────────────────────────────────────────────
+  // ── Random exam state ───────────────────────────────────────────────────────
   const [showRandomPanel, setShowRandomPanel] = useState(false);
   const [randomTargetMinutes, setRandomTargetMinutes] = useState(120);
   const [buildingRandom, setBuildingRandom] = useState(false);
@@ -747,7 +745,6 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 onReorderImages={(imageType, orderedIds) => reorderImages(q.id, imageType, orderedIds)} onUploadImage={(imageType, file) => uploadImage(q.id, imageType, file)}
                 testBuilderOpen={testBuilderOpen} inQueue={!!testQueue.find((item) => item.id === q.id)} onAddToQueue={() => addToQueue(q)}
                 savedExamWithQuestion={savedExamContaining(q.id)} onOpenSavedExam={loadExam}
-                onOpenEditor={() => setQuestionEditorModalId(q.id)}
                 savingSection={savingSection.has(q.id)} onUpdateSection={(section) => updateSection(q.id, section)} onRefresh={loadQuestions}
                 onQueueMarksChange={(qId, marks) => setTestQueue((prev) => prev.map((item) => item.id === qId ? { ...item, marks } : item))}
               />
@@ -791,79 +788,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 
       {/* Question overlay — opens on code click from ExamBuilder queue */}
       {questionOverlayItem && (
-        <QuestionEditorModal
-          questionId={questionOverlayItem.id}
-          questions={questions}
-          questionImages={questionImages}
-          allCommandTerms={allCommandTerms}
-          availableSubtopics={filters?.subtopics ?? []}
-          extracting={extracting}
-          driveConnected={driveConnected}
-          deletingImage={deletingImage}
-          uploadingImage={uploadingImage}
-          savingSection={savingSection}
-          testBuilderOpen={testBuilderOpen}
-          testQueue={testQueue}
-          savedExams={savedExams}
-          examConfig={examConfig}
-          savedExamContaining={savedExamContaining}
-          addToQueue={addToQueue}
-          loadExam={loadExam}
-          updateSection={updateSection}
-          updateCommandTerm={updateCommandTerm}
-          addCustomTerm={addCustomTerm}
-          updateSubtopics={updateSubtopics}
-          extractImages={extractImages}
-          copyQuestionTroubleshooting={copyQuestionTroubleshooting}
-          docExtractTroubleshooting={docExtractTroubleshooting}
-          docTroubleshootingCopied={docTroubleshootingCopied}
-          deleteImage={deleteImage}
-          deleteAllImages={deleteAllImages}
-          reorderImages={reorderImages}
-          uploadImage={uploadImage}
-          setTestQueue={setTestQueue}
-          loadImages={loadImages}
-          loadQuestions={loadQuestions}
+        <QuestionOverlay
+          item={questionOverlayItem}
           onClose={() => setQuestionOverlayItem(null)}
-        />
-      )}
-
-      {/* Full-editor modal — opens when clicking a question code in the table */}
-      {questionEditorModalId && (
-        <QuestionEditorModal
-          questionId={questionEditorModalId}
-          questions={questions}
-          questionImages={questionImages}
-          allCommandTerms={allCommandTerms}
-          availableSubtopics={filters?.subtopics ?? []}
-          extracting={extracting}
-          driveConnected={driveConnected}
-          deletingImage={deletingImage}
-          uploadingImage={uploadingImage}
-          savingSection={savingSection}
-          testBuilderOpen={testBuilderOpen}
-          testQueue={testQueue}
-          savedExams={savedExams}
-          examConfig={examConfig}
-          savedExamContaining={savedExamContaining}
-          addToQueue={addToQueue}
-          loadExam={loadExam}
-          updateSection={updateSection}
-          updateCommandTerm={updateCommandTerm}
-          addCustomTerm={addCustomTerm}
-          updateSubtopics={updateSubtopics}
-          extractImages={extractImages}
-          copyQuestionTroubleshooting={copyQuestionTroubleshooting}
-          docExtractTroubleshooting={docExtractTroubleshooting}
-          docTroubleshootingCopied={docTroubleshootingCopied}
-          deleteImage={deleteImage}
-          deleteAllImages={deleteAllImages}
-          reorderImages={reorderImages}
-          uploadImage={uploadImage}
-          setTestQueue={setTestQueue}
-          loadImages={loadImages}
-          loadQuestions={loadQuestions}
-          onClose={() => setQuestionEditorModalId(null)}
         />
       )}
     </div>
@@ -886,85 +813,11 @@ function AddToExamModal({ questionCode, onConfirm, onCancel, saving }: { questio
   );
 }
 
-// ── QuestionEditorModal ──────────────────────────────────────────────────────────────────
-// Full-featured editor modal used both when clicking a question code in the
-// table AND when clicking a code in the ExamBuilder queue.
-
-function QuestionEditorModal({
-  questionId,
-  questions,
-  questionImages: questionImagesMap,
-  allCommandTerms,
-  availableSubtopics,
-  extracting,
-  driveConnected,
-  deletingImage,
-  uploadingImage,
-  savingSection,
-  testBuilderOpen,
-  testQueue,
-  savedExams: _savedExams,
-  examConfig: _examConfig,
-  savedExamContaining,
-  addToQueue,
-  loadExam,
-  updateSection,
-  updateCommandTerm,
-  addCustomTerm,
-  updateSubtopics,
-  extractImages,
-  copyQuestionTroubleshooting,
-  docExtractTroubleshooting,
-  docTroubleshootingCopied,
-  deleteImage,
-  deleteAllImages,
-  reorderImages,
-  uploadImage,
-  setTestQueue,
-  loadImages,
-  loadQuestions,
-  onClose,
-}: {
-  questionId: string;
-  questions: Question[];
-  questionImages: Record<string, QuestionImage[]>;
-  allCommandTerms: string[];
-  availableSubtopics: Subtopic[];
-  extracting: Set<string>;
-  driveConnected: boolean;
-  deletingImage: Set<string>;
-  uploadingImage: Set<string>;
-  savingSection: Set<string>;
-  testBuilderOpen: boolean;
-  testQueue: TestQueueItem[];
-  savedExams: SavedExam[];
-  examConfig: ExamConfig;
-  savedExamContaining: (id: string) => SavedExam | null;
-  addToQueue: (q: Question) => void;
-  loadExam: (exam: SavedExam) => void;
-  updateSection: (questionId: string, section: "A" | "B") => void;
-  updateCommandTerm: (partId: string, term: string | null) => void;
-  addCustomTerm: (term: string) => void;
-  updateSubtopics: (partId: string, codes: string[], primaryCode?: string | null) => void;
-  extractImages: (q: Question) => void;
-  copyQuestionTroubleshooting: (id: string) => void;
-  docExtractTroubleshooting: Record<string, DocExtractTroubleshooting>;
-  docTroubleshootingCopied: Set<string>;
-  deleteImage: (questionId: string, imageId: string) => void;
-  deleteAllImages: (questionId: string, images: QuestionImage[]) => void;
-  reorderImages: (questionId: string, imageType: "question" | "markscheme", orderedIds: string[]) => void;
-  uploadImage: (questionId: string, imageType: "question" | "markscheme", file: File) => void;
-  setTestQueue: React.Dispatch<React.SetStateAction<TestQueueItem[]>>;
-  loadImages: (questionId: string) => void;
-  loadQuestions: () => void;
-  onClose: () => void;
-}) {
-  // Prefer question from already-loaded list; fall back to a fresh fetch
-  const [question, setQuestion] = useState<Question | null>(
-    () => questions.find((q) => q.id === questionId) ?? null
-  );
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [fetchLoading, setFetchLoading] = useState(!questions.find((q) => q.id === questionId));
+function QuestionOverlay({ item, onClose }: { item: TestQueueItem; onClose: () => void }) {
+  const [question, setQuestion] = useState<Question | null>(null);
+  const [images, setImages] = useState<QuestionImage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -972,123 +825,66 @@ function QuestionEditorModal({
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  // Fetch question if not in the current page
   useEffect(() => {
-    if (question) return;
-    setFetchLoading(true);
-    fetch(`/api/questions?search=${encodeURIComponent(questionId)}&page=1`)
+    setLoading(true); setError(null);
+    fetch(`/api/questions?search=${encodeURIComponent(item.code)}&page=1`)
       .then(async (r) => {
         const d = await r.json();
-        if (d.error) { setFetchError(d.error); return; }
-        const found = (d.questions ?? []).find((qq: Question) => qq.id === questionId) ?? null;
-        setQuestion(found);
-        if (found && !questionImagesMap[found.id]) loadImages(found.id);
+        if (d.error) { setError(d.error); return; }
+        const q = (d.questions ?? []).find((qq: Question) => qq.id === item.id) ?? (d.questions ?? [])[0] ?? null;
+        setQuestion(q);
+        if (q) {
+          const imgRes = await fetch(`/api/questions/images?questionId=${q.id}`);
+          const imgData = await imgRes.json();
+          if (!imgData.error) setImages(imgData.images ?? []);
+        }
       })
-      .catch((e) => setFetchError(e.message))
-      .finally(() => setFetchLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [questionId]);
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [item.id, item.code]);
 
-  // Ensure images are loaded
-  useEffect(() => {
-    if (question && !questionImagesMap[question.id]) loadImages(question.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [question?.id]);
-
-  // Keep in sync when parent list refreshes (e.g. after editing)
-  useEffect(() => {
-    const fresh = questions.find((q) => q.id === questionId);
-    if (fresh) setQuestion(fresh);
-  }, [questions, questionId]);
-
-  const totalMarks = question ? question.question_parts.reduce((sum, p) => sum + p.marks, 0) : 0;
+  const questionImages = images.filter((i) => i.image_type === "question").sort((a, b) => a.sort_order - b.sort_order);
+  const msImages = images.filter((i) => i.image_type === "markscheme").sort((a, b) => a.sort_order - b.sort_order);
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-[300] flex items-start justify-center bg-black/60 overflow-y-auto py-8 px-4"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl flex flex-col">
-        {/* Modal header */}
+    <div className="fixed inset-0 z-[300] flex items-start justify-center bg-black/60 overflow-y-auto py-8 px-4" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl flex flex-col">
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 bg-blue-50 rounded-t-xl">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono font-bold text-blue-900 text-base">
-              {question?.code ?? "Loading…"}
-            </span>
-            {question && (
-              <>
-                <span className="text-xs text-gray-500">{totalMarks} {totalMarks === 1 ? "mark" : "marks"}</span>
-                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${question.level === "AHL" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"}`}>
-                  {question.level === "AHL" ? "HL" : "SL"}
-                </span>
-                <span className="text-xs text-gray-500">P{question.paper} · {question.session} · {question.timezone ?? "—"}</span>
-              </>
-            )}
+            <span className="font-mono font-bold text-blue-900 text-base">{item.code}</span>
+            <span className="text-xs text-gray-500">{item.marks} marks</span>
+            {item.subtopicCodes.length > 0 && (<span className="text-xs text-gray-400 truncate max-w-xs">{item.subtopicCodes.join(" · ")}</span>)}
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-full w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-200 text-lg font-bold"
-            title="Close (Esc)"
-          >
-            ✕
-          </button>
+          <button type="button" onClick={onClose} className="rounded-full w-7 h-7 flex items-center justify-center text-gray-500 hover:bg-gray-200 text-lg font-bold" title="Close (Esc)">✕</button>
         </div>
-
-        {/* Editor body */}
-        <div className="overflow-y-auto" style={{ maxHeight: "calc(100vh - 160px)" }}>
-          {fetchLoading && (
-            <div className="flex items-center justify-center py-16 text-gray-400 text-sm">Loading…</div>
+        <div className="p-5 space-y-4">
+          {loading && (<div className="flex items-center justify-center py-12 text-gray-400 text-sm">Loading…</div>)}
+          {error && (<div className="text-sm text-red-600 bg-red-50 rounded p-3">Error: {error}</div>)}
+          {!loading && !error && question && (
+            <>
+              <div className="space-y-2">
+                {question.question_parts.map((part, idx) => (
+                  <div key={part.id} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-mono font-bold text-gray-700">{part.part_label ? `(${part.part_label})` : `Part ${idx + 1}`}</span>
+                      <span className="text-xs font-semibold text-blue-700">{part.marks} {part.marks === 1 ? "mark" : "marks"}</span>
+                      {part.command_term && (<span className="text-xs bg-teal-100 text-teal-800 rounded px-1.5 py-0.5 font-semibold">{part.command_term}</span>)}
+                      {(part.subtopic_codes ?? []).map((c) => (<span key={c} className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5 font-semibold">{c}</span>))}
+                    </div>
+                    {part.content_latex && (<p className="text-xs text-gray-600 font-mono bg-white rounded border border-gray-200 px-2 py-1 whitespace-pre-wrap">{part.content_latex}</p>)}
+                  </div>
+                ))}
+              </div>
+              {(questionImages.length > 0 || msImages.length > 0) && (
+                <div className="space-y-3">
+                  {questionImages.length > 0 && (<div><p className="text-xs font-semibold text-gray-600 mb-1.5">Question</p><div className="flex flex-wrap gap-2">{questionImages.map((img) => (<div key={img.id} className="rounded-lg border border-gray-200 overflow-hidden" style={{ width: 160, height: 120 }}><img src={img.storage_path.startsWith("http") ? img.storage_path : `/api/images/${img.id}`} alt={`Q ${img.sort_order + 1}`} className="w-full h-full object-contain bg-white" /></div>))}</div></div>)}
+                  {msImages.length > 0 && (<div><p className="text-xs font-semibold text-gray-600 mb-1.5">Markscheme</p><div className="flex flex-wrap gap-2">{msImages.map((img) => (<div key={img.id} className="rounded-lg border border-gray-200 overflow-hidden" style={{ width: 160, height: 120 }}><img src={img.storage_path.startsWith("http") ? img.storage_path : `/api/images/${img.id}`} alt={`MS ${img.sort_order + 1}`} className="w-full h-full object-contain bg-white" /></div>))}</div></div>)}
+                </div>
+              )}
+              {!question.has_question_images && (<p className="text-xs text-gray-400 italic">No images extracted yet.</p>)}
+            </>
           )}
-          {fetchError && (
-            <div className="p-5 text-sm text-red-600 bg-red-50 rounded-b-xl">Error: {fetchError}</div>
-          )}
-          {!fetchLoading && !fetchError && !question && (
-            <div className="p-5 text-sm text-gray-400 italic">Question not found.</div>
-          )}
-          {!fetchLoading && !fetchError && question && (
-            // Render in a bare table so the expanded QuestionRow colspan layout works correctly
-            <table className="w-full">
-              <tbody>
-                <QuestionRow
-                  question={question}
-                  expanded={true}
-                  onOpen={() => {}}
-                  onClose={onClose}
-                  totalMarks={totalMarks}
-                  commandTerms={allCommandTerms}
-                  onUpdateCommandTerm={updateCommandTerm}
-                  onAddCustomTerm={addCustomTerm}
-                  availableSubtopics={availableSubtopics}
-                  onUpdateSubtopics={updateSubtopics}
-                  images={questionImagesMap[question.id] ?? []}
-                  extracting={extracting.has(question.id)}
-                  driveConnected={driveConnected}
-                  onExtractImages={() => extractImages(question)}
-                  hasTroubleshooting={!!docExtractTroubleshooting[question.id]}
-                  troubleshootingCopied={docTroubleshootingCopied.has(question.id)}
-                  onCopyTroubleshooting={() => copyQuestionTroubleshooting(question.id)}
-                  deletingImageIds={deletingImage}
-                  uploadingImage={uploadingImage.has(question.id)}
-                  onDeleteImage={(imageId) => deleteImage(question.id, imageId)}
-                  onDeleteAllImages={() => deleteAllImages(question.id, questionImagesMap[question.id] ?? [])}
-                  onReorderImages={(imageType, orderedIds) => reorderImages(question.id, imageType, orderedIds)}
-                  onUploadImage={(imageType, file) => uploadImage(question.id, imageType, file)}
-                  testBuilderOpen={testBuilderOpen}
-                  inQueue={!!testQueue.find((item) => item.id === question.id)}
-                  onAddToQueue={() => addToQueue(question)}
-                  savedExamWithQuestion={savedExamContaining(question.id)}
-                  onOpenSavedExam={loadExam}
-                  savingSection={savingSection.has(question.id)}
-                  onUpdateSection={(section) => updateSection(question.id, section)}
-                  onRefresh={() => { loadQuestions(); loadImages(question.id); }}
-                  onQueueMarksChange={(qId, marks) =>
-                    setTestQueue((prev) => prev.map((item) => item.id === qId ? { ...item, marks } : item))
-                  }
-                />
-              </tbody>
-            </table>
-          )}
+          {!loading && !error && !question && (<p className="text-sm text-gray-400 italic">Question not found.</p>)}
         </div>
       </div>
     </div>,
