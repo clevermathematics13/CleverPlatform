@@ -48,6 +48,7 @@ export function QuestionRow({
   onAddToQueue,
   savedExamWithQuestion,
   onOpenSavedExam,
+  onOpenEditor,
   savingSection,
   onUpdateSection,
   onRefresh,
@@ -82,6 +83,8 @@ export function QuestionRow({
   /** A saved exam (for the current course) that already contains this question. */
   savedExamWithQuestion: import("./types").SavedExam | null;
   onOpenSavedExam: (exam: import("./types").SavedExam) => void;
+  /** Open this question as a full-editor modal overlay. */
+  onOpenEditor?: () => void;
   savingSection: boolean;
   onUpdateSection: (section: "A" | "B") => void;
   onRefresh: () => void;
@@ -224,7 +227,18 @@ export function QuestionRow({
             {hasDocLinkConflict && (
               <span className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700" title="Question doc and markscheme doc are the same file — links need to be fixed">⚠ conflict</span>
             )}
-            <span className={`font-mono text-sm font-semibold ${expanded ? "text-blue-700" : "text-blue-900"}`}>{question.code}</span>
+            {onOpenEditor ? (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onOpenEditor(); }}
+                title="Open full editor"
+                className={`font-mono text-sm font-semibold hover:underline hover:text-indigo-700 transition-colors ${expanded ? "text-blue-700" : "text-blue-900"}`}
+              >
+                {question.code}
+              </button>
+            ) : (
+              <span className={`font-mono text-sm font-semibold ${expanded ? "text-blue-700" : "text-blue-900"}`}>{question.code}</span>
+            )}
           </div>
         </td>
         <td className="px-4 py-2 text-center text-sm text-gray-700">{question.session}</td>
