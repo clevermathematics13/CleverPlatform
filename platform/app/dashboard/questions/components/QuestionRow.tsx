@@ -19,6 +19,25 @@ Text: plain words work directly
 Use ^ for powers: x^2, e^(-x), (x+1)^3
 Colors: any CSS hex or named colour`.trim();
 
+// Try to read an image from clipboard; returns a File or null
+async function readClipboardImage(): Promise<File | null> {
+  try {
+    if (!navigator.clipboard?.read) return null;
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const imgType = item.types.find((t) => t.startsWith("image/"));
+      if (imgType) {
+        const blob = await item.getType(imgType);
+        const ext = imgType.split("/")[1] ?? "png";
+        return new File([blob], `clipboard.${ext}`, { type: imgType });
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function QuestionRow({
   question,
   expanded,
@@ -202,6 +221,11 @@ export function QuestionRow({
   const questionImages = images.filter((i) => i.image_type === "question").sort((a, b) => a.sort_order - b.sort_order);
   const msImages = images.filter((i) => i.image_type === "markscheme").sort((a, b) => a.sort_order - b.sort_order);
 
+  // All LaTeX strings across question parts for the right-side panel
+  const allLatex = question.question_parts
+    .filter((p) => p.latex && p.latex.trim())
+    .map((p) => ({ label: p.part_label, latex: p.latex! }));
+
   return (
     <>
       {!hideCollapsedRow && <tr
@@ -328,101 +352,126 @@ export function QuestionRow({
               </div>
 
               {!minimized && (
-                <>
-                  {editingLinks && (
-                    <div className="rounded-lg border border-blue-200 bg-white p-3 space-y-2">
-                      <p className="text-xs font-bold text-blue-800">Edit Google Doc Links</p>
-                      {hasDocLinkConflict && (<p className="text-xs font-semibold text-red-700 bg-red-50 rounded px-2 py-1">⚠ Q doc and MS doc are the same file — this will cause extraction errors. Clear one of them.</p>)}
-                      <label className="flex flex-col gap-0.5">
-                        <span className="text-[11px] font-semibold text-blue-700">📄 Question Doc URL or ID</span>
-                        <input type="text" value={linkDraftQ} onChange={(e) => setLinkDraftQ(e.target.value)} placeholder="https://docs.google.com/document/d/… or doc ID"
-                          className="rounded border border-blue-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 w-full max-w-xl" />
-                      </label>
-                      <label className="flex flex-col gap-0.5">
-                        <span className="text-[11px] font-semibold text-green-700">📝 Markscheme Doc URL or ID</span>
-                        <input type="text" value={linkDraftMS} onChange={(e) => setLinkDraftMS(e.target.value)} placeholder="https://docs.google.com/document/d/… or doc ID (leave blank to unlink)"
-                          className="rounded border border-green-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-green-400 w-full max-w-xl" />
-                      </label>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={saveLinks} disabled={savingLinks} className="rounded bg-blue-600 px-3 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{savingLinks ? "Saving…" : "Save Links"}</button>
-                        <button type="button" onClick={() => { setEditingLinks(false); setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); }} disabled={savingLinks}
-                          className="rounded border border-gray-300 px-3 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-50">Cancel</button>
+                // ── Two-column layout: left = controls/images, right = LaTeX panel ──
+                <div className="flex gap-4 items-start">
+                  {/* Left column */}
+                  <div className="flex-1 min-w-0 space-y-4">
+                    {editingLinks && (
+                      <div className="rounded-lg border border-blue-200 bg-white p-3 space-y-2">
+                        <p className="text-xs font-bold text-blue-800">Edit Google Doc Links</p>
+                        {hasDocLinkConflict && (<p className="text-xs font-semibold text-red-700 bg-red-50 rounded px-2 py-1">⚠ Q doc and MS doc are the same file — this will cause extraction errors. Clear one of them.</p>)}
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-[11px] font-semibold text-blue-700">📄 Question Doc URL or ID</span>
+                          <input type="text" value={linkDraftQ} onChange={(e) => setLinkDraftQ(e.target.value)} placeholder="https://docs.google.com/document/d/… or doc ID"
+                            className="rounded border border-blue-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 w-full max-w-xl" />
+                        </label>
+                        <label className="flex flex-col gap-0.5">
+                          <span className="text-[11px] font-semibold text-green-700">📝 Markscheme Doc URL or ID</span>
+                          <input type="text" value={linkDraftMS} onChange={(e) => setLinkDraftMS(e.target.value)} placeholder="https://docs.google.com/document/d/… or doc ID (leave blank to unlink)"
+                            className="rounded border border-green-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-green-400 w-full max-w-xl" />
+                        </label>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={saveLinks} disabled={savingLinks} className="rounded bg-blue-600 px-3 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{savingLinks ? "Saving…" : "Save Links"}</button>
+                          <button type="button" onClick={() => { setEditingLinks(false); setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); }} disabled={savingLinks}
+                            className="rounded border border-gray-300 px-3 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-50">Cancel</button>
+                        </div>
+                        {linkSaveResult && <p className={`text-xs font-semibold ${linkSaveResult.startsWith("Error") ? "text-red-600" : "text-green-700"}`}>{linkSaveResult}</p>}
                       </div>
-                      {linkSaveResult && <p className={`text-xs font-semibold ${linkSaveResult.startsWith("Error") ? "text-red-600" : "text-green-700"}`}>{linkSaveResult}</p>}
-                    </div>
-                  )}
+                    )}
 
-                  <div className="space-y-3">
-                    {question.question_parts.map((part, partIdx) => (
-                      <QuestionPartRow key={part.id} part={part} partIdx={partIdx} question={question} commandTerms={commandTerms}
-                        onUpdateCommandTerm={onUpdateCommandTerm} onAddCustomTerm={onAddCustomTerm}
-                        availableSubtopics={availableSubtopics} onUpdateSubtopics={onUpdateSubtopics}
-                        editingPartId={editingPartId} editingField={editingField} editDraft={editDraft}
-                        savingField={savingField} confirmDeletePartId={confirmDeletePartId} deletingPartId={deletingPartId}
-                        dragOverCode={dragOverCode} setEditingPartId={setEditingPartId} setEditingField={setEditingField}
-                        setEditDraft={setEditDraft} savePartField={savePartField} setConfirmDeletePartId={setConfirmDeletePartId}
-                        setDeletingPartId={setDeletingPartId} setDragOverCode={setDragOverCode}
-                        primaryWarningDialog={primaryWarningDialog} setPrimaryWarningDialog={setPrimaryWarningDialog}
-                        onRefresh={onRefresh} renderLatexPreview={renderLatexPreview} />
-                    ))}
+                    <div className="space-y-3">
+                      {question.question_parts.map((part, partIdx) => (
+                        <QuestionPartRow key={part.id} part={part} partIdx={partIdx} question={question} commandTerms={commandTerms}
+                          onUpdateCommandTerm={onUpdateCommandTerm} onAddCustomTerm={onAddCustomTerm}
+                          availableSubtopics={availableSubtopics} onUpdateSubtopics={onUpdateSubtopics}
+                          editingPartId={editingPartId} editingField={editingField} editDraft={editDraft}
+                          savingField={savingField} confirmDeletePartId={confirmDeletePartId} deletingPartId={deletingPartId}
+                          dragOverCode={dragOverCode} setEditingPartId={setEditingPartId} setEditingField={setEditingField}
+                          setEditDraft={setEditDraft} savePartField={savePartField} setConfirmDeletePartId={setConfirmDeletePartId}
+                          setDeletingPartId={setDeletingPartId} setDragOverCode={setDragOverCode}
+                          primaryWarningDialog={primaryWarningDialog} setPrimaryWarningDialog={setPrimaryWarningDialog}
+                          onRefresh={onRefresh} renderLatexPreview={renderLatexPreview} />
+                      ))}
+                    </div>
+
+                    {addingPart ? (
+                      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
+                        <p className="text-xs font-bold text-emerald-800">Add New Part</p>
+                        <div className="flex gap-2 flex-wrap items-end">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-emerald-700 mb-0.5">Part label</label>
+                            <input type="text" value={newPartLabel} onChange={(e) => setNewPartLabel(e.target.value)} placeholder="e.g. a, b, i"
+                              className="rounded border border-emerald-300 px-2 py-1 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-emerald-700 mb-0.5">Marks</label>
+                            <input type="number" min={0} max={99} value={newPartMarks} onChange={(e) => setNewPartMarks(e.target.value)}
+                              className="rounded border border-emerald-300 px-2 py-1 text-xs w-16 focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-emerald-700 mb-0.5">LaTeX (optional)</label>
+                          <textarea value={newPartLatex} onChange={(e) => setNewPartLatex(e.target.value)} placeholder="Question text in LaTeX…" rows={2}
+                            className="rounded border border-emerald-300 px-2 py-1 text-xs w-full max-w-xl font-mono resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400" />
+                        </div>
+                        {newPartError && <p className="text-xs text-red-600">{newPartError}</p>}
+                        <div className="flex gap-2">
+                          <button type="button" disabled={savingNewPart}
+                            onClick={async () => {
+                              const marks = parseInt(newPartMarks);
+                              if (isNaN(marks) || marks < 0) { setNewPartError("Marks must be a non-negative number"); return; }
+                              setSavingNewPart(true); setNewPartError(null);
+                              try {
+                                const res = await fetch("/api/questions/add-part", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: question.id, partLabel: newPartLabel.trim() || null, marks, latex: newPartLatex.trim() || null }) });
+                                const data = await res.json();
+                                if (data.error) { setNewPartError(data.error); return; }
+                                setAddingPart(false); setNewPartLabel(""); setNewPartMarks("1"); setNewPartLatex(""); onRefresh();
+                              } finally { setSavingNewPart(false); }
+                            }}
+                            className="rounded bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
+                            {savingNewPart ? "Saving…" : "Add Part"}
+                          </button>
+                          <button type="button" onClick={() => { setAddingPart(false); setNewPartError(null); }}
+                            className="rounded border border-gray-300 px-3 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100">Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setAddingPart(true)}
+                        className="rounded-lg border-2 border-dashed border-emerald-300 bg-white px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 w-full">
+                        + Add Part
+                      </button>
+                    )}
+
+                    <ImageSection
+                      question={question} questionImages={questionImages} msImages={msImages}
+                      extracting={extracting} driveConnected={driveConnected} onExtractImages={onExtractImages}
+                      hasTroubleshooting={hasTroubleshooting} troubleshootingCopied={troubleshootingCopied}
+                      onCopyTroubleshooting={onCopyTroubleshooting} deletingImageIds={deletingImageIds}
+                      uploadingImage={uploadingImage} onDeleteImage={onDeleteImage} onDeleteAllImages={onDeleteAllImages}
+                      onReorderImages={onReorderImages} onUploadImage={onUploadImage} />
                   </div>
 
-                  {addingPart ? (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 space-y-2">
-                      <p className="text-xs font-bold text-emerald-800">Add New Part</p>
-                      <div className="flex gap-2 flex-wrap items-end">
-                        <div>
-                          <label className="block text-[11px] font-semibold text-emerald-700 mb-0.5">Part label</label>
-                          <input type="text" value={newPartLabel} onChange={(e) => setNewPartLabel(e.target.value)} placeholder="e.g. a, b, i"
-                            className="rounded border border-emerald-300 px-2 py-1 text-xs w-20 focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] font-semibold text-emerald-700 mb-0.5">Marks</label>
-                          <input type="number" min={0} max={99} value={newPartMarks} onChange={(e) => setNewPartMarks(e.target.value)}
-                            className="rounded border border-emerald-300 px-2 py-1 text-xs w-16 focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-                        </div>
+                  {/* Right column — rendered LaTeX panel */}
+                  {allLatex.length > 0 && (
+                    <div className="w-72 flex-shrink-0 rounded-xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
+                      <div className="bg-indigo-50 border-b border-indigo-200 px-3 py-2 flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold text-indigo-700 tracking-wide uppercase">LaTeX Preview</span>
                       </div>
-                      <div>
-                        <label className="block text-[11px] font-semibold text-emerald-700 mb-0.5">LaTeX (optional)</label>
-                        <textarea value={newPartLatex} onChange={(e) => setNewPartLatex(e.target.value)} placeholder="Question text in LaTeX…" rows={2}
-                          className="rounded border border-emerald-300 px-2 py-1 text-xs w-full max-w-xl font-mono resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400" />
-                      </div>
-                      {newPartError && <p className="text-xs text-red-600">{newPartError}</p>}
-                      <div className="flex gap-2">
-                        <button type="button" disabled={savingNewPart}
-                          onClick={async () => {
-                            const marks = parseInt(newPartMarks);
-                            if (isNaN(marks) || marks < 0) { setNewPartError("Marks must be a non-negative number"); return; }
-                            setSavingNewPart(true); setNewPartError(null);
-                            try {
-                              const res = await fetch("/api/questions/add-part", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ questionId: question.id, partLabel: newPartLabel.trim() || null, marks, latex: newPartLatex.trim() || null }) });
-                              const data = await res.json();
-                              if (data.error) { setNewPartError(data.error); return; }
-                              setAddingPart(false); setNewPartLabel(""); setNewPartMarks("1"); setNewPartLatex(""); onRefresh();
-                            } finally { setSavingNewPart(false); }
-                          }}
-                          className="rounded bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
-                          {savingNewPart ? "Saving…" : "Add Part"}
-                        </button>
-                        <button type="button" onClick={() => { setAddingPart(false); setNewPartError(null); }}
-                          className="rounded border border-gray-300 px-3 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100">Cancel</button>
+                      <div className="divide-y divide-gray-100">
+                        {allLatex.map(({ label, latex }, i) => (
+                          <div key={i} className="px-3 py-2.5 space-y-1">
+                            {label && (
+                              <span className="inline-block text-[10px] font-bold font-mono text-indigo-500 bg-indigo-50 rounded px-1.5 py-0.5">({label})</span>
+                            )}
+                            <div className="text-sm leading-relaxed text-gray-800 overflow-x-auto">
+                              <LatexRenderer latex={latex} />
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ) : (
-                    <button type="button" onClick={() => setAddingPart(true)}
-                      className="rounded-lg border-2 border-dashed border-emerald-300 bg-white px-4 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 w-full">
-                      + Add Part
-                    </button>
                   )}
-
-                  <ImageSection
-                    question={question} questionImages={questionImages} msImages={msImages}
-                    extracting={extracting} driveConnected={driveConnected} onExtractImages={onExtractImages}
-                    hasTroubleshooting={hasTroubleshooting} troubleshootingCopied={troubleshootingCopied}
-                    onCopyTroubleshooting={onCopyTroubleshooting} deletingImageIds={deletingImageIds}
-                    uploadingImage={uploadingImage} onDeleteImage={onDeleteImage} onDeleteAllImages={onDeleteAllImages}
-                    onReorderImages={onReorderImages} onUploadImage={onUploadImage} />
-                </>
+                </div>
               )}
             </div>
           </td>
@@ -716,6 +765,16 @@ function ImageSection({
 
   const currentLightboxImage = lightboxIndex !== null ? allImages[lightboxIndex] : null;
 
+  // Smart upload: try clipboard first, fall back to file chooser
+  const handleSmartUpload = async (type: "question" | "markscheme", fileRef: React.RefObject<HTMLInputElement | null>) => {
+    const clipFile = await readClipboardImage();
+    if (clipFile) {
+      onUploadImage(type, clipFile);
+    } else {
+      fileRef.current?.click();
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
@@ -747,11 +806,17 @@ function ImageSection({
           <div className="flex items-center justify-between mb-2">
             <p className="text-[11px] font-semibold text-gray-600">{label}</p>
             <div className="flex items-center gap-1.5">
+              {/* Hidden file input — used as fallback when no clipboard image */}
               <input ref={fileRef} type="file" accept="image/*" className="hidden"
                 onChange={(e) => { const f = e.target.files?.[0]; if (f) { onUploadImage(type, f); e.target.value = ""; } }} />
-              <button type="button" onClick={() => fileRef.current?.click()} disabled={uploadingImage}
-                className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-                {uploadingImage ? "Uploading…" : "+ Upload"}
+              <button
+                type="button"
+                disabled={uploadingImage}
+                title="Paste clipboard image, or click to choose a file"
+                onClick={() => handleSmartUpload(type, fileRef)}
+                className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {uploadingImage ? "Uploading…" : "📋 Upload"}
               </button>
             </div>
           </div>
