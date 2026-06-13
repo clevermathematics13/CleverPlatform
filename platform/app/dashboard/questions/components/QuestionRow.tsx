@@ -12,7 +12,7 @@ import type {
   Subtopic,
 } from "./types";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────────────
 
 const HINT_TOOLTIP = `LaTeX math: $x^2$, $\\frac{a}{b}$, $\\sqrt{x}$
 Text: plain words work directly
@@ -153,7 +153,7 @@ export function QuestionRow({
     setLinkSaveResult(null);
     try {
       const extractDocId = (input: string): string => {
-        const match = input.match(/\/d\/([\w-]+)/);
+        const match = input.match(/\/d\//([\w-]+)/);
         return match ? match[1] : input.trim();
       };
       const docId = extractDocId(linkDraftQ);
@@ -450,7 +450,7 @@ export function QuestionRow({
   );
 }
 
-// ── QuestionPartRow ────────────────────────────────────────────────────────────
+// ── QuestionPartRow ───────────────────────────────────────────────────────────────────────────────
 
 function QuestionPartRow({
   part, partIdx, question, commandTerms, onUpdateCommandTerm, onAddCustomTerm,
@@ -670,7 +670,7 @@ function QuestionPartRow({
   );
 }
 
-// ── ImageSection ──────────────────────────────────────────────────────────────
+// ── ImageSection ────────────────────────────────────────────────────────────────────────────
 
 function ImageSection({
   question, questionImages, msImages, extracting, driveConnected, onExtractImages,
@@ -756,7 +756,7 @@ function ImageSection({
             </div>
           </div>
           {imgs.length > 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="flex flex-col gap-3">
               {imgs.map((img) => (
                 <div key={img.id} draggable
                   onDragStart={(e) => { e.dataTransfer.setData("text/plain", img.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -773,14 +773,17 @@ function ImageSection({
                     const newOrder = [...ids]; newOrder.splice(fromIdx, 1); newOrder.splice(toIdx, 0, draggedId);
                     onReorderImages(type, newOrder);
                   }}
-                  className={`relative group rounded-xl overflow-hidden border-2 transition-all bg-white shadow-sm ${dragOverImageId === img.id ? "border-blue-500 scale-[1.02] cursor-grabbing" : "border-gray-200 hover:border-blue-400 hover:shadow-xl cursor-pointer"}`}
-                  style={{ height: 1140 }}
+                  className={`relative group inline-block rounded-xl overflow-hidden border-2 transition-all bg-white shadow-sm ${
+                    dragOverImageId === img.id
+                      ? "border-blue-500 scale-[1.02] cursor-grabbing"
+                      : "border-gray-200 hover:border-blue-400 hover:shadow-xl cursor-pointer"
+                  }`}
                   onClick={(e) => { if ((e.target as HTMLElement).closest("button")) return; openLightbox(img.id); }}
                 >
                   <img
                     src={img.url ?? (img.storage_path.startsWith("http") ? img.storage_path : undefined)}
                     alt={`${label} ${img.sort_order + 1}`}
-                    className="w-full h-full object-contain bg-white"
+                    className="block max-w-full w-auto h-auto"
                   />
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center pointer-events-none">
                     <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-sm font-semibold px-3 py-1.5 rounded-full">🔍 Click to enlarge</span>
