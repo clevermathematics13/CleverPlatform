@@ -141,6 +141,8 @@ export function QuestionRow({
   const [noteDraft, setNoteDraft] = useState(question.note ?? "");
   const [savingNote, setSavingNote] = useState(false);
   const [deletingQuestion, setDeletingQuestion] = useState(false);
+  const [convertingLatex, setConvertingLatex] = useState<"question" | "markscheme" | null>(null);
+  const [convertLatexError, setConvertLatexError] = useState<string | null>(null);
 
   const savePartField = async (partId: string, field: "marks" | "label" | "latex", value: string) => {
     setSavingField(true);
@@ -210,6 +212,25 @@ export function QuestionRow({
       const res = await fetch(`/api/questions?id=${question.id}`, { method: "DELETE" });
       if (res.ok) onRefresh();
     } finally { setDeletingQuestion(false); }
+  };
+
+  const convertImagesToLatex = async (imageType: "question" | "markscheme") => {
+    setConvertingLatex(imageType);
+    setConvertLatexError(null);
+    try {
+      const res = await fetch("/api/questions/ocr-latex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: question.id, field: "content_latex" }),
+      });
+      const data = await res.json();
+      if (data.error) { setConvertLatexError(data.error); return; }
+      onRefresh();
+    } catch (e: unknown) {
+      setConvertLatexError(e instanceof Error ? e.message : "Conversion failed");
+    } finally {
+      setConvertingLatex(null);
+    }
   };
 
   const renderLatexPreview = (latex: string): string => {
@@ -451,24 +472,59 @@ export function QuestionRow({
                       onReorderImages={onReorderImages} onUploadImage={onUploadImage} />
                   </div>
 
-                  {/* Right column — rendered LaTeX panel */}
-                  {allLatex.length > 0 && (
+                  {/* Right column — LaTeX preview or convert offer */}
+                  {(allLatex.length > 0 || questionImages.length > 0 || msImages.length > 0) && (
                     <div className="w-72 flex-shrink-0 rounded-xl border border-indigo-200 bg-white shadow-sm overflow-hidden">
                       <div className="bg-indigo-50 border-b border-indigo-200 px-3 py-2 flex items-center gap-1.5">
-                        <span className="text-[11px] font-bold text-indigo-700 tracking-wide uppercase">LaTeX Preview</span>
+                        <span className="text-[11px] font-bold text-indigo-700 tracking-wide uppercase">LaTeX</span>
                       </div>
-                      <div className="divide-y divide-gray-100">
-                        {allLatex.map(({ label, latex }, i) => (
-                          <div key={i} className="px-3 py-2.5 space-y-1">
-                            {label && (
-                              <span className="inline-block text-[10px] font-bold font-mono text-indigo-500 bg-indigo-50 rounded px-1.5 py-0.5">({label})</span>
-                            )}
-                            <div className="text-sm leading-relaxed text-gray-800 overflow-x-auto">
-                              <LatexRenderer latex={latex} />
+
+                      {allLatex.length > 0 ? (
+                        <div className="divide-y divide-gray-100">
+                          {allLatex.map(({ label, latex }, i) => (
+                            <div key={i} className="px-3 py-2.5 space-y-1">
+                              {label && (
+                                <span className="inline-block text-[10px] font-bold font-mono text-indigo-500 bg-indigo-50 rounded px-1.5 py-0.5">({label})</span>
+                              )}
+                              <div className="text-sm leading-relaxed text-gray-800 overflow-x-auto">
+                                <LatexRenderer latex={latex} />
+                              </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-4 py-4 space-y-3">
+                          <p className="text-xs text-gray-500 leading-snug">
+                            No LaTeX stored for this question. Convert the images to extract and save the LaTeX to the database.
+                          </p>
+                          {questionImages.length > 0 && (
+                            <button
+                              type="button"
+                              disabled={convertingLatex !== null}
+                              onClick={() => convertImagesToLatex("question")}
+                              className="w-full rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-50 text-left"
+                            >
+                              {convertingLatex === "question" ? "Converting…" : "📄 Convert question images → LaTeX"}
+                            </button>
+                          )}
+                          {msImages.length > 0 && (
+                            <button
+                              type="button"
+                              disabled={convertingLatex !== null}
+                              onClick={() => convertImagesToLatex("markscheme")}
+                              className="w-full rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 text-left"
+                            >
+                              {convertingLatex === "markscheme" ? "Converting…" : "📝 Convert markscheme images → LaTeX"}
+                            </button>
+                          )}
+                          {questionImages.length === 0 && msImages.length === 0 && (
+                            <p className="text-xs text-gray-400 italic">Upload images first, then convert.</p>
+                          )}
+                          {convertLatexError && (
+                            <p className="text-xs text-red-600 font-semibold">{convertLatexError}</p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
