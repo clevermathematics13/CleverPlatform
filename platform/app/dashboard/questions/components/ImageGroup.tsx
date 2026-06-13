@@ -111,7 +111,7 @@ export function ImageGroup({
             {images.map((img, idx) => (
               <div
                 key={img.id}
-                className="relative group w-full"
+                className="relative group inline-block"
               >
                 {/* Up arrow (top-left) — hidden for first image */}
                 {idx > 0 && (
@@ -137,19 +137,19 @@ export function ImageGroup({
                   </button>
                 )}
 
-                {/* Image */}
+                {/* Image — natural dimensions, max-width constrained to container */}
                 <a
                   href={img.url ?? "#"}
                   target="_blank"
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
-                  className="block w-full"
+                  className="block"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={img.url ?? ""}
                     alt={img.alt_text ?? `${label} image ${idx + 1}`}
-                    className={`w-full rounded border bg-white p-1 ${borderColor} ${hoverBorderColor} hover:shadow-md transition-all ${
+                    className={`max-w-full w-auto h-auto rounded border bg-white p-1 ${borderColor} ${hoverBorderColor} hover:shadow-md transition-all ${
                       deletingImageIds.has(img.id) ? "opacity-40" : ""
                     }`}
                     draggable={false}
