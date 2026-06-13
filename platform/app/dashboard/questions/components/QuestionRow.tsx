@@ -773,7 +773,7 @@ function ImageSection({
                     const newOrder = [...ids]; newOrder.splice(fromIdx, 1); newOrder.splice(toIdx, 0, draggedId);
                     onReorderImages(type, newOrder);
                   }}
-                  className={`relative group inline-block rounded-xl overflow-hidden border-2 transition-all bg-white shadow-sm ${
+                  className={`relative group max-w-[50vw] rounded-xl overflow-hidden border-2 transition-all bg-white shadow-sm ${
                     dragOverImageId === img.id
                       ? "border-blue-500 scale-[1.02] cursor-grabbing"
                       : "border-gray-200 hover:border-blue-400 hover:shadow-xl cursor-pointer"
