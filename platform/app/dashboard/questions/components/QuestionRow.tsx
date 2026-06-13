@@ -169,7 +169,7 @@ export function QuestionRow({
     setLinkSaveResult(null);
     try {
       const extractDocId = (input: string): string => {
-        const match = input.match(/\/d\/([\w-]+)/);
+        const match = input.match(/\/d\/(([\w-]+)/);
         return match ? match[1] : input.trim();
       };
       const docId = extractDocId(linkDraftQ);
@@ -1131,7 +1131,7 @@ function ImageSection({
             </div>
           </div>
           {imgs.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {imgs.map((img) => (
                 <div
                   key={img.id}
@@ -1155,7 +1155,7 @@ function ImageSection({
                     onReorderImages(type, newOrder);
                   }}
                   className={`relative group rounded-lg overflow-hidden border-2 transition-all ${dragOverImageId === img.id ? "border-blue-500 scale-105 cursor-grabbing" : "border-gray-200 hover:border-blue-400 hover:shadow-lg cursor-pointer"}`}
-                  style={{ width: 240, height: 180 }}
+                  style={{ width: "100%", height: 380 }}
                   onClick={(e) => { if ((e.target as HTMLElement).closest("button")) return; setEnlargedImageId(img.id); }}
                 >
                   <img
@@ -1163,17 +1163,17 @@ function ImageSection({
                     alt={`${label} ${img.sort_order + 1}`}
                     className="w-full h-full object-contain bg-white"
                   />
-                  <div className="absolute top-0.5 right-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       type="button"
                       onClick={() => onDeleteImage(img.id)}
                       disabled={deletingImageIds.has(img.id)}
-                      className="rounded-full bg-red-600 text-white w-5 h-5 text-[10px] font-bold flex items-center justify-center hover:bg-red-700 disabled:opacity-50"
+                      className="rounded-full bg-red-600 text-white w-6 h-6 text-xs font-bold flex items-center justify-center hover:bg-red-700 disabled:opacity-50"
                     >
                       {deletingImageIds.has(img.id) ? "…" : "×"}
                     </button>
                   </div>
-                  <div className="absolute bottom-0.5 left-0.5 bg-black/50 rounded px-1 py-0.5 text-[9px] text-white font-semibold">
+                  <div className="absolute bottom-1 left-1 bg-black/60 rounded px-2 py-1 text-xs text-white font-semibold">
                     {img.sort_order + 1}
                   </div>
                 </div>
