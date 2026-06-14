@@ -214,14 +214,19 @@ export function QuestionRow({
     } finally { setDeletingQuestion(false); }
   };
 
+  // BUG FIX: was always sending field: "content_latex" regardless of imageType.
+  // Now maps imageType → correct draft field, which the OCR route saves to
+  // ib_questions (stem + parts_draft_*) and then also populates question_parts
+  // content_latex / markscheme_latex via the existing route logic.
   const convertImagesToLatex = async (imageType: "question" | "markscheme") => {
     setConvertingLatex(imageType);
     setConvertLatexError(null);
     try {
+      const field = imageType === "question" ? "parts_draft_latex" : "parts_draft_markscheme_latex";
       const res = await fetch("/api/questions/ocr-latex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questionId: question.id, field: "content_latex" }),
+        body: JSON.stringify({ questionId: question.id, field }),
       });
       const data = await res.json();
       if (data.error) { setConvertLatexError(data.error); return; }
@@ -242,10 +247,11 @@ export function QuestionRow({
   const questionImages = images.filter((i) => i.image_type === "question").sort((a, b) => a.sort_order - b.sort_order);
   const msImages = images.filter((i) => i.image_type === "markscheme").sort((a, b) => a.sort_order - b.sort_order);
 
-  // All LaTeX strings across question parts for the right-side panel
+  // BUG FIX: was reading p.latex (undefined) — now reads p.content_latex which is
+  // what the OCR route and part editors actually populate.
   const allLatex = question.question_parts
-    .filter((p) => p.latex && p.latex.trim())
-    .map((p) => ({ label: p.part_label, latex: p.latex! }));
+    .filter((p) => p.content_latex && p.content_latex.trim())
+    .map((p) => ({ label: p.part_label, latex: p.content_latex! }));
 
   return (
     <>
@@ -612,6 +618,9 @@ function QuestionPartRow({
     onUpdateSubtopics(part.id, currentCodes.filter((c) => c !== codeToRemove));
   };
 
+  // Use content_latex as the canonical field; fall back to the legacy .latex alias
+  const partLatex = part.content_latex ?? part.latex ?? null;
+
   return (
     <div className={`rounded-lg border bg-white p-3 space-y-2 ${isEditing ? "border-blue-400 shadow-sm" : "border-gray-200"}`}>
       <div className="flex items-center gap-2 flex-wrap">
@@ -705,15 +714,15 @@ function QuestionPartRow({
           </div>
         </div>
       ) : (
-        part.latex && (
+        partLatex && (
           <div className="text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 group"
-            onClick={() => { setEditingPartId(part.id); setEditingField("latex"); setEditDraft(part.latex ?? ""); }} title="Click to edit LaTeX">
-            <LatexRenderer latex={part.latex} />
+            onClick={() => { setEditingPartId(part.id); setEditingField("latex"); setEditDraft(partLatex); }} title="Click to edit LaTeX">
+            <LatexRenderer latex={partLatex} />
             <span className="ml-1 text-[10px] text-gray-400 opacity-0 group-hover:opacity-100">✏</span>
           </div>
         )
       )}
-      {!part.latex && !isEditing && (
+      {!partLatex && !isEditing && (
         <button type="button" onClick={() => { setEditingPartId(part.id); setEditingField("latex"); setEditDraft(""); }} className="text-xs text-gray-400 hover:text-blue-600 italic">+ Add LaTeX content</button>
       )}
 
