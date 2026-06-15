@@ -13,12 +13,21 @@ export type TestItem = {
   question_code: string | null;
 };
 
+// A single grade threshold row from grade_boundaries table
+export type GradeBoundary = {
+  grade: number;        // 1–7
+  min_proportion: number; // e.g. 0.57 = 57%
+};
+
 export type Test = {
   id: string;
   name: string;
   test_date: string | null;
   total_marks: number;
   component: "P1" | "P2" | "P3" | "IA" | null;
+  // null when no boundary set has been assigned to this test
+  boundary_set_name: string | null;  // e.g. 'A', 'B', 'C', 'D'
+  boundaries: GradeBoundary[] | null; // sorted grade 1→7, null if unassigned
   items: TestItem[];
 };
 
@@ -34,7 +43,12 @@ type MarksState = Record<string, Record<string, number | null>>;
 
 const COMPONENTS = ["P1", "P2", "P3", "IA"] as const;
 
-function pctToGrade(pct: number): number {
+/**
+ * Hardcoded fallback used when a test has no boundary set assigned.
+ * Approximate IB-style 10-point bands. Shown with a '~' badge to
+ * make clear these are estimates, not calibrated boundaries.
+ */
+function pctToGradeFallback(pct: number): number {
   if (pct >= 80) return 7;
   if (pct >= 70) return 6;
   if (pct >= 60) return 5;
@@ -42,6 +56,38 @@ function pctToGrade(pct: number): number {
   if (pct >= 40) return 3;
   if (pct >= 30) return 2;
   return 1;
+}
+
+/**
+ * Boundary-aware grade lookup.
+ * `boundaries` is sorted grade 1→7. Each row specifies the minimum
+ * proportion (0–1) needed to achieve that grade.
+ * We walk from grade 7 down to 1 and return the first grade whose
+ * min_proportion threshold the student meets.
+ */
+function pctToGradeWithBoundaries(
+  pct: number,
+  boundaries: GradeBoundary[]
+): number {
+  // proportion form: pct is already a percentage, so convert
+  const proportion = pct / 100;
+  // Sort descending by grade so we check 7 first
+  const sorted = [...boundaries].sort((a, b) => b.grade - a.grade);
+  for (const row of sorted) {
+    if (proportion >= row.min_proportion) return row.grade;
+  }
+  return 1;
+}
+
+/** Resolve grade from pct, using boundaries if available or fallback if not. */
+function resolveGrade(
+  pct: number,
+  boundaries: GradeBoundary[] | null
+): number {
+  if (boundaries && boundaries.length > 0) {
+    return pctToGradeWithBoundaries(pct, boundaries);
+  }
+  return pctToGradeFallback(pct);
 }
 
 function gradeColor(grade: number | null): string {
@@ -84,7 +130,7 @@ function computeTestScore(
     return { grade: null, earned: 0, pct: null };
   }
   const pct = (earned / test.total_marks) * 100;
-  return { grade: pctToGrade(pct), earned, pct };
+  return { grade: resolveGrade(pct, test.boundaries), earned, pct };
 }
 
 function computeComponentGrade(
@@ -107,7 +153,8 @@ function computeComponentGrade(
     }
   }
   if (!hasAny || totalPossible === 0) return null;
-  return pctToGrade((totalEarned / totalPossible) * 100);
+  // For component aggregates we use fallback (no single boundary set applies)
+  return pctToGradeFallback((totalEarned / totalPossible) * 100);
 }
 
 // IB standard: Section A = Q1–8, Section B = Q9+
@@ -116,7 +163,7 @@ const SECTION_A_MAX_Q = 8;
 interface SectionScore {
   earned: number;
   max: number;
-  pct: number | null; // null if no marks entered yet
+  pct: number | null;
 }
 
 function computeSectionScores(
@@ -163,7 +210,32 @@ function computeOverallGrade(
   }
   if (!hasAny || totalPossible === 0) return { grade: null, pct: null };
   const pct = (totalEarned / totalPossible) * 100;
-  return { grade: pctToGrade(pct), pct };
+  // Overall uses fallback — no single set applies across all tests
+  return { grade: pctToGradeFallback(pct), pct };
+}
+
+// ─── Boundary set badge ───────────────────────────────────────────────────────
+
+/** Small pill shown in collapsed test column headers and grade cells. */
+function SetBadge({ name }: { name: string | null }) {
+  if (!name) {
+    return (
+      <span
+        className="inline-block text-[9px] font-mono text-da-muted/60 leading-none"
+        title="No boundary set assigned — using approximate 10-point bands"
+      >
+        ~
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-block text-[9px] font-mono font-bold px-1 py-px rounded bg-da-accent/15 text-da-accent leading-none"
+      title={`Grade boundaries: Set ${name}`}
+    >
+      {name}
+    </span>
+  );
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -272,11 +344,9 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
       if (pastedRows[pastedRows.length - 1] === "") pastedRows.pop();
       const grid = pastedRows.map((row) => row.split("\t"));
 
-      // Only intercept multi-cell pastes; let single values go through natively
       if (grid.length === 1 && grid[0].length === 1) return;
       e.preventDefault();
 
-      // Build flat ordered list of visible test item columns
       const visibleItems: { itemId: string; maxMarks: number }[] = [];
       for (const test of tests) {
         if (expandedTests.has(test.id)) {
@@ -315,7 +385,6 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         return next;
       });
 
-      // Clear prior errors and mark all cells as saving
       setCellErrors((prev) => {
         const next = { ...prev };
         for (const { itemId, profileId } of updates) delete next[`${itemId}:${profileId}`];
@@ -327,7 +396,6 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         return next;
       });
 
-      // Single batch request instead of one per cell
       fetch("/api/gradebook/marks/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -378,7 +446,6 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  // Build item → column index map for paste coordinate resolution
   const itemColMap = new Map<string, number>();
   {
     let col = 0;
@@ -446,9 +513,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                         onClick={() => toggleTest(test.id)}
                       >
                         {test.name}
-                        <span className="block text-[10px] text-da-accent">
-                          ◂
-                        </span>
+                        <span className="block text-[10px] text-da-accent">◂</span>
                       </th>
                     );
                   }
@@ -524,12 +589,15 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                   );
                 }
 
+                // ── Collapsed test header — show name + date + set badge ──
                 return (
                   <th
                     key={test.id}
                     className={`${thBtn} min-w-22.5 max-w-32.5`}
                     onClick={() => toggleTest(test.id)}
-                    title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nClick to expand`}
+                    title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nBoundary set: ${
+                      test.boundary_set_name ? "Set " + test.boundary_set_name : "unassigned (approx.)"
+                    }\nClick to expand`}
                   >
                     <span className="block truncate">{test.name}</span>
                     {test.test_date && (
@@ -540,7 +608,10 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                         )}
                       </span>
                     )}
-                    <span className="block text-[10px] text-da-accent">▸</span>
+                    <span className="flex items-center justify-center gap-1 mt-0.5">
+                      <SetBadge name={test.boundary_set_name} />
+                      <span className="text-[10px] text-da-accent">▸</span>
+                    </span>
                   </th>
                 );
               })}
@@ -707,7 +778,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                       );
                     }
 
-                    // Collapsed test: show IB grade
+                    // Collapsed test: show IB grade + set badge
                     const { grade, pct } = computeTestScore(
                       student.profile_id,
                       test,
@@ -717,7 +788,13 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                       <td
                         key={test.id}
                         className={`${tdBase} font-semibold text-base ${gradeColor(grade)} ${gradeBg(grade)}`}
-                        title={pct !== null ? `${pct.toFixed(1)}%` : undefined}
+                        title={
+                          pct !== null
+                            ? `${pct.toFixed(1)}% · Set ${
+                                test.boundary_set_name ?? "unassigned"
+                              }`
+                            : undefined
+                        }
                       >
                         {grade ?? "—"}
                       </td>
@@ -734,14 +811,21 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
       <div className="px-4 py-3 border-t border-da-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-da-muted">
         <span>Click column headers to expand / collapse.</span>
         <span className="text-da-border">|</span>
-        <span>IB bands (approx.):</span>
+        <span>IB bands:</span>
         {([7, 6, 5, 4, 3, 2, 1] as const).map((g) => (
           <span key={g} className={`font-bold ${gradeColor(g)}`}>
             {g}
           </span>
         ))}
         <span className="text-da-border">|</span>
-        <span>Hover grade cells for percentage. Enter marks and press Tab/Enter to save.</span>
+        <span>
+          <span className="inline-block text-[9px] font-mono font-bold px-1 py-px rounded bg-da-accent/15 text-da-accent mr-1">B</span>
+          = boundary set assigned
+        </span>
+        <span className="font-mono text-da-muted/60">~</span>
+        <span>= approximate (no set assigned)</span>
+        <span className="text-da-border">|</span>
+        <span>Hover grade cells for % and set. Enter marks and press Tab/Enter to save.</span>
         <span className="text-da-border">|</span>
         <span>Expand a test, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
       </div>

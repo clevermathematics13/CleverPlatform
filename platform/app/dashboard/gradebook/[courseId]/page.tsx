@@ -30,10 +30,37 @@ export default async function GradebookCoursePage({
 
   if (!course) notFound();
 
+  // All boundary sets (small table — fetch once, pass to client)
+  const { data: rawSets } = await supabase
+    .from("grade_boundary_sets")
+    .select("id, name, description");
+
+  const { data: rawBoundaries } = await supabase
+    .from("grade_boundaries")
+    .select("set_id, grade, min_proportion")
+    .order("grade", { ascending: true });
+
+  // Build a lookup: setId → sorted boundary array (grade 1→7)
+  type BoundaryRow = { grade: number; min_proportion: number };
+  const boundariesBySetId: Record<string, BoundaryRow[]> = {};
+  for (const b of rawBoundaries ?? []) {
+    if (!boundariesBySetId[b.set_id]) boundariesBySetId[b.set_id] = [];
+    boundariesBySetId[b.set_id].push({
+      grade: b.grade,
+      min_proportion: Number(b.min_proportion),
+    });
+  }
+
+  // Build a lookup: setId → set name (e.g. 'B')
+  const setNameById: Record<string, string> = {};
+  for (const s of rawSets ?? []) {
+    setNameById[s.id] = s.name;
+  }
+
   // Tests for this course ordered most-recent-first
   const { data: rawTests } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks")
+    .select("id, name, test_date, total_marks, boundary_set_id")
     .eq("course_id", courseId)
     .order("test_date", { ascending: false });
 
@@ -48,6 +75,7 @@ export default async function GradebookCoursePage({
     part_label: string;
     max_marks: number;
     sort_order: number;
+    ib_question_code?: string | null;
   }[] = [];
   if (testIds.length > 0) {
     const { data } = await supabase
@@ -67,7 +95,6 @@ export default async function GradebookCoursePage({
 
   const students = (rawStudents ?? [])
     .map((s) => {
-      // Supabase may return joined record as object or array depending on type gen
       const prof = s.profiles as unknown;
       const displayName =
         prof && typeof prof === "object" && !Array.isArray(prof)
@@ -106,21 +133,26 @@ export default async function GradebookCoursePage({
     itemsByTest[item.test_id].push(item);
   }
 
-  const tests = testList.map((t) => ({
-    id: t.id,
-    name: t.name,
-    test_date: t.test_date as string | null,
-    total_marks: t.total_marks ?? 0,
-    component: inferComponent(t.name),
-    items: (itemsByTest[t.id] ?? []).map((item) => ({
-      id: item.id,
-      question_number: item.question_number,
-      part_label: item.part_label ?? "",
-      max_marks: item.max_marks,
-      sort_order: item.sort_order,
-      question_code: (item as { ib_question_code?: string | null }).ib_question_code ?? null,
-    })),
-  }));
+  const tests = testList.map((t) => {
+    const setId = t.boundary_set_id as string | null;
+    return {
+      id: t.id,
+      name: t.name,
+      test_date: t.test_date as string | null,
+      total_marks: t.total_marks ?? 0,
+      component: inferComponent(t.name),
+      boundary_set_name: setId ? (setNameById[setId] ?? null) : null,
+      boundaries: setId ? (boundariesBySetId[setId] ?? null) : null,
+      items: (itemsByTest[t.id] ?? []).map((item) => ({
+        id: item.id,
+        question_number: item.question_number,
+        part_label: item.part_label ?? "",
+        max_marks: item.max_marks,
+        sort_order: item.sort_order,
+        question_code: item.ib_question_code ?? null,
+      })),
+    };
+  });
 
   return (
     <div>
