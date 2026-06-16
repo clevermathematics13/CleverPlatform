@@ -911,7 +911,7 @@ function ImageSection({
                     <span className="text-2xl mb-2">{type === "markscheme" ? "📝" : "📄"}</span>
                     <p className="text-xs text-gray-400 font-medium text-center px-3">No {label.toLowerCase()} images yet</p>
                     {driveConnected && (
-                      <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use “Extract from Docs” or “Upload”</p>
+                      <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use "Extract from Docs" or "Upload"</p>
                     )}
                   </div>
                 )}
