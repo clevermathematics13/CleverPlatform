@@ -173,7 +173,7 @@ export function QuestionRow({
     setLinkSaveResult(null);
     try {
       const extractDocId = (input: string): string => {
-        const match = input.match(/\/d\/(\w-]+)/);
+        const match = input.match(/\/d\/([\w-]+)/);
         return match ? match[1] : input.trim();
       };
       const docId = extractDocId(linkDraftQ);
