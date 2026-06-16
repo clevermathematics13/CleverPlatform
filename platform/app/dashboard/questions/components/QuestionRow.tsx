@@ -12,7 +12,7 @@ import type {
   Subtopic,
 } from "./types";
 
-// ── Helpers ────────────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────────────────────────
 
 const HINT_TOOLTIP = `LaTeX math: $x^2$, $\\frac{a}{b}$, $\\sqrt{x}$
 Text: plain words work directly
@@ -259,7 +259,7 @@ export function QuestionRow({
         <td className="px-4 py-2">
           <div className="flex items-center gap-1.5">
             {hasDocLinkConflict && (
-              <span className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700" title="Question doc and markscheme doc are the same file \u2014 links need to be fixed">\u26a0 conflict</span>
+              <span className="inline-flex items-center rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700" title="Question doc and markscheme doc are the same file — links need to be fixed">⚠ conflict</span>
             )}
             {onOpenEditor ? (
               <button type="button" onClick={(e) => { e.stopPropagation(); onOpenEditor(); }} title="Open Question Studio"
@@ -278,7 +278,7 @@ export function QuestionRow({
             {question.level === "AHL" ? "HL" : "SL"}
           </span>
         </td>
-        <td className="px-4 py-2 text-center text-sm text-gray-700">{question.timezone ?? "\u2014"}</td>
+        <td className="px-4 py-2 text-center text-sm text-gray-700">{question.timezone ?? "—"}</td>
         <td className="px-4 py-2 text-center text-sm text-gray-700">{question.question_parts.length}</td>
         <td className="px-4 py-2 text-center text-sm font-semibold text-gray-800">
           {inQueue && editingQueueMarks ? (
@@ -297,8 +297,8 @@ export function QuestionRow({
         </td>
         <td className="px-4 py-2 text-center">
           <div className="flex items-center justify-center gap-1.5">
-            <span className={`text-xs font-semibold ${question.has_question_images ? "text-emerald-600" : "text-gray-300"}`} title={question.has_question_images ? "Question images extracted" : "No question images"}>\ud83d\udcc4 Q</span>
-            <span className={`text-xs font-semibold ${question.has_markscheme_images ? "text-emerald-600" : "text-gray-300"}`} title={question.has_markscheme_images ? "Markscheme images extracted" : "No markscheme images"}>\ud83d\udcdd MS</span>
+            <span className={`text-xs font-semibold ${question.has_question_images ? "text-emerald-600" : "text-gray-300"}`} title={question.has_question_images ? "Question images extracted" : "No question images"}>📄 Q</span>
+            <span className={`text-xs font-semibold ${question.has_markscheme_images ? "text-emerald-600" : "text-gray-300"}`} title={question.has_markscheme_images ? "Markscheme images extracted" : "No markscheme images"}>📝 MS</span>
           </div>
         </td>
         <td className="px-4 py-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -309,20 +309,20 @@ export function QuestionRow({
               <button type="button" onClick={() => { onUpdateSection("B"); setShowSectionPrompt(false); }} disabled={savingSection}
                 className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${question.section === "B" ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-indigo-100"}`}>B</button>
             </div>
-          ) : (<span className="text-xs text-gray-400">\u2014</span>)}
+          ) : (<span className="text-xs text-gray-400">—</span>)}
         </td>
         {testBuilderOpen && (
           <td className="px-3 py-2 text-center" onClick={(e) => e.stopPropagation()}>
             {question.has_question_images ? (
               inQueue ? (
-                <button type="button" disabled title="Already in current exam" className="rounded-full w-7 h-7 text-sm font-bold transition-colors bg-indigo-100 text-indigo-400 cursor-default">\u2713</button>
+                <button type="button" disabled title="Already in current exam" className="rounded-full w-7 h-7 text-sm font-bold transition-colors bg-indigo-100 text-indigo-400 cursor-default">✓</button>
               ) : savedExamWithQuestion ? (
-                <button type="button" onClick={() => onOpenSavedExam(savedExamWithQuestion)} title={`Already in "${savedExamWithQuestion.name}" \u2014 click to open`}
-                  className="rounded-full w-7 h-7 text-sm font-bold transition-colors bg-green-100 text-green-700 hover:bg-green-200 border border-green-300">\u2713</button>
+                <button type="button" onClick={() => onOpenSavedExam(savedExamWithQuestion)} title={`Already in "${savedExamWithQuestion.name}" — click to open`}
+                  className="rounded-full w-7 h-7 text-sm font-bold transition-colors bg-green-100 text-green-700 hover:bg-green-200 border border-green-300">✓</button>
               ) : (
                 <button type="button" onClick={onAddToQueue} title="Add to exam" className="rounded-full w-7 h-7 text-sm font-bold transition-colors bg-indigo-600 text-white hover:bg-indigo-700">+</button>
               )
-            ) : (<span className="text-xs text-gray-300" title="No images extracted">\u2014</span>)}
+            ) : (<span className="text-xs text-gray-300" title="No images extracted">—</span>)}
           </td>
         )}
         <td className="px-2 py-2 text-center" onClick={(e) => e.stopPropagation()}>
@@ -330,7 +330,7 @@ export function QuestionRow({
             <button type="button" title={question.note ? `Note: ${question.note}` : "Add note"}
               onClick={() => { setNoteDraft(question.note ?? ""); setShowNotePanel((v) => !v); }}
               className={`rounded-full w-6 h-6 text-xs transition-colors ${question.note ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-gray-100 text-gray-400 hover:bg-gray-200"}`}>
-              {question.note ? "\ud83d\udcac" : "\u25cb"}
+              {question.note ? "💬" : "○"}
             </button>
             {showNotePanel && createPortal(
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowNotePanel(false)}>
@@ -340,7 +340,7 @@ export function QuestionRow({
                     className="rounded border border-gray-300 px-2 py-1.5 text-sm resize-none h-24 focus:outline-none focus:ring-1 focus:ring-blue-400" />
                   <div className="flex gap-2 justify-end">
                     <button type="button" onClick={() => setShowNotePanel(false)} className="rounded px-3 py-1 text-xs font-semibold border border-gray-300 text-gray-600 hover:bg-gray-100">Cancel</button>
-                    <button type="button" onClick={saveNote} disabled={savingNote} className="rounded px-3 py-1 text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">{savingNote ? "Saving\u2026" : "Save"}</button>
+                    <button type="button" onClick={saveNote} disabled={savingNote} className="rounded px-3 py-1 text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">{savingNote ? "Saving…" : "Save"}</button>
                   </div>
                   {question.note && (<button type="button" onClick={() => { setNoteDraft(""); }} className="text-xs text-red-500 hover:underline text-left">Clear note</button>)}
                 </div>
@@ -358,20 +358,20 @@ export function QuestionRow({
               <div className="flex items-center gap-2 flex-wrap">
                 <button type="button" onClick={() => setMinimized((v) => !v)}
                   className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">
-                  {minimized ? "\u25bc Expand" : "\u25b2 Minimise"}
+                  {minimized ? "▼ Expand" : "▲ Minimise"}
                 </button>
                 {!hideCollapsedRow && (
-                  <button type="button" onClick={onClose} className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">\u2715 Close</button>
+                  <button type="button" onClick={onClose} className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">✕ Close</button>
                 )}
                 {!editingLinks && (
                   <button type="button" onClick={() => { setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); setEditingLinks(true); }}
                     className={`rounded border px-2.5 py-1 text-xs font-semibold ${hasDocLinkConflict ? "border-red-400 bg-red-50 text-red-700 hover:bg-red-100" : "border-blue-300 bg-white text-blue-700 hover:bg-blue-50"}`}>
-                    {hasDocLinkConflict ? "\u26a0 Fix Links" : "\ud83d\udd17 Edit Doc Links"}
+                    {hasDocLinkConflict ? "⚠ Fix Links" : "🔗 Edit Doc Links"}
                   </button>
                 )}
                 <button type="button" onClick={deleteQuestion} disabled={deletingQuestion}
                   className="rounded border border-red-300 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
-                  {deletingQuestion ? "Deleting\u2026" : "\ud83d\uddd1 Delete"}
+                  {deletingQuestion ? "Deleting…" : "🗑 Delete"}
                 </button>
               </div>
 
@@ -380,19 +380,19 @@ export function QuestionRow({
                   {editingLinks && (
                     <div className="rounded-lg border border-blue-200 bg-white p-3 space-y-2">
                       <p className="text-xs font-bold text-blue-800">Edit Google Doc Links</p>
-                      {hasDocLinkConflict && (<p className="text-xs font-semibold text-red-700 bg-red-50 rounded px-2 py-1">\u26a0 Q doc and MS doc are the same file \u2014 this will cause extraction errors. Clear one of them.</p>)}
+                      {hasDocLinkConflict && (<p className="text-xs font-semibold text-red-700 bg-red-50 rounded px-2 py-1">⚠ Q doc and MS doc are the same file — this will cause extraction errors. Clear one of them.</p>)}
                       <label className="flex flex-col gap-0.5">
-                        <span className="text-[11px] font-semibold text-blue-700">\ud83d\udcc4 Question Doc URL or ID</span>
-                        <input type="text" value={linkDraftQ} onChange={(e) => setLinkDraftQ(e.target.value)} placeholder="https://docs.google.com/document/d/\u2026 or doc ID"
+                        <span className="text-[11px] font-semibold text-blue-700">📄 Question Doc URL or ID</span>
+                        <input type="text" value={linkDraftQ} onChange={(e) => setLinkDraftQ(e.target.value)} placeholder="https://docs.google.com/document/d/… or doc ID"
                           className="rounded border border-blue-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400 w-full max-w-xl" />
                       </label>
                       <label className="flex flex-col gap-0.5">
-                        <span className="text-[11px] font-semibold text-green-700">\ud83d\udcdd Markscheme Doc URL or ID</span>
-                        <input type="text" value={linkDraftMS} onChange={(e) => setLinkDraftMS(e.target.value)} placeholder="https://docs.google.com/document/d/\u2026 or doc ID (leave blank to unlink)"
+                        <span className="text-[11px] font-semibold text-green-700">📝 Markscheme Doc URL or ID</span>
+                        <input type="text" value={linkDraftMS} onChange={(e) => setLinkDraftMS(e.target.value)} placeholder="https://docs.google.com/document/d/… or doc ID (leave blank to unlink)"
                           className="rounded border border-green-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-green-400 w-full max-w-xl" />
                       </label>
                       <div className="flex gap-2">
-                        <button type="button" onClick={saveLinks} disabled={savingLinks} className="rounded bg-blue-600 px-3 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{savingLinks ? "Saving\u2026" : "Save Links"}</button>
+                        <button type="button" onClick={saveLinks} disabled={savingLinks} className="rounded bg-blue-600 px-3 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{savingLinks ? "Saving…" : "Save Links"}</button>
                         <button type="button" onClick={() => { setEditingLinks(false); setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); }} disabled={savingLinks}
                           className="rounded border border-gray-300 px-3 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-50">Cancel</button>
                       </div>
@@ -432,7 +432,7 @@ export function QuestionRow({
                       </div>
                       <div>
                         <label className="block text-[11px] font-semibold text-emerald-700 mb-0.5">LaTeX (optional)</label>
-                        <textarea value={newPartLatex} onChange={(e) => setNewPartLatex(e.target.value)} placeholder="Question text in LaTeX\u2026" rows={2}
+                        <textarea value={newPartLatex} onChange={(e) => setNewPartLatex(e.target.value)} placeholder="Question text in LaTeX…" rows={2}
                           className="rounded border border-emerald-300 px-2 py-1 text-xs w-full max-w-xl font-mono resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400" />
                       </div>
                       {newPartError && <p className="text-xs text-red-600">{newPartError}</p>}
@@ -450,7 +450,7 @@ export function QuestionRow({
                             } finally { setSavingNewPart(false); }
                           }}
                           className="rounded bg-emerald-600 px-3 py-1 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
-                          {savingNewPart ? "Saving\u2026" : "Add Part"}
+                          {savingNewPart ? "Saving…" : "Add Part"}
                         </button>
                         <button type="button" onClick={() => { setAddingPart(false); setNewPartError(null); }}
                           className="rounded border border-gray-300 px-3 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100">Cancel</button>
@@ -502,7 +502,7 @@ export function QuestionRow({
   );
 }
 
-// ── QuestionPartRow ───────────────────────────────────────────────────────────────────────────────
+// ── QuestionPartRow ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 function QuestionPartRow({
   part, partIdx, question, commandTerms, onUpdateCommandTerm, onAddCustomTerm,
@@ -569,8 +569,8 @@ function QuestionPartRow({
             <input type="text" value={editDraft} onChange={(e) => setEditDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") savePartField(part.id, "label", editDraft); if (e.key === "Escape") { setEditingPartId(null); setEditingField(null); } }}
               className="w-16 rounded border border-blue-300 px-1.5 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" autoFocus />
-            <button type="button" onClick={() => savePartField(part.id, "label", editDraft)} disabled={savingField} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-bold disabled:opacity-50">{savingField ? "\u2026" : "\u2713"}</button>
-            <button type="button" onClick={() => { setEditingPartId(null); setEditingField(null); }} className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600">\u2715</button>
+            <button type="button" onClick={() => savePartField(part.id, "label", editDraft)} disabled={savingField} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-bold disabled:opacity-50">{savingField ? "…" : "✓"}</button>
+            <button type="button" onClick={() => { setEditingPartId(null); setEditingField(null); }} className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600">✕</button>
           </div>
         ) : (
           <button type="button" onClick={() => { setEditingPartId(part.id); setEditingField("label"); setEditDraft(part.part_label ?? ""); }} title="Click to edit part label"
@@ -583,8 +583,8 @@ function QuestionPartRow({
             <input type="number" min={0} max={99} value={editDraft} onChange={(e) => setEditDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") savePartField(part.id, "marks", editDraft); if (e.key === "Escape") { setEditingPartId(null); setEditingField(null); } }}
               className="w-14 rounded border border-blue-300 px-1.5 py-0.5 text-xs text-center focus:outline-none focus:ring-1 focus:ring-blue-400" autoFocus />
-            <button type="button" onClick={() => savePartField(part.id, "marks", editDraft)} disabled={savingField} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-bold disabled:opacity-50">{savingField ? "\u2026" : "\u2713"}</button>
-            <button type="button" onClick={() => { setEditingPartId(null); setEditingField(null); }} className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600">\u2715</button>
+            <button type="button" onClick={() => savePartField(part.id, "marks", editDraft)} disabled={savingField} className="rounded bg-blue-600 px-2 py-0.5 text-xs text-white font-bold disabled:opacity-50">{savingField ? "…" : "✓"}</button>
+            <button type="button" onClick={() => { setEditingPartId(null); setEditingField(null); }} className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600">✕</button>
           </div>
         ) : (
           <button type="button" onClick={() => { setEditingPartId(part.id); setEditingField("marks"); setEditDraft(String(part.marks)); }} title="Click to edit marks"
@@ -605,14 +605,14 @@ function QuestionPartRow({
           {showTermDropdown && (
             <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg w-52 max-h-64 overflow-y-auto">
               <div className="p-1.5 border-b border-gray-100">
-                <button type="button" onClick={() => { onUpdateCommandTerm(part.id, null); setShowTermDropdown(false); }} className="w-full text-left px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded italic">\u2014 Remove term</button>
+                <button type="button" onClick={() => { onUpdateCommandTerm(part.id, null); setShowTermDropdown(false); }} className="w-full text-left px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 rounded italic">— Remove term</button>
               </div>
               {commandTerms.map((term) => (
                 <button key={term} type="button" onClick={() => { onUpdateCommandTerm(part.id, term); setShowTermDropdown(false); }}
                   className={`w-full text-left px-2 py-1 text-xs hover:bg-blue-50 rounded ${part.command_term === term ? "font-bold text-blue-700 bg-blue-50" : "text-gray-700"}`}>{term}</button>
               ))}
               <div className="p-1.5 border-t border-gray-100 flex gap-1">
-                <input type="text" value={newTerm} onChange={(e) => setNewTerm(e.target.value)} placeholder="Custom term\u2026"
+                <input type="text" value={newTerm} onChange={(e) => setNewTerm(e.target.value)} placeholder="Custom term…"
                   className="flex-1 rounded border border-gray-300 px-1.5 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
                   onKeyDown={(e) => { if (e.key === "Enter" && newTerm.trim()) { onAddCustomTerm(newTerm.trim()); onUpdateCommandTerm(part.id, newTerm.trim()); setNewTerm(""); setShowTermDropdown(false); } }} />
                 <button type="button" onClick={() => { if (newTerm.trim()) { onAddCustomTerm(newTerm.trim()); onUpdateCommandTerm(part.id, newTerm.trim()); setNewTerm(""); setShowTermDropdown(false); } }}
@@ -626,11 +626,11 @@ function QuestionPartRow({
             <span className="text-xs text-red-700 font-semibold">Delete this part?</span>
             <button type="button" disabled={deletingPartId === part.id}
               onClick={async () => { setDeletingPartId(part.id); try { await fetch("/api/questions/part-metadata", { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partId: part.id }) }); onRefresh(); } finally { setDeletingPartId(null); setConfirmDeletePartId(null); } }}
-              className="rounded bg-red-600 px-2 py-0.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">{deletingPartId === part.id ? "\u2026" : "Yes"}</button>
+              className="rounded bg-red-600 px-2 py-0.5 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50">{deletingPartId === part.id ? "…" : "Yes"}</button>
             <button type="button" onClick={() => setConfirmDeletePartId(null)} className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100">No</button>
           </div>
         ) : (
-          <button type="button" onClick={() => setConfirmDeletePartId(part.id)} className="ml-auto rounded border border-red-200 bg-white px-2 py-0.5 text-xs text-red-500 hover:bg-red-50">\ud83d\uddd1</button>
+          <button type="button" onClick={() => setConfirmDeletePartId(part.id)} className="ml-auto rounded border border-red-200 bg-white px-2 py-0.5 text-xs text-red-500 hover:bg-red-50">🗑</button>
         )}
       </div>
 
@@ -638,7 +638,7 @@ function QuestionPartRow({
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-blue-700">Edit LaTeX</span>
-            <span className="text-[10px] text-gray-400 cursor-help" title={HINT_TOOLTIP}>\u24d8</span>
+            <span className="text-[10px] text-gray-400 cursor-help" title={HINT_TOOLTIP}>ⓘ</span>
           </div>
           <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} rows={3}
             className="w-full rounded border border-blue-300 px-2 py-1 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400 max-w-2xl" />
@@ -649,7 +649,7 @@ function QuestionPartRow({
             </div>
           )}
           <div className="flex gap-1.5">
-            <button type="button" onClick={() => savePartField(part.id, "latex", editDraft)} disabled={savingField} className="rounded bg-blue-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{savingField ? "Saving\u2026" : "Save"}</button>
+            <button type="button" onClick={() => savePartField(part.id, "latex", editDraft)} disabled={savingField} className="rounded bg-blue-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{savingField ? "Saving…" : "Save"}</button>
             <button type="button" onClick={() => { setEditingPartId(null); setEditingField(null); }} className="rounded border border-gray-300 px-2.5 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100">Cancel</button>
           </div>
         </div>
@@ -658,7 +658,7 @@ function QuestionPartRow({
           <div className="text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 group"
             onClick={() => { setEditingPartId(part.id); setEditingField("latex"); setEditDraft(partLatex); }} title="Click to edit LaTeX">
             <LatexRenderer latex={partLatex} />
-            <span className="ml-1 text-[10px] text-gray-400 opacity-0 group-hover:opacity-100">\u270f</span>
+            <span className="ml-1 text-[10px] text-gray-400 opacity-0 group-hover:opacity-100">✏</span>
           </div>
         )
       )}
@@ -684,10 +684,10 @@ function QuestionPartRow({
                 onUpdateSubtopics(part.id, newOrder, part.primary_subtopic_code);
               }}
               className={`flex items-center gap-0.5 rounded-full border text-[11px] font-semibold px-2 py-0.5 cursor-grab active:cursor-grabbing transition-colors ${dragOverCode === code ? "border-blue-500 bg-blue-100" : isPrimary ? "border-emerald-400 bg-emerald-50 text-emerald-800" : "border-blue-200 bg-blue-50 text-blue-800"}`}>
-              {isPrimary && <span className="text-emerald-600 text-[9px] mr-0.5">\u2605</span>}
+              {isPrimary && <span className="text-emerald-600 text-[9px] mr-0.5">★</span>}
               <button type="button" title={`Set "${code}" as primary subtopic`} onClick={() => onUpdateSubtopics(part.id, currentCodes, code)} className="hover:text-emerald-700">{code}</button>
-              {sub && <span className="text-gray-500 hidden sm:inline ml-0.5">\u2014 {sub.descriptor.slice(0, 25)}{sub.descriptor.length > 25 ? "\u2026" : ""}</span>}
-              <button type="button" onClick={() => handleRemoveSubtopic(code)} className="ml-1 rounded-full hover:bg-red-100 hover:text-red-600 text-gray-400 w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold">\u00d7</button>
+              {sub && <span className="text-gray-500 hidden sm:inline ml-0.5">— {sub.descriptor.slice(0, 25)}{sub.descriptor.length > 25 ? "…" : ""}</span>}
+              <button type="button" onClick={() => handleRemoveSubtopic(code)} className="ml-1 rounded-full hover:bg-red-100 hover:text-red-600 text-gray-400 w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold">×</button>
             </div>
           );
         })}
@@ -699,7 +699,7 @@ function QuestionPartRow({
           {showSubtopicDropdown && (
             <div className="absolute left-0 top-full mt-1 z-30 bg-white border border-gray-200 rounded-lg shadow-lg w-72 max-h-64 overflow-y-auto">
               <div className="p-1.5 border-b border-gray-100 sticky top-0 bg-white">
-                <input type="text" value={subtopicSearch} onChange={(e) => setSubtopicSearch(e.target.value)} placeholder="Search subtopics\u2026"
+                <input type="text" value={subtopicSearch} onChange={(e) => setSubtopicSearch(e.target.value)} placeholder="Search subtopics…"
                   className="w-full rounded border border-gray-300 px-2 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" autoFocus />
               </div>
               {Object.entries(filteredSubtopicsBySection).map(([sec, subs]) => (
@@ -710,7 +710,7 @@ function QuestionPartRow({
                       onClick={() => { const newCodes = [...currentCodes, sub.code]; onUpdateSubtopics(part.id, newCodes); setShowSubtopicDropdown(false); setSubtopicSearch(""); }}
                       className="w-full text-left px-3 py-1 text-xs hover:bg-blue-50 text-gray-700">
                       <span className="font-mono font-semibold text-blue-700">{sub.code}</span>
-                      <span className="text-gray-500 ml-1">\u2014 {sub.descriptor}</span>
+                      <span className="text-gray-500 ml-1">— {sub.descriptor}</span>
                     </button>
                   ))}
                 </div>
@@ -724,7 +724,7 @@ function QuestionPartRow({
   );
 }
 
-// ── ImageSection ─────────────────────────────────────────────────────────────
+// ── ImageSection ───────────────────────────────────────────────────────────────────────────
 // Each image type group (Question / Markscheme) renders as a horizontally-paired
 // block: [image stack] | [LaTeX panel], both columns independently scrollable.
 // The paired layout always renders for both groups so the Markscheme section
@@ -825,17 +825,17 @@ function ImageSection({
           {driveConnected && (
             <button type="button" onClick={onExtractImages} disabled={extracting}
               className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
-              {extracting ? "Extracting\u2026" : "\u21bb Extract from Docs"}
+              {extracting ? "Extracting…" : "↻ Extract from Docs"}
             </button>
           )}
           {hasTroubleshooting && (
             <button type="button" onClick={onCopyTroubleshooting}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-              {troubleshootingCopied ? "\u2713 Copied" : "Copy Report"}
+              {troubleshootingCopied ? "✓ Copied" : "Copy Report"}
             </button>
           )}
           {(questionImages.length > 0 || msImages.length > 0) && (
-            <button type="button" onClick={onDeleteAllImages} className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">\ud83d\uddd1 Delete All</button>
+            <button type="button" onClick={onDeleteAllImages} className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">🗑 Delete All</button>
           )}
         </div>
       </div>
@@ -852,7 +852,7 @@ function ImageSection({
               <button type="button" disabled={uploadingImage} title="Paste clipboard image, or click to choose a file"
                 onClick={() => handleSmartUpload(type, fileRef)}
                 className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-                {uploadingImage ? "Uploading\u2026" : "\ud83d\udccb Upload"}
+                {uploadingImage ? "Uploading…" : "📋 Upload"}
               </button>
             </div>
           </div>
@@ -891,12 +891,12 @@ function ImageSection({
                       className="block max-w-full w-full h-auto"
                     />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center pointer-events-none">
-                      <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-sm font-semibold px-3 py-1.5 rounded-full">\ud83d\udd0d Click to enlarge</span>
+                      <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-sm font-semibold px-3 py-1.5 rounded-full">🔍 Click to enlarge</span>
                     </div>
                     <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button type="button" onClick={() => onDeleteImage(img.id)} disabled={deletingImageIds.has(img.id)}
                         className="rounded-full bg-red-600 text-white w-8 h-8 text-sm font-bold flex items-center justify-center hover:bg-red-700 disabled:opacity-50 shadow-lg">
-                        {deletingImageIds.has(img.id) ? "\u2026" : "\u00d7"}
+                        {deletingImageIds.has(img.id) ? "…" : "×"}
                       </button>
                     </div>
                     <div className="absolute bottom-2 left-2 bg-black/60 rounded-full px-2.5 py-1 text-xs text-white font-semibold shadow">
@@ -908,10 +908,10 @@ function ImageSection({
                   <div className={`flex flex-col items-center justify-center h-full rounded-xl border-2 border-dashed ${
                     type === "markscheme" ? "border-emerald-200 bg-emerald-50/40" : "border-indigo-200 bg-indigo-50/40"
                   }`}>
-                    <span className="text-2xl mb-2">{type === "markscheme" ? "\ud83d\udcdd" : "\ud83d\udcc4"}</span>
+                    <span className="text-2xl mb-2">{type === "markscheme" ? "📝" : "📄"}</span>
                     <p className="text-xs text-gray-400 font-medium text-center px-3">No {label.toLowerCase()} images yet</p>
                     {driveConnected && (
-                      <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use \u201cExtract from Docs\u201d or \u201cUpload\u201d</p>
+                      <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use “Extract from Docs” or “Upload”</p>
                     )}
                   </div>
                 )}
@@ -954,7 +954,7 @@ function ImageSection({
                             ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                             : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                         }`}>
-                        {convertingLatex === type ? "Converting\u2026" : convertLabel}
+                        {convertingLatex === type ? "Converting…" : convertLabel}
                       </button>
                     )}
                     {convertLatexError && convertingLatex === null && (
@@ -977,7 +977,7 @@ function ImageSection({
         <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/85" onClick={closeLightbox}>
           <button type="button" onClick={(e) => { e.stopPropagation(); prevImage(); }} disabled={lightboxIndex === 0}
             className="absolute left-4 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/20 hover:bg-white/40 disabled:opacity-20 disabled:cursor-not-allowed text-white w-14 h-14 flex items-center justify-center text-3xl font-bold transition-all shadow-xl border border-white/30"
-            title="Previous (\u2190)">\u2039</button>
+            title="Previous (←)">‹</button>
 
           <div className="relative flex flex-col items-center" style={{ maxWidth: "88vw", maxHeight: "90vh" }} onClick={(e) => e.stopPropagation()}>
             <img
@@ -987,11 +987,11 @@ function ImageSection({
               className="rounded-lg shadow-2xl bg-white"
             />
             <div className="mt-3 flex items-center gap-4 bg-black/60 rounded-full px-5 py-2 text-white text-sm font-semibold">
-              <span>{currentLightboxImage.section === "question" ? "\ud83d\udcc4 Question" : "\ud83d\udcdd Markscheme"}</span>
-              <span className="text-white/50">\u00b7</span>
+              <span>{currentLightboxImage.section === "question" ? "📄 Question" : "📝 Markscheme"}</span>
+              <span className="text-white/50">·</span>
               <span>{(lightboxIndex ?? 0) + 1} / {allImages.length}</span>
-              <span className="text-white/50">\u00b7</span>
-              <span className="text-white/70 text-xs">\u2190 \u2192 to navigate \u00b7 Esc to close</span>
+              <span className="text-white/50">·</span>
+              <span className="text-white/70 text-xs">← → to navigate · Esc to close</span>
             </div>
             {allImages.length > 1 && (
               <div className="mt-2 flex gap-1.5">
@@ -1006,7 +1006,7 @@ function ImageSection({
 
           <button type="button" onClick={(e) => { e.stopPropagation(); nextImage(); }} disabled={lightboxIndex === allImages.length - 1}
             className="absolute right-4 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/20 hover:bg-white/40 disabled:opacity-20 disabled:cursor-not-allowed text-white w-14 h-14 flex items-center justify-center text-3xl font-bold transition-all shadow-xl border border-white/30"
-            title="Next (\u2192)">\u203a</button>
+            title="Next (→)">›</button>
         </div>,
         document.body
       )}
