@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 
+// Build: 2026-06-16
 const nextConfig: NextConfig = {
   devIndicators: false,
   // Prevent webpack from bundling native/binary packages used in API routes
