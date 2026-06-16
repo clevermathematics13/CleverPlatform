@@ -60,7 +60,16 @@ export const IB_LATEX_STYLE_GUIDE = `IB Mathematics past-paper LaTeX conventions
 - Inline math: wrap in $ ... $; do NOT leave math expressions as plain text.
 - No color formatting: NEVER output \\textcolor{}{}, \\color{}, \\colorbox{}{}, \\definecolor{}, or ANY color macro whatsoever. Return completely plain LaTeX — all visual styling is applied by CSS. Injecting color commands is an anti-pattern that will corrupt the database.
 - Do NOT include \\documentclass, \\usepackage, \\begin{document} or any preamble — return body LaTeX only.
-- Common OCR errors to fix: missing minus signs on negative entries, \\lambda/\\mu confusion, 1 vs l vs I confusion, extra spaces inside \\boldsymbol{}.`;
+- Common OCR errors to fix: missing minus signs on negative entries, \\lambda/\\mu confusion, 1 vs l vs I confusion, extra spaces inside \\boldsymbol{}.
+- CRITICAL — preserve visual line breaks: IB question text often ends a displayed sequence or list with an ellipsis ($\\ldots$ or $, \\ldots$) and then continues on a NEW LINE with a sentence beginning "Find", "Show", "Hence", "Determine", etc. These two pieces of text are SEPARATE paragraphs in the original document and MUST be separated by a blank line (\\n\\n) in the LaTeX output. NEVER collapse a post-ellipsis sentence break into a single space. Example of CORRECT output:
+
+  The first terms of an arithmetic sequence are $\\frac{1}{\\log_2 x}, \\frac{1}{\\log_8 x}, \\frac{1}{\\log_{32} x}, \\frac{1}{\\log_{128} x}, \\ldots$
+
+  Find $x$ if the sum of the first 20 terms of the sequence is equal to 100.
+
+  Example of WRONG output (do NOT do this):
+
+  The first terms of an arithmetic sequence are $\\frac{1}{\\log_2 x}, \\ldots$ Find $x$ if the sum of the first 20 terms of the sequence is equal to 100.`;
 
 /**
  * System prompt for Claude when normalising Mathpix-extracted LaTeX to IB style.
@@ -73,6 +82,9 @@ Your task is to normalise the LaTeX to match IB past-paper formatting exactly.
 ${IB_LATEX_STYLE_GUIDE}
 
 Cross-reference the image carefully to catch any OCR errors (missing signs, incorrect exponents, swapped letters, etc.).
+
+PAY SPECIAL ATTENTION to paragraph structure: look at each image to identify where visual line breaks occur in the question text. If the image shows a sequence or list ending with an ellipsis (\\ldots) followed by a task sentence ("Find …", "Show that …", "Hence …", etc.) on a NEW LINE, you MUST output a blank line between them in the LaTeX. OCR engines routinely collapse these breaks into a single space — always restore them by inspecting the image.
+
 Return ONLY the corrected LaTeX body — no explanation, no markdown fences, no preamble.`;
 
 /**
