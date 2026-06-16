@@ -621,7 +621,7 @@ function QuestionPartRow({
         <div className="space-y-1">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-semibold text-blue-700">Edit LaTeX</span>
-            <span className="text-[10px] text-gray-400 cursor-help" title={HINT_TOOLTIP">ⓘ</span>
+            <span className="text-[10px] text-gray-400 cursor-help" title={HINT_TOOLTIP}>ⓘ</span>
           </div>
           <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} rows={3}
             className="w-full rounded border border-blue-300 px-2 py-1 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400 max-w-2xl" />
