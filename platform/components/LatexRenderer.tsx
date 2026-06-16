@@ -57,7 +57,7 @@ function splitSegments(
   src: string
 ): { type: "text" | "inline" | "display"; content: string }[] {
   const re =
-    /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^$\n]*?)\$/g;
+    /\\\[(\s\S]*?)\\\]|\\\((\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^$\n]*?)\$/g;
   const segments: { type: "text" | "inline" | "display"; content: string }[] =
     [];
   let last = 0;
@@ -384,6 +384,16 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
   // Shared counter for the entire render pass so that ordinals match parseMSTokens
   const tokenCounter = { count: 0 };
 
+  // Track whether the segment immediately preceding the current one was a
+  // display-math block. Used to decide whether a blank text line is a
+  // meaningful paragraph break (emit <br>) or just a LaTeX vertical-space
+  // separator between equations (suppress).
+  //
+  // Rule:
+  //   blank line after display math  → suppress  (equation separator)
+  //   blank line after text          → emit <br> (paragraph / sentence break)
+  let prevSegWasDisplay = false;
+
   function renderTabularTable(tabular: ParsedTabular, key: string | number): React.ReactNode {
     const { aligns, hasBorders } = parseColSpec(tabular.colSpec);
     const alignMap: Record<string, React.CSSProperties["textAlign"]> = { l: "left", r: "right", c: "center" };
@@ -423,10 +433,19 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
     <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
       {segments.map((seg, i) => {
         if (seg.type === "text") {
-          // Split on newlines but skip blank lines to avoid double-spacing
-          // between display equations in mark schemes.
+          // Split on newlines and process each line.
+          //
+          // Blank-line handling:
+          //   • A blank line that follows a display-math segment is an equation
+          //     separator — suppress it (old behaviour, prevents double-spacing).
+          //   • A blank line that follows ordinary text is a meaningful paragraph
+          //     or sentence break — emit a <br> so the layout matches the source.
           const lines = seg.content.split("\n");
           const nodes: React.ReactNode[] = [];
+          // Within this text segment, track whether the last emitted item was
+          // a non-blank text line (so we can decide what to do with the next
+          // blank line we encounter).
+          let prevLineWasText = !prevSegWasDisplay;
           lines.forEach((line, j) => {
             const trimmed = line.trim();
             // Check for tabular marker
@@ -434,6 +453,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
             if (tabularMatch) {
               const idx = parseInt(tabularMatch[1], 10);
               if (tabularStore[idx]) nodes.push(renderTabularTable(tabularStore[idx], `${i}-${j}-tabular`));
+              prevLineWasText = false;
               return;
             }
             // [[GRAPH_JSON:<base64>]] — render an IbGraph component
@@ -444,6 +464,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
                 const spec: IbGraphSpec | null = decodeGraphSpec(gm[1]);
                 if (spec) {
                   nodes.push(<IbGraph key={`${i}-${j}-graph-json`} spec={spec} />);
+                  prevLineWasText = false;
                   return;
                 }
               }
@@ -464,18 +485,32 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
                 )
               );
               if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-graph-br`} />);
+              prevLineWasText = false;
               return;
             }
-            // Skip blank lines that only exist to separate equations
-            if (trimmed === "") return;
+            // Blank line:
+            //   after display math → suppress (equation gap, not a paragraph break)
+            //   after text         → emit <br> (preserve the source line break)
+            if (trimmed === "") {
+              if (prevLineWasText) {
+                nodes.push(<br key={`${i}-${j}-blank-br`} />);
+              }
+              // Do not update prevLineWasText — the blank line itself is neutral.
+              return;
+            }
             nodes.push(renderTextLine(line, `${i}-${j}-line`, highlightCommandTerm ?? null, contextTermsToHighlight, renderMarkAttribution, tokenCounter));
-            // Add a single line break after non-blank lines (except the last)
+            // Add a line break after non-blank lines (except the last in this segment).
             if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-br`} />);
+            prevLineWasText = true;
           });
+          // After processing this text segment, the next segment's blank-line
+          // decision should treat this as "following text" (not display math).
+          prevSegWasDisplay = false;
           return <React.Fragment key={i}>{nodes}</React.Fragment>;
         }
         const html = renderMath(seg.content, seg.type === "display");
         if (seg.type === "display") {
+          prevSegWasDisplay = true;
           return (
             <span
               key={i}
@@ -484,6 +519,8 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
             />
           );
         }
+        // inline math — treat like text for blank-line purposes
+        prevSegWasDisplay = false;
         return (
           <span
             key={i}
