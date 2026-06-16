@@ -263,7 +263,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     const endpoint = "/api/questions/extract-images";
     const payload = { questionId: question.id };
     if (question.google_ms_id && question.google_doc_id === question.google_ms_id) {
-      const message = "Question doc and markscheme doc are the same file — question doc link needs to be fixed before extracting images.";
+      const message = "Question doc and markscheme doc are the same file \u2014 question doc link needs to be fixed before extracting images.";
       setError(message);
       setDocExtractTroubleshooting((prev) => ({ ...prev, [question.id]: { capturedAt: new Date().toISOString(), questionId: question.id, code: question.code, googleDocId: question.google_doc_id ?? null, googleMsId: question.google_ms_id ?? null, request: { endpoint, method: "POST", payload }, response: { ok: false, status: 400, statusText: "CLIENT_PRECHECK_FAILED", durationMs: 0, body: { error: message } }, appContext: { driveConnected, globalError: error } } }));
       return;
@@ -926,10 +926,9 @@ function QuestionEditorModal({
       <div className="bg-white rounded-2xl shadow-2xl flex flex-col" style={{ width: "90vw", maxHeight: "92vh" }}>
 
         {/* \u2500\u2500 Question Studio header \u2500\u2500 */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-2xl shrink-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Title badge */}
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1 text-sm font-bold text-white shadow-sm">
+        <div className="flex items-center px-6 py-3.5 border-b border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-2xl shrink-0">
+          <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1 text-sm font-bold text-white shadow-sm shrink-0">
               Question Studio
             </span>
             {question && (
@@ -941,52 +940,50 @@ function QuestionEditorModal({
                 }`}>
                   {question.level === "AHL" ? "HL" : "SL"}
                 </span>
-                <span className="text-xs text-gray-400 font-medium">P{question.paper} \u00b7 {question.session} \u00b7 {question.timezone ?? "\u2014"}</span>
               </>
             )}
             {!question && !fetchLoading && (
               <span className="text-sm text-gray-400 italic">Loading question\u2026</span>
             )}
           </div>
-          <button type="button" onClick={onClose}
-            className="rounded-full w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-red-100 hover:text-red-600 text-xl font-bold transition-colors"
-            title="Close (Esc)">\u2715</button>
         </div>
 
-        {/* \u2500\u2500 Body \u2500\u2500 */}
-        <div className="overflow-y-auto flex-1">
+        {/* \u2500\u2500 Body: outer wrapper does NOT scroll; each column scrolls independently \u2500\u2500 */}
+        <div className="flex-1 min-h-0 overflow-hidden">
           {fetchLoading && <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Loading\u2026</div>}
           {fetchError && <div className="p-6 text-sm text-red-600 bg-red-50 rounded-b-2xl">Error: {fetchError}</div>}
           {!fetchLoading && !fetchError && !question && <div className="p-6 text-sm text-gray-400 italic">Question not found.</div>}
           {!fetchLoading && !fetchError && question && (
-            <table className="w-full">
-              <tbody>
-                <QuestionRow
-                  question={question} expanded={true} onOpen={() => {}} onClose={onClose}
-                  totalMarks={totalMarks} commandTerms={allCommandTerms}
-                  onUpdateCommandTerm={updateCommandTerm} onAddCustomTerm={addCustomTerm}
-                  availableSubtopics={availableSubtopics} onUpdateSubtopics={updateSubtopics}
-                  images={questionImagesMap[question.id] ?? []} extracting={extracting.has(question.id)}
-                  driveConnected={driveConnected} onExtractImages={() => extractImages(question)}
-                  hasTroubleshooting={!!docExtractTroubleshooting[question.id]}
-                  troubleshootingCopied={docTroubleshootingCopied.has(question.id)}
-                  onCopyTroubleshooting={() => copyQuestionTroubleshooting(question.id)}
-                  deletingImageIds={deletingImage} uploadingImage={uploadingImage.has(question.id)}
-                  onDeleteImage={(imageId) => deleteImage(question.id, imageId)}
-                  onDeleteAllImages={() => deleteAllImages(question.id, questionImagesMap[question.id] ?? [])}
-                  onReorderImages={(imageType, orderedIds) => reorderImages(question.id, imageType, orderedIds)}
-                  onUploadImage={(imageType, file) => uploadImage(question.id, imageType, file)}
-                  testBuilderOpen={testBuilderOpen} inQueue={!!testQueue.find((item) => item.id === question.id)}
-                  onAddToQueue={() => addToQueue(question)} savedExamWithQuestion={savedExamContaining(question.id)}
-                  onOpenSavedExam={loadExam} savingSection={savingSection.has(question.id)}
-                  onUpdateSection={(section) => updateSection(question.id, section)}
-                  onRefresh={() => { loadQuestions(); loadImages(question.id); }}
-                  onQueueMarksChange={(qId, marks) =>
-                    setTestQueue((prev) => prev.map((item) => item.id === qId ? { ...item, marks } : item))
-                  }
-                />
-              </tbody>
-            </table>
+            <div className="h-full overflow-y-auto">
+              <table className="w-full">
+                <tbody>
+                  <QuestionRow
+                    question={question} expanded={true} onOpen={() => {}} onClose={onClose}
+                    totalMarks={totalMarks} commandTerms={allCommandTerms}
+                    onUpdateCommandTerm={updateCommandTerm} onAddCustomTerm={addCustomTerm}
+                    availableSubtopics={availableSubtopics} onUpdateSubtopics={updateSubtopics}
+                    images={questionImagesMap[question.id] ?? []} extracting={extracting.has(question.id)}
+                    driveConnected={driveConnected} onExtractImages={() => extractImages(question)}
+                    hasTroubleshooting={!!docExtractTroubleshooting[question.id]}
+                    troubleshootingCopied={docTroubleshootingCopied.has(question.id)}
+                    onCopyTroubleshooting={() => copyQuestionTroubleshooting(question.id)}
+                    deletingImageIds={deletingImage} uploadingImage={uploadingImage.has(question.id)}
+                    onDeleteImage={(imageId) => deleteImage(question.id, imageId)}
+                    onDeleteAllImages={() => deleteAllImages(question.id, questionImagesMap[question.id] ?? [])}
+                    onReorderImages={(imageType, orderedIds) => reorderImages(question.id, imageType, orderedIds)}
+                    onUploadImage={(imageType, file) => uploadImage(question.id, imageType, file)}
+                    testBuilderOpen={testBuilderOpen} inQueue={!!testQueue.find((item) => item.id === question.id)}
+                    onAddToQueue={() => addToQueue(question)} savedExamWithQuestion={savedExamContaining(question.id)}
+                    onOpenSavedExam={loadExam} savingSection={savingSection.has(question.id)}
+                    onUpdateSection={(section) => updateSection(question.id, section)}
+                    onRefresh={() => { loadQuestions(); loadImages(question.id); }}
+                    onQueueMarksChange={(qId, marks) =>
+                      setTestQueue((prev) => prev.map((item) => item.id === qId ? { ...item, marks } : item))
+                    }
+                  />
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </div>
