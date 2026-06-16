@@ -738,7 +738,18 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         <div className="flex items-center gap-3">
           <p className="text-base font-bold text-blue-900">{loading ? "Loading\u2026" : `${total} question${total !== 1 ? "s" : ""} found`}</p>
           <button type="button" suppressHydrationWarning onClick={() => setAddQuestionOpen(true)} className="rounded-lg border-2 border-emerald-400 bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50">+ New Question</button>
-          <button type="button" onClick={() => { setTestBuilderOpen((v) => { if (!v) window.dispatchEvent(new CustomEvent("exam-builder-open")); return !v; }); }} className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${testBuilderOpen ? "bg-indigo-600 text-white hover:bg-indigo-700" : "border-2 border-indigo-400 text-indigo-700 bg-white hover:bg-indigo-50"}`} suppressHydrationWarning>\uD83C\uDFD7 ExamBuilder{testQueue.length > 0 ? ` (${testQueue.length})` : ""}</button>
+          <button
+            type="button"
+            onClick={() => { setTestBuilderOpen((v) => { if (!v) window.dispatchEvent(new CustomEvent("exam-builder-open")); return !v; }); }}
+            className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
+              testBuilderOpen
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "border-2 border-indigo-400 text-indigo-700 bg-white hover:bg-indigo-50"
+            }`}
+            suppressHydrationWarning
+          >
+            ExamBuilder{testQueue.length > 0 ? ` (${testQueue.length})` : ""}
+          </button>
         </div>
         {totalPages > 1 && (<div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-300 px-2 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">\u2190 Prev</button><span className="text-sm font-semibold text-blue-800">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-300 px-2 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Next \u2192</button></div>)}
       </div>
