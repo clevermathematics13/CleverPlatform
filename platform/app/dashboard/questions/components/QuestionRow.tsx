@@ -727,6 +727,8 @@ function QuestionPartRow({
 // ── ImageSection ─────────────────────────────────────────────────────────────
 // Each image type group (Question / Markscheme) renders as a horizontally-paired
 // block: [image stack] | [LaTeX panel], both columns independently scrollable.
+// The paired layout always renders for both groups so the Markscheme section
+// is always visible and actionable, even before images are extracted.
 
 type LatexEntry = { label: string | null; latex: string };
 
@@ -838,7 +840,7 @@ function ImageSection({
         </div>
       </div>
 
-      {/* Per-type paired rows */}
+      {/* Per-type paired rows — always rendered for both Question and Markscheme */}
       {groups.map(({ label, type, imgs, latex, fileRef, accentBorder, accentHeader, accentText, convertLabel }) => (
         <div key={type} className="space-y-1">
           {/* Row header with upload button */}
@@ -855,15 +857,14 @@ function ImageSection({
             </div>
           </div>
 
-          {/* Horizontal pair: image column + LaTeX column — each scrolls independently */}
-          {(imgs.length > 0 || latex.length > 0) ? (
-            <div className="flex gap-3 items-stretch">
+          {/* Horizontal pair: image column + LaTeX column — always rendered, each scrolls independently */}
+          <div className="flex gap-3 items-stretch">
 
-              {/* Image column — fixed height, scrolls independently */}
-              <div
-                className="overflow-y-auto flex flex-col gap-3 min-w-0"
-                style={{ width: "50%", height: PANEL_HEIGHT }}
-              >
+            {/* Image column — fixed height, scrolls independently */}
+            <div
+              className="overflow-y-auto flex flex-col gap-3 min-w-0"
+              style={{ width: "50%", height: PANEL_HEIGHT }}
+            >
                 {imgs.length > 0 ? imgs.map((img) => (
                   <div key={img.id} draggable
                     onDragStart={(e) => { e.dataTransfer.setData("text/plain", img.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -903,7 +904,16 @@ function ImageSection({
                     </div>
                   </div>
                 )) : (
-                  <p className="text-xs text-gray-400 italic self-center">No {label.toLowerCase()} images</p>
+                  /* Empty state — shown when no images extracted yet for this type */
+                  <div className={`flex flex-col items-center justify-center h-full rounded-xl border-2 border-dashed ${
+                    type === "markscheme" ? "border-emerald-200 bg-emerald-50/40" : "border-indigo-200 bg-indigo-50/40"
+                  }`}>
+                    <span className="text-2xl mb-2">{type === "markscheme" ? "\ud83d\udcdd" : "\ud83d\udcc4"}</span>
+                    <p className="text-xs text-gray-400 font-medium text-center px-3">No {label.toLowerCase()} images yet</p>
+                    {driveConnected && (
+                      <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use \u201cExtract from Docs\u201d or \u201cUpload\u201d</p>
+                    )}
+                  </div>
                 )}
               </div>
 
@@ -954,9 +964,7 @@ function ImageSection({
                 )}
               </div>
             </div>
-          ) : (
-            <p className="text-xs text-gray-400 italic">No {label.toLowerCase()} images</p>
-          )}
+          </div>
         </div>
       ))}
 
