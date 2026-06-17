@@ -45,10 +45,16 @@ export function ImageSection({
   convertLatexError: string | null;
   onConvertLatex: (imageType: "question" | "markscheme") => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"question" | "markscheme">("question");
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const qFileRef = useRef<HTMLInputElement>(null);
   const msFileRef = useRef<HTMLInputElement>(null);
+
+  // Auto-switch to markscheme tab if MS images load but Q images are empty
+  useEffect(() => {
+    if (msImages.length > 0 && questionImages.length === 0) setActiveTab("markscheme");
+  }, [msImages.length, questionImages.length]);
 
   const allImages: (QuestionImage & { section: "question" | "markscheme" })[] = [
     ...questionImages.map((img) => ({ ...img, section: "question" as const })),
@@ -81,23 +87,29 @@ export function ImageSection({
     if (clipFile) { onUploadImage(type, clipFile); } else { fileRef.current?.click(); }
   };
 
-  const groups: {
-    label: string; type: "question" | "markscheme"; imgs: QuestionImage[];
-    latex: LatexEntry[]; fileRef: React.RefObject<HTMLInputElement | null>;
-    accentBorder: string; accentHeader: string; accentText: string; convertLabel: string;
-  }[] = [
-    { label: "Question", type: "question", imgs: questionImages, latex: questionLatex, fileRef: qFileRef,
+  const groups = [
+    {
+      label: "Question", type: "question" as const, imgs: questionImages, latex: questionLatex, fileRef: qFileRef,
       accentBorder: "border-indigo-200", accentHeader: "bg-indigo-50 border-b border-indigo-200",
-      accentText: "text-indigo-700", convertLabel: "Convert question images to LaTeX" },
-    { label: "Markscheme", type: "markscheme", imgs: msImages, latex: msLatex, fileRef: msFileRef,
+      accentText: "text-indigo-700", convertLabel: "Convert question images to LaTeX",
+      tabActive: "bg-indigo-600 text-white", tabInactive: "text-indigo-600 hover:bg-indigo-50",
+    },
+    {
+      label: "Markscheme", type: "markscheme" as const, imgs: msImages, latex: msLatex, fileRef: msFileRef,
       accentBorder: "border-emerald-200", accentHeader: "bg-emerald-50 border-b border-emerald-200",
-      accentText: "text-emerald-700", convertLabel: "Convert markscheme images to LaTeX" },
+      accentText: "text-emerald-700", convertLabel: "Convert markscheme images to LaTeX",
+      tabActive: "bg-emerald-600 text-white", tabInactive: "text-emerald-600 hover:bg-emerald-50",
+    },
   ];
 
-  const PANEL_HEIGHT = "480px";
+  const active = groups.find((g) => g.type === activeTab)!;
+  const { label, type, imgs, latex, fileRef, accentBorder, accentHeader, accentText, convertLabel } = active;
+
+  const PANEL_HEIGHT = "440px";
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
+      {/* Toolbar */}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <p className="text-xs font-bold text-gray-700">Images</p>
         <div className="flex items-center gap-2 flex-wrap">
@@ -121,127 +133,153 @@ export function ImageSection({
           )}
         </div>
       </div>
-      {groups.map(({ label, type, imgs, latex, fileRef, accentBorder, accentHeader, accentText, convertLabel }) => (
-        <div key={type} className="space-y-1">
-          <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold text-gray-600">{label}</p>
-            <div className="flex items-center gap-1.5">
-              <input ref={fileRef} type="file" accept="image/*" className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) { onUploadImage(type, f); e.target.value = ""; } }} />
-              <button type="button" disabled={uploadingImage}
-                title="Paste clipboard image, or click to choose a file"
-                onClick={() => handleSmartUpload(type, fileRef)}
-                className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-                {uploadingImage ? "Uploading…" : "📋 Upload"}
-              </button>
-            </div>
-          </div>
-          <div className="flex gap-3 items-stretch">
-            <div className="overflow-y-auto flex flex-col gap-3 min-w-0" style={{ width: "50%", height: PANEL_HEIGHT }}>
-              {imgs.length > 0 ? imgs.map((img) => (
-                <div key={img.id} draggable
-                  onDragStart={(e) => { e.dataTransfer.setData("text/plain", img.id); e.dataTransfer.effectAllowed = "move"; }}
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverImageId(img.id); }}
-                  onDragLeave={() => setDragOverImageId(null)}
-                  onDrop={(e) => {
-                    e.preventDefault(); setDragOverImageId(null);
-                    const draggedId = e.dataTransfer.getData("text/plain");
-                    if (draggedId === img.id) return;
-                    const ids = imgs.map((i) => i.id);
-                    const fromIdx = ids.indexOf(draggedId); const toIdx = ids.indexOf(img.id);
-                    if (fromIdx < 0 || toIdx < 0) return;
-                    const newOrder = [...ids]; newOrder.splice(fromIdx, 1); newOrder.splice(toIdx, 0, draggedId);
-                    onReorderImages(type, newOrder);
-                  }}
-                  className={`relative group rounded-xl overflow-hidden border-2 transition-all bg-white shadow-sm shrink-0 ${
-                    dragOverImageId === img.id ? "border-blue-500 scale-[1.02] cursor-grabbing" : "border-gray-200 hover:border-blue-400 hover:shadow-xl cursor-pointer"
-                  }`}
-                  onClick={(e) => { if ((e.target as HTMLElement).closest("button")) return; openLightbox(img.id); }}
-                >
-                  <img src={img.url ?? (img.storage_path.startsWith("http") ? img.storage_path : undefined)}
-                    alt={`${label} ${img.sort_order + 1}`} className="block max-w-full w-full h-auto" />
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center pointer-events-none">
-                    <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-sm font-semibold px-3 py-1.5 rounded-full">
-                      🔍 Click to enlarge
-                    </span>
-                  </div>
-                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button type="button" onClick={() => onDeleteImage(img.id)} disabled={deletingImageIds.has(img.id)}
-                      className="rounded-full bg-red-600 text-white w-8 h-8 text-sm font-bold flex items-center justify-center hover:bg-red-700 disabled:opacity-50 shadow-lg">
-                      {deletingImageIds.has(img.id) ? "…" : "×"}
-                    </button>
-                  </div>
-                  <div className="absolute bottom-2 left-2 bg-black/60 rounded-full px-2.5 py-1 text-xs text-white font-semibold shadow">
-                    {img.sort_order + 1} of {imgs.length}
-                  </div>
-                </div>
-              )) : (
-                <div className={`flex flex-col items-center justify-center h-full rounded-xl border-2 border-dashed ${
-                  type === "markscheme" ? "border-emerald-200 bg-emerald-50/40" : "border-indigo-200 bg-indigo-50/40"
-                }`}>
-                  <span className="text-2xl mb-2">{type === "markscheme" ? "📝" : "📄"}</span>
-                  <p className="text-xs text-gray-400 font-medium text-center px-3">
-                    No {label.toLowerCase()} images yet
-                  </p>
-                  {driveConnected && (
-                    <p className="text-[10px] text-gray-400 mt-1 text-center px-3">
-                      Use "Extract from Docs" or "Upload"
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className={`overflow-y-auto rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}
-              style={{ height: PANEL_HEIGHT }}>
-              <div className={`sticky top-0 z-10 ${accentHeader} px-3 py-2`}>
-                <span className={`text-[11px] font-bold ${accentText} tracking-wide uppercase`}>{label} LaTeX</span>
-              </div>
-              {latex.length > 0 ? (
-                <div className="divide-y divide-gray-100">
-                  {latex.map(({ label: partLabel, latex: tex }, i) => (
-                    <div key={i} className="px-3 py-2.5 space-y-1">
-                      {partLabel && (
-                        <span className={`inline-block text-[10px] font-bold font-mono ${accentText} bg-opacity-10 rounded px-1.5 py-0.5 bg-current`}
-                          style={{ opacity: 1 }}>
-                          <span className={`${accentText} opacity-100`}>({partLabel})</span>
-                        </span>
-                      )}
-                      <div className="text-sm leading-relaxed text-gray-800 overflow-x-auto">
-                        <LatexRenderer latex={tex} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="px-4 py-4 space-y-3">
-                  <p className="text-xs text-gray-500 leading-snug">
-                    No LaTeX stored. Convert the image to extract it.
-                  </p>
-                  {imgs.length > 0 && (
-                    <button type="button" disabled={convertingLatex !== null}
-                      onClick={() => onConvertLatex(type)}
-                      className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-90 disabled:opacity-50 text-left ${
-                        type === "question"
-                          ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                          : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                      }`}>
-                      {convertingLatex === type ? "Converting…" : convertLabel}
-                    </button>
-                  )}
-                  {convertLatexError && convertingLatex === null && (
-                    <p className="text-xs text-red-600 font-semibold">{convertLatexError}</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+
+      {/* Tabs */}
+      <div className="flex items-center gap-1 border-b border-gray-200">
+        {groups.map((g) => (
+          <button
+            key={g.type}
+            type="button"
+            onClick={() => setActiveTab(g.type)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-t-md border border-b-0 transition-colors ${
+              activeTab === g.type
+                ? g.tabActive + " border-gray-200 -mb-px"
+                : g.tabInactive + " border-transparent"
+            }`}
+          >
+            {g.type === "question" ? "📄" : "📝"} {g.label}
+            {g.imgs.length > 0 && (
+              <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
+                activeTab === g.type ? "bg-white/30" : g.type === "question" ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
+              }`}>
+                {g.imgs.length}
+              </span>
+            )}
+          </button>
+        ))}
+        {/* Per-tab upload button inline with tabs */}
+        <div className="ml-auto flex items-center gap-1.5 pb-1">
+          <input ref={fileRef} type="file" accept="image/*" className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) { onUploadImage(type, f); e.target.value = ""; } }} />
+          <button type="button" disabled={uploadingImage}
+            title="Paste clipboard image, or click to choose a file"
+            onClick={() => handleSmartUpload(type, fileRef)}
+            className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            {uploadingImage ? "Uploading…" : "📋 Upload"}
+          </button>
         </div>
-      ))}
+      </div>
+
+      {/* Active panel */}
+      <div className="flex gap-3 items-stretch">
+        {/* Image column */}
+        <div className="overflow-y-auto flex flex-col gap-3 min-w-0" style={{ width: "50%", height: PANEL_HEIGHT }}>
+          {imgs.length > 0 ? imgs.map((img) => (
+            <div key={img.id} draggable
+              onDragStart={(e) => { e.dataTransfer.setData("text/plain", img.id); e.dataTransfer.effectAllowed = "move"; }}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverImageId(img.id); }}
+              onDragLeave={() => setDragOverImageId(null)}
+              onDrop={(e) => {
+                e.preventDefault(); setDragOverImageId(null);
+                const draggedId = e.dataTransfer.getData("text/plain");
+                if (draggedId === img.id) return;
+                const ids = imgs.map((i) => i.id);
+                const fromIdx = ids.indexOf(draggedId); const toIdx = ids.indexOf(img.id);
+                if (fromIdx < 0 || toIdx < 0) return;
+                const newOrder = [...ids]; newOrder.splice(fromIdx, 1); newOrder.splice(toIdx, 0, draggedId);
+                onReorderImages(type, newOrder);
+              }}
+              className={`relative group rounded-xl overflow-hidden border-2 transition-all bg-white shadow-sm shrink-0 ${
+                dragOverImageId === img.id ? "border-blue-500 scale-[1.02] cursor-grabbing" : "border-gray-200 hover:border-blue-400 hover:shadow-xl cursor-pointer"
+              }`}
+              onClick={(e) => { if ((e.target as HTMLElement).closest("button")) return; openLightbox(img.id); }}
+            >
+              <img src={img.url ?? (img.storage_path.startsWith("http") ? img.storage_path : undefined)}
+                alt={`${label} ${img.sort_order + 1}`} className="block max-w-full w-full h-auto" />
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center pointer-events-none">
+                <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-sm font-semibold px-3 py-1.5 rounded-full">
+                  🔍 Click to enlarge
+                </span>
+              </div>
+              <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button type="button" onClick={() => onDeleteImage(img.id)} disabled={deletingImageIds.has(img.id)}
+                  className="rounded-full bg-red-600 text-white w-8 h-8 text-sm font-bold flex items-center justify-center hover:bg-red-700 disabled:opacity-50 shadow-lg">
+                  {deletingImageIds.has(img.id) ? "…" : "×"}
+                </button>
+              </div>
+              <div className="absolute bottom-2 left-2 bg-black/60 rounded-full px-2.5 py-1 text-xs text-white font-semibold shadow">
+                {img.sort_order + 1} of {imgs.length}
+              </div>
+            </div>
+          )) : (
+            <div className={`flex flex-col items-center justify-center h-full rounded-xl border-2 border-dashed ${
+              type === "markscheme" ? "border-emerald-200 bg-emerald-50/40" : "border-indigo-200 bg-indigo-50/40"
+            }`}>
+              <span className="text-2xl mb-2">{type === "markscheme" ? "📝" : "📄"}</span>
+              <p className="text-xs text-gray-400 font-medium text-center px-3">
+                No {label.toLowerCase()} images yet
+              </p>
+              {driveConnected && (
+                <p className="text-[10px] text-gray-400 mt-1 text-center px-3">
+                  Use "Extract from Docs" or "Upload"
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* LaTeX column */}
+        <div className={`overflow-y-auto rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}
+          style={{ height: PANEL_HEIGHT }}>
+          <div className={`sticky top-0 z-10 ${accentHeader} px-3 py-2`}>
+            <span className={`text-[11px] font-bold ${accentText} tracking-wide uppercase`}>{label} LaTeX</span>
+          </div>
+          {latex.length > 0 ? (
+            <div className="divide-y divide-gray-100">
+              {latex.map(({ label: partLabel, latex: tex }, i) => (
+                <div key={i} className="px-3 py-2.5 space-y-1">
+                  {partLabel && (
+                    <span className={`inline-block text-[10px] font-bold font-mono ${accentText} bg-opacity-10 rounded px-1.5 py-0.5 bg-current`}
+                      style={{ opacity: 1 }}>
+                      <span className={`${accentText} opacity-100`}>({partLabel})</span>
+                    </span>
+                  )}
+                  <div className="text-sm leading-relaxed text-gray-800 overflow-x-auto">
+                    <LatexRenderer latex={tex} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="px-4 py-4 space-y-3">
+              <p className="text-xs text-gray-500 leading-snug">
+                No LaTeX stored. Convert the image to extract it.
+              </p>
+              {imgs.length > 0 && (
+                <button type="button" disabled={convertingLatex !== null}
+                  onClick={() => onConvertLatex(type)}
+                  className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-90 disabled:opacity-50 text-left ${
+                    type === "question"
+                      ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                      : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                  }`}>
+                  {convertingLatex === type ? "Converting…" : convertLabel}
+                </button>
+              )}
+              {convertLatexError && convertingLatex === null && (
+                <p className="text-xs text-red-600 font-semibold">{convertLatexError}</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
       {!driveConnected && questionImages.length === 0 && msImages.length === 0 && (
         <p className="text-xs text-gray-400 italic">
           Connect Google Drive to extract images from question documents.
         </p>
       )}
+
       {currentLightboxImage && createPortal(
         <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/85" onClick={closeLightbox}>
           <button type="button" onClick={(e) => { e.stopPropagation(); prevImage(); }} disabled={lightboxIndex === 0}
