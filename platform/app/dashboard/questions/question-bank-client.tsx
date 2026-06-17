@@ -851,7 +851,7 @@ function AddToExamModal({ questionCode, onConfirm, onCancel, saving }: { questio
   );
 }
 
-// ── QuestionEditorModal (Question Studio) ────────────────────────────────────
+// \u2500\u2500 QuestionEditorModal (Question Studio) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 function QuestionEditorModal({
   questionId, questions, questionImages: questionImagesMap, allCommandTerms, availableSubtopics,
@@ -919,7 +919,7 @@ function QuestionEditorModal({
   const totalMarks = question ? question.question_parts.reduce((sum, p) => sum + p.marks, 0) : 0;
 
   return createPortal(
-    // Overlay — handles all scrolling; click backdrop to close
+    // Overlay \u2014 handles all scrolling; click backdrop to close
     <div
       className="fixed inset-0 z-[300] overflow-y-auto bg-black/70"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -927,30 +927,38 @@ function QuestionEditorModal({
       <div className="flex min-h-full items-start justify-center py-6 px-3">
         <div className="bg-white rounded-2xl shadow-2xl w-[90vw]">
 
-          {/* Header — sticky so it stays in view while scrolling */}
-          <div className="sticky top-0 z-10 flex items-center px-6 py-3.5 border-b border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-2xl">
-            <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
-              <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1 text-sm font-bold text-white shadow-sm shrink-0">
-                Question Studio
-              </span>
-              {question && (
-                <>
-                  <span className="font-mono font-bold text-blue-900 text-base tracking-wide">{question.code}</span>
-                  <span className="text-xs text-gray-500 font-medium">{totalMarks} {totalMarks === 1 ? "mark" : "marks"}</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                    question.level === "AHL" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"
-                  }`}>
-                    {question.level === "AHL" ? "HL" : "SL"}
-                  </span>
-                </>
-              )}
-              {!question && !fetchLoading && (
-                <span className="text-sm text-gray-400 italic">Loading question\u2026</span>
-              )}
-            </div>
+          {/* Sticky header with \u2715 close button top-right */}
+          <div className="sticky top-0 z-10 flex items-center gap-3 px-6 py-3.5 border-b border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-2xl">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1 text-sm font-bold text-white shadow-sm shrink-0">
+              Question Studio
+            </span>
+            {question && (
+              <>
+                <span className="font-mono font-bold text-blue-900 text-base tracking-wide">{question.code}</span>
+                <span className="text-xs text-gray-500 font-medium">{totalMarks} {totalMarks === 1 ? "mark" : "marks"}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                  question.level === "AHL" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"
+                }`}>
+                  {question.level === "AHL" ? "HL" : "SL"}
+                </span>
+              </>
+            )}
+            {!question && !fetchLoading && (
+              <span className="text-sm text-gray-400 italic">Loading question\u2026</span>
+            )}
+            {/* Close \u2715 pinned to top-right */}
+            <button
+              type="button"
+              onClick={onClose}
+              title="Close (Esc)"
+              className="ml-auto shrink-0 rounded-full w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-indigo-100 hover:text-indigo-700 transition-colors text-xl font-bold leading-none"
+              aria-label="Close Question Studio"
+            >
+              \u00d7
+            </button>
           </div>
 
-          {/* Body — no overflow constraints; outer overlay scrolls */}
+          {/* Body \u2014 no overflow constraints; outer overlay scrolls */}
           <div>
             {fetchLoading && <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Loading\u2026</div>}
             {fetchError && <div className="p-6 text-sm text-red-600 bg-red-50 rounded-b-2xl">Error: {fetchError}</div>}
@@ -978,6 +986,7 @@ function QuestionEditorModal({
                       onAddToQueue={() => addToQueue(question)} savedExamWithQuestion={savedExamContaining(question.id)}
                       onOpenSavedExam={loadExam} savingSection={savingSection.has(question.id)}
                       onUpdateSection={(section) => updateSection(question.id, section)}
+                      hideCollapsedRow={true}
                       onRefresh={() => { loadQuestions(); loadImages(question.id); }}
                       onQueueMarksChange={(qId, marks) =>
                         setTestQueue((prev) => prev.map((item) => item.id === qId ? { ...item, marks } : item))
