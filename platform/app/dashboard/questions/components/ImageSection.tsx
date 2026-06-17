@@ -105,8 +105,6 @@ export function ImageSection({
   const active = groups.find((g) => g.type === activeTab)!;
   const { label, type, imgs, latex, fileRef, accentBorder, accentHeader, accentText, convertLabel } = active;
 
-  const PANEL_HEIGHT = "440px";
-
   return (
     <div className="space-y-2">
       {/* Toolbar */}
@@ -134,7 +132,7 @@ export function ImageSection({
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Tabs + upload button */}
       <div className="flex items-center gap-1 border-b border-gray-200">
         {groups.map((g) => (
           <button
@@ -157,7 +155,6 @@ export function ImageSection({
             )}
           </button>
         ))}
-        {/* Per-tab upload button inline with tabs */}
         <div className="ml-auto flex items-center gap-1.5 pb-1">
           <input ref={fileRef} type="file" accept="image/*" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) { onUploadImage(type, f); e.target.value = ""; } }} />
@@ -170,10 +167,10 @@ export function ImageSection({
         </div>
       </div>
 
-      {/* Active panel */}
+      {/* Active panel — no fixed height, grows with content, min-h so it fills the screen */}
       <div className="flex gap-3 items-stretch">
-        {/* Image column */}
-        <div className="overflow-y-auto flex flex-col gap-3 min-w-0" style={{ width: "50%", height: PANEL_HEIGHT }}>
+        {/* Image column — scrollable independently, fills available height */}
+        <div className="flex flex-col gap-3 min-w-0 overflow-y-auto" style={{ width: "50%", minHeight: "60vh" }}>
           {imgs.length > 0 ? imgs.map((img) => (
             <div key={img.id} draggable
               onDragStart={(e) => { e.dataTransfer.setData("text/plain", img.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -212,9 +209,9 @@ export function ImageSection({
               </div>
             </div>
           )) : (
-            <div className={`flex flex-col items-center justify-center h-full rounded-xl border-2 border-dashed ${
+            <div className={`flex flex-col items-center justify-center rounded-xl border-2 border-dashed ${
               type === "markscheme" ? "border-emerald-200 bg-emerald-50/40" : "border-indigo-200 bg-indigo-50/40"
-            }`}>
+            }`} style={{ minHeight: "60vh" }}>
               <span className="text-2xl mb-2">{type === "markscheme" ? "📝" : "📄"}</span>
               <p className="text-xs text-gray-400 font-medium text-center px-3">
                 No {label.toLowerCase()} images yet
@@ -228,9 +225,9 @@ export function ImageSection({
           )}
         </div>
 
-        {/* LaTeX column */}
-        <div className={`overflow-y-auto rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}
-          style={{ height: PANEL_HEIGHT }}>
+        {/* LaTeX column — grows with content, sticky header */}
+        <div className={`rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}
+          style={{ minHeight: "60vh" }}>
           <div className={`sticky top-0 z-10 ${accentHeader} px-3 py-2`}>
             <span className={`text-[11px] font-bold ${accentText} tracking-wide uppercase`}>{label} LaTeX</span>
           </div>
