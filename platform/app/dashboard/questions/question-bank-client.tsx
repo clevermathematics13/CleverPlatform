@@ -263,7 +263,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     const endpoint = "/api/questions/extract-images";
     const payload = { questionId: question.id };
     if (question.google_ms_id && question.google_doc_id === question.google_ms_id) {
-      const message = "Question doc and markscheme doc are the same file \u2014 question doc link needs to be fixed before extracting images.";
+      const message = "Question doc and markscheme doc are the same file — question doc link needs to be fixed before extracting images.";
       setError(message);
       setDocExtractTroubleshooting((prev) => ({ ...prev, [question.id]: { capturedAt: new Date().toISOString(), questionId: question.id, code: question.code, googleDocId: question.google_doc_id ?? null, googleMsId: question.google_ms_id ?? null, request: { endpoint, method: "POST", payload }, response: { ok: false, status: 400, statusText: "CLIENT_PRECHECK_FAILED", durationMs: 0, body: { error: message } }, appContext: { driveConnected, globalError: error } } }));
       return;
@@ -700,20 +700,20 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <span className="text-sm font-semibold text-green-800">Google Drive connected</span>
             <div className="flex items-center gap-2 flex-wrap">
-              <button type="button" onClick={importFromDrive} disabled={importing || syncing || bulkExtracting} className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">{importing ? "Importing\u2026" : "Import Missing from Drive"}</button>
-              <button type="button" onClick={syncDriveLinks} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">{syncing ? "Syncing\u2026" : "Sync Doc Links"}</button>
-              <button type="button" onClick={() => fixConflictedLinks(true)} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50">{fixingLinks === "dryrun" ? "Scanning\u2026" : "Dry Run Fix Links"}</button>
-              <button type="button" onClick={() => fixConflictedLinks(false)} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-50">{fixingLinks === "apply" ? "Applying\u2026" : "Apply Fix Links"}</button>
-              <button type="button" onClick={extractAllImages} disabled={bulkExtracting || syncing || importing || !!fixingLinks} className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">{bulkExtracting ? "Extracting\u2026" : "Extract All Images from Docs"}</button>
-              <button type="button" onClick={copyBulkTroubleshooting} className="rounded-lg border border-slate-400 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-100">{bulkTroubleshootingCopied ? "\u2713 Copied" : "Copy Logs"}</button>
+              <button type="button" onClick={importFromDrive} disabled={importing || syncing || bulkExtracting} className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">{importing ? "Importing…" : "Import Missing from Drive"}</button>
+              <button type="button" onClick={syncDriveLinks} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">{syncing ? "Syncing…" : "Sync Doc Links"}</button>
+              <button type="button" onClick={() => fixConflictedLinks(true)} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50">{fixingLinks === "dryrun" ? "Scanning…" : "Dry Run Fix Links"}</button>
+              <button type="button" onClick={() => fixConflictedLinks(false)} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-50">{fixingLinks === "apply" ? "Applying…" : "Apply Fix Links"}</button>
+              <button type="button" onClick={extractAllImages} disabled={bulkExtracting || syncing || importing || !!fixingLinks} className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">{bulkExtracting ? "Extracting…" : "Extract All Images from Docs"}</button>
+              <button type="button" onClick={copyBulkTroubleshooting} className="rounded-lg border border-slate-400 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-100">{bulkTroubleshootingCopied ? "✓ Copied" : "Copy Logs"}</button>
               <button type="button" onClick={clearUICache} className="rounded-lg border border-red-400 bg-white px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-50">Clear UI Cache</button>
             </div>
           </div>
-          {importResult && (<div className="mt-1 text-xs text-violet-700"><p>Import complete \u2014 {importResult.created} new question{importResult.created !== 1 ? "s" : ""} created, {importResult.updated} doc link{importResult.updated !== 1 ? "s" : ""} updated.</p>{importResult.errors && importResult.errors.length > 0 && <p className="text-red-600">Errors: {importResult.errors.join("; ")}</p>}{importResult.debug && (<details className="mt-1"><summary className="cursor-pointer underline">Debug info</summary><pre className="mt-1 max-h-40 overflow-auto rounded bg-violet-50 p-2 text-[10px] text-violet-900 whitespace-pre-wrap">{JSON.stringify(importResult.debug, null, 2)}</pre></details>)}</div>)}
-          {syncResult && (<div className="mt-1 text-xs text-green-700 space-y-1"><p>Sync complete \u2014 {syncResult.found} doc link{syncResult.found !== 1 ? "s" : ""} found, {syncResult.updated} updated.</p>{syncResult.focused && (<div className="rounded border border-green-200 bg-white/80 p-2 text-[11px] text-slate-700"><p>Focused code <span className="font-mono font-semibold">{syncResult.focused.code}</span>: <span className="font-semibold">{syncResult.focused.status ?? "unknown"}</span></p><p>DB Q={syncResult.focused.db?.google_doc_id ?? "null"}, MS={syncResult.focused.db?.google_ms_id ?? "null"}; needs Q={String(syncResult.focused.needs?.doc ?? false)}, MS={String(syncResult.focused.needs?.ms ?? false)}</p><p>Matches Q={syncResult.focused.questionMatchCount}, MS={syncResult.focused.markschemeMatchCount}; selected Q={syncResult.focused.selectedQuestionDocId ?? "null"}, MS={syncResult.focused.selectedMarkschemeDocId ?? "null"}</p></div>)}</div>)}
-          {fixLinksResult && (<p className="mt-1 text-xs text-amber-800">{fixLinksResult.dryRun ? `Fix dry run \u2014 ${fixLinksResult.issuesFound} issue(s) found.` : `Fix applied \u2014 ${fixLinksResult.updatedRows ?? 0} row(s), cleared Q=${fixLinksResult.clearedGoogleDocId ?? 0}, MS=${fixLinksResult.clearedGoogleMsId ?? 0}.`}</p>)}
-          {bulkProgress && (<div className="mt-2"><div className="flex items-center justify-between text-xs text-gray-700 mb-1"><span>{bulkProgress.completed} / {bulkProgress.total} questions{bulkProgress.currentCode && ` \u2014 ${bulkProgress.currentCode}`}</span><span>{bulkProgress.totalImages} images extracted{bulkProgress.errors > 0 && `, ${bulkProgress.errors} errors`}</span></div><div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: bulkProgress.total > 0 ? `${(bulkProgress.completed / bulkProgress.total) * 100}%` : "0%" }} /></div></div>)}
-          {bulkErrors.length > 0 && (<div className="mt-2"><button type="button" onClick={() => setShowErrors((v) => !v)} className="text-xs font-semibold text-red-700 underline">{showErrors ? "Hide" : "Show"} {bulkErrors.length} error{bulkErrors.length !== 1 ? "s" : ""}</button>{showErrors && (<div className="mt-1 max-h-48 overflow-y-auto rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">{bulkErrors.slice(0, 50).map((e, i) => (<div key={i} className="py-0.5"><span className="font-bold">{e.code}:</span> {e.error}</div>))}{bulkErrors.length > 50 && (<div className="py-1 font-semibold">\u2026and {bulkErrors.length - 50} more</div>)}</div>)}</div>)}
+          {importResult && (<div className="mt-1 text-xs text-violet-700"><p>Import complete — {importResult.created} new question{importResult.created !== 1 ? "s" : ""} created, {importResult.updated} doc link{importResult.updated !== 1 ? "s" : ""} updated.</p>{importResult.errors && importResult.errors.length > 0 && <p className="text-red-600">Errors: {importResult.errors.join("; ")}</p>}{importResult.debug && (<details className="mt-1"><summary className="cursor-pointer underline">Debug info</summary><pre className="mt-1 max-h-40 overflow-auto rounded bg-violet-50 p-2 text-[10px] text-violet-900 whitespace-pre-wrap">{JSON.stringify(importResult.debug, null, 2)}</pre></details>)}</div>)}
+          {syncResult && (<div className="mt-1 text-xs text-green-700 space-y-1"><p>Sync complete — {syncResult.found} doc link{syncResult.found !== 1 ? "s" : ""} found, {syncResult.updated} updated.</p>{syncResult.focused && (<div className="rounded border border-green-200 bg-white/80 p-2 text-[11px] text-slate-700"><p>Focused code <span className="font-mono font-semibold">{syncResult.focused.code}</span>: <span className="font-semibold">{syncResult.focused.status ?? "unknown"}</span></p><p>DB Q={syncResult.focused.db?.google_doc_id ?? "null"}, MS={syncResult.focused.db?.google_ms_id ?? "null"}; needs Q={String(syncResult.focused.needs?.doc ?? false)}, MS={String(syncResult.focused.needs?.ms ?? false)}</p><p>Matches Q={syncResult.focused.questionMatchCount}, MS={syncResult.focused.markschemeMatchCount}; selected Q={syncResult.focused.selectedQuestionDocId ?? "null"}, MS={syncResult.focused.selectedMarkschemeDocId ?? "null"}</p></div>)}</div>)}
+          {fixLinksResult && (<p className="mt-1 text-xs text-amber-800">{fixLinksResult.dryRun ? `Fix dry run — ${fixLinksResult.issuesFound} issue(s) found.` : `Fix applied — ${fixLinksResult.updatedRows ?? 0} row(s), cleared Q=${fixLinksResult.clearedGoogleDocId ?? 0}, MS=${fixLinksResult.clearedGoogleMsId ?? 0}.`}</p>)}
+          {bulkProgress && (<div className="mt-2"><div className="flex items-center justify-between text-xs text-gray-700 mb-1"><span>{bulkProgress.completed} / {bulkProgress.total} questions{bulkProgress.currentCode && ` — ${bulkProgress.currentCode}`}</span><span>{bulkProgress.totalImages} images extracted{bulkProgress.errors > 0 && `, ${bulkProgress.errors} errors`}</span></div><div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: bulkProgress.total > 0 ? `${(bulkProgress.completed / bulkProgress.total) * 100}%` : "0%" }} /></div></div>)}
+          {bulkErrors.length > 0 && (<div className="mt-2"><button type="button" onClick={() => setShowErrors((v) => !v)} className="text-xs font-semibold text-red-700 underline">{showErrors ? "Hide" : "Show"} {bulkErrors.length} error{bulkErrors.length !== 1 ? "s" : ""}</button>{showErrors && (<div className="mt-1 max-h-48 overflow-y-auto rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">{bulkErrors.slice(0, 50).map((e, i) => (<div key={i} className="py-0.5"><span className="font-bold">{e.code}:</span> {e.error}</div>))}{bulkErrors.length > 50 && (<div className="py-1 font-semibold">…and {bulkErrors.length - 50} more</div>)}</div>)}</div>)}
         </div>
       ) : (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between"><p className="text-sm font-semibold text-amber-800">Connect Google Drive to extract images from question documents.</p><a href="/api/questions/connect-drive" className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700">Connect Google Drive</a></div>
@@ -726,7 +726,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           <div><label className="block text-sm font-bold text-blue-900 mb-1">Paper</label><select suppressHydrationWarning value={paper} onChange={(e) => setPaper(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option><option value="1">Paper 1</option><option value="2">Paper 2</option><option value="3">Paper 3</option></select></div>
           <div><label className="block text-sm font-bold text-blue-900 mb-1">Level</label><select suppressHydrationWarning value={level} onChange={(e) => setLevel(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option><option value="AHL">HL</option><option value="SL">SL</option></select></div>
           <div><label className="block text-sm font-bold text-blue-900 mb-1">Timezone</label><select suppressHydrationWarning value={timezone} onChange={(e) => setTimezone(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option>{(filters?.timezones ?? []).map((tz) => (<option key={tz} value={tz}>{tz}</option>))}</select></div>
-          <div className="min-w-55"><label className="block text-sm font-bold text-blue-900 mb-1">Subtopic</label><select suppressHydrationWarning value={subtopic} onChange={(e) => setSubtopic(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white w-full"><option value="">All</option>{Object.entries(subtopicsBySection).map(([sec, subs]) => (<optgroup key={sec} label={`${sec}. ${SECTION_NAMES[Number(sec)] ?? "Other"}`}>{subs.map((st) => (<option key={st.code} value={st.code}>{st.code} \u2014 {st.descriptor}</option>))}</optgroup>))}</select></div>
+          <div className="min-w-55"><label className="block text-sm font-bold text-blue-900 mb-1">Subtopic</label><select suppressHydrationWarning value={subtopic} onChange={(e) => setSubtopic(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white w-full"><option value="">All</option>{Object.entries(subtopicsBySection).map(([sec, subs]) => (<optgroup key={sec} label={`${sec}. ${SECTION_NAMES[Number(sec)] ?? "Other"}`}>{subs.map((st) => (<option key={st.code} value={st.code}>{st.code} — {st.descriptor}</option>))}</optgroup>))}</select></div>
           <button suppressHydrationWarning type="button" onClick={clearFilters} className="rounded-lg border-2 border-blue-400 bg-white px-3 py-1.5 text-sm font-bold text-blue-700 hover:bg-blue-100">Clear</button>
           <button suppressHydrationWarning type="button" onClick={() => setSearchContent((v) => !v)} className={`rounded-lg border-2 px-3 py-1.5 text-sm font-bold transition-colors ${searchContent ? "border-purple-500 bg-purple-600 text-white" : "border-purple-300 bg-white text-purple-600 hover:bg-purple-50"}`}>LaTeX</button>
         </div>
@@ -736,7 +736,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <p className="text-base font-bold text-blue-900">{loading ? "Loading\u2026" : `${total} question${total !== 1 ? "s" : ""} found`}</p>
+          <p className="text-base font-bold text-blue-900">{loading ? "Loading…" : `${total} question${total !== 1 ? "s" : ""} found`}</p>
           <button type="button" suppressHydrationWarning onClick={() => setAddQuestionOpen(true)} className="rounded-lg border-2 border-emerald-400 bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50">+ New Question</button>
           <button
             type="button"
@@ -751,7 +751,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
             ExamBuilder{testQueue.length > 0 ? ` (${testQueue.length})` : ""}
           </button>
         </div>
-        {totalPages > 1 && (<div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-300 px-2 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">\u2190 Prev</button><span className="text-sm font-semibold text-blue-800">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-300 px-2 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Next \u2192</button></div>)}
+        {totalPages > 1 && (<div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-300 px-2 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">← Prev</button><span className="text-sm font-semibold text-blue-800">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-300 px-2 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Next →</button></div>)}
       </div>
 
       <div className="overflow-hidden rounded-xl border border-blue-200 bg-white">
@@ -792,7 +792,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
         </table>
       </div>
 
-      {totalPages > 1 && (<div className="flex justify-center gap-2 pb-4"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-300 px-3 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">\u2190 Prev</button><span className="text-sm font-semibold text-blue-800 py-1">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-300 px-3 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Next \u2192</button></div>)}
+      {totalPages > 1 && (<div className="flex justify-center gap-2 pb-4"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-300 px-3 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">← Prev</button><span className="text-sm font-semibold text-blue-800 py-1">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-300 px-3 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Next →</button></div>)}
       </div>
 
       {testBuilderOpen && (
@@ -843,7 +843,7 @@ function AddToExamModal({ questionCode, onConfirm, onCancel, saving }: { questio
         <p className="text-sm text-gray-600">Adding <span className="font-mono font-semibold">{questionCode}</span> will overwrite the currently saved exam.</p>
         <div className="flex gap-3 justify-end">
           <button type="button" onClick={onCancel} className="rounded px-4 py-1.5 text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors">Cancel</button>
-          <button type="button" onClick={onConfirm} disabled={saving} className="rounded px-4 py-1.5 text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">{saving ? "Saving\u2026" : "Overwrite"}</button>
+          <button type="button" onClick={onConfirm} disabled={saving} className="rounded px-4 py-1.5 text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">{saving ? "Saving…" : "Overwrite"}</button>
         </div>
       </div>
     </div>,
@@ -851,7 +851,7 @@ function AddToExamModal({ questionCode, onConfirm, onCancel, saving }: { questio
   );
 }
 
-// \u2500\u2500 QuestionEditorModal (Question Studio) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ── QuestionEditorModal (Question Studio) ────────────────────────────────────
 
 function QuestionEditorModal({
   questionId, questions, questionImages: questionImagesMap, allCommandTerms, availableSubtopics,
@@ -919,7 +919,6 @@ function QuestionEditorModal({
   const totalMarks = question ? question.question_parts.reduce((sum, p) => sum + p.marks, 0) : 0;
 
   return createPortal(
-    // Overlay \u2014 handles all scrolling; click backdrop to close
     <div
       className="fixed inset-0 z-[300] overflow-y-auto bg-black/70"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -927,7 +926,7 @@ function QuestionEditorModal({
       <div className="flex min-h-full items-start justify-center py-6 px-3">
         <div className="bg-white rounded-2xl shadow-2xl w-[90vw]">
 
-          {/* Sticky header with \u2715 close button top-right */}
+          {/* Sticky header with close button pinned top-right */}
           <div className="sticky top-0 z-10 flex items-center gap-3 px-6 py-3.5 border-b border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-2xl">
             <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1 text-sm font-bold text-white shadow-sm shrink-0">
               Question Studio
@@ -944,23 +943,26 @@ function QuestionEditorModal({
               </>
             )}
             {!question && !fetchLoading && (
-              <span className="text-sm text-gray-400 italic">Loading question\u2026</span>
+              <span className="text-sm text-gray-400 italic">Loading question…</span>
             )}
-            {/* Close \u2715 pinned to top-right */}
+            {/* Close button — top-right of header */}
             <button
               type="button"
               onClick={onClose}
               title="Close (Esc)"
-              className="ml-auto shrink-0 rounded-full w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-indigo-100 hover:text-indigo-700 transition-colors text-xl font-bold leading-none"
               aria-label="Close Question Studio"
+              className="ml-auto shrink-0 rounded-full w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
             >
-              \u00d7
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
             </button>
           </div>
 
-          {/* Body \u2014 no overflow constraints; outer overlay scrolls */}
+          {/* Body — outer overlay scrolls */}
           <div>
-            {fetchLoading && <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Loading\u2026</div>}
+            {fetchLoading && <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Loading…</div>}
             {fetchError && <div className="p-6 text-sm text-red-600 bg-red-50 rounded-b-2xl">Error: {fetchError}</div>}
             {!fetchLoading && !fetchError && !question && <div className="p-6 text-sm text-gray-400 italic">Question not found.</div>}
             {!fetchLoading && !fetchError && question && (
