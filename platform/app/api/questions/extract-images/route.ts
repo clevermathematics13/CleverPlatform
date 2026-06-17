@@ -203,8 +203,8 @@ export async function POST(request: NextRequest) {
 
   // Extract from question doc
   try {
-    const questionImages = await getDocImages(driveAuth, question.google_doc_id);
-    (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc.scannedInlineObjects = questionImages.length;
+    const questionDocImages = await getDocImages(driveAuth, question.google_doc_id);
+    (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc.scannedInlineObjects = questionDocImages.length;
 
     // Delete all existing question image records so re-extraction is clean
     // (removes stale rows if the doc now has fewer images than before)
@@ -214,17 +214,20 @@ export async function POST(request: NextRequest) {
       .eq("question_id", question.id)
       .eq("image_type", "question");
 
-    for (let i = 0; i < questionImages.length; i++) {
-      const img = questionImages[i];
+    // Use writeIdx so blocked/skipped images don't create gaps in sort_order or filename numbering
+    let writeIdx = 0;
+    for (let i = 0; i < questionDocImages.length; i++) {
+      const img = questionDocImages[i];
       const { buffer, contentType } = await downloadImage(driveAuth, img.contentUri);
       if (isBlockedQuestionImage(buffer)) {
-        console.log(`Skipping blocked question image for ${question.code} at question/${String(i + 1).padStart(2, "0")}`);
+        console.log(`Skipping blocked question image for ${question.code} (raw index ${i})`);
         const qPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc;
         qPhase.blockedSkipped = Number(qPhase.blockedSkipped ?? 0) + 1;
         continue;
       }
       const ext = extensionForType(contentType);
-      const storagePath = `${question.code}/question/${String(i + 1).padStart(2, "0")}.${ext}`;
+      // Use writeIdx (not i) so filenames are contiguous: 01, 02, 03 ...
+      const storagePath = `${question.code}/question/${String(writeIdx + 1).padStart(2, "0")}.${ext}`;
 
       // Upload to Supabase Storage
       const { error: uploadErr } = await supabase.storage
@@ -257,21 +260,22 @@ export async function POST(request: NextRequest) {
       // Insert record in question_images table
       await supabase.from("question_images").insert({
         question_id: question.id,
-        part_id: partIds[i] ?? null,
+        part_id: partIds[writeIdx] ?? null,
         image_type: "question",
         storage_path: storagePath,
         source_google_doc_id: question.google_doc_id,
-        sort_order: i,
-        alt_text: `Question image ${i + 1} for ${question.code}`,
+        sort_order: writeIdx,
+        alt_text: `Question image ${writeIdx + 1} for ${question.code}`,
       });
 
       results.push({
         type: "question",
         storagePath,
-        sortOrder: i,
+        sortOrder: writeIdx,
       });
       const qPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc;
       qPhase.uploaded = Number(qPhase.uploaded ?? 0) + 1;
+      writeIdx++;
     }
   } catch (err) {
     console.error("Error extracting question doc images:", err);
@@ -305,8 +309,8 @@ export async function POST(request: NextRequest) {
   // Extract from markscheme doc (if exists)
   if (question.google_ms_id) {
     try {
-      const msImages = await getDocImages(driveAuth, question.google_ms_id);
-      (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc.scannedInlineObjects = msImages.length;
+      const msDocImages = await getDocImages(driveAuth, question.google_ms_id);
+      (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc.scannedInlineObjects = msDocImages.length;
 
       // Delete all existing markscheme image records so re-extraction is clean
       // (removes any stale rows introduced by previous runs)
@@ -317,8 +321,8 @@ export async function POST(request: NextRequest) {
         .eq("image_type", "markscheme");
 
       let writeIdx = 0;
-      for (let i = 0; i < msImages.length; i++) {
-        const img = msImages[i];
+      for (let i = 0; i < msDocImages.length; i++) {
+        const img = msDocImages[i];
         const { buffer, contentType } = await downloadImage(
           driveAuth,
           img.contentUri
