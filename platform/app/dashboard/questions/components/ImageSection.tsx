@@ -25,6 +25,10 @@ async function readClipboardImage(): Promise<File | null> {
 
 type LatexEntry = { label: string | null; latex: string };
 
+// Height of each independently-scrolling panel column.
+// The outer modal scrolls to reach this section; once here each column scrolls on its own.
+const PANEL_H = "70vh";
+
 export function ImageSection({
   question, questionImages, msImages,
   questionLatex, msLatex,
@@ -166,10 +170,11 @@ export function ImageSection({
         </div>
       </div>
 
-      {/* Active panel — no fixed or min height, no internal scroll — outer modal scrolls */}
-      <div className="flex gap-3 items-start">
-        {/* Image column */}
-        <div className="flex flex-col gap-3 min-w-0" style={{ width: "50%" }}>
+      {/* Panel: both columns independently scrollable at PANEL_H */}
+      <div className="flex gap-3" style={{ height: PANEL_H }}>
+
+        {/* Image column — scrolls independently */}
+        <div className="overflow-y-auto flex flex-col gap-3 min-w-0" style={{ width: "50%" }}>
           {imgs.length > 0 ? imgs.map((img) => (
             <div key={img.id} draggable
               onDragStart={(e) => { e.dataTransfer.setData("text/plain", img.id); e.dataTransfer.effectAllowed = "move"; }}
@@ -185,7 +190,7 @@ export function ImageSection({
                 const newOrder = [...ids]; newOrder.splice(fromIdx, 1); newOrder.splice(toIdx, 0, draggedId);
                 onReorderImages(type, newOrder);
               }}
-              className={`relative group rounded-xl overflow-hidden border-2 transition-all bg-white shadow-sm ${
+              className={`relative group rounded-xl overflow-hidden border-2 transition-all bg-white shadow-sm shrink-0 ${
                 dragOverImageId === img.id ? "border-blue-500 scale-[1.02] cursor-grabbing" : "border-gray-200 hover:border-blue-400 hover:shadow-xl cursor-pointer"
               }`}
               onClick={(e) => { if ((e.target as HTMLElement).closest("button")) return; openLightbox(img.id); }}
@@ -208,25 +213,19 @@ export function ImageSection({
               </div>
             </div>
           )) : (
-            <div className={`flex flex-col items-center justify-center py-16 rounded-xl border-2 border-dashed ${
+            <div className={`flex flex-col items-center justify-center h-full rounded-xl border-2 border-dashed ${
               type === "markscheme" ? "border-emerald-200 bg-emerald-50/40" : "border-indigo-200 bg-indigo-50/40"
             }`}>
               <span className="text-2xl mb-2">{type === "markscheme" ? "📝" : "📄"}</span>
-              <p className="text-xs text-gray-400 font-medium text-center px-3">
-                No {label.toLowerCase()} images yet
-              </p>
-              {driveConnected && (
-                <p className="text-[10px] text-gray-400 mt-1 text-center px-3">
-                  Use "Extract from Docs" or "Upload"
-                </p>
-              )}
+              <p className="text-xs text-gray-400 font-medium text-center px-3">No {label.toLowerCase()} images yet</p>
+              {driveConnected && <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use "Extract from Docs" or "Upload"</p>}
             </div>
           )}
         </div>
 
-        {/* LaTeX column — grows to match image column height naturally */}
-        <div className={`rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}>
-          <div className={`${accentHeader} px-3 py-2 rounded-t-xl`}>
+        {/* LaTeX column — scrolls independently, sticky header */}
+        <div className={`overflow-y-auto rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}>
+          <div className={`sticky top-0 z-10 ${accentHeader} px-3 py-2`}>
             <span className={`text-[11px] font-bold ${accentText} tracking-wide uppercase`}>{label} LaTeX</span>
           </div>
           {latex.length > 0 ? (
@@ -247,9 +246,7 @@ export function ImageSection({
             </div>
           ) : (
             <div className="px-4 py-4 space-y-3">
-              <p className="text-xs text-gray-500 leading-snug">
-                No LaTeX stored. Convert the image to extract it.
-              </p>
+              <p className="text-xs text-gray-500 leading-snug">No LaTeX stored. Convert the image to extract it.</p>
               {imgs.length > 0 && (
                 <button type="button" disabled={convertingLatex !== null}
                   onClick={() => onConvertLatex(type)}
@@ -267,12 +264,11 @@ export function ImageSection({
             </div>
           )}
         </div>
+
       </div>
 
       {!driveConnected && questionImages.length === 0 && msImages.length === 0 && (
-        <p className="text-xs text-gray-400 italic">
-          Connect Google Drive to extract images from question documents.
-        </p>
+        <p className="text-xs text-gray-400 italic">Connect Google Drive to extract images from question documents.</p>
       )}
 
       {currentLightboxImage && createPortal(
