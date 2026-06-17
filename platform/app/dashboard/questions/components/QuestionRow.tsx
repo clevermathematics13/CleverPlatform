@@ -278,10 +278,35 @@ export function QuestionRow({
             </span>
           )}
         </td>
-        <td className="px-4 py-2 text-center">
+        {/* Q/MS doc status badges — stop propagation so clicking doesn't toggle the row */}
+        <td className="px-4 py-2 text-center" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-center gap-1.5">
-            <span className={`text-xs font-semibold ${question.has_question_images ? "text-emerald-600" : "text-gray-300"}`} title={question.has_question_images ? "Question images extracted" : "No question images"}>📄 Q</span>
-            <span className={`text-xs font-semibold ${question.has_markscheme_images ? "text-emerald-600" : "text-gray-300"}`} title={question.has_markscheme_images ? "Markscheme images extracted" : "No markscheme images"}>📝 MS</span>
+            {question.google_doc_id ? (
+              <a
+                href={`https://docs.google.com/document/d/${question.google_doc_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={question.has_question_images ? "Question images extracted — open doc" : "Open question doc"}
+                className={`text-xs font-semibold hover:underline ${question.has_question_images ? "text-emerald-600" : "text-blue-400"}`}
+              >
+                📄 Q
+              </a>
+            ) : (
+              <span className="text-xs font-semibold text-gray-300" title="No question doc linked">📄 Q</span>
+            )}
+            {question.google_ms_id ? (
+              <a
+                href={`https://docs.google.com/document/d/${question.google_ms_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={question.has_markscheme_images ? "Markscheme images extracted — open doc" : "Open markscheme doc"}
+                className={`text-xs font-semibold hover:underline ${question.has_markscheme_images ? "text-emerald-600" : "text-green-400"}`}
+              >
+                📝 MS
+              </a>
+            ) : (
+              <span className="text-xs font-semibold text-gray-300" title="No markscheme doc linked">📝 MS</span>
+            )}
           </div>
         </td>
         <td className="px-4 py-2 text-center" onClick={(e) => e.stopPropagation()}>
