@@ -53,6 +53,7 @@ export function ImageSection({
   convertLatexError: string | null;
   onConvertLatex: (imageType: "question" | "markscheme") => void;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<"question" | "markscheme">("question");
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -137,9 +138,13 @@ export function ImageSection({
 
   return (
     <div className="space-y-2">
-      {/* Toolbar */}
+      {/* Toolbar — always visible */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <p className="text-xs font-bold text-gray-700">Images</p>
+        <button type="button" onClick={() => setCollapsed((v) => !v)}
+          className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-gray-900 select-none">
+          Images
+          <span className="text-[10px] text-gray-400">{collapsed ? "▶" : "▼"}</span>
+        </button>
         <div className="flex items-center gap-2 flex-wrap">
           {driveConnected && (
             <button type="button" onClick={onExtractImages} disabled={extracting}
@@ -162,7 +167,10 @@ export function ImageSection({
         </div>
       </div>
 
-      {/* Tabs row — no add buttons here; they live in the image panel */}
+      {!collapsed && (
+      <div className="space-y-2">
+
+      {/* Tabs row */}
       <div className="flex items-center gap-1 border-b border-gray-200">
         {groups.map((g) => (
           <button
@@ -187,7 +195,7 @@ export function ImageSection({
         ))}
       </div>
 
-      {/* Hidden file input — always rendered so ref is available */}
+      {/* Hidden file input */}
       <input ref={fileRef} type="file" accept="image/*" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) { onUploadImage(type, f); e.target.value = ""; } }} />
 
@@ -200,7 +208,7 @@ export function ImageSection({
         </div>
       )}
 
-      {/* Panel: both columns independently scrollable */}
+      {/* Panel */}
       <div className="flex gap-3" style={{ height: PANEL_H }}>
 
         {/* Image column */}
@@ -245,7 +253,7 @@ export function ImageSection({
             </div>
           ))}
 
-          {/* Add-image tile — full empty state when no images, compact strip when images exist */}
+          {/* Add-image tile */}
           {imgs.length === 0 ? (
             <div className={`flex flex-col items-center justify-center gap-3 h-full rounded-xl border-2 border-dashed ${emptyBorder} ${emptyBg}`}>
               <p className="text-sm font-semibold text-gray-500">No {label.toLowerCase()} images yet</p>
@@ -269,7 +277,6 @@ export function ImageSection({
               </div>
             </div>
           ) : (
-            /* Compact add-more strip — always visible below images */
             <div className={`shrink-0 rounded-xl border-2 border-dashed ${emptyBorder} ${emptyBg} px-3 py-3 flex items-center gap-2`}>
               <span className="text-xs font-semibold text-gray-400 flex-1">Add image</span>
               <button type="button" disabled={uploadingImage}
@@ -287,7 +294,7 @@ export function ImageSection({
 
         </div>
 
-        {/* LaTeX column — scrolls independently, sticky header */}
+        {/* LaTeX column */}
         <div className={`overflow-y-auto rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}>
           <div className={`sticky top-0 z-10 ${accentHeader} px-3 py-2`}>
             <span className={`text-[11px] font-bold ${accentText} tracking-wide uppercase`}>{label} LaTeX</span>
@@ -371,6 +378,8 @@ export function ImageSection({
         </div>,
         document.body
       )}
+
+      </div>)}
     </div>
   );
 }
