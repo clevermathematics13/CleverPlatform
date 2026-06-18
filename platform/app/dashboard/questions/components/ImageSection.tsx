@@ -19,11 +19,11 @@ async function readClipboardImage(): Promise<{ file: File | null; error?: string
         return { file: new File([blob], `clipboard.${ext}`, { type: imgType }) };
       }
     }
-    return { file: null, error: "No image found in clipboard \u2014 copy an image first" };
+    return { file: null, error: "No image found in clipboard — copy an image first" };
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "";
     if (msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")) {
-      return { file: null, error: "Clipboard permission denied \u2014 allow clipboard access and try again" };
+      return { file: null, error: "Clipboard permission denied — allow clipboard access and try again" };
     }
     return { file: null, error: "Could not read clipboard" };
   }
@@ -140,19 +140,19 @@ export function ImageSection({
           {driveConnected && (
             <button type="button" onClick={onExtractImages} disabled={extracting}
               className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
-              {extracting ? "Extracting\u2026" : "\u21bb Extract from Docs"}
+              {extracting ? "Extracting…" : "↻ Extract from Docs"}
             </button>
           )}
           {hasTroubleshooting && (
             <button type="button" onClick={onCopyTroubleshooting}
               className="rounded border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-              {troubleshootingCopied ? "\u2713 Copied" : "Copy Report"}
+              {troubleshootingCopied ? "✓ Copied" : "Copy Report"}
             </button>
           )}
           {(questionImages.length > 0 || msImages.length > 0) && (
             <button type="button" onClick={onDeleteAllImages}
               className="rounded border border-red-300 bg-white px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50">
-              \ud83d\uddd1 Delete All
+              🗑 Delete All
             </button>
           )}
         </div>
@@ -171,7 +171,7 @@ export function ImageSection({
                 : g.tabInactive + " border-transparent"
             }`}
           >
-            {g.type === "question" ? "\ud83d\udcc4" : "\ud83d\udcdd"} {g.label}
+            {g.type === "question" ? "📄" : "📝"} {g.label}
             {g.imgs.length > 0 && (
               <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none ${
                 activeTab === g.type ? "bg-white/30" : g.type === "question" ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
@@ -188,13 +188,13 @@ export function ImageSection({
             title="Paste image from clipboard"
             onClick={() => handlePaste(type)}
             className="rounded border border-indigo-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">
-            {uploadingImage ? "Uploading\u2026" : "\ud83d\udccb Paste"}
+            {uploadingImage ? "Uploading…" : "📋 Paste"}
           </button>
           <button type="button" disabled={uploadingImage}
             title="Choose an image file"
             onClick={() => handleFileClick(fileRef)}
             className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-            \ud83d\udcc1 File
+            📁 File
           </button>
         </div>
       </div>
@@ -202,16 +202,16 @@ export function ImageSection({
       {/* Clipboard error toast */}
       {clipboardError && (
         <div className="flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-          <span>\u26a0</span>
+          <span>⚠</span>
           <span>{clipboardError}</span>
-          <button type="button" onClick={() => setClipboardError(null)} className="ml-auto text-amber-600 hover:text-amber-800 font-bold">\u2715</button>
+          <button type="button" onClick={() => setClipboardError(null)} className="ml-auto text-amber-600 hover:text-amber-800 font-bold">✕</button>
         </div>
       )}
 
       {/* Panel: both columns independently scrollable at PANEL_H */}
       <div className="flex gap-3" style={{ height: PANEL_H }}>
 
-        {/* Image column \u2014 scrolls independently */}
+        {/* Image column — scrolls independently */}
         <div className="overflow-y-auto flex flex-col gap-3 min-w-0" style={{ width: "50%" }}>
           {imgs.length > 0 ? imgs.map((img) => (
             <div key={img.id} draggable
@@ -237,13 +237,13 @@ export function ImageSection({
                 alt={`${label} ${img.sort_order + 1}`} className="block max-w-full w-full h-auto" />
               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all flex items-center justify-center pointer-events-none">
                 <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-sm font-semibold px-3 py-1.5 rounded-full">
-                  \ud83d\udd0d Click to enlarge
+                  🔍 Click to enlarge
                 </span>
               </div>
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button type="button" onClick={() => onDeleteImage(img.id)} disabled={deletingImageIds.has(img.id)}
                   className="rounded-full bg-red-600 text-white w-8 h-8 text-sm font-bold flex items-center justify-center hover:bg-red-700 disabled:opacity-50 shadow-lg">
-                  {deletingImageIds.has(img.id) ? "\u2026" : "\u00d7"}
+                  {deletingImageIds.has(img.id) ? "…" : "×"}
                 </button>
               </div>
               <div className="absolute bottom-2 left-2 bg-black/60 rounded-full px-2.5 py-1 text-xs text-white font-semibold shadow">
@@ -254,14 +254,14 @@ export function ImageSection({
             <div className={`flex flex-col items-center justify-center h-full rounded-xl border-2 border-dashed ${
               type === "markscheme" ? "border-emerald-200 bg-emerald-50/40" : "border-indigo-200 bg-indigo-50/40"
             }`}>
-              <span className="text-2xl mb-2">{type === "markscheme" ? "\ud83d\udcdd" : "\ud83d\udcc4"}</span>
+              <span className="text-2xl mb-2">{type === "markscheme" ? "📝" : "📄"}</span>
               <p className="text-xs text-gray-400 font-medium text-center px-3">No {label.toLowerCase()} images yet</p>
-              {driveConnected && <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use \"Extract from Docs\" or \"Paste\"</p>}
+              {driveConnected && <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use "Extract from Docs" or "Paste"</p>}
             </div>
           )}
         </div>
 
-        {/* LaTeX column \u2014 scrolls independently, sticky header */}
+        {/* LaTeX column — scrolls independently, sticky header */}
         <div className={`overflow-y-auto rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}>
           <div className={`sticky top-0 z-10 ${accentHeader} px-3 py-2`}>
             <span className={`text-[11px] font-bold ${accentText} tracking-wide uppercase`}>{label} LaTeX</span>
@@ -293,7 +293,7 @@ export function ImageSection({
                       ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
                       : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                   }`}>
-                  {convertingLatex === type ? "Converting\u2026" : convertLabel}
+                  {convertingLatex === type ? "Converting…" : convertLabel}
                 </button>
               )}
               {convertLatexError && convertingLatex === null && (
@@ -313,7 +313,7 @@ export function ImageSection({
         <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/85" onClick={closeLightbox}>
           <button type="button" onClick={(e) => { e.stopPropagation(); prevImage(); }} disabled={lightboxIndex === 0}
             className="absolute left-4 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/20 hover:bg-white/40 disabled:opacity-20 disabled:cursor-not-allowed text-white w-14 h-14 flex items-center justify-center text-3xl font-bold transition-all shadow-xl border border-white/30"
-            title="Previous (\u2190)">\u2039</button>
+            title="Previous (←)">‹</button>
           <div className="relative flex flex-col items-center" style={{ maxWidth: "88vw", maxHeight: "90vh" }}
             onClick={(e) => e.stopPropagation()}>
             <img
@@ -323,11 +323,11 @@ export function ImageSection({
               className="rounded-lg shadow-2xl bg-white"
             />
             <div className="mt-3 flex items-center gap-4 bg-black/60 rounded-full px-5 py-2 text-white text-sm font-semibold">
-              <span>{currentLightboxImage.section === "question" ? "\ud83d\udcc4 Question" : "\ud83d\udcdd Markscheme"}</span>
-              <span className="text-white/50">\u00b7</span>
+              <span>{currentLightboxImage.section === "question" ? "📄 Question" : "📝 Markscheme"}</span>
+              <span className="text-white/50">·</span>
               <span>{(lightboxIndex ?? 0) + 1} / {allImages.length}</span>
-              <span className="text-white/50">\u00b7</span>
-              <span className="text-white/70 text-xs">\u2190 \u2192 to navigate \u00b7 Esc to close</span>
+              <span className="text-white/50">·</span>
+              <span className="text-white/70 text-xs">← → to navigate · Esc to close</span>
             </div>
             {allImages.length > 1 && (
               <div className="mt-2 flex gap-1.5">
@@ -341,7 +341,7 @@ export function ImageSection({
           </div>
           <button type="button" onClick={(e) => { e.stopPropagation(); nextImage(); }} disabled={lightboxIndex === allImages.length - 1}
             className="absolute right-4 top-1/2 -translate-y-1/2 z-10 rounded-full bg-white/20 hover:bg-white/40 disabled:opacity-20 disabled:cursor-not-allowed text-white w-14 h-14 flex items-center justify-center text-3xl font-bold transition-all shadow-xl border border-white/30"
-            title="Next (\u2192)">\u203a</button>
+            title="Next (→)">›</button>
         </div>,
         document.body
       )}
