@@ -235,6 +235,7 @@ export async function POST(request: NextRequest) {
         .upload(storagePath, buffer, {
           contentType,
           upsert: true,
+          cacheControl: "0",
         });
 
       if (uploadErr) {
@@ -341,6 +342,7 @@ export async function POST(request: NextRequest) {
           .upload(storagePath, buffer, {
             contentType,
             upsert: true,
+            cacheControl: "0",
           });
 
         if (uploadErr) {

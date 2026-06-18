@@ -116,7 +116,11 @@ export async function POST(request: NextRequest) {
           { error: `Failed to sign URL for ${img.storage_path}` },
           { status: 500 }
         );
-      const res = await fetch(signedData.signedUrl);
+      // Cache-bust: append a unique param and force no-store so a stale CDN-cached
+      // object at the same storage path (from a prior extraction at the same
+      // filename) is never served to the OCR pipeline.
+      const cacheBustedUrl1 = `${signedData.signedUrl}${signedData.signedUrl.includes("?") ? "&" : "?"}cb=${Date.now()}`;
+      const res = await fetch(cacheBustedUrl1, { cache: "no-store" });
       if (!res.ok)
         return NextResponse.json(
           { error: `Failed to download image: ${res.status}` },
@@ -152,7 +156,8 @@ export async function POST(request: NextRequest) {
           { error: `Failed to sign URL for ${path}` },
           { status: 500 }
         );
-      const res = await fetch(signedData.signedUrl);
+      const cacheBustedUrl2 = `${signedData.signedUrl}${signedData.signedUrl.includes("?") ? "&" : "?"}cb=${Date.now()}`;
+      const res = await fetch(cacheBustedUrl2, { cache: "no-store" });
       if (!res.ok)
         return NextResponse.json(
           { error: `Failed to download image: ${res.status}` },
