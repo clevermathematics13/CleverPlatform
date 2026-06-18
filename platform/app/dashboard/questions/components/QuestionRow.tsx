@@ -386,6 +386,26 @@ export function QuestionRow({
                     {hasDocLinkConflict ? "⚠ Fix Links" : "🔗 Edit Doc Links"}
                   </button>
                 )}
+                {question.google_doc_id && (
+                  <a
+                    href={`https://docs.google.com/document/d/${question.google_doc_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 hover:underline"
+                  >
+                    📄 Open Q Doc
+                  </a>
+                )}
+                {question.google_ms_id && (
+                  <a
+                    href={`https://docs.google.com/document/d/${question.google_ms_id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded border border-green-300 bg-white px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-50 hover:underline"
+                  >
+                    📝 Open MS Doc
+                  </a>
+                )}
                 <button type="button" onClick={deleteQuestion} disabled={deletingQuestion}
                   className="rounded border border-red-300 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
                   {deletingQuestion ? "Deleting…" : "🗑 Delete"}
