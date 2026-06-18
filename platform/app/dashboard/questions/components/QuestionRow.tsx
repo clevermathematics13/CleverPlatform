@@ -104,6 +104,7 @@ export function QuestionRow({
 
   // Use external minimize state when provided (modal header − button), else internal
   const minimized = externalMinimized !== undefined ? externalMinimized : internalMinimized;
+  const [partsCollapsed, setPartsCollapsed] = useState(false);
 
   const [editingPartId, setEditingPartId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<"marks" | "label" | "latex" | null>(null);
@@ -284,34 +285,26 @@ export function QuestionRow({
             </span>
           )}
         </td>
-        {/* Q/MS doc status badges — stop propagation so clicking doesn't toggle the row */}
+        {/* Q/MS doc status badges */}
         <td className="px-4 py-2 text-center" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-center gap-1.5">
             {question.google_doc_id ? (
-              <a
-                href={`https://docs.google.com/document/d/${question.google_doc_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <a href={`https://docs.google.com/document/d/${question.google_doc_id}`} target="_blank" rel="noopener noreferrer"
                 title={question.has_question_images ? "Question images extracted — open doc" : "Open question doc"}
-                className={`text-xs font-semibold hover:underline ${question.has_question_images ? "text-emerald-600" : "text-blue-400"}`}
-              >
-                📄 Q
+                className={`text-xs font-semibold hover:underline ${question.has_question_images ? "text-emerald-600" : "text-blue-400"}`}>
+                Q
               </a>
             ) : (
-              <span className="text-xs font-semibold text-gray-300" title="No question doc linked">📄 Q</span>
+              <span className="text-xs font-semibold text-gray-300" title="No question doc linked">Q</span>
             )}
             {question.google_ms_id ? (
-              <a
-                href={`https://docs.google.com/document/d/${question.google_ms_id}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <a href={`https://docs.google.com/document/d/${question.google_ms_id}`} target="_blank" rel="noopener noreferrer"
                 title={question.has_markscheme_images ? "Markscheme images extracted — open doc" : "Open markscheme doc"}
-                className={`text-xs font-semibold hover:underline ${question.has_markscheme_images ? "text-emerald-600" : "text-green-400"}`}
-              >
-                📝 MS
+                className={`text-xs font-semibold hover:underline ${question.has_markscheme_images ? "text-emerald-600" : "text-green-400"}`}>
+                MS
               </a>
             ) : (
-              <span className="text-xs font-semibold text-gray-300" title="No markscheme doc linked">📝 MS</span>
+              <span className="text-xs font-semibold text-gray-300" title="No markscheme doc linked">MS</span>
             )}
           </div>
         </td>
@@ -370,7 +363,7 @@ export function QuestionRow({
           <td colSpan={hideCollapsedRow ? 1 : testBuilderOpen ? 11 : 10} className="px-0 py-0 bg-blue-50">
             <div className="border-t border-blue-200 px-4 py-3 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Only show internal Minimise button when NOT in modal (modal has its own − in header) */}
+                {/* Only show internal Minimise button when NOT in modal */}
                 {!hideCollapsedRow && (
                   <button type="button" onClick={() => setInternalMinimized((v) => !v)}
                     className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">
@@ -387,22 +380,14 @@ export function QuestionRow({
                   </button>
                 )}
                 {question.google_doc_id && (
-                  <a
-                    href={`https://docs.google.com/document/d/${question.google_doc_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 hover:underline"
-                  >
+                  <a href={`https://docs.google.com/document/d/${question.google_doc_id}`} target="_blank" rel="noopener noreferrer"
+                    className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 hover:underline">
                     📄 Open Q Doc
                   </a>
                 )}
                 {question.google_ms_id && (
-                  <a
-                    href={`https://docs.google.com/document/d/${question.google_ms_id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded border border-green-300 bg-white px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-50 hover:underline"
-                  >
+                  <a href={`https://docs.google.com/document/d/${question.google_ms_id}`} target="_blank" rel="noopener noreferrer"
+                    className="rounded border border-green-300 bg-white px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-50 hover:underline">
                     📝 Open MS Doc
                   </a>
                 )}
@@ -437,6 +422,7 @@ export function QuestionRow({
                     </div>
                   )}
 
+                  {!partsCollapsed && (<>
                   <div className="space-y-3">
                     {question.question_parts.map((part, partIdx) => (
                       <QuestionPartRow key={part.id} part={part} partIdx={partIdx} question={question} commandTerms={commandTerms}
@@ -500,6 +486,8 @@ export function QuestionRow({
                     </button>
                   )}
 
+                  </>)}
+
                   {/* ImageSection owns the paired image+LaTeX layout */}
                   <ImageSection
                     question={question} questionImages={questionImages} msImages={msImages}
@@ -510,8 +498,8 @@ export function QuestionRow({
                     uploadingImage={uploadingImage} onDeleteImage={onDeleteImage} onDeleteAllImages={onDeleteAllImages}
                     onReorderImages={onReorderImages} onUploadImage={onUploadImage}
                     convertingLatex={convertingLatex} convertLatexError={convertLatexError}
-                    onConvertLatex={convertImagesToLatex} />
-                </div>
+                    onConvertLatex={convertImagesToLatex}
+                    partsCollapsed={partsCollapsed} onToggleParts={() => setPartsCollapsed((v) => !v)} />
               )}
             </div>
           </td>
