@@ -116,11 +116,12 @@ export async function POST(request: NextRequest) {
           { error: `Failed to sign URL for ${img.storage_path}` },
           { status: 500 }
         );
-      // Cache-bust: append a unique param and force no-store so a stale CDN-cached
-      // object at the same storage path (from a prior extraction at the same
-      // filename) is never served to the OCR pipeline.
-      const cacheBustedUrl1 = `${signedData.signedUrl}${signedData.signedUrl.includes("?") ? "&" : "?"}cb=${Date.now()}`;
-      const res = await fetch(cacheBustedUrl1, { cache: "no-store" });
+      // Cache-bust: append a unique param and force no-store so any cached
+      // response for this exact signed URL / storage path is never reused.
+      // (Storage paths are also now uniquely suffixed per extraction run —
+      // see extract-images/route.ts — so this is defense in depth.)
+      const cacheBustedUrl = `${signedData.signedUrl}${signedData.signedUrl.includes("?") ? "&" : "?"}cb=${Date.now()}`;
+      const res = await fetch(cacheBustedUrl, { cache: "no-store" });
       if (!res.ok)
         return NextResponse.json(
           { error: `Failed to download image: ${res.status}` },
@@ -156,8 +157,8 @@ export async function POST(request: NextRequest) {
           { error: `Failed to sign URL for ${path}` },
           { status: 500 }
         );
-      const cacheBustedUrl2 = `${signedData.signedUrl}${signedData.signedUrl.includes("?") ? "&" : "?"}cb=${Date.now()}`;
-      const res = await fetch(cacheBustedUrl2, { cache: "no-store" });
+      const cacheBustedUrl = `${signedData.signedUrl}${signedData.signedUrl.includes("?") ? "&" : "?"}cb=${Date.now()}`;
+      const res = await fetch(cacheBustedUrl, { cache: "no-store" });
       if (!res.ok)
         return NextResponse.json(
           { error: `Failed to download image: ${res.status}` },
