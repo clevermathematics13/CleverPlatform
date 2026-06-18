@@ -118,7 +118,7 @@ export function ImageSection({
     {
       label: "Question", type: "question" as const, imgs: questionImages, latex: questionLatex, fileRef: qFileRef,
       accentBorder: "border-indigo-200", accentHeader: "bg-indigo-50 border-b border-indigo-200",
-      accentText: "text-indigo-700", convertLabel: "Convert question images to LaTeX",
+      accentText: "text-indigo-700", convertLabel: "Extract LaTeX from images",
       tabActive: "bg-indigo-600 text-white", tabInactive: "text-indigo-600 hover:bg-indigo-50",
       emptyBorder: "border-indigo-300", emptyBg: "bg-indigo-50/60",
       pasteClass: "border-indigo-400 bg-indigo-600 text-white hover:bg-indigo-700",
@@ -127,7 +127,7 @@ export function ImageSection({
     {
       label: "Markscheme", type: "markscheme" as const, imgs: msImages, latex: msLatex, fileRef: msFileRef,
       accentBorder: "border-emerald-200", accentHeader: "bg-emerald-50 border-b border-emerald-200",
-      accentText: "text-emerald-700", convertLabel: "Convert markscheme images to LaTeX",
+      accentText: "text-emerald-700", convertLabel: "Extract LaTeX from images",
       tabActive: "bg-emerald-600 text-white", tabInactive: "text-emerald-600 hover:bg-emerald-50",
       emptyBorder: "border-emerald-300", emptyBg: "bg-emerald-50/60",
       pasteClass: "border-emerald-400 bg-emerald-600 text-white hover:bg-emerald-700",
@@ -296,8 +296,25 @@ export function ImageSection({
 
         {/* LaTeX column */}
         <div className={`overflow-y-auto rounded-xl border ${accentBorder} bg-white shadow-sm flex-1 min-w-0`}>
-          <div className={`sticky top-0 z-10 ${accentHeader} px-3 py-2`}>
+          <div className={`sticky top-0 z-10 ${accentHeader} px-3 py-2 flex items-center justify-between gap-2`}>
             <span className={`text-[11px] font-bold ${accentText} tracking-wide uppercase`}>{label} LaTeX</span>
+            {imgs.length > 0 && (
+              <button
+                type="button"
+                disabled={convertingLatex !== null}
+                onClick={() => {
+                  if (latex.length > 0 && !confirm("Re-extract LaTeX from images? This will erase all current LaTeX and run a fresh extraction.")) return;
+                  onConvertLatex(type);
+                }}
+                title={latex.length > 0 ? "Re-extract LaTeX from images (erases current)" : "Extract LaTeX from images"}
+                className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold border transition-colors disabled:opacity-40 ${
+                  type === "question"
+                    ? "border-indigo-300 bg-white text-indigo-600 hover:bg-indigo-50"
+                    : "border-emerald-300 bg-white text-emerald-600 hover:bg-emerald-50"
+                }`}>
+                {convertingLatex === type ? "Running..." : latex.length > 0 ? "Re-extract" : "Extract"}
+              </button>
+            )}
           </div>
           {latex.length > 0 ? (
             <div className="divide-y divide-gray-100">
@@ -317,18 +334,7 @@ export function ImageSection({
             </div>
           ) : (
             <div className="px-4 py-4 space-y-3">
-              <p className="text-xs text-gray-500 leading-snug">No LaTeX stored. Convert the image to extract it.</p>
-              {imgs.length > 0 && (
-                <button type="button" disabled={convertingLatex !== null}
-                  onClick={() => onConvertLatex(type)}
-                  className={`w-full rounded-lg border px-3 py-2 text-xs font-semibold hover:opacity-90 disabled:opacity-50 text-left ${
-                    type === "question"
-                      ? "border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                      : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                  }`}>
-                  {convertingLatex === type ? "Converting..." : convertLabel}
-                </button>
-              )}
+              <p className="text-xs text-gray-500 leading-snug">No LaTeX stored. Use the Extract button above to run extraction from the images.</p>
               {convertLatexError && convertingLatex === null && (
                 <p className="text-xs text-red-600 font-semibold">{convertLatexError}</p>
               )}
