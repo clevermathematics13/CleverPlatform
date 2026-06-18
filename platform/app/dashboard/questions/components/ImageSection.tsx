@@ -215,7 +215,7 @@ export function ImageSection({
         {/* Image column */}
         <div className="overflow-y-auto flex flex-col gap-3 min-w-0" style={{ width: "50%" }}>
 
-          {imgs.map((img) => (
+          {imgs.map((img, imgIdx) => (
             <div key={img.id} draggable
               onDragStart={(e) => { e.dataTransfer.setData("text/plain", img.id); e.dataTransfer.effectAllowed = "move"; }}
               onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverImageId(img.id); }}
@@ -241,6 +241,20 @@ export function ImageSection({
                 <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 text-white text-sm font-semibold px-3 py-1.5 rounded-full">
                   Click to enlarge
                 </span>
+              </div>
+              <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button type="button" disabled={imgIdx === 0}
+                  onClick={() => {
+                    if (imgIdx === 0) return;
+                    const ids = imgs.map((i) => i.id);
+                    const newOrder = [...ids];
+                    [newOrder[imgIdx - 1], newOrder[imgIdx]] = [newOrder[imgIdx], newOrder[imgIdx - 1]];
+                    onReorderImages(type, newOrder);
+                  }}
+                  title="Move up"
+                  className="rounded-full bg-white/90 text-gray-700 w-8 h-8 text-sm font-bold flex items-center justify-center hover:bg-blue-600 hover:text-white disabled:opacity-0 disabled:pointer-events-none shadow-lg transition-colors">
+                  ↑
+                </button>
               </div>
               <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button type="button" onClick={() => onDeleteImage(img.id)} disabled={deletingImageIds.has(img.id)}
