@@ -119,17 +119,23 @@ export function ImageSection({
       accentBorder: "border-indigo-200", accentHeader: "bg-indigo-50 border-b border-indigo-200",
       accentText: "text-indigo-700", convertLabel: "Convert question images to LaTeX",
       tabActive: "bg-indigo-600 text-white", tabInactive: "text-indigo-600 hover:bg-indigo-50",
+      emptyBorder: "border-indigo-300", emptyBg: "bg-indigo-50/60",
+      pasteClass: "border-indigo-400 bg-indigo-600 text-white hover:bg-indigo-700",
+      fileClass: "border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50",
     },
     {
       label: "Markscheme", type: "markscheme" as const, imgs: msImages, latex: msLatex, fileRef: msFileRef,
       accentBorder: "border-emerald-200", accentHeader: "bg-emerald-50 border-b border-emerald-200",
       accentText: "text-emerald-700", convertLabel: "Convert markscheme images to LaTeX",
       tabActive: "bg-emerald-600 text-white", tabInactive: "text-emerald-600 hover:bg-emerald-50",
+      emptyBorder: "border-emerald-300", emptyBg: "bg-emerald-50/60",
+      pasteClass: "border-emerald-400 bg-emerald-600 text-white hover:bg-emerald-700",
+      fileClass: "border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50",
     },
   ];
 
   const active = groups.find((g) => g.type === activeTab)!;
-  const { label, type, imgs, latex, fileRef, accentBorder, accentHeader, accentText, convertLabel } = active;
+  const { label, type, imgs, latex, fileRef, accentBorder, accentHeader, accentText, convertLabel, emptyBorder, emptyBg, pasteClass, fileClass } = active;
 
   return (
     <div className="space-y-2">
@@ -181,6 +187,7 @@ export function ImageSection({
             )}
           </button>
         ))}
+        {/* Secondary add buttons — always visible in tab bar */}
         <div className="ml-auto flex items-center gap-1.5 pb-1">
           <input ref={fileRef} type="file" accept="image/*" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) { onUploadImage(type, f); e.target.value = ""; } }} />
@@ -251,11 +258,28 @@ export function ImageSection({
               </div>
             </div>
           )) : (
-            <div className={`flex flex-col items-center justify-center h-full rounded-xl border-2 border-dashed ${
-              type === "markscheme" ? "border-emerald-200 bg-emerald-50/40" : "border-indigo-200 bg-indigo-50/40"
-            }`}>
-              <p className="text-xs text-gray-400 font-medium text-center px-3">No {label.toLowerCase()} images yet</p>
-              {driveConnected && <p className="text-[10px] text-gray-400 mt-1 text-center px-3">Use "Extract from Docs" or "Paste image"</p>}
+            /* Empty state — big action buttons front and centre */
+            <div className={`flex flex-col items-center justify-center gap-3 h-full rounded-xl border-2 border-dashed ${emptyBorder} ${emptyBg}`}>
+              <p className="text-sm font-semibold text-gray-500">No {label.toLowerCase()} images yet</p>
+              <div className="flex flex-col gap-2 w-48">
+                <button type="button" disabled={uploadingImage}
+                  onClick={() => handlePaste(type)}
+                  className={`w-full rounded-lg border-2 px-4 py-2.5 text-sm font-bold transition-colors disabled:opacity-50 ${pasteClass}`}>
+                  {uploadingImage ? "Uploading..." : "Paste from clipboard"}
+                </button>
+                <button type="button" disabled={uploadingImage}
+                  onClick={() => handleFileClick(fileRef)}
+                  className={`w-full rounded-lg border-2 px-4 py-2.5 text-sm font-semibold transition-colors disabled:opacity-50 ${fileClass}`}>
+                  Choose a file
+                </button>
+                {driveConnected && (
+                  <button type="button" disabled={extracting}
+                    onClick={onExtractImages}
+                    className="w-full rounded-lg border-2 border-blue-300 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors">
+                    {extracting ? "Extracting..." : "↻ Extract from Docs"}
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>
