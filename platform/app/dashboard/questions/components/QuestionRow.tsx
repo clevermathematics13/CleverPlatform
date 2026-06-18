@@ -87,7 +87,6 @@ export function QuestionRow({
   onOpenSavedExam: (exam: import("./types").SavedExam) => void;
   onOpenEditor?: () => void;
   hideCollapsedRow?: boolean;
-  /** When set, minimize state is controlled externally (e.g. by the modal header − button) */
   externalMinimized?: boolean;
   savingSection: boolean;
   onUpdateSection: (section: "A" | "B") => void;
@@ -102,7 +101,6 @@ export function QuestionRow({
   const expandedRef = useRef(expanded);
   useEffect(() => { expandedRef.current = expanded; }, [expanded]);
 
-  // Use external minimize state when provided (modal header − button), else internal
   const minimized = externalMinimized !== undefined ? externalMinimized : internalMinimized;
   const [partsCollapsed, setPartsCollapsed] = useState(false);
 
@@ -285,7 +283,6 @@ export function QuestionRow({
             </span>
           )}
         </td>
-        {/* Q/MS doc status badges */}
         <td className="px-4 py-2 text-center" onClick={(e) => e.stopPropagation()}>
           <div className="flex items-center justify-center gap-1.5">
             {question.google_doc_id ? (
@@ -363,7 +360,6 @@ export function QuestionRow({
           <td colSpan={hideCollapsedRow ? 1 : testBuilderOpen ? 11 : 10} className="px-0 py-0 bg-blue-50">
             <div className="border-t border-blue-200 px-4 py-3 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
-                {/* Only show internal Minimise button when NOT in modal */}
                 {!hideCollapsedRow && (
                   <button type="button" onClick={() => setInternalMinimized((v) => !v)}
                     className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50">
@@ -485,7 +481,6 @@ export function QuestionRow({
                       + Add Part
                     </button>
                   )}
-
                   </>)}
 
                   {/* ImageSection owns the paired image+LaTeX layout */}
@@ -500,6 +495,7 @@ export function QuestionRow({
                     convertingLatex={convertingLatex} convertLatexError={convertLatexError}
                     onConvertLatex={convertImagesToLatex}
                     partsCollapsed={partsCollapsed} onToggleParts={() => setPartsCollapsed((v) => !v)} />
+                </div>
               )}
             </div>
           </td>
