@@ -227,7 +227,12 @@ export async function POST(request: NextRequest) {
       }
       const ext = extensionForType(contentType);
       // Use writeIdx (not i) so filenames are contiguous: 01, 02, 03 ...
-      const storagePath = `${question.code}/question/${String(writeIdx + 1).padStart(2, "0")}.${ext}`;
+      // Append a per-run cache-buster suffix so re-extraction never reuses an
+      // existing storage path. Reusing a path with upsert:true is what
+      // previously allowed a CDN/proxy to serve stale bytes for a doc that
+      // had been re-extracted (the markscheme-doc-not-updated bug).
+      const cacheBuster = Date.now().toString(36);
+      const storagePath = `${question.code}/question/${String(writeIdx + 1).padStart(2, "0")}-${cacheBuster}.${ext}`;
 
       // Upload to Supabase Storage
       const { error: uploadErr } = await supabase.storage
@@ -277,6 +282,26 @@ export async function POST(request: NextRequest) {
       const qPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).questionDoc;
       qPhase.uploaded = Number(qPhase.uploaded ?? 0) + 1;
       writeIdx++;
+    }
+
+    // Clean up old storage objects from previous extractions now that the
+    // new images (with cache-busted filenames) are uploaded and the
+    // question_images rows point only to the new paths.
+    try {
+      const { data: oldFiles } = await supabase.storage
+        .from("question-images")
+        .list(`${question.code}/question`);
+      const keepNames = new Set(
+        results.filter((r) => r.type === "question").map((r) => r.storagePath.split("/").pop())
+      );
+      const toRemove = (oldFiles ?? [])
+        .filter((f) => !keepNames.has(f.name))
+        .map((f) => `${question.code}/question/${f.name}`);
+      if (toRemove.length > 0) {
+        await supabase.storage.from("question-images").remove(toRemove);
+      }
+    } catch (cleanupErr) {
+      console.warn("Old question image cleanup failed (non-fatal):", cleanupErr);
     }
   } catch (err) {
     console.error("Error extracting question doc images:", err);
@@ -335,7 +360,10 @@ export async function POST(request: NextRequest) {
           continue;
         }
         const ext = extensionForType(contentType);
-        const storagePath = `${question.code}/markscheme/${String(writeIdx + 1).padStart(2, "0")}.${ext}`;
+        // Cache-bust the path the same way as the question doc above — ensures
+        // a re-extraction never resolves to a previously-cached storage object.
+        const cacheBuster = Date.now().toString(36) + "-" + writeIdx;
+        const storagePath = `${question.code}/markscheme/${String(writeIdx + 1).padStart(2, "0")}-${cacheBuster}.${ext}`;
 
         const { error: uploadErr } = await supabase.storage
           .from("question-images")
@@ -383,6 +411,24 @@ export async function POST(request: NextRequest) {
         const msPhase = (diagnostics.phases as Record<string, Record<string, unknown>>).markschemeDoc;
         msPhase.uploaded = Number(msPhase.uploaded ?? 0) + 1;
         writeIdx++;
+      }
+
+      // Clean up old markscheme storage objects from previous extractions.
+      try {
+        const { data: oldFiles } = await supabase.storage
+          .from("question-images")
+          .list(`${question.code}/markscheme`);
+        const keepNames = new Set(
+          results.filter((r) => r.type === "markscheme").map((r) => r.storagePath.split("/").pop())
+        );
+        const toRemove = (oldFiles ?? [])
+          .filter((f) => !keepNames.has(f.name))
+          .map((f) => `${question.code}/markscheme/${f.name}`);
+        if (toRemove.length > 0) {
+          await supabase.storage.from("question-images").remove(toRemove);
+        }
+      } catch (cleanupErr) {
+        console.warn("Old markscheme image cleanup failed (non-fatal):", cleanupErr);
       }
     } catch (err) {
       console.error("Error extracting markscheme doc images:", err);
