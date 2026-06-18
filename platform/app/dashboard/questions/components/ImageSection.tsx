@@ -31,8 +31,6 @@ async function readClipboardImage(): Promise<{ file: File | null; error?: string
 
 type LatexEntry = { label: string | null; latex: string };
 
-// Height of each independently-scrolling panel column.
-// The outer modal scrolls to reach this section; once here each column scrolls on its own.
 const PANEL_H = "70vh";
 
 export function ImageSection({
@@ -164,7 +162,7 @@ export function ImageSection({
         </div>
       </div>
 
-      {/* Tabs + paste/file buttons */}
+      {/* Tabs row — no add buttons here; they live in the image panel */}
       <div className="flex items-center gap-1 border-b border-gray-200">
         {groups.map((g) => (
           <button
@@ -187,24 +185,11 @@ export function ImageSection({
             )}
           </button>
         ))}
-        {/* Secondary add buttons — always visible in tab bar */}
-        <div className="ml-auto flex items-center gap-1.5 pb-1">
-          <input ref={fileRef} type="file" accept="image/*" className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) { onUploadImage(type, f); e.target.value = ""; } }} />
-          <button type="button" disabled={uploadingImage}
-            title="Paste image from clipboard"
-            onClick={() => handlePaste(type)}
-            className="rounded border border-indigo-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50">
-            {uploadingImage ? "Uploading..." : "Paste image"}
-          </button>
-          <button type="button" disabled={uploadingImage}
-            title="Choose an image file"
-            onClick={() => handleFileClick(fileRef)}
-            className="rounded border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-            Choose file
-          </button>
-        </div>
       </div>
+
+      {/* Hidden file input — always rendered so ref is available */}
+      <input ref={fileRef} type="file" accept="image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) { onUploadImage(type, f); e.target.value = ""; } }} />
 
       {/* Clipboard error toast */}
       {clipboardError && (
@@ -215,12 +200,13 @@ export function ImageSection({
         </div>
       )}
 
-      {/* Panel: both columns independently scrollable at PANEL_H */}
+      {/* Panel: both columns independently scrollable */}
       <div className="flex gap-3" style={{ height: PANEL_H }}>
 
-        {/* Image column — scrolls independently */}
+        {/* Image column */}
         <div className="overflow-y-auto flex flex-col gap-3 min-w-0" style={{ width: "50%" }}>
-          {imgs.length > 0 ? imgs.map((img) => (
+
+          {imgs.map((img) => (
             <div key={img.id} draggable
               onDragStart={(e) => { e.dataTransfer.setData("text/plain", img.id); e.dataTransfer.effectAllowed = "move"; }}
               onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverImageId(img.id); }}
@@ -257,8 +243,10 @@ export function ImageSection({
                 {img.sort_order + 1} of {imgs.length}
               </div>
             </div>
-          )) : (
-            /* Empty state — big action buttons front and centre */
+          ))}
+
+          {/* Add-image tile — full empty state when no images, compact strip when images exist */}
+          {imgs.length === 0 ? (
             <div className={`flex flex-col items-center justify-center gap-3 h-full rounded-xl border-2 border-dashed ${emptyBorder} ${emptyBg}`}>
               <p className="text-sm font-semibold text-gray-500">No {label.toLowerCase()} images yet</p>
               <div className="flex flex-col gap-2 w-48">
@@ -273,15 +261,30 @@ export function ImageSection({
                   Choose a file
                 </button>
                 {driveConnected && (
-                  <button type="button" disabled={extracting}
-                    onClick={onExtractImages}
+                  <button type="button" disabled={extracting} onClick={onExtractImages}
                     className="w-full rounded-lg border-2 border-blue-300 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors">
                     {extracting ? "Extracting..." : "↻ Extract from Docs"}
                   </button>
                 )}
               </div>
             </div>
+          ) : (
+            /* Compact add-more strip — always visible below images */
+            <div className={`shrink-0 rounded-xl border-2 border-dashed ${emptyBorder} ${emptyBg} px-3 py-3 flex items-center gap-2`}>
+              <span className="text-xs font-semibold text-gray-400 flex-1">Add image</span>
+              <button type="button" disabled={uploadingImage}
+                onClick={() => handlePaste(type)}
+                className={`rounded-lg border-2 px-3 py-1.5 text-xs font-bold transition-colors disabled:opacity-50 ${pasteClass}`}>
+                {uploadingImage ? "Uploading..." : "Paste"}
+              </button>
+              <button type="button" disabled={uploadingImage}
+                onClick={() => handleFileClick(fileRef)}
+                className={`rounded-lg border-2 px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50 ${fileClass}`}>
+                File
+              </button>
+            </div>
           )}
+
         </div>
 
         {/* LaTeX column — scrolls independently, sticky header */}
