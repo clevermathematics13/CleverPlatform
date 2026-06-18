@@ -151,8 +151,9 @@ export function ImageSection({
         <div className="flex items-center gap-2 flex-wrap">
           {driveConnected && (
             <button type="button" onClick={onExtractImages} disabled={extracting}
+              title="Pull images from both the Question and Markscheme Google Docs"
               className="rounded border border-blue-300 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50">
-              {extracting ? "Extracting..." : "↻ Extract from Docs"}
+              {extracting ? "Extracting from Q + MS docs..." : "↻ Extract images from Q + MS docs"}
             </button>
           )}
           {hasTroubleshooting && (
@@ -270,8 +271,9 @@ export function ImageSection({
                 </button>
                 {driveConnected && (
                   <button type="button" disabled={extracting} onClick={onExtractImages}
+                    title="Pull images from both the Question and Markscheme Google Docs"
                     className="w-full rounded-lg border-2 border-blue-300 bg-white px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors">
-                    {extracting ? "Extracting..." : "↻ Extract from Docs"}
+                    {extracting ? "Extracting from Q + MS docs..." : "↻ Extract images from Q + MS docs"}
                   </button>
                 )}
               </div>
