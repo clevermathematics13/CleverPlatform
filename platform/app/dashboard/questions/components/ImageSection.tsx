@@ -40,6 +40,7 @@ export function ImageSection({
   hasTroubleshooting, troubleshootingCopied, onCopyTroubleshooting,
   deletingImageIds, uploadingImage, onDeleteImage, onDeleteAllImages, onReorderImages, onUploadImage,
   convertingLatex, convertLatexError, onConvertLatex,
+  partsCollapsed, onToggleParts,
 }: {
   question: Question; questionImages: QuestionImage[]; msImages: QuestionImage[];
   questionLatex: LatexEntry[]; msLatex: LatexEntry[];
@@ -52,8 +53,9 @@ export function ImageSection({
   convertingLatex: "question" | "markscheme" | null;
   convertLatexError: string | null;
   onConvertLatex: (imageType: "question" | "markscheme") => void;
+  partsCollapsed: boolean;
+  onToggleParts: () => void;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<"question" | "markscheme">("question");
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -138,12 +140,13 @@ export function ImageSection({
 
   return (
     <div className="space-y-2">
-      {/* Toolbar — always visible */}
+      {/* Toolbar — toggle controls parts ABOVE this section */}
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <button type="button" onClick={() => setCollapsed((v) => !v)}
-          className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-gray-900 select-none">
+        <button type="button" onClick={onToggleParts}
+          className="flex items-center gap-1.5 text-xs font-bold text-gray-700 hover:text-gray-900 select-none"
+          title={partsCollapsed ? "Show question parts" : "Hide question parts"}>
           Images
-          <span className="text-[10px] text-gray-400">{collapsed ? "▶" : "▼"}</span>
+          <span className="text-[10px] text-gray-400">{partsCollapsed ? "▲" : "▼"}</span>
         </button>
         <div className="flex items-center gap-2 flex-wrap">
           {driveConnected && (
@@ -166,9 +169,6 @@ export function ImageSection({
           )}
         </div>
       </div>
-
-      {!collapsed && (
-      <div className="space-y-2">
 
       {/* Tabs row */}
       <div className="flex items-center gap-1 border-b border-gray-200">
@@ -378,8 +378,6 @@ export function ImageSection({
         </div>,
         document.body
       )}
-
-      </div>)}
     </div>
   );
 }
