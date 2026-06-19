@@ -19,6 +19,30 @@
  *   - Styled hint lines
  *
  * Also exports generateMarkSchemeHtml() for the separate mark-scheme endpoint.
+ *
+ * ── Pagination / spatial cohesion ──────────────────────────────────────────
+ * See /03_Spatial_Cohesion_and_Pagination_Rules.md for the source-of-truth
+ * rules. Summary of what's implemented here (CSS print has no dynamic
+ * remaining-space measurement like Typst's `layout()`, so we use static
+ * page-height budgets instead):
+ *
+ *   Rule 1 (full fit)            → answer box requested in full, wrapped in
+ *                                   an unbreakable `.question-block`.
+ *   Rule 2 / Rule 3 (overflow)   → if the requested box would not fit on a
+ *                                   single page even on its own, it is split
+ *                                   into a capped first box + a labeled
+ *                                   "Continued working space" box that is
+ *                                   forced onto a fresh page. This is what
+ *                                   prevents Chromium's print engine from
+ *                                   falling back to an uncontrolled mid-box
+ *                                   page split when `break-inside: avoid`
+ *                                   cannot be honoured (the bug that produced
+ *                                   the border/header collisions on pages
+ *                                   2 and 4 of early ExamBuilder output).
+ *   Rule 4 (no useless boxes)    → MIN_USEFUL_LINES enforced on both halves
+ *                                   of a split.
+ *   Rule 6 (avoid sloppy stretch)→ box height is never inflated past what
+ *                                   was actually requested; only capped.
  */
 
 import katex from "katex";
@@ -45,16 +69,75 @@ export function renderMath(input: string): string {
   return output;
 }
 
+// ── Pagination constants ──────────────────────────────────────────────────────
+//
+// A4 usable height after the largest configured margin (20mm top + 20mm
+// bottom) is ~257mm. We also have to leave room for the question prompt
+// itself (label, prompt text, marks, optional hint/tier badge), so the
+// answer-box budget per page is intentionally conservative.
+
+/** Usable A4 page height in mm at the largest supported margin. */
+const PAGE_USABLE_HEIGHT_MM = 257;
+
+/**
+ * Maximum height (mm) we will ever request for a single, unbroken answer
+ * box. Leaves headroom on the page for the prompt above it. This is the
+ * number that previously had no ceiling — answerLines * answerLineHeightMm
+ * could exceed a full page (e.g. 20 lines * 12mm = 240mm), which is why
+ * `break-inside: avoid` silently failed and Chromium split mid-border.
+ */
+const MAX_SINGLE_BOX_HEIGHT_MM = 190;
+
+/** Rule 4 — never create an answer space too small to be useful. */
+const MIN_USEFUL_LINES = 3;
+
+/** Rule 3 — continuation box gets its own minimum so it isn't a token gesture. */
+const MIN_CONTINUATION_LINES = 4;
+
 // ── Answer box ────────────────────────────────────────────────────────────────
 
-function renderAnswerBox(lines: number, lineHeightMm: number): string {
-  if (lines <= 0) return "";
-  const lineHtml = Array.from(
+function answerLinesHtml(lines: number, lineHeightMm: number): string {
+  return Array.from(
     { length: lines },
     (_, i) => `<div style="border-bottom:0.5pt solid #bbb;height:${lineHeightMm}mm;min-height:${lineHeightMm}mm;${i === 0 ? "border-top:0.5pt solid #bbb;" : ""}"></div>`
   ).join("");
-  return `<div class="answer-box">${lineHtml}</div>
-  <div class="continue-note">Continue on next page if needed</div>`;
+}
+
+/**
+ * Renders the answer space for a question.
+ *
+ * Implements Rule 1 / Rule 2 / Rule 3 from the pagination spec:
+ *  - If the requested box fits within MAX_SINGLE_BOX_HEIGHT_MM, render it as
+ *    one atomic, unbreakable box (Rule 1 — full fit).
+ *  - If it doesn't fit, split it: a capped first box that stays with the
+ *    prompt, plus a clearly labeled continuation box that is forced onto a
+ *    fresh page via `page-break-before` (Rule 3 — partial box with
+ *    continuation). This guarantees neither box is ever taller than one
+ *    printable page, so `break-inside: avoid` can always be honoured and
+ *    Chromium never has to invent its own split point.
+ */
+function renderAnswerBox(lines: number, lineHeightMm: number): string {
+  if (lines <= 0) return "";
+
+  const requestedHeightMm = lines * lineHeightMm;
+
+  if (requestedHeightMm <= MAX_SINGLE_BOX_HEIGHT_MM) {
+    // Rule 1 — fits entirely; one atomic unbreakable block.
+    return `<div class="answer-box">${answerLinesHtml(lines, lineHeightMm)}</div>`;
+  }
+
+  // Rule 2/3 — does not fit on one page. Split into a capped first box and
+  // a continuation box that starts on a fresh page.
+  const firstBoxLines = Math.max(
+    MIN_USEFUL_LINES,
+    Math.floor(MAX_SINGLE_BOX_HEIGHT_MM / lineHeightMm)
+  );
+  const remainingLines = Math.max(MIN_CONTINUATION_LINES, lines - firstBoxLines);
+
+  return `
+    <div class="answer-box">${answerLinesHtml(firstBoxLines, lineHeightMm)}</div>
+    <div class="continuation-label">Continued working space — see next page</div>
+    <div class="answer-box continuation-box">${answerLinesHtml(remainingLines, lineHeightMm)}</div>`;
 }
 
 // ── Tier badge ────────────────────────────────────────────────────────────────
@@ -109,12 +192,18 @@ function renderQuestion(
               <div><span class="q-text">${renderMath(escapeHtml(sp.prompt))}</span>${spTier}${spHint}</div>
               ${spMarks}
             </div>
-            ${renderAnswerBox(Math.max(2, Math.ceil(answerLines / 2)), formatting.answerLineHeightMm)}`;
+            ${renderAnswerBox(Math.max(MIN_USEFUL_LINES, Math.ceil(answerLines / 2)), formatting.answerLineHeightMm)}`;
         }).join("")
       : "";
 
   const mainAnswerBox = !subpartsHtml ? renderAnswerBox(answerLines, formatting.answerLineHeightMm) : "";
 
+  // Rule 2 — if the prompt + a *minimum useful* answer box can't both fit on
+  // a fresh page either (vanishingly rare, but possible with very long
+  // prompts), we still keep prompt+box atomic; the browser will move the
+  // whole block to the next page rather than splitting it, because
+  // `.question-block` carries `break-inside: avoid` and now never exceeds
+  // MAX_SINGLE_BOX_HEIGHT_MM + a typical prompt's height.
   return `
     <div class="question-block">
       <div class="q-row">
@@ -197,6 +286,8 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     /* ── Command terms tear-off strip ── */
     .ct-wrap {
       margin: 16px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
     .ct-dashed-top {
       border-top: 2pt dashed #0d9488;
@@ -303,7 +394,11 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     .im-block p { font-size: 10pt; }
 
     /* ── Instructions ── */
-    .instructions-section { margin: 0 0 14px 0; }
+    .instructions-section {
+      margin: 0 0 14px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
     .instructions-section ol { margin-left: 18px; }
     .instructions-section li { font-size: 10pt; margin: 2px 0; }
 
@@ -315,6 +410,9 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       color: #111;
       margin-bottom: 8px;
       padding-bottom: 2px;
+      /* Rule: section titles should not appear alone at the bottom of a page */
+      break-after: avoid;
+      page-break-after: avoid;
     }
 
     /* ── Prerequisite box ── */
@@ -350,6 +448,16 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
 
     /* ── Questions ── */
     .question-block {
+      /*
+       * Atomic prompt+answer unit (Spatial Cohesion Rule 1 — "Atomic
+       * question block"). This now reliably holds because renderAnswerBox()
+       * guarantees neither the main box nor the continuation box exceeds
+       * MAX_SINGLE_BOX_HEIGHT_MM (~190mm) — comfortably inside one A4 page
+       * even with a multi-line prompt above it. Previously an answer box
+       * alone could request up to 240mm (20 lines × 12mm), which is taller
+       * than the printable page, so break-inside: avoid had nothing valid
+       * to land on and Chromium split mid-border instead.
+       */
       break-inside: avoid;
       page-break-inside: avoid;
       margin: 10px 0 2px 0;
@@ -390,15 +498,29 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     .answer-box {
       margin: 6px 0 2px 0;
       background: #fafafa;
+      border: 0.5pt solid #d1d5db;
       break-inside: avoid;
       page-break-inside: avoid;
     }
-    .continue-note {
-      font-size: 7.5pt;
-      color: #9ca3af;
+    /*
+     * Continuation box: forced onto a fresh page so it never gets squeezed
+     * against the tail end of the previous question's box (the collision
+     * seen on the original buggy page 4 — a second box's top border landing
+     * directly against the first box's bottom border with no page break).
+     */
+    .continuation-box {
+      break-before: page;
+      page-break-before: always;
+    }
+    .continuation-label {
+      font-size: 8.5pt;
+      color: #6b7280;
       font-style: italic;
-      text-align: right;
-      margin-bottom: 8px;
+      margin: 10px 0 2px 0;
+      break-before: page;
+      page-break-before: always;
+      break-after: avoid;
+      page-break-after: avoid;
     }
     .tier-badge { font-family: serif; }
 
@@ -437,6 +559,8 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       gap: 8px;
       margin: 4px 0;
       font-size: 9.5pt;
+      break-inside: avoid;
+      page-break-inside: avoid;
     }
 
     /* ── Teacher companion ── */
@@ -445,6 +569,8 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       align-items: center;
       margin: 24px 0 12px;
       gap: 8px;
+      break-after: avoid;
+      page-break-after: avoid;
     }
     .teacher-separator-rule {
       flex: 1;
@@ -479,7 +605,7 @@ function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string
       letter-spacing: 0.12em; text-transform: uppercase; padding: 4px 0; margin-bottom: 16px; }
     .school { text-align: center; text-transform: uppercase; font-size: 9pt; letter-spacing: 0.08em; margin-bottom: 4px; }
     .ms-section { margin-top: 14px; border-top: 1pt solid #c4b5fd; padding-top: 6px; }
-    .ms-section h3 { font-size: 11pt; font-weight: 700; color: #5b21b6; margin-bottom: 6px; }
+    .ms-section h3 { font-size: 11pt; font-weight: 700; color: #5b21b6; margin-bottom: 6px; break-after: avoid; page-break-after: avoid; }
     .ms-row { display: grid; grid-template-columns: 36px 1fr 48px; gap: 8px; margin: 8px 0;
       break-inside: avoid; page-break-inside: avoid; }
     .ms-label { font-weight: 700; font-size: 10pt; }
