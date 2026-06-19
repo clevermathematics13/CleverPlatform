@@ -500,6 +500,7 @@ export function QuestionRow({
                     convertingLatex={convertingLatex} convertLatexError={convertLatexError}
                     onConvertLatex={convertImagesToLatex}
                     partsCollapsed={partsCollapsed} onToggleParts={() => setPartsCollapsed((v) => !v)} />
+                </div>
               )}
             </div>
           </td>
