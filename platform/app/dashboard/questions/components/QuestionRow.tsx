@@ -13,7 +13,7 @@ import type {
   Subtopic,
 } from "./types";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────
 
 const HINT_TOOLTIP = `LaTeX math: $x^2$, $\\frac{a}{b}$, $\\sqrt{x}$
 Text: plain words work directly
@@ -205,7 +205,12 @@ export function QuestionRow({
     setConvertingLatex(imageType);
     setConvertLatexError(null);
     try {
-      const field = imageType === "question" ? "parts_draft_latex" : "parts_draft_markscheme_latex";
+      // NOTE: use the legacy content_latex / markscheme_latex fields — these are
+      // what the LaTeX panel in ImageSection actually reads via question.question_parts.
+      // The parts_draft_* fields write to ib_questions instead and were never
+      // connected to this view, which caused "Re-extract" to appear to do nothing
+      // (stale LaTeX from an old extraction kept rendering).
+      const field = imageType === "question" ? "content_latex" : "markscheme_latex";
       const res = await fetch("/api/questions/ocr-latex", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -495,7 +500,6 @@ export function QuestionRow({
                     convertingLatex={convertingLatex} convertLatexError={convertLatexError}
                     onConvertLatex={convertImagesToLatex}
                     partsCollapsed={partsCollapsed} onToggleParts={() => setPartsCollapsed((v) => !v)} />
-                </div>
               )}
             </div>
           </td>
@@ -523,7 +527,7 @@ export function QuestionRow({
   );
 }
 
-// ── QuestionPartRow ───────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── QuestionPartRow ─────────────────────────────────────────────────────────
 
 function QuestionPartRow({
   part, partIdx, question, commandTerms, onUpdateCommandTerm, onAddCustomTerm,
