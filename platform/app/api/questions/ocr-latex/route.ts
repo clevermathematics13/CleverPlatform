@@ -46,6 +46,31 @@ function stripMarkAnnotationLines(latex: string): string {
     .trim();
 }
 
+// Strip a leading question-number prefix such as "8. METHOD 1" -> "METHOD 1",
+// or a bare "8." on its own line before the real content. IB papers print the
+// question number directly above the markscheme/question content, but this
+// platform already encodes the number in the question code (e.g. the trailing
+// _8 in 13M.1.AHL.TZ1.H_8), so it is redundant and visually noisy in the panel.
+// Only strips a number+dot at the very start of the FIRST LINE — never touches
+// numbers elsewhere in the body (e.g. "20th term", "[6 marks]", "100 = ...").
+function stripQuestionNumberPrefix(latex: string): string {
+  const trimmed = latex.replace(/^\s+/, "");
+  const newlineIdx = trimmed.indexOf("\n");
+  const firstLine = newlineIdx === -1 ? trimmed : trimmed.slice(0, newlineIdx);
+  const restOfText = newlineIdx === -1 ? "" : trimmed.slice(newlineIdx);
+
+  // Case 1: "8. METHOD 1" — strip just the "N." prefix, keep the rest of that line.
+  const inlineMatch = firstLine.match(/^(\d{1,3})\.\s+(\S.*)$/);
+  if (inlineMatch) {
+    return inlineMatch[2] + restOfText;
+  }
+  // Case 2: a bare number (with or without trailing dot) alone on the first line.
+  if (/^\d{1,3}\.?\s*$/.test(firstLine.trim()) && newlineIdx !== -1) {
+    return restOfText.replace(/^\s+/, "");
+  }
+  return latex;
+}
+
 //
 // Fetches the stored question_images for the question, runs MathPix (or Claude
 // vision fallback), applies IBPart post-processing, then:
@@ -418,6 +443,11 @@ ${extractedLatex}`;
   if (imageType === "question") {
     extractedLatex = stripMarkAnnotationLines(extractedLatex);
   }
+
+  // Strip a leading question-number prefix (e.g. "8. METHOD 1" -> "METHOD 1").
+  // Applies to both question and markscheme output — the number is already
+  // encoded in the question code and is redundant noise in the LaTeX panel.
+  extractedLatex = stripQuestionNumberPrefix(extractedLatex);
 
   const graphMarkerInjected = false; // graph marker is now placed by Claude at the correct position
 
