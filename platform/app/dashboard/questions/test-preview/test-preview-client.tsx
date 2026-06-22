@@ -76,26 +76,37 @@ function questionTotalMarks(q: TestQuestion): number {
   return (q.parts ?? []).reduce((sum, part) => sum + (Number(part.marks) || 0), 0);
 }
 
-function ibdpDottedLineCount(q: TestQuestion): number {
-  // Slightly fewer guide lines when question media is heavier.
-  if ((q.images?.length ?? 0) >= 3) return 12;
-  if ((q.images?.length ?? 0) === 2) return 14;
-  return 16;
+function ibdpDottedLineCount(): number {
+  // Fixed at 12 dotted lines, matching the current official IB AAHL Paper 1
+  // format exactly. Verified directly against the May 2025 TZ1 HL paper
+  // (2225-7106): every Section A answer box on that paper has exactly 12
+  // dotted lines, regardless of the question's mark value (5, 6, 7, 4, 8
+  // marks all use 12 lines) or how many images/diagrams the question has.
+  // The 12 lines only mark a suggested starting ruled area near the top of
+  // the box — the box's *border* extends to fill the rest of the page,
+  // giving students unruled working space below the lines (the paper's own
+  // instruction is literally "Working may be continued below the lines, if
+  // necessary"). This was previously a variable count (12/14/16) tied to
+  // image count, which had no basis in the real exam format and also left
+  // the box far short of the page (a fixed line count sized to a fixed
+  // height, rather than the lines being a small fixed prefix inside a
+  // page-filling box).
+  return 12;
 }
 
 // IB answer lines are actual ". . . . ." dot text, not CSS borders (matches IB paper 2225-7106)
 const IB_DOT_ROW =
   ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .";
 
-// ── Answer-box geometry constants ──────────────────────────────────────────
+// ── Page / box geometry constants ──────────────────────────────────────────
 //
-// These were previously implicit (re-derived inline at each call site with
-// slightly different numbers between the "general" and "batched" render
-// paths — 244mm vs 260.5mm for the same nominal page). Centralising them
-// guarantees both paths agree, and makes the box's *actual* rendered height
-// explicit and fixed rather than something that depends on flex-fill +
-// overflow:hidden clipping (which Chrome's print engine does not reliably
-// honour as a pagination boundary — see PAGE_HEIGHT_MM usage below).
+// The answer box border now fills all remaining space on the page (matching
+// the real IB paper, where the 12 dotted lines are just a suggested
+// starting area and the box border extends to near the bottom margin).
+// This is safe because the *page* itself is a fixed, print-enforced height
+// (see the @media print .question-page rule below) — so a flex:1 box
+// filling that fixed-height parent resolves reliably, unlike the earlier
+// bug where the page's own height was being deleted at print time.
 const PAGE_HEIGHT_MM = 297;
 const PAGE_PADDING_TOP_MM = 10;
 const PAGE_PADDING_BOTTOM_MM = 12;
@@ -106,27 +117,30 @@ const ANSWER_BOX_PADDING_BOTTOM_MM = 2;
 const ANSWER_LINE_SPACING_MM = 3.8; // marginBottom between dotted lines
 const ANSWER_LINE_HEIGHT_MM = 3; // approx rendered height of one 8.5pt line
 
-/** Total fixed height (mm) of the answer box for a given line count. */
-function answerBoxHeightMm(lineCount: number): number {
-  const linesHeight =
-    lineCount * ANSWER_LINE_HEIGHT_MM + (lineCount - 1) * ANSWER_LINE_SPACING_MM;
-  return ANSWER_BOX_PADDING_TOP_MM + linesHeight + ANSWER_BOX_PADDING_BOTTOM_MM;
+/**
+ * Height (mm) of just the 12 ruled dotted lines themselves (not the whole
+ * box — the box border extends well past this). Used only to size the
+ * content-area cap above the box; the box's own height is now `flex: 1`
+ * (fills remaining page space), not this value.
+ */
+function rusledLinesHeightMm(lineCount: number): number {
+  return lineCount * ANSWER_LINE_HEIGHT_MM + (lineCount - 1) * ANSWER_LINE_SPACING_MM;
 }
 
 /**
- * Max height (mm) available for the prompt/image content above the answer
- * box, given the page's fixed height and the answer box's own fixed height.
- * Used as a `maxHeight` + `overflow: hidden` safety cap on the content block
- * — this is a backstop for unusually tall images, not the primary
- * pagination mechanism (the primary mechanism is simply that every
- * measurement here is now fixed and adds up to exactly one page, so nothing
- * needs to rely on a flex-fill clip surviving print).
+ * Conservative max height (mm) for the prompt/image content area above the
+ * answer box. Reserves enough room for the box's padding + its 12 ruled
+ * lines + margins even though the box itself will then stretch further via
+ * flex:1 — this keeps long prompts/diagrams from squeezing the ruled lines
+ * down below a usable minimum, without capping the box's *total* height
+ * (which should always reach the page's bottom margin).
  */
 function contentMaxHeightMm(lineCount: number): number {
   const pageUsable = PAGE_HEIGHT_MM - PAGE_PADDING_TOP_MM - PAGE_PADDING_BOTTOM_MM;
-  const answerBoxTotal =
-    ANSWER_BOX_MARGIN_TOP_MM + answerBoxHeightMm(lineCount) + ANSWER_BOX_MARGIN_BOTTOM_MM;
-  return pageUsable - answerBoxTotal;
+  const minBoxHeight =
+    ANSWER_BOX_PADDING_TOP_MM + rusledLinesHeightMm(lineCount) + ANSWER_BOX_PADDING_BOTTOM_MM;
+  const reserved = ANSWER_BOX_MARGIN_TOP_MM + minBoxHeight + ANSWER_BOX_MARGIN_BOTTOM_MM;
+  return pageUsable - reserved;
 }
 
 function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
@@ -622,13 +636,11 @@ export function TestPreviewClient() {
           const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
           const showSectionAAnswerBox = showSections && q.section !== "B" && config?.imageType === "question";
           const totalMarks = questionTotalMarks(q);
-          const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
-          // Fixed answer-box height (mm) and the matching content cap, derived
-          // from the same shared constants the answer box itself uses below —
-          // see answerBoxHeightMm()/contentMaxHeightMm(). Previously this was
-          // a magic-number formula duplicated (with different numbers!)
-          // between the general and batched render paths.
-          const answerBoxMm = showSectionAAnswerBox ? answerBoxHeightMm(lineCount) : 0;
+          const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount() : 0;
+          // Content-area cap reserves room for the box's fixed 12 ruled
+          // lines + padding/margins; the box itself then stretches via
+          // flex:1 to consume whatever space remains on the page (see
+          // showSectionAAnswerBox block below).
           const contentMaxMm = showSectionAAnswerBox ? contentMaxHeightMm(lineCount) : undefined;
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
@@ -692,16 +704,18 @@ export function TestPreviewClient() {
                 {showSectionAAnswerBox && (
                   <div
                     style={{
-                      // Fixed height, not flex:1 + overflow:hidden. A flex-fill
-                      // box only has a defined size if its flex parent has a
-                      // defined, non-overridden height — and Chrome's print
-                      // engine does not reliably honour overflow:hidden as a
-                      // hard pagination clip even when that holds. Giving the
-                      // box its own fixed height makes the whole page's total
-                      // height book-keep to exactly PAGE_HEIGHT_MM with no
-                      // dependency on print-time flex resolution.
-                      height: `${answerBoxMm}mm`,
-                      flex: "0 0 auto",
+                      // The box border now fills all remaining page space
+                      // (flex:1) instead of stopping after a fixed height —
+                      // matching the real IB paper, where the bordered
+                      // answer box always extends to near the bottom
+                      // margin regardless of how many ruled lines it
+                      // contains. This is safe now because the *page*
+                      // (.question-page) has a print-enforced fixed height
+                      // (see the @media print rule below); a flex:1 child
+                      // of a genuinely fixed-height flex parent resolves
+                      // correctly, which is what was missing before.
+                      flex: "1 1 auto",
+                      minHeight: 0,
                       marginTop: `${ANSWER_BOX_MARGIN_TOP_MM}mm`,
                       marginBottom: `${ANSWER_BOX_MARGIN_BOTTOM_MM}mm`,
                       border: "1px solid #000",
@@ -748,8 +762,7 @@ export function TestPreviewClient() {
                 const qrUrl = qrCodes[student.id]?.[q.code] ?? "";
                 const showSectionAAnswerBox = showSections && q.section !== "B" && config?.imageType === "question";
                 const totalMarks = questionTotalMarks(q);
-                const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
-                const answerBoxMm = showSectionAAnswerBox ? answerBoxHeightMm(lineCount) : 0;
+                const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount() : 0;
                 const contentMaxMm = showSectionAAnswerBox ? contentMaxHeightMm(lineCount) : undefined;
                 const isLastQuestion = qIdx === orderedQuestions.length - 1;
                 return (
@@ -802,8 +815,8 @@ export function TestPreviewClient() {
                       {showSectionAAnswerBox && (
                         <div
                           style={{
-                            height: `${answerBoxMm}mm`,
-                            flex: "0 0 auto",
+                            flex: "1 1 auto",
+                            minHeight: 0,
                             marginTop: `${ANSWER_BOX_MARGIN_TOP_MM}mm`,
                             border: "1px solid #000",
                             boxSizing: "border-box",
@@ -886,24 +899,14 @@ export function TestPreviewClient() {
           }
 
           /*
-           * THE BUG: this previously read "min-height: 0 !important" here,
-           * which deletes the fixed height: 297mm the question page sets
-           * inline for screen rendering. Without a fixed page height, the
-           * answer box's flex-fill sizing (and, before this pass, its
-           * fixed height too) has nothing to size itself against, so the
-           * page collapses to its natural content height at print time.
-           * Chrome's print engine then has to decide where to break based
-           * on that collapsed, wrong height — producing exactly the two
-           * symptoms reported: an answer box splitting mid-page with no
-           * border at the seam, and a second question's content/box
-           * starting flush against the bottom of the first with no page
-           * break at all. Forcing the height again here (matching the
-           * inline screen value) is what actually fixes it; everything
-           * else in this pass (fixed answer-box height instead of
-           * flex:1 + overflow:hidden, shared sizing constants) is there to
-           * make sure the total always adds up to exactly one page so
-           * there is no longer any overflow for the print engine to
-           * mis-handle in the first place.
+           * This page wrapper must keep a print-enforced fixed height equal
+           * to the inline screen value (297mm) — deleting it here (e.g. back
+           * to "min-height: 0") removes the only thing the answer box's
+           * flex:1 fill can size itself against, which previously caused
+           * the box (and the whole page) to collapse to natural content
+           * height and let Chrome's print engine paginate on the wrong
+           * boundary. See the box's own inline comment for the full
+           * explanation of why flex:1 is safe here.
            */
           .question-page {
             height: 297mm !important;
