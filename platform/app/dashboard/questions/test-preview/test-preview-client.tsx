@@ -87,6 +87,48 @@ function ibdpDottedLineCount(q: TestQuestion): number {
 const IB_DOT_ROW =
   ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .";
 
+// ── Answer-box geometry constants ──────────────────────────────────────────
+//
+// These were previously implicit (re-derived inline at each call site with
+// slightly different numbers between the "general" and "batched" render
+// paths — 244mm vs 260.5mm for the same nominal page). Centralising them
+// guarantees both paths agree, and makes the box's *actual* rendered height
+// explicit and fixed rather than something that depends on flex-fill +
+// overflow:hidden clipping (which Chrome's print engine does not reliably
+// honour as a pagination boundary — see PAGE_HEIGHT_MM usage below).
+const PAGE_HEIGHT_MM = 297;
+const PAGE_PADDING_TOP_MM = 10;
+const PAGE_PADDING_BOTTOM_MM = 12;
+const ANSWER_BOX_MARGIN_TOP_MM = 6;
+const ANSWER_BOX_MARGIN_BOTTOM_MM = 14;
+const ANSWER_BOX_PADDING_TOP_MM = 3.5;
+const ANSWER_BOX_PADDING_BOTTOM_MM = 2;
+const ANSWER_LINE_SPACING_MM = 3.8; // marginBottom between dotted lines
+const ANSWER_LINE_HEIGHT_MM = 3; // approx rendered height of one 8.5pt line
+
+/** Total fixed height (mm) of the answer box for a given line count. */
+function answerBoxHeightMm(lineCount: number): number {
+  const linesHeight =
+    lineCount * ANSWER_LINE_HEIGHT_MM + (lineCount - 1) * ANSWER_LINE_SPACING_MM;
+  return ANSWER_BOX_PADDING_TOP_MM + linesHeight + ANSWER_BOX_PADDING_BOTTOM_MM;
+}
+
+/**
+ * Max height (mm) available for the prompt/image content above the answer
+ * box, given the page's fixed height and the answer box's own fixed height.
+ * Used as a `maxHeight` + `overflow: hidden` safety cap on the content block
+ * — this is a backstop for unusually tall images, not the primary
+ * pagination mechanism (the primary mechanism is simply that every
+ * measurement here is now fixed and adds up to exactly one page, so nothing
+ * needs to rely on a flex-fill clip surviving print).
+ */
+function contentMaxHeightMm(lineCount: number): number {
+  const pageUsable = PAGE_HEIGHT_MM - PAGE_PADDING_TOP_MM - PAGE_PADDING_BOTTOM_MM;
+  const answerBoxTotal =
+    ANSWER_BOX_MARGIN_TOP_MM + answerBoxHeightMm(lineCount) + ANSWER_BOX_MARGIN_BOTTOM_MM;
+  return pageUsable - answerBoxTotal;
+}
+
 function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
   return Array.from({ length: lineCount }).map((_, lineIdx) => (
     <div
@@ -98,7 +140,7 @@ function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
         overflow: "hidden",
         whiteSpace: "nowrap",
         lineHeight: "1",
-        marginBottom: lineIdx < lineCount - 1 ? "3.8mm" : "0",
+        marginBottom: lineIdx < lineCount - 1 ? `${ANSWER_LINE_SPACING_MM}mm` : "0",
       }}
     >
       {IB_DOT_ROW}
@@ -381,9 +423,18 @@ export function TestPreviewClient() {
   const showSections =
     config && config.paper !== 3 && config.curriculum === "AA";
 
-  // Separate section A and B (in queue order within each group)
+  // Separate section A and B (in queue order within each group).
+  //
+  // A question with a missing/null `section` is otherwise invisible to the
+  // exam (it's filtered out of both groups below, then silently rendered
+  // with no Section A/B context and no answer box at all — this previously
+  // showed up as some questions printing with no working space). Treat null
+  // as Section A: every question in this question bank originates from a
+  // paper that has a Section A, and the cost of mis-tagging a genuine
+  // Section B question as A is just an extra (harmless) answer box, vs. a
+  // genuine Section A question silently getting none.
   const sectionAQuestions = showSections
-    ? questions.filter((q) => q.section === "A")
+    ? questions.filter((q) => q.section === "A" || q.section == null)
     : [];
   const sectionBQuestions = showSections
     ? questions.filter((q) => q.section === "B")
@@ -567,21 +618,38 @@ export function TestPreviewClient() {
         {orderedQuestions.map((q, qIdx) => {
           const globalNum = qIdx + 1;
           const pageNumber = thumbnailUrl ? qIdx + 2 : qIdx + 1;
-          const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
+          const isFirstSectionA = showSections && q.section !== "B" && qIdx === 0;
           const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
-          const showSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
+          const showSectionAAnswerBox = showSections && q.section !== "B" && config?.imageType === "question";
           const totalMarks = questionTotalMarks(q);
           const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
-          // Cap content so answer box always has room. Formula derived from:
-          //   page inner height (275mm) - marginTop (6mm) - marginBottom (14mm) - answer box min height
-          //   answer box min height = 11mm overhead + (lineCount-1)*6.8mm line spacing
-          const contentMaxHeightMm = showSectionAAnswerBox ? 244 - (lineCount - 1) * 6.8 : undefined;
+          // Fixed answer-box height (mm) and the matching content cap, derived
+          // from the same shared constants the answer box itself uses below —
+          // see answerBoxHeightMm()/contentMaxHeightMm(). Previously this was
+          // a magic-number formula duplicated (with different numbers!)
+          // between the general and batched render paths.
+          const answerBoxMm = showSectionAAnswerBox ? answerBoxHeightMm(lineCount) : 0;
+          const contentMaxMm = showSectionAAnswerBox ? contentMaxHeightMm(lineCount) : undefined;
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
-              <div className="question-page" id={`q-${globalNum}`} style={{ padding: "10mm 12mm 12mm", breakBefore: isFirstSectionA ? undefined : "page", breakInside: "avoid", position: "relative", height: "297mm", boxSizing: "border-box", display: "flex", flexDirection: "column" }}>
+              <div
+                className="question-page"
+                id={`q-${globalNum}`}
+                style={{
+                  padding: `${PAGE_PADDING_TOP_MM}mm 12mm ${PAGE_PADDING_BOTTOM_MM}mm`,
+                  breakBefore: isFirstSectionA ? undefined : "page",
+                  breakInside: "avoid",
+                  position: "relative",
+                  height: `${PAGE_HEIGHT_MM}mm`,
+                  boxSizing: "border-box",
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                }}
+              >
                 {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
-                <div style={{ maxHeight: contentMaxHeightMm != null ? `${contentMaxHeightMm}mm` : undefined, overflow: "hidden", flex: "0 0 auto" }}>
+                <div style={{ maxHeight: contentMaxMm != null ? `${contentMaxMm}mm` : undefined, overflow: "hidden", flex: "0 0 auto" }}>
                 {isFirstSectionA && (
                   <div style={{ marginBottom: "4mm" }}>
                     <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.</p>
@@ -612,27 +680,29 @@ export function TestPreviewClient() {
                 </div>
                 </div>
                 {showSectionAAnswerBox && (
-                  <div style={{
-                    flex: 1,
-                    marginTop: "6mm",
-                    marginBottom: "14mm",
-                    minHeight: 0,
-                    position: "relative",
-                    overflow: "hidden",
-                  }}>
-                    <div
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        border: "1px solid #000",
-                        boxSizing: "border-box",
-                        padding: "3.5mm 4mm 2mm",
-                        overflow: "hidden",
-                      }}
-                      aria-label={`Section A answer box for question ${globalNum}`}
-                    >
-                      {renderIbdpDottedLines(`line-${q.id}`, lineCount)}
-                    </div>
+                  <div
+                    style={{
+                      // Fixed height, not flex:1 + overflow:hidden. A flex-fill
+                      // box only has a defined size if its flex parent has a
+                      // defined, non-overridden height — and Chrome's print
+                      // engine does not reliably honour overflow:hidden as a
+                      // hard pagination clip even when that holds. Giving the
+                      // box its own fixed height makes the whole page's total
+                      // height book-keep to exactly PAGE_HEIGHT_MM with no
+                      // dependency on print-time flex resolution.
+                      height: `${answerBoxMm}mm`,
+                      flex: "0 0 auto",
+                      marginTop: `${ANSWER_BOX_MARGIN_TOP_MM}mm`,
+                      marginBottom: `${ANSWER_BOX_MARGIN_BOTTOM_MM}mm`,
+                      border: "1px solid #000",
+                      boxSizing: "border-box",
+                      padding: `${ANSWER_BOX_PADDING_TOP_MM}mm 4mm ${ANSWER_BOX_PADDING_BOTTOM_MM}mm`,
+                      overflow: "hidden",
+                      breakInside: "avoid",
+                    }}
+                    aria-label={`Section A answer box for question ${globalNum}`}
+                  >
+                    {renderIbdpDottedLines(`line-${q.id}`, lineCount)}
                   </div>
                 )}
               </div>
@@ -663,31 +733,33 @@ export function TestPreviewClient() {
               {orderedQuestions.map((q, qIdx) => {
                 const globalNum = qIdx + 1;
                 const pageNumber = (thumbnailUrl ? 2 : 1) + sIdx * orderedQuestions.length + qIdx;
-                const isFirstSectionA = showSections && q.section === "A" && qIdx === 0;
+                const isFirstSectionA = showSections && q.section !== "B" && qIdx === 0;
                 const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
                 const qrUrl = qrCodes[student.id]?.[q.code] ?? "";
-                const showSectionAAnswerBox = showSections && q.section === "A" && config?.imageType === "question";
+                const showSectionAAnswerBox = showSections && q.section !== "B" && config?.imageType === "question";
                 const totalMarks = questionTotalMarks(q);
                 const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount(q) : 0;
-                const hasSectionAAnswerBox = showSectionAAnswerBox;
-                // Cap content height so answer box always fits: inner=275mm, answerBox=8.5+(lineCount-1)*6.8mm
-                const contentMaxHeightMm = hasSectionAAnswerBox ? 260.5 - (lineCount - 1) * 6.8 : undefined;
+                const answerBoxMm = showSectionAAnswerBox ? answerBoxHeightMm(lineCount) : 0;
+                const contentMaxMm = showSectionAAnswerBox ? contentMaxHeightMm(lineCount) : undefined;
                 const isLastQuestion = qIdx === orderedQuestions.length - 1;
                 return (
                   <div key={q.id}>
                     <div
                       className="question-page"
                       style={{
-                        padding: `10mm 12mm 12mm`,
+                        padding: `${PAGE_PADDING_TOP_MM}mm 12mm ${PAGE_PADDING_BOTTOM_MM}mm`,
                         breakBefore: isFirstSectionA ? undefined : "page",
                         breakInside: "avoid",
                         position: "relative",
-                        height: "297mm",
+                        height: `${PAGE_HEIGHT_MM}mm`,
                         boxSizing: "border-box",
+                        display: "flex",
+                        flexDirection: "column",
+                        overflow: "hidden",
                       }}
                     >
                       {renderPageChrome(pageNumber, paperCode, { turnOver: !isLastQuestion })}
-                      <div style={{ maxHeight: contentMaxHeightMm != null ? `${contentMaxHeightMm}mm` : undefined, overflow: "hidden" }}>
+                      <div style={{ maxHeight: contentMaxMm != null ? `${contentMaxMm}mm` : undefined, overflow: "hidden", flex: "0 0 auto" }}>
                       {isFirstSectionA && (
                         <div style={{ marginBottom: "4mm" }}>
                           <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 3mm 0", color: "#222" }}>Full marks are not necessarily awarded for a correct answer with no working. Answers must be supported by working and/or explanations. Where an answer is incorrect, some marks may be given for a correct method, provided this is shown by written working. You are therefore advised to show all working.</p>
@@ -718,17 +790,20 @@ export function TestPreviewClient() {
                       </div>
                       </div>
                       {showSectionAAnswerBox && (
-                        <div style={{ marginTop: "6mm" }}>
-                          <div
-                            style={{
-                              border: "1px solid #000",
-                              boxSizing: "border-box",
-                              padding: "3.5mm 4mm 2mm",
-                            }}
-                            aria-label={`Section A answer box for question ${globalNum}`}
-                          >
-                            {renderIbdpDottedLines(`line-batched-${q.id}`, lineCount)}
-                          </div>
+                        <div
+                          style={{
+                            height: `${answerBoxMm}mm`,
+                            flex: "0 0 auto",
+                            marginTop: `${ANSWER_BOX_MARGIN_TOP_MM}mm`,
+                            border: "1px solid #000",
+                            boxSizing: "border-box",
+                            padding: `${ANSWER_BOX_PADDING_TOP_MM}mm 4mm ${ANSWER_BOX_PADDING_BOTTOM_MM}mm`,
+                            overflow: "hidden",
+                            breakInside: "avoid",
+                          }}
+                          aria-label={`Section A answer box for question ${globalNum}`}
+                        >
+                          {renderIbdpDottedLines(`line-batched-${q.id}`, lineCount)}
                         </div>
                       )}
                       {qrUrl && (
@@ -800,8 +875,32 @@ export function TestPreviewClient() {
             page-break-after: always !important;
           }
 
+          /*
+           * THE BUG: this previously read "min-height: 0 !important" here,
+           * which deletes the fixed height: 297mm the question page sets
+           * inline for screen rendering. Without a fixed page height, the
+           * answer box's flex-fill sizing (and, before this pass, its
+           * fixed height too) has nothing to size itself against, so the
+           * page collapses to its natural content height at print time.
+           * Chrome's print engine then has to decide where to break based
+           * on that collapsed, wrong height — producing exactly the two
+           * symptoms reported: an answer box splitting mid-page with no
+           * border at the seam, and a second question's content/box
+           * starting flush against the bottom of the first with no page
+           * break at all. Forcing the height again here (matching the
+           * inline screen value) is what actually fixes it; everything
+           * else in this pass (fixed answer-box height instead of
+           * flex:1 + overflow:hidden, shared sizing constants) is there to
+           * make sure the total always adds up to exactly one page so
+           * there is no longer any overflow for the print engine to
+           * mis-handle in the first place.
+           */
           .question-page {
-            min-height: 0 !important;
+            height: 297mm !important;
+            min-height: 297mm !important;
+            max-height: 297mm !important;
+            overflow: hidden !important;
+            page-break-inside: avoid !important;
           }
 
           .section-header {
@@ -814,4 +913,3 @@ export function TestPreviewClient() {
     </div>
   );
 }
-
