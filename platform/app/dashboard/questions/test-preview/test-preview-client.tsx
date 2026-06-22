@@ -673,8 +673,18 @@ export function TestPreviewClient() {
                     <p style={{ color: "#999", fontStyle: "italic", fontSize: "10pt" }}>[No images available for this question]</p>
                   ) : (
                     q.images.map((img) => img.url ? (
+                      // Native img max-height (not a container's overflow:hidden) is what
+                      // Chrome's print engine actually respects for scaling a replaced
+                      // element down to fit — a div clipping its overflow is not reliable
+                      // here (this is what let an oversized source image bleed straight
+                      // through the content cap and collide with the answer box below).
+                      // Some source images are a full scanned exam page that already
+                      // includes its own answer box (a question-bank content issue, not a
+                      // template issue); capping height here keeps any such image readable
+                      // and on-page instead of overflowing, even though the ideal fix is
+                      // re-cropping that source image to prompt-only.
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "186mm", height: "auto", display: "block" }} />
+                      <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "186mm", maxHeight: contentMaxMm != null ? `${contentMaxMm}mm` : undefined, width: "auto", height: "auto", display: "block" }} />
                     ) : null)
                   )}
                 </div>
@@ -784,7 +794,7 @@ export function TestPreviewClient() {
                         ) : (
                           q.images.map((img) => img.url ? (
                             // eslint-disable-next-line @next/next/no-img-element
-                            <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "186mm", height: "auto", display: "block" }} />
+                            <img key={img.id} src={img.url} alt={img.alt_text ?? `Question ${globalNum} image ${img.sort_order + 1}`} style={{ maxWidth: "186mm", maxHeight: contentMaxMm != null ? `${contentMaxMm}mm` : undefined, width: "auto", height: "auto", display: "block" }} />
                           ) : null)
                         )}
                       </div>
