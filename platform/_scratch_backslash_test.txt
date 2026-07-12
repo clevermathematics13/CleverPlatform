@@ -1,0 +1,4 @@
+TEST LINE 1: \tfrac
+TEST LINE 2: \\tfrac
+TEST LINE 3: \\\tfrac
+TEST LINE 4: \\\\tfrac
