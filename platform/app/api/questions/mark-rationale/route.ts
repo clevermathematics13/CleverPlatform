@@ -82,8 +82,10 @@ Which of the assigned subtopics does this ${body.token.label} token primarily te
       messages: [{ role: 'user', content: userMessage }],
     });
 
+    // Claude Sonnet 5 has adaptive thinking on by default and cannot disable it,
+    // so response.content[0] is frequently a "thinking" block rather than "text".
     const rawText =
-      response.content[0]?.type === 'text' ? response.content[0].text.trim() : '';
+      response.content.find((b): b is Anthropic.TextBlock => b.type === 'text')?.text.trim() ?? '';
 
     // Strip markdown code fences if present
     const jsonText = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
