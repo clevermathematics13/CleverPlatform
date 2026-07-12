@@ -181,7 +181,13 @@ export async function POST(request: NextRequest) {
         },
       ],
     });
-    const text = response.content[0].type === "text" ? response.content[0].text : "";
+    // Claude Sonnet 5 has adaptive thinking on by default and cannot disable it,
+    // so response.content[0] is frequently a "thinking" block rather than "text" —
+    // find the text block by type instead of assuming it's first.
+    const textBlock = response.content.find(
+      (block): block is Anthropic.TextBlock => block.type === "text",
+    );
+    const text = textBlock?.text ?? "";
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return NextResponse.json({
