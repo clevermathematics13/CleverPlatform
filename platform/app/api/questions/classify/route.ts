@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
     }
     const anthropic = new Anthropic({ apiKey });
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-5",
       max_tokens: 4096,
       system: IB_CLASSIFY_SYSTEM,
       messages: [
@@ -325,7 +325,7 @@ export async function POST(request: NextRequest) {
   const changedCount = classified.filter((c) => c.changed).length;
   return NextResponse.json({
     ok: true,
-    engine: "claude-sonnet-4",
+    engine: "claude-sonnet-5",
     classified,
     unmatched,
     changedCount,
