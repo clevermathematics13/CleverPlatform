@@ -99,7 +99,7 @@ Use code **1.0** (Assumed Prior Learning) when the primary skill tested is from 
 Only use **1.11** when the question explicitly decomposes a single fraction INTO a SUM of simpler fractions (e.g. finding A and B such that the expression equals A/(x−1) + B/(x+2)). Do NOT use 1.11 for factorising or simplifying rational expressions.
 
 ### SL 2.2 — Functions concept (NOT just function notation)
-Only use **2.2** when the part explicitly tests the *concept* of a function: defining domain or range, discussing whether a mapping is a function, working with inverse functions ($f^{-1}$), or discussing the reflection of a graph in $y = x$. **Do NOT tag 2.2 merely because the answer is written in function notation** (e.g. writing $h(x) = \z\ztfrac{1}{2}x - 1$). If the skill being tested is finding the equation of a line, that is **2.1** regardless of whether the line is called $h$ or $h(x)$.
+Only use **2.2** when the part explicitly tests the *concept* of a function: defining domain or range, discussing whether a mapping is a function, working with inverse functions ($f^{-1}$), or discussing the reflection of a graph in $y = x$. **Do NOT tag 2.2 merely because the answer is written in function notation** (e.g. writing $h(x) = \\tfrac{1}{2}x - 1$). If the skill being tested is finding the equation of a line, that is **2.1** regardless of whether the line is called $h$ or $h(x)$.
 
 ### SL 2.8 — Rational Functions
 Use **2.8** only when the question involves analysing the graph, asymptotes, domain, or behaviour of rational functions f(x) = (ax+b)/(cx+d) or similar. Factorising a denominator as an algebraic step within a simplification does NOT make a question a 2.8 question.
@@ -113,9 +113,9 @@ The IB syllabus has a progression structure where later subtopics formally intro
 - **1.8** (Sum of geometric sequences) subsumes **1.3** (geometric sequences) when the skill being tested is evaluating the sum formula, not identifying the ratio.
 - **5.6/5.7/5.8** (integration rules) subsume **5.1** (anti-differentiation as reverse of differentiation) when a specific integration technique (substitution, by-parts, standard form) is being tested.
 - **5.9/5.10** (differential equations) subsume **5.6** when the skill is solving a DE, not bare integration.
-**General rule:** Ask "Does the advanced subtopic's syllabus description explicitly mention the skill tested?" If yes, tag only the advanced subtopic. Only add the foundational subtopic if the part is **directly** testing foundational knowledge (e.g. the part ONLY asks the student to recall what $\z\zlog_{10} e$ equals, not to apply a log law).
+**General rule:** Ask "Does the advanced subtopic's syllabus description explicitly mention the skill tested?" If yes, tag only the advanced subtopic. Only add the foundational subtopic if the part is **directly** testing foundational knowledge (e.g. the part ONLY asks the student to recall what $\\log_{10} e$ equals, not to apply a log law).
 
-**Example:** Part (a) asks the student to show $1 + \z\zlog_2 n = \z\zlog_2(2n)$ using the product rule. Tag **1.7** (log laws) only. Do NOT also tag **1.5** (introduction to logarithms) — the product rule is defined in 1.7, not 1.5.
+**Example:** Part (a) asks the student to show $1 + \\log_2 n = \\log_2(2n)$ using the product rule. Tag **1.7** (log laws) only. Do NOT also tag **1.5** (introduction to logarithms) — the product rule is defined in 1.7, not 1.5.
 
 ### 1.6 vs 1.15 — Differentiating Proof Types (CRITICAL — "Prove" does NOT mean 1.15)
 
@@ -134,7 +134,7 @@ Proof by contradiction and proof by counterexample are also tagged \`1.15\` but 
 #### Step 2 — The Deduction Default (1.6)
 If a question asks to "prove", "show", or "verify" a general statement, but the markscheme shows the student performing **direct algebraic manipulation, substitution, logical equivalence, or deduction** without inductive steps, assign **1.6 Deductive Proof** as the proof-type tag (not 1.15).
 
-**Worked example:** "Prove that $\z\z{u_n\z\z}$ is an arithmetic sequence, stating clearly its common difference."
+**Worked example:** "Prove that $\\{u_n\\}$ is an arithmetic sequence, stating clearly its common difference."
 - Markscheme: uses $u_n = S_n - S_{n-1}$ to find a general term (M1, A1), then forms $d = u_{n+1} - u_n$ and shows it simplifies to a constant 6 independent of $n$ (R1, A1).
 - No base case, no inductive hypothesis, no inductive step → **reject 1.15**.
 - Student is deducing a conclusion from algebraic manipulation → **tag 1.6 + 1.2** (the content being proved is arithmetic sequences).
@@ -144,18 +144,18 @@ When a part genuinely uses 1.15 (induction / contradiction / counterexample), yo
 
 The proof method (1.15) and the mathematical subject of the proof are both required skills — they are co-equal assessments, not a stem/part bleed-over situation.
 
-**This is the ONLY exception to the anti-bleed-over rule below.** For 1.15 parts, you MUST read the full question context — including the stem — to identify WHAT is being proved and assign the companion subtopic accordingly. The statement being proved often appears in the stem (e.g. "Seema claims that $n > \z\zlog_2 n$") or in an earlier part; you must use that context to identify the companion code.
+**This is the ONLY exception to the anti-bleed-over rule below.** For 1.15 parts, you MUST read the full question context — including the stem — to identify WHAT is being proved and assign the companion subtopic accordingly. The statement being proved often appears in the stem (e.g. "Seema claims that $n > \\log_2 n$") or in an earlier part; you must use that context to identify the companion code.
 
 **1.15 examples (induction structure confirmed in markscheme):**
-- "Use induction to prove Seema's claim is valid" where the stem states the claim is $n > \z\zlog_2 n$ → **1.15** + **1.7**
-- "Prove by induction that $\z\zsum_{k=1}^{n} k^2 = \z\zfrac{n(n+1)(2n+1)}{6}$" → **1.15** + **1.2**
-- "Prove by induction that $(\z\zcos\z\ztheta + i\z\zsin\z\ztheta)^n = \z\zcos n\z\ztheta + i\z\zsin n\z\ztheta$" → **1.15** + **1.14**
-- "Prove by induction that $\z\zsum_{k=1}^{n} r^{k-1} = \z\zfrac{r^n - 1}{r-1}$" → **1.15** + **1.3**
+- "Use induction to prove Seema's claim is valid" where the stem states the claim is $n > \\log_2 n$ → **1.15** + **1.7**
+- "Prove by induction that $\\sum_{k=1}^{n} k^2 = \\frac{n(n+1)(2n+1)}{6}$" → **1.15** + **1.2**
+- "Prove by induction that $(\\cos\\theta + i\\sin\\theta)^n = \\cos n\\theta + i\\sin n\\theta$" → **1.15** + **1.14**
+- "Prove by induction that $\\sum_{k=1}^{n} r^{k-1} = \\frac{r^n - 1}{r-1}$" → **1.15** + **1.3**
 - "Prove by induction that $8^n - 1$ is divisible by 7" → **1.15** only (divisibility has no numbered subtopic)
-- "Use proof by contradiction to show $\z\zsqrt{3}$ is irrational" → **1.15** only (irrationality has no numbered subtopic)
+- "Use proof by contradiction to show $\\sqrt{3}$ is irrational" → **1.15** only (irrationality has no numbered subtopic)
 
 **1.6 examples (direct deduction — do NOT tag 1.15):**
-- "Prove that $\z\z{u_n\z\z}$ is an arithmetic sequence" via $d = u_{n+1} - u_n = $ constant → **1.6** + **1.2**
+- "Prove that $\\{u_n\\}$ is an arithmetic sequence" via $d = u_{n+1} - u_n = $ constant → **1.6** + **1.2**
 - "Show that $f(x) = x^2 + 2x + 1$ can be written as $(x+1)^2$" via algebraic expansion → **1.6** + the relevant algebra subtopic
 - "Prove that the sum of two odd numbers is even" via direct substitution $2m+1$ and $2n+1$ → **1.6** only
 
@@ -165,12 +165,12 @@ The proof method (1.15) and the mathematical subject of the proof are both requi
 
 This is an **explicit exception** to the anti-bleed-over rule below.
 
-When a part asks the student to evaluate or find a composite function of the form $(f^{-1} \z\zcirc g)(x)$ or similar, you must check whether $f^{-1}$ was explicitly derived in an earlier part of the same question.
+When a part asks the student to evaluate or find a composite function of the form $(f^{-1} \\circ g)(x)$ or similar, you must check whether $f^{-1}$ was explicitly derived in an earlier part of the same question.
 
 - If **YES** — the inverse was already found earlier: tag **2.5.1 only**. The bottleneck skill is building and manipulating the composite function; the inverse is a pre-computed ingredient. Adding 2.5.2 creates false diagnostic signal.
 - If **NO** — the inverse has not been established anywhere earlier in the question: tag **both 2.5.1 and 2.5.2**, because finding the inverse is itself a required step.
 
-**Worked example:** A question has parts (a)(i) "Find f(2)", (a)(ii) "Find $f^{-1}(x)$", (b) "Write down h(x)", (c) "Solve $h^{-1}(x) = -2$", (d) "Given $h(x) = (f^{-1} \z\zcirc g)(x)$, find $m$ and $c$".
+**Worked example:** A question has parts (a)(i) "Find f(2)", (a)(ii) "Find $f^{-1}(x)$", (b) "Write down h(x)", (c) "Solve $h^{-1}(x) = -2$", (d) "Given $h(x) = (f^{-1} \\circ g)(x)$, find $m$ and $c$".
 - Part (a)(ii) → **2.5.2** (finding the inverse is the entire task)
 - Part (c) → **2.5.2** (solving using an inverse)
 - Part (d) → **2.5.1 only**. $f^{-1}$ was already derived in (a)(ii); the student substitutes it into the composition to equate coefficients. The bottleneck is the composition algebra, NOT inverse functions.
@@ -182,7 +182,7 @@ If the actual mechanic required is a **polynomial property** (Vieta's formulas �
 
 **The conjugate root theorem** — stating that $p - qi$ must also be a root when coefficients are real — is classified under **AHL 1.14** (Powers and roots of complex numbers), NOT 1.12. When a part merely invokes the conjugate root in order to then apply Vieta's formulas or polynomial arithmetic, tag **2.12** only (the conjugate pair cancels immediately and leaves real arithmetic; no complex-number mechanics are performed).
 
-**Test:** After the student writes the conjugate root, do they perform any complex arithmetic? If the $\z\zpm qi$ terms immediately cancel and the rest is real — it is **2.12**, not 1.12.
+**Test:** After the student writes the conjugate root, do they perform any complex arithmetic? If the $\\pm qi$ terms immediately cancel and the rest is real — it is **2.12**, not 1.12.
 
 **Example:** Part (b) — A degree-5 polynomial has $z = p+3i$ as a root. Show $p = 1$.
 - Markscheme: state conjugate $p - 3i$ (A1); sum all 5 roots using $-a_{n-1}/a_n$ (M1, A1).
@@ -206,11 +206,11 @@ The \`primarySubtopicCode\` is NOT simply the most complex code in the list. It 
 
 **Step 1 — The "Recipe vs. Ingredient" Test**
 Identify what is being assembled (the recipe) vs. what is being plugged in (the ingredients). The recipe is always the primary.
-- *Example:* In $(f^{-1} \z\zcirc g)(x)$, the composition operator is the recipe; $f^{-1}$ and $g$ are ingredients. Primary = **2.5.1** (Composite functions), NOT 2.5.2.
+- *Example:* In $(f^{-1} \\circ g)(x)$, the composition operator is the recipe; $f^{-1}$ and $g$ are ingredients. Primary = **2.5.1** (Composite functions), NOT 2.5.2.
 
 **Step 2 — The "Already Assessed" Rule**
 In multi-part questions, examiners almost never test the same core mechanic twice. If a skill was the primary goal of an earlier part, demote it to a secondary/ingredient in any later part that reuses it.
-- *Example:* If part (a)(ii) asked "Find $f^{-1}(x)$", then part (d) which builds $(f^{-1} \z\zcirc g)(x)$ is NOT re-assessing inverse functions — $f^{-1}$ is pre-computed. Do NOT assign 2.5.2 as primary (or at all) for part (d). Primary = **2.5.1** only.
+- *Example:* If part (a)(ii) asked "Find $f^{-1}(x)$", then part (d) which builds $(f^{-1} \\circ g)(x)$ is NOT re-assessing inverse functions — $f^{-1}$ is pre-computed. Do NOT assign 2.5.2 as primary (or at all) for part (d). Primary = **2.5.1** only.
 
 **Step 3 — The "Teacher's Worksheet" Test**
 Ask: "If a student lost most of the marks on this specific part, which single worksheet would a teacher hand them?" That worksheet's topic is the primary.
