@@ -31,6 +31,21 @@ jobs:
           /usr/lib/postgresql/17/bin/pg_dump "$DB_URL" > backup-$(date +%Y-%m-%d_%H-%M-%S).sql
           ls -lh backup-*.sql
 
+      - name: Verify Backup (Test Restore)
+        run: |
+          sudo apt-get install -y postgresql-17
+          sudo service postgresql start
+          sleep 3
+          BACKUP_FILE=$(ls backup-*.sql | head -n 1)
+          echo "Restoring $BACKUP_FILE into a throwaway local database on the runner..."
+          sudo -u postgres createdb restore_test
+          sudo -u postgres psql restore_test < "$BACKUP_FILE"
+          echo "Restore complete. Running sanity checks..."
+          sudo -u postgres psql restore_test -c "\dt"
+          sudo -u postgres psql restore_test -c "SELECT count(*) AS ib_questions_count FROM ib_questions;"
+          sudo -u postgres psql restore_test -c "SELECT count(*) AS submissions_count FROM submissions;"
+          echo "Verification passed: backup is restorable."
+
       - name: Upload to Release
         uses: softprops/action-gh-release@v1
         with:
