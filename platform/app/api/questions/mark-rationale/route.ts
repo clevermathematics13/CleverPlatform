@@ -76,7 +76,7 @@ Which of the assigned subtopics does this ${body.token.label} token primarily te
 
     const client = new Anthropic({ apiKey });
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-5',
       max_tokens: 512,
       system: IB_MARK_RATIONALE_SYSTEM,
       messages: [{ role: 'user', content: userMessage }],
