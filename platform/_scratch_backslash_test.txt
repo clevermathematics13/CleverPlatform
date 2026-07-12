@@ -1,4 +1,1 @@
-TEST LINE 1: \tfrac
-TEST LINE 2: \\tfrac
-TEST LINE 3: \\\tfrac
-TEST LINE 4: \\\\tfrac
+- "Prove by induction that $(\\cos\\theta + i\\sin\\theta)^n = \\cos n\\theta + i\\sin n\\theta$" → **1.15** + **1.14**
