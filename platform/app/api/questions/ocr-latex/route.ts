@@ -335,10 +335,10 @@ Additional rules:
         },
       ],
     });
+    // Find the text block by type rather than assuming index 0 — adaptive-thinking
+    // models can place a "thinking" block before the "text" block.
     extractedLatex =
-      response.content[0].type === "text"
-        ? response.content[0].text.trim()
-        : "";
+      response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim() ?? "";
     if (isQuestionDraft && looksGraphLike(extractedLatex)) graphDetected = true;
   }
 
@@ -378,9 +378,7 @@ Additional rules:
         ],
       });
       const normalised =
-        normResponse.content[0].type === "text"
-          ? normResponse.content[0].text.trim()
-          : "";
+        normResponse.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim() ?? "";
       if (normalised) extractedLatex = normalised;
     } catch (normErr) {
       // Non-fatal: log and continue with Mathpix output
@@ -428,9 +426,9 @@ ${extractedLatex}`;
           ],
         }],
       });
-      const corrected = correctionResp.content[0].type === "text"
-        ? correctionResp.content[0].text.trim()
-        : "";
+      const corrected = correctionResp.content.find(
+        (b): b is Anthropic.TextBlock => b.type === "text",
+      )?.text.trim() ?? "";
       if (corrected) extractedLatex = corrected;
     } catch (boundaryErr) {
       // Non-fatal: log and continue with the un-corrected extraction
