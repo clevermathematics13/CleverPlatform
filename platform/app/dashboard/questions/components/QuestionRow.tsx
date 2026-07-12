@@ -130,6 +130,8 @@ export function QuestionRow({
   const [deletingQuestion, setDeletingQuestion] = useState(false);
   const [convertingLatex, setConvertingLatex] = useState<"question" | "markscheme" | null>(null);
   const [convertLatexError, setConvertLatexError] = useState<string | null>(null);
+  const [classifying, setClassifying] = useState(false);
+  const [classifyResult, setClassifyResult] = useState<string | null>(null);
 
   const savePartField = async (partId: string, field: "marks" | "label" | "latex", value: string) => {
     setSavingField(true);
@@ -201,6 +203,37 @@ export function QuestionRow({
     } finally { setDeletingQuestion(false); }
   };
 
+  // Auto-classification: send the question's stored LaTeX to the server, which runs
+  // IB_CLASSIFY_SYSTEM and non-destructively fills in subtopic codes, the primary
+  // (★) subtopic, and command terms per part. Restores the pre-June-2026 behaviour
+  // that was lost in the Question Studio rewrite. Non-destructive + idempotent, so
+  // it is safe to re-run.
+  const classifyQuestion = async (opts?: { silent?: boolean }) => {
+    setClassifying(true);
+    if (!opts?.silent) setClassifyResult(null);
+    try {
+      const res = await fetch("/api/questions/classify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ questionId: question.id }),
+      });
+      const data = await res.json();
+      if (data.error) { setClassifyResult(`Error: ${data.error}`); return; }
+      if (data.note) {
+        setClassifyResult(data.note);
+      } else {
+        const n = Array.isArray(data.classified) ? data.classified.length : 0;
+        const changed = typeof data.changedCount === "number" ? data.changedCount : n;
+        setClassifyResult(`Classified ${n} part${n === 1 ? "" : "s"}${changed !== n ? ` (${changed} updated)` : ""}`);
+      }
+      onRefresh();
+    } catch (e: unknown) {
+      setClassifyResult(e instanceof Error ? e.message : "Classification failed");
+    } finally {
+      setClassifying(false);
+    }
+  };
+
   const convertImagesToLatex = async (imageType: "question" | "markscheme") => {
     setConvertingLatex(imageType);
     setConvertLatexError(null);
@@ -218,7 +251,15 @@ export function QuestionRow({
       });
       const data = await res.json();
       if (data.error) { setConvertLatexError(data.error); return; }
-      onRefresh();
+      // After extracting the QUESTION, automatically classify subtopics + command
+      // terms. classifyQuestion is non-destructive and calls onRefresh() itself.
+      // For markscheme extraction we just refresh; the teacher can re-run
+      // classification with the button to fold in the improved mark-scheme context.
+      if (imageType === "question") {
+        await classifyQuestion({ silent: true });
+      } else {
+        onRefresh();
+      }
     } catch (e: unknown) {
       setConvertLatexError(e instanceof Error ? e.message : "Conversion failed");
     } finally {
@@ -391,6 +432,13 @@ export function QuestionRow({
                     className="rounded border border-green-300 bg-white px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-50 hover:underline">
                     📝 Open MS Doc
                   </a>
+                )}
+                <button type="button" onClick={() => classifyQuestion()} disabled={classifying}
+                  className="rounded border border-teal-300 bg-white px-2.5 py-1 text-xs font-semibold text-teal-700 hover:bg-teal-50 disabled:opacity-50">
+                  {classifying ? "Classifying…" : "✦ Auto-classify"}
+                </button>
+                {classifyResult && (
+                  <span className={`text-xs font-semibold ${classifyResult.startsWith("Error") ? "text-red-600" : "text-teal-700"}`}>{classifyResult}</span>
                 )}
                 <button type="button" onClick={deleteQuestion} disabled={deletingQuestion}
                   className="rounded border border-red-300 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50">
