@@ -6,6 +6,7 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import LatexRenderer from "@/components/LatexRenderer";
 import { ImageSection } from "./ImageSection";
+import { useMarkAttribution } from "./useMarkAttribution";
 import type {
   Question,
   QuestionPart,
@@ -280,9 +281,24 @@ export function QuestionRow({
     .filter((p) => (p.content_latex ?? p.latex ?? "").trim())
     .map((p) => ({ label: p.part_label, latex: (p.content_latex ?? p.latex)! }));
 
+  // Mark-level subtopic attribution — renders a clickable tag on each markscheme
+  // mark token (A1, M1, R1, …) indicating which subtopic that mark assesses. The
+  // hook + LatexRenderer support survived the June 2026 UI rewrite, but the wiring
+  // that connects them was dropped; reconnecting it here restores the inline
+  // attribution tags in the markscheme LaTeX panel. Tags only appear once a part
+  // has subtopics assigned (classify the question first).
+  const { makeMarkAttributionRenderer } = useMarkAttribution(
+    question.question_parts,
+    availableSubtopics,
+  );
+
   const msLatex = question.question_parts
     .filter((p) => (p.markscheme_latex ?? "").trim())
-    .map((p) => ({ label: p.part_label, latex: p.markscheme_latex! }));
+    .map((p) => ({
+      label: p.part_label,
+      latex: p.markscheme_latex!,
+      renderMarkAttribution: makeMarkAttributionRenderer(p, p.markscheme_latex!),
+    }));
 
   return (
     <>
