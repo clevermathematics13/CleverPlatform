@@ -28,13 +28,6 @@ const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
 const TABULAR_MARKER_RE = /^\[\[TABULAR_(\d+)\]\]$/;
 const GRAPH_JSON_LINE_RE = /^\[\[GRAPH_JSON:[A-Za-z0-9+/=]+\]\]$/;
 
-// Markers used to tag merged part-label lines (e.g. a standalone "(a)" or
-// "(i)" line merged with the text that follows) with their nesting depth, so
-// renderTextLine can apply the correct indent. L0 = top-level letter label
-// (a), (b), (c)...; L1 = nested roman-numeral sub-label (i), (ii), (iii)...
-const LABEL_INDENT_L0 = "\u{E010}";
-const LABEL_INDENT_L1 = "\u{E011}";
-
 // --- Tabular environment support ---
 interface TabularRow { hlineBefore: boolean; cells: string[] }
 interface ParsedTabular { colSpec: string; rows: TabularRow[]; trailingHline: boolean }
@@ -267,25 +260,10 @@ function renderTextLine(
   renderMarkAttribution?: (tokenLabel: string, ordinal: number) => React.ReactNode,
   tokenCounter?: { count: number }
 ): React.ReactNode {
-  // A line merged by mergeLabelLines() carries an indent-depth marker at its
-  // start (L0 = top-level letter label, L1 = nested roman-numeral sub-label).
-  // Strip it, remember the depth, and indent the rendered result at the end.
-  let indentLevel = -1;
-  let text = line;
-  if (line.startsWith(LABEL_INDENT_L0)) {
-    indentLevel = 0;
-    text = line.slice(LABEL_INDENT_L0.length);
-  } else if (line.startsWith(LABEL_INDENT_L1)) {
-    indentLevel = 1;
-    text = line.slice(LABEL_INDENT_L1.length);
-  }
-
-  let result: React.ReactNode;
-
-  if (text.includes("\\hfill")) {
-    const hfillIdx = text.indexOf("\\hfill");
-    const before = text.slice(0, hfillIdx).trim();
-    const markCode = text.slice(hfillIdx + 7).trim(); // skip \hfill + trailing space
+  if (line.includes("\\hfill")) {
+    const hfillIdx = line.indexOf("\\hfill");
+    const before = line.slice(0, hfillIdx).trim();
+    const markCode = line.slice(hfillIdx + 7).trim(); // skip \hfill + trailing space
     // If the part before \hfill is itself a mark code (e.g. "A1", "(M1)", "N2", "AG"),
     // group it with the right-side code rather than showing it as left content.
     const isMarkCode = /^\(?[A-Z]{1,2}\d*\)?$/.test(before);
@@ -295,7 +273,7 @@ function renderTextLine(
     if (renderMarkAttribution && tokenCounter) {
       const TOKEN_RE = /\\hfill\s+\(?((M1|A1|R1)+)\)?|\(((M1|A1|R1)+)\)\s*$|\b((M1|A1|R1)+)\b\s*$/gm;
       let m: RegExpExecArray | null;
-      while ((m = TOKEN_RE.exec(text)) !== null) {
+      while ((m = TOKEN_RE.exec(line)) !== null) {
         const label = (m[1] ?? m[3] ?? m[5]);
         attributions.push(
           <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
@@ -306,7 +284,7 @@ function renderTextLine(
       }
     }
 
-    result = (
+    return (
       <React.Fragment key={key}>
         <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
           <span>{isMarkCode ? null : (before ? renderStyledText(before, commandTerm, contextTerms) : null)}</span>
@@ -321,49 +299,39 @@ function renderTextLine(
         )}
       </React.Fragment>
     );
-  } else {
-    // If no \hfill, there could still be a bare mark token at the end of the line
-    let bareTokenResult: React.ReactNode | null = null;
-    if (renderMarkAttribution && tokenCounter) {
-      const TOKEN_RE = /\(((M1|A1|R1)+)\)\s*$|\b((M1|A1|R1)+)\b\s*$/g; // (M1) or bare M1 at EOL
-      let m: RegExpExecArray | null;
-      let foundBareTokens = false;
-      const attributions: React.ReactNode[] = [];
-      while ((m = TOKEN_RE.exec(text)) !== null) {
-        foundBareTokens = true;
-        const label = (m[1] ?? m[3]);
-        attributions.push(
-          <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
-            {renderMarkAttribution(label, tokenCounter.count)}
-          </span>
-        );
-        tokenCounter.count++;
-      }
-      if (foundBareTokens) {
-        bareTokenResult = (
-          <React.Fragment key={key}>
-            <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-              <span>{renderStyledText(text, commandTerm, contextTerms)}</span>
-            </span>
-            <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
-              {attributions}
-            </span>
-          </React.Fragment>
-        );
-      }
+  }
+  
+  // If no \hfill, there could still be a bare mark token at the end of the line
+  if (renderMarkAttribution && tokenCounter) {
+    const TOKEN_RE = /\(((M1|A1|R1)+)\)\s*$|\b((M1|A1|R1)+)\b\s*$/g; // (M1) or bare M1 at EOL
+    let m: RegExpExecArray | null;
+    let foundBareTokens = false;
+    const attributions: React.ReactNode[] = [];
+    while ((m = TOKEN_RE.exec(line)) !== null) {
+      foundBareTokens = true;
+      const label = (m[1] ?? m[3]);
+      attributions.push(
+        <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
+          {renderMarkAttribution(label, tokenCounter.count)}
+        </span>
+      );
+      tokenCounter.count++;
     }
-    result = bareTokenResult ?? renderStyledText(text, commandTerm, contextTerms);
+    if (foundBareTokens) {
+      return (
+        <React.Fragment key={key}>
+          <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+            <span>{renderStyledText(line, commandTerm, contextTerms)}</span>
+          </span>
+          <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
+            {attributions}
+          </span>
+        </React.Fragment>
+      );
+    }
   }
 
-  if (indentLevel >= 0) {
-    return (
-      <span key={key} style={{ display: "flex", alignItems: "baseline", gap: "0.5em", marginLeft: `${indentLevel * 1.75}em` }}>
-        {result}
-      </span>
-    );
-  }
-
-  return result;
+  return renderStyledText(line, commandTerm, contextTerms);
 }
 
 /**
@@ -382,12 +350,15 @@ const LETTER_LABEL_RE = /^\(([a-z])\)$/;
  * standalone label on its own line (e.g. "(a)" then a blank line then "(i)"
  * then a blank line then the part text) rather than using \item[...]. Left
  * as-is this renders as literal floating "(a)" / "(i)" text with large gaps
- * around it. This pass detects that pattern and merges each label with the
- * text that immediately follows it into a single line, tagged with an
- * indent-depth marker (LABEL_INDENT_L0 for a top-level letter label,
- * LABEL_INDENT_L1 for a nested roman-numeral sub-label) so renderTextLine
- * can lay it out with proper nested indentation, matching how these
- * questions look in the original exam paper.
+ * around it. This pass merges each label with the text that follows it into
+ * a single line: a top-level letter label plus its first roman-numeral
+ * sub-label and content collapse onto one flush-left line ("(a) (i) ...");
+ * a later roman-numeral sub-label under the same letter gets a plain
+ * leading-space indent ("  (ii) ..."). Indentation is applied as literal
+ * spacing characters rather than a wrapper element, since a line can be
+ * split across multiple text/math segments by splitSegments() before
+ * rendering — a CSS wrapper around just the first fragment would force a
+ * line break before any inline math that follows on the same source line.
  */
 function mergeLabelLines(src: string): string {
   const lines = src.split("\n");
@@ -406,12 +377,12 @@ function mergeLabelLines(src: string): string {
         let k = j + 1;
         while (k < lines.length && lines[k].trim() === "") k++;
         const contentLine = k < lines.length ? lines[k].trim() : "";
-        out.push(`${LABEL_INDENT_L0}(${letterMatch[1]})\u2002${LABEL_INDENT_L1}(${romanMatch[1]})\u2002${contentLine}`);
+        out.push(`(${letterMatch[1]})\u2002(${romanMatch[1]})\u2002${contentLine}`);
         i = k + 1;
         continue;
       }
       const contentLine = j < lines.length ? lines[j].trim() : "";
-      out.push(`${LABEL_INDENT_L0}(${letterMatch[1]})\u2002${contentLine}`);
+      out.push(`(${letterMatch[1]})\u2002${contentLine}`);
       i = j + 1;
       continue;
     }
@@ -420,7 +391,7 @@ function mergeLabelLines(src: string): string {
       let k = i + 1;
       while (k < lines.length && lines[k].trim() === "") k++;
       const contentLine = k < lines.length ? lines[k].trim() : "";
-      out.push(`${LABEL_INDENT_L1}(${trimmed.slice(1, -1)})\u2002${contentLine}`);
+      out.push(`\u2003\u2003(${trimmed.slice(1, -1)})\u2002${contentLine}`);
       i = k + 1;
       continue;
     }
@@ -437,8 +408,8 @@ function preprocessLatex(src: string): string {
 
   // Merge bare part-label lines (e.g. a standalone "(a)" or "(i)" line) with
   // the content that follows, so multi-part questions stored without
-  // \item[...] markup still render with inline labels and proper nested
-  // indentation instead of the label sitting alone with large gaps around it.
+  // \item[...] markup still render with inline labels and light indentation
+  // instead of the label sitting alone with large gaps around it.
   out = mergeLabelLines(out);
 
   // Convert enumerate/itemize content:
