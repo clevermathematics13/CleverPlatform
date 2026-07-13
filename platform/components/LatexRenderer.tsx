@@ -57,7 +57,7 @@ function splitSegments(
   src: string
 ): { type: "text" | "inline" | "display"; content: string }[] {
   const re =
-    /\\\[(\s\S]*?)\\\]|\\\((\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^$\n]*?)\$/g;
+    /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^$\n]*?)\$/g;
   const segments: { type: "text" | "inline" | "display"; content: string }[] =
     [];
   let last = 0;
