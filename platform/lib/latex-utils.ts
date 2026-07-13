@@ -185,17 +185,17 @@ The IB syllabus has a progression structure where later subtopics formally intro
 
 ### 1.6 vs 1.15 — Differentiating Proof Types (CRITICAL — "Prove" does NOT mean 1.15)
 
-**The "Command Word" Fallacy:** Do NOT auto-assign `1.15` just because the question says "Prove" or "Show that". You must inspect the markscheme structure to determine which proof type is actually assessed.
+**The "Command Word" Fallacy:** Do NOT auto-assign \`1.15\` just because the question says "Prove" or "Show that". You must inspect the markscheme structure to determine which proof type is actually assessed.
 
 #### Step 1 — The Induction Check (must pass ALL three to assign 1.15)
-Before assigning `1.15 (ind) Proof by induction`, explicitly verify that the markscheme contains all of the following:
+Before assigning \`1.15 (ind) Proof by induction\`, explicitly verify that the markscheme contains all of the following:
 1. A **base case** (e.g. "When $n=1$, LHS = ... = RHS ✓")
 2. An **inductive hypothesis** (e.g. "Assume true for $n=k$: ...")
 3. An **inductive step** (e.g. "Now prove true for $n=k+1$: ...")
 
-If ANY of these three elements is missing from the markscheme, **reject `1.15`**.
+If ANY of these three elements is missing from the markscheme, **reject \`1.15\`**.
 
-Proof by contradiction and proof by counterexample are also tagged `1.15` but do NOT follow the induction structure — use your judgment on whether the question explicitly calls for those methods.
+Proof by contradiction and proof by counterexample are also tagged \`1.15\` but do NOT follow the induction structure — use your judgment on whether the question explicitly calls for those methods.
 
 #### Step 2 — The Deduction Default (1.6)
 If a question asks to "prove", "show", or "verify" a general statement, but the markscheme shows the student performing **direct algebraic manipulation, substitution, logical equivalence, or deduction** without inductive steps, assign **1.6 Deductive Proof** as the proof-type tag (not 1.15).
@@ -268,7 +268,7 @@ Ask yourself for each part: "If this part appeared in isolation with no stem, wh
 
 ### Selecting the primarySubtopicCode — 3-Step Rubric (CRITICAL)
 
-The `primarySubtopicCode` is NOT simply the most complex code in the list. It is the single capstone skill the examiner is testing. Run every multi-code part through these three tests in order:
+The \`primarySubtopicCode\` is NOT simply the most complex code in the list. It is the single capstone skill the examiner is testing. Run every multi-code part through these three tests in order:
 
 **Step 1 — The "Recipe vs. Ingredient" Test**
 Identify what is being assembled (the recipe) vs. what is being plugged in (the ingredients). The recipe is always the primary.
@@ -292,7 +292,7 @@ Return ONLY a valid JSON object with NO markdown fences, NO explanation, in exac
   ]
 }
 
-**primarySubtopicCode** must be one of the codes in `subtopicCodes` — it identifies the single capstone/target skill being assessed by that part (the skill the question is ultimately testing). The remaining codes in `subtopicCodes` are component/prerequisite skills needed to reach the answer but not the main objective. If there is only one subtopic code, it is also the primary.
+**primarySubtopicCode** must be one of the codes in \`subtopicCodes\` — it identifies the single capstone/target skill being assessed by that part (the skill the question is ultimately testing). The remaining codes in \`subtopicCodes\` are component/prerequisite skills needed to reach the answer but not the main objective. If there is only one subtopic code, it is also the primary.
 
 If sub-parts are nested (e.g. (b)(i), (b)(ii)), you MUST split them into separate entries with combined labels "bi", "bii" etc. — never collapse nested sub-parts into a single parent label like "b". This applies even when the user supplies a top-level label hint.
 The "label" values should reflect the actual LaTeX structure. Use the "Known part labels" supplied by the user as top-level hints only; always split further whenever the LaTeX contains nested (i), (ii), (iii) … sub-parts.
