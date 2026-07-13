@@ -29,7 +29,14 @@ async function readClipboardImage(): Promise<{ file: File | null; error?: string
   }
 }
 
-type LatexEntry = { label: string | null; latex: string };
+type LatexEntry = {
+  label: string | null;
+  latex: string;
+  /** Optional per-part renderer that annotates each markscheme mark token
+   *  (A1, M1, R1, …) with the subtopic it assesses. Supplied for markscheme
+   *  entries only; question entries leave it undefined. */
+  renderMarkAttribution?: (tokenLabel: string, ordinal: number) => React.ReactNode;
+};
 
 const PANEL_H = "70vh";
 
@@ -334,7 +341,7 @@ export function ImageSection({
           </div>
           {latex.length > 0 ? (
             <div className="divide-y divide-gray-100">
-              {latex.map(({ label: partLabel, latex: tex }, i) => (
+              {latex.map(({ label: partLabel, latex: tex, renderMarkAttribution }, i) => (
                 <div key={i} className="px-3 py-2.5 space-y-1">
                   {partLabel && (
                     <span className={`inline-block text-[10px] font-bold font-mono ${accentText} bg-opacity-10 rounded px-1.5 py-0.5 bg-current`}
@@ -343,7 +350,7 @@ export function ImageSection({
                     </span>
                   )}
                   <div className="text-sm leading-relaxed text-gray-800 overflow-x-auto">
-                    <LatexRenderer latex={tex} />
+                    <LatexRenderer latex={tex} renderMarkAttribution={renderMarkAttribution} />
                   </div>
                 </div>
               ))}
