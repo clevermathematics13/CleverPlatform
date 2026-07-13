@@ -271,7 +271,11 @@ function renderTextLine(
     // Find all countable tokens in this line to render attributions next to them
     const attributions: React.ReactNode[] = [];
     if (renderMarkAttribution && tokenCounter) {
-      const TOKEN_RE = /\\hfill\s+\(?((M1|A1|R1)+)\)?|\(((M1|A1|R1)+)\)\s*$|\b((M1|A1|R1)+)\b\s*$/gm;
+      // [MAR][1-9] matches any single-digit M/A/R mark value (M1, A2, R1, ...),
+      // not just the fixed M1/A1/R1 — repeated to also match combined tokens
+      // like M1A1 or M1A2. Kept identical to parseMSTokens' TOKEN_RE in
+      // latex-utils.ts so ordinals stay aligned between the two.
+      const TOKEN_RE = /\\hfill\s+\(?(([MAR][1-9])+)\)?|\((([MAR][1-9])+)\)\s*$|\b(([MAR][1-9])+)\b\s*$/gm;
       let m: RegExpExecArray | null;
       while ((m = TOKEN_RE.exec(line)) !== null) {
         const label = (m[1] ?? m[3] ?? m[5]);
@@ -303,7 +307,7 @@ function renderTextLine(
   
   // If no \hfill, there could still be a bare mark token at the end of the line
   if (renderMarkAttribution && tokenCounter) {
-    const TOKEN_RE = /\(((M1|A1|R1)+)\)\s*$|\b((M1|A1|R1)+)\b\s*$/g; // (M1) or bare M1 at EOL
+    const TOKEN_RE = /\((([MAR][1-9])+)\)\s*$|\b(([MAR][1-9])+)\b\s*$/g; // (A2) or bare A2 at EOL
     let m: RegExpExecArray | null;
     let foundBareTokens = false;
     const attributions: React.ReactNode[] = [];
