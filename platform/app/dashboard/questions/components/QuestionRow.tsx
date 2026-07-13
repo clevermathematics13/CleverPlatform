@@ -279,7 +279,7 @@ export function QuestionRow({
 
   const questionLatex = question.question_parts
     .filter((p) => (p.content_latex ?? p.latex ?? "").trim())
-    .map((p) => ({ label: p.part_label, latex: (p.content_latex ?? p.latex)! }));
+    .map((p) => ({ partId: p.id, label: p.part_label, latex: (p.content_latex ?? p.latex)! }));
 
   // Mark-level subtopic attribution — renders a clickable tag on each markscheme
   // mark token (A1, M1, R1, …) indicating which subtopic that mark assesses. The
@@ -295,10 +295,40 @@ export function QuestionRow({
   const msLatex = question.question_parts
     .filter((p) => (p.markscheme_latex ?? "").trim())
     .map((p) => ({
+      partId: p.id,
       label: p.part_label,
       latex: p.markscheme_latex!,
       renderMarkAttribution: makeMarkAttributionRenderer(p, p.markscheme_latex!),
     }));
+
+  // Persist a manual edit made in ImageSection's LaTeX panel — writes to
+  // content_latex (question side) or markscheme_latex (isMarkscheme) via the
+  // shared part-metadata PATCH endpoint, then refreshes so the rendered
+  // panel and any dependent state (mark-attribution tokens, etc.) pick up
+  // the new text.
+  const saveImageLatex = async (
+    partId: string,
+    isMarkscheme: boolean,
+    value: string,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    try {
+      const res = await fetch("/api/questions/part-metadata", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partId,
+          latex: value,
+          ...(isMarkscheme ? { latexField: "markscheme_latex" } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (data.error) return { ok: false, error: data.error };
+      onRefresh();
+      return { ok: true };
+    } catch (e: unknown) {
+      return { ok: false, error: e instanceof Error ? e.message : "Save failed" };
+    }
+  };
 
   return (
     <>
@@ -563,7 +593,8 @@ export function QuestionRow({
                     onReorderImages={onReorderImages} onUploadImage={onUploadImage}
                     convertingLatex={convertingLatex} convertLatexError={convertLatexError}
                     onConvertLatex={convertImagesToLatex}
-                    partsCollapsed={partsCollapsed} onToggleParts={() => setPartsCollapsed((v) => !v)} />
+                    partsCollapsed={partsCollapsed} onToggleParts={() => setPartsCollapsed((v) => !v)}
+                    onSaveLatex={saveImageLatex} />
                 </div>
               )}
             </div>
