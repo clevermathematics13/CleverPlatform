@@ -19,6 +19,8 @@ type Body = {
   subtopicCodes?: unknown;
   primarySubtopicCode?: unknown;
   sourceLatex?: unknown;
+  latex?: unknown;
+  latexField?: unknown;
 };
 
 type PartMetadataRow = {
@@ -157,7 +159,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { partId, partLabel, marks, commandTerm, commandTerms, subtopicCodes, sourceLatex } = body;
+  const { partId, partLabel, marks, commandTerm, commandTerms, subtopicCodes, sourceLatex, latex, latexField } = body;
   if (typeof partId !== "string" || !partId) {
     return NextResponse.json({ error: "partId is required" }, { status: 400 });
   }
@@ -249,6 +251,21 @@ export async function PATCH(request: NextRequest) {
       typeof body.primarySubtopicCode === "string" && body.primarySubtopicCode.trim().length > 0
         ? body.primarySubtopicCode.trim()
         : null;
+  }
+
+  // Direct LaTeX edits from the Question Studio LaTeX panels. latexField picks
+  // which column to write — defaults to content_latex (the question side) so
+  // existing callers that only ever edited question LaTeX keep working
+  // unchanged; pass latexField: "markscheme_latex" to edit the markscheme side.
+  if (latex !== undefined) {
+    if (typeof latex !== "string") {
+      return NextResponse.json({ error: "latex must be a string" }, { status: 400 });
+    }
+    if (latexField !== undefined && latexField !== "content_latex" && latexField !== "markscheme_latex") {
+      return NextResponse.json({ error: "latexField must be 'content_latex' or 'markscheme_latex'" }, { status: 400 });
+    }
+    const targetColumn = latexField === "markscheme_latex" ? "markscheme_latex" : "content_latex";
+    update[targetColumn] = latex.trim();
   }
 
   const sourceText = typeof sourceLatex === "string" ? sourceLatex : "";
