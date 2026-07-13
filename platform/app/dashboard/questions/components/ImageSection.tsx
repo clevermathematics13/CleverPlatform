@@ -30,6 +30,7 @@ async function readClipboardImage(): Promise<{ file: File | null; error?: string
 }
 
 type LatexEntry = {
+  partId: string;
   label: string | null;
   latex: string;
   /** Optional per-part renderer that annotates each markscheme mark token
@@ -48,6 +49,7 @@ export function ImageSection({
   deletingImageIds, uploadingImage, onDeleteImage, onDeleteAllImages, onReorderImages, onUploadImage,
   convertingLatex, convertLatexError, onConvertLatex,
   partsCollapsed, onToggleParts,
+  onSaveLatex,
 }: {
   question: Question; questionImages: QuestionImage[]; msImages: QuestionImage[];
   questionLatex: LatexEntry[]; msLatex: LatexEntry[];
@@ -62,9 +64,19 @@ export function ImageSection({
   onConvertLatex: (imageType: "question" | "markscheme") => void;
   partsCollapsed: boolean;
   onToggleParts: () => void;
+  /** Persist a manual edit to a part's question or markscheme LaTeX.
+   *  Returns { ok: true } on success or { ok: false, error } on failure so
+   *  the panel can show an inline error without losing the draft. */
+  onSaveLatex: (partId: string, isMarkscheme: boolean, value: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [activeTab, setActiveTab] = useState<"question" | "markscheme">("question");
   const [dragOverImageId, setDragOverImageId] = useState<string | null>(null);
+  // Manual LaTeX editing — keyed by "<question|markscheme>-<partId>" so the
+  // two tabs never collide even though only one is visible at a time.
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [savingLatex, setSavingLatex] = useState(false);
+  const [saveLatexError, setSaveLatexError] = useState<string | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
   const clipboardErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -341,19 +353,80 @@ export function ImageSection({
           </div>
           {latex.length > 0 ? (
             <div className="divide-y divide-gray-100">
-              {latex.map(({ label: partLabel, latex: tex, renderMarkAttribution }, i) => (
-                <div key={i} className="px-3 py-2.5 space-y-1">
-                  {partLabel && (
-                    <span className={`inline-block text-[10px] font-bold font-mono ${accentText} bg-opacity-10 rounded px-1.5 py-0.5 bg-current`}
-                      style={{ opacity: 1 }}>
-                      <span className={`${accentText} opacity-100`}>({partLabel})</span>
-                    </span>
-                  )}
-                  <div className="text-sm leading-relaxed text-gray-800 overflow-x-auto">
-                    <LatexRenderer latex={tex} renderMarkAttribution={renderMarkAttribution} />
+              {latex.map(({ partId, label: partLabel, latex: tex, renderMarkAttribution }) => {
+                const entryKey = `${type}-${partId}`;
+                const isEditing = editingKey === entryKey;
+                return (
+                  <div key={partId} className="px-3 py-2.5 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      {partLabel ? (
+                        <span className={`inline-block text-[10px] font-bold font-mono ${accentText} bg-opacity-10 rounded px-1.5 py-0.5 bg-current`}
+                          style={{ opacity: 1 }}>
+                          <span className={`${accentText} opacity-100`}>({partLabel})</span>
+                        </span>
+                      ) : <span />}
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          onClick={() => { setEditingKey(entryKey); setEditDraft(tex); setSaveLatexError(null); }}
+                          title="Edit LaTeX"
+                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                        >
+                          ✏ Edit
+                        </button>
+                      )}
+                    </div>
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={editDraft}
+                          onChange={(e) => setEditDraft(e.target.value)}
+                          rows={8}
+                          className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          autoFocus
+                        />
+                        {editDraft.trim() && (
+                          <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm text-gray-800 overflow-x-auto">
+                            <LatexRenderer latex={editDraft} />
+                          </div>
+                        )}
+                        {saveLatexError && (
+                          <p className="text-xs font-semibold text-red-600">{saveLatexError}</p>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={savingLatex}
+                            onClick={async () => {
+                              setSavingLatex(true);
+                              setSaveLatexError(null);
+                              const result = await onSaveLatex(partId, type === "markscheme", editDraft);
+                              setSavingLatex(false);
+                              if (result.ok) setEditingKey(null);
+                              else setSaveLatexError(result.error ?? "Save failed");
+                            }}
+                            className="rounded bg-blue-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {savingLatex ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={savingLatex}
+                            onClick={() => { setEditingKey(null); setSaveLatexError(null); }}
+                            className="rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm leading-relaxed text-gray-800 overflow-x-auto">
+                        <LatexRenderer latex={tex} renderMarkAttribution={renderMarkAttribution} />
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="px-4 py-4 space-y-3">
