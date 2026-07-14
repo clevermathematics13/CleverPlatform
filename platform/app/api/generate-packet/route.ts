@@ -8,17 +8,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
-// Builds a URL-safe, unique slug for nuanced_analyses.slug (unique, required).
-function slugify(input: string): string {
-  const base = input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  const suffix = Date.now().toString(36);
-  return `${base || "packet"}-${suffix}`;
-}
-
 export async function POST(request: Request) {
   try {
     const { topic, specificRequirements } = await request.json();
@@ -32,7 +21,7 @@ export async function POST(request: Request) {
           role: "user",
           content: `Create a Nuanced Analysis packet for: ${topic}. 
                     Requirements: ${specificRequirements}
-                    Use this template: ${LATEX_TEMPLATE}`,
+                    Use this LaTeX template: ${LATEX_TEMPLATE}`,
         },
       ],
     });
@@ -43,19 +32,48 @@ export async function POST(request: Request) {
     const textBlock = message.content.find(
       (block): block is Anthropic.TextBlock => block.type === "text",
     );
-    const text = textBlock?.text ?? "";
-    const aiResponse = JSON.parse(text);
+    const rawText = textBlock?.text ?? "";
+    if (!rawText) {
+      throw new Error("No text content returned from Claude.");
+    }
 
+    // Defensive: pull out the JSON object even if the model adds stray prose or
+    // markdown fences despite instructions not to (same pattern as the classify route).
+    const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("Claude's response did not contain a JSON object.");
+    }
+    const aiResponse = JSON.parse(jsonMatch[0]);
+
+    // Map to the real nuanced_analyses columns. Array-typed columns fall back to
+    // [] rather than passing a malformed value through — Postgres rejects a string
+    // where a text[]/jsonb array is expected, and a bad insert here would fail
+    // every single generation.
     const { data, error } = await supabase
       .from("nuanced_analyses")
       .insert([
         {
-          slug: slugify(topic),
-          title: topic,
-          latex_content: aiResponse.latex_code,
-          parts: Array.isArray(aiResponse.interactive_components)
-            ? aiResponse.interactive_components
+          slug: aiResponse.slug,
+          title: aiResponse.title,
+          subtitle: aiResponse.subtitle ?? null,
+          course: aiResponse.course,
+          syllabus_topics: Array.isArray(aiResponse.syllabus_topics)
+            ? aiResponse.syllabus_topics
             : [],
+          prerequisites: Array.isArray(aiResponse.prerequisites)
+            ? aiResponse.prerequisites
+            : [],
+          materials: aiResponse.materials ?? null,
+          vocabulary: Array.isArray(aiResponse.vocabulary) ? aiResponse.vocabulary : [],
+          atl_statement: aiResponse.atl_statement ?? null,
+          tok_provocations: Array.isArray(aiResponse.tok_provocations)
+            ? aiResponse.tok_provocations
+            : [],
+          parts: Array.isArray(aiResponse.parts) ? aiResponse.parts : [],
+          teacher_companion: aiResponse.teacher_companion ?? null,
+          latex_content: aiResponse.latex_content ?? null,
+          sort_order: 0,
+          is_published: false,
         },
       ])
       .select();
