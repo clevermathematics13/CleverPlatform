@@ -556,7 +556,10 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
                   </span>
                 )
               );
-              if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-graph-br`} />);
+              // Only break if the next line isn't blank — a following blank
+              // line already emits its own single break (see below), so an
+              // unconditional break here would double the gap.
+              if (j < lines.length - 1 && lines[j + 1].trim() !== "") nodes.push(<br key={`${i}-${j}-graph-br`} />);
               prevLineWasText = false;
               return;
             }
@@ -571,8 +574,12 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
               return;
             }
             nodes.push(renderTextLine(line, `${i}-${j}-line`, highlightCommandTerm ?? null, contextTermsToHighlight, renderMarkAttribution, tokenCounter));
-            // Add a line break after non-blank lines (except the last in this segment).
-            if (j < lines.length - 1) nodes.push(<br key={`${i}-${j}-br`} />);
+            // Add a line break after non-blank lines, but only when the next
+            // line isn't itself blank — a blank line already emits its own
+            // single break just below, so adding one here too would double
+            // the gap between every paragraph (this was happening for every
+            // blank-line-separated block: two <br> instead of one).
+            if (j < lines.length - 1 && lines[j + 1].trim() !== "") nodes.push(<br key={`${i}-${j}-br`} />);
             prevLineWasText = true;
           });
           // After processing this text segment, the next segment's blank-line
