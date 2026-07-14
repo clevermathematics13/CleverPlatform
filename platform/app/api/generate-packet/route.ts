@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 import { SYSTEM_PROMPT, LATEX_TEMPLATE } from "@/lib/prompt";
 import { getApiTeacher } from "@/lib/auth";
+import { sanitizeJsonBackslashes } from "@/lib/json-repair";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase = createClient(
@@ -18,7 +19,10 @@ export async function POST(request: Request) {
 
     const message = await anthropic.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 8192,
+      // A full Nuanced Analysis packet (rich JSON schema + an entire XeLaTeX
+      // document as one field) plus adaptive-thinking tokens sharing the same
+      // budget genuinely needs headroom — 8192 was cutting responses off mid-JSON.
+      max_tokens: 32000,
       system: SYSTEM_PROMPT,
       messages: [
         {
@@ -29,6 +33,13 @@ export async function POST(request: Request) {
         },
       ],
     });
+
+    if (message.stop_reason === "max_tokens") {
+      console.error(
+        "CLAUDE RESPONSE TRUNCATED: hit max_tokens before finishing a turn. Usage:",
+        message.usage,
+      );
+    }
 
     // Claude Sonnet 5 has adaptive thinking on by default and cannot disable it,
     // so message.content[0] is frequently a "thinking" block rather than "text" —
@@ -45,16 +56,44 @@ export async function POST(request: Request) {
     // markdown fences despite instructions not to (same pattern as the classify route).
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      throw new Error("Claude's response did not contain a JSON object.");
+      const truncationHint =
+        message.stop_reason === "max_tokens"
+          ? " Claude's response was cut off by the max_tokens limit before any JSON object was completed."
+          : "";
+      throw new Error("Claude's response did not contain a JSON object." + truncationHint);
     }
+
+    // Repair the single most common way this model breaks JSON in this route:
+    // raw, unescaped backslashes from LaTeX (\binom, \frac, \theta...) inside a
+    // JSON string value. Safe to run unconditionally — it's a no-op on input
+    // that's already correctly escaped (see lib/json-repair.ts for the full
+    // explanation and why a naive "double every backslash" regex is unsafe here).
+    const sanitizedJson = sanitizeJsonBackslashes(jsonMatch[0]);
 
     let aiResponse;
     try {
-      aiResponse = JSON.parse(jsonMatch[0]);
+      aiResponse = JSON.parse(sanitizedJson);
     } catch (parseError: any) {
-      console.error("JSON PARSE ERROR. RAW CLAUDE OUTPUT:", rawText);
+      const positionMatch =
+        typeof parseError?.message === "string" ? parseError.message.match(/position (\d+)/) : null;
+      const position = positionMatch ? Number(positionMatch[1]) : null;
+      const context =
+        position !== null
+          ? sanitizedJson.slice(Math.max(0, position - 300), position + 300)
+          : sanitizedJson.slice(0, 2000);
+
+      console.error("JSON PARSE ERROR:", parseError?.message);
+      console.error("STOP REASON:", message.stop_reason, "USAGE:", message.usage);
+      console.error("CONTEXT AROUND FAILURE POSITION:", context);
+      console.error("FULL SANITIZED JSON LENGTH:", sanitizedJson.length);
+      console.error("FULL SANITIZED JSON:", sanitizedJson);
+
+      const truncationHint =
+        message.stop_reason === "max_tokens"
+          ? " Claude's response appears to have been cut off by the max_tokens limit — that is the more likely cause here, not escaping."
+          : "";
       throw new Error(
-        "Claude generated invalid JSON (likely an unescaped quote or backslash). Check Vercel logs for the raw output.",
+        `Claude generated invalid JSON: ${parseError?.message ?? "unknown parse error"}.${truncationHint} Check Vercel logs for the raw output and exact failure context.`,
       );
     }
 
