@@ -350,32 +350,45 @@ export function ImageSection({
                 {convertingLatex === type ? "Running..." : latex.length > 0 ? "Re-extract" : "Extract"}
               </button>
             )}
+            {latex.length === 1 && editingKey !== `${type}-${latex[0].partId}` && (
+              <button
+                type="button"
+                onClick={() => { setEditingKey(`${type}-${latex[0].partId}`); setEditDraft(latex[0].latex); setSaveLatexError(null); }}
+                title="Edit LaTeX"
+                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+              >
+                ✏ Edit
+              </button>
+            )}
           </div>
           {latex.length > 0 ? (
             <div className="divide-y divide-gray-100">
               {latex.map(({ partId, label: partLabel, latex: tex, renderMarkAttribution }) => {
                 const entryKey = `${type}-${partId}`;
                 const isEditing = editingKey === entryKey;
+                const showEntryHeaderRow = !!partLabel || latex.length > 1;
                 return (
                   <div key={partId} className="px-3 py-2.5 space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      {partLabel ? (
-                        <span className={`inline-block text-[10px] font-bold font-mono ${accentText} bg-opacity-10 rounded px-1.5 py-0.5 bg-current`}
-                          style={{ opacity: 1 }}>
-                          <span className={`${accentText} opacity-100`}>({partLabel})</span>
-                        </span>
-                      ) : <span />}
-                      {!isEditing && (
-                        <button
-                          type="button"
-                          onClick={() => { setEditingKey(entryKey); setEditDraft(tex); setSaveLatexError(null); }}
-                          title="Edit LaTeX"
-                          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
-                        >
-                          ✏ Edit
-                        </button>
-                      )}
-                    </div>
+                    {showEntryHeaderRow && (
+                      <div className="flex items-center justify-between gap-2">
+                        {partLabel ? (
+                          <span className={`inline-block text-[10px] font-bold font-mono ${accentText} bg-opacity-10 rounded px-1.5 py-0.5 bg-current`}
+                            style={{ opacity: 1 }}>
+                            <span className={`${accentText} opacity-100`}>({partLabel})</span>
+                          </span>
+                        ) : <span />}
+                        {!isEditing && latex.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => { setEditingKey(entryKey); setEditDraft(tex); setSaveLatexError(null); }}
+                            title="Edit LaTeX"
+                            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                          >
+                            ✏ Edit
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {isEditing ? (
                       <div className="space-y-2">
                         <textarea
