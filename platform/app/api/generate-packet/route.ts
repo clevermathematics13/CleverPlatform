@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@supabase/supabase-js";
 import { SYSTEM_PROMPT, LATEX_TEMPLATE } from "@/lib/prompt";
+import { getApiTeacher } from "@/lib/auth";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase = createClient(
@@ -9,6 +10,9 @@ const supabase = createClient(
 );
 
 export async function POST(request: Request) {
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+
   try {
     const { topic, specificRequirements } = await request.json();
 
