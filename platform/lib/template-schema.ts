@@ -99,6 +99,15 @@ export const CommandTermEntrySchema = z.object({
   definition: z.string().min(1),
 });
 
+export const TokProvocationSchema = z.object({
+  id: z.string().optional(),
+  body: z.string().min(1),
+});
+
+export const InternationalMindednessBoxSchema = z.object({
+  body: z.string().min(1),
+});
+
 // ── Top-level draft ───────────────────────────────────────────────────────────
 
 export const AssignmentDraftSchema = z.object({
@@ -115,12 +124,26 @@ export const AssignmentDraftSchema = z.object({
   syllabusTopics: z.string().optional(),
   prerequisites: z.string().optional(),
   materials: z.string().optional(),
+  atl: z.string().optional(),
+  compulsoryCore: z.string().optional(),
   commandTerms: z.array(CommandTermEntrySchema).optional(),
+  tokProvocations: z.array(TokProvocationSchema).optional(),
+  internationalMindedness: InternationalMindednessBoxSchema.optional(),
 });
 
 export type ValidatedAssignmentDraft = z.infer<typeof AssignmentDraftSchema>;
 
 // ── Full PDF request (what the API route receives) ────────────────────────────
+//
+// NOTE: this schema previously only declared title/subtitle/instructions/
+// sections(heading+questions)/formatting. Zod strips any key not declared
+// here by default, so course/syllabusTopics/prerequisites/materials/atl/
+// tokProvocations/internationalMindedness/commandTerms — and every per-section
+// prerequisiteBox/spotlight/translationTable/geometricReading — were being
+// silently dropped before buildHtml() in document-orchestrator.ts ever saw
+// them, even though buildHtml() already has full rendering support for all of
+// them. Declaring the fields here (reusing the schemas already defined above)
+// is what actually turns that existing rendering code on.
 
 export const AssignmentPdfRequestSchema = z.object({
   title: z.string().min(1),
@@ -145,9 +168,23 @@ export const AssignmentPdfRequestSchema = z.object({
           })).optional(),
         })
       ).min(1),
+      prerequisiteBox: PrerequisiteBoxSchema.optional(),
+      spotlight: SpotlightBoxSchema.optional(),
+      translationTable: TranslationTableSchema.optional(),
+      geometricReading: GeometricReadingSchema.optional(),
     })
   ),
   formatting: FormattingRequirementsSchema,
+  // Nuanced Analysis header fields — see note above.
+  course: z.string().optional(),
+  syllabusTopics: z.string().optional(),
+  prerequisites: z.string().optional(),
+  materials: z.string().optional(),
+  atl: z.string().optional(),
+  compulsoryCore: z.string().optional(),
+  commandTerms: z.array(CommandTermEntrySchema).optional(),
+  tokProvocations: z.array(TokProvocationSchema).optional(),
+  internationalMindedness: InternationalMindednessBoxSchema.optional(),
 });
 
 export type ValidatedAssignmentPdfRequest = z.infer<typeof AssignmentPdfRequestSchema>;
