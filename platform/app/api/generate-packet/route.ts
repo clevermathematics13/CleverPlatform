@@ -47,7 +47,16 @@ export async function POST(request: Request) {
     if (!jsonMatch) {
       throw new Error("Claude's response did not contain a JSON object.");
     }
-    const aiResponse = JSON.parse(jsonMatch[0]);
+
+    let aiResponse;
+    try {
+      aiResponse = JSON.parse(jsonMatch[0]);
+    } catch (parseError: any) {
+      console.error("JSON PARSE ERROR. RAW CLAUDE OUTPUT:", rawText);
+      throw new Error(
+        "Claude generated invalid JSON (likely an unescaped quote or backslash). Check Vercel logs for the raw output.",
+      );
+    }
 
     // Map to the real nuanced_analyses columns. Array-typed columns fall back to
     // [] rather than passing a malformed value through — Postgres rejects a string
