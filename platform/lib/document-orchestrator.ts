@@ -654,6 +654,7 @@ type NuancedDraftExtras = {
   syllabusTopics?: string;
   prerequisites?: string;
   materials?: string;
+  atl?: string;
   compulsoryCore?: string;
 };
 
@@ -688,6 +689,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
     nd.syllabusTopics ? `<div class="meta-row"><strong>Syllabus Topics:</strong> ${escapeHtml(nd.syllabusTopics)}</div>` : "",
     nd.prerequisites   ? `<div class="meta-row"><strong>Prerequisites:</strong> ${escapeHtml(nd.prerequisites)}</div>` : "",
     nd.materials       ? `<div class="meta-row" style="font-style:italic">${escapeHtml(nd.materials)}</div>` : "",
+    nd.atl             ? `<div class="meta-row"><strong>Approaches to Learning:</strong> ${escapeHtml(nd.atl)}</div>` : "",
     formatting.teacherName ? `<div class="meta-row"><strong>Teacher:</strong> ${escapeHtml(formatting.teacherName)}</div>` : "",
   ].filter(Boolean).join("\n");
 
