@@ -4,6 +4,12 @@ import { SYSTEM_PROMPT, LATEX_TEMPLATE } from "@/lib/prompt";
 import { getApiTeacher } from "@/lib/auth";
 import { sanitizeJsonBackslashes } from "@/lib/json-repair";
 
+export const runtime = "nodejs";
+// A full Nuanced Analysis packet at max_tokens: 32000 with adaptive thinking can
+// genuinely take several minutes — matches the ceiling already used by the other
+// heavy Claude/Drive routes in this codebase (import-from-drive, sync-drive-docs).
+export const maxDuration = 300;
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,7 +23,12 @@ export async function POST(request: Request) {
   try {
     const { topic, specificRequirements } = await request.json();
 
-    const message = await anthropic.messages.create({
+    // The Anthropic TypeScript SDK requires streaming for non-streaming requests
+    // whose max_tokens exceeds ~21,333, since a single buffered HTTP response that
+    // large risks exceeding a 10-minute timeout. .stream().finalMessage() streams
+    // under the hood but still hands back the same Message object .create() would
+    // — nothing else in this route needs to change.
+    const stream = anthropic.messages.stream({
       model: "claude-sonnet-5",
       // A full Nuanced Analysis packet (rich JSON schema + an entire XeLaTeX
       // document as one field) plus adaptive-thinking tokens sharing the same
@@ -33,6 +44,7 @@ export async function POST(request: Request) {
         },
       ],
     });
+    const message = await stream.finalMessage();
 
     if (message.stop_reason === "max_tokens") {
       console.error(
