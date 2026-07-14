@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import katex from "katex";
 import "katex/dist/katex.min.css";
-import LatexRenderer from "@/components/LatexRenderer";
 import { ImageSection } from "./ImageSection";
 import { useMarkAttribution } from "./useMarkAttribution";
 import type {
@@ -15,11 +13,6 @@ import type {
 } from "./types";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-const HINT_TOOLTIP = `LaTeX math: $x^2$, $\\frac{a}{b}$, $\\sqrt{x}$
-Text: plain words work directly
-Use ^ for powers: x^2, e^(-x), (x+1)^3
-Colors: any CSS hex or named colour`.trim();
 
 export function QuestionRow({
   question,
@@ -106,7 +99,7 @@ export function QuestionRow({
   const [partsCollapsed, setPartsCollapsed] = useState(false);
 
   const [editingPartId, setEditingPartId] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<"marks" | "label" | "latex" | null>(null);
+  const [editingField, setEditingField] = useState<"marks" | "label" | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [savingField, setSavingField] = useState(false);
   const [addingPart, setAddingPart] = useState(false);
@@ -134,13 +127,12 @@ export function QuestionRow({
   const [classifying, setClassifying] = useState(false);
   const [classifyResult, setClassifyResult] = useState<string | null>(null);
 
-  const savePartField = async (partId: string, field: "marks" | "label" | "latex", value: string) => {
+  const savePartField = async (partId: string, field: "marks" | "label", value: string) => {
     setSavingField(true);
     try {
       const body: Record<string, string | number> = { partId };
       if (field === "marks") body.marks = parseInt(value) || 0;
       else if (field === "label") body.partLabel = value.trim();
-      else if (field === "latex") body.latex = value.trim();
       const res = await fetch("/api/questions/part-metadata", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -266,12 +258,6 @@ export function QuestionRow({
     } finally {
       setConvertingLatex(null);
     }
-  };
-
-  const renderLatexPreview = (latex: string): string => {
-    if (!latex) return "";
-    try { return katex.renderToString(latex, { throwOnError: false, displayMode: false }); }
-    catch { return latex; }
   };
 
   const questionImages = images.filter((i) => i.image_type === "question").sort((a, b) => a.sort_order - b.sort_order);
@@ -529,7 +515,7 @@ export function QuestionRow({
                         setEditDraft={setEditDraft} savePartField={savePartField} setConfirmDeletePartId={setConfirmDeletePartId}
                         setDeletingPartId={setDeletingPartId} setDragOverCode={setDragOverCode}
                         primaryWarningDialog={primaryWarningDialog} setPrimaryWarningDialog={setPrimaryWarningDialog}
-                        onRefresh={onRefresh} renderLatexPreview={renderLatexPreview} />
+                        onRefresh={onRefresh} />
                     ))}
                   </div>
 
@@ -630,24 +616,24 @@ function QuestionPartRow({
   availableSubtopics, onUpdateSubtopics, editingPartId, editingField, editDraft, savingField,
   confirmDeletePartId, deletingPartId, dragOverCode, setEditingPartId, setEditingField, setEditDraft,
   savePartField, setConfirmDeletePartId, setDeletingPartId, setDragOverCode,
-  primaryWarningDialog, setPrimaryWarningDialog, onRefresh, renderLatexPreview,
+  primaryWarningDialog, setPrimaryWarningDialog, onRefresh,
 }: {
   part: QuestionPart; partIdx: number; question: Question; commandTerms: string[];
   onUpdateCommandTerm: (partId: string, commandTerm: string | null) => void;
   onAddCustomTerm: (term: string) => void; availableSubtopics: Subtopic[];
   onUpdateSubtopics: (partId: string, codes: string[], primaryCode?: string | null) => void;
-  editingPartId: string | null; editingField: "marks" | "label" | "latex" | null;
+  editingPartId: string | null; editingField: "marks" | "label" | null;
   editDraft: string; savingField: boolean; confirmDeletePartId: string | null;
   deletingPartId: string | null; dragOverCode: string | null;
   setEditingPartId: (id: string | null) => void;
-  setEditingField: (f: "marks" | "label" | "latex" | null) => void;
+  setEditingField: (f: "marks" | "label" | null) => void;
   setEditDraft: (v: string) => void;
-  savePartField: (partId: string, field: "marks" | "label" | "latex", value: string) => Promise<void>;
+  savePartField: (partId: string, field: "marks" | "label", value: string) => Promise<void>;
   setConfirmDeletePartId: (id: string | null) => void; setDeletingPartId: (id: string | null) => void;
   setDragOverCode: (code: string | null) => void;
   primaryWarningDialog: { labels: string; plural: boolean } | null;
   setPrimaryWarningDialog: (v: { labels: string; plural: boolean } | null) => void;
-  onRefresh: () => void; renderLatexPreview: (latex: string) => string;
+  onRefresh: () => void;
 }) {
   const [showTermDropdown, setShowTermDropdown] = useState(false);
   const [newTerm, setNewTerm] = useState("");
@@ -679,8 +665,6 @@ function QuestionPartRow({
     if (isPrimary) { const label = availableSubtopics.find((s) => s.code === codeToRemove)?.code ?? codeToRemove; setPrimaryWarningDialog({ labels: label, plural: false }); return; }
     onUpdateSubtopics(part.id, currentCodes.filter((c) => c !== codeToRemove));
   };
-
-  const partLatex = part.content_latex ?? part.latex ?? null;
 
   return (
     <div className={`rounded-lg border bg-white p-3 space-y-2 ${isEditing ? "border-blue-400 shadow-sm" : "border-gray-200"}`}>
@@ -754,38 +738,6 @@ function QuestionPartRow({
           <button type="button" onClick={() => setConfirmDeletePartId(part.id)} className="ml-auto rounded border border-red-200 bg-white px-2 py-0.5 text-xs text-red-500 hover:bg-red-50">🗑</button>
         )}
       </div>
-
-      {isEditing && editingField === "latex" ? (
-        <div className="space-y-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-semibold text-blue-700">Edit LaTeX</span>
-            <span className="text-[10px] text-gray-400 cursor-help" title={HINT_TOOLTIP}>ⓘ</span>
-          </div>
-          <textarea value={editDraft} onChange={(e) => setEditDraft(e.target.value)} rows={3}
-            className="w-full rounded border border-blue-300 px-2 py-1 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400 max-w-2xl" />
-          {editDraft && (
-            <div className="text-xs text-gray-600 bg-gray-50 rounded border border-gray-200 px-2 py-1 max-w-2xl">
-              <span className="font-semibold text-gray-500 text-[10px]">Preview: </span>
-              <span dangerouslySetInnerHTML={{ __html: renderLatexPreview(editDraft) }} />
-            </div>
-          )}
-          <div className="flex gap-1.5">
-            <button type="button" onClick={() => savePartField(part.id, "latex", editDraft)} disabled={savingField} className="rounded bg-blue-600 px-2.5 py-1 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{savingField ? "Saving…" : "Save"}</button>
-            <button type="button" onClick={() => { setEditingPartId(null); setEditingField(null); }} className="rounded border border-gray-300 px-2.5 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100">Cancel</button>
-          </div>
-        </div>
-      ) : (
-        partLatex && (
-          <div className="text-sm cursor-pointer hover:bg-gray-50 rounded px-1 py-0.5 group"
-            onClick={() => { setEditingPartId(part.id); setEditingField("latex"); setEditDraft(partLatex); }} title="Click to edit LaTeX">
-            <LatexRenderer latex={partLatex} />
-            <span className="ml-1 text-[10px] text-gray-400 opacity-0 group-hover:opacity-100">✏</span>
-          </div>
-        )
-      )}
-      {!partLatex && !isEditing && (
-        <button type="button" onClick={() => { setEditingPartId(part.id); setEditingField("latex"); setEditDraft(""); }} className="text-xs text-gray-400 hover:text-blue-600 italic">+ Add LaTeX content</button>
-      )}
 
       <div className="flex items-center gap-1.5 flex-wrap">
         {currentCodes.map((code) => {
