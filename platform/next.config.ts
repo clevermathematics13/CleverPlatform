@@ -4,7 +4,11 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   devIndicators: false,
   // Prevent webpack from bundling native/binary packages used in API routes
-  serverExternalPackages: ["puppeteer-core", "@sparticuz/chromium-min"],
+  serverExternalPackages: [
+    "puppeteer-core",
+    "@sparticuz/chromium-min",
+    "@myriaddreamin/typst-ts-node-compiler",
+  ],
   experimental: {
     serverActions: {
       allowedOrigins: [
