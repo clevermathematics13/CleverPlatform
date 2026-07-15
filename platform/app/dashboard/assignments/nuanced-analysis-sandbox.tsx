@@ -18,6 +18,7 @@ import { useState, useCallback } from "react";
 import type { AssignmentDraft, FormattingRequirements } from "@/lib/assignments";
 import { NuancedAnalysisPreview } from "./nuanced-analysis-preview";
 import { ActivityGeneratorPanel } from "./activity-generator";
+import { EditTemplateModal } from "./edit-template-modal";
 import { DocumentOrchestratorService } from "@/lib/document-orchestrator-nuanced";
 
 // ── Default formatting ────────────────────────────────────────────────────────
@@ -148,6 +149,7 @@ export function NuancedAnalysisSandbox() {
   const [includeTeacherCompanion, setIncludeTeacherCompanion] = useState(false);
   const [pdfStatus, setPdfStatus] = useState<PdfStatus>("idle");
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
 
   const handleDraftGenerated = useCallback((d: AssignmentDraft) => {
     setDraft(d);
@@ -243,6 +245,13 @@ export function NuancedAnalysisSandbox() {
           )}
           <button
             type="button"
+            onClick={() => setTemplateModalOpen(true)}
+            className="rounded-lg border border-da-border bg-da-bg/60 px-3 py-1.5 text-xs font-semibold text-da-text transition-colors hover:bg-da-bg"
+          >
+            ✎ Edit Template
+          </button>
+          <button
+            type="button"
             onClick={() => void handleDownloadPdf()}
             disabled={pdfStatus === "building"}
             className="rounded-lg border border-da-accent/70 bg-da-accent/20 px-3 py-1.5 text-xs font-semibold text-da-text transition-colors hover:bg-da-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
@@ -262,6 +271,12 @@ export function NuancedAnalysisSandbox() {
           gradeLevel="Grade 12"
         />
       </div>
+
+      {/* ── Edit Template modal ──────────────────────────────────────────────── */}
+      <EditTemplateModal
+        open={templateModalOpen}
+        onClose={() => setTemplateModalOpen(false)}
+      />
     </div>
   );
 }
