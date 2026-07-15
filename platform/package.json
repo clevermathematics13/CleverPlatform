@@ -23,6 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.90.0",
     "@googleapis/classroom": "^11.1.0",
+    "@myriaddreamin/typst-ts-node-compiler": "^0.6.0",
     "@sparticuz/chromium-min": "^133.0.0",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.105.4",
