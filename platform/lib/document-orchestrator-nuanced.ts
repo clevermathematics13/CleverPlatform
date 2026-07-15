@@ -54,6 +54,137 @@ type NuancedDraft = AssignmentDraft & NuancedDraftExtra;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /**
+ * Coerce a value to a trimmed, non-empty string, or null if it isn't one.
+ * AI-generated JSON occasionally omits a nested field, sends null, or sends a
+ * non-string — and the Typst template accesses these fields via direct
+ * dictionary access (not the safer `.at(key, default:)` form) for readability.
+ * A missing key on the Typst side is a HARD COMPILE FAILURE for the entire
+ * document (confirmed empirically: "dictionary does not contain key ..."),
+ * so every enrichment box below must be entirely PRESENT-AND-VALID or entirely
+ * OMITTED — there is no safe way to partially include one.
+ */
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Sanitise a prerequisiteBox: only include if `.items` is a real array of
+ * usable strings. A missing/empty/malformed `.items` would crash Typst's
+ * `for item in section.prerequisiteBox.items` — so if nothing survives,
+ * the whole box is omitted (matches how the Typst template already treats a
+ * fully-absent prerequisiteBox: `if "prerequisiteBox" in section`).
+ */
+function sanitisePrerequisiteBox(
+  box: AssignmentSection["prerequisiteBox"]
+): AssignmentSection["prerequisiteBox"] | undefined {
+  if (!box || !Array.isArray(box.items)) return undefined;
+  const items = box.items
+    .map((item) => nonEmptyString(item))
+    .filter((item): item is string => item !== null);
+  return items.length > 0 ? { items } : undefined;
+}
+
+/**
+ * Sanitise a spotlight box: BOTH title and body must be present, since the
+ * Typst callout-box label is built as `"...Spotlight: " + section.spotlight.title`
+ * and the body is rendered separately — a spotlight missing either half isn't
+ * meaningful, so it's safer to omit the whole box than guess a placeholder.
+ */
+function sanitiseSpotlight(
+  spotlight: AssignmentSection["spotlight"]
+): AssignmentSection["spotlight"] | undefined {
+  if (!spotlight) return undefined;
+  const title = nonEmptyString(spotlight.title);
+  const body = nonEmptyString(spotlight.body);
+  return title && body ? { title, body } : undefined;
+}
+
+/**
+ * Sanitise a translation table: caption defaults to a sensible generic label
+ * (rather than dropping a genuinely useful table over one missing label), and
+ * each row is kept only if BOTH informal and formal sides are present —
+ * partial rows are dropped individually instead of failing the whole table.
+ * If no valid rows survive, the table is omitted entirely (an empty
+ * `for row in ...rows` loop is harmless in Typst, but a table with zero rows
+ * has no value to a teacher either).
+ */
+function sanitiseTranslationTable(
+  table: AssignmentSection["translationTable"]
+): AssignmentSection["translationTable"] | undefined {
+  if (!table || !Array.isArray(table.rows)) return undefined;
+  const rows = table.rows
+    .map((row) => {
+      const informal = nonEmptyString(row?.informal);
+      const formal = nonEmptyString(row?.formal);
+      return informal && formal ? { informal, formal } : null;
+    })
+    .filter((row): row is { informal: string; formal: string } => row !== null);
+  if (rows.length === 0) return undefined;
+  const caption = nonEmptyString(table.caption) ?? "Translating informal language into IB rigor";
+  return { caption, rows };
+}
+
+/**
+ * Sanitise a geometricReading box: only include if `.body` is usable.
+ */
+function sanitiseGeometricReading(
+  reading: AssignmentSection["geometricReading"]
+): AssignmentSection["geometricReading"] | undefined {
+  if (!reading) return undefined;
+  const body = nonEmptyString(reading.body);
+  return body ? { body } : undefined;
+}
+
+/**
+ * Sanitise commandTerms: keep only entries with both a term and a definition.
+ * Typst accesses `ct.term` / `ct.definition` directly for every surviving
+ * entry inside the table() call, so a partial entry would crash the compile.
+ */
+function sanitiseCommandTerms(
+  terms: NuancedDraft["commandTerms"]
+): NuancedDraft["commandTerms"] | undefined {
+  if (!Array.isArray(terms)) return undefined;
+  const cleaned = terms
+    .map((ct) => {
+      const term = nonEmptyString(ct?.term);
+      const definition = nonEmptyString(ct?.definition);
+      return term && definition ? { term, definition } : null;
+    })
+    .filter((ct): ct is { term: string; definition: string } => ct !== null);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+/**
+ * Sanitise tokProvocations: keep only entries with a usable body. Typst
+ * accesses `tok.body` directly for every entry in the enumerate() loop.
+ */
+function sanitiseTokProvocations(
+  toks: NuancedDraft["tokProvocations"]
+): NuancedDraft["tokProvocations"] | undefined {
+  if (!Array.isArray(toks)) return undefined;
+  const cleaned = toks
+    .map((tok, i) => {
+      const body = nonEmptyString(tok?.body);
+      return body ? { id: nonEmptyString(tok?.id) ?? `tok${i + 1}`, body } : null;
+    })
+    .filter((tok): tok is { id: string; body: string } => tok !== null);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+/**
+ * Sanitise internationalMindedness: only include if `.body` is usable.
+ */
+function sanitiseInternationalMindedness(
+  im: NuancedDraft["internationalMindedness"]
+): NuancedDraft["internationalMindedness"] | undefined {
+  if (!im) return undefined;
+  const body = nonEmptyString(im.body);
+  return body ? { body } : undefined;
+}
+
+/**
  * Derive an AnswerBoxSpec for a single question.
  * Uses per-question answerBoxLines if present, else the template default.
  */
@@ -152,29 +283,20 @@ function mapSection(
     mapQuestion(q, globalCounter, template)
   );
 
+  const prerequisiteBox = sanitisePrerequisiteBox(s.prerequisiteBox);
+  const spotlight = sanitiseSpotlight(s.spotlight);
+  const translationTable = sanitiseTranslationTable(s.translationTable);
+  const geometricReading = sanitiseGeometricReading(s.geometricReading);
+
   return {
     id: `part-${partNumber}`,
     heading: s.heading,
     partNumber,
     questions,
-    ...(s.prerequisiteBox ? { prerequisiteBox: s.prerequisiteBox } : {}),
-    ...(s.spotlight
-      ? { spotlight: { title: s.spotlight.title, body: s.spotlight.body } }
-      : {}),
-    ...(s.translationTable
-      ? {
-          translationTable: {
-            caption: s.translationTable.caption,
-            rows: s.translationTable.rows.map((r) => ({
-              informal: r.informal,
-              formal: r.formal,
-            })),
-          },
-        }
-      : {}),
-    ...(s.geometricReading
-      ? { geometricReading: { body: s.geometricReading.body } }
-      : {}),
+    ...(prerequisiteBox ? { prerequisiteBox } : {}),
+    ...(spotlight ? { spotlight } : {}),
+    ...(translationTable ? { translationTable } : {}),
+    ...(geometricReading ? { geometricReading } : {}),
   };
 }
 
@@ -210,6 +332,12 @@ export const DocumentOrchestratorService = {
         mapSection(s, i, globalCounter, template)
       );
 
+      const commandTerms = sanitiseCommandTerms(nd.commandTerms);
+      const tokProvocations = sanitiseTokProvocations(nd.tokProvocations);
+      const internationalMindedness = sanitiseInternationalMindedness(
+        nd.internationalMindedness
+      );
+
       const content: ActivityContentAst = {
         title: nd.title || "Nuanced Analysis",
         subtitle:
@@ -221,15 +349,9 @@ export const DocumentOrchestratorService = {
         materials: nd.materials,
         compulsoryCore: nd.compulsoryCore,
         sections,
-        ...(Array.isArray(nd.commandTerms) && nd.commandTerms.length > 0
-          ? { commandTerms: nd.commandTerms }
-          : {}),
-        ...(Array.isArray(nd.tokProvocations) && nd.tokProvocations.length > 0
-          ? { tokProvocations: nd.tokProvocations }
-          : {}),
-        ...(nd.internationalMindedness
-          ? { internationalMindedness: nd.internationalMindedness }
-          : {}),
+        ...(commandTerms ? { commandTerms } : {}),
+        ...(tokProvocations ? { tokProvocations } : {}),
+        ...(internationalMindedness ? { internationalMindedness } : {}),
       };
 
       const payload: ActivityPayload = {
