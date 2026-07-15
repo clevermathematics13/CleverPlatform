@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { SYSTEM_PROMPT, LATEX_TEMPLATE } from "@/lib/prompt";
 import { getApiTeacher } from "@/lib/auth";
 import { sanitizeJsonBackslashes } from "@/lib/json-repair";
+import { compileSpecToSystemPrompt } from "@/lib/nuanced-analysis-spec.compile";
+import { loadCanonicalSpecForGeneration } from "@/lib/nuanced-analysis-spec.load";
 
 export const runtime = "nodejs";
 // A full Nuanced Analysis packet at max_tokens: 32000 with adaptive thinking can
@@ -23,6 +25,23 @@ export async function POST(request: Request) {
   try {
     const { topic, specificRequirements } = await request.json();
 
+    // Resolve the pedagogical spec (DB canonical row → in-code canonical
+    // fallback) and compile it deterministically into the generation system
+    // prompt. This is what makes the DB-stored template actually drive
+    // generation. Any failure degrades to the legacy hard-coded SYSTEM_PROMPT so
+    // packet generation can never hard-break on a spec/DB problem.
+    let systemPrompt: string;
+    try {
+      const spec = await loadCanonicalSpecForGeneration(supabase);
+      systemPrompt = compileSpecToSystemPrompt(spec);
+    } catch (e) {
+      console.error(
+        "[generate-packet] spec load/compile failed; using legacy SYSTEM_PROMPT.",
+        e,
+      );
+      systemPrompt = SYSTEM_PROMPT;
+    }
+
     // The Anthropic TypeScript SDK requires streaming for non-streaming requests
     // whose max_tokens exceeds ~21,333, since a single buffered HTTP response that
     // large risks exceeding a 10-minute timeout. .stream().finalMessage() streams
@@ -34,7 +53,7 @@ export async function POST(request: Request) {
       // document as one field) plus adaptive-thinking tokens sharing the same
       // budget genuinely needs headroom — 8192 was cutting responses off mid-JSON.
       max_tokens: 32000,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       messages: [
         {
           role: "user",
