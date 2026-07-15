@@ -3,6 +3,9 @@ import { NextResponse } from 'next/server';
 import { getApiTeacher } from '@/lib/auth';
 
 export const runtime = 'nodejs';
+// Multi-PDF generations (adaptive thinking + a 32K output budget) genuinely run
+// for minutes — same ceiling as the other heavy Claude routes in this codebase.
+export const maxDuration = 300;
 
 type TextBlock = { type: 'text'; text: string };
 type ImageBlock = { type: 'image'; source: { type: 'base64'; media_type: 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'; data: string } };
@@ -60,12 +63,33 @@ export async function POST(req: Request) {
 
     const client = new Anthropic({ apiKey });
 
-    const response = await client.messages.create({
+    // claude-sonnet-5's adaptive thinking SHARES the max_tokens budget with the
+    // visible reply. At the old 4096 cap, a multi-PDF request could spend the
+    // entire budget thinking and return an empty or mid-JSON-truncated text
+    // block — the client then failed with "AI response did not include a JSON
+    // object" despite this route returning 200. 32000 gives real headroom; the
+    // SDK requires streaming above ~21,333, and .stream().finalMessage() hands
+    // back the same Message object .create() would (same proven pattern as
+    // generate-packet).
+    const stream = client.messages.stream({
       model: 'claude-sonnet-5',
-      max_tokens: 4096,
+      max_tokens: 32000,
       system: body.system,
       messages: body.messages as Anthropic.MessageParam[],
     });
+    const response = await stream.finalMessage();
+
+    // Response-shape diagnostics: with this line, "request 200'd but nothing
+    // was generated" is always attributable from the logs alone.
+    const blocksSummary = response.content
+      .map((b) => (b.type === 'text' ? `text(${b.text.length} chars)` : b.type))
+      .join(', ');
+    console.log(
+      `[api/claude] response stop_reason=${response.stop_reason} blocks=[${blocksSummary}] usage=${JSON.stringify(response.usage)}`,
+    );
+    if (response.stop_reason === 'max_tokens') {
+      console.error('[api/claude] response truncated at max_tokens — output will likely fail to parse client-side.');
+    }
 
     return NextResponse.json(response, { status: 200 });
   } catch (err: unknown) {
