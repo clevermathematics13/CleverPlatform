@@ -72,6 +72,67 @@ export async function loadCanonicalSpecForGeneration(
   return CANONICAL_AAHL_SPEC;
 }
 
+/** Where the effective spec was resolved from. */
+export type SpecSource = "own" | "canonical" | "builtin";
+
+export type EffectiveSpec = {
+  spec: NuancedAnalysisSpec;
+  source: SpecSource;
+  /** DB row id when source is "own" or "canonical"; null for "builtin". */
+  rowId: string | null;
+};
+
+/**
+ * Resolve the spec a TEACHER should see/edit, in priority order:
+ *   1. the teacher's own course variant (owner_id = ownerId),
+ *   2. the canonical row,
+ *   3. the in-code canonical (auto-seeding the canonical row on the way).
+ * Invalid rows are skipped with a logged error rather than surfaced.
+ */
+export async function loadEffectiveSpec(
+  supabase: SupabaseClient,
+  ownerId: string
+): Promise<EffectiveSpec> {
+  try {
+    const own = await supabase
+      .from(TABLE)
+      .select("id, spec")
+      .match({ ...CANON_COURSE, owner_id: ownerId })
+      .maybeSingle();
+    if (own.data?.spec) {
+      const validated = validateNuancedAnalysisSpec(own.data.spec);
+      if (validated.success) {
+        return { spec: validated.data, source: "own", rowId: own.data.id };
+      }
+      console.error(
+        "[nuanced-spec] teacher variant failed validation; falling through.",
+        validated.error
+      );
+    }
+
+    const canon = await supabase
+      .from(TABLE)
+      .select("id, spec")
+      .match({ ...CANON_COURSE, is_canonical: true })
+      .maybeSingle();
+    if (canon.data?.spec) {
+      const validated = validateNuancedAnalysisSpec(canon.data.spec);
+      if (validated.success) {
+        return { spec: validated.data, source: "canonical", rowId: canon.data.id };
+      }
+      console.error(
+        "[nuanced-spec] canonical row failed validation; falling through.",
+        validated.error
+      );
+    }
+  } catch (e) {
+    console.error("[nuanced-spec] loadEffectiveSpec DB read failed.", e);
+  }
+
+  await seedCanonicalSpec(supabase).catch(() => {});
+  return { spec: CANONICAL_AAHL_SPEC, source: "builtin", rowId: null };
+}
+
 /**
  * Insert the in-code canonical spec as the canonical DB row, unless one already
  * exists. A partial unique index guards against races; any error is swallowed
@@ -97,4 +158,113 @@ async function seedCanonicalSpec(supabase: SupabaseClient): Promise<void> {
     is_canonical: true,
     spec: CANONICAL_AAHL_SPEC,
   });
+}
+
+/**
+ * Save a validated spec as the CANONICAL row (update-or-insert). Used by the
+ * "Edit Template" flow when saving the shared template. Requires a service-role
+ * client — RLS blocks authenticated users from writing owner_id-NULL rows.
+ * Throws on failure so the caller can surface the error.
+ */
+export async function saveCanonicalSpec(
+  supabase: SupabaseClient,
+  spec: NuancedAnalysisSpec
+): Promise<{ rowId: string }> {
+  const course = {
+    programme: spec.identity.course.programme,
+    subject: spec.identity.course.subject,
+    strand: spec.identity.course.strand,
+    level: spec.identity.course.level,
+  };
+
+  const existing = await supabase
+    .from(TABLE)
+    .select("id")
+    .match({ ...course, is_canonical: true })
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+
+  if (existing.data) {
+    const updated = await supabase
+      .from(TABLE)
+      .update({
+        name: spec.identity.name,
+        spec_version: spec.identity.specVersion,
+        spec,
+      })
+      .eq("id", existing.data.id)
+      .select("id")
+      .single();
+    if (updated.error) throw updated.error;
+    return { rowId: updated.data.id };
+  }
+
+  const inserted = await supabase
+    .from(TABLE)
+    .insert({
+      owner_id: null,
+      ...course,
+      name: spec.identity.name,
+      spec_version: spec.identity.specVersion,
+      is_canonical: true,
+      spec,
+    })
+    .select("id")
+    .single();
+  if (inserted.error) throw inserted.error;
+  return { rowId: inserted.data.id };
+}
+
+/**
+ * Save a validated spec as the calling teacher's OWN course variant
+ * (update-or-insert on (course key, owner_id)). Throws on failure.
+ */
+export async function saveOwnSpecVariant(
+  supabase: SupabaseClient,
+  ownerId: string,
+  spec: NuancedAnalysisSpec
+): Promise<{ rowId: string }> {
+  const course = {
+    programme: spec.identity.course.programme,
+    subject: spec.identity.course.subject,
+    strand: spec.identity.course.strand,
+    level: spec.identity.course.level,
+  };
+
+  const existing = await supabase
+    .from(TABLE)
+    .select("id")
+    .match({ ...course, owner_id: ownerId })
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+
+  if (existing.data) {
+    const updated = await supabase
+      .from(TABLE)
+      .update({
+        name: spec.identity.name,
+        spec_version: spec.identity.specVersion,
+        spec,
+      })
+      .eq("id", existing.data.id)
+      .select("id")
+      .single();
+    if (updated.error) throw updated.error;
+    return { rowId: updated.data.id };
+  }
+
+  const inserted = await supabase
+    .from(TABLE)
+    .insert({
+      owner_id: ownerId,
+      ...course,
+      name: spec.identity.name,
+      spec_version: spec.identity.specVersion,
+      is_canonical: false,
+      spec,
+    })
+    .select("id")
+    .single();
+  if (inserted.error) throw inserted.error;
+  return { rowId: inserted.data.id };
 }
