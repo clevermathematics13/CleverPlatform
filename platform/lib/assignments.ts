@@ -190,6 +190,13 @@ export function detectDuplicateQuestions(
 
 export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
   const isIB = gradeLevel === "Grade 12" || gradeLevel === "Grade 11";
+  // A literal double-quote character, built at runtime so the math-syntax rule
+  // below can show a quoted-operator example via template-literal interpolation
+  // instead of a hand-escaped \" sequence embedded in a single-quoted string
+  // literal (that escaping is exactly the kind of thing that's easy to get
+  // wrong when this file is regenerated — see escapeHtml() further down in
+  // this same file for the same String.fromCharCode pattern).
+  const q = String.fromCharCode(34);
   return [
     `You are an expert IBDP Mathematics teacher creating a Nuanced Analysis activity packet for ${gradeLevel}.`,
     "A Nuanced Analysis is a structured, multi-part guided investigation that:",
@@ -253,7 +260,7 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
     "9. subparts: (a),(b),(c) for questions with distinct phases.",
     "10. Marks: write-down=1–2, show-that/prove=3–5, extended investigation=4–8.",
     "11. Use IB vocabulary: 'intersects' not 'crosses through'; 'even multiplicity' not 'bounces'.",
-    '11b. MATH: write equations as $...$ using native Typst math syntax — NOT LaTeX. No backslash commands (no \\frac, \\sqrt, \\alpha). Use: x^2, x_1, sqrt(x), (a)/(b) or frac(a,b), alpha, beta, sigma, mu, sum_(k=1)^n, integral, macron(x) for a bar/overline. Named operators with no Typst symbol (Var, Cov, Corr, SD) MUST be quoted so they render upright and compile correctly, e.g. $\\"Var\\"(X) = sigma^2$ — an unquoted $Var(X)$ will fail to compile.',
+    `11b. MATH: write equations as $...$ using native Typst math syntax — NOT LaTeX. No backslash commands (no \\frac, \\sqrt, \\alpha). Use: x^2, x_1, sqrt(x), (a)/(b) or frac(a,b), alpha, beta, sigma, mu, sum_(k=1)^n, integral, macron(x) for a bar/overline. Named operators with no Typst symbol (Var, Cov, Corr, SD) MUST be quoted so they render upright and compile correctly, e.g. $${q}Var${q}(X) = sigma^2$ — an unquoted $Var(X)$ will fail to compile.`,
     "12. tokProvocations: exactly 2, both referencing a real philosophical tension in the mathematics.",
     "13. internationalMindedness: name at least 2 mathematicians from non-European traditions.",
     "14. reflectionQuestions: 3 questions — concept-map, epistemological, TOK position statement.",
