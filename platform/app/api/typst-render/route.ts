@@ -8,17 +8,29 @@
  * Response: application/pdf | application/json (on error)
  *
  * This route is intentionally separate from /api/pdf so the two rendering
- * paths (KaTeX → Puppeteer, and Typst WASM) can co-exist during transition.
+ * paths (KaTeX → Puppeteer, and Typst native compiler) can co-exist during
+ * transition.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getApiTeacher } from "@/lib/auth";
 import {
   TypstRenderService,
   type ActivityPayload,
 } from "@/lib/typst-render.service";
 
+export const runtime = "nodejs";
+// Compilation is fast (native addon), but keep headroom consistent with the
+// other document-generation routes in this codebase.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
+  // Only authenticated teachers may render packets — this route previously had
+  // no auth check at all, unlike every sibling generation/render route.
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+
   let body: unknown;
 
   try {
