@@ -108,4 +108,104 @@ describe("DocumentOrchestratorService", () => {
     // the TypstRenderService will produce an empty-sections PDF.
     expect(result.success).toBe(true);
   });
+
+  // ── Malformed AI output — regression tests ────────────────────────────────
+  // The Typst template accesses these enrichment fields via direct dictionary
+  // access (not `.at(key, default:)`), and a missing key is a HARD COMPILE
+  // FAILURE for the entire document (confirmed empirically against the real
+  // compiler: "dictionary does not contain key ..."). The AI's JSON output is
+  // not guaranteed to include every nested sub-field even when the parent
+  // object is present, so the orchestrator must strip or omit anything
+  // incomplete rather than passing it through.
+
+  it("omits a spotlight box missing its title instead of passing a partial object", () => {
+    const draft: AssignmentDraft = {
+      title: "T",
+      subtitle: "",
+      instructions: [],
+      sections: [
+        {
+          heading: "Part 1",
+          spotlight: { title: "", body: "Body with no title." } as unknown as { title: string; body: string },
+          questions: [{ prompt: "Q", marks: 1, tier: 1 }],
+        },
+      ],
+    };
+    const result = DocumentOrchestratorService.build(draft);
+    if (!result.success) throw new Error(result.error);
+    expect(result.payload.content.sections[0].spotlight).toBeUndefined();
+  });
+
+  it("drops individual commandTerms/tokProvocations entries missing a required field", () => {
+    const draft: AssignmentDraft = {
+      title: "T",
+      subtitle: "",
+      instructions: [],
+      sections: [{ heading: "Part 1", questions: [{ prompt: "Q", marks: 1, tier: 1 }] }],
+      commandTerms: [
+        { term: "Prove" } as unknown as { term: string; definition: string },
+        { term: "Show that", definition: "Every step must appear." },
+      ],
+      tokProvocations: [
+        { id: "tok1" } as unknown as { id: string; body: string },
+        { id: "tok2", body: "Was it discovered or invented?" },
+      ],
+    };
+    const result = DocumentOrchestratorService.build(draft);
+    if (!result.success) throw new Error(result.error);
+    const { content } = result.payload;
+    expect(content.commandTerms).toHaveLength(1);
+    expect(content.commandTerms?.[0].term).toBe("Show that");
+    expect(content.tokProvocations).toHaveLength(1);
+    expect(content.tokProvocations?.[0].id).toBe("tok2");
+  });
+
+  it("omits prerequisiteBox, geometricReading, and internationalMindedness when empty/incomplete", () => {
+    const draft: AssignmentDraft = {
+      title: "T",
+      subtitle: "",
+      instructions: [],
+      sections: [
+        {
+          heading: "Part 1",
+          prerequisiteBox: { items: [] },
+          geometricReading: {} as unknown as { body: string },
+          questions: [{ prompt: "Q", marks: 1, tier: 1 }],
+        },
+      ],
+      internationalMindedness: {} as unknown as { body: string },
+    };
+    const result = DocumentOrchestratorService.build(draft);
+    if (!result.success) throw new Error(result.error);
+    const { content } = result.payload;
+    expect(content.sections[0].prerequisiteBox).toBeUndefined();
+    expect(content.sections[0].geometricReading).toBeUndefined();
+    expect(content.internationalMindedness).toBeUndefined();
+  });
+
+  it("auto-captions a translation table missing its caption, keeping only complete rows", () => {
+    const draft: AssignmentDraft = {
+      title: "T",
+      subtitle: "",
+      instructions: [],
+      sections: [
+        {
+          heading: "Part 1",
+          translationTable: {
+            rows: [
+              { informal: "looks right", formal: "is unbiased" },
+              { informal: "no formal side" } as unknown as { informal: string; formal: string },
+            ],
+          } as unknown as { caption: string; rows: Array<{ informal: string; formal: string }> },
+          questions: [{ prompt: "Q", marks: 1, tier: 1 }],
+        },
+      ],
+    };
+    const result = DocumentOrchestratorService.build(draft);
+    if (!result.success) throw new Error(result.error);
+    const table = result.payload.content.sections[0].translationTable;
+    expect(table?.caption).toBeTruthy();
+    expect(table?.rows).toHaveLength(1);
+    expect(table?.rows[0].informal).toBe("looks right");
+  });
 });
