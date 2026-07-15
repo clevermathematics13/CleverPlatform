@@ -324,10 +324,30 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       }
 
       const data = (await res.json()) as ClaudeResponse;
+      const stopReason = (data as { stop_reason?: string }).stop_reason;
       const rawText = data.content?.find((b: { type: string; text?: string }) => b.type === "text")?.text ?? "";
-      const json = extractJsonObject(rawText);
-      const parsed = JSON.parse(json) as AssignmentDraft;
-      const sanitized = sanitizeDraft(parsed);
+
+      let sanitized: AssignmentDraft;
+      try {
+        const json = extractJsonObject(rawText);
+        const parsed = JSON.parse(json) as AssignmentDraft;
+        sanitized = sanitizeDraft(parsed);
+      } catch (parseErr) {
+        // The request itself succeeded (HTTP 200) — the reply just could not be
+        // parsed into a draft. Name the reason precisely instead of failing
+        // with a bare parse message: truncation shows up as stop_reason
+        // "max_tokens", a thinking-only reply shows up as 0 reply characters.
+        console.error(
+          `[activity-generator] 200 reply unparsable: stop_reason=${stopReason ?? "unknown"} textChars=${rawText.length}`,
+          parseErr,
+        );
+        const detail = parseErr instanceof Error ? parseErr.message : "parse failed";
+        throw new Error(
+          stopReason === "max_tokens"
+            ? `The AI reply was cut off before the draft JSON was complete (stop_reason: max_tokens, ${rawText.length} chars received). Try again — and if it repeats, send fewer attachments in one message.`
+            : `The AI replied (${rawText.length} chars) but no draft could be read from it: ${detail}`,
+        );
+      }
 
       setLastDraft(sanitized);
       onDraftGenerated(sanitized);
