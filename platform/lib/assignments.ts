@@ -253,6 +253,7 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
     "9. subparts: (a),(b),(c) for questions with distinct phases.",
     "10. Marks: write-down=1–2, show-that/prove=3–5, extended investigation=4–8.",
     "11. Use IB vocabulary: 'intersects' not 'crosses through'; 'even multiplicity' not 'bounces'.",
+    '11b. MATH: write equations as $...$ using native Typst math syntax — NOT LaTeX. No backslash commands (no \\frac, \\sqrt, \\alpha). Use: x^2, x_1, sqrt(x), (a)/(b) or frac(a,b), alpha, beta, sigma, mu, sum_(k=1)^n, integral, macron(x) for a bar/overline. Named operators with no Typst symbol (Var, Cov, Corr, SD) MUST be quoted so they render upright and compile correctly, e.g. $\\"Var\\"(X) = sigma^2$ — an unquoted $Var(X)$ will fail to compile.',
     "12. tokProvocations: exactly 2, both referencing a real philosophical tension in the mathematics.",
     "13. internationalMindedness: name at least 2 mathematicians from non-European traditions.",
     "14. reflectionQuestions: 3 questions — concept-map, epistemological, TOK position statement.",
