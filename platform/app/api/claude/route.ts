@@ -38,6 +38,26 @@ export async function POST(req: Request) {
       );
     }
 
+    // ── Entry diagnostics ────────────────────────────────────────────────────
+    // Requests larger than ~4.5 MB never reach this code (Vercel's edge 413s
+    // them first), so this log line existing at all proves the body got through.
+    // For everything that does arrive, record the size and shape so failures
+    // further down (Anthropic errors, truncation, bad blocks) are attributable.
+    const contentLength = req.headers.get('content-length') ?? 'unknown';
+    const lastMessage = body.messages[body.messages.length - 1];
+    const lastBlocks = Array.isArray(lastMessage?.content)
+      ? lastMessage.content
+          .map((b) => {
+            if (b.type === 'text') return `text(${b.text.length} chars)`;
+            const dataLen = 'source' in b ? b.source.data.length : 0;
+            return `${b.type}(${(dataLen / 1_000_000).toFixed(2)} MB base64)`;
+          })
+          .join(', ')
+      : `text(${String(lastMessage?.content ?? '').length} chars)`;
+    console.log(
+      `[api/claude] content-length=${contentLength} messages=${body.messages.length} lastTurn=[${lastBlocks}]`,
+    );
+
     const client = new Anthropic({ apiKey });
 
     const response = await client.messages.create({
@@ -50,6 +70,7 @@ export async function POST(req: Request) {
     return NextResponse.json(response, { status: 200 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Claude API error';
+    console.error('[api/claude] request failed:', message);
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }
