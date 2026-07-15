@@ -229,6 +229,62 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       userContent.push({ type: "text", text: description.trim() });
     }
 
+    // ── Payload diagnostics ─────────────────────────────────────────────────
+    // Vercel serverless functions reject request bodies over ~4.5 MB with a
+    // bare 413 at the platform edge — the request never reaches /api/claude,
+    // so nothing appears in server logs. Measure the exact body we are about
+    // to send, log a per-attachment breakdown, and fail fast with a specific
+    // message BEFORE clearing the attachments so nothing is lost.
+    // Build the API message list — Anthropic rejects empty content strings.
+    // Prior history assistant turns store display text; rebuild with safe fallbacks.
+    const messages = [
+      ...history
+        .filter((m) => typeof m.content === "string" ? m.content.trim().length > 0 : true)
+        .map((m) => ({
+          role: m.role,
+          content: m.role === "assistant"
+            ? (m.draftTitle ? `Generated draft: ${m.draftTitle}` : (m.content.trim() || "Draft generated."))
+            : (m.content.trim() || "[attachment only]"),
+        })),
+      {
+        role: "user" as const,
+        // Ensure the current user turn always has at least one text block
+        content: userContent.length > 0
+          ? userContent
+          : [{ type: "text", text: description.trim() || "Please refine the previous draft." }],
+      },
+    ];
+
+    const requestBody = JSON.stringify({
+      system: buildActivityGeneratorSystemPrompt(gradeLevel),
+      messages,
+    });
+    const bodyBytes = new Blob([requestBody]).size;
+    const toMb = (n: number) => (n / 1_000_000).toFixed(2) + " MB";
+    const attachmentSizes = [
+      ...pendingImages.map((f) => ({ name: f.name, wireBytes: f.base64.length })),
+      ...pendingPdfs.map((f) => ({ name: f.name, wireBytes: f.base64.length })),
+    ].sort((a, b) => b.wireBytes - a.wireBytes);
+    console.log(
+      `[activity-generator] request body ${toMb(bodyBytes)} · ${attachmentSizes.length} attachment(s):`,
+      attachmentSizes.map((f) => `${f.name} ${toMb(f.wireBytes)}`).join(", ") || "(none)",
+    );
+
+    const VERCEL_BODY_LIMIT_BYTES = 4_400_000; // stay under Vercel's ~4.5 MB cap
+    if (bodyBytes > VERCEL_BODY_LIMIT_BYTES) {
+      const topOffenders = attachmentSizes
+        .slice(0, 3)
+        .map((f) => `${f.name} (${toMb(f.wireBytes)})`)
+        .join(", ");
+      setError(
+        `Attachments too large to send: this request is ${toMb(bodyBytes)}, but the server accepts about 4.5 MB per request. ` +
+          (topOffenders ? `Largest: ${topOffenders}. ` : "") +
+          `Remove some attachments or send them across separate messages — nothing was cleared.`,
+      );
+      setIsGenerating(false);
+      return;
+    }
+
     const nextHistory: ChatMessage[] = [...history, {
       role: "user",
       content: description.trim(),
@@ -241,43 +297,28 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setPendingPdfs([]);
 
     try {
-      // Build the API message list — Anthropic rejects empty content strings.
-      // Prior history assistant turns store display text; rebuild with safe fallbacks.
-      const messages = [
-        ...history
-          .filter((m) => typeof m.content === "string" ? m.content.trim().length > 0 : true)
-          .map((m) => ({
-            role: m.role,
-            content: m.role === "assistant"
-              ? (m.draftTitle ? `Generated draft: ${m.draftTitle}` : (m.content.trim() || "Draft generated."))
-              : (m.content.trim() || "[attachment only]"),
-          })),
-        {
-          role: "user" as const,
-          // Ensure the current user turn always has at least one text block
-          content: userContent.length > 0
-            ? userContent
-            : [{ type: "text", text: description.trim() || "Please refine the previous draft." }],
-        },
-      ];
-
       const res = await fetch("/api/claude", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          system: buildActivityGeneratorSystemPrompt(gradeLevel),
-          messages,
-        }),
+        body: requestBody,
       });
 
       if (!res.ok) {
         let errorMsg = `Request failed (${res.status})`;
-        try {
-          const errData = (await res.json()) as { error?: string };
-          if (errData.error) errorMsg = errData.error;
-        } catch {
-          const text = await res.text().catch(() => "");
-          if (text) errorMsg = text;
+        if (res.status === 413) {
+          // Vercel's edge rejected the body before it reached our route —
+          // there is no JSON error payload and nothing in server logs.
+          errorMsg =
+            `Request rejected as too large (413): the body was ${toMb(bodyBytes)} against a ~4.5 MB server limit. ` +
+            `Re-attach fewer or smaller files and try again.`;
+        } else {
+          try {
+            const errData = (await res.json()) as { error?: string };
+            if (errData.error) errorMsg = errData.error;
+          } catch {
+            const text = await res.text().catch(() => "");
+            if (text) errorMsg = text;
+          }
         }
         throw new Error(errorMsg);
       }
