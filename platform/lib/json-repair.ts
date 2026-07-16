@@ -93,3 +93,77 @@ export function sanitizeJsonBackslashes(text: string): string {
 
   return result;
 }
+
+/**
+ * Repairs literal, unescaped double-quote characters sitting *inside* a JSON
+ * string value instead of properly escaped as \" — the way this shows up in
+ * Nuanced Analysis / Activity Generator output is the required quoted-Typst-
+ * operator syntax the model is explicitly instructed to emit, e.g.
+ * `$op("Var")(X) = sigma^2$` for named operators like Var/Cov/Corr/SD that
+ * have no built-in Typst symbol (see the MATH rule in
+ * buildActivityGeneratorSystemPrompt). The model is meant to escape that
+ * inner quote as \" but doesn't always. A raw quote there prematurely closes
+ * the JSON string, and the parser then chokes on whatever text follows with
+ * "Expected ',' or '}' after property value" — the string looked like it
+ * ended, but what came next wasn't valid JSON structure.
+ *
+ * There's no way to know with certainty whether a given `"` inside what we
+ * currently think is a string is a real closing delimiter or embedded
+ * content, so this uses the same heuristic most JSON-repair tools use: look
+ * at what immediately follows, skipping whitespace. A real closing quote for
+ * a string value is always followed by one of `,` `}` `]` `:` or the end of
+ * input. Anything else (a letter, digit, `(`, `$`...) means the quote was
+ * content, not a delimiter, so it gets escaped instead of ending the string.
+ *
+ * Run this BEFORE sanitizeJsonBackslashes, so the backslash it inserts here
+ * is recognized as an already-valid \" escape pair on that pass rather than
+ * being touched again. Like sanitizeJsonBackslashes, this is a no-op on
+ * already-well-formed JSON, so it's safe to apply unconditionally.
+ */
+export function sanitizeJsonEmbeddedQuotes(text: string): string {
+  let result = "";
+  let inString = false;
+  let i = 0;
+  const len = text.length;
+
+  while (i < len) {
+    const ch = text[i];
+
+    if (!inString) {
+      if (ch === '"') inString = true;
+      result += ch;
+      i++;
+      continue;
+    }
+
+    // Inside a string. A backslash always escapes whatever follows it —
+    // copy the pair through untouched. Whether that pair is itself valid is
+    // sanitizeJsonBackslashes's job, not this function's.
+    if (ch === "\\") {
+      result += ch + (text[i + 1] ?? "");
+      i += 2;
+      continue;
+    }
+
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < len && /\s/.test(text[j])) j++;
+      const next = text[j];
+      const isRealClose =
+        next === undefined || next === "," || next === "}" || next === "]" || next === ":";
+      if (isRealClose) {
+        inString = false;
+        result += ch;
+      } else {
+        result += '\\"';
+      }
+      i++;
+      continue;
+    }
+
+    result += ch;
+    i++;
+  }
+
+  return result;
+}
