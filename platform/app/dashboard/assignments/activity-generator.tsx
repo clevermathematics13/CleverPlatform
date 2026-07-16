@@ -32,6 +32,7 @@ type ChatMessage = {
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type DriveConnectionStatus = "checking" | "connected" | "disconnected";
 type DriveImportStatus = "idle" | "fetching" | "picking" | "done" | "error";
+type GenerationProgress = { phase: "thinking" | "writing"; charCount?: number };
 
 type Props = {
   gradeLevel: "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
@@ -47,12 +48,84 @@ function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9.\-_]/g, "_").slice(-120);
 }
 
+/**
+ * Reads the SSE stream /api/claude now returns instead of a single buffered
+ * JSON response. The route can genuinely run for minutes on a large
+ * multi-PDF generation, and a fully-buffered response over that long a
+ * connection is fragile — it produced a bare "Failed to fetch" once Vercel's
+ * timeout hit, since no bytes had ever reached the browser to explain why.
+ * Streaming progress frames keeps the connection alive and gives real
+ * feedback instead of a silent multi-minute wait.
+ *
+ * Frames look like:
+ *   event: progress\ndata: {"phase":"thinking"}\n\n
+ *   event: progress\ndata: {"phase":"writing","charCount":1234}\n\n
+ *   event: done\ndata: {"message": <full ClaudeResponse>}\n\n
+ *   event: error\ndata: {"message": "..."}\n\n
+ */
+async function readClaudeStream(
+  res: Response,
+  onProgress: (info: GenerationProgress) => void,
+): Promise<ClaudeResponse> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    // No streaming body support in this environment — fall back to a plain
+    // JSON parse rather than hanging forever.
+    return (await res.json()) as ClaudeResponse;
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let resultMessage: ClaudeResponse | null = null;
+  let resultError: string | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: true });
+
+    let sepIndex: number;
+    while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+      const rawFrame = buffer.slice(0, sepIndex);
+      buffer = buffer.slice(sepIndex + 2);
+      const eventMatch = rawFrame.match(/^event: (.+)$/m);
+      const dataMatch = rawFrame.match(/^data: (.+)$/m);
+      if (!eventMatch || !dataMatch) continue;
+
+      let data: unknown;
+      try {
+        data = JSON.parse(dataMatch[1]);
+      } catch {
+        continue;
+      }
+
+      if (eventMatch[1] === "progress") {
+        onProgress(data as GenerationProgress);
+      } else if (eventMatch[1] === "done") {
+        resultMessage = (data as { message: ClaudeResponse }).message;
+      } else if (eventMatch[1] === "error") {
+        resultError = (data as { message?: string }).message ?? "Claude API error";
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (resultError) throw new Error(resultError);
+  if (!resultMessage) {
+    throw new Error(
+      "The connection closed before generation finished, without a completion signal — the network may have dropped mid-generation. Try again, and if it repeats, send fewer attachments in one message.",
+    );
+  }
+  return resultMessage;
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated }: Props) {
   const [description, setDescription] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastDraft, setLastDraft] = useState<AssignmentDraft | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
@@ -336,6 +409,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
 
     setIsGenerating(true);
+    setGenerationProgress(null);
     setError(null);
 
     // Attachments are referenced by their Supabase Storage path, not inline
@@ -400,6 +474,8 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       });
 
       if (!res.ok) {
+        // Attachment-resolution and auth/validation failures return a plain
+        // JSON error (not a stream) so they land here, same as before.
         let errorMsg = `Request failed (${res.status})`;
         try {
           const errData = (await res.json()) as { error?: string };
@@ -411,7 +487,13 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
         throw new Error(errorMsg);
       }
 
-      const data = (await res.json()) as ClaudeResponse;
+      // A successful response is now an SSE stream of progress frames ending
+      // in a 'done' (or 'error') frame — see readClaudeStream for the wire
+      // format. This keeps the connection actively receiving bytes for the
+      // full duration of a multi-minute generation instead of sitting idle
+      // and buffered, which is what produced a bare "Failed to fetch" the
+      // one time this genuinely ran long.
+      const data = await readClaudeStream(res, setGenerationProgress);
       const stopReason = (data as { stop_reason?: string }).stop_reason;
       const rawText = data.content?.find((b: { type: string; text?: string }) => b.type === "text")?.text ?? "";
 
@@ -436,6 +518,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       setHistory(nextHistory);
     } finally {
       setIsGenerating(false);
+      setGenerationProgress(null);
     }
   }
 
@@ -479,6 +562,14 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     driveStatus === "checking" ? "Checking…"
     : driveStatus === "connected" ? "📎 Import from Drive"
     : "Connect Drive";
+
+  const generatingLabel = !isGenerating
+    ? null
+    : generationProgress?.phase === "writing" && generationProgress.charCount
+      ? `Writing… ${generationProgress.charCount.toLocaleString()} characters so far`
+      : generationProgress?.phase === "thinking"
+        ? "Thinking through the source material…"
+        : "Starting…";
 
   return (
     <div className="rounded-xl border border-da-border bg-da-bg/40">
@@ -652,6 +743,13 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
             className="hidden"
             onChange={handleFileUpload}
           />
+
+          {generatingLabel && (
+            <p className="text-xs text-da-muted flex items-center gap-1.5">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-da-accent" />
+              {generatingLabel}
+            </p>
+          )}
 
           {error && (
             <p className="text-xs text-red-400 border border-red-500/30 bg-red-500/10 rounded px-2 py-1">{error}</p>
