@@ -9,12 +9,19 @@ import {
   extractJsonObject,
   sanitizeDraft,
 } from "@/lib/assignments";
+import { createClient } from "@/lib/supabase/client";
 
 // ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
-type PendingImage = { base64: string; mimeType: ImageMimeType; previewUrl: string; name: string };
-type PendingPdf = { base64: string; name: string };
+type AttachmentStatus = "uploading" | "ready" | "error";
+// Attachments now live in Supabase Storage (bucket "uploads", under
+// activity-generator/{userId}/...) rather than as inline base64. Vercel
+// serverless functions cap request AND response bodies at ~4.5 MB, which a
+// handful of source PDFs blew straight through. `path` is null until the
+// browser-to-Storage upload finishes; only attachments with a path are sent.
+type PendingImage = { id: string; path: string | null; mimeType: ImageMimeType; previewUrl: string; name: string; status: AttachmentStatus; error?: string };
+type PendingPdf = { id: string; path: string | null; name: string; status: AttachmentStatus; error?: string };
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -33,6 +40,14 @@ type Props = {
   onDraftGenerated: (draft: AssignmentDraft) => void;
 };
 
+const UPLOADS_BUCKET = "uploads";
+
+/** Keep storage paths predictable and safe: strip anything that isn't
+ *  alphanumeric, dot, dash, or underscore. */
+function sanitizeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9.\-_]/g, "_").slice(-120);
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated }: Props) {
@@ -48,6 +63,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const historyRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pickerLoadingRef = useRef(false);
+  // Attachment ids removed from the UI while their upload was still in
+  // flight. When the upload finally resolves, we delete the orphaned
+  // storage object instead of re-inserting it into state.
+  const removedWhileUploadingRef = useRef<Set<string>>(new Set());
 
   const [driveStatus, setDriveStatus] = useState<DriveConnectionStatus>("checking");
   const [showDriveInput, setShowDriveInput] = useState(false);
@@ -57,6 +76,11 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
   // formatting accepted for future use
   void formatting;
+
+  const isAnyAttachmentUploading =
+    pendingImages.some((p) => p.status === "uploading") || pendingPdfs.some((p) => p.status === "uploading");
+  const hasAttachmentErrors =
+    pendingImages.some((p) => p.status === "error") || pendingPdfs.some((p) => p.status === "error");
 
   useEffect(() => {
     async function checkDrive() {
@@ -144,6 +168,8 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   async function fetchDriveFile(fileId: string, fileName: string) {
     setDriveImportStatus("fetching");
     setDriveImportError(null);
+    const id = crypto.randomUUID();
+    setPendingPdfs((prev) => [...prev, { id, path: null, name: fileName, status: "uploading" }]);
     try {
       const res = await fetch("/api/assignments/fetch-drive-pdf", {
         method: "POST",
@@ -154,12 +180,23 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
         const errData = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(errData.error ?? `Failed to fetch file (${res.status})`);
       }
-      const data = (await res.json()) as { base64: string; mimeType: string };
-      setPendingPdfs((prev) => [...prev, { base64: data.base64, name: fileName }]);
+      // The route now stages the file in Supabase Storage server-side and
+      // returns a path instead of base64 (a large Drive PDF could otherwise
+      // exceed Vercel's ~4.5 MB response-body cap on the way back).
+      const data = (await res.json()) as { path: string; name: string; sizeMb: number };
+      if (removedWhileUploadingRef.current.has(id)) {
+        removedWhileUploadingRef.current.delete(id);
+        const supabase = createClient();
+        void supabase.storage.from(UPLOADS_BUCKET).remove([data.path]);
+      } else {
+        setPendingPdfs((prev) => prev.map((p) => (p.id === id ? { ...p, path: data.path, name: data.name, status: "ready" } : p)));
+      }
       setDriveImportStatus("done");
       setShowDriveInput(false);
     } catch (err) {
-      setDriveImportError(err instanceof Error ? err.message : "Failed to fetch from Drive");
+      const message = err instanceof Error ? err.message : "Failed to fetch from Drive";
+      setPendingPdfs((prev) => prev.map((p) => (p.id === id ? { ...p, status: "error", error: message } : p)));
+      setDriveImportError(message);
       setDriveImportStatus("error");
     }
   }
@@ -168,73 +205,158 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     if (!driveUrl.trim()) return;
     setDriveImportStatus("fetching");
     setDriveImportError(null);
+    const id = crypto.randomUUID();
+    const placeholderName = driveUrl.split("/").pop() ?? "drive-file.pdf";
+    setPendingPdfs((prev) => [...prev, { id, path: null, name: placeholderName, status: "uploading" }]);
     try {
       const res = await fetch("/api/assignments/fetch-drive-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: driveUrl.trim() }),
+        // The route parses a Drive file ID out of a full URL too, so the
+        // pasted URL goes in the same fileId field it already expects.
+        body: JSON.stringify({ fileId: driveUrl.trim() }),
       });
       if (!res.ok) {
         const errData = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(errData.error ?? `HTTP ${res.status}`);
       }
-      const data = (await res.json()) as { base64: string; mimeType: string; fileName?: string };
-      const name = data.fileName ?? driveUrl.split("/").pop() ?? "drive-file.pdf";
-      setPendingPdfs((prev) => [...prev, { base64: data.base64, name }]);
+      const data = (await res.json()) as { path: string; name: string; sizeMb: number };
+      if (removedWhileUploadingRef.current.has(id)) {
+        removedWhileUploadingRef.current.delete(id);
+        const supabase = createClient();
+        void supabase.storage.from(UPLOADS_BUCKET).remove([data.path]);
+      } else {
+        setPendingPdfs((prev) => prev.map((p) => (p.id === id ? { ...p, path: data.path, name: data.name, status: "ready" } : p)));
+      }
       setDriveUrl("");
       setShowDriveInput(false);
       setDriveImportStatus("done");
     } catch (err) {
-      setDriveImportError(err instanceof Error ? err.message : "Fetch failed");
+      const message = err instanceof Error ? err.message : "Fetch failed";
+      setPendingPdfs((prev) => prev.map((p) => (p.id === id ? { ...p, status: "error", error: message } : p)));
+      setDriveImportError(message);
       setDriveImportStatus("error");
+    }
+  }
+
+  /** Upload one selected file straight to Supabase Storage from the browser,
+   *  updating the matching pending-attachment entry as it progresses. */
+  async function uploadAttachment(file: File, id: string, isPdf: boolean) {
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not signed in");
+
+      const path = `activity-generator/${user.id}/${Date.now()}-${sanitizeFileName(file.name)}`;
+      const { error: uploadError } = await supabase.storage
+        .from(UPLOADS_BUCKET)
+        .upload(path, file, { contentType: file.type || "application/octet-stream", upsert: false });
+      if (uploadError) throw uploadError;
+
+      if (removedWhileUploadingRef.current.has(id)) {
+        // User removed this attachment before the upload finished — don't
+        // resurrect it in state, just clean up the now-orphaned object.
+        removedWhileUploadingRef.current.delete(id);
+        void supabase.storage.from(UPLOADS_BUCKET).remove([path]);
+        return;
+      }
+
+      if (isPdf) {
+        setPendingPdfs((prev) => prev.map((p) => (p.id === id ? { ...p, path, status: "ready" } : p)));
+      } else {
+        setPendingImages((prev) => prev.map((p) => (p.id === id ? { ...p, path, status: "ready" } : p)));
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Upload failed";
+      if (isPdf) {
+        setPendingPdfs((prev) => prev.map((p) => (p.id === id ? { ...p, status: "error", error: message } : p)));
+      } else {
+        setPendingImages((prev) => prev.map((p) => (p.id === id ? { ...p, status: "error", error: message } : p)));
+      }
     }
   }
 
   async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (!files.length) return;
-    const newImages: PendingImage[] = [];
-    const newPdfs: PendingPdf[] = [];
+
     for (const file of files) {
-      const base64 = await new Promise<string>((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res((r.result as string).split(",")[1]);
-        r.onerror = () => rej(new Error("Read failed"));
-        r.readAsDataURL(file);
-      });
+      const id = crypto.randomUUID();
       if (file.type === "application/pdf") {
-        newPdfs.push({ base64, name: file.name });
+        setPendingPdfs((prev) => [...prev, { id, path: null, name: file.name, status: "uploading" }]);
+        void uploadAttachment(file, id, true);
       } else {
-        newImages.push({ base64, mimeType: file.type as ImageMimeType, previewUrl: URL.createObjectURL(file), name: file.name });
+        const previewUrl = URL.createObjectURL(file);
+        setPendingImages((prev) => [
+          ...prev,
+          { id, path: null, mimeType: file.type as ImageMimeType, previewUrl, name: file.name, status: "uploading" },
+        ]);
+        void uploadAttachment(file, id, false);
       }
     }
-    setPendingImages((prev) => [...prev, ...newImages]);
-    setPendingPdfs((prev) => [...prev, ...newPdfs]);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  function removePendingImage(id: string) {
+    setPendingImages((prev) => {
+      const item = prev.find((p) => p.id === id);
+      if (item?.path) {
+        const supabase = createClient();
+        void supabase.storage.from(UPLOADS_BUCKET).remove([item.path]);
+      } else if (item) {
+        removedWhileUploadingRef.current.add(id);
+      }
+      return prev.filter((p) => p.id !== id);
+    });
+  }
+
+  function removePendingPdf(id: string) {
+    setPendingPdfs((prev) => {
+      const item = prev.find((p) => p.id === id);
+      if (item?.path) {
+        const supabase = createClient();
+        void supabase.storage.from(UPLOADS_BUCKET).remove([item.path]);
+      } else if (item) {
+        removedWhileUploadingRef.current.add(id);
+      }
+      return prev.filter((p) => p.id !== id);
+    });
   }
 
   async function handleSend() {
     if (!description.trim() && !pendingImages.length && !pendingPdfs.length) return;
+    if (isAnyAttachmentUploading) {
+      setError("Attachments are still uploading — wait for them to finish before sending.");
+      return;
+    }
+    if (hasAttachmentErrors) {
+      setError("Some attachments failed to upload. Remove them (✕) or retry before sending.");
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
 
-    const userContent: Array<{ type: string; text?: string; source?: unknown }> = [];
+    // Attachments are referenced by their Supabase Storage path, not inline
+    // base64 — /api/claude resolves them server-side. This keeps the wire
+    // payload tiny regardless of how many or how large the source PDFs are.
+    const userContent: Array<{ type: string; text?: string; path?: string; mimeType?: string }> = [];
     for (const img of pendingImages) {
-      userContent.push({ type: "image", source: { type: "base64", media_type: img.mimeType, data: img.base64 } });
+      if (img.path) userContent.push({ type: "image_ref", path: img.path, mimeType: img.mimeType });
     }
     for (const pdf of pendingPdfs) {
-      userContent.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.base64 } });
+      if (pdf.path) userContent.push({ type: "document_ref", path: pdf.path });
     }
     if (description.trim()) {
       userContent.push({ type: "text", text: description.trim() });
     }
 
-    // ── Payload diagnostics ─────────────────────────────────────────────────
-    // Vercel serverless functions reject request bodies over ~4.5 MB with a
-    // bare 413 at the platform edge — the request never reaches /api/claude,
-    // so nothing appears in server logs. Measure the exact body we are about
-    // to send, log a per-attachment breakdown, and fail fast with a specific
-    // message BEFORE clearing the attachments so nothing is lost.
+    console.log(
+      `[activity-generator] sending ${pendingImages.length} image ref(s), ${pendingPdfs.length} pdf ref(s) — payload is path references only, no size limit to watch here.`,
+    );
+
     // Build the API message list — Anthropic rejects empty content strings.
     // Prior history assistant turns store display text; rebuild with safe fallbacks.
     const messages = [
@@ -259,31 +381,6 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       system: buildActivityGeneratorSystemPrompt(gradeLevel),
       messages,
     });
-    const bodyBytes = new Blob([requestBody]).size;
-    const toMb = (n: number) => (n / 1_000_000).toFixed(2) + " MB";
-    const attachmentSizes = [
-      ...pendingImages.map((f) => ({ name: f.name, wireBytes: f.base64.length })),
-      ...pendingPdfs.map((f) => ({ name: f.name, wireBytes: f.base64.length })),
-    ].sort((a, b) => b.wireBytes - a.wireBytes);
-    console.log(
-      `[activity-generator] request body ${toMb(bodyBytes)} · ${attachmentSizes.length} attachment(s):`,
-      attachmentSizes.map((f) => `${f.name} ${toMb(f.wireBytes)}`).join(", ") || "(none)",
-    );
-
-    const VERCEL_BODY_LIMIT_BYTES = 4_400_000; // stay under Vercel's ~4.5 MB cap
-    if (bodyBytes > VERCEL_BODY_LIMIT_BYTES) {
-      const topOffenders = attachmentSizes
-        .slice(0, 3)
-        .map((f) => `${f.name} (${toMb(f.wireBytes)})`)
-        .join(", ");
-      setError(
-        `Attachments too large to send: this request is ${toMb(bodyBytes)}, but the server accepts about 4.5 MB per request. ` +
-          (topOffenders ? `Largest: ${topOffenders}. ` : "") +
-          `Remove some attachments or send them across separate messages — nothing was cleared.`,
-      );
-      setIsGenerating(false);
-      return;
-    }
 
     const nextHistory: ChatMessage[] = [...history, {
       role: "user",
@@ -305,20 +402,12 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
       if (!res.ok) {
         let errorMsg = `Request failed (${res.status})`;
-        if (res.status === 413) {
-          // Vercel's edge rejected the body before it reached our route —
-          // there is no JSON error payload and nothing in server logs.
-          errorMsg =
-            `Request rejected as too large (413): the body was ${toMb(bodyBytes)} against a ~4.5 MB server limit. ` +
-            `Re-attach fewer or smaller files and try again.`;
-        } else {
-          try {
-            const errData = (await res.json()) as { error?: string };
-            if (errData.error) errorMsg = errData.error;
-          } catch {
-            const text = await res.text().catch(() => "");
-            if (text) errorMsg = text;
-          }
+        try {
+          const errData = (await res.json()) as { error?: string };
+          if (errData.error) errorMsg = errData.error;
+        } catch {
+          const text = await res.text().catch(() => "");
+          if (text) errorMsg = text;
         }
         throw new Error(errorMsg);
       }
@@ -445,23 +534,43 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
           {/* Pending attachments */}
           {(pendingImages.length > 0 || pendingPdfs.length > 0) && (
             <div className="flex flex-wrap gap-1">
-              {pendingImages.map((img, i) => (
-                <div key={i} className="relative h-12 w-12 rounded border border-da-border overflow-hidden group">
+              {pendingImages.map((img) => (
+                <div
+                  key={img.id}
+                  className={`relative h-12 w-12 rounded border overflow-hidden group ${
+                    img.status === "error" ? "border-red-500/60" : "border-da-border"
+                  }`}
+                  title={img.status === "error" ? img.error : img.status === "uploading" ? "Uploading…" : img.name}
+                >
                   <img src={img.previewUrl} alt={img.name} className="h-full w-full object-cover" />
+                  {img.status === "uploading" && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+                      <span className="h-3 w-3 animate-pulse rounded-full bg-white/80" />
+                    </div>
+                  )}
+                  {img.status === "error" && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-red-900/60 text-white text-xs font-bold">!</div>
+                  )}
                   <button
                     type="button"
-                    onClick={() => setPendingImages((prev) => prev.filter((_: PendingImage, j: number) => j !== i))}
+                    onClick={() => removePendingImage(img.id)}
                     className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 text-white text-xs font-bold"
                   >✕</button>
                 </div>
               ))}
-              {pendingPdfs.map((pdf, i) => (
-                <div key={i} className="flex items-center gap-1 rounded border border-da-border bg-da-bg/60 px-2 py-1 text-[10px] text-da-muted group">
-                  <span>📄</span>
+              {pendingPdfs.map((pdf) => (
+                <div
+                  key={pdf.id}
+                  className={`flex items-center gap-1 rounded border bg-da-bg/60 px-2 py-1 text-[10px] group ${
+                    pdf.status === "error" ? "border-red-500/60 text-red-300" : "border-da-border text-da-muted"
+                  }`}
+                  title={pdf.status === "error" ? pdf.error : undefined}
+                >
+                  <span>{pdf.status === "uploading" ? "⏳" : pdf.status === "error" ? "⚠️" : "📄"}</span>
                   <span className="max-w-[80px] truncate">{pdf.name}</span>
                   <button
                     type="button"
-                    onClick={() => setPendingPdfs((prev: PendingPdf[]) => prev.filter((_: PendingPdf, j: number) => j !== i))}
+                    onClick={() => removePendingPdf(pdf.id)}
                     className="text-da-muted/50 hover:text-red-400 font-bold ml-1"
                   >✕</button>
                 </div>
@@ -537,10 +646,15 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               <button
                 type="button"
                 onClick={() => void handleSend()}
-                disabled={isGenerating || (!description.trim() && !pendingImages.length && !pendingPdfs.length)}
+                disabled={
+                  isGenerating ||
+                  isAnyAttachmentUploading ||
+                  (!description.trim() && !pendingImages.length && !pendingPdfs.length)
+                }
+                title={isAnyAttachmentUploading ? "Waiting for attachments to finish uploading…" : undefined}
                 className="rounded-lg border border-da-accent/70 bg-da-accent/20 px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:bg-da-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isGenerating ? "…" : "Send"}
+                {isGenerating ? "…" : isAnyAttachmentUploading ? "⏳" : "Send"}
               </button>
             </div>
           </div>
