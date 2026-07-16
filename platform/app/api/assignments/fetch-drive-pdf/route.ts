@@ -1,14 +1,18 @@
 /**
  * POST /api/assignments/fetch-drive-pdf
  *
- * Fetches a PDF from Google Drive server-side and returns it as base64.
- * This bypasses the 3 MB client-side upload limit since the file is streamed
- * directly from Drive to the server.
+ * Fetches a PDF from Google Drive server-side and uploads it to Supabase
+ * Storage, returning a storage path rather than raw base64. Returning base64
+ * directly in the JSON response used to work for small files, but Vercel
+ * serverless functions cap response bodies at ~4.5 MB same as request bodies
+ * (see platform/app/api/claude/route.ts) — a large Drive PDF would have
+ * failed silently past that size. Storing it server-side and handing back a
+ * path keeps the response tiny regardless of file size.
  *
  * Body: { fileId: string }
  *   fileId – Google Drive file ID, or a full Drive URL (we parse the ID out).
  *
- * Returns: { base64: string; name: string; sizeMb: number }
+ * Returns: { path: string; name: string; sizeMb: number }
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -19,6 +23,8 @@ import { OAuth2Client } from "google-auth-library";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+const UPLOADS_BUCKET = "uploads";
 
 function getAuthedClient(token: Record<string, unknown>) {
   const oauth2 = new OAuth2Client(
@@ -54,10 +60,17 @@ function parseFileId(input: string): string | null {
   return null;
 }
 
+/** Keep storage paths predictable and safe: strip anything that isn't
+ *  alphanumeric, dot, dash, or underscore. */
+function sanitizeFileName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9.\-_]/g, "_").slice(-120);
+}
+
 export async function POST(request: NextRequest) {
   try {
     const auth = await getApiTeacher();
     if (!auth.ok) return auth.response;
+    const { supabase, user } = auth;
 
     const token = (await getDriveTokenFromCookie()) as Record<string, unknown> | null;
     if (!token) {
@@ -114,10 +127,23 @@ export async function POST(request: NextRequest) {
     );
 
     const buffer = Buffer.from(downloadRes.data as ArrayBuffer);
-    const base64 = buffer.toString("base64");
+
+    // 3. Upload to Supabase Storage under the same convention the client-side
+    //    attach flow uses, so /api/claude resolves either path identically.
+    const storagePath = `activity-generator/${user.id}/${Date.now()}-${sanitizeFileName(fileName)}`;
+    const { error: uploadError } = await supabase.storage
+      .from(UPLOADS_BUCKET)
+      .upload(storagePath, buffer, { contentType: "application/pdf", upsert: false });
+
+    if (uploadError) {
+      return NextResponse.json(
+        { error: `Fetched the file from Drive but could not stage it: ${uploadError.message}` },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json(
-      { base64, name: fileName, sizeMb: Math.round(sizeMb * 10) / 10 },
+      { path: storagePath, name: fileName, sizeMb: Math.round(sizeMb * 10) / 10 },
       { status: 200 }
     );
   } catch (err: unknown) {
