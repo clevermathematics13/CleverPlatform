@@ -5,12 +5,17 @@ import type { createClient } from '@/lib/supabase/server';
 
 export const runtime = 'nodejs';
 // Multi-PDF generations (adaptive thinking + a 32K output budget) genuinely run
-// for minutes. 300s was hit head-on by an 11-attachment, two-syllabus-topic
-// generation (Vercel Runtime Timeout Error at exactly 300s) — 800s is the
-// actual maximum Vercel allows for Node functions with fluid compute on
-// Pro/Enterprise (300s is only the *default*, not a hard ceiling). If this
-// project is ever on Hobby, Vercel silently caps this back down to 300s.
-export const maxDuration = 800;
+// for minutes — an 11-attachment, two-syllabus-topic generation hit exactly
+// this ceiling (Vercel Runtime Timeout Error at 300s). 800s is the documented
+// max for Node functions with fluid compute, but is only actually available
+// on Pro/Enterprise: raising this to 800 made the deployment fail at the
+// "Deploying outputs..." step (build succeeds, deployment itself is rejected)
+// on both attempts, which is exactly what happens when a plan's real ceiling
+// is exceeded — so this project's plan caps at 300s regardless of this value.
+// The streaming response below (progress heartbeats, no buffering) is doing
+// the real work of preventing "Failed to fetch" now; upgrading the Vercel
+// plan is the only way to raise this ceiling further.
+export const maxDuration = 300;
 
 const UPLOADS_BUCKET = 'uploads';
 
