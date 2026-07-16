@@ -1,5 +1,7 @@
 // Shared types and utilities for assignment sandboxes across all grade levels
 
+import { sanitizeJsonBackslashes, sanitizeJsonEmbeddedQuotes } from "./json-repair";
+
 export type DocumentKind = "activity-sheet" | "practice-set" | "investigation";
 
 export type FormattingRequirements = {
@@ -260,7 +262,7 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
     "9. subparts: (a),(b),(c) for questions with distinct phases.",
     "10. Marks: write-down=1–2, show-that/prove=3–5, extended investigation=4–8.",
     "11. Use IB vocabulary: 'intersects' not 'crosses through'; 'even multiplicity' not 'bounces'.",
-    `11b. MATH: write equations as $...$ using native Typst math syntax — NOT LaTeX. No backslash commands (no \\frac, \\sqrt, \\alpha). Use: x^2, x_1, sqrt(x), (a)/(b) or frac(a,b), alpha, beta, sigma, mu, sum_(k=1)^n, integral, macron(x) for a bar/overline. Named operators with no Typst symbol (Var, Cov, Corr, SD) MUST be quoted so they render upright and compile correctly, e.g. $${q}Var${q}(X) = sigma^2$ — an unquoted $Var(X)$ will fail to compile.`,
+    `11b. MATH: write equations as $...$ using native Typst math syntax — NOT LaTeX. No backslash commands (no \\frac, \\sqrt, \\alpha). Use: x^2, x_1, sqrt(x), (a)/(b) or frac(a,b), alpha, beta, sigma, mu, sum_(k=1)^n, integral, macron(x) for a bar/overline. Named operators with no Typst symbol (Var, Cov, Corr, SD) MUST be quoted so they render upright and compile correctly, e.g. $${q}Var${q}(X) = sigma^2$ — an unquoted $Var(X)$ will fail to compile. CRITICAL JSON RULE: every ${q} character you write — including these quoted operators — MUST be escaped as \\${q} inside JSON string values, exactly like any other quote mark. A raw, unescaped ${q} inside a string breaks the JSON.`,
     "12. tokProvocations: exactly 2, both referencing a real philosophical tension in the mathematics.",
     "13. internationalMindedness: name at least 2 mathematicians from non-European traditions.",
     "14. reflectionQuestions: 3 questions — concept-map, epistemological, TOK position statement.",
@@ -405,6 +407,53 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
       ? { reflectionQuestions: draft.reflectionQuestions }
       : {}),
   };
+}
+
+/**
+ * Parses a raw Claude text reply into a validated AssignmentDraft, repairing
+ * the JSON along the way. The Activity Generator's system prompt requires
+ * quoted Typst named operators (e.g. $op("Var")(X)$ — see the 11b MATH rule
+ * above), and the model doesn't always escape that inner quote as \" in its
+ * JSON output. sanitizeJsonEmbeddedQuotes fixes that; sanitizeJsonBackslashes
+ * catches any stray backslash/control character on top. Both are no-ops on
+ * already-valid JSON, so it's safe to run them unconditionally rather than
+ * only as a fallback after a parse failure.
+ *
+ * Throws a descriptive Error (with full diagnostics sent to console.error,
+ * mirroring the pattern used in app/api/generate-packet/route.ts) if the
+ * text still can't be parsed after repair — most commonly because the reply
+ * was truncated at max_tokens before any closing brace was ever written.
+ */
+export function parseAssignmentDraftJson(rawText: string, stopReason?: string): AssignmentDraft {
+  const extracted = extractJsonObject(rawText);
+  const repaired = sanitizeJsonBackslashes(sanitizeJsonEmbeddedQuotes(extracted));
+
+  let parsed: AssignmentDraft;
+  try {
+    parsed = JSON.parse(repaired) as AssignmentDraft;
+  } catch (parseError) {
+    const message = parseError instanceof Error ? parseError.message : "unknown parse error";
+    const positionMatch = message.match(/position (\d+)/);
+    const position = positionMatch ? Number(positionMatch[1]) : null;
+    const context =
+      position !== null
+        ? repaired.slice(Math.max(0, position - 300), position + 300)
+        : repaired.slice(0, 2000);
+
+    console.error("[assignments] JSON parse error after repair:", message);
+    console.error("[assignments] stop_reason:", stopReason ?? "unknown");
+    console.error("[assignments] context around failure position:", context);
+    console.error("[assignments] full repaired JSON length:", repaired.length);
+    console.error("[assignments] full repaired JSON:", repaired);
+
+    throw new Error(
+      stopReason === "max_tokens"
+        ? `The AI reply was cut off before the draft JSON was complete (stop_reason: max_tokens, ${rawText.length} chars received). Try again — and if it repeats, send fewer attachments in one message.`
+        : `Claude generated invalid JSON even after repair: ${message}. Check the browser console for the exact failure context.`,
+    );
+  }
+
+  return sanitizeDraft(parsed);
 }
 
 export function formatQuestionLabel(
