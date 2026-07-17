@@ -48,15 +48,16 @@ function sanitizeFileName(name: string): string {
   return name.replace(/[^a-zA-Z0-9.\-_]/g, "_").slice(-120);
 }
 
+type StreamOutcome =
+  | { status: "done"; message: ClaudeResponse }
+  | { status: "error"; message: string }
+  | { status: "disconnected" };
+
 /**
- * Reads the SSE stream /api/claude now returns instead of a single buffered
- * JSON response. Generation runs as a durable Vercel Workflow (see
- * platform/workflows/nuanced-analysis-generation.ts) that can genuinely take
- * minutes across two bounded Claude passes, and a fully-buffered response
- * over that long a connection is fragile — it produced a bare "Failed to
- * fetch" once Vercel's timeout hit, since no bytes had ever reached the
- * browser to explain why. Streaming progress frames keeps the connection
- * alive and gives real feedback instead of a silent multi-minute wait.
+ * Reads one SSE response until it signals completion/error, or the
+ * connection ends without either. Increments chunkCountRef for every frame
+ * successfully parsed, so a caller can resume from exactly that position if
+ * the connection dropped mid-generation.
  *
  * Frames look like:
  *   event: progress\ndata: {"phase":"resolving-attachments"}\n\n
@@ -67,21 +68,20 @@ function sanitizeFileName(name: string): string {
  *   event: done\ndata: {"message": <full ClaudeResponse>}\n\n
  *   event: error\ndata: {"message": "..."}\n\n
  */
-async function readClaudeStream(
+async function readOneStream(
   res: Response,
   onProgress: (info: GenerationProgress) => void,
-): Promise<ClaudeResponse> {
+  chunkCountRef: { current: number },
+): Promise<StreamOutcome> {
   const reader = res.body?.getReader();
   if (!reader) {
     // No streaming body support in this environment — fall back to a plain
     // JSON parse rather than hanging forever.
-    return (await res.json()) as ClaudeResponse;
+    return { status: "done", message: (await res.json()) as ClaudeResponse };
   }
 
   const decoder = new TextDecoder();
   let buffer = "";
-  let resultMessage: ClaudeResponse | null = null;
-  let resultError: string | null = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -101,26 +101,86 @@ async function readClaudeStream(
       } catch {
         continue;
       }
+      chunkCountRef.current++;
 
       if (eventMatch[1] === "progress") {
         onProgress(data as GenerationProgress);
       } else if (eventMatch[1] === "done") {
-        resultMessage = (data as { message: ClaudeResponse }).message;
+        return { status: "done", message: (data as { message: ClaudeResponse }).message };
       } else if (eventMatch[1] === "error") {
-        resultError = (data as { message?: string }).message ?? "Claude API error";
+        return { status: "error", message: (data as { message?: string }).message ?? "Claude API error" };
       }
     }
 
     if (done) break;
   }
 
-  if (resultError) throw new Error(resultError);
-  if (!resultMessage) {
-    throw new Error(
-      "The connection closed before generation finished, without a completion signal — the network may have dropped mid-generation. Try again, and if it repeats, send fewer attachments in one message.",
-    );
+  return { status: "disconnected" };
+}
+
+// Each connection to /api/claude (or a resume reconnect) can stay open for
+// up to that route's own ~300s ceiling before Vercel cuts it — see
+// platform/app/api/claude/route.ts's comments for why. 6 reconnects covers
+// up to ~30 minutes of total generation time, comfortably more than a
+// two-pass Nuanced Analysis packet should ever need, while still giving up
+// eventually if something is genuinely stuck rather than just slow.
+const MAX_RECONNECTS = 6;
+
+/**
+ * Reads the SSE stream /api/claude returns, reconnecting to
+ * /api/claude/resume/[runId] if the connection drops before a 'done'/
+ * 'error' chunk arrives. Generation runs as a durable Vercel Workflow (see
+ * platform/workflows/nuanced-analysis-generation.ts) whose steps combined
+ * can genuinely take longer than a single Vercel Function invocation's
+ * ~300s ceiling, even though every individual step stays comfortably under
+ * it — the proxying connection itself is what gets cut off, not the
+ * underlying generation. Reconnecting and resuming from the last received
+ * chunk (via the SDK's own run.getReadable({ startIndex }) resumption) is
+ * the documented fix for exactly this, not a failure state — so a dropped
+ * connection here is expected and recovered from silently rather than
+ * shown to the user as an error, unless every reconnect attempt is
+ * exhausted.
+ */
+async function readClaudeStream(
+  initialRes: Response,
+  onProgress: (info: GenerationProgress) => void,
+): Promise<ClaudeResponse> {
+  const runId = initialRes.headers.get("x-workflow-run-id");
+  const chunkCountRef = { current: 0 };
+  let res = initialRes;
+
+  for (let attempt = 0; attempt <= MAX_RECONNECTS; attempt++) {
+    const outcome = await readOneStream(res, onProgress, chunkCountRef);
+
+    if (outcome.status === "done") return outcome.message;
+    if (outcome.status === "error") throw new Error(outcome.message);
+
+    // Disconnected without a completion signal — expected for long
+    // generations. Reconnect and resume, if we have a run to resume.
+    if (!runId) {
+      throw new Error(
+        "The connection closed before generation finished, and no resumable run ID was available to reconnect. Try again, and if it repeats, send fewer attachments in one message.",
+      );
+    }
+    if (attempt === MAX_RECONNECTS) break;
+
+    const resumeRes = await fetch(`/api/claude/resume/${runId}?startIndex=${chunkCountRef.current}`);
+    if (!resumeRes.ok) {
+      let errorMsg = `Could not resume generation (${resumeRes.status})`;
+      try {
+        const errData = (await resumeRes.json()) as { error?: string };
+        if (errData.error) errorMsg = errData.error;
+      } catch {
+        // ignore — fall back to the generic message above
+      }
+      throw new Error(errorMsg);
+    }
+    res = resumeRes;
   }
-  return resultMessage;
+
+  throw new Error(
+    "Generation is taking unusually long and kept disconnecting. Check back in a few minutes, or try again with fewer attachments.",
+  );
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -492,11 +552,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       }
 
       // A successful response is now an SSE stream of progress frames ending
-      // in a 'done' (or 'error') frame — see readClaudeStream for the wire
-      // format. This keeps the connection actively receiving bytes for the
-      // full duration of a multi-minute generation instead of sitting idle
-      // and buffered, which is what produced a bare "Failed to fetch" the
-      // one time this genuinely ran long.
+      // in a 'done' (or 'error') frame. readClaudeStream transparently
+      // reconnects (via /api/claude/resume) if this connection is cut off
+      // before generation finishes — see its doc comment for why that's
+      // expected rather than a failure.
       const data = await readClaudeStream(res, setGenerationProgress);
       const stopReason = (data as { stop_reason?: string }).stop_reason;
       const rawText = data.content?.find((b: { type: string; text?: string }) => b.type === "text")?.text ?? "";
