@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getApiTeacher } from '@/lib/auth';
 import { start } from 'workflow/api';
+import { chunkToSseTransform, sseResponseHeaders } from '@/lib/workflow-sse';
 import {
   generateNuancedAnalysis,
   type IncomingMessage,
@@ -8,12 +9,22 @@ import {
 } from '@/workflows/nuanced-analysis-generation';
 
 export const runtime = 'nodejs';
-// This route itself only starts the workflow and pipes its stream — the
-// actual Claude generation happens in workflow steps, each bound by their
-// own ~300s ceiling independent of this route (see
-// platform/workflows/nuanced-analysis-generation.ts for why generation is
-// split into two passes to stay under that ceiling). 300s here is already
-// generous headroom for what this route actually does.
+// CORRECTION: this route's own invocation is what holds the streaming HTTP
+// response open to the browser, and that invocation is bound by maxDuration
+// same as any other function — the workflow's steps running unbounded in
+// total does NOT exempt this proxying route from its own ~300s ceiling. A
+// generation whose steps combined (attachment resolution + both Claude
+// passes + cleanup) take longer than that gets its connection to the
+// browser killed mid-stream, even though every individual step succeeded.
+//
+// The actual fix for that is reconnection, not a bigger number here: the
+// client (readClaudeStream in activity-generator.tsx) treats a stream that
+// ends without a 'done'/'error' chunk as expected-and-recoverable, and
+// reconnects to /api/claude/resume/[runId] with the chunk count it already
+// received — that route resumes the SAME workflow run's stream via
+// run.getReadable({ startIndex }), picking up exactly where this one left
+// off. This is the pattern Vercel's own SDK is built around; its docs list
+// "Vercel Function timeouts" by name as what stream resumption solves.
 export const maxDuration = 300;
 
 type ClaudeRequestBody = {
@@ -44,39 +55,10 @@ export async function POST(req: Request) {
   // request's lifetime.
   const run = await start(generateNuancedAnalysis, [body.system, body.messages]);
 
-  // run.getReadable() yields the typed NuancedAnalysisChunk objects the
-  // workflow writes via getWritable() — pipe them through a small transform
-  // into the same SSE wire format platform/app/dashboard/assignments/
-  // activity-generator.tsx's readClaudeStream already parses, so the client
-  // needed only a modest extension (new progress phase labels) rather than
-  // a rewrite.
-  const encoder = new TextEncoder();
-  const sseStream = run.getReadable<NuancedAnalysisChunk>().pipeThrough(
-    new TransformStream<NuancedAnalysisChunk, Uint8Array>({
-      transform(chunk, controller) {
-        const data =
-          chunk.type === 'done'
-            ? { message: { content: [{ type: 'text', text: chunk.text }], stop_reason: chunk.stopReason } }
-            : chunk.type === 'error'
-              ? { message: chunk.message }
-              : { phase: chunk.phase, charCount: chunk.charCount };
-        controller.enqueue(encoder.encode(`event: ${chunk.type}\ndata: ${JSON.stringify(data)}\n\n`));
-      },
-    }),
-  );
+  const sseStream = run.getReadable<NuancedAnalysisChunk>().pipeThrough(chunkToSseTransform());
 
   return new Response(sseStream, {
     status: 200,
-    headers: {
-      'Content-Type': 'text/event-stream; charset=utf-8',
-      'Cache-Control': 'no-cache, no-transform',
-      Connection: 'keep-alive',
-      // Disable any intermediary buffering (e.g. nginx-style proxies) that
-      // would otherwise defeat the point of streaming heartbeats.
-      'X-Accel-Buffering': 'no',
-      // Exposed so a future reconnect-after-refresh feature could resume
-      // reading via run.getReadable({ startIndex }) — not consumed yet.
-      'x-workflow-run-id': run.runId,
-    },
+    headers: sseResponseHeaders(run.runId),
   });
 }
