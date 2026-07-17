@@ -70,6 +70,10 @@ const CONTINUATION_INSTRUCTION = [
   "",
   "Otherwise, continue it: add the remaining parts/sections that are still missing, in the same voice and thread as what's already there, without repeating or contradicting anything already written.",
   "",
+  "CRITICAL — when reproducing the prior draft's content in your final JSON, copy every existing question's prompt text VERBATIM and IN FULL, including its final instruction sentence (the sentence containing the IB command term: Find, Show that, Compare, Sketch, State, Hence, ...). Do not summarize, shorten, paraphrase, or truncate any reproduced prompt, and never drop the command-term sentence from the end of a prompt — a question whose prompt sets up a scenario but never issues an instruction is broken and unusable. Every question and subpart in your final JSON must end with an explicit instruction sentence.",
+  "",
+  "Likewise, do not drop, merge, reorder, or renumber any question, subpart, or section that already exists in the prior draft. The final packet must contain every question from the prior draft, unchanged and in the same order, plus whatever you add after them. If any prompts contain their own question numbers, the final visible numbering must be consecutive with no gaps and no duplicates.",
+  "",
   "Either way, respond with ONLY a single, complete, final JSON object for the ENTIRE packet — merging the prior draft's content with anything you add. Same JSON schema and rules as before. No markdown, no preamble.",
 ].join("\n");
 
