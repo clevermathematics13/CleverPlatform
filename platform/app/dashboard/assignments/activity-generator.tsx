@@ -8,9 +8,13 @@ import {
   buildActivityGeneratorSystemPrompt,
   parseAssignmentDraftJson,
 } from "@/lib/assignments";
+import {
+  type CommandTermIssue,
+  validateDraftCommandTerms,
+} from "@/lib/command-term-validator";
 import { createClient } from "@/lib/supabase/client";
 
-// ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 type AttachmentStatus = "uploading" | "ready" | "error";
@@ -183,7 +187,7 @@ async function readClaudeStream(
   );
 }
 
-// ── Component ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ── Component ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated }: Props) {
   const [description, setDescription] = useState("");
@@ -192,6 +196,11 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   const [generationProgress, setGenerationProgress] = useState<GenerationProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastDraft, setLastDraft] = useState<AssignmentDraft | null>(null);
+  // Command-term validator results for the most recent draft. Non-empty means
+  // at least one question/subpart prompt contains zero recognized IB command
+  // terms — the exact silent failure that shipped 8 instruction-less
+  // questions in one packet. Warn loudly instead of letting it reach a PDF.
+  const [commandTermIssues, setCommandTermIssues] = useState<CommandTermIssue[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isExpanded, setIsExpanded] = useState(true);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -475,6 +484,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setIsGenerating(true);
     setGenerationProgress(null);
     setError(null);
+    setCommandTermIssues([]);
 
     // Attachments are referenced by their Supabase Storage path, not inline
     // base64 — /api/claude resolves them server-side. This keeps the wire
@@ -567,6 +577,11 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       // Error — including a max_tokens-specific message — if it still can't
       // be parsed after repair; full diagnostics go to the console.
       const sanitized: AssignmentDraft = parseAssignmentDraftJson(rawText, stopReason);
+
+      // Fail loud on instruction-less prompts BEFORE the teacher downloads a
+      // broken PDF. The draft still renders (warnings, not a hard block), so
+      // a single flagged question can be regenerated or edited by hand.
+      setCommandTermIssues(validateDraftCommandTerms(sanitized));
 
       setLastDraft(sanitized);
       onDraftGenerated(sanitized);
@@ -822,6 +837,26 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
           {error && (
             <p className="text-xs text-red-400 border border-red-500/30 bg-red-500/10 rounded px-2 py-1">{error}</p>
+          )}
+
+          {commandTermIssues.length > 0 && (
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">
+              <p className="font-semibold">
+                ⚠ {commandTermIssues.length} question{commandTermIssues.length === 1 ? "" : "s"} missing an IB command term
+              </p>
+              <p className="mt-0.5 text-amber-300/80">
+                These prompts contain setup text but no recognized instruction (Find, Sketch, Show that, …).
+                Regenerate them or edit the prompt before downloading.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {commandTermIssues.map((issue) => (
+                  <li key={issue.location} className="text-amber-200/90">
+                    <span className="font-medium">{issue.location}:</span>{" "}
+                    <span className="italic text-amber-300/70">“{issue.promptTail}”</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
           {lastDraft && (
