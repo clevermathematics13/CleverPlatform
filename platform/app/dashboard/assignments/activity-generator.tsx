@@ -32,7 +32,7 @@ type ChatMessage = {
 type SaveStatus = "idle" | "saving" | "saved" | "error";
 type DriveConnectionStatus = "checking" | "connected" | "disconnected";
 type DriveImportStatus = "idle" | "fetching" | "picking" | "done" | "error";
-type GenerationProgress = { phase: "thinking" | "writing"; charCount?: number };
+type GenerationProgress = { phase: string; charCount?: number };
 
 type Props = {
   gradeLevel: "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
@@ -50,16 +50,20 @@ function sanitizeFileName(name: string): string {
 
 /**
  * Reads the SSE stream /api/claude now returns instead of a single buffered
- * JSON response. The route can genuinely run for minutes on a large
- * multi-PDF generation, and a fully-buffered response over that long a
- * connection is fragile — it produced a bare "Failed to fetch" once Vercel's
- * timeout hit, since no bytes had ever reached the browser to explain why.
- * Streaming progress frames keeps the connection alive and gives real
- * feedback instead of a silent multi-minute wait.
+ * JSON response. Generation runs as a durable Vercel Workflow (see
+ * platform/workflows/nuanced-analysis-generation.ts) that can genuinely take
+ * minutes across two bounded Claude passes, and a fully-buffered response
+ * over that long a connection is fragile — it produced a bare "Failed to
+ * fetch" once Vercel's timeout hit, since no bytes had ever reached the
+ * browser to explain why. Streaming progress frames keeps the connection
+ * alive and gives real feedback instead of a silent multi-minute wait.
  *
  * Frames look like:
- *   event: progress\ndata: {"phase":"thinking"}\n\n
- *   event: progress\ndata: {"phase":"writing","charCount":1234}\n\n
+ *   event: progress\ndata: {"phase":"resolving-attachments"}\n\n
+ *   event: progress\ndata: {"phase":"first-half:thinking"}\n\n
+ *   event: progress\ndata: {"phase":"first-half:writing","charCount":1234}\n\n
+ *   event: progress\ndata: {"phase":"second-half:thinking"}\n\n
+ *   event: progress\ndata: {"phase":"second-half:writing","charCount":5678}\n\n
  *   event: done\ndata: {"message": <full ClaudeResponse>}\n\n
  *   event: error\ndata: {"message": "..."}\n\n
  */
@@ -565,11 +569,17 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
   const generatingLabel = !isGenerating
     ? null
-    : generationProgress?.phase === "writing" && generationProgress.charCount
-      ? `Writing… ${generationProgress.charCount.toLocaleString()} characters so far`
-      : generationProgress?.phase === "thinking"
-        ? "Thinking through the source material…"
-        : "Starting…";
+    : generationProgress?.phase === "resolving-attachments"
+      ? "Reading attachments…"
+      : generationProgress?.phase === "first-half:thinking"
+        ? "Thinking through the source material (part 1 of 2)…"
+        : generationProgress?.phase === "first-half:writing"
+          ? `Writing the first half… ${generationProgress.charCount?.toLocaleString() ?? ""} characters so far`
+          : generationProgress?.phase === "second-half:thinking"
+            ? "Thinking through the source material (part 2 of 2)…"
+            : generationProgress?.phase === "second-half:writing"
+              ? `Finishing the second half… ${generationProgress.charCount?.toLocaleString() ?? ""} characters so far`
+              : "Starting…";
 
   return (
     <div className="rounded-xl border border-da-border bg-da-bg/40">
