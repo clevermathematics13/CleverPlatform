@@ -12,6 +12,10 @@ import {
   type CommandTermIssue,
   validateDraftCommandTerms,
 } from "@/lib/command-term-validator";
+import {
+  type NumberingIssue,
+  validateDraftNumbering,
+} from "@/lib/numbering-validator";
 import { createClient } from "@/lib/supabase/client";
 
 // ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -201,6 +205,11 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   // terms — the exact silent failure that shipped 8 instruction-less
   // questions in one packet. Warn loudly instead of letting it reach a PDF.
   const [commandTermIssues, setCommandTermIssues] = useState<CommandTermIssue[]>([]);
+  // Numbering-integrity results for the most recent draft. Non-empty means
+  // the numbers the model embedded in its own prompts/headings have gaps,
+  // duplicates, or go backwards — the "1... 5, 6" symptom of questions
+  // silently dropped between the two generation passes.
+  const [numberingIssues, setNumberingIssues] = useState<NumberingIssue[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isExpanded, setIsExpanded] = useState(true);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -485,6 +494,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setGenerationProgress(null);
     setError(null);
     setCommandTermIssues([]);
+    setNumberingIssues([]);
 
     // Attachments are referenced by their Supabase Storage path, not inline
     // base64 — /api/claude resolves them server-side. This keeps the wire
@@ -582,6 +592,12 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       // broken PDF. The draft still renders (warnings, not a hard block), so
       // a single flagged question can be regenerated or edited by hand.
       setCommandTermIssues(validateDraftCommandTerms(sanitized));
+
+      // Same fail-loud policy for numbering integrity: if the model embedded
+      // question numbers or Part headings whose sequence has gaps, duplicates,
+      // or goes backwards, questions were likely dropped between the two
+      // generation passes — warn before the packet is downloaded.
+      setNumberingIssues(validateDraftNumbering(sanitized));
 
       setLastDraft(sanitized);
       onDraftGenerated(sanitized);
@@ -853,6 +869,26 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                   <li key={issue.location} className="text-amber-200/90">
                     <span className="font-medium">{issue.location}:</span>{" "}
                     <span className="italic text-amber-300/70">“{issue.promptTail}”</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {numberingIssues.length > 0 && (
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">
+              <p className="font-semibold">
+                ⚠ {numberingIssues.length} numbering problem{numberingIssues.length === 1 ? "" : "s"} in this draft
+              </p>
+              <p className="mt-0.5 text-amber-300/80">
+                The question/Part numbers in the generated content have gaps, duplicates, or run backwards —
+                questions may have been dropped during generation. Regenerate, or fix the numbering by hand before downloading.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {numberingIssues.map((issue, i) => (
+                  <li key={`${issue.kind}-${i}`} className="text-amber-200/90">
+                    <span className="font-medium">{issue.location}:</span>{" "}
+                    <span className="text-amber-300/70">{issue.detail}</span>
                   </li>
                 ))}
               </ul>
