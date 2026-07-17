@@ -4,7 +4,7 @@ import { createClient as createServiceSupabaseClient } from "@supabase/supabase-
 
 /**
  * generateNuancedAnalysis — durable workflow for the AI Activity Generator.
- * ─────────────────────────────────────────────────────────────────────────
+ * ─────────────────────────────────────────────────────────────────────
  * WHY THIS EXISTS: the previous /api/claude route ran one long, buffered
  * Claude call inside a single Vercel Function invocation. An 11-attachment,
  * two-syllabus-topic generation hit Vercel's ~300s function ceiling and got
@@ -262,6 +262,45 @@ async function cleanupAttachments(paths: string[]) {
   if (error) console.error("[nuanced-analysis-workflow] cleanup failed for", paths, error.message);
 }
 
+/**
+ * Persists the raw output of one generation pass to nuanced_generation_logs.
+ * WHY: a generation that's never explicitly saved ("Save as Nuanced
+ * Analysis") used to leave no trace at all — when a downloaded packet later
+ * turned out to have truncated prompts, there was no raw JSON left to
+ * diagnose against. Logging every pass (and every failure) turns that
+ * investigation into a five-minute SQL query. Best-effort by design: a
+ * logging failure must never take down a generation that otherwise
+ * succeeded, so all errors are swallowed after a console.error.
+ */
+async function logGeneration(
+  pass: "first-half" | "second-half",
+  text: string,
+  stopReason: string | null,
+  errorMessage: string | null,
+) {
+  "use step";
+  try {
+    const supabase = getServiceSupabase();
+    const { error } = await supabase.from("nuanced_generation_logs").insert({
+      source: "activity-generator-workflow",
+      pass,
+      model: MODEL,
+      stop_reason: stopReason,
+      char_count: text.length,
+      raw_text: text,
+      error: errorMessage,
+    });
+    if (error) {
+      console.error("[nuanced-analysis-workflow] generation log insert failed:", error.message);
+    }
+  } catch (e) {
+    console.error(
+      "[nuanced-analysis-workflow] generation log step failed:",
+      e instanceof Error ? e.message : e,
+    );
+  }
+}
+
 // ── Workflow ──────────────────────────────────────────────────────────────
 
 export async function generateNuancedAnalysis(
@@ -288,9 +327,11 @@ export async function generateNuancedAnalysis(
   let firstPass: { text: string; stopReason: string | null };
   try {
     firstPass = await callClaude(system, withFirstPassHint(resolved), "first-half");
+    await logGeneration("first-half", firstPass.text, firstPass.stopReason, null);
   } catch (err) {
     await cleanupAttachments(paths);
     const message = err instanceof Error ? err.message : "Generation failed (first pass)";
+    await logGeneration("first-half", "", null, message);
     await writeChunk({ type: "error", message });
     await closeStream();
     return { text: "", stopReason: null, error: message };
@@ -305,9 +346,11 @@ export async function generateNuancedAnalysis(
   let secondPass: { text: string; stopReason: string | null };
   try {
     secondPass = await callClaude(system, continuationMessages, "second-half");
+    await logGeneration("second-half", secondPass.text, secondPass.stopReason, null);
   } catch (err) {
     await cleanupAttachments(paths);
     const message = err instanceof Error ? err.message : "Generation failed (second pass)";
+    await logGeneration("second-half", "", null, message);
     await writeChunk({ type: "error", message });
     await closeStream();
     return { text: "", stopReason: null, error: message };

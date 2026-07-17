@@ -79,6 +79,26 @@ export async function POST(request: Request) {
       (block): block is Anthropic.TextBlock => block.type === "text",
     );
     const rawText = textBlock?.text ?? "";
+
+    // Persist the raw generation before any parsing can fail, so a truncated
+    // or malformed reply always leaves a diagnosable trace in
+    // nuanced_generation_logs (same table the two-pass workflow logs to).
+    // Best-effort: a logging failure must never break generation.
+    try {
+      const { error: logError } = await supabase.from("nuanced_generation_logs").insert({
+        source: "generate-packet",
+        pass: "single",
+        model: "claude-sonnet-5",
+        stop_reason: message.stop_reason,
+        char_count: rawText.length,
+        raw_text: rawText,
+        error: null,
+      });
+      if (logError) console.error("[generate-packet] generation log insert failed:", logError.message);
+    } catch (logException) {
+      console.error("[generate-packet] generation log failed:", logException);
+    }
+
     if (!rawText) {
       throw new Error("No text content returned from Claude.");
     }
