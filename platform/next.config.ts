@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withWorkflow } from "workflow/next";
 
 // Build: 2026-06-16
 const nextConfig: NextConfig = {
@@ -21,4 +22,7 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// withWorkflow enables the "use workflow" and "use step" directives used by
+// platform/workflows/nuanced-analysis-generation.ts — required for the AI
+// Activity Generator's multi-pass generation to work.
+export default withWorkflow(nextConfig);
