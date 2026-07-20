@@ -590,10 +590,20 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
         const html = renderMath(seg.content, seg.type === "display");
         if (seg.type === "display") {
           prevSegWasDisplay = true;
+          // KaTeX's stylesheet renders all math at 1.21x the surrounding font
+          // size (.katex { font: normal 1.21em ... }), which makes display
+          // blocks visibly larger than the body text — unlike IB source
+          // documents, where displayed equations are typeset at body-text
+          // size. 1/1.21 ≈ 0.826em on the wrapper cancels that factor so
+          // display math matches the surrounding text, mirroring the source
+          // image. (Inline math is left at KaTeX's default — at small sizes
+          // the slight upscale aids readability of sub/superscripts and it
+          // sits inside a text line, so it doesn't read as oversized.)
           return (
             <span
               key={i}
               className="block my-1 overflow-x-auto"
+              style={{ fontSize: "0.826em" }}
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
