@@ -13,31 +13,37 @@ import {
   RENDER_ROOT_ID,
   RENDER_WIDTH_PX,
   type Discrepancy,
-  type VisualCheckPass,
 } from "@/lib/latex-visual-check";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 // POST /api/questions/visual-check
-// Body: { partId, field?: "content_latex" | "markscheme_latex", maxPasses?: number }
+// Body: {
+//   partId, field?: "content_latex" | "markscheme_latex",
+//   renderedHtml: string,      // innerHTML captured from the live LatexRenderer
+//   styleHrefs?: string[],     // the page's stylesheet URLs
+//   currentLatex?: string,     // what produced renderedHtml (defaults to stored)
+// }
 //
-// Renders a part's stored LaTeX through the real LatexRenderer component,
-// screenshots it, and asks Claude to compare that screenshot against the
-// original scan. When discrepancies are found it can run further passes:
-// propose corrected LaTeX, re-render, and re-compare, so a fix that only
-// half-worked is caught rather than assumed good.
+// Screenshots the supplied markup and asks Claude to compare it against the
+// question's source scans. One comparison per call; when differences are found
+// it also proposes corrected LaTeX.
 //
-// Nothing is written to the database. The corrected LaTeX comes back as a
-// proposal for the teacher to review and apply, which keeps a vision model
-// from silently rewriting exam content.
+// The markup is captured in the browser rather than rendered here on purpose:
+// LatexRenderer is a client component, so server code receives a client
+// reference it cannot invoke. Capturing the live DOM is also higher fidelity,
+// since it is exactly what the teacher sees. The caller re-renders a proposed
+// correction and calls again to verify it, which is how multi-pass checking
+// works without the server needing to render React at all.
+//
+// Nothing is written to the database. Corrections come back as proposals.
 
 // Same pinned Chromium build the PDF routes use, so serverless behaviour and
 // font rendering stay consistent across the two pipelines.
 const CHROMIUM_REMOTE_URL =
   "https://github.com/Sparticuz/chromium/releases/download/v133.0.0/chromium-v133.0.0-pack.tar";
 
-const MAX_ALLOWED_PASSES = 3;
 const SIGNED_URL_TTL_SECONDS = 300;
 
 type LatexField = "content_latex" | "markscheme_latex";
@@ -84,11 +90,17 @@ export async function POST(request: NextRequest) {
   const field: LatexField =
     body.field === "markscheme_latex" ? "markscheme_latex" : "content_latex";
 
-  const requestedPasses =
-    typeof body.maxPasses === "number" && Number.isFinite(body.maxPasses)
-      ? Math.floor(body.maxPasses)
-      : 2;
-  const maxPasses = Math.min(Math.max(requestedPasses, 1), MAX_ALLOWED_PASSES);
+  const renderedHtml = body.renderedHtml;
+  if (typeof renderedHtml !== "string" || !renderedHtml.trim()) {
+    return NextResponse.json(
+      { error: "renderedHtml is required — nothing was captured to compare." },
+      { status: 400 },
+    );
+  }
+
+  const styleHrefs = Array.isArray(body.styleHrefs)
+    ? body.styleHrefs.filter((h): h is string => typeof h === "string")
+    : [];
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -109,7 +121,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Part not found" }, { status: 404 });
   }
 
-  const originalLatex = (part[field] as string | null) ?? "";
+  const storedLatex = (part[field] as string | null) ?? "";
+  // The caller may be verifying a correction it has not saved yet, so trust the
+  // LaTeX it says produced this markup and fall back to what is stored.
+  const originalLatex =
+    typeof body.currentLatex === "string" && body.currentLatex.trim()
+      ? body.currentLatex
+      : storedLatex;
   if (!originalLatex.trim()) {
     return NextResponse.json(
       {
@@ -169,9 +187,8 @@ export async function POST(request: NextRequest) {
   }
 
   const anthropic = new Anthropic({ apiKey });
-  const passes: VisualCheckPass[] = [];
-  let currentLatex = originalLatex;
 
+  let renderedPng: string;
   let browser;
   try {
     const isVercel = Boolean(process.env.VERCEL);
@@ -196,125 +213,32 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    /** Render `latex` through the real component and return a base64 PNG. */
-    async function screenshotLatex(latex: string): Promise<string> {
-      const html = await buildRenderDocument(latex);
-      const page = await browser!.newPage();
-      try {
-        await page.setViewport({
-          width: RENDER_WIDTH_PX + 40,
-          height: 1200,
-          deviceScaleFactor: 2,
-        });
-        // networkidle0 so the KaTeX stylesheet and its webfonts are in before
-        // we measure anything; without it the first screenshot can capture
-        // fallback-font layout and produce phantom "layout" discrepancies.
-        await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
-        await page.evaluate(async () => {
-          const d = document as Document & { fonts?: { ready: Promise<unknown> } };
-          if (d.fonts?.ready) await d.fonts.ready;
-        });
-        const element = await page.$(`#${RENDER_ROOT_ID}`);
-        if (!element) throw new Error("Render harness produced no root element");
-        const shot = await element.screenshot({ type: "png" });
-        return Buffer.from(shot).toString("base64");
-      } finally {
-        await page.close().catch(() => {});
-      }
-    }
-
-    for (let passNumber = 1; passNumber <= maxPasses; passNumber++) {
-      const renderedPng = await screenshotLatex(currentLatex);
-
-      const compareContent: Anthropic.ContentBlockParam[] = [
-        {
-          type: "text",
-          text: `SOURCE — ${sourceImages.length} scan image(s) of the official IB ${
-            imageType === "markscheme" ? "mark scheme" : "question"
-          }:`,
-        },
-        ...sourceImages.map(imageBlock),
-        {
-          type: "text",
-          text: "RENDERED — screenshot of how the transcribed LaTeX currently displays:",
-        },
-        imageBlock({ data: renderedPng, mediaType: "image/png" }),
-        {
-          type: "text",
-          text: "Compare the RENDERED image against the SOURCE and report every discrepancy as JSON.",
-        },
-      ];
-
-      const compareResponse = await anthropic.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 4096,
-        system: LATEX_VISUAL_CHECK_SYSTEM,
-        messages: [{ role: "user", content: compareContent }],
-      });
-
-      const comparison = parseComparisonResponse(textOf(compareResponse));
-      if (!comparison) {
-        // A reply we cannot parse is NOT a clean bill of health — surface it
-        // rather than reporting "no discrepancies found".
-        return NextResponse.json(
-          {
-            error:
-              "The visual checker did not return a readable report. Nothing was changed.",
-            passes,
-          },
-          { status: 502 },
-        );
-      }
-
-      passes.push({
-        pass: passNumber,
-        matches: comparison.matches,
-        summary: comparison.summary,
-        discrepancies: comparison.discrepancies,
-        latex: currentLatex,
-        renderedPng,
-      });
-
-      if (comparison.matches) break;
-      if (passNumber === maxPasses) break;
-
-      // ── Correction pass ────────────────────────────────────────────────
-      const fixable: Discrepancy[] = comparison.discrepancies.filter(
-        (d) => d.kind !== "formatting",
-      );
-      // "formatting" findings are usually renderer styling rather than
-      // transcription errors — rewriting the LaTeX cannot fix those, so a
-      // correction pass would churn the text for nothing.
-      if (fixable.length === 0) break;
-
-      const correctionContent: Anthropic.ContentBlockParam[] = [
-        { type: "text", text: "SOURCE scan image(s):" },
-        ...sourceImages.map(imageBlock),
-        {
-          type: "text",
-          text: `Current LaTeX:\n---\n${currentLatex}\n---\n\nDiscrepancies found by comparing a rendering of this LaTeX against the source:\n${formatDiscrepanciesForPrompt(
-            fixable,
-          )}\n\nReturn the corrected LaTeX.`,
-        },
-      ];
-
-      const correctionResponse = await anthropic.messages.create({
-        model: "claude-sonnet-5",
-        max_tokens: 8192,
-        system: LATEX_VISUAL_CORRECTION_SYSTEM,
-        messages: [{ role: "user", content: correctionContent }],
-      });
-
-      const corrected = cleanCorrectedLatex(textOf(correctionResponse));
-      // If the model returns nothing usable, or hands back what it was given,
-      // another pass would just repeat itself — stop here.
-      if (!corrected || corrected === currentLatex) break;
-      currentLatex = corrected;
-    }
+    const page = await browser.newPage();
+    await page.setViewport({
+      width: RENDER_WIDTH_PX + 40,
+      height: 1200,
+      deviceScaleFactor: 2,
+    });
+    // networkidle0 so the stylesheets and their webfonts are in before we
+    // measure anything; screenshotting mid-font-load produces phantom
+    // "layout" discrepancies.
+    await page.setContent(buildRenderDocument(renderedHtml, styleHrefs), {
+      waitUntil: "networkidle0",
+      timeout: 30000,
+    });
+    await page.evaluate(async () => {
+      const d = document as Document & { fonts?: { ready: Promise<unknown> } };
+      if (d.fonts?.ready) await d.fonts.ready;
+    });
+    const element = await page.$(`#${RENDER_ROOT_ID}`);
+    if (!element) throw new Error("Render harness produced no root element");
+    const shot = await element.screenshot({ type: "png" });
+    renderedPng = Buffer.from(shot).toString("base64");
   } catch (err) {
-    const message =
-      err instanceof Error ? err.message : "Visual check failed";
-    return NextResponse.json({ error: message, passes }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Screenshot failed" },
+      { status: 500 },
+    );
   } finally {
     if (browser) {
       try {
@@ -325,21 +249,102 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const lastPass = passes[passes.length - 1];
-  const changed = currentLatex !== originalLatex;
+  // ── Compare the render against the source ────────────────────────────────
+  const compareContent: Anthropic.ContentBlockParam[] = [
+    {
+      type: "text",
+      text: `SOURCE — ${sourceImages.length} scan image(s) of the official IB ${
+        imageType === "markscheme" ? "mark scheme" : "question"
+      }:`,
+    },
+    ...sourceImages.map(imageBlock),
+    {
+      type: "text",
+      text: "RENDERED — screenshot of how the transcribed LaTeX currently displays:",
+    },
+    imageBlock({ data: renderedPng, mediaType: "image/png" }),
+    {
+      type: "text",
+      text: "Compare the RENDERED image against the SOURCE and report every discrepancy as JSON.",
+    },
+  ];
+
+  let comparison;
+  try {
+    const compareResponse = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 4096,
+      system: LATEX_VISUAL_CHECK_SYSTEM,
+      messages: [{ role: "user", content: compareContent }],
+    });
+    comparison = parseComparisonResponse(textOf(compareResponse));
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Comparison failed" },
+      { status: 502 },
+    );
+  }
+
+  if (!comparison) {
+    // An unreadable reply is NOT a clean bill of health — say so rather than
+    // reporting "no discrepancies found".
+    return NextResponse.json(
+      {
+        error:
+          "The visual checker did not return a readable report. Nothing was changed.",
+      },
+      { status: 502 },
+    );
+  }
+
+  // ── Propose a correction for anything a rewrite could actually fix ───────
+  // "formatting" findings are renderer styling, not transcription errors —
+  // rewriting the LaTeX cannot fix those, so they never trigger a correction.
+  const fixable: Discrepancy[] = comparison.discrepancies.filter(
+    (d) => d.kind !== "formatting",
+  );
+
+  let proposedLatex: string | null = null;
+  if (fixable.length > 0) {
+    try {
+      const correctionResponse = await anthropic.messages.create({
+        model: "claude-sonnet-5",
+        max_tokens: 8192,
+        system: LATEX_VISUAL_CORRECTION_SYSTEM,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "SOURCE scan image(s):" },
+              ...sourceImages.map(imageBlock),
+              {
+                type: "text",
+                text: `Current LaTeX:\n---\n${originalLatex}\n---\n\nDiscrepancies found by comparing a rendering of this LaTeX against the source:\n${formatDiscrepanciesForPrompt(
+                  fixable,
+                )}\n\nReturn the corrected LaTeX.`,
+              },
+            ],
+          },
+        ],
+      });
+      const corrected = cleanCorrectedLatex(textOf(correctionResponse));
+      if (corrected && corrected !== originalLatex) proposedLatex = corrected;
+    } catch {
+      // A failed correction attempt is not fatal — the teacher still gets the
+      // discrepancy report, which is the part that matters most.
+      proposedLatex = null;
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     field,
     partLabel: part.part_label ?? null,
     sourceImageCount: sourceImages.length,
-    passes,
-    originalLatex,
-    // Present only when a correction was actually produced. Applying it is a
-    // separate, explicit action by the teacher.
-    proposedLatex: changed ? currentLatex : null,
-    changed,
-    finalMatches: lastPass?.matches ?? false,
-    remainingDiscrepancies: lastPass?.discrepancies ?? [],
+    matches: comparison.matches,
+    summary: comparison.summary,
+    discrepancies: comparison.discrepancies,
+    // Applying this is a separate, explicit action by the teacher.
+    proposedLatex,
   });
 }
