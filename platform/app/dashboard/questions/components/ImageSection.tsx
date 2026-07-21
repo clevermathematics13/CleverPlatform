@@ -472,20 +472,35 @@ export function ImageSection({
                 {convertingLatex === type ? "Running..." : latex.length > 0 ? "Re-extract" : "Extract"}
               </button>
             )}
-            {latex.length === 1 && editingKey !== `${type}-${latex[0].partId}` && (
-              <button
-                type="button"
-                onClick={() => { setEditingKey(`${type}-${latex[0].partId}`); setEditDraft(latex[0].latex); setSaveLatexError(null); }}
-                title="Edit LaTeX"
-                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
-              >
-                ✏ Edit
-              </button>
+            {latex.length === 1 && (
+              editingKey === `${type}-${latex[0].partId}` ? (
+                /* Cancel is always in the sticky header so it's reachable
+                   regardless of how far down the textarea has been scrolled. */
+                <button
+                  type="button"
+                  disabled={savingLatex}
+                  onClick={() => { setEditingKey(null); setSaveLatexError(null); }}
+                  title="Cancel editing"
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-red-600 hover:border-red-300 transition-colors disabled:opacity-40"
+                >
+                  ✕ Cancel edit
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => { setEditingKey(`${type}-${latex[0].partId}`); setEditDraft(latex[0].latex); setSaveLatexError(null); }}
+                  title="Edit LaTeX"
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-gray-300 bg-white text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                >
+                  ✏ Edit
+                </button>
+              )
             )}
             {/* Scoped to single-entry panels: the check compares against every
                 source image of this type, which only lines up when one entry
-                holds the whole question/markscheme. */}
-            {latex.length === 1 && imgs.length > 0 && (
+                holds the whole question/markscheme. Hidden while editing since
+                the check would capture the editing UI, not the rendered LaTeX. */}
+            {latex.length === 1 && imgs.length > 0 && editingKey !== `${type}-${latex[0].partId}` && (
               <button
                 type="button"
                 disabled={checking}
@@ -612,6 +627,9 @@ export function ImageSection({
                           rows={8}
                           className="w-full rounded border border-gray-300 px-2 py-1.5 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
                           autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") { e.preventDefault(); setEditingKey(null); setSaveLatexError(null); }
+                          }}
                         />
                         {editDraft.trim() && (
                           <div className="rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-sm text-gray-800 overflow-x-auto">
