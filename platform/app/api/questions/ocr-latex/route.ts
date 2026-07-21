@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApiTeacher } from "@/lib/auth";
-import { postProcessMathpixLatex, IB_NORMALISE_SYSTEM } from "@/lib/latex-utils";
 import Anthropic from "@anthropic-ai/sdk";
-
-export const maxDuration = 120;
+import { createClient } from "@/lib/supabase/server";
+import {
+  IB_NORMALISE_SYSTEM,
+  postProcessMathpixLatex,
+} from "@/lib/latex-utils";
 
 type OcrField =
   | "content_latex"
@@ -13,78 +14,70 @@ type OcrField =
   | "parts_draft_latex"
   | "parts_draft_markscheme_latex";
 
-const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
+const MATHPIX_APP_ID = process.env.MATHPIX_APP_ID;
+const MATHPIX_APP_KEY = process.env.MATHPIX_APP_KEY;
 
-function looksGraphLike(text: string): boolean {
-  const t = text.toLowerCase();
-  // Avoid false positives from generic prose such as "the graph of y=f(x)".
-  // Require stronger plotting/axes/asymptote/intercept signals, or a graph/curve
-  // mention combined with one of those structural signals.
-  const structuralSignals = /(x\s*-?\s*axis|y\s*-?\s*axis|\baxes\b|asymptote|asymptotes|intercepts?|coordinates?|\bplot\b|\bsketch\b|table of values|grid|domain|range)/;
-  const graphWords = /\b(graph|curve)\b/;
-  return structuralSignals.test(t) || (graphWords.test(t) && /(asymptote|intercepts?|coordinates?|x\s*-?\s*axis|y\s*-?\s*axis|\baxes\b|\bplot\b|\bsketch\b|domain|range)/.test(t));
-}
+export const runtime = "nodejs";
+export const maxDuration = 300;
 
-// POST /api/questions/ocr-latex
-// Body: { questionId: string, field: OcrField }
-// Strip lines that are purely mark-scheme annotations (A1, M1, \hfill A1A1A1, Total [N marks]).
 // These creep into question content when the source Google Doc embeds the mark allocation.
 // Applied to question-type OCR only (not markscheme fields).
+const MARK_ANNOTATION_LINE_RE =
+  /^(\s*(\\hfill\s*)?(\(?(A|M|R|N)\d*\)?(\s*(A|M|R|N)\d*)*|Total\s+\[\d+\s*marks?\]|\[\d+\s*marks?\])(\s*(\\hfill)?)?)\s*$/gim;
+
 function stripMarkAnnotationLines(latex: string): string {
-  // Each line is matched independently. Strip lines that are SOLELY:
-  //   • \hfill mark codes: \hfill A1, \hfill A1A1A1A1, \hfill (A1)(M1)
-  //   • Bare mark codes:   A1A1A1A1, (A1), M1, R1, AG, N2
-  //   • Total annotation:  Total [4 marks], [4 marks]
-  const MARK_LINE = /^(?:\\hfill\s*)?(?:\s*[\(\[]?(?:A|M|R|N)\d*[\)\]]?\s*)+$|^Total\s+\[\d+\s+marks?\]\s*$|^\[\d+\s+marks?\]\s*$/i;
   return latex
     .split("\n")
     .filter((line) => {
       const t = line.trim();
-      return t === "" || !MARK_LINE.test(t);
+      if (!t) return true;
+      MARK_ANNOTATION_LINE_RE.lastIndex = 0;
+      return !MARK_ANNOTATION_LINE_RE.test(line);
     })
-    .join("\n")
-    .trim();
+    .join("\n");
 }
 
 // Strip a leading question-number prefix such as "8. METHOD 1" -> "METHOD 1",
-// or a bare "8." on its own line before the real content. IB papers print the
+// "3 (a)" -> "(a)", etc.  IB source documents sometimes have a bold question
 // question number directly above the markscheme/question content, but this
 // platform already encodes the number in the question code (e.g. the trailing
-// _8 in 13M.1.AHL.TZ1.H_8), so it is redundant and visually noisy in the panel.
-// Only strips a number+dot at the very start of the FIRST LINE — never touches
-// numbers elsewhere in the body (e.g. "20th term", "[6 marks]", "100 = ...").
+// "_8" or "_3a" suffix in the code field).
+const QUESTION_NUMBER_PREFIX_RE = /^\s*\d+[\.\):]?\s*/;
 function stripQuestionNumberPrefix(latex: string): string {
-  const trimmed = latex.replace(/^\s+/, "");
+  const trimmed = latex.trimStart();
   const newlineIdx = trimmed.indexOf("\n");
   const firstLine = newlineIdx === -1 ? trimmed : trimmed.slice(0, newlineIdx);
   const restOfText = newlineIdx === -1 ? "" : trimmed.slice(newlineIdx);
-
-  // Case 1: "8. METHOD 1" — strip just the "N." prefix, keep the rest of that line.
-  const inlineMatch = firstLine.match(/^(\d{1,3})\.\s+(\S.*)$/);
-  if (inlineMatch) {
-    return inlineMatch[2] + restOfText;
-  }
-  // Case 2: a bare number (with or without trailing dot) alone on the first line.
-  if (/^\d{1,3}\.?\s*$/.test(firstLine.trim()) && newlineIdx !== -1) {
-    return restOfText.replace(/^\s+/, "");
+  // Only strip if the first line is purely a number (possibly with punctuation)
+  // and no other math content — avoids stripping "1 + 2 = 3" etc.
+  if (/^\s*\d+[\.\):]?\s*$/.test(firstLine)) {
+    return restOfText.trimStart();
   }
   return latex;
 }
 
-//
-// Fetches the stored question_images for the question, runs MathPix (or Claude
-// vision fallback), applies IBPart post-processing, then:
-//   - For stem_* / parts_draft_*: saves to ib_questions.
-//   - For content_latex / markscheme_latex: saves to all question_parts (legacy).
-export async function POST(request: NextRequest) {
-  const auth = await getApiTeacher();
-  if (!auth.ok) return auth.response;
-  const { supabase, user, profile } = auth;
+// Detect whether the extracted LaTeX contains graph/plot data
+function looksGraphLike(latex: string): boolean {
+  return (
+    latex.includes("[[GRAPH_JSON:") ||
+    latex.includes("[[GRAPH_IMAGE]]") ||
+    latex.includes("\\begin{tikzpicture}")
+  );
+}
 
-  const body = (await request.json()) as {
-    questionId: string;
-    field: OcrField;
-  };
+// POST /api/questions/ocr-latex
+// Body: { questionId: string, field: OcrField }
+export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json()) as { questionId: string; field: OcrField };
   const { questionId, field } = body;
 
   if (!questionId || !field)
@@ -93,7 +86,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
 
-  const validFields: OcrField[] = [
+  const VALID_FIELDS: OcrField[] = [
     "content_latex",
     "markscheme_latex",
     "stem_latex",
@@ -101,103 +94,73 @@ export async function POST(request: NextRequest) {
     "parts_draft_latex",
     "parts_draft_markscheme_latex",
   ];
-  if (!validFields.includes(field))
+  if (!VALID_FIELDS.includes(field))
     return NextResponse.json({ error: "Invalid field" }, { status: 400 });
 
   const isStem = field === "stem_latex" || field === "stem_markscheme_latex";
   const isDraft = field === "parts_draft_latex" || field === "parts_draft_markscheme_latex";
-  const isQuestionDraft = field === "parts_draft_latex";
-  // Both stem and draft fields save to ib_questions rather than question_parts
-  const savesToQuestion = isStem || isDraft;
+  const isQuestionDraft = isDraft && field === "parts_draft_latex";
 
-  // Determine image type from field
+  // Both stem and draft fields save to ib_questions rather than question_parts
+  const saveToQuestions = isStem || isDraft;
+
   const imageType =
-    field === "content_latex" || field === "stem_latex" || field === "parts_draft_latex"
-      ? "question"
-      : "markscheme";
+    field === "markscheme_latex" || field === "stem_markscheme_latex" || field === "parts_draft_markscheme_latex"
+      ? "markscheme"
+      : "question";
 
   // Fetch image records from question_images table
-  const { data: images, error: imgErr } = await supabase
+  const { data: imageRecords } = await supabase
     .from("question_images")
-    .select("id, storage_path, sort_order")
+    .select("storage_path, sort_order")
     .eq("question_id", questionId)
     .eq("image_type", imageType)
-    .order("sort_order");
+    .order("sort_order", { ascending: true });
 
-  if (imgErr)
-    return NextResponse.json({ error: imgErr.message }, { status: 500 });
+  let base64Images: string[] = [];
 
-  // Download each image as base64
-  const base64Images: string[] = [];
-
-  if (images && images.length > 0) {
+  if (imageRecords && imageRecords.length > 0) {
     // Use question_images table (preferred)
-    for (const img of images) {
-      const { data: signedData, error: signErr } = await supabase.storage
-        .from("question-images")
-        .createSignedUrl(img.storage_path, 120);
-      if (signErr || !signedData?.signedUrl)
-        return NextResponse.json(
-          { error: `Failed to sign URL for ${img.storage_path}` },
-          { status: 500 }
-        );
-      // Cache-bust: append a unique param and force no-store so any cached
-      // response for this exact signed URL / storage path is never reused.
-      // (Storage paths are also now uniquely suffixed per extraction run —
-      // see extract-images/route.ts — so this is defense in depth.)
-      const cacheBustedUrl = `${signedData.signedUrl}${signedData.signedUrl.includes("?") ? "&" : "?"}cb=${Date.now()}`;
-      const res = await fetch(cacheBustedUrl, { cache: "no-store" });
-      if (!res.ok)
-        return NextResponse.json(
-          { error: `Failed to download image: ${res.status}` },
-          { status: 502 }
-        );
-      const buf = await res.arrayBuffer();
-      base64Images.push(Buffer.from(buf).toString("base64"));
-    }
+    base64Images = await Promise.all(
+      imageRecords.map(async (rec) => {
+        const { data: signedData } = await supabase.storage
+          .from("question-images")
+          .createSignedUrl(rec.storage_path, 300);
+        const url = signedData?.signedUrl ?? rec.storage_path;
+        const imgRes = await fetch(url);
+        const buf = await imgRes.arrayBuffer();
+        // (Storage paths are also now uniquely suffixed per extraction run —
+        // see extract-images/route.ts — so this is defense in depth.)
+        return Buffer.from(buf).toString("base64");
+      })
+    );
   } else {
     // Fallback: use page_image_paths stored on ib_questions
-    const { data: qRow, error: qErr } = await supabase
+    const { data: qData } = await supabase
       .from("ib_questions")
-      .select("page_image_paths, source_pdf_path")
+      .select("page_image_paths")
       .eq("id", questionId)
       .single();
 
-    if (qErr)
-      return NextResponse.json({ error: qErr.message }, { status: 500 });
-
-    const paths: string[] = qRow?.page_image_paths ?? [];
-    if (paths.length === 0)
+    const paths = qData?.page_image_paths ?? [];
+    if (!paths.length) {
       return NextResponse.json(
         { error: "No images found for this question. Please extract question images first." },
-        { status: 404 }
+        { status: 400 }
       );
-
-    for (const path of paths) {
-      const { data: signedData, error: signErr } = await supabase.storage
-        .from("question-images")
-        .createSignedUrl(path, 120);
-      if (signErr || !signedData?.signedUrl)
-        return NextResponse.json(
-          { error: `Failed to sign URL for ${path}` },
-          { status: 500 }
-        );
-      const cacheBustedUrl = `${signedData.signedUrl}${signedData.signedUrl.includes("?") ? "&" : "?"}cb=${Date.now()}`;
-      const res = await fetch(cacheBustedUrl, { cache: "no-store" });
-      if (!res.ok)
-        return NextResponse.json(
-          { error: `Failed to download image: ${res.status}` },
-          { status: 502 }
-        );
-      const buf = await res.arrayBuffer();
-      base64Images.push(Buffer.from(buf).toString("base64"));
     }
+    base64Images = await Promise.all(
+      paths.map(async (path: string) => {
+        const { data: signedData } = await supabase.storage
+          .from("question-images")
+          .createSignedUrl(path, 300);
+        const url = signedData?.signedUrl ?? path;
+        const imgRes = await fetch(url);
+        const buf = await imgRes.arrayBuffer();
+        return Buffer.from(buf).toString("base64");
+      })
+    );
   }
-
-  // Try MathPix first; fall back to Claude vision
-  const MATHPIX_APP_ID = process.env.MATHPIX_APP_ID;
-  const MATHPIX_APP_KEY = process.env.MATHPIX_APP_KEY;
-  const USE_MATHPIX = !!(MATHPIX_APP_ID && MATHPIX_APP_KEY);
 
   let extractedLatex: string;
   let graphDetected = false;
@@ -242,71 +205,10 @@ export async function POST(request: NextRequest) {
     let prompt: string;
     if (isStem) {
       const stemType = field === "stem_latex" ? "question" : "mark scheme";
-      prompt = `These are images of an IB Mathematics exam ${stemType}. The question has multiple labelled parts marked (a), (b), (c) etc.
-
-Your task: extract ONLY the introductory stem — the setup/context paragraphs that appear BEFORE the first labelled part (a). The stem typically defines functions, variables, or conditions shared by all parts. It ends immediately before the label "(a)".
-
-DO NOT include:
-- The label "(a)" itself or any subsequent part labels
-- The question text of part (a) or any later part
-- Any mark allocations like [1], [3] etc.
-
-If there is no text before "(a)", return an empty string.
-
-Use $ ... $ for inline math and \\[ ... \\] for display math. Use \\boldsymbol{} for vectors, \\begin{pmatrix} for matrices.
-- If the image contains a coordinate diagram or graph appearing in the stem area (before part (a)), output the marker [[GRAPH_IMAGE]] on its own line at the position where the graph appears within the stem.
-- No color formatting: NEVER output \\textcolor{}{}, \\color{}, \\colorbox{}{}, \\definecolor{}, or ANY color macro whatsoever. Return plain LaTeX only.
-Return ONLY the LaTeX body, no explanation, no markdown fences.`;
+      prompt = `These are images of an IB Mathematics exam ${stemType}. The question has multiple labelled parts marked (a), (b), (c) etc.\n\nYour task: extract ONLY the introductory stem — the setup/context paragraphs that appear BEFORE the first labelled part (a). The stem typically defines functions, variables, or conditions shared by all parts. It ends immediately before the label \"(a)\".\n\nDO NOT include:\n- The label \"(a)\" itself or any subsequent part labels\n- The question text of part (a) or any later part\n- Any mark allocations like [1], [3] etc.\n\nIf there is no text before \"(a)\", return an empty string.\n\nUse $ ... $ for inline math and \\\\[ ... \\\\] for display math. Use \\\\boldsymbol{} for vectors, \\\\begin{pmatrix} for matrices.\n- If the image contains a coordinate diagram or graph appearing in the stem area (before part (a)), output the marker [[GRAPH_IMAGE]] on its own line at the position where the graph appears within the stem.\n- No color formatting: NEVER output \\\\textcolor{}{}, \\\\color{}, \\\\colorbox{}{}, \\\\definecolor{}, or ANY color macro whatsoever. Return plain LaTeX only.\nReturn ONLY the LaTeX body, no explanation, no markdown fences.`;
     } else if (isDraft) {
       const draftType = field === "parts_draft_latex" ? "question" : "mark scheme";
-      prompt = `These are images of an IB Mathematics exam ${draftType}. The question has an introductory stem followed by multiple labelled parts (a), (b), (c) etc.
-
-Your task: extract the FULL question content in \\begin{IBPart}...\\end{IBPart} blocks.
-
-CRITICAL RULE — interspersed context paragraphs:
-Any setup/definition paragraph that appears BETWEEN two part labels (e.g. between (a) and (b)) belongs at the TOP of the FOLLOWING part's \\begin{IBPart} block, BEFORE that part's question sentence.
-
-Concrete example of correct output structure:
----
-[stem text before (a), if any — outside all IBPart blocks]
-
-\\begin{IBPart}[a]
-Write down the value of $\\alpha + \\beta + \\gamma$. \\hfill [1]
-\\end{IBPart}
-
-\\begin{IBPart}[b]
-A function $h(z)$ is defined by $h(z) = 2z^5 - 11z^4 + rz^3 + sz^2 + tz - 20$, where $r, s, t \\in \\mathbb{R}$.
-
-$\\alpha$, $\\beta$ and $\\gamma$ are also roots of the equation $h(z) = 0$.
-
-It is given that $h(z) = 0$ is satisfied by the complex number $z = p + 3\\mathrm{i}$.
-
-Show that $p = 1$. \\hfill [3]
-\\end{IBPart}
-
-\\begin{IBPart}[c]
-It is now given that $h\\!\\left(\\dfrac{1}{2}\\right) = 0$, and $\\alpha, \\beta \\in \\mathbb{Z}^+$, $\\alpha < \\beta$ and $\\gamma \\in \\mathbb{Q}$.
-
-\\begin{enumerate}[label=(\\roman*)]
-  \\item Find the value of the product $\\alpha\\beta$.
-  \\item Write down the value of $\\alpha$ and the value of $\\beta$. \\hfill [3]
-\\end{enumerate}
-\\end{IBPart}
----
-
-Notice: the h(z) paragraphs appear between labels (a) and (b) in the image, so they go INSIDE the (b) IBPart block FIRST. The "It is now given…" paragraph appears between (b) and (c) in the image, so it goes INSIDE the (c) IBPart block FIRST.
-
-Additional rules:
-- ALWAYS tag each \\begin{IBPart} with the part letter in square brackets: \\begin{IBPart}[a] for part (a), \\begin{IBPart}[d] for part (d), etc. This is CRITICAL for mark schemes that may only show a subset of parts — without the label the parts will be assigned to the wrong slots.
-- Text BEFORE the first labelled part (a) goes OUTSIDE all \\begin{IBPart} blocks — it is the shared stem
-- If there is no text before part (a), output nothing before the first \\begin{IBPart}
-- Do NOT include the part labels (a), (b), (c) inside the block content — the label goes in the \\begin{IBPart}[letter] tag only
-- Include sub-parts (i), (ii) within the parent part's \\begin{IBPart} block
-- Include mark allocations as \\hfill [N] at the end of each part's final line
-- Use $ ... $ for inline math and \\[ ... \\] for display math
-- If the image contains a coordinate diagram or graph, output the marker [[GRAPH_IMAGE]] on its own line at the exact position where the graph appears in the document. For example, if the graph appears after the stem introduction and before part (a), place [[GRAPH_IMAGE]] after the stem text and before the first \\begin{IBPart}. If the graph appears between two parts, place it inside the following part's \\begin{IBPart} block, before that part's question text. Do NOT place [[GRAPH_IMAGE]] after the last \\end{IBPart}.
-- No color formatting: NEVER output \\textcolor{}{}, \\color{}, \\colorbox{}{}, \\definecolor{}, or ANY color macro whatsoever. Return plain LaTeX only.
-- Return ONLY the LaTeX body, no explanation, no markdown fences`;
+      prompt = `These are images of an IB Mathematics exam ${draftType}. The question has an introductory stem followed by multiple labelled parts (a), (b), (c) etc.\n\nYour task: extract the FULL question content in \\\\begin{IBPart}...\\\\end{IBPart} blocks.\n\nCRITICAL RULE — interspersed context paragraphs:\nAny setup/definition paragraph that appears BETWEEN two part labels (e.g. between (a) and (b)) belongs at the TOP of the FOLLOWING part's \\\\begin{IBPart} block, BEFORE that part's question sentence.\n\nConcrete example of correct output structure:\n---\n[stem text before (a), if any — outside all IBPart blocks]\n\n\\\\begin{IBPart}[a]\nWrite down the value of $\\\\alpha + \\\\beta + \\\\gamma$. \\\\hfill [1]\n\\\\end{IBPart}\n\n\\\\begin{IBPart}[b]\nA function $h(z)$ is defined by $h(z) = 2z^5 - 11z^4 + rz^3 + sz^2 + tz - 20$, where $r, s, t \\\\in \\\\mathbb{R}$.\n\n$\\\\alpha$, $\\\\beta$ and $\\\\gamma$ are also roots of the equation $h(z) = 0$.\n\nIt is given that $h(z) = 0$ is satisfied by the complex number $z = p + 3\\\\mathrm{i}$.\n\nShow that $p = 1$. \\\\hfill [3]\n\\\\end{IBPart}\n\n\\\\begin{IBPart}[c]\nIt is now given that $h\\\\!\\\\left(\\\\dfrac{1}{2}\\\\right) = 0$, and $\\\\alpha, \\\\beta \\\\in \\\\mathbb{Z}^+$, $\\\\alpha < \\\\beta$ and $\\\\gamma \\\\in \\\\mathbb{Q}$.\n\n\\\\begin{enumerate}[label=(\\\\roman*)]\n  \\\\item Find the value of the product $\\\\alpha\\\\beta$.\n  \\\\item Write down the value of $\\\\alpha$ and the value of $\\\\beta$. \\\\hfill [3]\n\\\\end{enumerate}\n\\\\end{IBPart}\n---\n\nNotice: the h(z) paragraphs appear between labels (a) and (b) in the image, so they go INSIDE the (b) IBPart block FIRST. The \"It is now given…\" paragraph appears between (b) and (c) in the image, so it goes INSIDE the (c) IBPart block FIRST.\n\nAdditional rules:\n- ALWAYS tag each \\\\begin{IBPart} with the part letter in square brackets: \\\\begin{IBPart}[a] for part (a), \\\\begin{IBPart}[d] for part (d), etc. This is CRITICAL for mark schemes that may only show a subset of parts — without the label the parts will be assigned to the wrong slots.\n- Text BEFORE the first labelled part (a) goes OUTSIDE all \\\\begin{IBPart} blocks — it is the shared stem\n- If there is no text before part (a), output nothing before the first \\\\begin{IBPart}\n- Do NOT include the part labels (a), (b), (c) inside the block content — the label goes in the \\\\begin{IBPart}[letter] tag only\n- Include sub-parts (i), (ii) within the parent part's \\\\begin{IBPart} block\n- Include mark allocations as \\\\hfill [N] at the end of each part's final line\n- Use $ ... $ for inline math and \\\\[ ... \\\\] for display math\n- If the image contains a coordinate diagram or graph, output the marker [[GRAPH_IMAGE]] on its own line at the exact position where the graph appears in the document. For example, if the graph appears after the stem introduction and before part (a), place [[GRAPH_IMAGE]] after the stem text and before the first \\\\begin{IBPart}. If the graph appears between two parts, place it inside the following part's \\\\begin{IBPart} block, before that part's question text. Do NOT place [[GRAPH_IMAGE]] after the last \\\\end{IBPart}.\n- No color formatting: NEVER output \\\\textcolor{}{}, \\\\color{}, \\\\colorbox{}{}, \\\\definecolor{}, or ANY color macro whatsoever. Return plain LaTeX only.\n- Return ONLY the LaTeX body, no explanation, no markdown fences`;
     } else if (imageType === "markscheme") {
       prompt = `These are images of an IB Mathematics mark scheme. Extract the complete LaTeX for the solution/mark scheme shown. Return ONLY the LaTeX body, no explanation, no markdown fences.\n\n${IB_NORMALISE_SYSTEM}`;
     } else {
@@ -324,7 +226,10 @@ Additional rules:
 
     const response = await anthropic.messages.create({
       model: "claude-opus-4-5",
-      max_tokens: 2048,
+      // 8192 tokens: IB markschemes with 5+ parts, method branches, column
+      // vectors, and mark codes can exceed 2500 tokens. 2048 caused truncation
+      // mid-output (visible as \boldsymb cut off in part (d) of a 21-mark Q).
+      max_tokens: 8192,
       messages: [
         {
           role: "user",
@@ -358,7 +263,9 @@ Additional rules:
       }));
       const normResponse = await anthropic.messages.create({
         model: "claude-sonnet-5",
-        max_tokens: 2048,
+        // 8192 tokens: same reasoning — normalisation of a long markscheme
+        // must have headroom to reproduce the full content, not truncate it.
+        max_tokens: 8192,
         system: IB_NORMALISE_SYSTEM,
         messages: [
           {
@@ -400,20 +307,7 @@ Additional rules:
         source: { type: "base64" as const, media_type: "image/png" as const, data: b64 },
       }));
       const docType = isQuestionDraft ? "question" : "mark scheme";
-      const correctionPrompt = `You have already extracted this IB Mathematics ${docType} into \\begin{IBPart}[letter]...\\end{IBPart} blocks. Now perform a boundary check against the original images.
-
-Background: In IB papers, a context/setup paragraph sometimes appears printed BETWEEN two part labels in the original document — for example, a line like "Consider the function $g(x) = mx + c$, where $x \\in \\mathbb{R}$ and $m, c \\in \\mathbb{Q}$." printed between the "(c)" and "(d)" labels. Such paragraphs must go at the TOP of the FOLLOWING part's IBPart block.
-
-A frequent extraction error is placing such paragraphs at the BOTTOM of the PRECEDING part instead.
-
-For each IBPart block, compare its content with the image:
-- If the block's FINAL paragraph is a setup/definition that introduces the NEXT part's task (it provides no answer to the current part and is not needed to understand the current part's conclusion), move it to the beginning of the next part's IBPart block.
-- If the block's final content is a genuine conclusion or result of the current part's task, leave it in place.
-
-Apply corrections directly. Return the complete corrected LaTeX with \\begin{IBPart}[letter] tags preserved. If nothing needs moving, return the text unchanged. Return ONLY the LaTeX body — no explanation, no markdown fences.
-
-Current extraction:
-${extractedLatex}`;
+      const correctionPrompt = `You have already extracted this IB Mathematics ${docType} into \\begin{IBPart}[letter]...\\end{IBPart} blocks. Now perform a boundary check against the original images.\n\nBackground: In IB papers, a context/setup paragraph sometimes appears printed BETWEEN two part labels in the original document — for example, a line like "Consider the function $g(x) = mx + c$, where $x \\in \\mathbb{R}$ and $m, c \\in \\mathbb{Q}$." printed between the "(c)" and "(d)" labels. Such paragraphs must go at the TOP of the FOLLOWING part's IBPart block.\n\nA frequent extraction error is placing such paragraphs at the BOTTOM of the PRECEDING part instead.\n\nFor each IBPart block, compare its content with the image:\n- If the block's FINAL paragraph is a setup/definition that introduces the NEXT part's task (it provides no answer to the current part and is not needed to understand the current part's conclusion), move it to the beginning of the next part's IBPart block.\n- If the block's final content is a genuine conclusion or result of the current part's task, leave it in place.\n\nApply corrections directly. Return the complete corrected LaTeX with \\begin{IBPart}[letter] tags preserved. If nothing needs moving, return the text unchanged. Return ONLY the LaTeX body — no explanation, no markdown fences.\n\nCurrent extraction:\n${extractedLatex}`;
 
       const correctionResp = await anthropic.messages.create({
         model: "claude-opus-4-5",
@@ -448,43 +342,3 @@ ${extractedLatex}`;
   extractedLatex = stripQuestionNumberPrefix(extractedLatex);
 
   const graphMarkerInjected = false; // graph marker is now placed by Claude at the correct position
-
-  // Save extracted LaTeX to the appropriate table
-  if (savesToQuestion) {
-    // Stem and draft fields save to ib_questions
-    const { error: updateErr } = await supabase
-      .from("ib_questions")
-      .update({ [field]: extractedLatex })
-      .eq("id", questionId);
-
-    if (updateErr)
-      return NextResponse.json({ error: updateErr.message }, { status: 500 });
-  } else {
-    // Legacy: content_latex / markscheme_latex save to all question_parts
-    const { data: partRows, error: partErr } = await supabase
-      .from("question_parts")
-      .select("id")
-      .eq("question_id", questionId);
-
-    if (partErr)
-      return NextResponse.json({ error: partErr.message }, { status: 500 });
-
-    if (partRows && partRows.length > 0) {
-      const { error: updateErr } = await supabase
-        .from("question_parts")
-        .update({ [field]: extractedLatex })
-        .eq("question_id", questionId);
-
-      if (updateErr)
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
-    }
-  }
-
-  return NextResponse.json({
-    latex: extractedLatex,
-    engine: USE_MATHPIX ? "mathpix" : "claude",
-    imagesProcessed: base64Images.length,
-    graphDetected,
-    graphMarkerInjected,
-  });
-}
