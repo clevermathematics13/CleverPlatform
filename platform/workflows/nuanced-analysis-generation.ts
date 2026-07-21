@@ -52,10 +52,20 @@ const MODEL = "claude-sonnet-5";
 const MAX_TOKENS_PER_PASS = 32000;
 
 // How often to emit a 'progress' chunk while Claude is still in its
-// thinking phase (no visible text yet). Thinking deltas fire very
-// frequently — sending one chunk per delta would flood the stream for no
-// UI benefit, so only every Nth delta is forwarded as a "still working" pulse.
+// thinking phase (no visible text yet), and while it's writing the visible
+// JSON. Both kinds of delta fire very frequently -- Anthropic's streaming
+// API can emit a "text" delta every few characters, so a completed
+// ~40,000-character pass can produce many thousands of raw deltas. Sending
+// one SSE frame per delta, unthrottled, floods the /api/claude proxy
+// connection with far more frames than the browser needs for a "still
+// working" indicator, and is the leading suspect for why long two-pass
+// generations were observed disconnecting and exhausting the client's
+// reconnect budget well before the underlying workflow actually finished
+// (confirmed via nuanced_generation_logs: both passes completed with
+// stop_reason=end_turn *after* the client had already given up). Only
+// every Nth delta of each kind is forwarded as a pulse.
 const THINKING_PROGRESS_EVERY_N_DELTAS = 40;
+const WRITING_PROGRESS_EVERY_N_DELTAS = 40;
 
 const FIRST_PASS_HINT = [
   "",
@@ -221,8 +231,12 @@ async function callClaude(
         void writer.write({ type: "progress", phase: `${passLabel}:thinking` });
       }
     });
+    let writingDeltaCount = 0;
     stream.on("text", (_delta, snapshot) => {
-      void writer.write({ type: "progress", phase: `${passLabel}:writing`, charCount: snapshot.length });
+      writingDeltaCount++;
+      if (writingDeltaCount % WRITING_PROGRESS_EVERY_N_DELTAS === 1) {
+        void writer.write({ type: "progress", phase: `${passLabel}:writing`, charCount: snapshot.length });
+      }
     });
 
     const response = await stream.finalMessage();
