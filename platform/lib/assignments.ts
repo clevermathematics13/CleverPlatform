@@ -468,6 +468,28 @@ export function formatQuestionLabel(
   return `${sectionIndex + 1}.${questionIndex + 1}`;
 }
 
+/**
+ * Canonical (a), (b), (c) ... (z), (aa), (ab) ... lettering for a question's
+ * subparts, indexed from 0. This is the single source of truth for subpart
+ * letters — every place that displays or references a subpart label (the
+ * on-screen preview, the command-term validator's issue locations, etc.)
+ * should import this rather than reimplementing its own char-code math.
+ * That duplication is exactly what let the preview's labels (which used a
+ * stray offset of 105 — the code for 'i', not 'a') silently drift out of
+ * sync with the validator's labels (which were already correct), so a
+ * teacher would see "(i)" on screen while a warning banner referenced the
+ * same subpart as "(a)".
+ */
+export function subpartLetter(index: number): string {
+  let n = index;
+  let label = "";
+  do {
+    label = String.fromCharCode(97 + (n % 26)) + label;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return label;
+}
+
 export function escapeHtml(value: string): string {
   const a = String.fromCharCode(38);
   return value
