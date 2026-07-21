@@ -17,7 +17,6 @@
  * Nothing here writes to the database. The API route that drives this returns
  * proposed corrections for a human to review and apply.
  */
-import React from "react";
 
 /**
  * Pinned to the katex version in package.json. Loaded from a CDN rather than
@@ -62,43 +61,52 @@ const CONTAINER_CSS = `
 /** The element id the screenshot is clipped to. */
 export const RENDER_ROOT_ID = "latex-root";
 
+/** Escape a string for safe use inside a double-quoted HTML attribute. */
+function escapeAttribute(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 /**
- * Build a standalone HTML document showing `latex` as LatexRenderer would.
+ * Wrap browser-captured markup in a standalone document ready to screenshot.
  *
- * Async because the renderer and react-dom/server are loaded on demand (see
- * the note in the body).
+ * `bodyHtml` is the innerHTML of the live LatexRenderer output, captured in the
+ * teacher's own browser. Rendering it server-side is not an option: LatexRenderer
+ * is a client component, and importing one from server code yields a client
+ * *reference* rather than the function, so react-dom/server cannot invoke it
+ * ("Attempted to call the default export ... from the server"). Capturing the
+ * real DOM is also strictly higher fidelity — it is literally what the teacher
+ * is looking at, including every applied stylesheet.
  *
- * Throws if the component fails to render (for example if a future change
- * introduces a hook or browser-only API into its render path) — the caller
- * should treat that as a check failure rather than silently comparing a blank
- * screenshot against the source, which would produce a confident and
- * completely wrong "everything is missing" report.
+ * `styleHrefs` are the page's own stylesheet URLs, forwarded so the screenshot
+ * picks up the application's CSS (Tailwind utilities such as the display-math
+ * margins) rather than falling back to unstyled markup. KaTeX's stylesheet is
+ * always included as well, since its webfonts drive math glyph metrics.
  */
-export async function buildRenderDocument(latex: string): Promise<string> {
-  // react-dom/server and the LatexRenderer client component are imported at
-  // call time rather than at module scope on purpose. A static import of
-  // react-dom/server anywhere in an App Route's module graph is rejected at
-  // build time ("You're importing a component that imports react-dom/server"),
-  // and this module is only ever reached from a route handler. Importing them
-  // dynamically keeps that static edge out of the graph while still rendering
-  // the genuine component.
-  const [{ renderToStaticMarkup }, { default: LatexRenderer }] =
-    await Promise.all([
-      import("react-dom/server"),
-      import("@/components/LatexRenderer"),
-    ]);
-  const markup = renderToStaticMarkup(
-    React.createElement(LatexRenderer, { latex }),
-  );
+export function buildRenderDocument(
+  bodyHtml: string,
+  styleHrefs: string[] = [],
+): string {
+  const links = [
+    KATEX_CSS_URL,
+    ...styleHrefs.filter((h) => typeof h === "string" && /^https?:\/\//.test(h)),
+  ]
+    .slice(0, 12)
+    .map((href) => `<link rel="stylesheet" href="${escapeAttribute(href)}" />`)
+    .join("\n    ");
+
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="${KATEX_CSS_URL}" />
+    ${links}
     <style>${CONTAINER_CSS}</style>
   </head>
   <body>
-    <div id="${RENDER_ROOT_ID}">${markup}</div>
+    <div id="${RENDER_ROOT_ID}">${bodyHtml}</div>
   </body>
 </html>`;
 }
