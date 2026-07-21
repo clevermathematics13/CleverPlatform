@@ -43,6 +43,7 @@ import {
   type FormattingRequirements,
   clampInt,
   formatQuestionLabel,
+  subpartLetter,
   detectDuplicateQuestions,
   type DuplicatePair,
 } from "@/lib/assignments";
@@ -432,7 +433,7 @@ function QuestionBlock({
           {q.subparts?.map((sp, si) => (
             <div key={si} className="mt-2 ml-4 flex gap-2 items-start">
               <span className="text-[9pt] text-gray-400 font-mono shrink-0 mt-1">
-                ({String.fromCharCode(105 + si)})
+                ({subpartLetter(si)})
               </span>
               <div className="flex-1 min-w-0">
                 <div className="flex gap-2 items-start">
