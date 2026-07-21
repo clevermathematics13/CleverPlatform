@@ -29,6 +29,27 @@ async function readClipboardImage(): Promise<{ file: File | null; error?: string
   }
 }
 
+/** Shape returned by /api/questions/visual-check.
+ *  Declared locally rather than imported from lib/latex-visual-check so this
+ *  client component never pulls that server-only module (which loads
+ *  react-dom/server) into the client bundle. */
+type VisualDiscrepancy = {
+  kind: string;
+  severity: "high" | "medium" | "low";
+  location: string;
+  description: string;
+  suggestedFix: string | null;
+};
+
+type VisualCheckResult = {
+  passes: { pass: number; matches: boolean; summary: string; discrepancies: VisualDiscrepancy[] }[];
+  proposedLatex: string | null;
+  changed: boolean;
+  finalMatches: boolean;
+  remainingDiscrepancies: VisualDiscrepancy[];
+  sourceImageCount: number;
+};
+
 type LatexEntry = {
   partId: string;
   label: string | null;
@@ -77,6 +98,13 @@ export function ImageSection({
   const [editDraft, setEditDraft] = useState("");
   const [savingLatex, setSavingLatex] = useState(false);
   const [saveLatexError, setSaveLatexError] = useState<string | null>(null);
+  // Visual check — renders the stored LaTeX, screenshots it, and compares it
+  // against the source scans. Results are advisory; applying a proposed
+  // correction is always an explicit click.
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<VisualCheckResult | null>(null);
+  const [checkError, setCheckError] = useState<string | null>(null);
+  const [applyingFix, setApplyingFix] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
   const clipboardErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -131,6 +159,32 @@ export function ImageSection({
 
   const handleFileClick = (fileRef: React.RefObject<HTMLInputElement | null>) => {
     fileRef.current?.click();
+  };
+
+  const runVisualCheck = async (partId: string, isMarkscheme: boolean) => {
+    setChecking(true);
+    setCheckError(null);
+    setCheckResult(null);
+    try {
+      const res = await fetch("/api/questions/visual-check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          partId,
+          field: isMarkscheme ? "markscheme_latex" : "content_latex",
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setCheckError(data.error ?? `Visual check failed (${res.status})`);
+        return;
+      }
+      setCheckResult(data as VisualCheckResult);
+    } catch (e: unknown) {
+      setCheckError(e instanceof Error ? e.message : "Visual check failed");
+    } finally {
+      setChecking(false);
+    }
   };
 
   const groups = [
@@ -360,7 +414,100 @@ export function ImageSection({
                 ✏ Edit
               </button>
             )}
+            {/* Scoped to single-entry panels: the check compares against every
+                source image of this type, which only lines up when one entry
+                holds the whole question/markscheme. */}
+            {latex.length === 1 && imgs.length > 0 && (
+              <button
+                type="button"
+                disabled={checking}
+                onClick={() => runVisualCheck(latex[0].partId, type === "markscheme")}
+                title="Render this LaTeX, screenshot it, and compare it against the source images"
+                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-violet-300 bg-white text-violet-600 hover:bg-violet-50 disabled:opacity-40 transition-colors"
+              >
+                {checking ? "Checking…" : "◉ Visual check"}
+              </button>
+            )}
           </div>
+          {(checking || checkError || checkResult) && (
+            <div className="border-b border-gray-200 bg-violet-50/40 px-3 py-2.5 space-y-2">
+              {checking && (
+                <p className="text-[11px] font-semibold text-violet-700">
+                  Rendering the LaTeX, screenshotting it, and comparing against the source scans… this takes up to a minute.
+                </p>
+              )}
+              {checkError && (
+                <div className="flex items-start gap-2">
+                  <p className="flex-1 text-[11px] font-semibold text-red-600">{checkError}</p>
+                  <button type="button" onClick={() => setCheckError(null)} className="text-[11px] font-bold text-gray-400 hover:text-gray-600">✕</button>
+                </div>
+              )}
+              {checkResult && (
+                <>
+                  <div className="flex items-start gap-2">
+                    <p className={`flex-1 text-[11px] font-bold ${checkResult.finalMatches ? "text-emerald-700" : "text-amber-700"}`}>
+                      {checkResult.finalMatches
+                        ? `✓ Matches the source (${checkResult.passes.length} pass${checkResult.passes.length === 1 ? "" : "es"}, ${checkResult.sourceImageCount} image${checkResult.sourceImageCount === 1 ? "" : "s"})`
+                        : `${checkResult.remainingDiscrepancies.length} difference${checkResult.remainingDiscrepancies.length === 1 ? "" : "s"} from the source after ${checkResult.passes.length} pass${checkResult.passes.length === 1 ? "" : "es"}`}
+                    </p>
+                    <button type="button" onClick={() => setCheckResult(null)} className="text-[11px] font-bold text-gray-400 hover:text-gray-600">✕</button>
+                  </div>
+
+                  {checkResult.remainingDiscrepancies.length > 0 && (
+                    <ul className="space-y-1">
+                      {checkResult.remainingDiscrepancies.map((d, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-[11px] leading-snug">
+                          <span className={`shrink-0 rounded px-1 py-0.5 text-[9px] font-bold uppercase ${
+                            d.severity === "high" ? "bg-red-100 text-red-700"
+                            : d.severity === "medium" ? "bg-amber-100 text-amber-800"
+                            : "bg-gray-100 text-gray-600"}`}>
+                            {d.kind.replace(/_/g, " ")}
+                          </span>
+                          <span className="text-gray-700">
+                            {d.description}
+                            {d.location && <span className="text-gray-400"> — {d.location}</span>}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {checkResult.proposedLatex && (
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <button
+                        type="button"
+                        disabled={applyingFix}
+                        onClick={async () => {
+                          if (!checkResult.proposedLatex) return;
+                          setApplyingFix(true);
+                          const result = await onSaveLatex(latex[0].partId, type === "markscheme", checkResult.proposedLatex);
+                          setApplyingFix(false);
+                          if (result.ok) setCheckResult(null);
+                          else setCheckError(result.error ?? "Could not apply the correction");
+                        }}
+                        className="rounded bg-violet-600 px-2 py-0.5 text-[10px] font-bold text-white hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        {applyingFix ? "Applying…" : "Apply proposed correction"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!checkResult.proposedLatex) return;
+                          setEditingKey(`${type}-${latex[0].partId}`);
+                          setEditDraft(checkResult.proposedLatex);
+                          setSaveLatexError(null);
+                          setCheckResult(null);
+                        }}
+                        className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-50"
+                      >
+                        Review it first
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           {latex.length > 0 ? (
             <div className="divide-y divide-gray-100">
               {latex.map(({ partId, label: partLabel, latex: tex, renderMarkAttribution }) => {
