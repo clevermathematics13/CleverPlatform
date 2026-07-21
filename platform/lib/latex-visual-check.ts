@@ -18,8 +18,6 @@
  * proposed corrections for a human to review and apply.
  */
 import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import LatexRenderer from "@/components/LatexRenderer";
 
 /**
  * Pinned to the katex version in package.json. Loaded from a CDN rather than
@@ -67,13 +65,28 @@ export const RENDER_ROOT_ID = "latex-root";
 /**
  * Build a standalone HTML document showing `latex` as LatexRenderer would.
  *
+ * Async because the renderer and react-dom/server are loaded on demand (see
+ * the note in the body).
+ *
  * Throws if the component fails to render (for example if a future change
  * introduces a hook or browser-only API into its render path) — the caller
  * should treat that as a check failure rather than silently comparing a blank
  * screenshot against the source, which would produce a confident and
  * completely wrong "everything is missing" report.
  */
-export function buildRenderDocument(latex: string): string {
+export async function buildRenderDocument(latex: string): Promise<string> {
+  // react-dom/server and the LatexRenderer client component are imported at
+  // call time rather than at module scope on purpose. A static import of
+  // react-dom/server anywhere in an App Route's module graph is rejected at
+  // build time ("You're importing a component that imports react-dom/server"),
+  // and this module is only ever reached from a route handler. Importing them
+  // dynamically keeps that static edge out of the graph while still rendering
+  // the genuine component.
+  const [{ renderToStaticMarkup }, { default: LatexRenderer }] =
+    await Promise.all([
+      import("react-dom/server"),
+      import("@/components/LatexRenderer"),
+    ]);
   const markup = renderToStaticMarkup(
     React.createElement(LatexRenderer, { latex }),
   );
