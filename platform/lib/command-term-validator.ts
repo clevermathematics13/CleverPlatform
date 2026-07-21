@@ -34,6 +34,7 @@
  */
 
 import { DEFAULT_COMMAND_TERMS } from "./command-terms";
+import { subpartLetter } from "./assignments";
 import type { AssignmentDraft, AssignmentQuestion } from "./assignments";
 
 export type CommandTermIssue = {
@@ -114,17 +115,6 @@ function promptTail(prompt: string, maxChars = 140): string {
   const trimmed = (prompt ?? "").trim();
   if (trimmed.length <= maxChars) return trimmed;
   return `…${trimmed.slice(trimmed.length - maxChars)}`;
-}
-
-function subpartLetter(index: number): string {
-  // (a) … (z), then (aa) etc. — subparts never realistically exceed 26.
-  let n = index;
-  let label = "";
-  do {
-    label = String.fromCharCode(97 + (n % 26)) + label;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return label;
 }
 
 /**
