@@ -219,11 +219,13 @@ export async function POST(request: NextRequest) {
       height: 1200,
       deviceScaleFactor: 2,
     });
-    // networkidle0 so the stylesheets and their webfonts are in before we
-    // measure anything; screenshotting mid-font-load produces phantom
-    // "layout" discrepancies.
+    // "load" fires only after stylesheets and images have finished, and the
+    // document.fonts.ready wait below covers the webfonts — screenshotting
+    // mid-load produces phantom "layout" discrepancies. puppeteer-core
+    // restricts setContent's waitUntil to load/domcontentloaded; the
+    // networkidle values it accepts elsewhere are goto-only.
     await page.setContent(buildRenderDocument(renderedHtml, styleHrefs), {
-      waitUntil: "networkidle0",
+      waitUntil: "load",
       timeout: 30000,
     });
     await page.evaluate(async () => {
