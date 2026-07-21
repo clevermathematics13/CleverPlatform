@@ -49,7 +49,11 @@ ${body}
  * Keep in sync with the transforms in postProcessMathpixLatex().
  */
 export const IB_LATEX_STYLE_GUIDE = `IB Mathematics past-paper LaTeX conventions (follow exactly):
-- Vectors: ALWAYS use \\boldsymbol{} (bold italic). NEVER use \\mathbf{} (bold upright), \\bm{}, \\vec{} or \\overrightarrow{} for vector variables. This applies to EVERY occurrence — in display equations AND inline text (e.g. "where $\\boldsymbol{s}$ is perpendicular to $\\boldsymbol{a}$").
+- Vectors — two distinct conventions in IB, both must be reproduced exactly:
+  (1) VECTOR VARIABLES (single or multi-letter like a, v, AB when treated as a named vector): use \\boldsymbol{} (bold italic). NEVER use \\mathbf{}, \\bm{}, or \\vec{} for these.
+  (2) DIRECTED LINE SEGMENTS between two named points (written with an arrow ABOVE two capital letters, e.g. → over "AB", → over "BC", → over "OA"): ALWAYS use \\overrightarrow{AB}, \\overrightarrow{BC}, \\overrightarrow{OA} etc. — this is the arrow-above notation, NOT bold. If the source scan shows an arrow above two letters, it is \\overrightarrow{}, never \\boldsymbol{}. Examples: $\\overrightarrow{OA}$, $\\overrightarrow{BC}$, $|\\overrightarrow{AB}|$.
+  In the same question BOTH forms can appear: $\\overrightarrow{AB} = \\boldsymbol{b} - \\boldsymbol{a}$ is correct; $\\boldsymbol{BC}$ is WRONG for a directed segment.
+  This applies to EVERY occurrence — in display equations AND inline text.
 - Column / row vectors: use \\begin{pmatrix}...\\end{pmatrix} (round brackets, no extra spacing). Do NOT use bmatrix or vmatrix.
 - Dot product (vector · vector): use \\boldsymbol{\\cdot} so the dot matches the weight of the bold vectors. NEVER use \\bullet or \\times for dot product.
 - Scalar × scalar: use \\times or \\cdot as appropriate.
@@ -305,7 +309,8 @@ If the question has no sub-parts, return a single entry with label "".`;
  *   • enumerate  → IBPart  (hanging-indent part labels)
  *   • \\mathbf{} → \\boldsymbol{} (bold italic vectors, not bold upright)
  *   • \\bm{}     → \\boldsymbol{}
- *   • \\vec{}    → \\boldsymbol{} (IB uses bold notation, not arrow)
+ *   • \\vec{}    → \\boldsymbol{} (\\vec{} is the wrong arrow form; \\overrightarrow{} for
+ *                directed segments is correct and is intentionally NOT converted)
  *
  * @param raw  The raw LaTeX string returned by the MathPix API
  * @returns    Post-processed LaTeX string ready for storage / rendering
