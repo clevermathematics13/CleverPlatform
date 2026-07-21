@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import LatexRenderer from "@/components/LatexRenderer";
 import type { Question, QuestionImage } from "./types";
 
@@ -105,6 +105,10 @@ export function ImageSection({
   const [checkResult, setCheckResult] = useState<VisualCheckResult | null>(null);
   const [checkError, setCheckError] = useState<string | null>(null);
   const [applyingFix, setApplyingFix] = useState(false);
+  // Offscreen probe used to capture rendered markup for the visual check,
+  // including for corrections that have not been saved yet.
+  const [probeLatex, setProbeLatex] = useState<string | null>(null);
+  const probeRef = useRef<HTMLDivElement>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [clipboardError, setClipboardError] = useState<string | null>(null);
   const clipboardErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -161,29 +165,93 @@ export function ImageSection({
     fileRef.current?.click();
   };
 
-  const runVisualCheck = async (partId: string, isMarkscheme: boolean) => {
+  /**
+   * Render the LaTeX offscreen, capture the real DOM, and have the server
+   * screenshot and compare it against the source scans.
+   *
+   * The loop lives here rather than on the server because LatexRenderer is a
+   * client component — server code can only obtain a client reference to it,
+   * not invoke it. Capturing the live DOM is also the most faithful thing to
+   * compare, since it is exactly what is on screen. Each pass re-renders the
+   * previous pass's proposed correction so a fix that only half-worked gets
+   * caught instead of assumed good.
+   */
+  const runVisualCheck = async (
+    partId: string,
+    isMarkscheme: boolean,
+    startLatex: string,
+  ) => {
+    const MAX_PASSES = 2;
     setChecking(true);
     setCheckError(null);
     setCheckResult(null);
     try {
-      const res = await fetch("/api/questions/visual-check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          partId,
-          field: isMarkscheme ? "markscheme_latex" : "content_latex",
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setCheckError(data.error ?? `Visual check failed (${res.status})`);
-        return;
+      const styleHrefs = Array.from(
+        document.querySelectorAll('link[rel="stylesheet"]'),
+      ).map((l) => (l as HTMLLinkElement).href);
+
+      const passes: VisualCheckResult["passes"] = [];
+      let current = startLatex;
+      let proposed: string | null = null;
+      let sourceImageCount = 0;
+
+      for (let pass = 1; pass <= MAX_PASSES; pass++) {
+        // flushSync so the probe's DOM is committed before we read it —
+        // without it the capture races the React render and can come back
+        // empty or one pass stale.
+        flushSync(() => setProbeLatex(current));
+        const renderedHtml = probeRef.current?.innerHTML ?? "";
+        if (!renderedHtml.trim()) {
+          setCheckError("Could not capture the rendered LaTeX.");
+          return;
+        }
+
+        const res = await fetch("/api/questions/visual-check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            partId,
+            field: isMarkscheme ? "markscheme_latex" : "content_latex",
+            renderedHtml,
+            styleHrefs,
+            currentLatex: current,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          setCheckError(data.error ?? `Visual check failed (${res.status})`);
+          return;
+        }
+
+        sourceImageCount = data.sourceImageCount ?? 0;
+        passes.push({
+          pass,
+          matches: Boolean(data.matches),
+          summary: data.summary ?? "",
+          discrepancies: (data.discrepancies ?? []) as VisualDiscrepancy[],
+        });
+
+        if (data.matches) break;
+        if (pass === MAX_PASSES) break;
+        if (!data.proposedLatex || data.proposedLatex === current) break;
+        current = data.proposedLatex;
+        proposed = data.proposedLatex;
       }
-      setCheckResult(data as VisualCheckResult);
+
+      const last = passes[passes.length - 1];
+      setCheckResult({
+        passes,
+        proposedLatex: proposed,
+        changed: proposed !== null,
+        finalMatches: last?.matches ?? false,
+        remainingDiscrepancies: last?.discrepancies ?? [],
+        sourceImageCount,
+      });
     } catch (e: unknown) {
       setCheckError(e instanceof Error ? e.message : "Visual check failed");
     } finally {
       setChecking(false);
+      setProbeLatex(null);
     }
   };
 
@@ -421,7 +489,7 @@ export function ImageSection({
               <button
                 type="button"
                 disabled={checking}
-                onClick={() => runVisualCheck(latex[0].partId, type === "markscheme")}
+                onClick={() => runVisualCheck(latex[0].partId, type === "markscheme", latex[0].latex)}
                 title="Render this LaTeX, screenshot it, and compare it against the source images"
                 className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-violet-300 bg-white text-violet-600 hover:bg-violet-50 disabled:opacity-40 transition-colors"
               >
@@ -599,6 +667,24 @@ export function ImageSection({
         </div>
 
       </div>
+
+      {/* Offscreen probe for the visual check. Positioned far off-canvas
+          rather than display:none so it still lays out and KaTeX measures
+          correctly — a hidden element would capture with collapsed geometry. */}
+      {probeLatex !== null && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed", left: "-10000px", top: 0,
+            width: "620px", padding: "12px", background: "#ffffff",
+            fontSize: "14px", color: "#1f2937", pointerEvents: "none",
+          }}
+        >
+          <div ref={probeRef}>
+            <LatexRenderer latex={probeLatex} />
+          </div>
+        </div>
+      )}
 
       {!driveConnected && questionImages.length === 0 && msImages.length === 0 && (
         <p className="text-xs text-gray-400 italic">Connect Google Drive to extract images from question documents.</p>
