@@ -198,7 +198,7 @@ export async function POST(request: NextRequest) {
 
     /** Render `latex` through the real component and return a base64 PNG. */
     async function screenshotLatex(latex: string): Promise<string> {
-      const html = buildRenderDocument(latex);
+      const html = await buildRenderDocument(latex);
       const page = await browser!.newPage();
       try {
         await page.setViewport({
