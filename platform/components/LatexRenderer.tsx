@@ -407,8 +407,18 @@ function mergeLabelLines(src: string): string {
 }
 
 function preprocessLatex(src: string): string {
-  // Remove IB-specific env wrappers
-  let out = src.replace(/\\(?:begin|end)\{IB(?:Part|SubPart)\}/g, "");
+  // Remove IB-specific env wrappers.
+  // The labelled form carries the part label as a brace argument
+  // (\begin{IBPart}{(a)}), so it must be handled BEFORE the bare-tag strip —
+  // otherwise only the command is removed and the argument survives as
+  // literal "{(a)}" text. Emitting the label on its own line lets
+  // mergeLabelLines below fold it inline with the content that follows,
+  // which is how the source scans present it.
+  let out = src.replace(
+    /\\begin\{IB(?:Part|SubPart)\}[ \t]*\{([^}]*)\}/g,
+    "\n$1\n",
+  );
+  out = out.replace(/\\(?:begin|end)\{IB(?:Part|SubPart)\}/g, "");
 
   // Merge bare part-label lines (e.g. a standalone "(a)" or "(i)" line) with
   // the content that follows, so multi-part questions stored without
