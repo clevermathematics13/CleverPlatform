@@ -504,14 +504,31 @@ function extractNoteBlocks(src: string): { text: string; notes: string[] } {
 }
 
 /**
+ * Matches a leading "Note:" prefix in EITHER form it can arrive in: bare
+ * text, or already wrapped in \textbf{Note:} by the extraction model (which
+ * preprocessLatex converts to the private-use bold-open/close marker pair
+ * before this ever runs). Used to strip the prefix — see renderNoteBox.
+ */
+const NOTE_PREFIX_RE = /^\u{E001}?Note:\u{E002}?\s*/u;
+
+/**
  * Render one extracted note in a bordered box, matching the IB source
- * convention. The leading "Note:" is bolded via the same private-use-area
- * bold markers preprocessLatex already uses elsewhere, rather than adding a
- * second bolding mechanism — the nested LatexRenderer call picks it up
- * through the normal renderStyledText path, inline math and all.
+ * convention.
+ *
+ * CRITICAL: the "Note:" prefix must be stripped and rendered as a plain
+ * React element here, OUTSIDE the recursive LatexRenderer call below —
+ * never pass content that still starts with "Note:" (bare or bold-marked)
+ * into that recursive call. An earlier version bolded the prefix in place
+ * and passed the WHOLE string (still starting with "Note:") to a nested
+ * <LatexRenderer>, whose own extractNoteBlocks pass would then detect that
+ * SAME "Note:" prefix again and box it again — and since the content is
+ * identical on every pass, this recurses forever and freezes the page.
+ * Verified fixed by simulating the exact recursive chain: with the prefix
+ * stripped first, the remaining content never again matches the note-start
+ * pattern, so the recursion terminates after exactly one level.
  */
 function renderNoteBox(noteContent: string, key: string | number): React.ReactNode {
-  const bolded = noteContent.replace(/^Note:/, "\u{E001}Note:\u{E002}");
+  const rest = noteContent.replace(NOTE_PREFIX_RE, "");
   return (
     <div
       key={key}
@@ -523,7 +540,7 @@ function renderNoteBox(noteContent: string, key: string | number): React.ReactNo
         margin: "6px 0",
       }}
     >
-      <LatexRenderer latex={bolded} />
+      <strong>Note:</strong> <LatexRenderer latex={rest} />
     </div>
   );
 }
