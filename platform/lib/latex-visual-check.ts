@@ -241,20 +241,59 @@ export interface ParsedComparison {
 }
 
 /**
+ * Extract the first balanced { ... } object from `text`, tracking string
+ * literals and escapes so braces that appear inside a JSON string value
+ * (or in trailing prose after the object) don't throw off the depth count.
+ *
+ * A naive greedy match — from the first "{" to the LAST "}" anywhere in the
+ * text — breaks whenever the model adds any trailing remark that happens to
+ * contain a "}" character: it captures the real JSON plus everything up to
+ * that later brace, producing a string that fails JSON.parse even though the
+ * model's actual answer was perfectly valid. Scanning for the object's own
+ * true closing brace avoids that.
+ *
+ * Returns null if the braces never balance — which is also exactly the
+ * signature of a response truncated mid-object (for example if the model's
+ * output was cut off by the token limit before finishing), so this doubles
+ * as truncation detection.
+ */
+function extractBalancedJson(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (ch === "\\") { escapeNext = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
  * Parse the comparison model's reply.
  *
- * Returns null when no JSON object can be found at all, so the caller can
+ * Returns null when no complete JSON object can be found, so the caller can
  * distinguish "the model answered and found nothing wrong" from "the model
- * did not answer usefully". Conflating those would let a failed call be
- * reported to the teacher as a clean bill of health.
+ * did not answer usefully" (including a response truncated before it
+ * finished). Conflating those would let a failed call be reported to the
+ * teacher as a clean bill of health.
  */
 export function parseComparisonResponse(text: string): ParsedComparison | null {
-  const jsonMatch = text.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) return null;
+  const jsonText = extractBalancedJson(text);
+  if (!jsonText) return null;
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(jsonMatch[0]);
+    parsed = JSON.parse(jsonText);
   } catch {
     return null;
   }
