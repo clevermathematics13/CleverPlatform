@@ -83,6 +83,103 @@ function splitSegments(
   return segments;
 }
 
+// ─── Line-first grouping ─────────────────────────────────────────────────────
+//
+// splitSegments() above scans the WHOLE preprocessed string in one pass,
+// pulling out $...$/$$...$$/\[...\]/\(...\) math wherever it appears and
+// leaving text everywhere else — producing a FLAT sequence of independent
+// text/inline/display segments with no notion of which ones belong to the
+// same physical printed line. That breaks a common source pattern: a line
+// like "$\overrightarrow{AB}=...$ (or in column vector form) \hfill (A1)"
+// contains inline math followed by a trailing mark code, and both need to
+// share ONE right-aligned row — but as independent flat segments, the text
+// AFTER the math got its own flex-row wrapper (display:flex is block-level,
+// so it forces a line break), stranding the mark code on its own row below
+// the equation instead of beside it.
+//
+// groupSegmentsIntoLines re-groups that flat segment list back into the
+// LOGICAL printed lines the source actually has: consecutive text/inline
+// pieces up to the next newline (or the next display-math block, which is
+// always its own line) become one group. A trailing "\hfill <mark>" found
+// in the group's last text piece is pulled out as that group's mark code,
+// so the whole group — text, embedded math, and all — can be rendered as a
+// single flex row with the mark right-aligned against the end of that row,
+// not a new one.
+type Piece = { kind: "text"; content: string } | { kind: "inline"; content: string };
+
+type LineGroup =
+  | { kind: "content"; pieces: Piece[]; hfillMark: string | null }
+  | { kind: "display"; content: string }
+  | { kind: "blank" }
+  | { kind: "note"; idx: number }
+  | { kind: "tabular"; idx: number }
+  | { kind: "graph_json"; content: string }
+  | { kind: "graph_image" };
+
+function groupSegmentsIntoLines(
+  segments: { type: "text" | "inline" | "display"; content: string }[]
+): LineGroup[] {
+  const groups: LineGroup[] = [];
+  let current: Piece[] = [];
+
+  function flush() {
+    if (current.length === 0) return;
+    // A group consisting of exactly one text piece that is itself a marker
+    // placeholder ([[NOTE_n]], [[TABULAR_n]], [[GRAPH_JSON:...]], or the
+    // graph-image marker) renders as that special element instead of text.
+    if (current.length === 1 && current[0].kind === "text") {
+      const trimmed = current[0].content.trim();
+      const tabularMatch = trimmed.match(TABULAR_MARKER_RE);
+      if (tabularMatch) { groups.push({ kind: "tabular", idx: parseInt(tabularMatch[1], 10) }); current = []; return; }
+      const noteMatch = trimmed.match(NOTE_MARKER_RE);
+      if (noteMatch) { groups.push({ kind: "note", idx: parseInt(noteMatch[1], 10) }); current = []; return; }
+      if (GRAPH_JSON_LINE_RE.test(trimmed)) { groups.push({ kind: "graph_json", content: trimmed }); current = []; return; }
+      if (trimmed === GRAPH_IMAGE_MARKER) { groups.push({ kind: "graph_image" }); current = []; return; }
+    }
+    // A trailing "\hfill <mark>" only ever appears in the LAST piece of a
+    // line (mark codes are always the final thing on their line), and only
+    // ever in a text piece — inline math never contains \hfill.
+    let hfillMark: string | null = null;
+    const last = current[current.length - 1];
+    if (last.kind === "text" && last.content.includes("\\hfill")) {
+      const idx = last.content.indexOf("\\hfill");
+      const beforeInLast = last.content.slice(0, idx);
+      hfillMark = last.content.slice(idx + 7).trim();
+      current = [...current.slice(0, -1), { kind: "text", content: beforeInLast }];
+    }
+    groups.push({ kind: "content", pieces: current, hfillMark });
+    current = [];
+  }
+
+  for (const seg of segments) {
+    if (seg.type === "display") {
+      flush();
+      groups.push({ kind: "display", content: seg.content });
+      continue;
+    }
+    if (seg.type === "inline") {
+      current.push({ kind: "inline", content: seg.content });
+      continue;
+    }
+    // A text segment may itself span multiple physical lines (contain a
+    // newline character); each one is a fresh line boundary relative to
+    // whatever was accumulated from segments before it.
+    const lines = seg.content.split("\n");
+    lines.forEach((line, idx) => {
+      if (idx > 0) {
+        flush();
+        if (line.trim() === "") {
+          groups.push({ kind: "blank" });
+          return;
+        }
+      }
+      if (line !== "") current.push({ kind: "text", content: line });
+    });
+  }
+  flush();
+  return groups;
+}
+
 function renderMath(src: string, displayMode: boolean): string {
   try {
     return katex.renderToString(src, {
@@ -251,92 +348,6 @@ function renderStyledText(
     remaining = closeIdx === -1 ? "" : remaining.slice(closeIdx + 1);
   }
   return <>{nodes}</>;
-}
-
-function renderTextLine(
-  line: string,
-  key: string | number,
-  commandTerm: string | null | undefined,
-  contextTerms: string[],
-  renderMarkAttribution?: (tokenLabel: string, ordinal: number) => React.ReactNode,
-  tokenCounter?: { count: number }
-): React.ReactNode {
-  if (line.includes("\\hfill")) {
-    const hfillIdx = line.indexOf("\\hfill");
-    const before = line.slice(0, hfillIdx).trim();
-    const markCode = line.slice(hfillIdx + 7).trim(); // skip \hfill + trailing space
-    // If the part before \hfill is itself a mark code (e.g. "A1", "(M1)", "N2", "AG"),
-    // group it with the right-side code rather than showing it as left content.
-    const isMarkCode = /^\(?[A-Z]{1,2}\d*\)?$/.test(before);
-    
-    // Find all countable tokens in this line to render attributions next to them
-    const attributions: React.ReactNode[] = [];
-    if (renderMarkAttribution && tokenCounter) {
-      // [MAR][1-9] matches any single-digit M/A/R mark value (M1, A2, R1, ...),
-      // not just the fixed M1/A1/R1 — repeated to also match combined tokens
-      // like M1A1 or M1A2. Kept identical to parseMSTokens' TOKEN_RE in
-      // latex-utils.ts so ordinals stay aligned between the two.
-      const TOKEN_RE = /\\hfill\s+\(?(([MAR][1-9])+)\)?|\((([MAR][1-9])+)\)\s*$|\b(([MAR][1-9])+)\b\s*$/gm;
-      let m: RegExpExecArray | null;
-      while ((m = TOKEN_RE.exec(line)) !== null) {
-        const label = (m[1] ?? m[3] ?? m[5]);
-        attributions.push(
-          <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
-            {renderMarkAttribution(label, tokenCounter.count)}
-          </span>
-        );
-        tokenCounter.count++;
-      }
-    }
-
-    return (
-      <React.Fragment key={key}>
-        <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-          <span>{isMarkCode ? null : (before ? renderStyledText(before, commandTerm, contextTerms) : null)}</span>
-          <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
-            {isMarkCode ? `${before} ${markCode}` : markCode}
-          </span>
-        </span>
-        {attributions.length > 0 && (
-          <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
-            {attributions}
-          </span>
-        )}
-      </React.Fragment>
-    );
-  }
-  
-  // If no \hfill, there could still be a bare mark token at the end of the line
-  if (renderMarkAttribution && tokenCounter) {
-    const TOKEN_RE = /\((([MAR][1-9])+)\)\s*$|\b(([MAR][1-9])+)\b\s*$/g; // (A2) or bare A2 at EOL
-    let m: RegExpExecArray | null;
-    let foundBareTokens = false;
-    const attributions: React.ReactNode[] = [];
-    while ((m = TOKEN_RE.exec(line)) !== null) {
-      foundBareTokens = true;
-      const label = (m[1] ?? m[3]);
-      attributions.push(
-        <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
-          {renderMarkAttribution(label, tokenCounter.count)}
-        </span>
-      );
-      tokenCounter.count++;
-    }
-    if (foundBareTokens) {
-      return (
-        <React.Fragment key={key}>
-          <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-            <span>{renderStyledText(line, commandTerm, contextTerms)}</span>
-          </span>
-          <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
-            {attributions}
-          </span>
-        </React.Fragment>
-      );
-    }
-  }
-
-  return renderStyledText(line, commandTerm, contextTerms);
 }
 
 /**
@@ -614,20 +625,11 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
     }
   );
   const segments = splitSegments(preprocessed);
+  const groups = groupSegmentsIntoLines(segments);
   const contextTermsToHighlight = (highlightContextTerms ?? []).filter(Boolean);
-  
+
   // Shared counter for the entire render pass so that ordinals match parseMSTokens
   const tokenCounter = { count: 0 };
-
-  // Track whether the segment immediately preceding the current one was a
-  // display-math block. Used to decide whether a blank text line is a
-  // meaningful paragraph break (emit <br>) or just a LaTeX vertical-space
-  // separator between equations (suppress).
-  //
-  // Rule:
-  //   blank line after display math  → suppress  (equation separator)
-  //   blank line after text          → emit <br> (paragraph / sentence break)
-  let prevSegWasDisplay = false;
 
   function renderTabularTable(tabular: ParsedTabular, key: string | number): React.ReactNode {
     const { aligns, hasBorders } = parseColSpec(tabular.colSpec);
@@ -664,129 +666,202 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
     );
   }
 
-  return (
-    <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
-      {segments.map((seg, i) => {
-        if (seg.type === "text") {
-          // Split on newlines and process each line.
-          //
-          // Blank-line handling:
-          //   • A blank line that follows a display-math segment is an equation
-          //     separator — suppress it (old behaviour, prevents double-spacing).
-          //   • A blank line that follows ordinary text is a meaningful paragraph
-          //     or sentence break — emit a <br> so the layout matches the source.
-          const lines = seg.content.split("\n");
-          const nodes: React.ReactNode[] = [];
-          // Within this text segment, track whether the last emitted item was
-          // a non-blank text line (so we can decide what to do with the next
-          // blank line we encounter).
-          let prevLineWasText = !prevSegWasDisplay;
-          lines.forEach((line, j) => {
-            const trimmed = line.trim();
-            // Check for tabular marker
-            const tabularMatch = trimmed.match(TABULAR_MARKER_RE);
-            if (tabularMatch) {
-              const idx = parseInt(tabularMatch[1], 10);
-              if (tabularStore[idx]) nodes.push(renderTabularTable(tabularStore[idx], `${i}-${j}-tabular`));
-              prevLineWasText = false;
-              return;
-            }
-            const noteMatch = trimmed.match(NOTE_MARKER_RE);
-            if (noteMatch) {
-              const idx = parseInt(noteMatch[1], 10);
-              if (noteStore[idx] !== undefined) nodes.push(renderNoteBox(noteStore[idx], `${i}-${j}-note`));
-              prevLineWasText = false;
-              return;
-            }
-            // [[GRAPH_JSON:<base64>]] — render an IbGraph component
-            if (GRAPH_JSON_LINE_RE.test(trimmed)) {
-              GRAPH_MARKER_RE.lastIndex = 0;
-              const gm = GRAPH_MARKER_RE.exec(trimmed);
-              if (gm) {
-                const spec: IbGraphSpec | null = decodeGraphSpec(gm[1]);
-                if (spec) {
-                  nodes.push(<IbGraph key={`${i}-${j}-graph-json`} spec={spec} />);
-                  prevLineWasText = false;
-                  return;
-                }
-              }
-            }
-            if (trimmed === GRAPH_IMAGE_MARKER) {
-              nodes.push(
-                graphImageUrl ? (
-                  <img
-                    key={`${i}-${j}-graph`}
-                    src={graphImageUrl}
-                    alt="Graph image"
-                    className="block my-2 max-w-full h-auto border border-gray-200 rounded"
-                  />
-                ) : (
-                  <span key={`${i}-${j}-graph-placeholder`} className="text-gray-500 italic">
-                    [Graph image]
-                  </span>
-                )
-              );
-              // Only break if the next line isn't blank — a following blank
-              // line already emits its own single break (see below), so an
-              // unconditional break here would double the gap.
-              if (j < lines.length - 1 && lines[j + 1].trim() !== "") nodes.push(<br key={`${i}-${j}-graph-br`} />);
-              prevLineWasText = false;
-              return;
-            }
-            // Blank line:
-            //   after display math → suppress (equation gap, not a paragraph break)
-            //   after text         → emit <br> (preserve the source line break)
-            if (trimmed === "") {
-              if (prevLineWasText) {
-                nodes.push(<br key={`${i}-${j}-blank-br`} />);
-              }
-              // Do not update prevLineWasText — the blank line itself is neutral.
-              return;
-            }
-            nodes.push(renderTextLine(line, `${i}-${j}-line`, highlightCommandTerm ?? null, contextTermsToHighlight, renderMarkAttribution, tokenCounter));
-            // Add a line break after non-blank lines, but only when the next
-            // line isn't itself blank — a blank line already emits its own
-            // single break just below, so adding one here too would double
-            // the gap between every paragraph (this was happening for every
-            // blank-line-separated block: two <br> instead of one).
-            if (j < lines.length - 1 && lines[j + 1].trim() !== "") nodes.push(<br key={`${i}-${j}-br`} />);
-            prevLineWasText = true;
-          });
-          // After processing this text segment, the next segment's blank-line
-          // decision should treat this as "following text" (not display math).
-          prevSegWasDisplay = false;
-          return <React.Fragment key={i}>{nodes}</React.Fragment>;
+  /** Render every piece (text and embedded inline math, in source order) of a content group. */
+  function renderPieces(pieces: Piece[]): React.ReactNode {
+    return pieces.map((p, idx) =>
+      p.kind === "inline"
+        ? <span key={idx} dangerouslySetInnerHTML={{ __html: renderMath(p.content, false) }} />
+        : <React.Fragment key={idx}>{renderStyledText(p.content, highlightCommandTerm ?? null, contextTermsToHighlight)}</React.Fragment>
+    );
+  }
+
+  /**
+   * Render one "content" group — a logical printed line's worth of text and
+   * embedded inline math, with an optional trailing mark code.
+   *
+   * When a mark code IS present, the whole group renders as a single flex
+   * row (left: every piece of the line, in order; right: the mark), so an
+   * equation followed by "(or in column vector form) \hfill (A1)" shares
+   * one row with the mark right-aligned against its end — the row is built
+   * from the group as a whole rather than from one trailing text segment,
+   * which is what let the mark end up stranded on its own line before.
+   */
+  function renderContentGroup(group: Extract<LineGroup, { kind: "content" }>, key: string | number): React.ReactNode {
+    if (group.hfillMark === null) {
+      // No mark on this line. Still need the old "bare mark token at EOL with
+      // no \hfill" case (e.g. a stray trailing "(A2)") — only applies when
+      // the group is a single plain-text piece, matching the original
+      // single-string renderTextLine's exact scope for this branch.
+      if (renderMarkAttribution && group.pieces.length === 1 && group.pieces[0].kind === "text") {
+        const line = group.pieces[0].content;
+        const TOKEN_RE = /\((([MAR][1-9])+)\)\s*$|\b(([MAR][1-9])+)\b\s*$/g;
+        let m: RegExpExecArray | null;
+        let found = false;
+        const attributions: React.ReactNode[] = [];
+        while ((m = TOKEN_RE.exec(line)) !== null) {
+          found = true;
+          const label = (m[1] ?? m[3]) as string;
+          attributions.push(
+            <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
+              {renderMarkAttribution(label, tokenCounter.count)}
+            </span>
+          );
+          tokenCounter.count++;
         }
-        const html = renderMath(seg.content, seg.type === "display");
-        if (seg.type === "display") {
-          prevSegWasDisplay = true;
-          // KaTeX's stylesheet renders all math at 1.21x the surrounding font
-          // size (.katex { font: normal 1.21em ... }), which makes display
-          // blocks visibly larger than the body text — unlike IB source
-          // documents, where displayed equations are typeset at body-text
-          // size. 1/1.21 ≈ 0.826em on the wrapper cancels that factor so
-          // display math matches the surrounding text, mirroring the source
-          // image. (Inline math is left at KaTeX's default — at small sizes
-          // the slight upscale aids readability of sub/superscripts and it
-          // sits inside a text line, so it doesn't read as oversized.)
+        if (found) {
           return (
-            <span
-              key={i}
-              className="block my-1 overflow-x-auto"
-              style={{ fontSize: "0.826em" }}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
+            <React.Fragment key={key}>
+              <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+                <span>{renderStyledText(line, highlightCommandTerm ?? null, contextTermsToHighlight)}</span>
+              </span>
+              <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
+                {attributions}
+              </span>
+            </React.Fragment>
           );
         }
-        // inline math — treat like text for blank-line purposes
-        prevSegWasDisplay = false;
-        return (
-          <span
-            key={i}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+      }
+      return <React.Fragment key={key}>{renderPieces(group.pieces)}</React.Fragment>;
+    }
+
+    const markCode = group.hfillMark;
+    // If the part before \hfill is itself a mark code (e.g. "A1", "(M1)"),
+    // group it with the right-side code rather than showing it as left
+    // content — only meaningful when the "before" content is plain text with
+    // nothing else (matches the original single-string check).
+    const soleTextPiece = group.pieces.length === 1 && group.pieces[0].kind === "text" ? group.pieces[0].content.trim() : null;
+    const isMarkCode = soleTextPiece !== null && /^\(?[A-Z]{1,2}\d*\)?$/.test(soleTextPiece);
+
+    // Reconstruct a "virtual line" of the group's text content (dropping
+    // math, which never contains mark tokens) to run the SAME attribution
+    // token regex the original single-string renderTextLine used, so
+    // ordinals stay aligned with parseMSTokens exactly as before.
+    const attributions: React.ReactNode[] = [];
+    if (renderMarkAttribution) {
+      const virtualLine =
+        group.pieces.filter((p): p is Extract<Piece, { kind: "text" }> => p.kind === "text").map((p) => p.content).join("") +
+        " \\hfill " + markCode;
+      const TOKEN_RE = /\\hfill\s+\(?(([MAR][1-9])+)\)?|\((([MAR][1-9])+)\)\s*$|\b(([MAR][1-9])+)\b\s*$/gm;
+      let m: RegExpExecArray | null;
+      while ((m = TOKEN_RE.exec(virtualLine)) !== null) {
+        const label = (m[1] ?? m[3] ?? m[5]) as string;
+        attributions.push(
+          <span key={`attr-${tokenCounter.count}`} style={{ marginLeft: "0.5em" }}>
+            {renderMarkAttribution(label, tokenCounter.count)}
+          </span>
         );
-      })}
+        tokenCounter.count++;
+      }
+    }
+
+    return (
+      <React.Fragment key={key}>
+        <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+          <span>{isMarkCode ? null : renderPieces(group.pieces)}</span>
+          <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
+            {isMarkCode ? `${soleTextPiece} ${markCode}` : markCode}
+          </span>
+        </span>
+        {attributions.length > 0 && (
+          <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
+            {attributions}
+          </span>
+        )}
+      </React.Fragment>
+    );
+  }
+
+  const nodes: React.ReactNode[] = [];
+  // Whether the last GROUP emitted was ordinary text content, as opposed to
+  // display math or a marker element (note/tabular/graph) — mirrors the old
+  // prevLineWasText/prevSegWasDisplay pairing, now tracked once per group
+  // instead of once per raw newline-split line, since grouping already
+  // resolved which pieces belong to the same logical line.
+  //
+  // Rule (unchanged from before):
+  //   blank line after display math / a marker → suppress (equation or
+  //     element separator, not a meaningful paragraph break)
+  //   blank line after text                    → emit <br>
+  let prevLineWasText = true;
+  groups.forEach((g, i) => {
+    if (g.kind === "blank") {
+      if (prevLineWasText) nodes.push(<br key={`${i}-blank-br`} />);
+      // prevLineWasText unchanged — the blank line itself is neutral.
+      return;
+    }
+    if (g.kind === "display") {
+      // KaTeX's stylesheet renders all math at 1.21x the surrounding font
+      // size (.katex { font: normal 1.21em ... }), which makes display
+      // blocks visibly larger than the body text — unlike IB source
+      // documents, where displayed equations are typeset at body-text
+      // size. 1/1.21 ≈ 0.826em on the wrapper cancels that factor so
+      // display math matches the surrounding text, mirroring the source
+      // image. (Inline math is left at KaTeX's default — at small sizes
+      // the slight upscale aids readability of sub/superscripts and it
+      // sits inside a text line, so it doesn't read as oversized.)
+      nodes.push(
+        <span
+          key={i}
+          className="block my-1 overflow-x-auto"
+          style={{ fontSize: "0.826em" }}
+          dangerouslySetInnerHTML={{ __html: renderMath(g.content, true) }}
+        />
+      );
+      prevLineWasText = false;
+      return;
+    }
+    if (g.kind === "note") {
+      if (noteStore[g.idx] !== undefined) nodes.push(renderNoteBox(noteStore[g.idx], `${i}-note`));
+      prevLineWasText = false;
+      return;
+    }
+    if (g.kind === "tabular") {
+      if (tabularStore[g.idx]) nodes.push(renderTabularTable(tabularStore[g.idx], `${i}-tabular`));
+      prevLineWasText = false;
+      return;
+    }
+    if (g.kind === "graph_json") {
+      GRAPH_MARKER_RE.lastIndex = 0;
+      const gm = GRAPH_MARKER_RE.exec(g.content);
+      if (gm) {
+        const spec: IbGraphSpec | null = decodeGraphSpec(gm[1]);
+        if (spec) nodes.push(<IbGraph key={`${i}-graph-json`} spec={spec} />);
+      }
+      prevLineWasText = false;
+      return;
+    }
+    if (g.kind === "graph_image") {
+      nodes.push(
+        graphImageUrl ? (
+          <img
+            key={`${i}-graph`}
+            src={graphImageUrl}
+            alt="Graph image"
+            className="block my-2 max-w-full h-auto border border-gray-200 rounded"
+          />
+        ) : (
+          <span key={`${i}-graph-placeholder`} className="text-gray-500 italic">
+            [Graph image]
+          </span>
+        )
+      );
+      // Matches old behaviour: graph_image gets an automatic trailing break
+      // when the next group isn't itself blank (which would supply its own).
+      const nextIsBlank = i < groups.length - 1 && groups[i + 1].kind === "blank";
+      if (i < groups.length - 1 && !nextIsBlank) nodes.push(<br key={`${i}-graph-br`} />);
+      prevLineWasText = false;
+      return;
+    }
+    // g.kind === "content"
+    nodes.push(renderContentGroup(g, `${i}-content`));
+    const nextIsBlank = i < groups.length - 1 && groups[i + 1].kind === "blank";
+    if (i < groups.length - 1 && !nextIsBlank) nodes.push(<br key={`${i}-content-br`} />);
+    prevLineWasText = true;
+  });
+
+  return (
+    <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
+      {nodes}
     </span>
   );
 }
