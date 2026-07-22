@@ -436,6 +436,15 @@ function preprocessLatex(src: string): string {
   // Strip the container environment tags themselves
   out = out.replace(/\\(?:begin|end)\{(?:enumerate|itemize)\}/g, "");
 
+  // Strip \begin{quote}/\end{quote} as a pure structural no-op. Extraction
+  // sometimes wraps a markscheme "Note:" callout in a quote environment to
+  // represent that it is visually set off in the source scan — but the
+  // renderer already draws its own bordered box around Note: paragraphs
+  // (see extractNoteBlocks below), so the quote wrapper is redundant and,
+  // left unhandled, shows up as literal "\begin{quote}" / "\end{quote}"
+  // text since this renderer has no other meaning for that environment.
+  out = out.replace(/\\(?:begin|end)\{quote\}\n?/g, "");
+
   // Convert LaTeX text-mode formatting commands to Unicode/marker equivalents
   // so they render correctly in text segments (outside math mode).
   // We use distinctive markers that won't appear in normal LaTeX.
@@ -465,10 +474,15 @@ function extractNoteBlocks(src: string): { text: string; notes: string[] } {
   const lines = src.split("\n");
   const notes: string[] = [];
   const out: string[] = [];
+  // Matches "Note:" whether it arrived as bare text or was already wrapped
+  // in \textbf{Note:} by the extraction model — preprocessLatex converts
+  // \textbf{} to a private-use bold-open marker before this runs, so a
+  // literal "Note:" test alone would miss that case entirely.
+  const NOTE_START_RE = /^\u{E001}?Note:/u;
   let i = 0;
   while (i < lines.length) {
     const trimmed = lines[i].trim();
-    if (/^Note:/.test(trimmed)) {
+    if (NOTE_START_RE.test(trimmed)) {
       const blockLines: string[] = [trimmed];
       let j = i + 1;
       while (j < lines.length) {
