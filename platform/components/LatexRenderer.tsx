@@ -407,6 +407,55 @@ function mergeLabelLines(src: string): string {
   return out.join("\n");
 }
 
+const HFILL_ONLY_LINE_RE = /^\\hfill\b/;
+
+/**
+ * Merge a standalone "\hfill (MARK)" line into the end of the line before
+ * it, when nothing but blank lines don't separate them.
+ *
+ * Extracted markscheme LaTeX consistently stores the mark code on its own
+ * physical line right after the content it annotates — e.g. an equation
+ * line, then "\hfill (A1)" on the next line with no blank in between. Left
+ * as separate lines, renderTextLine's \hfill handling (which right-aligns
+ * everything after \hfill against whatever precedes it ON THE SAME LINE)
+ * has nothing on the left for that line, so the mark renders as its own
+ * empty-left, right-aligned row BELOW the content instead of sharing its
+ * row — which is why "(A1)" was appearing under the equation rather than
+ * beside it. Joining the two lines here means the same line now reads
+ * "...content... \hfill (A1)", which the existing per-line \hfill layout
+ * already renders correctly as one right-aligned row.
+ *
+ * Guarded against merging onto a line that already contains \hfill, so two
+ * adjacent bare \hfill lines (rare, but possible) don't collapse into one
+ * line with two \hfill markers — renderTextLine only looks for the FIRST
+ * \hfill on a line, so a second one would be swallowed into the mark text
+ * instead of being treated as a separate mark.
+ *
+ * Must run before extractNoteBlocks/tabular extraction (both happen after
+ * preprocessLatex returns): if a [[NOTE_n]] or [[TABULAR_n]] placeholder
+ * existed yet, merging a trailing \hfill onto it would break those markers'
+ * exact-line-match detection. Since this runs inside preprocessLatex and
+ * those markers are only created afterwards, that risk doesn't arise.
+ */
+function mergeTrailingHfillLines(src: string): string {
+  const lines = src.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    const prev = out.length > 0 ? out[out.length - 1] : "";
+    if (
+      HFILL_ONLY_LINE_RE.test(trimmed) &&
+      prev.trim() !== "" &&
+      !prev.includes("\\hfill")
+    ) {
+      out[out.length - 1] = prev + " " + trimmed;
+      continue;
+    }
+    out.push(lines[i]);
+  }
+  return out.join("\n");
+}
+
 function preprocessLatex(src: string): string {
   // Remove IB-specific env wrappers.
   // The labelled form carries the part label as a brace argument
@@ -426,6 +475,7 @@ function preprocessLatex(src: string): string {
   // \item[...] markup still render with inline labels and light indentation
   // instead of the label sitting alone with large gaps around it.
   out = mergeLabelLines(out);
+  out = mergeTrailingHfillLines(out);
 
   // Convert enumerate/itemize content:
   // \item[(label)] → newline + "label " (label already contains parens like (i), (a))
