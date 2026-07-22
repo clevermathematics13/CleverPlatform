@@ -26,6 +26,7 @@ interface Props {
 
 const GRAPH_IMAGE_MARKER = "[[GRAPH_IMAGE]]";
 const TABULAR_MARKER_RE = /^\[\[TABULAR_(\d+)\]\]$/;
+const NOTE_MARKER_RE = /^\[\[NOTE_(\d+)\]\]$/;
 const GRAPH_JSON_LINE_RE = /^\[\[GRAPH_JSON:[A-Za-z0-9+/=]+\]\]$/;
 
 // --- Tabular environment support ---
@@ -445,14 +446,85 @@ function preprocessLatex(src: string): string {
   return out;
 }
 
+/**
+ * Extract IB markscheme "Note:" callouts into a side array, replacing each
+ * with a [[NOTE_n]] placeholder line.
+ *
+ * IB markschemes print these in a bordered box (a distinct visual callout
+ * for scorer guidance), but the stored text has no markup distinguishing
+ * them from ordinary prose — only the literal "Note:" prefix. This pulls
+ * each one out by scanning lines, similar in spirit to how tabular blocks
+ * are pulled out below, except a Note has no explicit end delimiter: it
+ * runs from a line starting with "Note:" through any immediately
+ * following non-blank lines that aren't themselves a new "Note:", and
+ * ends at the next blank line (source data does have a handful of notes
+ * that wrap across two physical lines with no blank line between them —
+ * those need to end up in the same box, not two separate ones).
+ */
+function extractNoteBlocks(src: string): { text: string; notes: string[] } {
+  const lines = src.split("\n");
+  const notes: string[] = [];
+  const out: string[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const trimmed = lines[i].trim();
+    if (/^Note:/.test(trimmed)) {
+      const blockLines: string[] = [trimmed];
+      let j = i + 1;
+      while (j < lines.length) {
+        const nextTrimmed = lines[j].trim();
+        if (nextTrimmed === "" || /^Note:/.test(nextTrimmed)) break;
+        blockLines.push(nextTrimmed);
+        j++;
+      }
+      const idx = notes.length;
+      notes.push(blockLines.join("\n"));
+      out.push(`[[NOTE_${idx}]]`);
+      i = j;
+      continue;
+    }
+    out.push(lines[i]);
+    i++;
+  }
+  return { text: out.join("\n"), notes };
+}
+
+/**
+ * Render one extracted note in a bordered box, matching the IB source
+ * convention. The leading "Note:" is bolded via the same private-use-area
+ * bold markers preprocessLatex already uses elsewhere, rather than adding a
+ * second bolding mechanism — the nested LatexRenderer call picks it up
+ * through the normal renderStyledText path, inline math and all.
+ */
+function renderNoteBox(noteContent: string, key: string | number): React.ReactNode {
+  const bolded = noteContent.replace(/^Note:/, "\u{E001}Note:\u{E002}");
+  return (
+    <div
+      key={key}
+      style={{
+        display: "block",
+        border: "1px solid #374151",
+        borderRadius: "2px",
+        padding: "6px 10px",
+        margin: "6px 0",
+      }}
+    >
+      <LatexRenderer latex={bolded} />
+    </div>
+  );
+}
+
 export default function LatexRenderer({ latex, className, graphImageUrl, stripMarkAnnotations, highlightCommandTerm, highlightContextTerms, renderMarkAttribution }: Props) {
   const MARK_LINE = /^(?:\\hfill\s*)?(?:\s*[\(\[]?(?:A|M|R|N)\d*[\)\]]?\s*)+$|^Total\s+\[\d+\s+marks?\]\s*$|^\[\d+\s+marks?\]\s*$/i;
   function applyStrip(src: string): string {
     if (!stripMarkAnnotations) return src;
     return src.split("\n").filter((line) => { const t = line.trim(); return t === "" || !MARK_LINE.test(t); }).join("\n");
   }
+  const { text: withNoteMarkers, notes: noteStore } = extractNoteBlocks(
+    preprocessLatex(applyStrip(latex)),
+  );
   const tabularStore: ParsedTabular[] = [];
-  const preprocessed = preprocessLatex(applyStrip(latex)).replace(
+  const preprocessed = withNoteMarkers.replace(
     /\\begin\{tabular\}\{([^}]*)\}([\s\S]*?)\\end\{tabular\}/g,
     (_, colSpec: string, body: string) => {
       const idx = tabularStore.length;
@@ -535,6 +607,13 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
             if (tabularMatch) {
               const idx = parseInt(tabularMatch[1], 10);
               if (tabularStore[idx]) nodes.push(renderTabularTable(tabularStore[idx], `${i}-${j}-tabular`));
+              prevLineWasText = false;
+              return;
+            }
+            const noteMatch = trimmed.match(NOTE_MARKER_RE);
+            if (noteMatch) {
+              const idx = parseInt(noteMatch[1], 10);
+              if (noteStore[idx] !== undefined) nodes.push(renderNoteBox(noteStore[idx], `${i}-${j}-note`));
               prevLineWasText = false;
               return;
             }
