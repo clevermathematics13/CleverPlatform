@@ -272,14 +272,25 @@ export async function POST(request: NextRequest) {
   ];
 
   let comparison;
+  let compareStopReason: string | null = null;
+  let compareRawText = "";
   try {
     const compareResponse = await anthropic.messages.create({
       model: "claude-sonnet-5",
-      max_tokens: 4096,
+      // 8192, not 4096: comparing up to three images (source scans plus the
+      // rendered screenshot) against a detailed multi-category rubric can
+      // burn a lot of the model's adaptive-thinking budget before it ever
+      // writes the JSON text block. At 4096 that thinking could exhaust the
+      // whole budget, leaving stop_reason "max_tokens" and no text block at
+      // all — which is indistinguishable from a genuine parse failure unless
+      // there's real headroom to rule it out.
+      max_tokens: 8192,
       system: LATEX_VISUAL_CHECK_SYSTEM,
       messages: [{ role: "user", content: compareContent }],
     });
-    comparison = parseComparisonResponse(textOf(compareResponse));
+    compareStopReason = compareResponse.stop_reason;
+    compareRawText = textOf(compareResponse);
+    comparison = parseComparisonResponse(compareRawText);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Comparison failed" },
@@ -289,11 +300,20 @@ export async function POST(request: NextRequest) {
 
   if (!comparison) {
     // An unreadable reply is NOT a clean bill of health — say so rather than
-    // reporting "no discrepancies found".
+    // reporting "no discrepancies found". Give a specific, actionable reason
+    // rather than a generic one where possible: a "max_tokens" stop reason
+    // means the response was cut off before it finished (most likely while
+    // still thinking, before ever writing the JSON), which is worth telling
+    // the teacher explicitly rather than leaving them to guess.
+    const truncated = compareStopReason === "max_tokens";
     return NextResponse.json(
       {
-        error:
-          "The visual checker did not return a readable report. Nothing was changed.",
+        error: truncated
+          ? "The visual checker's response was cut off before it finished — try running the check again."
+          : "The visual checker did not return a readable report. Nothing was changed.",
+        // Not shown in the UI today, but keeps a failure diagnosable from the
+        // network response without needing server logs.
+        debug: { stopReason: compareStopReason, rawTextPreview: compareRawText.slice(0, 500) },
       },
       { status: 502 },
     );
