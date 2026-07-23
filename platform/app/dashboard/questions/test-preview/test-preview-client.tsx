@@ -117,6 +117,27 @@ const ANSWER_BOX_PADDING_BOTTOM_MM = 2;
 const ANSWER_LINE_SPACING_MM = 3.8; // marginBottom between dotted lines
 const ANSWER_LINE_HEIGHT_MM = 3; // approx rendered height of one 8.5pt line
 
+// Estimated rendered height (mm) of the "Section A" instructions block that
+// is injected above the first Section A question only (isFirstSectionA
+// below: "Full marks are not necessarily awarded...", the "Section A"
+// heading, and "Answer all questions..."). Derived from the block's actual
+// font sizes/line-heights/margins (10pt body copy wraps to ~2 lines per
+// paragraph at this column width, 12pt bold heading, plus the wrapping
+// div's 4mm trailing margin), rounded up with a safety buffer for line-wrap
+// variability across browsers/exam names.
+//
+// Before this existed, the image above the answer box was capped to the
+// *same* content budget on every Section A page, first page included —
+// so on the first page the header text was rendered on top of that budget
+// "for free", leaving zero slack against the page's real 297mm boundary
+// once the header's actual height was accounted for. With effectively no
+// slack, Chrome's print engine would treat the answer box (which has
+// breakInside: "avoid") as not fitting on the page and clip it away
+// instead of drawing it — and only the first Section A page has this
+// header, which is why only question 1 lost its answer box while every
+// later Section A question rendered fine.
+const SECTION_A_HEADER_HEIGHT_MM = 40;
+
 /**
  * Height (mm) of just the 12 ruled dotted lines themselves (not the whole
  * box — the box border extends well past this). Used only to size the
@@ -134,13 +155,17 @@ function rusledLinesHeightMm(lineCount: number): number {
  * flex:1 — this keeps long prompts/diagrams from squeezing the ruled lines
  * down below a usable minimum, without capping the box's *total* height
  * (which should always reach the page's bottom margin).
+ *
+ * `headerHeightMm` additionally reserves room for the "Section A" (or other)
+ * instructions block that only appears above the first question of a
+ * section — see SECTION_A_HEADER_HEIGHT_MM for why this matters.
  */
-function contentMaxHeightMm(lineCount: number): number {
+function contentMaxHeightMm(lineCount: number, headerHeightMm: number = 0): number {
   const pageUsable = PAGE_HEIGHT_MM - PAGE_PADDING_TOP_MM - PAGE_PADDING_BOTTOM_MM;
   const minBoxHeight =
     ANSWER_BOX_PADDING_TOP_MM + rusledLinesHeightMm(lineCount) + ANSWER_BOX_PADDING_BOTTOM_MM;
   const reserved = ANSWER_BOX_MARGIN_TOP_MM + minBoxHeight + ANSWER_BOX_MARGIN_BOTTOM_MM;
-  return pageUsable - reserved;
+  return pageUsable - reserved - headerHeightMm;
 }
 
 function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
@@ -458,6 +483,109 @@ export function TestPreviewClient() {
     ? [...sectionAQuestions, ...sectionBQuestions]
     : questions;
 
+  // ─── Print layout audit (in-browser print-preview simulation) ─────────────
+  //
+  // Measures the *actual rendered* DOM of the general (non-batched) exam —
+  // not a guess, not a headless-browser reproduction — to confirm every
+  // Section A page really has a visible, correctly-sized, on-page answer
+  // box before anyone hits print. This is possible without ever opening the
+  // OS print dialog because .question-page already carries its 297mm fixed
+  // height, overflow:hidden, and flex column layout as *inline* styles
+  // (not just inside the @media print block), so the on-screen DOM already
+  // matches print geometry 1:1.
+  const [printAudit, setPrintAudit] = useState<{
+    status: "idle" | "checking" | "done";
+    issues: { questionNumber: number; code: string; kind: "missing" | "short" | "overflow"; detail: string }[];
+    checkedCount: number;
+  }>({ status: "idle", issues: [], checkedCount: 0 });
+
+  async function runPrintLayoutAudit() {
+    setPrintAudit({ status: "checking", issues: [], checkedCount: 0 });
+
+    // Wait for every question image to finish loading before measuring —
+    // an unloaded image reports 0 intrinsic height, which would mask a
+    // real layout bug (and is itself a separate potential cause of print
+    // bugs if someone hits print before images finish loading).
+    const imgs = Array.from(document.querySelectorAll<HTMLImageElement>(".question-page img"));
+    await Promise.all(
+      imgs.map((img) =>
+        img.complete
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              img.addEventListener("load", () => resolve(), { once: true });
+              img.addEventListener("error", () => resolve(), { once: true });
+            })
+      )
+    );
+    // Let layout settle after any image-driven reflow.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+
+    const MM_PER_PX = 25.4 / 96; // CSS px → mm; exact by the CSS spec, independent of screen DPI
+    const MIN_USEFUL_BOX_HEIGHT_MM = 60; // healthy boxes measure ~100mm+; well below that means clipped/broken
+
+    const issues: { questionNumber: number; code: string; kind: "missing" | "short" | "overflow"; detail: string }[] = [];
+    const pages = Array.from(document.querySelectorAll<HTMLElement>('.question-page[id^="q-"]'));
+    let checked = 0;
+
+    pages.forEach((pageEl) => {
+      const globalNum = Number(pageEl.id.replace("q-", ""));
+      const q = orderedQuestions[globalNum - 1];
+      if (!q) return;
+      const shouldHaveBox = showSections && q.section !== "B" && config?.imageType === "question";
+      if (!shouldHaveBox) return;
+      checked += 1;
+
+      const pageRect = pageEl.getBoundingClientRect();
+      const boxEl = pageEl.querySelector<HTMLElement>('[aria-label^="Section A answer box"]');
+
+      if (!boxEl) {
+        issues.push({
+          questionNumber: globalNum,
+          code: q.code,
+          kind: "missing",
+          detail: "No answer box element was rendered on this page at all.",
+        });
+        return;
+      }
+
+      const boxRect = boxEl.getBoundingClientRect();
+      const heightMm = boxRect.height * MM_PER_PX;
+
+      if (heightMm < MIN_USEFUL_BOX_HEIGHT_MM) {
+        issues.push({
+          questionNumber: globalNum,
+          code: q.code,
+          kind: "short",
+          detail: `Answer box is only ${heightMm.toFixed(0)}mm tall (expected ~100mm+) — likely clipped by the page boundary.`,
+        });
+      }
+
+      // 1px epsilon for sub-pixel rounding.
+      if (boxRect.bottom > pageRect.bottom + 1) {
+        const overflowMm = (boxRect.bottom - pageRect.bottom) * MM_PER_PX;
+        issues.push({
+          questionNumber: globalNum,
+          code: q.code,
+          kind: "overflow",
+          detail: `Answer box extends ${overflowMm.toFixed(1)}mm past this page's bottom edge.`,
+        });
+      }
+    });
+
+    setPrintAudit({ status: "done", issues, checkedCount: checked });
+  }
+
+  // Auto-run once the exam is fully loaded and there's something to check.
+  useEffect(() => {
+    if (loading || error || !config || orderedQuestions.length === 0) return;
+    if (!showSections || config.imageType !== "question") return;
+    const t = setTimeout(() => {
+      runPrintLayoutAudit();
+    }, 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, error, config, orderedQuestions.length]);
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -507,6 +635,16 @@ export function TestPreviewClient() {
           </p>
         </div>
         <div className="flex gap-3">
+          {showSections && config?.imageType === "question" && (
+            <button
+              onClick={runPrintLayoutAudit}
+              disabled={printAudit.status === "checking"}
+              className="px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+              title="Simulate a print preview and verify every Section A answer box is present, sized correctly, and on-page"
+            >
+              🔍 {printAudit.status === "checking" ? "Checking…" : "Verify Print Layout"}
+            </button>
+          )}
           <button
             onClick={() => {
               document.body.classList.remove("print-batched");
@@ -543,6 +681,37 @@ export function TestPreviewClient() {
           </button>
         </div>
       </div>
+
+      {/* ── Print layout audit banner (hidden in print) ── */}
+      {printAudit.status !== "idle" && (
+        <div
+          className="no-print"
+          style={{
+            padding: "8px 24px",
+            fontSize: "13px",
+            lineHeight: 1.5,
+            borderBottom: "1px solid #e5e7eb",
+            flexShrink: 0,
+            background: printAudit.status === "checking" ? "#eff6ff" : printAudit.issues.length > 0 ? "#fffbeb" : "#f0fdf4",
+            color: printAudit.status === "checking" ? "#1e40af" : printAudit.issues.length > 0 ? "#92400e" : "#166534",
+          }}
+        >
+          {printAudit.status === "checking" && "🔍 Simulating print layout — verifying every Section A answer box…"}
+          {printAudit.status === "done" && printAudit.issues.length === 0 && (
+            <span>✅ Print layout check passed — all {printAudit.checkedCount} Section A answer box{printAudit.checkedCount !== 1 ? "es are" : " is"} present, correctly sized, and on-page.</span>
+          )}
+          {printAudit.status === "done" && printAudit.issues.length > 0 && (
+            <div>
+              <strong>⚠️ Print layout check found {printAudit.issues.length} issue{printAudit.issues.length !== 1 ? "s" : ""} (checked {printAudit.checkedCount} Section A page{printAudit.checkedCount !== 1 ? "s" : ""}):</strong>
+              <ul style={{ margin: "4px 0 0", paddingLeft: "20px" }}>
+                {printAudit.issues.map((iss, i) => (
+                  <li key={i}>Q{iss.questionNumber} ({iss.code}): {iss.detail}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Single scrollable body ── */}
       <div className="preview-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
@@ -640,8 +809,13 @@ export function TestPreviewClient() {
           // Content-area cap reserves room for the box's fixed 12 ruled
           // lines + padding/margins; the box itself then stretches via
           // flex:1 to consume whatever space remains on the page (see
-          // showSectionAAnswerBox block below).
-          const contentMaxMm = showSectionAAnswerBox ? contentMaxHeightMm(lineCount) : undefined;
+          // showSectionAAnswerBox block below). On the first Section A
+          // page, also reserve room for the instructions header block
+          // that's injected above the question on that page only — see
+          // SECTION_A_HEADER_HEIGHT_MM.
+          const contentMaxMm = showSectionAAnswerBox
+            ? contentMaxHeightMm(lineCount, isFirstSectionA ? SECTION_A_HEADER_HEIGHT_MM : 0)
+            : undefined;
           const isLastQuestion = qIdx === orderedQuestions.length - 1;
           return (
             <div key={q.id}>
@@ -763,7 +937,9 @@ export function TestPreviewClient() {
                 const showSectionAAnswerBox = showSections && q.section !== "B" && config?.imageType === "question";
                 const totalMarks = questionTotalMarks(q);
                 const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount() : 0;
-                const contentMaxMm = showSectionAAnswerBox ? contentMaxHeightMm(lineCount) : undefined;
+                const contentMaxMm = showSectionAAnswerBox
+                  ? contentMaxHeightMm(lineCount, isFirstSectionA ? SECTION_A_HEADER_HEIGHT_MM : 0)
+                  : undefined;
                 const isLastQuestion = qIdx === orderedQuestions.length - 1;
                 return (
                   <div key={q.id}>
