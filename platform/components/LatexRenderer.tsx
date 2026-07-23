@@ -676,17 +676,26 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
   }
 
   /**
-   * Render one "content" group — a logical printed line's worth of text and
-   * embedded inline math, with an optional trailing mark code.
+   * Renders one "content" group — a logical printed line's worth of text and
+   * embedded inline math, with an optional trailing mark code — and reports
+   * whether it rendered as a block-level flex row (any \hfill mark,
+   * including a bare trailing token with no \hfill) or as plain inline
+   * text.
    *
-   * When a mark code IS present, the whole group renders as a single flex
-   * row (left: every piece of the line, in order; right: the mark), so an
-   * equation followed by "(or in column vector form) \hfill (A1)" shares
-   * one row with the mark right-aligned against its end — the row is built
-   * from the group as a whole rather than from one trailing text segment,
-   * which is what let the mark end up stranded on its own line before.
+   * This distinction matters for spacing: display:flex generates a
+   * block-level box regardless of the underlying <span>, so a flex row
+   * ALREADY starts on its own line with no <br> needed — the outer render
+   * loop uses isBlockLevel to skip the otherwise-automatic trailing <br>
+   * (and the following blank line's <br>) around such a row. Without this,
+   * every marked line got an explicit <br> stacked on top of the break the
+   * flex row was already producing on its own, roughly doubling the gap
+   * around every mark code in the document — the fix that produced the
+   * correctly-aligned mark in the first place made this pre-existing
+   * compounding issue far more visible, since previously an inline-math
+   * line with a trailing mark rendered as multiple disconnected top-level
+   * nodes rather than one clean flex row.
    */
-  function renderContentGroup(group: Extract<LineGroup, { kind: "content" }>, key: string | number): React.ReactNode {
+  function renderContentGroup(group: Extract<LineGroup, { kind: "content" }>, key: string | number): { node: React.ReactNode; isBlockLevel: boolean } {
     if (group.hfillMark === null) {
       // No mark on this line. Still need the old "bare mark token at EOL with
       // no \hfill" case (e.g. a stray trailing "(A2)") — only applies when
@@ -709,19 +718,22 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
           tokenCounter.count++;
         }
         if (found) {
-          return (
-            <React.Fragment key={key}>
-              <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-                <span>{renderStyledText(line, highlightCommandTerm ?? null, contextTermsToHighlight)}</span>
-              </span>
-              <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
-                {attributions}
-              </span>
-            </React.Fragment>
-          );
+          return {
+            isBlockLevel: true,
+            node: (
+              <React.Fragment key={key}>
+                <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+                  <span>{renderStyledText(line, highlightCommandTerm ?? null, contextTermsToHighlight)}</span>
+                </span>
+                <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
+                  {attributions}
+                </span>
+              </React.Fragment>
+            ),
+          };
         }
       }
-      return <React.Fragment key={key}>{renderPieces(group.pieces)}</React.Fragment>;
+      return { isBlockLevel: false, node: <React.Fragment key={key}>{renderPieces(group.pieces)}</React.Fragment> };
     }
 
     const markCode = group.hfillMark;
@@ -754,21 +766,24 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
       }
     }
 
-    return (
-      <React.Fragment key={key}>
-        <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
-          <span>{isMarkCode ? null : renderPieces(group.pieces)}</span>
-          <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
-            {isMarkCode ? `${soleTextPiece} ${markCode}` : markCode}
+    return {
+      isBlockLevel: true,
+      node: (
+        <React.Fragment key={key}>
+          <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
+            <span>{isMarkCode ? null : renderPieces(group.pieces)}</span>
+            <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
+              {isMarkCode ? `${soleTextPiece} ${markCode}` : markCode}
+            </span>
           </span>
-        </span>
-        {attributions.length > 0 && (
-          <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
-            {attributions}
-          </span>
-        )}
-      </React.Fragment>
-    );
+          {attributions.length > 0 && (
+            <span style={{ display: "flex", justifyContent: "flex-end", gap: "0.25em", marginBottom: "0.25em" }}>
+              {attributions}
+            </span>
+          )}
+        </React.Fragment>
+      ),
+    };
   }
 
   const nodes: React.ReactNode[] = [];
@@ -853,10 +868,19 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
       return;
     }
     // g.kind === "content"
-    nodes.push(renderContentGroup(g, `${i}-content`));
-    const nextIsBlank = i < groups.length - 1 && groups[i + 1].kind === "blank";
-    if (i < groups.length - 1 && !nextIsBlank) nodes.push(<br key={`${i}-content-br`} />);
-    prevLineWasText = true;
+    const { node, isBlockLevel } = renderContentGroup(g, `${i}-content`);
+    nodes.push(node);
+    if (isBlockLevel) {
+      // Already a block-level flex row (display:flex generates a block box),
+      // so it starts on its own line with no <br> needed — adding one here,
+      // or letting the following blank line add its own, would stack extra
+      // space on top of a break the row already produced by itself.
+      prevLineWasText = false;
+    } else {
+      const nextIsBlank = i < groups.length - 1 && groups[i + 1].kind === "blank";
+      if (i < groups.length - 1 && !nextIsBlank) nodes.push(<br key={`${i}-content-br`} />);
+      prevLineWasText = true;
+    }
   });
 
   return (
