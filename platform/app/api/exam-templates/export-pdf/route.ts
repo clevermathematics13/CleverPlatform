@@ -1,11 +1,17 @@
 import { getApiTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
-import puppeteer from "puppeteer";
+import puppeteer, { type Browser } from "puppeteer-core";
+import chromium from "@sparticuz/chromium-min";
 import { buildExamHtml, type ExamHtmlQuestion } from "@/lib/exam-html";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
+
+// Same pinned Sparticuz Chromium release used by generate-pdf/route.ts —
+// keep these in sync if that pin ever moves.
+const CHROMIUM_REMOTE_URL =
+  "https://github.com/Sparticuz/chromium/releases/download/v133.0.0/chromium-v133.0.0-pack.tar";
 
 interface ExportPdfRequest {
   questionIds: string[];
@@ -25,6 +31,24 @@ function safeFilename(name: string): string {
       .replace(/_+/g, "_")
       .replace(/^_|_$/g, "") || "exam"
   );
+}
+
+async function launchBrowser(): Promise<Browser> {
+  const isVercel = Boolean(process.env.VERCEL);
+  if (isVercel) {
+    const executablePath = await chromium.executablePath(CHROMIUM_REMOTE_URL);
+    return puppeteer.launch({
+      args: chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath,
+      headless: chromium.headless,
+    });
+  }
+  return puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+    executablePath: process.env.CHROME_EXECUTABLE_PATH,
+  });
 }
 
 /** Fetches question metadata, parts, and signed image URLs — same shape the
@@ -94,7 +118,7 @@ async function fetchQuestions(
 }
 
 export async function POST(req: Request) {
-  let browser;
+  let browser: Browser | undefined;
   try {
     const auth = await getApiTeacher();
     if (!auth.ok) return auth.response;
@@ -126,10 +150,7 @@ export async function POST(req: Request) {
       // Cover is optional; proceed without it.
     }
 
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
-    });
+    browser = await launchBrowser();
 
     if (mode === "general") {
       const html = buildExamHtml({
