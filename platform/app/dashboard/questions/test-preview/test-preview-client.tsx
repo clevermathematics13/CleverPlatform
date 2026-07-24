@@ -350,6 +350,14 @@ export function TestPreviewClient() {
   const [printMode, setPrintMode] = useState<"general" | "batched">("general");
   const [tocEditors, setTocEditors] = useState<Set<string>>(new Set());
   const printTriggered = useRef(false);
+  // "downloading" tracks which export is in flight so both buttons can show
+  // their own spinner state independently; "error" surfaces export failures
+  // inline instead of silently doing nothing (unlike window.print(), a
+  // failed fetch here has no other visible symptom for the person to notice).
+  const [pdfExport, setPdfExport] = useState<{ downloading: "general" | "batched" | null; error: string | null }>({
+    downloading: null,
+    error: null,
+  });
 
   // ── Handle missing config ───────────────────────────────────────────────────
   useEffect(() => {
@@ -586,6 +594,51 @@ export function TestPreviewClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, error, config, orderedQuestions.length]);
 
+  // ─── PDF export (server-side, bypasses the browser print dialog) ──────────
+  //
+  // window.print() hands page geometry to whatever Margins/Scale the OS
+  // print dialog is set to, which is exactly what broke the Section A
+  // answer box previously — a config the person controls, not this code.
+  // This calls a route that renders the exact same layout server-side with
+  // Puppeteer's page.pdf() and streams the file back directly, so there's
+  // no dialog and nothing to misconfigure.
+  async function downloadPdf(mode: "general" | "batched") {
+    if (!config) return;
+    setPdfExport({ downloading: mode, error: null });
+    try {
+      const res = await fetch("/api/exam-templates/export-pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          questionIds: config.questionIds,
+          imageType: config.imageType,
+          examName: config.examName,
+          curriculum: config.curriculum,
+          level: config.level,
+          paper: config.paper,
+          courseId: config.courseId,
+          mode,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? `Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${config.examName.replace(/[^a-z0-9]/gi, "_")}${mode === "batched" ? "_batched" : ""}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setPdfExport({ downloading: null, error: null });
+    } catch (e) {
+      setPdfExport({ downloading: null, error: e instanceof Error ? e.message : "PDF export failed" });
+    }
+  }
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -653,6 +706,7 @@ export function TestPreviewClient() {
               document.body.classList.remove("print-general");
             }}
             className="px-5 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+            title="Opens your browser's print dialog — Margins and Scale settings there affect layout"
           >
             🖨 Print General Exam
           </button>
@@ -672,6 +726,22 @@ export function TestPreviewClient() {
             title={students.length === 0 ? "No students in this class" : `Print one copy per student (${students.length}) with QR codes`}
           >
             🖨 Print Batched Exam
+          </button>
+          <button
+            onClick={() => downloadPdf("general")}
+            disabled={pdfExport.downloading !== null}
+            className="px-5 py-2 bg-white text-blue-700 border border-blue-600 rounded-lg font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
+            title="Renders the PDF on the server and downloads it directly — no print dialog, no Margins/Scale to get wrong"
+          >
+            ⬇ {pdfExport.downloading === "general" ? "Generating…" : "Download PDF"}
+          </button>
+          <button
+            onClick={() => downloadPdf("batched")}
+            disabled={pdfExport.downloading !== null || students.length === 0}
+            className="px-5 py-2 bg-white text-green-700 border border-green-600 rounded-lg font-medium hover:bg-green-50 transition-colors disabled:opacity-50"
+            title={students.length === 0 ? "No students in this class" : "Renders one PDF containing every student's copy with QR codes"}
+          >
+            ⬇ {pdfExport.downloading === "batched" ? "Generating…" : "Download Batched PDF"}
           </button>
           <button
             onClick={() => window.close()}
@@ -710,6 +780,23 @@ export function TestPreviewClient() {
               </ul>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── PDF export error banner (hidden in print) ── */}
+      {pdfExport.error && (
+        <div
+          className="no-print"
+          style={{
+            padding: "8px 24px",
+            fontSize: "13px",
+            borderBottom: "1px solid #e5e7eb",
+            flexShrink: 0,
+            background: "#fef2f2",
+            color: "#991b1b",
+          }}
+        >
+          ⚠️ PDF export failed: {pdfExport.error}
         </div>
       )}
 
