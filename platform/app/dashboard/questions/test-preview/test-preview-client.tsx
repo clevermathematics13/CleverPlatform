@@ -112,24 +112,40 @@ const PAGE_PADDING_TOP_MM = 10;
 const PAGE_PADDING_BOTTOM_MM = 12;
 const ANSWER_BOX_MARGIN_TOP_MM = 6;
 const ANSWER_BOX_MARGIN_BOTTOM_MM = 14;
-// ANSWER_LINE_SPACING_MM, ANSWER_BOX_PADDING_TOP_MM, and
-// ANSWER_LINE_HORIZONTAL_INSET_MM were re-measured directly against the
-// official May 2025 TZ1 HL paper (8825-7106, Q1/Q2 answer boxes) via
-// pdfplumber, rather than eyeballed: each ruled line's top sits 7.1-7.2mm
-// from the previous one (avg 7.15mm), the first line sits ~4.92mm below
-// the box's top edge, and the ruled area is inset ~11mm from the box's
-// left/right edges (box 180mm wide, ruled area 157.5mm) rather than
-// running edge-to-edge. See exam-html.ts (the server-side PDF export's
-// equivalent constants) for the full measurement writeup — keep both in
-// sync if either changes. ANSWER_LINE_SPACING_MM is a margin-bottom value,
-// not the full top-to-top gap — a rendered dotted line is itself ~3mm tall
-// (ANSWER_LINE_HEIGHT_MM), so margin-bottom of 4.15mm plus that ~3mm line
-// height gives the measured 7.15mm top-to-top spacing.
+// ANSWER_LINE_SPACING_MM and ANSWER_BOX_PADDING_TOP_MM were re-measured
+// directly against the official May 2025 TZ1 HL paper (8825-7106, Q1/Q2
+// answer boxes) via pdfplumber, rather than eyeballed: each ruled line's
+// top sits 7.1-7.2mm from the previous one (avg 7.15mm), the first line
+// sits ~4.92mm below the box's top edge. See exam-html.ts (the server-side
+// PDF export's equivalent constants) for the full measurement writeup —
+// keep both in sync if either changes. ANSWER_LINE_SPACING_MM is a
+// margin-bottom value, not the full top-to-top gap — a rendered dotted
+// line is itself ~3mm tall (ANSWER_LINE_HEIGHT_MM), so margin-bottom of
+// 4.15mm plus that ~3mm line height gives the measured 7.15mm spacing.
+//
+// The dotted row itself is centered (textAlign, no horizontal margin) with
+// letter-spacing added rather than inset via fixed margins — see
+// IB_DOT_ROW_LETTER_SPACING_MM below for why: a fixed-inset version of
+// this shipped first and silently produced dotted lines far short of the
+// real paper's width (a real bug caught only by measuring actual rendered
+// PDF output, not by reasoning about the CSS).
 const ANSWER_BOX_PADDING_TOP_MM = 4.92;
 const ANSWER_BOX_PADDING_BOTTOM_MM = 2;
 const ANSWER_LINE_SPACING_MM = 4.15; // marginBottom between dotted lines
 const ANSWER_LINE_HEIGHT_MM = 3; // approx rendered height of one 8.5pt line
-const ANSWER_LINE_HORIZONTAL_INSET_MM = 11;
+/**
+ * IB_DOT_ROW has 74 dots — the correct count, confirmed against the real
+ * paper (each dot appears twice in that PDF's own text layer, a duplicate-
+ * glyph artifact of how IB's PDF was generated; the unique count is 74).
+ * But at 8.5pt Arial with a plain single space between dots, this string's
+ * intrinsic width is only ~122mm — the real paper's 74 dots span 157.5mm,
+ * meaning IB's own rendering spaces each dot roughly 29% further apart
+ * than a literal ". " repeat does at this font/size. letter-spacing closes
+ * that gap: 0.25mm of extra tracking (verified against real Chromium PDF
+ * output, not just canvas text measurement) brings this exact string to
+ * ~158mm, matching the real paper within 0.6mm.
+ */
+const IB_DOT_ROW_LETTER_SPACING_MM = 0.25;
 
 // Estimated rendered height (mm) of the "Section A" instructions block that
 // is injected above the first Section A question only (isFirstSectionA
@@ -187,14 +203,14 @@ function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
     <div
       key={`${keyPrefix}-${lineIdx}`}
       style={{
+        textAlign: "center",
         fontFamily: '"Arial", sans-serif',
         fontSize: "8.5pt",
         color: "#444",
         overflow: "hidden",
         whiteSpace: "nowrap",
         lineHeight: "1",
-        marginLeft: `${ANSWER_LINE_HORIZONTAL_INSET_MM}mm`,
-        marginRight: `${ANSWER_LINE_HORIZONTAL_INSET_MM}mm`,
+        letterSpacing: `${IB_DOT_ROW_LETTER_SPACING_MM}mm`,
         marginBottom: lineIdx < lineCount - 1 ? `${ANSWER_LINE_SPACING_MM}mm` : "0",
       }}
     >
