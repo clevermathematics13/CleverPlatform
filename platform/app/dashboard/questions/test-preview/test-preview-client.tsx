@@ -922,6 +922,7 @@ export function TestPreviewClient() {
           const pageNumber = thumbnailUrl ? qIdx + 2 : qIdx + 1;
           const isFirstSectionA = showSections && q.section !== "B" && qIdx === 0;
           const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
+          const isSectionB = showSections && q.section === "B";
           const showSectionAAnswerBox = showSections && q.section !== "B" && config?.imageType === "question";
           const totalMarks = questionTotalMarks(q);
           const lineCount = showSectionAAnswerBox ? ibdpDottedLineCount() : 0;
@@ -967,6 +968,11 @@ export function TestPreviewClient() {
                     <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Do <strong>not</strong> write solutions on this page.</p>
                     <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "0 0 4mm", textAlign: "center" }}>Section B</p>
                     <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.</p>
+                  </div>
+                )}
+                {!isFirstSectionB && isSectionB && (
+                  <div style={{ marginBottom: "4mm" }}>
+                    <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Do <strong>not</strong> write solutions on this page.</p>
                   </div>
                 )}
                 <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
@@ -1052,6 +1058,7 @@ export function TestPreviewClient() {
                 const pageNumber = (thumbnailUrl ? 2 : 1) + sIdx * orderedQuestions.length + qIdx;
                 const isFirstSectionA = showSections && q.section !== "B" && qIdx === 0;
                 const isFirstSectionB = showSections && q.section === "B" && (qIdx === 0 || orderedQuestions[qIdx - 1].section !== "B");
+                const isSectionB = showSections && q.section === "B";
                 const qrUrl = qrCodes[student.id]?.[q.code] ?? "";
                 const showSectionAAnswerBox = showSections && q.section !== "B" && config?.imageType === "question";
                 const totalMarks = questionTotalMarks(q);
@@ -1090,6 +1097,11 @@ export function TestPreviewClient() {
                           <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Do <strong>not</strong> write solutions on this page.</p>
                           <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "12pt", fontWeight: 700, margin: "0 0 4mm", textAlign: "center" }}>Section B</p>
                           <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.</p>
+                        </div>
+                      )}
+                      {!isFirstSectionB && isSectionB && (
+                        <div style={{ marginBottom: "4mm" }}>
+                          <p style={{ fontFamily: '"Arial", sans-serif', fontSize: "10pt", margin: "0 0 4mm 0", color: "#222" }}>Do <strong>not</strong> write solutions on this page.</p>
                         </div>
                       )}
                       <div style={{ display: "flex", alignItems: "baseline", gap: "6mm", marginBottom: "4.5mm", marginTop: "4mm" }}>
