@@ -121,8 +121,17 @@ const SECTION_A_HEADER_HTML = `<div style="margin-bottom:4mm">
 <p style="font-family:'Arial',sans-serif;font-size:10pt;margin:0 0 4mm 0;color:#222">Answer <strong>all</strong> questions. Answers must be written within the answer boxes provided. Working may be continued below the lines, if necessary.</p>
 </div>`;
 
-const SECTION_B_HEADER_HTML = `<div style="margin-bottom:4mm">
-<p style="font-family:'Arial',sans-serif;font-size:10pt;margin:0 0 4mm 0;color:#222">Do <strong>not</strong> write solutions on this page.</p>
+// Verified against the real official paper (8825-7106, pages 12-14): every
+// Section B page carries "Do not write solutions on this page." on its
+// own, but the "Section B" heading + "Answer all questions..." instructions
+// appear only once, on the first Section B page — not repeated on every
+// one. Previously the whole three-line block was gated behind
+// isFirstSectionB, so every Section B page after the first one got no
+// header text at all, not even the reminder line.
+const SECTION_B_REMINDER_HTML = `<p style="font-family:'Arial',sans-serif;font-size:10pt;margin:0 0 4mm 0;color:#222">Do <strong>not</strong> write solutions on this page.</p>`;
+
+const SECTION_B_FULL_HEADER_HTML = `<div style="margin-bottom:4mm">
+${SECTION_B_REMINDER_HTML}
 <p style="font-family:'Arial',sans-serif;font-size:12pt;font-weight:700;margin:0 0 4mm;text-align:center">Section B</p>
 <p style="font-family:'Arial',sans-serif;font-size:10pt;margin:0 0 4mm 0;color:#222">Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.</p>
 </div>`;
@@ -162,6 +171,7 @@ function renderQuestionPage(
   globalNum: number,
   isFirstSectionA: boolean,
   isFirstSectionB: boolean,
+  isSectionB: boolean,
   showBox: boolean
 ): string {
   const lineCount = showBox ? ibdpDottedLineCount() : 0;
@@ -202,7 +212,7 @@ function renderQuestionPage(
 ${cornerMarks()}
 <div style="max-height:${contentMaxMm != null ? contentMaxMm + "mm" : "none"};overflow:hidden;flex:0 0 auto">
 ${isFirstSectionA ? SECTION_A_HEADER_HTML : ""}
-${isFirstSectionB ? SECTION_B_HEADER_HTML : ""}
+${isFirstSectionB ? SECTION_B_FULL_HEADER_HTML : isSectionB ? `<div style="margin-bottom:4mm">${SECTION_B_REMINDER_HTML}</div>` : ""}
 <div style="display:flex;align-items:baseline;gap:6mm;margin-bottom:4.5mm;margin-top:4mm">
 <p style="font-family:'Arial',sans-serif;font-size:11pt;font-weight:700;margin:0;color:#000">${globalNum}.</p>
 <p style="font-family:'Arial',sans-serif;font-size:10.5pt;font-weight:700;margin:0;color:#000">[Maximum mark: ${q.totalMarks}]</p>
@@ -241,8 +251,9 @@ ${
       const isFirstSectionA = showSections && q.section !== "B" && qIdx === 0;
       const isFirstSectionB =
         showSections && q.section === "B" && (qIdx === 0 || ordered[qIdx - 1].section !== "B");
+      const isSectionB = showSections && q.section === "B";
       const showBox = showSections && q.section !== "B" && opts.imageType === "question";
-      return renderQuestionPage(q, globalNum, isFirstSectionA, isFirstSectionB, showBox);
+      return renderQuestionPage(q, globalNum, isFirstSectionA, isFirstSectionB, isSectionB, showBox);
     })
     .join("\n");
 
