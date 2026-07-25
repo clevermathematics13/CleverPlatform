@@ -20,19 +20,23 @@
  * 5-question, 2-section exam rendered to exactly 5 physical pages, all 3
  * Section A boxes present with all 12 dotted rows, on the page they belong).
  *
- * ANSWER_LINE_SPACING_MM / ANSWER_BOX_PADDING_TOP_MM / the horizontal inset
- * on the dotted lines were re-measured directly against the official May
- * 2025 TZ1 HL paper (8825-7106, Q1/Q2 answer boxes) via pdfplumber, rather
- * than eyeballed: each ruled line's top sits 7.1-7.2mm from the previous
- * one (avg 7.15mm), the first line sits ~4.92mm below the box's top edge,
- * and the ruled area itself is inset ~11mm from the box's left/right edges
- * (box is 180mm wide, ruled area 157.5mm) rather than running edge-to-edge.
- * The previous values (3.8mm spacing, 4mm horizontal padding) were roughly
- * half the real spacing and had no inset at all. ANSWER_LINE_SPACING_MM is
- * a margin-bottom value, not the full top-to-top gap — a rendered dotted
- * line is itself ~3mm tall (ANSWER_LINE_HEIGHT_MM), so margin-bottom of
- * 4.15mm plus that ~3mm line height gives the measured 7.15mm top-to-top
- * spacing; confirmed against real Chromium rendering, not just arithmetic.
+ * ANSWER_LINE_SPACING_MM / ANSWER_BOX_PADDING_TOP_MM were re-measured
+ * directly against the official May 2025 TZ1 HL paper (8825-7106, Q1/Q2
+ * answer boxes) via pdfplumber, rather than eyeballed: each ruled line's
+ * top sits 7.1-7.2mm from the previous one (avg 7.15mm), the first line
+ * sits ~4.92mm below the box's top edge. The previous values (3.8mm
+ * spacing, 3.5mm top padding) were roughly half real. ANSWER_LINE_SPACING_MM
+ * is a margin-bottom value, not the full top-to-top gap — a rendered
+ * dotted line is itself ~3mm tall (ANSWER_LINE_HEIGHT_MM), so margin-bottom
+ * of 4.15mm plus that ~3mm line height gives the measured 7.15mm spacing;
+ * confirmed against real Chromium rendering, not just arithmetic.
+ *
+ * The dotted row itself is centered (text-align:center, no horizontal
+ * margin) with letter-spacing added rather than inset via fixed margins —
+ * see IB_DOT_ROW_LETTER_SPACING_MM below for why: the fixed-inset approach
+ * initially shipped here silently produced dotted lines far short of the
+ * real paper's width (a real bug caught only by measuring actual rendered
+ * output, not by reasoning about the CSS).
  */
 
 export const PAGE_HEIGHT_MM = 296;
@@ -44,7 +48,6 @@ export const ANSWER_BOX_PADDING_TOP_MM = 4.92;
 export const ANSWER_BOX_PADDING_BOTTOM_MM = 2;
 export const ANSWER_LINE_SPACING_MM = 4.15;
 export const ANSWER_LINE_HEIGHT_MM = 3;
-export const ANSWER_LINE_HORIZONTAL_INSET_MM = 11;
 export const SECTION_A_HEADER_HEIGHT_MM = 40;
 
 const IB_DOT_ROW =
@@ -75,11 +78,30 @@ export function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
+/**
+ * IB_DOT_ROW has 74 dots — the correct count, confirmed against the real
+ * paper (each dot appears twice in that PDF's own text layer, a duplicate-
+ * glyph artifact of how IB's PDF was generated; the unique count is 74).
+ * But at 8.5pt Arial with a plain single space between dots, this string's
+ * intrinsic width is only ~122mm — the real paper's 74 dots span 157.5mm,
+ * meaning IB's own rendering spaces each dot roughly 29% further apart than
+ * a literal ". " repeat does at this font/size. letter-spacing closes that
+ * gap: 0.25mm of extra tracking (verified against real Chromium PDF output,
+ * not just canvas text measurement) brings this exact string to ~158mm,
+ * matching the real paper within 0.6mm.
+ */
+const IB_DOT_ROW_LETTER_SPACING_MM = 0.25;
+
 function dottedLines(lineCount: number): string {
   let out = "";
   for (let i = 0; i < lineCount; i++) {
     const mb = i < lineCount - 1 ? `${ANSWER_LINE_SPACING_MM}mm` : "0";
-    out += `<div style="margin-left:${ANSWER_LINE_HORIZONTAL_INSET_MM}mm;margin-right:${ANSWER_LINE_HORIZONTAL_INSET_MM}mm;font-family:'Arial',sans-serif;font-size:8.5pt;color:#444;overflow:hidden;white-space:nowrap;line-height:1;margin-bottom:${mb}">${IB_DOT_ROW}</div>`;
+    // text-align:center on a full-width (no horizontal margin) div, rather
+    // than fixed left/right margins, so the row centers itself regardless
+    // of small residual width variance between this string's rendered
+    // width and the box's available content width — fixed margins left a
+    // ~6mm left/right asymmetry when the two didn't match exactly.
+    out += `<div style="text-align:center;font-family:'Arial',sans-serif;font-size:8.5pt;color:#444;overflow:hidden;white-space:nowrap;line-height:1;letter-spacing:${IB_DOT_ROW_LETTER_SPACING_MM}mm;margin-bottom:${mb}">${IB_DOT_ROW}</div>`;
   }
   return out;
 }
