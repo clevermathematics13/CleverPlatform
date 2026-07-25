@@ -165,7 +165,7 @@ export async function POST(req: Request) {
         nameField,
       });
       const page = await browser.newPage();
-      await page.setContent(html, { waitUntil: "networkidle0", timeout: 60000 });
+      await page.setContent(html, { waitUntil: "load", timeout: 60000 });
       const pdf = await page.pdf({
         format: "A4",
         margin: { top: 0, right: 0, bottom: 0, left: 0 },
@@ -239,7 +239,7 @@ export async function POST(req: Request) {
       .join("\n")}</body></html>`;
 
     const page = await browser.newPage();
-    await page.setContent(combinedHtml, { waitUntil: "networkidle0", timeout: 60000 });
+    await page.setContent(combinedHtml, { waitUntil: "load", timeout: 60000 });
     const pdf = await page.pdf({
       format: "A4",
       margin: { top: 0, right: 0, bottom: 0, left: 0 },
