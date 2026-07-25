@@ -112,10 +112,24 @@ const PAGE_PADDING_TOP_MM = 10;
 const PAGE_PADDING_BOTTOM_MM = 12;
 const ANSWER_BOX_MARGIN_TOP_MM = 6;
 const ANSWER_BOX_MARGIN_BOTTOM_MM = 14;
-const ANSWER_BOX_PADDING_TOP_MM = 3.5;
+// ANSWER_LINE_SPACING_MM, ANSWER_BOX_PADDING_TOP_MM, and
+// ANSWER_LINE_HORIZONTAL_INSET_MM were re-measured directly against the
+// official May 2025 TZ1 HL paper (8825-7106, Q1/Q2 answer boxes) via
+// pdfplumber, rather than eyeballed: each ruled line's top sits 7.1-7.2mm
+// from the previous one (avg 7.15mm), the first line sits ~4.92mm below
+// the box's top edge, and the ruled area is inset ~11mm from the box's
+// left/right edges (box 180mm wide, ruled area 157.5mm) rather than
+// running edge-to-edge. See exam-html.ts (the server-side PDF export's
+// equivalent constants) for the full measurement writeup — keep both in
+// sync if either changes. ANSWER_LINE_SPACING_MM is a margin-bottom value,
+// not the full top-to-top gap — a rendered dotted line is itself ~3mm tall
+// (ANSWER_LINE_HEIGHT_MM), so margin-bottom of 4.15mm plus that ~3mm line
+// height gives the measured 7.15mm top-to-top spacing.
+const ANSWER_BOX_PADDING_TOP_MM = 4.92;
 const ANSWER_BOX_PADDING_BOTTOM_MM = 2;
-const ANSWER_LINE_SPACING_MM = 3.8; // marginBottom between dotted lines
+const ANSWER_LINE_SPACING_MM = 4.15; // marginBottom between dotted lines
 const ANSWER_LINE_HEIGHT_MM = 3; // approx rendered height of one 8.5pt line
+const ANSWER_LINE_HORIZONTAL_INSET_MM = 11;
 
 // Estimated rendered height (mm) of the "Section A" instructions block that
 // is injected above the first Section A question only (isFirstSectionA
@@ -179,6 +193,8 @@ function renderIbdpDottedLines(keyPrefix: string, lineCount: number) {
         overflow: "hidden",
         whiteSpace: "nowrap",
         lineHeight: "1",
+        marginLeft: `${ANSWER_LINE_HORIZONTAL_INSET_MM}mm`,
+        marginRight: `${ANSWER_LINE_HORIZONTAL_INSET_MM}mm`,
         marginBottom: lineIdx < lineCount - 1 ? `${ANSWER_LINE_SPACING_MM}mm` : "0",
       }}
     >
@@ -981,7 +997,7 @@ export function TestPreviewClient() {
                       marginBottom: `${ANSWER_BOX_MARGIN_BOTTOM_MM}mm`,
                       border: "1px solid #000",
                       boxSizing: "border-box",
-                      padding: `${ANSWER_BOX_PADDING_TOP_MM}mm 4mm ${ANSWER_BOX_PADDING_BOTTOM_MM}mm`,
+                      padding: `${ANSWER_BOX_PADDING_TOP_MM}mm 0 ${ANSWER_BOX_PADDING_BOTTOM_MM}mm`,
                       overflow: "hidden",
                       breakInside: "avoid",
                     }}
@@ -1083,7 +1099,7 @@ export function TestPreviewClient() {
                             marginTop: `${ANSWER_BOX_MARGIN_TOP_MM}mm`,
                             border: "1px solid #000",
                             boxSizing: "border-box",
-                            padding: `${ANSWER_BOX_PADDING_TOP_MM}mm 4mm ${ANSWER_BOX_PADDING_BOTTOM_MM}mm`,
+                            padding: `${ANSWER_BOX_PADDING_TOP_MM}mm 0 ${ANSWER_BOX_PADDING_BOTTOM_MM}mm`,
                             overflow: "hidden",
                             breakInside: "avoid",
                           }}
