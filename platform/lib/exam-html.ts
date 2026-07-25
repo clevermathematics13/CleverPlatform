@@ -19,6 +19,20 @@
  * file was verified end-to-end through the harness before shipping (a real
  * 5-question, 2-section exam rendered to exactly 5 physical pages, all 3
  * Section A boxes present with all 12 dotted rows, on the page they belong).
+ *
+ * ANSWER_LINE_SPACING_MM / ANSWER_BOX_PADDING_TOP_MM / the horizontal inset
+ * on the dotted lines were re-measured directly against the official May
+ * 2025 TZ1 HL paper (8825-7106, Q1/Q2 answer boxes) via pdfplumber, rather
+ * than eyeballed: each ruled line's top sits 7.1-7.2mm from the previous
+ * one (avg 7.15mm), the first line sits ~4.92mm below the box's top edge,
+ * and the ruled area itself is inset ~11mm from the box's left/right edges
+ * (box is 180mm wide, ruled area 157.5mm) rather than running edge-to-edge.
+ * The previous values (3.8mm spacing, 4mm horizontal padding) were roughly
+ * half the real spacing and had no inset at all. ANSWER_LINE_SPACING_MM is
+ * a margin-bottom value, not the full top-to-top gap — a rendered dotted
+ * line is itself ~3mm tall (ANSWER_LINE_HEIGHT_MM), so margin-bottom of
+ * 4.15mm plus that ~3mm line height gives the measured 7.15mm top-to-top
+ * spacing; confirmed against real Chromium rendering, not just arithmetic.
  */
 
 export const PAGE_HEIGHT_MM = 296;
@@ -26,10 +40,11 @@ export const PAGE_PADDING_TOP_MM = 10;
 export const PAGE_PADDING_BOTTOM_MM = 12;
 export const ANSWER_BOX_MARGIN_TOP_MM = 6;
 export const ANSWER_BOX_MARGIN_BOTTOM_MM = 14;
-export const ANSWER_BOX_PADDING_TOP_MM = 3.5;
+export const ANSWER_BOX_PADDING_TOP_MM = 4.92;
 export const ANSWER_BOX_PADDING_BOTTOM_MM = 2;
-export const ANSWER_LINE_SPACING_MM = 3.8;
+export const ANSWER_LINE_SPACING_MM = 4.15;
 export const ANSWER_LINE_HEIGHT_MM = 3;
+export const ANSWER_LINE_HORIZONTAL_INSET_MM = 11;
 export const SECTION_A_HEADER_HEIGHT_MM = 40;
 
 const IB_DOT_ROW =
@@ -64,7 +79,7 @@ function dottedLines(lineCount: number): string {
   let out = "";
   for (let i = 0; i < lineCount; i++) {
     const mb = i < lineCount - 1 ? `${ANSWER_LINE_SPACING_MM}mm` : "0";
-    out += `<div style="font-family:'Arial',sans-serif;font-size:8.5pt;color:#444;overflow:hidden;white-space:nowrap;line-height:1;margin-bottom:${mb}">${IB_DOT_ROW}</div>`;
+    out += `<div style="margin-left:${ANSWER_LINE_HORIZONTAL_INSET_MM}mm;margin-right:${ANSWER_LINE_HORIZONTAL_INSET_MM}mm;font-family:'Arial',sans-serif;font-size:8.5pt;color:#444;overflow:hidden;white-space:nowrap;line-height:1;margin-bottom:${mb}">${IB_DOT_ROW}</div>`;
   }
   return out;
 }
@@ -158,7 +173,7 @@ function renderQuestionPage(
           .join("");
 
   const boxHtml = showBox
-    ? `<div style="flex:1 1 auto;min-height:0;margin-top:${ANSWER_BOX_MARGIN_TOP_MM}mm;margin-bottom:${ANSWER_BOX_MARGIN_BOTTOM_MM}mm;border:1px solid #000;box-sizing:border-box;padding:${ANSWER_BOX_PADDING_TOP_MM}mm 4mm ${ANSWER_BOX_PADDING_BOTTOM_MM}mm;overflow:hidden;break-inside:avoid" data-answer-box="${globalNum}">${dottedLines(lineCount)}</div>`
+    ? `<div style="flex:1 1 auto;min-height:0;margin-top:${ANSWER_BOX_MARGIN_TOP_MM}mm;margin-bottom:${ANSWER_BOX_MARGIN_BOTTOM_MM}mm;border:1px solid #000;box-sizing:border-box;padding:${ANSWER_BOX_PADDING_TOP_MM}mm 0 ${ANSWER_BOX_PADDING_BOTTOM_MM}mm;overflow:hidden;break-inside:avoid" data-answer-box="${globalNum}">${dottedLines(lineCount)}</div>`
     : "";
 
   return `<div class="question-page" style="${pageStyle}">
