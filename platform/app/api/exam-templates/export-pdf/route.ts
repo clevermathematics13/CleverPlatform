@@ -200,7 +200,7 @@ export async function POST(req: Request) {
       .order("id");
     if (studentsError) throw new Error(studentsError.message);
 
-    const students = (studentRows ?? []) as Array<{
+    const students = (studentRows ?? []) as unknown as Array<{
       id: string;
       profiles: { display_name: string | null; nickname: string | null } | null;
     }>;
