@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        margin: 0; padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+      }
+      .container {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        overflow: hidden;
+      }
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 24px 30px;
+        text-align: center;
+      }
+      .header h1 { margin: 0 0 4px 0; font-size: 1.6em; font-weight: 300; }
+      .header .exam-name { font-size: 1.1em; opacity: 0.9; }
+
+      .body { padding: 24px 30px; }
+
+      .field { margin-bottom: 16px; }
+      .field label { display: block; font-weight: 600; font-size: 14px; color: #444; margin-bottom: 4px; }
+      .field input, .field select {
+        width: 100%; padding: 10px 12px; border: 2px solid #e0e0e0;
+        border-radius: 8px; font-size: 15px; transition: border-color 0.2s;
+      }
+      .field input:focus, .field select:focus { border-color: #667eea; outline: none; }
+
+      .parts-grid { margin: 20px 0; }
+      .part-row {
+        display: flex; align-items: center; gap: 12px;
+        padding: 10px 0; border-bottom: 1px solid #f0f0f0;
+      }
+      .part-row:last-child { border-bottom: none; }
+      .part-label {
+        font-weight: 600; font-size: 16px; color: #333;
+        min-width: 50px; text-align: center;
+      }
+      .part-max { font-size: 13px; color: #888; min-width: 40px; }
+      .part-input {
+        width: 80px; padding: 8px 10px; border: 2px solid #e0e0e0;
+        border-radius: 8px; font-size: 16px; text-align: center;
+      }
+      .part-input:focus { border-color: #667eea; outline: none; }
+      .part-input.error { border-color: #e74c3c; background: #fff5f5; }
+
+      .btn {
+        display: block; width: 100%; padding: 14px;
+        border: none; border-radius: 8px; font-size: 16px;
+        font-weight: 600; cursor: pointer; transition: all 0.2s;
+        margin-top: 20px;
+      }
+      .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; }
+      .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(102,126,234,0.4); }
+      .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
+
+      .status { text-align: center; padding: 16px; margin-top: 12px; border-radius: 8px; display: none; }
+      .status.error { display: block; background: #fff5f5; color: #c0392b; border: 1px solid #f5c6cb; }
+      .status.success { display: block; background: #f0fff4; color: #27ae60; border: 1px solid #c3e6cb; }
+      .status.info { display: block; background: #f0f4ff; color: #667eea; border: 1px solid #c3d1ff; }
+
+      .loading { text-align: center; padding: 40px; color: #888; font-size: 16px; }
+      .spinner { display: inline-block; width: 30px; height: 30px; border: 3px solid #e0e0e0;
+        border-top-color: #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 12px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .total-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 14px 16px; margin-top: 16px; background: #f8f9fa;
+        border-radius: 8px; font-weight: 600;
+      }
+      .total-value { font-size: 1.3em; color: #667eea; }
+
+      .exam-select-section { margin-bottom: 20px; }
+
+      .btn-secondary {
+        background: transparent; color: #667eea; border: 2px solid #667eea;
+      }
+      .btn-secondary:hover { background: #f0f4ff; }
+      .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+      .btn-row .btn { flex: 1; margin-top: 0; }
+
+      .results-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+      .results-table th, .results-table td {
+        padding: 10px 12px; text-align: center; border-bottom: 1px solid #f0f0f0;
+      }
+      .results-table th {
+        background: #f8f9fa; font-weight: 600; color: #555; font-size: 12px;
+        text-transform: uppercase; letter-spacing: 0.5px;
+      }
+      .results-table td.label-cell { text-align: left; font-weight: 600; color: #333; }
+      .results-table tr:last-child td { border-bottom: none; }
+      .results-table .total-row-table td {
+        font-weight: 700; background: #f8f9fa; border-top: 2px solid #e0e0e0;
+      }
+      .match { color: #27ae60; }
+      .mismatch { color: #e74c3c; }
+      .pending { color: #888; font-style: italic; }
+
+      .results-exam-card {
+        background: #f8f9fa; border-radius: 8px; padding: 14px 16px;
+        margin-bottom: 10px; cursor: pointer; transition: all 0.2s;
+        border: 2px solid transparent;
+      }
+      .results-exam-card:hover { border-color: #667eea; background: #f0f4ff; }
+      .results-exam-card .exam-card-title { font-weight: 600; color: #333; }
+      .back-link {
+        display: inline-block; margin-bottom: 16px; color: #667eea;
+        cursor: pointer; font-size: 14px; font-weight: 600;
+      }
+      .back-link:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>📝 Marks Self-Report</h1>
+        <div class="exam-name" id="examTitle">Loading...</div>
+      </div>
+      <div class="body">
+        <!-- Step 1: Auth + Exam selection -->
+        <div id="step1">
+          <div class="loading" id="authLoading">
+            <div class="spinner"></div><br>Signing you in...
+          </div>
+
+          <div id="authDone" style="display:none;">
+            <div class="field">
+              <label>Signed in as</label>
+              <div style="padding:8px 0;color:#555;font-weight:600;" id="authEmail"></div>
+              <input type="hidden" id="emailInput">
+            </div>
+
+            <!-- Instructor panel (hidden for students) -->
+            <div id="instructorPanel" style="display:none;">
+              <div style="background:#f0f4ff;border:2px solid #667eea;border-radius:8px;padding:16px;margin-bottom:16px;">
+                <div style="font-weight:600;color:#667eea;margin-bottom:8px;">🎓 Instructor Mode</div>
+                <div class="btn-row">
+                  <button class="btn btn-primary" onclick="goToExamUI()">Exam Management</button>
+                  <button class="btn btn-primary" onclick="goToGrading()" style="background:linear-gradient(135deg,#27ae60,#2ecc71);">Grade Entry</button>
+                </div>
+                <div class="btn-row" style="margin-top:10px;">
+                  <button class="btn btn-secondary" id="switchToStudentBtn" onclick="switchToStudent()">View as Student</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="field exam-select-section" id="examSelectSection" style="display:none;">
+              <label for="examSelect">Select Exam</label>
+              <select id="examSelect">
+                <option value="">-- Choose an exam --</option>
+              </select>
+            </div>
+
+            <div class="btn-row" id="studentBtnRow">
+              <button class="btn btn-primary" id="loadExamBtn" onclick="loadExam()">Submit Marks</button>
+              <button class="btn btn-secondary" id="viewResultsBtn" onclick="viewResults()">View My Results</button>
+            </div>
+          </div>
+          <div id="step1Status" class="status"></div>
+        </div>
+
+        <!-- Step 2: Enter marks -->
+        <div id="step2" style="display:none;">
+          <div class="field">
+            <label>Your Email</label>
+            <div style="padding:8px 0;color:#555;" id="confirmedEmail"></div>
+          </div>
+
+          <div class="loading" id="partsLoading">
+            <div class="spinner"></div><br>Loading question parts...
+          </div>
+
+          <div id="partsContainer" style="display:none;">
+            <label style="font-weight:600;font-size:14px;color:#444;">
+              Enter the marks you think you earned for each part:
+            </label>
+            <div class="parts-grid" id="partsGrid"></div>
+            <div class="total-row">
+              <span>Total</span>
+              <span class="total-value" id="totalMarks">0 / 0</span>
+            </div>
+            <button class="btn btn-primary" id="submitBtn" onclick="submitMarks()">Submit Marks</button>
+          </div>
+
+          <div id="step2Status" class="status"></div>
+        </div>
+
+        <!-- Step 3: Confirmation -->
+        <div id="step3" style="display:none;">
+          <div style="text-align:center;padding:30px 0;">
+            <div style="font-size:3em;margin-bottom:12px;">✅</div>
+            <h2 style="color:#27ae60;margin:0 0 8px 0;">Marks Submitted!</h2>
+            <p style="color:#666;" id="confirmationMsg"></p>
+            <button class="btn btn-secondary" style="margin-top:16px;" onclick="viewResultsAfterSubmit()">View My Results</button>
+          </div>
+        </div>
+
+        <!-- Step 4: View Results -->
+        <div id="step4" style="display:none;">
+          <span class="back-link" onclick="backToStart()">← Back</span>
+
+          <!-- Exam list (when no specific exam selected) -->
+          <div id="resultsExamList">
+            <div class="loading" id="resultsLoading">
+              <div class="spinner"></div><br>Loading your exams...
+            </div>
+            <div id="resultsExamCards"></div>
+          </div>
+
+          <!-- Single exam results -->
+          <div id="resultsDetail" style="display:none;">
+            <span class="back-link" id="backToExamList" onclick="showExamList()" style="display:none;">← All Exams</span>
+            <h3 style="margin:0 0 4px 0;color:#333;" id="resultsExamTitle"></h3>
+            <p style="color:#888;margin:0 0 16px 0;font-size:13px;" id="resultsEmail"></p>
+
+            <div class="loading" id="resultsDetailLoading">
+              <div class="spinner"></div><br>Loading results...
+            </div>
+
+            <div id="resultsTableContainer" style="display:none;"></div>
+          </div>
+
+          <div id="step4Status" class="status"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      var examCode = null;
+      var examParts = [];
+      var maxTotal = 0;
+      var resultsOnlyMode = false;
+      var loggedInEmail = '';
+      var loggedInName = '';
+      var isInstructor = false;
+      var studentAliasEmail = '';
+      var impersonating = false;
+
+      // Preloaded data from server (embedded at serve time)
+      var preloadedAuth = <?!= preloadedAuth ?>;
+      var preloadedExams = <?!= preloadedExams ?>;
+
+      // Check if exam code is in URL params (passed via ?exam=...)
+      (function init() {
+        // Detect ?ui=results mode
+        var uiParam = getUrlParam('ui');
+        if (uiParam === 'results') {
+          resultsOnlyMode = true;
+          document.querySelector('.header h1').textContent = '📊 My Results';
+          document.getElementById('examTitle').textContent = 'Signing you in...';
+        }
+
+        // Parse URL-provided exam code
+        var urlExam = getUrlParam('exam');
+        if (urlExam) {
+          examCode = decodeURIComponent(urlExam);
+        }
+
+        // Pre-populate exam dropdown immediately (no async wait)
+        if (preloadedExams && !preloadedExams.error) {
+          var sel = document.getElementById('examSelect');
+          (preloadedExams.exams || []).forEach(function(ex) {
+            var opt = document.createElement('option');
+            opt.value = ex.code;
+            opt.textContent = ex.name;
+            sel.appendChild(opt);
+          });
+        }
+
+        // Use preloaded auth result (no async round-trip)
+        handleAuthResult(preloadedAuth);
+      })();
+
+      function handleAuthResult(result) {
+        document.getElementById('authLoading').style.display = 'none';
+
+        if (!result || result.error || !result.email) {
+          showStatus('step1Status', 'error',
+            (result && result.error ? result.error : 'Could not detect your Google account. Please sign in and reload.') +
+            '<br><button class="btn btn-secondary" onclick="logoutAndReload()">Log in as another user</button>'
+          );
+          return;
+        }
+
+        loggedInEmail = result.email;
+        loggedInName = result.name || '';
+        document.getElementById('emailInput').value = loggedInEmail;
+
+        // Instructor detection
+        if (result.instructor) {
+          isInstructor = true;
+          studentAliasEmail = result.studentAlias || '';
+          var displayName = 'Instructor (' + loggedInEmail + ')';
+          document.getElementById('authEmail').textContent = displayName;
+          document.getElementById('authDone').style.display = 'block';
+          document.getElementById('instructorPanel').style.display = 'block';
+          document.getElementById('studentBtnRow').style.display = 'none';
+          document.getElementById('examTitle').textContent = 'Instructor Dashboard';
+          return;
+        }
+
+        if (!result.verified) {
+          showStatus('step1Status', 'error',
+            'Your account (' + loggedInEmail + ') is not registered as a student.<br>' +
+            'Please log in with your school account. If you forgot your school account password, contact <a href="mailto:ithelpdesk@amersol.edu.pe">ithelpdesk@amersol.edu.pe</a>.' +
+            '<br><button class="btn btn-secondary" style="margin-top:12px;" onclick="logoutAndReload()">Log in as another user</button>'
+          );
+          return;
+        }
+
+        // Show authenticated UI
+        var displayName = loggedInName ? loggedInName + ' (' + loggedInEmail + ')' : loggedInEmail;
+        document.getElementById('authEmail').textContent = displayName;
+        document.getElementById('authDone').style.display = 'block';
+
+        // Set up exam selection (exams already in dropdown from preload)
+        if (resultsOnlyMode) {
+          document.getElementById('examTitle').textContent = 'My Results';
+          document.getElementById('loadExamBtn').style.display = 'none';
+          document.getElementById('examSelectSection').style.display = 'none';
+        } else if (examCode) {
+          document.getElementById('examTitle').textContent = examCode;
+          document.getElementById('examSelectSection').style.display = 'none';
+        } else {
+          document.getElementById('examTitle').textContent = 'Select an exam below';
+          document.getElementById('examSelectSection').style.display = 'block';
+        }
+      }
+      })();
+
+      function getUrlParam(name) {
+        // google.script.run pages get params via the URL hash or we can read from a scriptlet
+        // For GAS web apps, params come via doGet(e).parameter — we'll embed it
+        var match = window.location.search.match(new RegExp('[?&]' + name + '=([^&]*)'));
+        if (match) return decodeURIComponent(match[1]);
+        // Also check hash (GAS sometimes uses hash for params)
+        match = window.location.hash.match(new RegExp('[#&]' + name + '=([^&]*)'));
+        return match ? decodeURIComponent(match[1]) : null;
+      }
+
+      // loadExamList() no longer needed — exams are preloaded via template
+
+      function loadExam() {
+        var email = loggedInEmail;
+        if (!email) {
+          showStatus('step1Status', 'error', 'Not signed in.');
+          return;
+        }
+
+        // Get exam code from URL param or dropdown
+        if (!examCode) {
+          var sel = document.getElementById('examSelect');
+          examCode = sel.value;
+        }
+        if (!examCode) {
+          showStatus('step1Status', 'error', 'Please select an exam.');
+          return;
+        }
+
+        // Already verified during auth — proceed directly
+        proceedToStep2(email, loggedInName);
+      }
+
+      function proceedToStep2(email, studentName) {
+        // Move to step 2
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2').style.display = 'block';
+        document.getElementById('confirmedEmail').dataset.email = email;
+        document.getElementById('examTitle').textContent = examCode;
+
+        // Show student name if available
+        if (studentName) {
+          document.getElementById('confirmedEmail').textContent = studentName + ' (' + email + ')';
+        } else {
+          document.getElementById('confirmedEmail').textContent = email;
+        }
+
+        // Fetch exam parts
+        google.script.run
+          .withSuccessHandler(function(result) {
+            document.getElementById('partsLoading').style.display = 'none';
+            if (result.error) {
+              showStatus('step2Status', 'error', result.error);
+              return;
+            }
+            examParts = result.parts;
+            renderParts(result.parts);
+            document.getElementById('partsContainer').style.display = 'block';
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('partsLoading').style.display = 'none';
+            showStatus('step2Status', 'error', 'Failed to load exam: ' + err.message);
+          })
+          .getExamPartsForStudentReport(examCode);
+      }
+
+      function renderParts(parts) {
+        var grid = document.getElementById('partsGrid');
+        grid.innerHTML = '';
+        maxTotal = 0;
+
+        parts.forEach(function(p, idx) {
+          var row = document.createElement('div');
+          row.className = 'part-row';
+
+          var maxVal = (p.maxMarks !== null && p.maxMarks !== undefined) ? p.maxMarks : '?';
+          if (typeof maxVal === 'number') maxTotal += maxVal;
+
+          row.innerHTML =
+            '<span class="part-label">' + escapeHtml(p.label) + '</span>' +
+            '<span class="part-max">/ ' + maxVal + '</span>' +
+            '<input type="number" class="part-input" id="mark_' + idx + '" ' +
+            'min="0" max="' + (typeof maxVal === 'number' ? maxVal : 999) + '" ' +
+            'step="1" placeholder="0" oninput="updateTotal()" data-max="' + maxVal + '">';
+
+          grid.appendChild(row);
+        });
+
+        updateTotal();
+      }
+
+      function updateTotal() {
+        var total = 0;
+        var hasError = false;
+
+        examParts.forEach(function(p, idx) {
+          var input = document.getElementById('mark_' + idx);
+          var val = parseFloat(input.value);
+          if (!isNaN(val)) {
+            total += val;
+            if (p.maxMarks !== null && val > p.maxMarks) {
+              input.classList.add('error');
+              hasError = true;
+            } else if (val < 0) {
+              input.classList.add('error');
+              hasError = true;
+            } else {
+              input.classList.remove('error');
+            }
+          } else {
+            input.classList.remove('error');
+          }
+        });
+
+        document.getElementById('totalMarks').textContent = total + ' / ' + maxTotal;
+        document.getElementById('submitBtn').disabled = hasError;
+      }
+
+      function submitMarks() {
+        var email = document.getElementById('confirmedEmail').dataset.email;
+        var marks = [];
+
+        examParts.forEach(function(p, idx) {
+          var input = document.getElementById('mark_' + idx);
+          var val = input.value.trim();
+          marks.push({ label: p.label, value: val === '' ? '' : parseFloat(val) });
+        });
+
+        // Validate at least one mark entered
+        var filled = marks.filter(function(m) { return m.value !== '' && !isNaN(m.value); });
+        if (filled.length === 0) {
+          showStatus('step2Status', 'error', 'Please enter at least one mark.');
+          return;
+        }
+
+        // Disable button to prevent double-submit
+        document.getElementById('submitBtn').disabled = true;
+        document.getElementById('submitBtn').textContent = 'Submitting...';
+
+        var submission = {
+          examCode: examCode,
+          studentEmail: email,
+          marks: marks.filter(function(m) { return m.value !== '' && !isNaN(m.value); })
+        };
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            if (result.error) {
+              showStatus('step2Status', 'error', result.error);
+              document.getElementById('submitBtn').disabled = false;
+              document.getElementById('submitBtn').textContent = 'Submit Marks';
+              return;
+            }
+            // Show confirmation
+            document.getElementById('step2').style.display = 'none';
+            document.getElementById('step3').style.display = 'block';
+            document.getElementById('confirmationMsg').textContent =
+              result.count + ' mark(s) submitted for ' + examCode + '. You may close this page.';
+          })
+          .withFailureHandler(function(err) {
+            showStatus('step2Status', 'error', 'Submission failed: ' + err.message);
+            document.getElementById('submitBtn').disabled = false;
+            document.getElementById('submitBtn').textContent = 'Submit Marks';
+          })
+          .submitStudentMarks(submission);
+      }
+
+      function showStatus(id, type, msg) {
+        var el = document.getElementById(id);
+        el.className = 'status ' + type;
+        el.innerHTML = msg;
+        el.style.display = 'block';
+      }
+
+      function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      // ── Instructor Functions ──────────────────────────────
+
+      function goToExamUI() {
+        google.script.run
+          .withSuccessHandler(function(url) {
+            window.top.location.href = url;
+          })
+          .withFailureHandler(function() {
+            showStatus('step1Status', 'error', 'Could not get app URL.');
+          })
+          .getAppUrl();
+      }
+
+      function goToGrading() {
+        google.script.run
+          .withSuccessHandler(function(url) {
+            window.top.location.href = url + '?ui=grading';
+          })
+          .withFailureHandler(function() {
+            showStatus('step1Status', 'error', 'Could not get app URL.');
+          })
+          .getAppUrl();
+      }
+
+      function switchToStudent() {
+        document.getElementById('switchToStudentBtn').disabled = true;
+        document.getElementById('switchToStudentBtn').textContent = 'Loading...';
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            document.getElementById('switchToStudentBtn').disabled = false;
+            document.getElementById('switchToStudentBtn').textContent = 'View as Student';
+
+            if (result.error) {
+              showStatus('step1Status', 'error', result.error);
+              return;
+            }
+
+            // Impersonate the student
+            impersonating = true;
+            loggedInEmail = result.email;
+            loggedInName = result.name || '';
+            document.getElementById('emailInput').value = loggedInEmail;
+
+            // Update UI to student view
+            var displayName = loggedInName ? loggedInName + ' (' + loggedInEmail + ')' : loggedInEmail;
+            document.getElementById('authEmail').innerHTML =
+              displayName + ' <span style="font-size:12px;color:#667eea;">(viewing as student)</span>';
+            document.getElementById('instructorPanel').style.display = 'none';
+            document.getElementById('studentBtnRow').style.display = 'flex';
+
+            // Show back-to-instructor button
+            var backBtn = document.createElement('button');
+            backBtn.className = 'btn btn-secondary';
+            backBtn.style.marginTop = '10px';
+            backBtn.textContent = '← Back to Instructor Mode';
+            backBtn.onclick = function() { window.location.reload(); };
+            document.getElementById('studentBtnRow').parentNode.insertBefore(backBtn, document.getElementById('studentBtnRow').nextSibling);
+
+            // Set up exam selection like a normal student
+            if (resultsOnlyMode) {
+              document.getElementById('examTitle').textContent = 'Results for ' + loggedInName;
+              document.getElementById('loadExamBtn').style.display = 'none';
+              document.getElementById('examSelectSection').style.display = 'none';
+            } else if (examCode) {
+              document.getElementById('examTitle').textContent = examCode;
+              document.getElementById('examSelectSection').style.display = 'none';
+            } else {
+              document.getElementById('examTitle').textContent = 'Select an exam below';
+              document.getElementById('examSelectSection').style.display = 'block';
+              loadExamList();
+            }
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('switchToStudentBtn').disabled = false;
+            document.getElementById('switchToStudentBtn').textContent = 'View as Student';
+            showStatus('step1Status', 'error', 'Failed to switch: ' + err.message);
+          })
+          .getStudentAlias(studentAliasEmail);
+      }
+
+      // Log out of current Google account and re-authenticate
+      function logoutAndReload() {
+        google.script.run
+          .withSuccessHandler(function(url) {
+            // Preserve the current UI param
+            var ui = getUrlParam('ui');
+            var fullUrl = url + (ui ? '?ui=' + ui : '');
+            window.top.location.href = 'https://accounts.google.com/AccountChooser?continue=' + encodeURIComponent(fullUrl);
+          })
+          .withFailureHandler(function() {
+            window.top.location.reload();
+          })
+          .getAppUrl();
+      }
+
+      // ── View Results Functions ──────────────────────────────
+
+      var resultsEmail = '';
+      var resultsFromSubmit = false;
+
+      function viewResults() {
+        var email = loggedInEmail;
+        if (!email) {
+          showStatus('step1Status', 'error', 'Not signed in.');
+          return;
+        }
+        resultsEmail = email;
+        resultsFromSubmit = false;
+        showStep4();
+        loadStudentExams(email);
+      }
+
+      function viewResultsAfterSubmit() {
+        resultsEmail = document.getElementById('confirmedEmail').dataset.email;
+        resultsFromSubmit = true;
+        document.getElementById('step3').style.display = 'none';
+        showStep4();
+
+        // If we know the exam, go straight to results detail
+        if (examCode) {
+          showResultsForExam(examCode);
+        } else {
+          loadStudentExams(resultsEmail);
+        }
+      }
+
+      function showStep4() {
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2').style.display = 'none';
+        document.getElementById('step3').style.display = 'none';
+        document.getElementById('step4').style.display = 'block';
+        document.getElementById('examTitle').textContent = 'My Results';
+        // Reset
+        document.getElementById('resultsExamList').style.display = 'block';
+        document.getElementById('resultsDetail').style.display = 'none';
+        document.getElementById('resultsExamCards').innerHTML = '';
+        document.getElementById('resultsLoading').style.display = 'block';
+        hideStatus('step4Status');
+      }
+
+      function hideStatus(id) {
+        var el = document.getElementById(id);
+        el.style.display = 'none';
+        el.className = 'status';
+      }
+
+      function loadStudentExams(email) {
+        google.script.run
+          .withSuccessHandler(function(result) {
+            document.getElementById('resultsLoading').style.display = 'none';
+            if (result.error) {
+              showStatus('step4Status', 'error', result.error);
+              return;
+            }
+            var exams = result.exams || [];
+            if (exams.length === 0) {
+              showStatus('step4Status', 'info', 'No submissions found for ' + email);
+              return;
+            }
+            if (exams.length === 1) {
+              // Only one exam — go straight to detail
+              showResultsForExam(exams[0]);
+              return;
+            }
+            // Multiple exams — show cards
+            var container = document.getElementById('resultsExamCards');
+            container.innerHTML = '';
+            exams.forEach(function(code) {
+              var card = document.createElement('div');
+              card.className = 'results-exam-card';
+              card.innerHTML = '<div class="exam-card-title">' + escapeHtml(code) + '</div>';
+              card.onclick = function() { showResultsForExam(code); };
+              container.appendChild(card);
+            });
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('resultsLoading').style.display = 'none';
+            showStatus('step4Status', 'error', 'Failed to load exams: ' + err.message);
+          })
+          .getStudentExams(email);
+      }
+
+      function showResultsForExam(code) {
+        document.getElementById('resultsExamList').style.display = 'none';
+        document.getElementById('resultsDetail').style.display = 'block';
+        document.getElementById('resultsExamTitle').textContent = code;
+        document.getElementById('resultsEmail').textContent = resultsEmail;
+        document.getElementById('resultsDetailLoading').style.display = 'block';
+        document.getElementById('resultsTableContainer').style.display = 'none';
+        document.getElementById('backToExamList').style.display = resultsFromSubmit ? 'none' : 'inline-block';
+        hideStatus('step4Status');
+
+        google.script.run
+          .withSuccessHandler(function(result) {
+            document.getElementById('resultsDetailLoading').style.display = 'none';
+            if (result.error) {
+              showStatus('step4Status', 'error', result.error);
+              return;
+            }
+            renderResultsTable(result.submitted, result.grades);
+          })
+          .withFailureHandler(function(err) {
+            document.getElementById('resultsDetailLoading').style.display = 'none';
+            showStatus('step4Status', 'error', 'Failed to load results: ' + err.message);
+          })
+          .getStudentResults(code, resultsEmail);
+      }
+
+      function renderResultsTable(submitted, grades) {
+        var container = document.getElementById('resultsTableContainer');
+
+        // Build lookup maps
+        var subMap = {};
+        var subTotal = 0;
+        (submitted || []).forEach(function(s) {
+          subMap[s.question_label] = s.marks_reported;
+          subTotal += (parseFloat(s.marks_reported) || 0);
+        });
+
+        var gradeMap = {};
+        var gradeTotal = 0;
+        var maxTotal = 0;
+        (grades || []).forEach(function(g) {
+          gradeMap[g.question_code] = g;
+          gradeTotal += (parseFloat(g.marks_awarded) || 0);
+          maxTotal += (parseFloat(g.marks_possible) || 0);
+        });
+
+        // Merge all labels (union of submitted + graded)
+        var allLabels = [];
+        var seen = {};
+        (submitted || []).forEach(function(s) {
+          if (!seen[s.question_label]) { allLabels.push(s.question_label); seen[s.question_label] = true; }
+        });
+        (grades || []).forEach(function(g) {
+          if (!seen[g.question_code]) { allLabels.push(g.question_code); seen[g.question_code] = true; }
+        });
+
+        // Natural sort: split into [text, number, suffix] so 7a < 7b < 7d, 6a < 6b etc.
+        allLabels.sort(function(a, b) {
+          var re = /^(\d+)(.*)/;
+          var ma = a.match(re), mb = b.match(re);
+          if (ma && mb) {
+            var na = parseInt(ma[1]), nb = parseInt(mb[1]);
+            if (na !== nb) return na - nb;
+            return (ma[2] || '').localeCompare(mb[2] || '');
+          }
+          return a.localeCompare(b);
+        });
+
+        var hasGrades = grades && grades.length > 0;
+
+        var html = '<table class="results-table"><thead><tr>' +
+          '<th style="text-align:left;">Question</th>' +
+          '<th>Self-Assessed</th>';
+        if (hasGrades) {
+          html += '<th>Clev-Assessed</th><th>Max</th>';
+        }
+        html += '</tr></thead><tbody>';
+
+        allLabels.forEach(function(label) {
+          var sub = subMap[label];
+          var grade = gradeMap[label];
+          var subVal = (sub !== undefined) ? sub : '';
+          var offVal = grade ? grade.marks_awarded : '';
+          var maxVal = grade ? grade.marks_possible : '';
+
+          // Determine match/mismatch styling
+          var matchClass = '';
+          if (sub !== undefined && grade) {
+            matchClass = (parseFloat(sub) === parseFloat(grade.marks_awarded)) ? 'match' : 'mismatch';
+          }
+
+          // Build editable self-assessed cell (only for non-instructor student view)
+          var selfCell;
+          if (!isInstructor) {
+            selfCell = '<td class="self-cell" data-label="' + escapeHtml(label) + '" tabindex="0">' +
+              (subVal !== '' ? subVal : '<span class="pending">—</span>') + '</td>';
+          } else {
+            selfCell = '<td>' + (subVal !== '' ? subVal : '<span class="pending">—</span>') + '</td>';
+          }
+
+          html += '<tr>' +
+            '<td class="label-cell">' + escapeHtml(label) + '</td>' +
+            selfCell;
+          if (hasGrades) {
+            html += '<td class="' + matchClass + '">' +
+              (offVal !== '' ? offVal : '<span class="pending">pending</span>') + '</td>' +
+              '<td>' + (maxVal !== '' ? maxVal : '') + '</td>';
+          }
+          html += '</tr>';
+        });
+
+        // Totals row
+        html += '<tr class="total-row-table">' +
+          '<td class="label-cell">Total</td>' +
+          '<td>' + subTotal + '</td>';
+        if (hasGrades) {
+          var totalMatch = (subTotal === gradeTotal) ? 'match' : 'mismatch';
+          html += '<td class="' + totalMatch + '">' + gradeTotal + '</td>' +
+            '<td>' + maxTotal + '</td>';
+        }
+        html += '</tr></tbody></table>';
+
+        if (!hasGrades && submitted && submitted.length > 0) {
+          html += '<p style="text-align:center;color:#888;font-size:13px;margin-top:12px;">' +
+            'Official grades will appear here once your teacher has finished marking.</p>';
+        }
+
+        container.innerHTML = html;
+        container.style.display = 'block';
+
+        // Attach inline-edit listeners to self-assessed cells
+        if (!isInstructor) {
+          container.querySelectorAll('.self-cell').forEach(function(td) {
+            // On keydown: if user types a digit, replace cell content with an input
+            td.addEventListener('keydown', function(e) {
+              if (td.querySelector('input')) return; // already editing
+              // Allow digits 0-9 and Backspace/Delete to trigger edit mode
+              if (/^[0-9]$/.test(e.key) || e.key === 'Backspace' || e.key === 'Delete') {
+                e.preventDefault();
+                startSelfEdit(td, /^[0-9]$/.test(e.key) ? e.key : '');
+              }
+            });
+          });
+        }
+      }
+
+      function startSelfEdit(td, initialVal) {
+        var label = td.getAttribute('data-label');
+        var inp = document.createElement('input');
+        inp.type = 'number';
+        inp.min = '0';
+        inp.style.cssText = 'width:50px;text-align:center;font-size:inherit;border:1px solid #2196F3;border-radius:3px;padding:2px 4px;';
+        inp.value = initialVal;
+        td.textContent = '';
+        td.appendChild(inp);
+        inp.focus();
+
+        function commit() {
+          var val = inp.value.trim();
+          td.textContent = val !== '' ? val : '—';
+          if (val !== '') {
+            td.style.background = '#FFF9C4';
+            saveSelfMark(label, parseFloat(val), td);
+          }
+        }
+        inp.addEventListener('blur', commit);
+        inp.addEventListener('keydown', function(ev) {
+          if (ev.key === 'Enter') { inp.blur(); }
+          if (ev.key === 'Escape') {
+            // restore original without saving
+            td.textContent = td.getAttribute('data-orig') || '—';
+          }
+        });
+        // Store original for Escape
+        td.setAttribute('data-orig', td.textContent);
+      }
+
+      function saveSelfMark(questionLabel, value, td) {
+        var code = document.getElementById('resultsExamTitle').textContent;
+        google.script.run
+          .withSuccessHandler(function(res) {
+            if (res && res.error) {
+              td.style.background = '#FFCDD2';
+              td.title = res.error;
+            } else {
+              td.style.background = '#C8E6C9';
+              setTimeout(function() { td.style.background = ''; }, 1500);
+            }
+          })
+          .withFailureHandler(function(err) {
+            td.style.background = '#FFCDD2';
+            td.title = err.message;
+          })
+          .updateStudentMark(code, resultsEmail, questionLabel, value);
+      }
+
+      function showExamList() {
+        document.getElementById('resultsDetail').style.display = 'none';
+        document.getElementById('resultsExamList').style.display = 'block';
+      }
+
+      function backToStart() {
+        document.getElementById('step4').style.display = 'none';
+        document.getElementById('step1').style.display = 'block';
+        document.getElementById('examTitle').textContent = examCode || 'Select an exam below';
+        hideStatus('step4Status');
+      }
+    </script>
+  </body>
+</html>
