@@ -19,10 +19,17 @@ export const runtime = "nodejs";
 // Service-role client: the canonical row (owner_id IS NULL) is only writable by
 // the service role under RLS, and reads must see it regardless of ownership.
 // Teacher-gating happens above via getApiTeacher().
-const serviceClient = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+//
+// Constructed lazily inside each handler (not at module scope) so that
+// `next build`'s page-data collection step doesn't throw when
+// NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY aren't present in the
+// build environment (e.g. CI jobs that don't need this route to actually run).
+function getServiceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 /**
  * GET /api/nuanced-analysis-spec
@@ -35,6 +42,7 @@ export async function GET() {
   if (!auth.ok) return auth.response;
 
   try {
+    const serviceClient = getServiceClient();
     const effective = await loadEffectiveSpec(serviceClient, auth.user.id);
     return NextResponse.json({
       spec: effective.spec,
@@ -67,6 +75,7 @@ export async function PUT(request: Request) {
   if (!auth.ok) return auth.response;
 
   try {
+    const serviceClient = getServiceClient();
     const body = await request.json();
     const scope: "canonical" | "own" = body?.scope === "own" ? "own" : "canonical";
 
