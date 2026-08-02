@@ -88,7 +88,8 @@ function LoginForm() {
           </label>
           <button
             onClick={handleGoogleLogin}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-da-accent/40 bg-da-accent px-4 py-3 text-sm font-semibold text-[#2b1408] shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface"
+            style={{ backgroundColor: "#c88a1a", color: "#2b1408" }}
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-da-accent/40 px-4 py-3 text-sm font-semibold shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path
