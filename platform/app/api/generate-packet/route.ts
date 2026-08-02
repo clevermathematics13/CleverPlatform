@@ -13,14 +13,23 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+
+// Lazily constructed inside the handler (not at module scope) so that
+// `next build`'s page-data collection step doesn't throw when
+// NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY aren't present in the
+// build environment (e.g. CI jobs that don't need this route to actually run).
+function getSupabaseClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 export async function POST(request: Request) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
+
+  const supabase = getSupabaseClient();
 
   try {
     const { topic, specificRequirements } = await request.json();
