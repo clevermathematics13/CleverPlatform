@@ -24,6 +24,9 @@ const playfair = Playfair_Display({
 export const metadata: Metadata = {
   title: "CleverPlatform",
   description: "IBDP Mathematics Learning Platform",
+  verification: {
+    google: "7Fr-yPK0g6wsK2aegQmlXm7cilLNEQGpQyYwoOiwRGM",
+  },
 };
 
 export default function RootLayout({
