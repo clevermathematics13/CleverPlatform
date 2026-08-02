@@ -7,6 +7,10 @@ function isMissingExtraTimeColumnError(message?: string) {
   return lower.includes("extra_time") && (lower.includes("does not exist") || lower.includes("schema cache"));
 }
 
+// TEMPORARY: allowlist for OAuth verification testing with non-school emails.
+// Remove once Google OAuth branding verification is confirmed working.
+const TEST_ACCOUNT_EMAILS = ["paulsclevenger@gmail.com"];
+
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
@@ -59,6 +63,7 @@ export async function GET(request: Request) {
   const teacherEmail = "clevermathematics@gmail.com";
   const isTeacher = userEmail === teacherEmail;
   const isSchoolEmail = userEmail.endsWith("@amersol.edu.pe");
+  const isTestAccount = TEST_ACCOUNT_EMAILS.includes(userEmail);
 
   if (!isTeacher && invitedEmail && invitedEmail !== userEmail) {
     await supabase.auth.signOut();
@@ -67,7 +72,7 @@ export async function GET(request: Request) {
     );
   }
 
-  if (!isTeacher && !isSchoolEmail) {
+  if (!isTeacher && !isSchoolEmail && !isTestAccount) {
     await supabase.auth.signOut();
     return NextResponse.redirect(
       `${redirectBase}/login?error=school_email_required`
