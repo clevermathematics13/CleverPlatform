@@ -23,7 +23,12 @@ export async function linkParent(
       p_parent_email: parentEmail,
       p_student_id: studentId,
     })
-    .single<{ parent_profile_id: string; parent_display_name: string | null; already_linked: boolean }>();
+    .single<{
+      parent_profile_id: string | null;
+      parent_display_name: string | null;
+      already_linked: boolean;
+      pending: boolean;
+    }>();
 
   if (error) {
     console.error("[linkParent] RPC error:", error.message);
@@ -31,6 +36,13 @@ export async function linkParent(
   }
 
   revalidatePath("/dashboard/parents");
+
+  if (data?.pending) {
+    return {
+      success: true,
+      message: `${parentEmail} hasn't signed in yet. They'll be linked automatically as a parent the moment they sign in — no further action needed.`,
+    };
+  }
 
   if (data?.already_linked) {
     return { success: true, message: `${parentEmail} is already linked to this student.` };
