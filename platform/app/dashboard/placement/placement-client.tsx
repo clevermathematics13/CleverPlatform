@@ -8,12 +8,21 @@ interface Course {
   name: string;
 }
 
+type PlacementStatus =
+  | "uploaded"
+  | "segmenting"
+  | "segmented"
+  | "grading"
+  | "graded"
+  | "complete"
+  | "error";
+
 interface PlacementTestRow {
   id: string;
   student_name: string;
   course_id: string | null;
   file_name: string;
-  status: "uploaded" | "segmenting" | "segmented" | "grading" | "complete" | "error";
+  status: PlacementStatus;
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
@@ -45,7 +54,7 @@ interface Recommendation {
   low_confidence_count: number;
 }
 
-function statusLabel(status: PlacementTestRow["status"]): string {
+function statusLabel(status: PlacementStatus): string {
   switch (status) {
     case "uploaded":
       return "Uploaded — ready to segment";
@@ -55,6 +64,8 @@ function statusLabel(status: PlacementTestRow["status"]): string {
       return "Segmented — ready to grade";
     case "grading":
       return "Grading…";
+    case "graded":
+      return "Graded — ready for recommendation";
     case "complete":
       return "Complete";
     case "error":
@@ -62,7 +73,7 @@ function statusLabel(status: PlacementTestRow["status"]): string {
   }
 }
 
-function statusColor(status: PlacementTestRow["status"]): string {
+function statusColor(status: PlacementStatus): string {
   switch (status) {
     case "complete":
       return "text-da-success";
@@ -279,7 +290,7 @@ function PlacementDetail({
   const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [segmenting, setSegmenting] = useState(false);
+  const [actionLoading, setActionLoading] = useState<"segment" | "grade" | "recommend" | null>(null);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/placement/${id}`);
@@ -305,19 +316,19 @@ function PlacementDetail({
     }
   }, [test, load]);
 
-  async function handleSegment() {
+  async function runAction(action: "segment" | "grade" | "recommend") {
     setActionError(null);
-    setSegmenting(true);
+    setActionLoading(action);
     try {
-      const res = await fetch(`/api/placement/${id}/segment`, { method: "POST" });
+      const res = await fetch(`/api/placement/${id}/${action}`, { method: "POST" });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Segmentation failed");
+      if (!res.ok) throw new Error(json.error ?? `${action} failed`);
       await load();
       onStatusChange();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Segmentation failed");
+      setActionError(err instanceof Error ? err.message : `${action} failed`);
     } finally {
-      setSegmenting(false);
+      setActionLoading(null);
     }
   }
 
@@ -328,6 +339,10 @@ function PlacementDetail({
       </div>
     );
   }
+
+  const canSegment = test.status === "uploaded" || test.status === "error";
+  const canGrade = test.status === "segmented" || (test.status === "error" && questions.length > 0);
+  const canRecommend = test.status === "graded" || (test.status === "error" && questions.some((q) => q.mark));
 
   return (
     <div className="space-y-4">
@@ -355,16 +370,42 @@ function PlacementDetail({
           </div>
         )}
 
-        {(test.status === "uploaded" || test.status === "error") && (
-          <button
-            type="button"
-            onClick={handleSegment}
-            disabled={segmenting}
-            className="mt-3 rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
-          >
-            {segmenting ? "Segmenting…" : test.status === "error" ? "Retry segmentation" : "Segment questions"}
-          </button>
-        )}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {canSegment && (
+            <button
+              type="button"
+              onClick={() => runAction("segment")}
+              disabled={actionLoading !== null}
+              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
+            >
+              {actionLoading === "segment"
+                ? "Segmenting…"
+                : test.status === "error"
+                ? "Retry segmentation"
+                : "Segment questions"}
+            </button>
+          )}
+          {canGrade && (
+            <button
+              type="button"
+              onClick={() => runAction("grade")}
+              disabled={actionLoading !== null}
+              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
+            >
+              {actionLoading === "grade" ? "Grading…" : "Grade questions"}
+            </button>
+          )}
+          {canRecommend && (
+            <button
+              type="button"
+              onClick={() => runAction("recommend")}
+              disabled={actionLoading !== null}
+              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
+            >
+              {actionLoading === "recommend" ? "Generating…" : "Generate recommendation"}
+            </button>
+          )}
+        </div>
       </div>
 
       {recommendation && (
