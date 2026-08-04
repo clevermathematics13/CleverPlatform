@@ -79,13 +79,20 @@ export async function GET(request: Request) {
     );
   }
 
-  const { data: invitations } = await supabase
-    .from("invited_students")
-    .select("id")
-    .ilike("email", userEmail)
-    .limit(1);
+  // A non-teacher may sign in either as an invited student OR an invited
+  // parent. Check both invitation lists -- signing in must not require
+  // being in invited_students specifically, or parent invites (which only
+  // ever populate invited_parents) would always be rejected here.
+  const [{ data: studentInvitations }, { data: parentInvitations }] =
+    await Promise.all([
+      supabase.from("invited_students").select("id").ilike("email", userEmail).limit(1),
+      supabase.from("invited_parents").select("id").ilike("email", userEmail).limit(1),
+    ]);
 
-  if (!isTeacher && (!invitations || invitations.length === 0)) {
+  const hasStudentInvitation = !!studentInvitations && studentInvitations.length > 0;
+  const hasParentInvitation = !!parentInvitations && parentInvitations.length > 0;
+
+  if (!isTeacher && !hasStudentInvitation && !hasParentInvitation) {
     await supabase.auth.signOut();
     return NextResponse.redirect(
       `${redirectBase}/login?error=student_not_invited`
@@ -122,6 +129,22 @@ export async function GET(request: Request) {
       console.error("Profile upsert failed:", upsertError.message);
     } else {
       console.log("Profile created for", email, "with role", role);
+    }
+  }
+
+  // Auto-promote to parent if this email was invited via the teacher's
+  // Parents page (invited_parents). Safe to call on every sign-in: it's a
+  // no-op once the invite is already marked registered, and it only ever
+  // promotes a profile to 'parent' -- it never runs for someone who wasn't
+  // explicitly invited by the teacher. This is what makes parent
+  // registration fully automatic, with no manual role edits ever needed.
+  if (hasParentInvitation) {
+    const { error: promoteError } = await supabase.rpc(
+      "promote_to_parent_on_signin",
+      { p_profile_id: user.id, p_email: userEmail }
+    );
+    if (promoteError) {
+      console.error("Parent promotion failed:", promoteError.message);
     }
   }
 
