@@ -16,8 +16,11 @@ export function LinkParentForm({ students }: { students: StudentOption[] }) {
     <div className="rounded-xl border border-blue-200 bg-blue-50 p-6">
       <h2 className="text-xl font-bold text-blue-900">Link a Parent</h2>
       <p className="mt-1 text-base text-blue-700">
-        The parent must have signed in to CleverPlatform at least once. Linking
-        automatically promotes their account to the parent role.
+        Enter the parent&apos;s email and pick their student. If the parent has
+        already signed in to CleverPlatform, they&apos;re linked immediately.
+        If not, they&apos;ll be promoted to the parent role and linked
+        automatically the first time they sign in — no further action needed
+        from you.
       </p>
 
       <form action={formAction} className="mt-4 flex flex-wrap items-end gap-3">
