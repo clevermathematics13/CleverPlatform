@@ -97,6 +97,7 @@ function getSettingsNavigation(role: string) {
   if (role === "teacher") {
     return [
       { href: "/dashboard/students", label: "Students", icon: "👥" },
+      { href: "/dashboard/parents", label: "Parents", icon: "👪" },
       { href: "/dashboard/courses", label: "Courses", icon: "📚" },
       { href: "/dashboard/syllabus", label: "Syllabus", icon: "📖" },
       { href: "/dashboard/archived-exams", label: "Archived Exams", icon: "🗄️" },
