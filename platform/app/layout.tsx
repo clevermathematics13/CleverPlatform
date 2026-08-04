@@ -25,7 +25,13 @@ export const metadata: Metadata = {
   title: "CleverPlatform",
   description: "IBDP Mathematics Learning Platform",
   verification: {
-    google: "7Fr-yPK0g6wsK2aegQmlXm7cilLNEQGpQyYwoOiwRGM",
+    // Two verification codes: the original for clever-platform.vercel.app,
+    // and a second for the new custom domain (www.clevermathematics.com).
+    // Next renders one <meta name="google-site-verification"> tag per entry.
+    google: [
+      "7Fr-yPK0g6wsK2aegQmlXm7cilLNEQGpQyYwoOiwRGM",
+      "_wLFEOHwPpl6d0cJ03A-Fji3ihYDUZSdS5ycB4F4RQg",
+    ],
   },
 };
 
