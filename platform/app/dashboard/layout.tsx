@@ -72,6 +72,7 @@ function getNavigation(role: string) {
 
       { href: "/dashboard/assignments", label: "Assignments", icon: "📋" },
       { href: "/dashboard/tests", label: "Tests", icon: "📝" },
+      { href: "/dashboard/placement", label: "Placement Tests", icon: "🧭" },
       { href: "/dashboard/reflection", label: "Exam Reflection", icon: "🪞" },
       { href: "/dashboard/mastery", label: "Mastery", icon: "🎯" },
       { href: "/dashboard/seating", label: "Seating Chart", icon: "🪑" },
