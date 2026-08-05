@@ -1,14 +1,16 @@
 import type { NextConfig } from "next";
 import { withWorkflow } from "workflow/next";
 
-// Build: 2026-06-16
+// Build: 2026-08-05
 const nextConfig: NextConfig = {
   devIndicators: false,
-  // Prevent webpack from bundling native/binary packages used in API routes
+  // Prevent webpack from bundling native/binary/WASM packages used in API routes
   serverExternalPackages: [
     "puppeteer-core",
     "@sparticuz/chromium-min",
     "@myriaddreamin/typst-ts-node-compiler",
+    "heic-convert",
+    "libheif-js",
   ],
   experimental: {
     serverActions: {
