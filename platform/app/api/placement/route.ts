@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await supabase
     .from("placement_tests")
     .select(
-      "id, student_name, course_id, file_name, status, error_message, created_at, completed_at, courses:course_id(name)"
+      "id, student_name, student_name_source, student_name_confidence, student_name_notes, course_id, file_name, status, error_message, created_at, completed_at, courses:course_id(name)"
     )
     .eq("teacher_id", user.id)
     .order("created_at", { ascending: false });
