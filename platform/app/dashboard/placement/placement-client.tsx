@@ -20,7 +20,10 @@ type PlacementStatus =
 
 interface PlacementTestRow {
   id: string;
-  student_name: string;
+  student_name: string | null;
+  student_name_source: "manual" | "extracted";
+  student_name_confidence: "high" | "medium" | "low" | null;
+  student_name_notes: string | null;
   course_id: string | null;
   file_name: string;
   status: PlacementStatus;
@@ -88,6 +91,23 @@ function statusColor(status: PlacementStatus): string {
   }
 }
 
+function displayName(t: {
+  student_name: string | null;
+}): string {
+  return t.student_name?.trim() || "Name not read";
+}
+
+/** Extracted names that weren't clearly legible need a teacher's eye. */
+function nameNeedsReview(t: {
+  student_name: string | null;
+  student_name_source: "manual" | "extracted";
+  student_name_confidence: "high" | "medium" | "low" | null;
+}): boolean {
+  if (t.student_name_source !== "extracted") return false;
+  if (!t.student_name?.trim()) return true;
+  return t.student_name_confidence === "low" || t.student_name_confidence === "medium";
+}
+
 const ACCEPTED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif"];
 
 function isAcceptedFile(file: File): boolean {
@@ -137,7 +157,7 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
 
     if (rejected.length > 0) {
       setUploadError(
-        `Skipped ${rejected.length} unsupported file${rejected.length === 1 ? "" : "s"} — only PDF, JPEG, PNG, and HEIC/HEIC are supported.`
+        `Skipped ${rejected.length} unsupported file${rejected.length === 1 ? "" : "s"} — only PDF, JPEG, PNG, and HEIC are supported.`
       );
     } else {
       setUploadError(null);
@@ -152,10 +172,6 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
     setUploadError(null);
-    if (!studentName.trim()) {
-      setUploadError("Enter the student's name.");
-      return;
-    }
     if (files.length === 0) {
       setUploadError("Choose at least one file (PDF, or one or more photos).");
       return;
@@ -203,13 +219,13 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
       // Step 2: tell the server which raw files to assemble — this request
       // is tiny (just a list of paths), so it's well within Vercel's limits.
       setUploadStage(
-        files.length > 1 ? "Assembling pages into a document…" : "Finishing up…"
+        studentName.trim() ? "Assembling document…" : "Reading the name from the front page…"
       );
       const res = await fetch("/api/placement/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          studentName: studentName.trim(),
+          studentName: studentName.trim() || null,
           courseId: courseId || null,
           rawStoragePaths,
         }),
@@ -240,14 +256,20 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
         >
           <h2 className="text-sm font-semibold text-da-amber">Upload a placement test</h2>
           <div>
-            <label className="block text-xs font-medium text-da-muted mb-1">Student name</label>
+            <label className="block text-xs font-medium text-da-muted mb-1">
+              Student name <span className="font-normal">(optional)</span>
+            </label>
             <input
               type="text"
               value={studentName}
               onChange={(e) => setStudentName(e.target.value)}
-              placeholder="e.g. Alex Chen"
+              placeholder="Leave blank to read from the paper"
               className="w-full rounded-lg border border-da-border bg-da-bg/70 px-3 py-2 text-sm text-da-text focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
             />
+            <p className="mt-1 text-xs text-da-muted">
+              If left blank, the name is read from the handwritten front page and flagged for
+              review if it isn&apos;t clearly legible.
+            </p>
           </div>
           <div>
             <label className="block text-xs font-medium text-da-muted mb-1">
@@ -331,7 +353,14 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
                         : "text-da-text/80 hover:bg-da-hover"
                     }`}
                   >
-                    <p className="font-medium truncate">{t.student_name}</p>
+                    <p className="font-medium truncate">
+                      {displayName(t)}
+                      {nameNeedsReview(t) && (
+                        <span className="ml-1 text-da-warning" title="Name needs review">
+                          ⚠
+                        </span>
+                      )}
+                    </p>
                     <p className={`text-xs ${statusColor(t.status)}`}>{statusLabel(t.status)}</p>
                   </button>
                 </li>
@@ -371,6 +400,10 @@ function PlacementDetail({
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<"segment" | "grade" | "recommend" | null>(null);
 
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
+
   const load = useCallback(async () => {
     const res = await fetch(`/api/placement/${id}`);
     const data = await res.json();
@@ -384,6 +417,7 @@ function PlacementDetail({
 
   useEffect(() => {
     setLoading(true);
+    setEditingName(false);
     load();
   }, [id, load]);
 
@@ -411,6 +445,28 @@ function PlacementDetail({
     }
   }
 
+  async function saveName() {
+    if (!nameDraft.trim()) return;
+    setSavingName(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/placement/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentName: nameDraft.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Failed to save name");
+      setEditingName(false);
+      await load();
+      onStatusChange();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save name");
+    } finally {
+      setSavingName(false);
+    }
+  }
+
   if (loading || !test) {
     return (
       <div className="rounded-xl border border-da-border bg-da-surface p-8 text-center text-sm text-da-muted">
@@ -422,21 +478,83 @@ function PlacementDetail({
   const canSegment = test.status === "uploaded" || test.status === "error";
   const canGrade = test.status === "segmented" || (test.status === "error" && questions.length > 0);
   const canRecommend = test.status === "graded" || (test.status === "error" && questions.some((q) => q.mark));
+  const reviewName = nameNeedsReview(test);
 
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-da-border bg-da-surface p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-da-text">{test.student_name}</h2>
-            <p className="text-xs text-da-muted">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            {editingName ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveName();
+                    if (e.key === "Escape") setEditingName(false);
+                  }}
+                  autoFocus
+                  className="rounded-lg border border-da-border bg-da-bg/70 px-2 py-1 text-lg font-semibold text-da-text focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+                />
+                <button
+                  type="button"
+                  onClick={saveName}
+                  disabled={savingName || !nameDraft.trim()}
+                  className="rounded-md bg-da-accent px-2 py-1 text-xs font-semibold text-[#2b1408] disabled:opacity-50"
+                >
+                  {savingName ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingName(false)}
+                  className="text-xs text-da-muted hover:text-da-text"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h2
+                  className={`text-lg font-semibold ${
+                    test.student_name ? "text-da-text" : "text-da-muted italic"
+                  }`}
+                >
+                  {displayName(test)}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNameDraft(test.student_name ?? "");
+                    setEditingName(true);
+                  }}
+                  className="text-xs text-da-muted hover:text-da-accent"
+                >
+                  edit
+                </button>
+              </div>
+            )}
+            <p className="text-xs text-da-muted mt-0.5">
               {test.file_name} {test.courses?.name ? `· ${test.courses.name}` : ""}
             </p>
           </div>
-          <span className={`text-xs font-medium ${statusColor(test.status)}`}>
+          <span className={`shrink-0 text-xs font-medium ${statusColor(test.status)}`}>
             {statusLabel(test.status)}
           </span>
         </div>
+
+        {reviewName && !editingName && (
+          <div className="mt-3 rounded-lg border border-da-warning/50 bg-da-warning/10 px-3 py-2 text-xs text-da-warning">
+            ⚠{" "}
+            {test.student_name
+              ? `Name read from the paper${
+                  test.student_name_confidence ? ` (${test.student_name_confidence} confidence)` : ""
+                } — please confirm it's right.`
+              : "No name could be read from the front page."}
+            {test.student_name_notes ? ` ${test.student_name_notes}` : ""}
+          </div>
+        )}
 
         {test.status === "error" && test.error_message && (
           <div className="mt-3 rounded-lg border border-da-danger/40 bg-da-danger/10 px-3 py-2 text-xs text-da-danger">
