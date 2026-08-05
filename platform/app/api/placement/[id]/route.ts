@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 
+const TEST_FIELDS =
+  "id, teacher_id, student_name, student_name_source, student_name_confidence, student_name_notes, printed_grade_level, grade_level, grade_level_source, grade_level_confidence, grade_level_notes, file_name, status, error_message, created_at, completed_at";
+
 // GET /api/placement/[id] — fetch a placement test with its questions, marks,
 // and (if generated) recommendation.
 export async function GET(
@@ -14,9 +17,7 @@ export async function GET(
 
   const { data: test, error: testErr } = await supabase
     .from("placement_tests")
-    .select(
-      "id, teacher_id, student_name, student_name_source, student_name_confidence, student_name_notes, course_id, file_name, status, error_message, created_at, completed_at, courses:course_id(name)"
-    )
+    .select(TEST_FIELDS)
     .eq("id", id)
     .single();
 
@@ -74,9 +75,12 @@ export async function GET(
   });
 }
 
-// PATCH /api/placement/[id] — correct the student name (e.g. when the name
-// read off the handwritten front page was wrong or couldn't be read).
-// Body: { studentName: string }
+// PATCH /api/placement/[id] — correct details read off the front page (the
+// student name and/or grade level), e.g. when the handwriting was misread.
+// Body: { studentName?: string, gradeLevel?: number }
+//
+// Note: gradeLevel here is the EFFECTIVE placement grade (already adjusted),
+// i.e. what the teacher sees and expects to correct — not the printed value.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -86,10 +90,13 @@ export async function PATCH(
   const { supabase, user } = auth;
   const { id } = await params;
 
-  const body = (await request.json().catch(() => null)) as { studentName?: string } | null;
-  const studentName = body?.studentName?.trim();
-  if (!studentName) {
-    return NextResponse.json({ error: "studentName is required" }, { status: 400 });
+  const body = (await request.json().catch(() => null)) as {
+    studentName?: string;
+    gradeLevel?: number | string | null;
+  } | null;
+
+  if (!body) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
   const { data: test, error: fetchErr } = await supabase
@@ -105,20 +112,51 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // A teacher-entered name is authoritative: clear the extraction confidence
-  // flag so it stops showing as needing review.
+  const updates: Record<string, unknown> = {};
+
+  if (body.studentName !== undefined) {
+    const studentName = body.studentName?.trim();
+    if (!studentName) {
+      return NextResponse.json({ error: "studentName cannot be empty" }, { status: 400 });
+    }
+    // A teacher-entered value is authoritative: clear the extraction
+    // confidence flag so it stops showing as needing review.
+    updates.student_name = studentName;
+    updates.student_name_source = "manual";
+    updates.student_name_confidence = null;
+    updates.student_name_notes = null;
+  }
+
+  if (body.gradeLevel !== undefined) {
+    const raw = body.gradeLevel;
+    const parsed =
+      typeof raw === "number"
+        ? raw
+        : typeof raw === "string" && /^\d+$/.test(raw.trim())
+        ? parseInt(raw.trim(), 10)
+        : null;
+
+    if (parsed === null || !Number.isFinite(parsed) || parsed < 1 || parsed > 13) {
+      return NextResponse.json(
+        { error: "gradeLevel must be a whole number between 1 and 13" },
+        { status: 400 }
+      );
+    }
+    updates.grade_level = parsed;
+    updates.grade_level_source = "manual";
+    updates.grade_level_confidence = null;
+    updates.grade_level_notes = null;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+
   const { data: updated, error: updateErr } = await supabase
     .from("placement_tests")
-    .update({
-      student_name: studentName,
-      student_name_source: "manual",
-      student_name_confidence: null,
-      student_name_notes: null,
-    })
+    .update(updates)
     .eq("id", id)
-    .select(
-      "id, student_name, student_name_source, student_name_confidence, student_name_notes"
-    )
+    .select(TEST_FIELDS)
     .single();
 
   if (updateErr) {
