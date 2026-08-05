@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
+import { createClient } from "@/lib/supabase/client";
 
 interface Course {
   id: string;
@@ -87,18 +88,11 @@ function statusColor(status: PlacementStatus): string {
   }
 }
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // strip the data: prefix
-      const comma = result.indexOf(",");
-      resolve(comma >= 0 ? result.slice(comma + 1) : result);
-    };
-    reader.onerror = () => reject(new Error("Failed to read file"));
-    reader.readAsDataURL(file);
-  });
+const ACCEPTED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif"];
+
+function isAcceptedFile(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
 export function PlacementClient({ courses }: { courses: Course[] }) {
@@ -108,8 +102,9 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
 
   const [studentName, setStudentName] = useState("");
   const [courseId, setCourseId] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [uploadStage, setUploadStage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -135,6 +130,25 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
     return () => clearInterval(interval);
   }, [tests, refreshList]);
 
+  function handleFilePick(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    const rejected = picked.filter((f) => !isAcceptedFile(f));
+    const accepted = picked.filter(isAcceptedFile);
+
+    if (rejected.length > 0) {
+      setUploadError(
+        `Skipped ${rejected.length} unsupported file${rejected.length === 1 ? "" : "s"} — only PDF, JPEG, PNG, and HEIC/HEIC are supported.`
+      );
+    } else {
+      setUploadError(null);
+    }
+    setFiles(accepted);
+  }
+
+  function removeFile(index: number) {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+
   async function handleUpload(e: React.FormEvent) {
     e.preventDefault();
     setUploadError(null);
@@ -142,28 +156,69 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
       setUploadError("Enter the student's name.");
       return;
     }
-    if (!file) {
-      setUploadError("Choose a PDF to upload.");
+    if (files.length === 0) {
+      setUploadError("Choose at least one file (PDF, or one or more photos).");
       return;
     }
+    if (files.length > 10) {
+      setUploadError("A placement test can have at most 10 pages.");
+      return;
+    }
+    // A lone PDF is fine; mixing a PDF with photos is not supported by the
+    // assembly step, so catch that early with a clear message.
+    const hasPdf = files.some((f) => f.name.toLowerCase().endsWith(".pdf"));
+    if (hasPdf && files.length > 1) {
+      setUploadError("If uploading a PDF, upload just the one PDF — don't mix it with photos.");
+      return;
+    }
+
     setUploading(true);
     try {
-      const data = await fileToBase64(file);
+      // Step 1: upload each raw file directly to Supabase Storage from the
+      // browser. This bypasses Vercel's 4.5MB request body limit, which
+      // multiple full-resolution phone photos would otherwise blow through.
+      const supabase = createClient();
+      const batchId = crypto.randomUUID();
+      const rawStoragePaths: string[] = [];
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not signed in");
+
+      for (let i = 0; i < files.length; i++) {
+        setUploadStage(`Uploading page ${i + 1} of ${files.length}…`);
+        const f = files[i];
+        const safeExt = f.name.split(".").pop()?.toLowerCase() || "dat";
+        const path = `placement-tests-raw/${user.id}/${batchId}/${String(i + 1).padStart(2, "0")}.${safeExt}`;
+
+        const { error: uploadErr } = await supabase.storage.from("uploads").upload(path, f, {
+          contentType: f.type || undefined,
+          upsert: false,
+        });
+        if (uploadErr) throw new Error(`Failed to upload "${f.name}": ${uploadErr.message}`);
+        rawStoragePaths.push(path);
+      }
+
+      // Step 2: tell the server which raw files to assemble — this request
+      // is tiny (just a list of paths), so it's well within Vercel's limits.
+      setUploadStage(
+        files.length > 1 ? "Assembling pages into a document…" : "Finishing up…"
+      );
       const res = await fetch("/api/placement/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentName: studentName.trim(),
           courseId: courseId || null,
-          fileName: file.name,
-          data,
+          rawStoragePaths,
         }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Upload failed");
 
       setStudentName("");
-      setFile(null);
+      setFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
       await refreshList();
       setSelectedId(json.placementTest.id);
@@ -171,6 +226,7 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+      setUploadStage(null);
     }
   }
 
@@ -212,15 +268,38 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
           </div>
           <div>
             <label className="block text-xs font-medium text-da-muted mb-1">
-              Scanned test (PDF)
+              Scanned test — one PDF, or up to 10 photos (JPEG, PNG, HEIC)
             </label>
             <input
               ref={fileInputRef}
               type="file"
-              accept="application/pdf"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              accept="application/pdf,image/jpeg,image/png,image/heic,image/heif,.heic,.heif"
+              multiple
+              onChange={handleFilePick}
               className="w-full text-sm text-da-text file:mr-3 file:rounded-lg file:border-0 file:bg-da-button-bg file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-da-button-text hover:file:bg-da-button-hover"
             />
+            {files.length > 0 && (
+              <ul className="mt-2 space-y-1">
+                {files.map((f, i) => (
+                  <li
+                    key={`${f.name}-${i}`}
+                    className="flex items-center justify-between rounded-md bg-da-bg/50 px-2 py-1 text-xs text-da-text/80"
+                  >
+                    <span className="truncate">
+                      {i + 1}. {f.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeFile(i)}
+                      className="ml-2 shrink-0 text-da-muted hover:text-da-danger"
+                      aria-label={`Remove ${f.name}`}
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           {uploadError && <p className="text-xs text-da-danger">{uploadError}</p>}
           <button
@@ -228,7 +307,7 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
             disabled={uploading}
             className="w-full rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
           >
-            {uploading ? "Uploading…" : "Upload"}
+            {uploading ? uploadStage ?? "Uploading…" : "Upload"}
           </button>
         </form>
 
