@@ -6,39 +6,56 @@ import convertHeic from "heic-convert";
 import Anthropic from "@anthropic-ai/sdk";
 
 export const runtime = "nodejs";
-// File assembly plus a vision pass to read the handwritten name off the
-// front page. Generous headroom rather than an expected typical duration.
+// File assembly plus a vision pass to read the handwritten name and grade
+// level off the front page. Generous headroom rather than a typical duration.
 export const maxDuration = 180;
 
-const NAME_EXTRACTION_SYSTEM = `You are reading the front page of a scanned IBDP Mathematics placement test to find the student's name, which is usually handwritten by the student in a "Name:" field near the top of the first page (it may also appear as a printed label, a name written in a header box, or written informally at the top of the page).
+const FRONT_PAGE_SYSTEM = `You are reading the front page of a scanned IBDP Mathematics placement test to pull out two details about the student: their NAME and their GRADE LEVEL. Both are usually near the top of the first page, often handwritten by the student into a "Name:" / "Grade:" field, though they may also appear as printed labels or written informally in a header.
 
-Read the handwriting carefully. Handwritten names are frequently ambiguous — pay attention to letterforms, and prefer a plausible real personal name over a literal character-by-character transliteration when the handwriting is clearly a name. Do not invent a name that isn't on the page.
+Read the handwriting carefully. Handwritten entries are frequently ambiguous — pay attention to letterforms, and prefer a plausible real personal name over a literal character-by-character transliteration when the handwriting is clearly a name. Do not invent details that aren't on the page.
 
-Return:
-- student_name: the student's name exactly as best you can read it, in normal capitalisation (e.g. "Alex Chen", not "ALEX CHEN" unless it's genuinely an unusual name). Use an empty string if you cannot find any name on the page at all.
-- confidence: "high" if the name is clearly legible and unambiguous; "medium" if you can read it but some letters are uncertain or the handwriting is messy; "low" if the handwriting is very hard to read, the name is partially cut off, you are guessing at several characters, or you found something that might be a name but aren't sure it is one. Use "low" liberally — a wrong student name is worse than a flagged one, and the teacher will review anything flagged.
-- notes: ONLY when confidence is "medium" or "low", a brief note on what was uncertain (e.g. "surname partially cut off at page edge", "could be 'Marin' or 'Martin'"). Empty string when confidence is "high".
+Return these fields:
+
+- student_name: the student's name as best you can read it, in normal capitalisation (e.g. "Alex Chen"). Empty string if no name appears anywhere on the page.
+- name_confidence: "high" if clearly legible and unambiguous; "medium" if readable but some letters are uncertain or handwriting is messy; "low" if very hard to read, partially cut off, you're guessing at several characters, or you found something that might be a name but aren't sure. Use "low" liberally.
+- name_notes: ONLY when name_confidence is "medium" or "low" — a brief note on what was uncertain (e.g. "could be 'Marin' or 'Martin'"). Empty string otherwise.
+
+- printed_grade_level: the grade level EXACTLY as written on the page, as a plain integer. Accept any of the common ways it may be written — "Grade 9", "9th grade", "Year 9", "G9", "Gr. 9", or a bare "9" in a grade field — and return just the number, e.g. 9. Return null (JSON null, not a string) if no grade level appears on the page at all. Report what is actually written; do NOT adjust or reinterpret the number.
+- grade_confidence: "high" if the grade is clearly legible and unambiguous; "medium" if readable but somewhat uncertain (e.g. messy digit); "low" if very hard to read, ambiguous between two numbers, or you're not confident the thing you found is really a grade level. Use "low" liberally.
+- grade_notes: ONLY when grade_confidence is "medium" or "low" — a brief note on what was uncertain (e.g. "digit could be 9 or 4", "found '10' but it may be a room number"). Empty string otherwise.
 
 Return ONLY a JSON object of this exact shape, no markdown fences, no explanation:
 {
   "student_name": "Alex Chen",
-  "confidence": "high",
-  "notes": ""
+  "name_confidence": "high",
+  "name_notes": "",
+  "printed_grade_level": 9,
+  "grade_confidence": "high",
+  "grade_notes": ""
 }`;
 
-interface ExtractedName {
-  student_name: string;
-  confidence: "high" | "medium" | "low";
-  notes: string;
+type Confidence = "high" | "medium" | "low";
+
+interface FrontPageDetails {
+  studentName: string | null;
+  nameConfidence: Confidence;
+  nameNotes: string;
+  printedGradeLevel: number | null;
+  gradeConfidence: Confidence;
+  gradeNotes: string;
 }
 
-async function extractStudentName(pdfBase64: string): Promise<ExtractedName | null> {
+function normaliseConfidence(value: unknown): Confidence {
+  return value === "high" || value === "medium" || value === "low" ? value : "low";
+}
+
+async function readFrontPage(pdfBase64: string): Promise<FrontPageDetails | null> {
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
       model: "claude-sonnet-5",
       max_tokens: 1024,
-      system: NAME_EXTRACTION_SYSTEM,
+      system: FRONT_PAGE_SYSTEM,
       messages: [
         {
           role: "user",
@@ -49,7 +66,7 @@ async function extractStudentName(pdfBase64: string): Promise<ExtractedName | nu
             },
             {
               type: "text",
-              text: "Read the student's name from the front page of this placement test, per the system instructions.",
+              text: "Read the student's name and grade level from the front page of this placement test, per the system instructions.",
             },
           ],
         },
@@ -61,25 +78,34 @@ async function extractStudentName(pdfBase64: string): Promise<ExtractedName | nu
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
 
-    const parsed = JSON.parse(jsonMatch[0]) as Partial<ExtractedName>;
-    const name = (parsed.student_name ?? "").trim();
-    if (!name) return null;
+    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
 
-    const confidence =
-      parsed.confidence === "high" || parsed.confidence === "medium" || parsed.confidence === "low"
-        ? parsed.confidence
-        : "low";
+    const name = typeof parsed.student_name === "string" ? parsed.student_name.trim() : "";
+    const rawGrade = parsed.printed_grade_level;
+    const printedGrade =
+      typeof rawGrade === "number" && Number.isFinite(rawGrade)
+        ? Math.trunc(rawGrade)
+        : typeof rawGrade === "string" && /^\d+$/.test(rawGrade.trim())
+        ? parseInt(rawGrade.trim(), 10)
+        : null;
 
-    return { student_name: name, confidence, notes: (parsed.notes ?? "").trim() };
+    return {
+      studentName: name || null,
+      nameConfidence: normaliseConfidence(parsed.name_confidence),
+      nameNotes: typeof parsed.name_notes === "string" ? parsed.name_notes.trim() : "",
+      printedGradeLevel: printedGrade,
+      gradeConfidence: normaliseConfidence(parsed.grade_confidence),
+      gradeNotes: typeof parsed.grade_notes === "string" ? parsed.grade_notes.trim() : "",
+    };
   } catch {
-    // Name extraction is best-effort — never block an otherwise-good upload
-    // because the vision pass failed. The teacher can fill the name in.
+    // Front-page reading is best-effort — never block an otherwise-good
+    // upload because the vision pass failed. The teacher can fill it in.
     return null;
   }
 }
 
 // POST /api/placement/upload
-// Body: { studentName?: string, courseId?: string, rawStoragePaths: string[] }
+// Body: { studentName?: string, rawStoragePaths: string[] }
 //
 // The client uploads each raw file (PDF, JPEG, PNG, or HEIC/HEIF) directly to
 // Supabase Storage from the browser BEFORE calling this route — Vercel
@@ -92,10 +118,9 @@ async function extractStudentName(pdfBase64: string): Promise<ExtractedName | nu
 // permanent placement-tests/ path is always one PDF, so segment/grade never
 // need to know how the test originally arrived.
 //
-// studentName is OPTIONAL: when omitted, the student's name is read off the
-// handwritten front page by Claude vision and flagged with a confidence level
-// for teacher review. When the teacher types a name explicitly, that wins and
-// no extraction is attempted.
+// The student's name AND grade level are read off the handwritten front page
+// by Claude vision and flagged with confidence levels for teacher review.
+// An explicitly-typed studentName always wins over extraction.
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
@@ -103,7 +128,6 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as {
     studentName?: string;
-    courseId?: string | null;
     rawStoragePaths?: string[];
   } | null;
 
@@ -115,7 +139,6 @@ export async function POST(request: NextRequest) {
   }
 
   const manualName = body.studentName?.trim() || null;
-  const courseId = body.courseId?.trim() || null;
   const rawPaths = body.rawStoragePaths;
 
   // Every raw path must belong to this teacher's own temp-upload folder —
@@ -222,28 +245,43 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Read the handwritten name off the front page, unless the teacher already
-  // gave one explicitly (an explicit name always wins over extraction).
+  // Read the name and grade level off the handwritten front page.
+  const front = await readFrontPage(finalPdfBuffer.toString("base64"));
+
+  // Name: an explicitly-typed name always wins over extraction.
   let studentName: string | null = manualName;
   let nameSource: "manual" | "extracted" = "manual";
-  let nameConfidence: "high" | "medium" | "low" | null = null;
+  let nameConfidence: Confidence | null = null;
   let nameNotes: string | null = null;
 
   if (!manualName) {
-    const extracted = await extractStudentName(finalPdfBuffer.toString("base64"));
-    if (extracted) {
-      studentName = extracted.student_name;
-      nameSource = "extracted";
-      nameConfidence = extracted.confidence;
-      nameNotes = extracted.notes || null;
+    nameSource = "extracted";
+    if (front?.studentName) {
+      studentName = front.studentName;
+      nameConfidence = front.nameConfidence;
+      nameNotes = front.nameNotes || null;
     } else {
-      // Couldn't read a name — leave it blank and flag for the teacher rather
-      // than guessing or failing the whole upload.
       studentName = null;
-      nameSource = "extracted";
       nameConfidence = "low";
       nameNotes = "No name could be read from the front page. Please enter it manually.";
     }
+  }
+
+  // Grade level: the paper is labelled with the grade the student is coming
+  // FROM, so the effective placement grade is one higher. The +1 is applied
+  // here deterministically rather than asking the model to do the arithmetic,
+  // and printed_grade_level keeps a record of what was actually written.
+  const printedGradeLevel = front?.printedGradeLevel ?? null;
+  const gradeLevel = printedGradeLevel !== null ? printedGradeLevel + 1 : null;
+  let gradeConfidence: Confidence | null = null;
+  let gradeNotes: string | null = null;
+
+  if (printedGradeLevel !== null) {
+    gradeConfidence = front?.gradeConfidence ?? "low";
+    gradeNotes = front?.gradeNotes || null;
+  } else {
+    gradeConfidence = "low";
+    gradeNotes = "No grade level could be read from the front page. Please enter it manually.";
   }
 
   const storagePath = `placement-tests/${user.id}/${randomUUID()}.pdf`;
@@ -273,13 +311,17 @@ export async function POST(request: NextRequest) {
       student_name_source: nameSource,
       student_name_confidence: nameConfidence,
       student_name_notes: nameNotes,
-      course_id: courseId,
+      printed_grade_level: printedGradeLevel,
+      grade_level: gradeLevel,
+      grade_level_source: "extracted",
+      grade_level_confidence: gradeConfidence,
+      grade_level_notes: gradeNotes,
       storage_path: storagePath,
       file_name: fileName,
       status: "uploaded",
     })
     .select(
-      "id, student_name, student_name_source, student_name_confidence, student_name_notes, course_id, file_name, status, created_at"
+      "id, student_name, student_name_source, student_name_confidence, student_name_notes, printed_grade_level, grade_level, grade_level_source, grade_level_confidence, grade_level_notes, file_name, status, created_at"
     )
     .single();
 
