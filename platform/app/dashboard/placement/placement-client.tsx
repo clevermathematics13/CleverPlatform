@@ -4,11 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import { createClient } from "@/lib/supabase/client";
 
-interface Course {
-  id: string;
-  name: string;
-}
-
 type PlacementStatus =
   | "uploaded"
   | "segmenting"
@@ -18,19 +13,24 @@ type PlacementStatus =
   | "complete"
   | "error";
 
+type Confidence = "high" | "medium" | "low";
+
 interface PlacementTestRow {
   id: string;
   student_name: string | null;
   student_name_source: "manual" | "extracted";
-  student_name_confidence: "high" | "medium" | "low" | null;
+  student_name_confidence: Confidence | null;
   student_name_notes: string | null;
-  course_id: string | null;
+  printed_grade_level: number | null;
+  grade_level: number | null;
+  grade_level_source: "manual" | "extracted";
+  grade_level_confidence: Confidence | null;
+  grade_level_notes: string | null;
   file_name: string;
   status: PlacementStatus;
   error_message: string | null;
   created_at: string;
   completed_at: string | null;
-  courses: { name: string } | null;
 }
 
 interface PlacementQuestion {
@@ -45,7 +45,7 @@ interface PlacementQuestion {
   mark: {
     marks_awarded: number;
     max_marks: number;
-    confidence: "high" | "medium" | "low";
+    confidence: Confidence;
     confidence_notes: string | null;
     student_work_transcription: string | null;
   } | null;
@@ -91,21 +91,22 @@ function statusColor(status: PlacementStatus): string {
   }
 }
 
-function displayName(t: {
-  student_name: string | null;
-}): string {
+function displayName(t: { student_name: string | null }): string {
   return t.student_name?.trim() || "Name not read";
 }
 
-/** Extracted names that weren't clearly legible need a teacher's eye. */
-function nameNeedsReview(t: {
-  student_name: string | null;
-  student_name_source: "manual" | "extracted";
-  student_name_confidence: "high" | "medium" | "low" | null;
-}): boolean {
-  if (t.student_name_source !== "extracted") return false;
-  if (!t.student_name?.trim()) return true;
-  return t.student_name_confidence === "low" || t.student_name_confidence === "medium";
+function needsReview(source: "manual" | "extracted", confidence: Confidence | null, hasValue: boolean): boolean {
+  if (source !== "extracted") return false;
+  if (!hasValue) return true;
+  return confidence === "low" || confidence === "medium";
+}
+
+function nameNeedsReview(t: PlacementTestRow): boolean {
+  return needsReview(t.student_name_source, t.student_name_confidence, Boolean(t.student_name?.trim()));
+}
+
+function gradeNeedsReview(t: PlacementTestRow): boolean {
+  return needsReview(t.grade_level_source, t.grade_level_confidence, t.grade_level !== null);
 }
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".jpg", ".jpeg", ".png", ".heic", ".heif"];
@@ -115,13 +116,12 @@ function isAcceptedFile(file: File): boolean {
   return ACCEPTED_EXTENSIONS.some((ext) => name.endsWith(ext));
 }
 
-export function PlacementClient({ courses }: { courses: Course[] }) {
+export function PlacementClient() {
   const [tests, setTests] = useState<PlacementTestRow[]>([]);
   const [loadingList, setLoadingList] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const [studentName, setStudentName] = useState("");
-  const [courseId, setCourseId] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadStage, setUploadStage] = useState<string | null>(null);
@@ -218,15 +218,12 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
 
       // Step 2: tell the server which raw files to assemble — this request
       // is tiny (just a list of paths), so it's well within Vercel's limits.
-      setUploadStage(
-        studentName.trim() ? "Assembling document…" : "Reading the name from the front page…"
-      );
+      setUploadStage("Reading the front page…");
       const res = await fetch("/api/placement/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           studentName: studentName.trim() || null,
-          courseId: courseId || null,
           rawStoragePaths,
         }),
       });
@@ -267,26 +264,9 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
               className="w-full rounded-lg border border-da-border bg-da-bg/70 px-3 py-2 text-sm text-da-text focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
             />
             <p className="mt-1 text-xs text-da-muted">
-              If left blank, the name is read from the handwritten front page and flagged for
-              review if it isn&apos;t clearly legible.
+              The student&apos;s name and grade level are read from the handwritten front page,
+              and flagged for review if they aren&apos;t clearly legible.
             </p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-da-muted mb-1">
-              Course (optional)
-            </label>
-            <select
-              value={courseId}
-              onChange={(e) => setCourseId(e.target.value)}
-              className="w-full rounded-lg border border-da-border bg-da-bg/70 px-3 py-2 text-sm text-da-text focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
-            >
-              <option value="">— none —</option>
-              {courses.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-da-muted mb-1">
@@ -355,8 +335,13 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
                   >
                     <p className="font-medium truncate">
                       {displayName(t)}
-                      {nameNeedsReview(t) && (
-                        <span className="ml-1 text-da-warning" title="Name needs review">
+                      {t.grade_level !== null && (
+                        <span className="ml-1 font-normal text-da-muted">
+                          · Gr {t.grade_level}
+                        </span>
+                      )}
+                      {(nameNeedsReview(t) || gradeNeedsReview(t)) && (
+                        <span className="ml-1 text-da-warning" title="Needs review">
                           ⚠
                         </span>
                       )}
@@ -372,10 +357,7 @@ export function PlacementClient({ courses }: { courses: Course[] }) {
 
       <div>
         {selectedId ? (
-          <PlacementDetail
-            id={selectedId}
-            onStatusChange={refreshList}
-          />
+          <PlacementDetail id={selectedId} onStatusChange={refreshList} />
         ) : (
           <div className="rounded-xl border border-da-border bg-da-surface p-8 text-center text-sm text-da-muted">
             Select a placement test to view its questions, marks, and recommendation.
@@ -402,7 +384,9 @@ function PlacementDetail({
 
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
-  const [savingName, setSavingName] = useState(false);
+  const [editingGrade, setEditingGrade] = useState(false);
+  const [gradeDraft, setGradeDraft] = useState("");
+  const [savingField, setSavingField] = useState(false);
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/placement/${id}`);
@@ -418,6 +402,7 @@ function PlacementDetail({
   useEffect(() => {
     setLoading(true);
     setEditingName(false);
+    setEditingGrade(false);
     load();
   }, [id, load]);
 
@@ -445,25 +430,25 @@ function PlacementDetail({
     }
   }
 
-  async function saveName() {
-    if (!nameDraft.trim()) return;
-    setSavingName(true);
+  async function patchTest(payload: { studentName?: string; gradeLevel?: number }) {
+    setSavingField(true);
     setActionError(null);
     try {
       const res = await fetch(`/api/placement/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentName: nameDraft.trim() }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to save name");
+      if (!res.ok) throw new Error(json.error ?? "Failed to save");
       setEditingName(false);
+      setEditingGrade(false);
       await load();
       onStatusChange();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to save name");
+      setActionError(err instanceof Error ? err.message : "Failed to save");
     } finally {
-      setSavingName(false);
+      setSavingField(false);
     }
   }
 
@@ -477,8 +462,10 @@ function PlacementDetail({
 
   const canSegment = test.status === "uploaded" || test.status === "error";
   const canGrade = test.status === "segmented" || (test.status === "error" && questions.length > 0);
-  const canRecommend = test.status === "graded" || (test.status === "error" && questions.some((q) => q.mark));
+  const canRecommend =
+    test.status === "graded" || (test.status === "error" && questions.some((q) => q.mark));
   const reviewName = nameNeedsReview(test);
+  const reviewGrade = gradeNeedsReview(test);
 
   return (
     <div className="space-y-4">
@@ -492,7 +479,8 @@ function PlacementDetail({
                   value={nameDraft}
                   onChange={(e) => setNameDraft(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") saveName();
+                    if (e.key === "Enter" && nameDraft.trim())
+                      patchTest({ studentName: nameDraft.trim() });
                     if (e.key === "Escape") setEditingName(false);
                   }}
                   autoFocus
@@ -500,11 +488,11 @@ function PlacementDetail({
                 />
                 <button
                   type="button"
-                  onClick={saveName}
-                  disabled={savingName || !nameDraft.trim()}
+                  onClick={() => patchTest({ studentName: nameDraft.trim() })}
+                  disabled={savingField || !nameDraft.trim()}
                   className="rounded-md bg-da-accent px-2 py-1 text-xs font-semibold text-[#2b1408] disabled:opacity-50"
                 >
-                  {savingName ? "Saving…" : "Save"}
+                  {savingField ? "Saving…" : "Save"}
                 </button>
                 <button
                   type="button"
@@ -535,9 +523,69 @@ function PlacementDetail({
                 </button>
               </div>
             )}
-            <p className="text-xs text-da-muted mt-0.5">
-              {test.file_name} {test.courses?.name ? `· ${test.courses.name}` : ""}
-            </p>
+
+            {/* Grade level */}
+            <div className="mt-1 flex items-center gap-2 text-sm">
+              {editingGrade ? (
+                <>
+                  <span className="text-da-muted text-xs">Grade</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={13}
+                    value={gradeDraft}
+                    onChange={(e) => setGradeDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && gradeDraft.trim())
+                        patchTest({ gradeLevel: Number(gradeDraft) });
+                      if (e.key === "Escape") setEditingGrade(false);
+                    }}
+                    autoFocus
+                    className="w-20 rounded-lg border border-da-border bg-da-bg/70 px-2 py-1 text-sm text-da-text focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => patchTest({ gradeLevel: Number(gradeDraft) })}
+                    disabled={savingField || !gradeDraft.trim()}
+                    className="rounded-md bg-da-accent px-2 py-1 text-xs font-semibold text-[#2b1408] disabled:opacity-50"
+                  >
+                    {savingField ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingGrade(false)}
+                    className="text-xs text-da-muted hover:text-da-text"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className={test.grade_level !== null ? "text-da-text" : "text-da-muted italic"}>
+                    {test.grade_level !== null ? `Grade ${test.grade_level}` : "Grade not read"}
+                  </span>
+                  {test.grade_level !== null &&
+                    test.printed_grade_level !== null &&
+                    test.grade_level_source === "extracted" && (
+                      <span className="text-xs text-da-muted">
+                        (paper says {test.printed_grade_level})
+                      </span>
+                    )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGradeDraft(test.grade_level !== null ? String(test.grade_level) : "");
+                      setEditingGrade(true);
+                    }}
+                    className="text-xs text-da-muted hover:text-da-accent"
+                  >
+                    edit
+                  </button>
+                </>
+              )}
+            </div>
+
+            <p className="text-xs text-da-muted mt-0.5">{test.file_name}</p>
           </div>
           <span className={`shrink-0 text-xs font-medium ${statusColor(test.status)}`}>
             {statusLabel(test.status)}
@@ -553,6 +601,18 @@ function PlacementDetail({
                 } — please confirm it's right.`
               : "No name could be read from the front page."}
             {test.student_name_notes ? ` ${test.student_name_notes}` : ""}
+          </div>
+        )}
+
+        {reviewGrade && !editingGrade && (
+          <div className="mt-2 rounded-lg border border-da-warning/50 bg-da-warning/10 px-3 py-2 text-xs text-da-warning">
+            ⚠{" "}
+            {test.grade_level !== null
+              ? `Grade read from the paper${
+                  test.grade_level_confidence ? ` (${test.grade_level_confidence} confidence)` : ""
+                } — please confirm it's right.`
+              : "No grade level could be read from the front page."}
+            {test.grade_level_notes ? ` ${test.grade_level_notes}` : ""}
           </div>
         )}
 
@@ -640,9 +700,7 @@ function QuestionCard({ q }: { q: PlacementQuestion }) {
   return (
     <div
       className={`rounded-xl border p-4 ${
-        lowConfidence
-          ? "border-da-warning/60 bg-da-warning/10"
-          : "border-da-border bg-da-surface"
+        lowConfidence ? "border-da-warning/60 bg-da-warning/10" : "border-da-border bg-da-surface"
       }`}
     >
       <div className="flex items-center justify-between mb-2">
