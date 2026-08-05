@@ -3,15 +3,83 @@ import { getApiTeacher } from "@/lib/auth";
 import { randomUUID } from "crypto";
 import { PDFDocument } from "pdf-lib";
 import convertHeic from "heic-convert";
+import Anthropic from "@anthropic-ai/sdk";
 
 export const runtime = "nodejs";
-// Downloading + converting + assembling up to 10 images server-side can take
-// a little while, but each file is small — this is generous headroom, not
-// an expected typical duration.
-export const maxDuration = 120;
+// File assembly plus a vision pass to read the handwritten name off the
+// front page. Generous headroom rather than an expected typical duration.
+export const maxDuration = 180;
+
+const NAME_EXTRACTION_SYSTEM = `You are reading the front page of a scanned IBDP Mathematics placement test to find the student's name, which is usually handwritten by the student in a "Name:" field near the top of the first page (it may also appear as a printed label, a name written in a header box, or written informally at the top of the page).
+
+Read the handwriting carefully. Handwritten names are frequently ambiguous — pay attention to letterforms, and prefer a plausible real personal name over a literal character-by-character transliteration when the handwriting is clearly a name. Do not invent a name that isn't on the page.
+
+Return:
+- student_name: the student's name exactly as best you can read it, in normal capitalisation (e.g. "Alex Chen", not "ALEX CHEN" unless it's genuinely an unusual name). Use an empty string if you cannot find any name on the page at all.
+- confidence: "high" if the name is clearly legible and unambiguous; "medium" if you can read it but some letters are uncertain or the handwriting is messy; "low" if the handwriting is very hard to read, the name is partially cut off, you are guessing at several characters, or you found something that might be a name but aren't sure it is one. Use "low" liberally — a wrong student name is worse than a flagged one, and the teacher will review anything flagged.
+- notes: ONLY when confidence is "medium" or "low", a brief note on what was uncertain (e.g. "surname partially cut off at page edge", "could be 'Marin' or 'Martin'"). Empty string when confidence is "high".
+
+Return ONLY a JSON object of this exact shape, no markdown fences, no explanation:
+{
+  "student_name": "Alex Chen",
+  "confidence": "high",
+  "notes": ""
+}`;
+
+interface ExtractedName {
+  student_name: string;
+  confidence: "high" | "medium" | "low";
+  notes: string;
+}
+
+async function extractStudentName(pdfBase64: string): Promise<ExtractedName | null> {
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-5",
+      max_tokens: 1024,
+      system: NAME_EXTRACTION_SYSTEM,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: pdfBase64 },
+            },
+            {
+              type: "text",
+              text: "Read the student's name from the front page of this placement test, per the system instructions.",
+            },
+          ],
+        },
+      ],
+    });
+
+    const text =
+      response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim() ?? "";
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return null;
+
+    const parsed = JSON.parse(jsonMatch[0]) as Partial<ExtractedName>;
+    const name = (parsed.student_name ?? "").trim();
+    if (!name) return null;
+
+    const confidence =
+      parsed.confidence === "high" || parsed.confidence === "medium" || parsed.confidence === "low"
+        ? parsed.confidence
+        : "low";
+
+    return { student_name: name, confidence, notes: (parsed.notes ?? "").trim() };
+  } catch {
+    // Name extraction is best-effort — never block an otherwise-good upload
+    // because the vision pass failed. The teacher can fill the name in.
+    return null;
+  }
+}
 
 // POST /api/placement/upload
-// Body: { studentName: string, courseId?: string, rawStoragePaths: string[] }
+// Body: { studentName?: string, courseId?: string, rawStoragePaths: string[] }
 //
 // The client uploads each raw file (PDF, JPEG, PNG, or HEIC/HEIF) directly to
 // Supabase Storage from the browser BEFORE calling this route — Vercel
@@ -23,6 +91,11 @@ export const maxDuration = 120;
 // single PDF (or pass a lone PDF through unchanged). What lands in the
 // permanent placement-tests/ path is always one PDF, so segment/grade never
 // need to know how the test originally arrived.
+//
+// studentName is OPTIONAL: when omitted, the student's name is read off the
+// handwritten front page by Claude vision and flagged with a confidence level
+// for teacher review. When the teacher types a name explicitly, that wins and
+// no extraction is attempted.
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
@@ -34,9 +107,6 @@ export async function POST(request: NextRequest) {
     rawStoragePaths?: string[];
   } | null;
 
-  if (!body?.studentName?.trim()) {
-    return NextResponse.json({ error: "studentName is required" }, { status: 400 });
-  }
   if (!body?.rawStoragePaths || body.rawStoragePaths.length === 0) {
     return NextResponse.json({ error: "At least one uploaded file is required" }, { status: 400 });
   }
@@ -44,7 +114,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "A placement test can have at most 10 pages" }, { status: 400 });
   }
 
-  const studentName = body.studentName.trim();
+  const manualName = body.studentName?.trim() || null;
   const courseId = body.courseId?.trim() || null;
   const rawPaths = body.rawStoragePaths;
 
@@ -152,6 +222,30 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Read the handwritten name off the front page, unless the teacher already
+  // gave one explicitly (an explicit name always wins over extraction).
+  let studentName: string | null = manualName;
+  let nameSource: "manual" | "extracted" = "manual";
+  let nameConfidence: "high" | "medium" | "low" | null = null;
+  let nameNotes: string | null = null;
+
+  if (!manualName) {
+    const extracted = await extractStudentName(finalPdfBuffer.toString("base64"));
+    if (extracted) {
+      studentName = extracted.student_name;
+      nameSource = "extracted";
+      nameConfidence = extracted.confidence;
+      nameNotes = extracted.notes || null;
+    } else {
+      // Couldn't read a name — leave it blank and flag for the teacher rather
+      // than guessing or failing the whole upload.
+      studentName = null;
+      nameSource = "extracted";
+      nameConfidence = "low";
+      nameNotes = "No name could be read from the front page. Please enter it manually.";
+    }
+  }
+
   const storagePath = `placement-tests/${user.id}/${randomUUID()}.pdf`;
 
   const { error: uploadErr } = await supabase.storage
@@ -176,12 +270,17 @@ export async function POST(request: NextRequest) {
     .insert({
       teacher_id: user.id,
       student_name: studentName,
+      student_name_source: nameSource,
+      student_name_confidence: nameConfidence,
+      student_name_notes: nameNotes,
       course_id: courseId,
       storage_path: storagePath,
       file_name: fileName,
       status: "uploaded",
     })
-    .select("id, student_name, course_id, file_name, status, created_at")
+    .select(
+      "id, student_name, student_name_source, student_name_confidence, student_name_notes, course_id, file_name, status, created_at"
+    )
     .single();
 
   if (insertErr) {
