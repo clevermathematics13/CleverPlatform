@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { exchangeCodeForToken, saveTokenToCookie } from "@/lib/google-classroom";
+import { exchangeCodeForToken, saveToken } from "@/lib/google-classroom";
 import {
   exchangeDriveCodeForToken,
   saveDriveTokenToCookie,
@@ -45,12 +45,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${base}/dashboard/questions?drive_connected=true`);
     }
 
-    // Classroom token for school account (student rosters)
+    // Classroom token for school account (student rosters).
+    // Persisted server-side in public.google_oauth_tokens so the connection
+    // survives cookie clears, device changes and background jobs.
     const redirectUri = `${base}/auth/google-classroom/callback`;
     const token = await exchangeCodeForToken(code, redirectUri);
-    await saveTokenToCookie(token);
+    await saveToken(token);
     return NextResponse.redirect(`${base}/dashboard/students?gc_connected=true`);
-  } catch {
+  } catch (err) {
+    console.error("[google-classroom callback]", err);
     if (isDrive) {
       return NextResponse.redirect(`${base}/dashboard/questions?drive_error=token_exchange_failed`);
     }
