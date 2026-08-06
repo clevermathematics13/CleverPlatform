@@ -6,12 +6,15 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import {
   getAuthUrl,
-  getTokenFromCookie,
-  clearTokenCookie,
+  getConnectionStatus,
+  clearToken,
   listCourses,
   listStudentsInCourse,
+  pingClassroom,
+  ClassroomError,
   type ClassroomCourse,
   type ClassroomStudent,
+  type ConnectionStatus,
 } from "@/lib/google-classroom";
 
 function getRequestBaseUrl(forwardedHost: string | null, forwardedProto: string | null, host: string | null): string | null {
@@ -43,25 +46,52 @@ export async function getGoogleAuthUrl(): Promise<string> {
 }
 
 export async function isGoogleConnected(): Promise<boolean> {
-  const token = await getTokenFromCookie();
-  return token !== null;
+  const status = await getConnectionStatus();
+  return status.connected;
+}
+
+/** Full status: account, granted scopes, expiry, whether it can self-heal. */
+export async function googleConnectionStatus(): Promise<ConnectionStatus> {
+  await requireTeacher();
+  return getConnectionStatus();
+}
+
+/** Live round-trip against the Google API using the stored credential. */
+export async function checkGoogleConnection(): Promise<{ ok: boolean; detail: string }> {
+  await requireTeacher();
+  return pingClassroom();
 }
 
 export async function disconnectGoogle(): Promise<void> {
-  await clearTokenCookie();
+  await clearToken();
   revalidatePath("/dashboard/students");
+}
+
+function toMessage(err: unknown): string {
+  if (err instanceof ClassroomError) return err.message;
+  return err instanceof Error ? err.message : "Google Classroom request failed.";
 }
 
 export async function fetchGoogleCourses(): Promise<ClassroomCourse[]> {
   await requireTeacher();
-  return listCourses();
+  try {
+    return await listCourses();
+  } catch (err) {
+    console.error("[GC] listCourses:", toMessage(err));
+    return [];
+  }
 }
 
 export async function fetchGoogleStudents(
   courseId: string
 ): Promise<ClassroomStudent[]> {
   await requireTeacher();
-  return listStudentsInCourse(courseId);
+  try {
+    return await listStudentsInCourse(courseId);
+  } catch (err) {
+    console.error("[GC] listStudentsInCourse:", toMessage(err));
+    return [];
+  }
 }
 
 export async function importGoogleStudents(formData: FormData) {
