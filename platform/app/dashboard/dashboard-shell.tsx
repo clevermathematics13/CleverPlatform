@@ -67,6 +67,12 @@ export function DashboardShell({
     };
   }, []);
 
+  // Collapse the Gradebook submenu whenever the sidebar itself closes,
+  // so it doesn't reopen "for free" the next time the sidebar shows.
+  useEffect(() => {
+    if (!sidebarVisible) setGradebookOpen(false);
+  }, [sidebarVisible]);
+
   return (
     <div
       className="relative flex min-h-screen bg-da-bg"
@@ -111,23 +117,30 @@ export function DashboardShell({
 
             if (isGradebook) {
               return (
-                <div
-                  key={item.href}
-                  onMouseEnter={() => setGradebookOpen(true)}
-                  onMouseLeave={() => setGradebookOpen(false)}
-                >
-                  <Link
-                    href={item.href}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-da-text/80 transition-colors hover:bg-da-hover hover:text-da-accent"
-                  >
-                    <span>{item.icon}</span>
-                    {item.label}
-                    <span className="ml-auto text-xs text-da-muted/60">
+                <div key={item.href}>
+                  <div className="flex items-center rounded-lg text-sm font-medium text-da-text/80 transition-colors hover:bg-da-hover hover:text-da-accent">
+                    <Link
+                      href={item.href}
+                      className="flex flex-1 items-center gap-3 px-3 py-2"
+                    >
+                      <span>{item.icon}</span>
+                      {item.label}
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => setGradebookOpen((v) => !v)}
+                      aria-expanded={gradebookOpen}
+                      aria-controls={`gradebook-submenu-${item.href}`}
+                      className="px-3 py-2 text-xs text-da-muted/60 hover:text-da-accent"
+                    >
                       {gradebookOpen ? "▾" : "▸"}
-                    </span>
-                  </Link>
+                    </button>
+                  </div>
                   {gradebookOpen && (
-                    <div className="ml-4 mt-0.5 space-y-0.5 border-l border-da-border pl-3 pb-1">
+                    <div
+                      id={`gradebook-submenu-${item.href}`}
+                      className="ml-4 mt-0.5 space-y-0.5 border-l border-da-border pl-3 pb-1"
+                    >
                       {gradebookCourses!.map((course) => (
                         <Link
                           key={course.id}
