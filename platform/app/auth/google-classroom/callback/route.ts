@@ -5,6 +5,9 @@ import {
   saveDriveTokenToCookie,
 } from "@/lib/google-drive";
 
+// Google OAuth callback. Classroom tokens are persisted server-side in
+// public.google_oauth_tokens; Drive still uses its own cookie store.
+
 function getBaseUrl(request: NextRequest): string {
   const forwardedHost = request.headers.get("x-forwarded-host");
   const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
@@ -46,8 +49,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Classroom token for school account (student rosters).
-    // Persisted server-side in public.google_oauth_tokens so the connection
-    // survives cookie clears, device changes and background jobs.
+    // Persisted server-side so the connection survives cookie clears,
+    // device changes and background jobs.
     const redirectUri = `${base}/auth/google-classroom/callback`;
     const token = await exchangeCodeForToken(code, redirectUri);
     await saveToken(token);
