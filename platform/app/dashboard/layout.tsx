@@ -77,6 +77,7 @@ function getNavigation(role: string) {
       { href: "/dashboard/mastery", label: "Mastery", icon: "🎯" },
       { href: "/dashboard/seating", label: "Seating Chart", icon: "🪑" },
       { href: "/dashboard/gradebook", label: "Gradebook", icon: "�" },
+      { href: "/dashboard/classroom", label: "Google Classroom", icon: "🎓" },
     ];
   }
 
