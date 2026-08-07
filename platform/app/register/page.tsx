@@ -4,82 +4,100 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+/**
+ * Parent registration by one-time code.
+ *
+ * SECURITY: the client must never read or write `registration_codes` directly.
+ * The table previously carried `SELECT USING (true)` / `UPDATE USING (true)`
+ * policies for the `public` role, which let any holder of the anon key
+ * enumerate every live code together with its `student_id`.
+ *
+ * Redemption now happens entirely inside `redeem_registration_code(p_code)`,
+ * a SECURITY DEFINER function that derives the caller from `auth.uid()`,
+ * validates and burns the code, creates the `parent_links` row and promotes
+ * the profile to 'parent' in a single transaction. It returns a uniform
+ * `{ ok: false, error: 'invalid' }` for wrong / used / expired codes so that
+ * codes cannot be probed.
+ */
 export default function RegisterPage() {
   const router = useRouter();
   const [code, setCode] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setLoading(true);
 
     try {
       const supabase = createClient();
+      const trimmedCode = code.trim().toUpperCase();
 
-      // Step 1: Validate the registration code
-      const { data: regCode, error: codeError } = await supabase
-        .from("registration_codes")
-        .select("*")
-        .eq("code", code.trim().toUpperCase())
-        .eq("used", false)
-        .single();
-
-      if (codeError || !regCode) {
-        setError("Invalid or expired registration code.");
-        setLoading(false);
-        return;
-      }
-
-      // Check expiry
-      if (regCode.expires_at && new Date(regCode.expires_at) < new Date()) {
-        setError("This registration code has expired.");
-        setLoading(false);
-        return;
-      }
-
-      // Step 2: Create the parent account
-      const { data: authData, error: signUpError } =
-        await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              role: "parent",
-              registration_code: code.trim().toUpperCase(),
-            },
-          },
-        });
+      // Step 1: Create the account. The code is carried in user metadata so
+      // that a later sign-in can complete redemption if email confirmation
+      // is required and no session is issued here.
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { registration_code: trimmedCode },
+        },
+      });
 
       if (signUpError) {
         setError(signUpError.message);
-        setLoading(false);
         return;
       }
 
-      if (authData.user) {
-        // Step 3: Create profile
-        await supabase.from("profiles").insert({
-          id: authData.user.id,
-          email: email,
-          display_name: email.split("@")[0],
-          role: "parent",
-        });
+      // Step 2: Without a session we cannot redeem yet (email confirmation on).
+      if (!authData.session) {
+        setNotice(
+          "Account created. Please confirm your email address, then sign in to finish linking your account."
+        );
+        return;
+      }
 
-        // Step 4: Link parent to student
-        await supabase.from("parent_links").insert({
-          parent_profile_id: authData.user.id,
-          student_id: regCode.student_id,
-        });
+      // Step 3: Ensure a profile row exists. Role and email are forced
+      // server-side by the profiles insert trigger — anything sent here for
+      // those columns is ignored by design.
+      const userId = authData.user?.id;
+      if (userId) {
+        await supabase.from("profiles").upsert(
+          {
+            id: userId,
+            email,
+            display_name: email.split("@")[0],
+          },
+          { onConflict: "id" }
+        );
+      }
 
-        // Step 5: Mark code as used
-        await supabase
-          .from("registration_codes")
-          .update({ used: true, used_by: authData.user.id })
-          .eq("id", regCode.id);
+      // Step 4: Redeem atomically. This is the only privileged step.
+      const { data: result, error: rpcError } = await supabase.rpc(
+        "redeem_registration_code",
+        { p_code: trimmedCode }
+      );
+
+      if (rpcError) {
+        setError("Could not complete registration. Please try again.");
+        return;
+      }
+
+      // The RPC returns jsonb, which supabase-js types as `Json`. Narrow it
+      // explicitly rather than reaching into an untyped value.
+      const redeemed =
+        typeof result === "object" &&
+        result !== null &&
+        (result as { ok?: boolean }).ok === true;
+
+      if (!redeemed) {
+        setError("Invalid or expired registration code.");
+        return;
       }
 
       router.push("/dashboard");
@@ -105,6 +123,12 @@ export default function RegisterPage() {
         {error && (
           <div className="rounded-md border border-red-500/40 bg-red-900/35 p-4 text-sm text-red-100">
             {error}
+          </div>
+        )}
+
+        {notice && (
+          <div className="rounded-md border border-da-accent/40 bg-da-accent/10 p-4 text-sm text-da-text">
+            {notice}
           </div>
         )}
 
