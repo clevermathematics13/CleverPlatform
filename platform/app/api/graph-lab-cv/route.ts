@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { getApiTeacher } from "@/lib/auth";
 import { spawnSync } from "child_process";
 import path from "path";
 import os from "os";
@@ -33,6 +34,11 @@ function jsonNoStore(payload: unknown, status: number) {
 }
 
 export async function POST(request: NextRequest) {
+  // SECURITY: this route spawns a Python subprocess on user-supplied input.
+  // It was previously reachable by anonymous callers.
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+
   const body = (await request.json()) as {
     images: string[];
     mediaType?: string;
