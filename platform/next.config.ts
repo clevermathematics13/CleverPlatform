@@ -14,13 +14,42 @@ const nextConfig: NextConfig = {
   ],
   experimental: {
     serverActions: {
+      // SECURITY: never use a bare "*.vercel.app" wildcard here. It trusts
+      // every deployment on Vercel — anyone's — as a Server Action origin,
+      // which exposes teacher-gated actions (e.g. startStudentImpersonation)
+      // to cross-site request forgery. List exact hosts only.
       allowedOrigins: [
         "localhost:3000",
-        "*.app.github.dev",
-        "*.vercel.app",
+        "www.clevermathematics.com",
+        "clevermathematics.com",
+        "clever-platform.vercel.app",
       ],
       bodySizeLimit: "20mb",
     },
+  },
+
+  // Baseline security headers. There is no middleware.ts in this app, so
+  // without these the dashboard can be framed by a third-party site
+  // (clickjacking against teacher-only controls).
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          {
+            key: "Strict-Transport-Security",
+            value: "max-age=63072000; includeSubDomains; preload",
+          },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(), microphone=(), geolocation=()",
+          },
+        ],
+      },
+    ];
   },
 };
 
