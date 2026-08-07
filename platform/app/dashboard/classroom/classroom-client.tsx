@@ -139,13 +139,13 @@ export function ClassroomClient({
       {/* Selectors */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="mb-1 block text-sm font-semibold text-da-text">
             Classroom course
           </label>
           <select
             value={courseId}
             onChange={(e) => onCourseChange(e.target.value)}
-            className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
           >
             <option value="">Select a course...</option>
             {courses.map((c) => (
@@ -158,14 +158,14 @@ export function ClassroomClient({
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">
+          <label className="mb-1 block text-sm font-semibold text-da-text">
             Assignment
           </label>
           <select
             value={courseWorkId}
             onChange={(e) => onWorkChange(e.target.value)}
             disabled={!courseId || loadingWork}
-            className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100"
+            className="block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent disabled:bg-gray-100 disabled:text-gray-400"
           >
             <option value="">
               {loadingWork ? "Loading..." : "Select an assignment..."}
