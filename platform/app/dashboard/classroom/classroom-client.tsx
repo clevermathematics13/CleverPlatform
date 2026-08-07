@@ -11,6 +11,7 @@ import type { ClassroomCourse } from "@/lib/google-classroom";
 import type { CourseWorkItem } from "@/lib/google-classroom-work";
 
 interface Analysis {
+  work_status?: string;
   transcription?: string;
   assessment?: string;
   misconceptions?: string[];
@@ -226,6 +227,9 @@ export function ClassroomClient({
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {STATE_LABELS[row.state ?? ""] ?? row.state ?? "—"}
+                        {analysis?.work_status
+                          ? ` - ${analysis.work_status}`
+                          : ""}
                         {row.late && (
                           <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
                             Late
@@ -340,9 +344,16 @@ export function ClassroomClient({
 
                             {analysis.assessment && (
                               <div>
-                                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                  Assessment
-                                </h4>
+                                <div className="mb-1 flex items-center gap-2">
+                                  <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    Assessment
+                                  </h4>
+                                  {analysis.work_status && (
+                                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                      {analysis.work_status}
+                                    </span>
+                                  )}
+                                </div>
                                 <p className="whitespace-pre-wrap text-gray-800">
                                   {analysis.assessment}
                                 </p>
