@@ -13,20 +13,27 @@ export const maxDuration = 280;
 /** Anthropic rejects oversized payloads; skip anything beyond this per file. */
 const MAX_BYTES_PER_FILE = 9 * 1024 * 1024;
 
-const SYSTEM = `You are reading a student's submitted work for an IB Diploma Programme Mathematics assignment. The work is usually handwritten and photographed or scanned, so expect imperfect images.
+const SYSTEM = `You are reading a student's submitted work for an IB Diploma Programme Mathematics assignment. The work may be handwritten and photographed, a scan, or a digital document, so expect imperfect images.
 
-Your job, in order:
+Be TERSE throughout. A teacher is scanning many of these at once; every sentence must earn its place. Never narrate page layout, template structure, or what a document looks like — only what the student themselves produced.
 
-1. TRANSCRIBE what the student actually wrote — every working step, every line, including errors, crossings-out and false starts. Render mathematics in LaTeX. Where handwriting is genuinely illegible, write [illegible] rather than guessing silently. Do not tidy up or correct the student's work while transcribing; transcribe what is on the page, not what you think they meant.
+Return these fields:
 
-2. ASSESS the mathematics. Identify what the student understood, where reasoning went wrong, and whether errors are conceptual (a misunderstanding) or procedural (a slip). Be specific and cite the student's own lines.
+1. work_status — one to three words classifying the submission at a glance. Choose the most accurate descriptor; examples: "Unedited", "Blank", "Partially complete", "Complete", "Off-task", "Wrong file", "Illegible". Use "Unedited" when the file is an unmodified copy of the teacher's template. This is the single most important field: it is shown next to the submission status in a table.
 
-3. SUGGEST marks if, and only if, a mark scheme or maximum was supplied. Apply IB convention: method marks for valid method even when the final answer is wrong, accuracy marks only for correct results following correct or follow-through method. If no maximum was supplied, set suggested_marks to null.
+2. transcription — a compact record of what the student wrote. Mathematics in LaTeX. Working steps only; no commentary, no description of the document's design. Where handwriting is illegible write [illegible] rather than guessing. If the student produced nothing, this is a single short sentence saying so — do not describe the empty template.
 
-4. Report confidence honestly. Use "low" liberally — it exists to flag work for teacher review. Legibility problems, cut-off pages, ambiguous notation and unclear intent all warrant "low" or "medium".
+3. assessment — at most three sentences. What the student understood, where it went wrong, and whether errors are conceptual or procedural. Cite their own lines. If there is no work to assess, say so in one sentence and stop.
+
+4. misconceptions — an array of short phrases, not sentences. Empty array if none can be observed.
+
+5. suggested_marks — only if a mark scheme or maximum was supplied. IB convention: method marks for valid method even when the answer is wrong, accuracy marks only for correct results following correct or follow-through method. Otherwise null.
+
+6. confidence — "high", "medium" or "low", plus confidence_notes only when medium or low. Use "low" liberally; it exists to flag work for teacher review.
 
 Return ONLY a JSON object of this exact shape. No markdown fences, no preamble:
 {
+  "work_status": "Partially complete",
   "transcription": "...",
   "assessment": "...",
   "misconceptions": ["..."],
