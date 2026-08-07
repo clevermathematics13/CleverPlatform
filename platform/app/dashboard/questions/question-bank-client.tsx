@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 import { AddQuestionWizard } from "./add-question-wizard";
 import { QuestionRow } from "./components/QuestionRow";
 import { TestBuilderPanel } from "./components/TestBuilderPanel";
-import { SECTION_NAMES, DEFAULT_COMMAND_TERMS, filterPriorLearning } from "./components/question-utils";
+import { SubtopicCombobox } from "./components/SubtopicCombobox";
+import { DEFAULT_COMMAND_TERMS, filterPriorLearning } from "./components/question-utils";
 import type {
   Question,
   Filters,
@@ -658,7 +659,6 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   }
 
   const totalPages = Math.ceil(total / pageSize);
-  const subtopicsBySection = (filters?.subtopics ?? []).reduce((acc, s) => { if (!acc[s.section]) acc[s.section] = []; acc[s.section].push(s); return acc; }, {} as Record<number, Subtopic[]>);
   const totalMarks = (q: Question) => q.question_parts.reduce((sum, p) => sum + p.marks, 0);
 
   const editorModalProps = {
@@ -728,7 +728,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
           <div><label className="block text-sm font-bold text-blue-900 mb-1">Paper</label><select suppressHydrationWarning value={paper} onChange={(e) => setPaper(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option><option value="1">Paper 1</option><option value="2">Paper 2</option><option value="3">Paper 3</option></select></div>
           <div><label className="block text-sm font-bold text-blue-900 mb-1">Level</label><select suppressHydrationWarning value={level} onChange={(e) => setLevel(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option><option value="AHL">HL</option><option value="SL">SL</option></select></div>
           <div><label className="block text-sm font-bold text-blue-900 mb-1">Timezone</label><select suppressHydrationWarning value={timezone} onChange={(e) => setTimezone(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option>{(filters?.timezones ?? []).map((tz) => (<option key={tz} value={tz}>{tz}</option>))}</select></div>
-          <div className="min-w-55"><label className="block text-sm font-bold text-blue-900 mb-1">Subtopic</label><select suppressHydrationWarning value={subtopic} onChange={(e) => setSubtopic(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white w-full"><option value="">All</option>{Object.entries(subtopicsBySection).map(([sec, subs]) => (<optgroup key={sec} label={`${sec}. ${SECTION_NAMES[Number(sec)] ?? "Other"}`}>{subs.map((st) => (<option key={st.code} value={st.code}>{st.code} - {st.descriptor}</option>))}</optgroup>))}</select></div>
+          <div className="min-w-55 flex-1"><label className="block text-sm font-bold text-blue-900 mb-1">Subtopic</label><SubtopicCombobox value={subtopic} onChange={setSubtopic} subtopics={filters?.subtopics ?? []} /></div>
           <button suppressHydrationWarning type="button" onClick={clearFilters} className="rounded-lg border-2 border-blue-400 bg-white px-3 py-1.5 text-sm font-bold text-blue-700 hover:bg-blue-100">Clear</button>
           <button suppressHydrationWarning type="button" onClick={() => setSearchContent((v) => !v)} className={`rounded-lg border-2 px-3 py-1.5 text-sm font-bold transition-colors ${searchContent ? "border-purple-500 bg-purple-600 text-white" : "border-purple-300 bg-white text-purple-600 hover:bg-purple-50"}`}>LaTeX</button>
         </div>
