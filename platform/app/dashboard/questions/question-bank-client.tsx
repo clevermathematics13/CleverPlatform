@@ -506,7 +506,9 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
     const q = pendingAddQuestion;
     const newItem: TestQueueItem = { id: q.id, code: q.code, section: q.section, curriculum: q.curriculum ?? ["AA"], hasQuestion: q.has_question_images, hasMarkscheme: q.has_markscheme_images, marks: q.question_parts.reduce((sum, p) => sum + p.marks, 0), answerBoxMm: null, subtopicCodes: [...new Set(q.question_parts.flatMap((p) => filterPriorLearning(p.subtopic_codes ?? [])))], partSubtopics: q.question_parts.map((p) => ({ partLabel: p.part_label ?? "", codes: filterPriorLearning(p.subtopic_codes ?? []) })).filter((ps) => ps.codes.length > 0) };
     const newQueue = [...testQueue, newItem];
-    setTestQueue(newQueue); setExamDirty(false); setPendingAddQuestion(null);
+    // Append-only: newQueue is [...existing queue, newItem], so every question already
+    // in the saved exam is preserved. saveExam() persists the full queue and clears dirty.
+    setTestQueue(newQueue); setExamDirty(true); setPendingAddQuestion(null);
     await saveExam(newQueue);
   };
 
@@ -822,7 +824,7 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 
       {addQuestionOpen && (<AddQuestionWizard availableSubtopics={filters?.subtopics ?? []} commandTerms={allCommandTerms} onAddCustomTerm={addCustomTerm} onClose={() => setAddQuestionOpen(false)} onSaved={loadQuestions} />)}
 
-      {pendingAddQuestion && (<AddToExamModal questionCode={pendingAddQuestion.code} onConfirm={confirmPendingAdd} onCancel={() => setPendingAddQuestion(null)} saving={savingExam} />)}
+      {pendingAddQuestion && (<AddToExamModal questionCode={pendingAddQuestion.code} examName={examConfig.name} currentCount={testQueue.length} onConfirm={confirmPendingAdd} onCancel={() => setPendingAddQuestion(null)} saving={savingExam} />)}
 
       {questionOverlayItem && (
         <QuestionEditorModal {...editorModalProps} questionId={questionOverlayItem.id} onClose={() => setQuestionOverlayItem(null)} />
@@ -835,15 +837,21 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   );
 }
 
-function AddToExamModal({ questionCode, onConfirm, onCancel, saving }: { questionCode: string; onConfirm: () => void; onCancel: () => void; saving: boolean; }) {
+function AddToExamModal({ questionCode, examName, currentCount, onConfirm, onCancel, saving }: { questionCode: string; examName: string; currentCount: number; onConfirm: () => void; onCancel: () => void; saving: boolean; }) {
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-80 flex flex-col gap-4">
-        <h2 className="text-base font-bold text-gray-800">Add to saved exam?</h2>
-        <p className="text-sm text-gray-600">Adding <span className="font-mono font-semibold">{questionCode}</span> will overwrite the currently saved exam.</p>
+      <div className="bg-white rounded-xl shadow-2xl p-6 w-96 flex flex-col gap-4">
+        <h2 className="text-base font-bold text-gray-800">Add question to this exam?</h2>
+        <p className="text-sm text-gray-600">
+          <span className="font-mono font-semibold">{questionCode}</span> will be appended to{" "}
+          <span className="font-semibold">{examName.trim() || "the saved exam"}</span>, then saved.
+        </p>
+        <p className="text-xs text-gray-500">
+          The {currentCount} question{currentCount !== 1 ? "s" : ""} already in this exam stay exactly where they are ({currentCount} &rarr; {currentCount + 1}).
+        </p>
         <div className="flex gap-3 justify-end">
           <button type="button" onClick={onCancel} className="rounded px-4 py-1.5 text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors">Cancel</button>
-          <button type="button" onClick={onConfirm} disabled={saving} className="rounded px-4 py-1.5 text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">{saving ? "Saving..." : "Overwrite"}</button>
+          <button type="button" onClick={onConfirm} disabled={saving} className="rounded px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">{saving ? "Adding..." : "Add to exam"}</button>
         </div>
       </div>
     </div>,
