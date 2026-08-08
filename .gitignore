@@ -1,6 +1,26 @@
 node_modules/
 .next/
 .vercel/
-.env*.local
 _backup/
 supabase/.temp/
+
+# Environment files.
+# NOTE: this must stay broader than ".env*.local" — this repo is public, and a
+# plain ".env" or ".env.production" at the root, in supabase/ or in scripts/
+# would otherwise be committed. Example files are opted back in below.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Credentials and keys. The Google Cloud service-account / OAuth client JSON
+# files for the Drive and Classroom integrations must never be committed.
+*.pem
+*.key
+*.p12
+*.pfx
+client_secret*.json
+service-account*.json
+*-service-account.json
+gha-creds-*.json
+.clasprc.json
