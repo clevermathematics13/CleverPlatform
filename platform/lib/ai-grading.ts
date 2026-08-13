@@ -1,45 +1,97 @@
 import { z } from "zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * AI-assisted grading of scanned student work against the PPQ bank's mark scheme.
+ * AI-assisted grading of scanned student work against the PPQ mark scheme.
  *
- * Layering (deliberate — validation first, then resolution, then prompting):
- *   1. Zod schemas   — every model response is parsed before it touches the DB.
- *   2. Resolver      — maps each test_item to the best available mark scheme,
- *                      recording WHICH source was used so the teacher can judge
- *                      how much to trust each suggestion.
- *   3. Prompt builder— turns resolved items into an IB-conventional marking brief.
+ * This module is the validation + assembly layer. It has no side effects: it
+ * reads the mark scheme out of the question bank, builds the prompts, and
+ * validates whatever the model returns. Persistence lives in the routes.
  *
- * Nothing here writes to student_marks. Suggestions are always staged in
- * ai_grade_results for explicit teacher acceptance.
+ * Nothing here writes to student_marks. AI output is a *proposal* that lands in
+ * ai_grade_results for teacher review. Marks only become "Clev's Marks" when a
+ * teacher accepts them via the accept route.
+ *
+ * Schema contract (public.ai_grade_runs / public.ai_grade_results):
+ *   status            'running' | 'complete' | 'failed'
+ *   confidence        'high' | 'medium' | 'low'
+ *   markscheme_source 'part_latex' | 'part_text' | 'whole_question' | 'draft' | 'none'
  */
 
-// ─── 1. Validation layer ─────────────────────────────────────────────────────
+/** Model used for grading. Matches the vision model already used for graph extraction. */
+export const GRADING_MODEL = "claude-opus-4-5";
 
-/** IB mark codes: M = method, A = accuracy, R = reasoning, AG = answer given. */
-export const MarkCodeSchema = z.enum(["M", "A", "R", "AG"]);
+/** Storage bucket holding teacher-uploaded scans of completed scripts. */
+export const SCAN_BUCKET = "exam-scans";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type MarkschemeSource =
+  | "part_latex"
+  | "part_text"
+  | "whole_question"
+  | "draft"
+  | "none";
+
+export type Confidence = "high" | "medium" | "low";
+
+/** One markable unit: a test_item joined to its mark scheme from the question bank. */
+export interface GradingUnit {
+  testItemId: string;
+  questionNumber: number;
+  partLabel: string;
+  maxMarks: number;
+  questionCode: string;
+  /** Question text (stem + part content) as LaTeX, for context. */
+  questionLatex: string;
+  /** The mark scheme for this part. This is the grading authority. */
+  markscheme: string;
+  /** Where the mark scheme came from — recorded so weak sources are auditable. */
+  markschemeSource: MarkschemeSource;
+  commandTerms: string[];
+  subtopicCodes: string[];
+}
+
+/** Human-readable label, e.g. "3(b)(ii)" or "5". */
+export function unitLabel(u: Pick<GradingUnit, "questionNumber" | "partLabel">): string {
+  const p = (u.partLabel ?? "").trim();
+  if (!p) return String(u.questionNumber);
+  const m = p.match(/^([a-z])(i{1,3}|iv|v)?$/i);
+  if (m) {
+    return m[2]
+      ? `${u.questionNumber}(${m[1].toLowerCase()})(${m[2].toLowerCase()})`
+      : `${u.questionNumber}(${m[1].toLowerCase()})`;
+  }
+  return `${u.questionNumber}(${p})`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Validation layer
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A single mark scheme token and whether the student earned it. */
 export const MarkBreakdownEntrySchema = z.object({
-  /** e.g. "M1", "A1", "R1", "AG" — as written in the mark scheme. */
-  code: z.string().min(1).max(8),
-  kind: MarkCodeSchema,
+  token: z.string().min(1),
   awarded: z.boolean(),
-  /** Short justification tied to the student's visible work. */
-  note: z.string().max(400).default(""),
+  note: z.string().default(""),
 });
 
+/**
+ * Shape the model is instructed to return. Deliberately strict: anything
+ * outside this shape is rejected rather than coerced into a mark.
+ */
 export const AiGradeItemSchema = z.object({
-  /** Must echo the test_item_id supplied in the prompt. */
-  test_item_id: z.string().uuid(),
-  /** false when no attempt at this question was found in the scan. */
-  work_found: z.boolean(),
-  suggested_marks: z.number().int().min(0),
+  /** Must echo back the testItemId supplied in the prompt. */
+  testItemId: z.string().min(1),
+  suggestedMarks: z.number().int().min(0),
   confidence: z.enum(["high", "medium", "low"]),
-  /** Transcription/summary of what the student actually wrote. */
-  evidence: z.string().max(2000).default(""),
-  /** Why these marks, referenced to the mark scheme. */
-  reasoning: z.string().max(2000).default(""),
-  mark_breakdown: z.array(MarkBreakdownEntrySchema).max(30).default([]),
+  /** False when the part could not be located in the scan. */
+  workFound: z.boolean(),
+  markBreakdown: z.array(MarkBreakdownEntrySchema).default([]),
+  reasoning: z.string().default(""),
+  evidence: z.string().default(""),
 });
 
 export const AiGradeResponseSchema = z.object({
@@ -48,26 +100,18 @@ export const AiGradeResponseSchema = z.object({
 
 export type AiGradeItem = z.infer<typeof AiGradeItemSchema>;
 export type AiGradeResponse = z.infer<typeof AiGradeResponseSchema>;
-export type MarkBreakdownEntry = z.infer<typeof MarkBreakdownEntrySchema>;
 
-/**
- * Extract the first balanced JSON object from a model response and validate it.
- * Tolerates ```json fences and incidental prose around the payload.
- */
-export function parseAiGradeResponse(
-  raw: string
-): { ok: true; data: AiGradeResponse } | { ok: false; error: string } {
-  const stripped = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
-  const start = stripped.indexOf("{");
-  if (start === -1) return { ok: false, error: "No JSON object found in response." };
-
+/** Extract the first balanced JSON object from a model response. */
+export function extractJsonBlock(text: string): string | null {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenced ? fenced[1] : text;
+  const start = candidate.indexOf("{");
+  if (start === -1) return null;
   let depth = 0;
   let inString = false;
   let escaped = false;
-  let end = -1;
-
-  for (let i = start; i < stripped.length; i++) {
-    const ch = stripped[i];
+  for (let i = start; i < candidate.length; i++) {
+    const ch = candidate[i];
     if (escaped) {
       escaped = false;
       continue;
@@ -76,101 +120,121 @@ export function parseAiGradeResponse(
       escaped = true;
       continue;
     }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
+    if (ch === '"') inString = !inString;
     if (inString) continue;
     if (ch === "{") depth++;
-    else if (ch === "}") {
+    if (ch === "}") {
       depth--;
-      if (depth === 0) {
-        end = i;
-        break;
-      }
+      if (depth === 0) return candidate.slice(start, i + 1);
     }
   }
-
-  if (end === -1) return { ok: false, error: "Unterminated JSON object in response." };
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripped.slice(start, end + 1));
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "JSON parse failed." };
-  }
-
-  const result = AiGradeResponseSchema.safeParse(parsed);
-  if (!result.success) {
-    return {
-      ok: false,
-      error: result.error.issues
-        .slice(0, 5)
-        .map((i) => `${i.path.join(".")}: ${i.message}`)
-        .join("; "),
-    };
-  }
-  return { ok: true, data: result.data };
+  return null;
 }
 
-// ─── 2. Mark-scheme resolution layer ─────────────────────────────────────────
-
-export type MarkSchemeSource =
-  | "part_latex"
-  | "part_text"
-  | "whole_question"
-  | "draft"
-  | "none";
-
-export interface ResolvedItem {
-  test_item_id: string;
-  question_number: number;
-  part_label: string;
-  max_marks: number;
-  ib_question_code: string;
-  subtopic_codes: string[];
-  /** Question wording, for context when reading the student's work. */
-  question_text: string;
-  markscheme: string;
-  markscheme_source: MarkSchemeSource;
-  /**
-   * True when the resolved mark scheme covers the WHOLE question rather than
-   * this specific part — the model must isolate the relevant portion itself,
-   * and confidence should be capped accordingly.
-   */
-  unsegmented: boolean;
+export interface ValidatedGrade {
+  item: AiGradeItem;
+  unit: GradingUnit;
+  /** Marks after clamping to the mark scheme maximum. */
+  clampedMarks: number;
+  /** Effective confidence — downgraded when the award had to be clamped. */
+  confidence: Confidence;
 }
 
-export interface CoverageReport {
-  total_items: number;
-  resolved_items: number;
-  unresolved_items: number;
-  unsegmented_items: number;
-  by_source: Record<MarkSchemeSource, number>;
-  /** Human-readable warnings surfaced in the review UI before a run. */
+export interface ValidationOutcome {
+  grades: ValidatedGrade[];
   warnings: string[];
 }
 
-const norm = (v: string | null | undefined): string => (v ?? "").trim();
-const nonEmpty = (v: string | null | undefined): boolean => norm(v).length > 0;
+/**
+ * Validate a raw model response against the units that were actually sent.
+ *
+ * Guarantees on success:
+ *   - every returned testItemId corresponds to a unit in this run
+ *   - suggestedMarks is a non-negative integer clamped to that unit's max_marks
+ *   - duplicates are dropped (first occurrence wins)
+ *   - a clamped award is forced to 'low' confidence, since the model
+ *     misread the mark allocation and its judgement is suspect
+ */
+export function validateGradeResponse(
+  rawText: string,
+  units: GradingUnit[]
+): { ok: true; outcome: ValidationOutcome } | { ok: false; error: string } {
+  const json = extractJsonBlock(rawText);
+  if (!json) return { ok: false, error: "No JSON object found in model response" };
 
-interface QuestionPartRow {
-  question_id: string;
-  part_label: string | null;
-  content_latex: string | null;
-  content_text: string | null;
-  markscheme_latex: string | null;
-  markscheme_text: string | null;
-  sort_order: number | null;
+  let parsedUnknown: unknown;
+  try {
+    parsedUnknown = JSON.parse(json);
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Model response was not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  const parsed = AiGradeResponseSchema.safeParse(parsedUnknown);
+  if (!parsed.success) {
+    return { ok: false, error: `Response failed schema validation: ${parsed.error.message}` };
+  }
+
+  const unitById = new Map(units.map((u) => [u.testItemId, u]));
+  const seen = new Set<string>();
+  const grades: ValidatedGrade[] = [];
+  const warnings: string[] = [];
+
+  for (const item of parsed.data.items) {
+    const unit = unitById.get(item.testItemId);
+    if (!unit) {
+      warnings.push(`Ignored unknown testItemId returned by the model: ${item.testItemId}`);
+      continue;
+    }
+    if (seen.has(item.testItemId)) {
+      warnings.push(`Ignored duplicate grade for ${unitLabel(unit)}`);
+      continue;
+    }
+    seen.add(item.testItemId);
+
+    let clampedMarks = item.suggestedMarks;
+    let confidence: Confidence = item.confidence;
+    if (clampedMarks > unit.maxMarks) {
+      warnings.push(
+        `${unitLabel(unit)}: model awarded ${item.suggestedMarks} of a possible ${unit.maxMarks}; clamped to ${unit.maxMarks} and flagged low confidence`
+      );
+      clampedMarks = unit.maxMarks;
+      confidence = "low";
+    }
+
+    // A mark scheme we could only guess at should never be reported as high confidence.
+    if (unit.markschemeSource === "draft" || unit.markschemeSource === "whole_question") {
+      if (confidence === "high") confidence = "medium";
+    }
+
+    grades.push({ item, unit, clampedMarks, confidence });
+  }
+
+  for (const u of units) {
+    if (!seen.has(u.testItemId)) {
+      warnings.push(`No grade returned for ${unitLabel(u)} — left ungraded for manual marking`);
+    }
+  }
+
+  if (grades.length === 0) {
+    return { ok: false, error: "Model returned no gradeable items" };
+  }
+
+  return { ok: true, outcome: { grades, warnings } };
 }
 
-interface QuestionRow {
-  id: string;
-  code: string;
-  stem_latex: string | null;
-  stem_markscheme_latex: string | null;
-  parts_draft_latex: string | null;
-  parts_draft_markscheme_latex: string | null;
+// ─────────────────────────────────────────────────────────────────────────────
+// Mark scheme assembly
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Normalise a part label so "(b)(ii)", "b ii" and "bii" all compare equal. */
+function normalisePartLabel(label: string | null | undefined): string {
+  return (label ?? "")
+    .toLowerCase()
+    .replace(/[()\[\]\s.]/g, "")
+    .trim();
 }
 
 interface TestItemRow {
@@ -178,333 +242,266 @@ interface TestItemRow {
   question_number: number;
   part_label: string | null;
   max_marks: number;
-  ib_question_code: string | null;
+  ib_question_code: string;
   subtopic_codes: string[] | null;
-  sort_order: number | null;
+  sort_order: number;
+}
+
+interface QuestionRow {
+  id: string;
+  code: string;
+  stem_latex: string | null;
+  stem_markscheme_latex: string | null;
+  parts_draft_markscheme_latex: string | null;
+}
+
+interface PartRow {
+  question_id: string;
+  part_label: string | null;
+  marks: number | null;
+  content_latex: string | null;
+  markscheme_latex: string | null;
+  markscheme_text: string | null;
+  command_terms: string[] | null;
+  command_term: string | null;
+}
+
+export interface AssembledMarkScheme {
+  units: GradingUnit[];
+  warnings: string[];
 }
 
 /**
- * Minimal structural view of the Supabase client — just the query shapes this
- * resolver uses. Deliberately narrow: matching the full generated client type
- * here makes TypeScript blow its instantiation depth budget (TS2589), so
- * callers pass the client through `asMarkSchemeDb` below.
- */
-type QueryResult = { data: unknown[] | null };
-
-export interface MarkSchemeDb {
-  from(table: string): {
-    select(cols: string): {
-      eq(
-        col: string,
-        val: string
-      ): {
-        order(col: string, opts: { ascending: boolean }): PromiseLike<QueryResult>;
-      };
-      in(col: string, vals: string[]): PromiseLike<QueryResult>;
-    };
-  };
-}
-
-/** Narrow a Supabase client to the query surface the resolver needs. */
-export function asMarkSchemeDb(client: unknown): MarkSchemeDb {
-  return client as MarkSchemeDb;
-}
-
-/**
- * Build the mark scheme for every item in a test, using a fallback cascade:
+ * Build the gradeable units for a test by joining test_items to the mark scheme
+ * held in the question bank.
  *
- *   1. question_parts.markscheme_latex   for the exact part   → "part_latex"
- *   2. question_parts.markscheme_text    for the exact part   → "part_text"
- *   3. the question's whole-question (blank-label) part       → "whole_question"
- *   4. ib_questions draft/stem mark scheme LaTeX              → "draft"
- *   5. nothing available                                       → "none"
+ * test_items links to ib_questions by *code* (text), not by foreign key, so the
+ * join runs in two hops: code -> ib_questions.id -> question_parts.
  *
- * Steps 3 and 4 set `unsegmented`, which matters when a test splits a bank
- * question into parts that the bank itself stores whole (see migration 051).
+ * Mark scheme resolution, strongest source first:
+ *   part_latex     matched part has markscheme_latex
+ *   part_text      matched part has markscheme_text only
+ *   whole_question no matched part, but the question has a stem mark scheme
+ *   draft          only the unsplit parts_draft_markscheme_latex exists
+ *   none           nothing usable — the part is excluded from grading
  */
-export async function resolveTestMarkSchemes(
-  supabase: MarkSchemeDb,
+export async function assembleMarkScheme(
+  supabase: SupabaseClient,
   testId: string
-): Promise<{ items: ResolvedItem[]; coverage: CoverageReport }> {
-  const { data: rawItems } = await supabase
+): Promise<AssembledMarkScheme> {
+  const warnings: string[] = [];
+
+  const { data: itemRows, error: itemsError } = await supabase
     .from("test_items")
-    .select(
-      "id, question_number, part_label, max_marks, ib_question_code, subtopic_codes, sort_order"
-    )
+    .select("id, question_number, part_label, max_marks, ib_question_code, subtopic_codes, sort_order")
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
 
-  const testItems = (rawItems ?? []) as TestItemRow[];
+  if (itemsError) throw new Error(`Failed to load test items: ${itemsError.message}`);
+  const items = (itemRows ?? []) as TestItemRow[];
+  if (items.length === 0) return { units: [], warnings: ["This assessment has no test items."] };
 
-  if (testItems.length === 0) {
-    return {
-      items: [],
-      coverage: {
-        total_items: 0,
-        resolved_items: 0,
-        unresolved_items: 0,
-        unsegmented_items: 0,
-        by_source: { part_latex: 0, part_text: 0, whole_question: 0, draft: 0, none: 0 },
-        warnings: ["This test has no questions defined."],
-      },
-    };
-  }
+  const codes = [...new Set(items.map((i) => i.ib_question_code).filter(Boolean))];
 
-  const codes = [
-    ...new Set(testItems.map((i) => norm(i.ib_question_code)).filter(Boolean)),
-  ];
+  const { data: questionRows, error: qError } = await supabase
+    .from("ib_questions")
+    .select("id, code, stem_latex, stem_markscheme_latex, parts_draft_markscheme_latex")
+    .in("code", codes);
 
-  const { data: rawQuestions } = codes.length
-    ? await supabase
-        .from("ib_questions")
-        .select(
-          "id, code, stem_latex, stem_markscheme_latex, parts_draft_latex, parts_draft_markscheme_latex"
-        )
-        .in("code", codes)
-    : { data: [] };
-
-  const questions = (rawQuestions ?? []) as QuestionRow[];
+  if (qError) throw new Error(`Failed to load questions: ${qError.message}`);
+  const questions = (questionRows ?? []) as QuestionRow[];
   const questionByCode = new Map(questions.map((q) => [q.code, q]));
 
-  const { data: rawParts } = questions.length
-    ? await supabase
-        .from("question_parts")
-        .select(
-          "question_id, part_label, content_latex, content_text, markscheme_latex, markscheme_text, sort_order"
-        )
-        .in(
-          "question_id",
-          questions.map((q) => q.id)
-        )
-    : { data: [] };
+  const questionIds = questions.map((q) => q.id);
+  let parts: PartRow[] = [];
+  if (questionIds.length > 0) {
+    const { data: partRows, error: pError } = await supabase
+      .from("question_parts")
+      .select(
+        "question_id, part_label, marks, content_latex, markscheme_latex, markscheme_text, command_terms, command_term"
+      )
+      .in("question_id", questionIds);
+    if (pError) throw new Error(`Failed to load question parts: ${pError.message}`);
+    parts = (partRows ?? []) as PartRow[];
+  }
 
-  const parts = (rawParts ?? []) as QuestionPartRow[];
-  const partsByQuestion = new Map<string, QuestionPartRow[]>();
+  const partsByQuestion = new Map<string, PartRow[]>();
   for (const p of parts) {
     const list = partsByQuestion.get(p.question_id) ?? [];
     list.push(p);
     partsByQuestion.set(p.question_id, list);
   }
 
-  const by_source: Record<MarkSchemeSource, number> = {
-    part_latex: 0,
-    part_text: 0,
-    whole_question: 0,
-    draft: 0,
-    none: 0,
-  };
-  const warnings: string[] = [];
-  const resolved: ResolvedItem[] = [];
+  const units: GradingUnit[] = items.map((item) => {
+    const question = questionByCode.get(item.ib_question_code);
+    const questionParts = question ? partsByQuestion.get(question.id) ?? [] : [];
 
-  for (const item of testItems) {
-    const code = norm(item.ib_question_code);
-    const question = code ? questionByCode.get(code) : undefined;
-    const qParts = question ? partsByQuestion.get(question.id) ?? [] : [];
-    const wantLabel = norm(item.part_label);
+    const wanted = normalisePartLabel(item.part_label);
+    let matched = questionParts.find((p) => normalisePartLabel(p.part_label) === wanted);
 
-    const exact = qParts.find((p) => norm(p.part_label) === wantLabel);
-    const wholeQuestionPart =
-      qParts.length === 1 && norm(qParts[0].part_label) === "" ? qParts[0] : undefined;
+    // Whole-question items: fall back to the sole part when there is exactly one.
+    if (!matched && wanted === "" && questionParts.length === 1) {
+      matched = questionParts[0];
+    }
 
     let markscheme = "";
-    let markscheme_source: MarkSchemeSource = "none";
-    let unsegmented = false;
+    let markschemeSource: MarkschemeSource = "none";
 
-    if (exact && nonEmpty(exact.markscheme_latex)) {
-      markscheme = norm(exact.markscheme_latex);
-      markscheme_source = "part_latex";
-    } else if (exact && nonEmpty(exact.markscheme_text)) {
-      markscheme = norm(exact.markscheme_text);
-      markscheme_source = "part_text";
-    } else if (
-      wholeQuestionPart &&
-      (nonEmpty(wholeQuestionPart.markscheme_latex) ||
-        nonEmpty(wholeQuestionPart.markscheme_text))
-    ) {
-      markscheme = nonEmpty(wholeQuestionPart.markscheme_latex)
-        ? norm(wholeQuestionPart.markscheme_latex)
-        : norm(wholeQuestionPart.markscheme_text);
-      markscheme_source = "whole_question";
-      unsegmented = wantLabel !== "";
-    } else if (
-      question &&
-      (nonEmpty(question.parts_draft_markscheme_latex) ||
-        nonEmpty(question.stem_markscheme_latex))
-    ) {
-      markscheme = [
-        norm(question.stem_markscheme_latex),
-        norm(question.parts_draft_markscheme_latex),
-      ]
-        .filter(Boolean)
-        .join("\n\n");
-      markscheme_source = "draft";
-      unsegmented = true;
+    if (matched?.markscheme_latex?.trim()) {
+      markscheme = matched.markscheme_latex.trim();
+      markschemeSource = "part_latex";
+    } else if (matched?.markscheme_text?.trim()) {
+      markscheme = matched.markscheme_text.trim();
+      markschemeSource = "part_text";
+    } else if (question?.stem_markscheme_latex?.trim()) {
+      markscheme = question.stem_markscheme_latex.trim();
+      markschemeSource = "whole_question";
+    } else if (question?.parts_draft_markscheme_latex?.trim()) {
+      markscheme = question.parts_draft_markscheme_latex.trim();
+      markschemeSource = "draft";
     }
 
-    // Question wording, same cascade logic but for the prompt's context section.
-    let question_text = "";
-    if (exact && nonEmpty(exact.content_latex)) question_text = norm(exact.content_latex);
-    else if (exact && nonEmpty(exact.content_text)) question_text = norm(exact.content_text);
-    else if (wholeQuestionPart && nonEmpty(wholeQuestionPart.content_latex))
-      question_text = norm(wholeQuestionPart.content_latex);
-    else if (wholeQuestionPart && nonEmpty(wholeQuestionPart.content_text))
-      question_text = norm(wholeQuestionPart.content_text);
-    else if (question)
-      question_text = [norm(question.stem_latex), norm(question.parts_draft_latex)]
-        .filter(Boolean)
-        .join("\n\n");
+    const stem = question?.stem_latex?.trim() ?? "";
+    const questionLatex = [stem, matched?.content_latex?.trim() ?? ""]
+      .filter(Boolean)
+      .join("\n\n");
 
-    by_source[markscheme_source] += 1;
+    const commandTerms =
+      matched?.command_terms && matched.command_terms.length > 0
+        ? matched.command_terms
+        : matched?.command_term
+        ? [matched.command_term]
+        : [];
 
-    const label = `Q${item.question_number}${wantLabel ? `(${wantLabel})` : ""}`;
-    if (markscheme_source === "none") {
+    const label = `${item.question_number}${item.part_label ? `(${item.part_label})` : ""}`;
+    if (!question) {
       warnings.push(
-        `${label} (${code || "no question code"}) has no mark scheme in the bank — it will be skipped.`
+        `${label}: question ${item.ib_question_code} is not in the PPQ bank — cannot be graded.`
       );
-    } else if (unsegmented) {
+    } else if (markschemeSource === "none") {
       warnings.push(
-        `${label} falls back to the whole-question mark scheme; per-part marks are inferred and flagged lower confidence.`
+        `${label}: no mark scheme stored for ${item.ib_question_code} — cannot be graded. Extract the mark scheme in the PPQ Bank first.`
+      );
+    } else if (markschemeSource === "draft" || markschemeSource === "whole_question") {
+      warnings.push(
+        `${label}: using a ${markschemeSource === "draft" ? "draft (unsplit)" : "whole-question"} mark scheme — suggestions here need closer review.`
       );
     }
 
-    resolved.push({
-      test_item_id: item.id,
-      question_number: item.question_number,
-      part_label: wantLabel,
-      max_marks: item.max_marks,
-      ib_question_code: code,
-      subtopic_codes: item.subtopic_codes ?? [],
-      question_text,
+    return {
+      testItemId: item.id,
+      questionNumber: item.question_number,
+      partLabel: item.part_label ?? "",
+      maxMarks: item.max_marks,
+      questionCode: item.ib_question_code,
+      questionLatex,
       markscheme,
-      markscheme_source,
-      unsegmented,
-    });
-  }
+      markschemeSource,
+      commandTerms,
+      subtopicCodes: item.subtopic_codes ?? [],
+    };
+  });
 
-  const unresolved_items = by_source.none;
-  const coverage: CoverageReport = {
-    total_items: resolved.length,
-    resolved_items: resolved.length - unresolved_items,
-    unresolved_items,
-    unsegmented_items: resolved.filter((r) => r.unsegmented).length,
-    by_source,
-    warnings,
-  };
-
-  return { items: resolved, coverage };
+  return { units, warnings };
 }
 
-// ─── 3. Prompt layer ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Prompts
+// ─────────────────────────────────────────────────────────────────────────────
 
-export const AI_GRADING_MODEL = "claude-sonnet-4-6";
+export const GRADING_SYSTEM_PROMPT = `You are an experienced IB Diploma Programme Mathematics examiner marking a scanned, handwritten student script against an official IB mark scheme.
 
-export const AI_GRADING_SYSTEM_PROMPT = `You are an experienced IB Diploma Programme Mathematics examiner marking a scanned, handwritten student script against an official IB mark scheme.
+You mark to the mark scheme. You do not mark to your own preferred method or your own arithmetic. The mark scheme is the authority.
 
-MARKING CONVENTIONS
-- IB mark codes: M = method, A = accuracy, R = reasoning, AG = answer given.
-- Award each mark independently, exactly as the mark scheme specifies. Do not invent marks the scheme does not list.
-- M marks are for a correct method, even when the subsequent arithmetic is wrong.
-- A marks require the correct value or form. An A mark that depends on an unearned M mark is normally not awarded unless the scheme allows follow-through.
-- Apply follow-through generously where the scheme permits it: a correct method applied to an earlier incorrect answer still earns method marks.
-- AG (answer given) means the result is printed in the question. Award only if the working genuinely establishes it; do not reward reverse-engineering from the printed answer.
-- Accept mathematically equivalent forms, alternative valid methods, and unsimplified but correct answers unless the scheme explicitly requires a particular form.
-- Do not deduct marks for untidy presentation, crossed-out work that was replaced, or notation slips that do not obscure the mathematics.
-- Never award more than the stated maximum for an item.
+MARK TYPES
+- M (method): awarded for a correct method, even if the subsequent arithmetic is wrong. Award M marks when the intended method is clearly visible.
+- A (accuracy): awarded for a correct result. An A mark depends on its associated M mark — never award an A without the M that earns it.
+- R (reasoning): awarded for correct justification or explanation, not merely a correct answer.
+- AG (answer given): the answer is printed in the question. Award only if the working genuinely derives it. Do NOT award if the student worked backwards from the printed answer or simply restated it.
 
-READING THE SCRIPT
-- The script is a scan of handwritten work and may be rotated, faint, or out of order. Match work to questions using the question numbers and part labels the student wrote, and by matching the mathematics itself to the question.
-- If you cannot find any attempt at an item, set "work_found": false, "suggested_marks": 0 and "confidence": "low". Do not guess.
-- If handwriting is genuinely ambiguous at a point that decides a mark, award the mark only if the reading that earns it is the more plausible one, and set confidence to "low" with the ambiguity named in "reasoning".
+MARKING RULES
+1. Award whole marks only. Never award half marks.
+2. Never exceed the stated maximum for a part.
+3. Follow through (FT): if a student carries an incorrect value from an earlier part into a later part but the method in the later part is correct, award the method marks in the later part.
+4. Accept any valid alternative method that reaches the required result. Mark scheme methods are indicative, not exhaustive.
+5. Accept equivalent forms of a correct answer (unsimplified, decimal vs exact, algebraically equivalent) unless the mark scheme or the command term demands a particular form.
+6. Ignore subsequent working that does not contradict a correct answer already given. If later working contradicts and replaces a correct answer, mark the final answer.
+7. If a part is blank, crossed out with nothing to replace it, or absent from the scan, set workFound to false and suggestedMarks to 0.
+8. If handwriting is ambiguous, mark the most plausible reading in the student's favour and lower your confidence.
+9. Do not deduct marks for poor presentation, notation slips, or missing units unless the mark scheme requires them.
+
+MARK BREAKDOWN
+For each part, itemise the mark scheme tokens (M1, A1, R1, AG, ...) and state whether the student earned each one. The tokens you mark as awarded must add up to suggestedMarks.
 
 CONFIDENCE
-- "high": the work is legible, clearly matched to the item, and the scheme maps onto it cleanly.
-- "medium": legible and matched, but requires examiner judgement (equivalent method, partial follow-through, minor ambiguity).
-- "low": faint/ambiguous handwriting, uncertain matching, no attempt found, or the mark scheme supplied covers the whole question rather than this part.
-- Any item flagged UNSEGMENTED in the brief must be capped at "medium" confidence at best.
+- "high": the work is legible and maps cleanly onto the mark scheme.
+- "medium": legible but needs a judgement call (alternative method, partial working, follow-through).
+- "low": illegible, ambiguous, hard to locate, or a genuinely borderline award.
+Anything marked "low" is flagged for the teacher to mark by hand. Be honest — an over-confident wrong mark is far more damaging than a flagged uncertain one.
 
 OUTPUT
-Return ONLY a single JSON object, with no preamble, commentary, or markdown fences:
+Return ONLY a JSON object. No preamble, no markdown fences, no commentary.
 
 {
   "items": [
     {
-      "test_item_id": "<echo exactly from the brief>",
-      "work_found": true,
-      "suggested_marks": 3,
-      "confidence": "high",
-      "evidence": "<what the student actually wrote, transcribed or closely summarised>",
-      "reasoning": "<which scheme marks were earned or lost, and why>",
-      "mark_breakdown": [
-        { "code": "M1", "kind": "M", "awarded": true, "note": "sets up the derivative correctly" },
-        { "code": "A1", "kind": "A", "awarded": false, "note": "sign error in the final value" }
-      ]
+      "testItemId": "<echo back exactly the testItemId given to you>",
+      "suggestedMarks": <integer>,
+      "confidence": "high" | "medium" | "low",
+      "workFound": <boolean>,
+      "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }],
+      "reasoning": "<one or two sentences citing the tokens satisfied or missed>",
+      "evidence": "<what the student actually wrote, briefly>"
     }
   ]
 }
 
-Include one entry for every item listed in the brief, in the same order. "suggested_marks" must equal the number of awarded entries' mark values and must never exceed that item's maximum.`;
+Return exactly one entry for every part you were given, in the order given.`;
 
-/** Render the resolved items into the marking brief sent alongside the scan. */
-export function buildGradingBrief(items: ResolvedItem[]): string {
-  const gradable = items.filter((i) => i.markscheme_source !== "none");
+/** Build the user-turn text listing every part and its mark scheme. */
+export function buildGradingUserPrompt(
+  units: GradingUnit[],
+  opts: { studentName?: string; testName?: string } = {}
+): string {
+  const header = [
+    opts.testName ? `Assessment: ${opts.testName}` : null,
+    opts.studentName ? `Student: ${opts.studentName}` : null,
+    `Parts to mark: ${units.length}`,
+    `Total marks available: ${units.reduce((s, u) => s + u.maxMarks, 0)}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 
-  const blocks = gradable.map((item) => {
-    const label = `Q${item.question_number}${item.part_label ? `(${item.part_label})` : ""}`;
+  const blocks = units.map((u) => {
     const lines = [
-      `=== ITEM ${label} ===`,
-      `test_item_id: ${item.test_item_id}`,
-      `maximum marks: ${item.max_marks}`,
-      item.ib_question_code ? `IB question code: ${item.ib_question_code}` : "",
-      item.unsegmented
-        ? `UNSEGMENTED: the mark scheme below covers the whole of Q${item.question_number}, not just part (${item.part_label}). Isolate only the portion that answers this part, and cap confidence at "medium".`
-        : "",
-      "",
-      item.question_text ? `--- Question ---\n${item.question_text}` : "",
-      "",
-      `--- Mark scheme ---\n${item.markscheme}`,
+      `=== ${unitLabel(u)} ===`,
+      `testItemId: ${u.testItemId}`,
+      `Source question: ${u.questionCode}`,
+      `Maximum marks: ${u.maxMarks}`,
     ];
-    return lines.filter((l) => l !== "").join("\n");
+    if (u.commandTerms.length > 0) lines.push(`Command term(s): ${u.commandTerms.join(", ")}`);
+    if (u.markschemeSource === "whole_question") {
+      lines.push(
+        `NOTE: the mark scheme below covers the WHOLE question, not just this part. Use only the portion relevant to this part.`
+      );
+    }
+    if (u.markschemeSource === "draft") {
+      lines.push(
+        `NOTE: the mark scheme below is an unsplit draft covering several parts. Locate the section for this part before marking.`
+      );
+    }
+    if (u.questionLatex) lines.push(`\n--- Question ---\n${u.questionLatex}`);
+    lines.push(`\n--- Mark scheme (the authority) ---\n${u.markscheme}`);
+    return lines.join("\n");
   });
 
-  return [
-    `Mark the attached scanned script against the ${gradable.length} item(s) below.`,
-    `Return one JSON entry per item, echoing each test_item_id exactly.`,
-    "",
-    blocks.join("\n\n"),
-  ].join("\n");
-}
+  return `${header}
 
-/** Clamp and sanitise a validated model item before it is persisted. */
-export function reconcileItem(
-  modelItem: AiGradeItem,
-  resolved: ResolvedItem
-): {
-  suggested_marks: number;
-  confidence: "high" | "medium" | "low";
-  adjusted: boolean;
-} {
-  let adjusted = false;
-  let marks = Math.round(modelItem.suggested_marks);
+The attached PDF is a scan of this student's handwritten work for the whole assessment. Locate each part below in the scan and mark it against its mark scheme.
 
-  if (marks > resolved.max_marks) {
-    marks = resolved.max_marks;
-    adjusted = true;
-  }
-  if (marks < 0) {
-    marks = 0;
-    adjusted = true;
-  }
+The scan may be out of order, may include rough working, and may span multiple pages per question. Search the whole document before concluding a part is missing.
 
-  let confidence = modelItem.confidence;
-  // Whole-question fallbacks can never be high-confidence per-part judgements.
-  if (resolved.unsegmented && confidence === "high") {
-    confidence = "medium";
-    adjusted = true;
-  }
-  if (!modelItem.work_found) {
-    confidence = "low";
-    marks = 0;
-  }
+${blocks.join("\n\n")}
 
-  return { suggested_marks: marks, confidence, adjusted };
+Return the JSON object now.`;
 }

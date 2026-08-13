@@ -2,31 +2,25 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getApiTeacher } from "@/lib/auth";
 import {
-  asMarkSchemeDb,
-  AI_GRADING_MODEL,
-  AI_GRADING_SYSTEM_PROMPT,
-  buildGradingBrief,
-  parseAiGradeResponse,
-  reconcileItem,
-  resolveTestMarkSchemes,
+  GRADING_MODEL,
+  GRADING_SYSTEM_PROMPT,
+  SCAN_BUCKET,
+  assembleMarkScheme,
+  buildGradingUserPrompt,
+  unitLabel,
+  validateGradeResponse,
 } from "@/lib/ai-grading";
+import type { GradingUnit } from "@/lib/ai-grading";
 
 export const maxDuration = 300;
 
-const SCAN_BUCKET = "corrections";
+/** Anthropic caps PDF document blocks at 32MB / 100 pages. */
+const MAX_SCAN_BYTES = 30 * 1024 * 1024;
 
 /**
- * GET /api/tests/[id]/ai-grade
- *   Preflight: mark-scheme coverage for the test, plus each student's scan
- *   status and the most recent grading run.
- *
- * POST /api/tests/[id]/ai-grade
- *   multipart/form-data: studentId, file (the scanned script)
- *   or application/json: { studentId } to reuse an already-uploaded scan.
- *   Grades the scan and stages suggestions in ai_grade_results.
- *   Never writes to student_marks — see ./accept.
+ * GET /api/tests/[id]/ai-grade?studentId=...
+ * Returns grading runs and their results, for the review UI.
  */
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -34,123 +28,50 @@ export async function GET(
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
   const { supabase } = auth;
+
   const { id: testId } = await params;
-  const focusStudentId = request.nextUrl.searchParams.get("studentId");
+  const studentId = request.nextUrl.searchParams.get("studentId");
 
-  const { data: test } = await supabase
-    .from("tests")
-    .select("id, name, course_id, total_marks")
-    .eq("id", testId)
-    .maybeSingle();
+  let query = supabase
+    .from("ai_grade_runs")
+    .select("id, test_id, student_id, status, model, source_storage_path, coverage, error, created_at, completed_at")
+    .eq("test_id", testId)
+    .order("created_at", { ascending: false });
 
-  if (!test) {
-    return NextResponse.json({ error: "Test not found" }, { status: 404 });
-  }
+  if (studentId) query = query.eq("student_id", studentId);
 
-  const { items, coverage } = await resolveTestMarkSchemes(asMarkSchemeDb(supabase), testId);
+  const { data: runs, error } = await query.limit(studentId ? 5 : 100);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (!runs || runs.length === 0) return NextResponse.json({ runs: [], results: [] });
 
-  // Roster for the test's course
-  const { data: roster } = await supabase
-    .from("students")
-    .select("profile_id, hidden, profiles(display_name)")
-    .eq("course_id", test.course_id as string);
-
-  const studentIds = (roster ?? []).map((r) => r.profile_id as string);
-
-  const { data: uploads } = studentIds.length
-    ? await supabase
-        .from("pdf_uploads")
-        .select("student_id, file_name, uploaded_at")
-        .eq("test_id", testId)
-        .in("student_id", studentIds)
-    : { data: [] };
-
-  const { data: runs } = studentIds.length
-    ? await supabase
-        .from("ai_grade_runs")
-        .select("id, student_id, status, created_at, completed_at, error")
-        .eq("test_id", testId)
-        .in("student_id", studentIds)
-        .order("created_at", { ascending: false })
-    : { data: [] };
-
-  const uploadMap = new Map((uploads ?? []).map((u) => [u.student_id, u]));
-  const latestRun = new Map<string, Record<string, unknown>>();
-  for (const r of runs ?? []) {
-    if (!latestRun.has(r.student_id as string)) {
-      latestRun.set(r.student_id as string, r as Record<string, unknown>);
-    }
-  }
-
-  const students = (roster ?? [])
-    .filter((r) => !r.hidden)
-    .map((r) => {
-      const profile = r.profiles as unknown as { display_name: string } | null;
-      const upload = uploadMap.get(r.profile_id as string);
-      return {
-        student_id: r.profile_id as string,
-        display_name: profile?.display_name ?? "Unknown",
-        has_scan: !!upload,
-        scan_name: upload?.file_name ?? null,
-        latest_run: latestRun.get(r.profile_id as string) ?? null,
-      };
-    })
-    .sort((a, b) => a.display_name.localeCompare(b.display_name));
-
-  // When a student is focused, attach their latest run's staged suggestions
-  // alongside any mark already recorded, so the UI can show both side by side.
-  let results: unknown[] = [];
-  let focusedRunId: string | null = null;
-
-  if (focusStudentId) {
-    const run = latestRun.get(focusStudentId) as { id?: string } | undefined;
-    focusedRunId = run?.id ?? null;
-    if (focusedRunId) {
-      const { data: rows } = await supabase
-        .from("ai_grade_results")
-        .select(
-          "test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, mark_breakdown, accepted"
-        )
-        .eq("run_id", focusedRunId);
-      results = rows ?? [];
-    }
-
-    const { data: current } = await supabase
-      .from("student_marks")
-      .select("test_item_id, marks_awarded")
-      .eq("student_id", focusStudentId)
-      .in(
-        "test_item_id",
-        items.map((i) => i.test_item_id)
-      );
-
-    const currentMap = new Map(
-      (current ?? []).map((m) => [m.test_item_id as string, m.marks_awarded as number])
+  const { data: results, error: rErr } = await supabase
+    .from("ai_grade_results")
+    .select(
+      "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, mark_breakdown, accepted, accepted_at, accepted_by"
+    )
+    .in(
+      "run_id",
+      runs.map((r) => r.id)
     );
-    results = (results as Record<string, unknown>[]).map((r) => ({
-      ...r,
-      current_marks: currentMap.get(r.test_item_id as string) ?? null,
-    }));
-  }
 
-  return NextResponse.json({
-    test: { id: test.id, name: test.name, total_marks: test.total_marks },
-    coverage,
-    focusedRunId,
-    results,
-    items: items.map((i) => ({
-      test_item_id: i.test_item_id,
-      question_number: i.question_number,
-      part_label: i.part_label,
-      max_marks: i.max_marks,
-      ib_question_code: i.ib_question_code,
-      markscheme_source: i.markscheme_source,
-      unsegmented: i.unsegmented,
-    })),
-    students,
-  });
+  if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
+
+  return NextResponse.json({ runs, results: results ?? [] });
 }
 
+/**
+ * POST /api/tests/[id]/ai-grade
+ * Body: {
+ *   studentId: string,
+ *   fileBase64?: string,          // a fresh PDF scan to upload and grade
+ *   fileName?: string,
+ *   reuseExistingScan?: boolean   // re-grade the scan already stored
+ * }
+ *
+ * Grades one student's scanned script against the mark scheme held in the PPQ
+ * bank and stores the outcome in ai_grade_results for teacher review.
+ * Nothing is written to student_marks here.
+ */
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -158,212 +79,268 @@ export async function POST(
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
   const { supabase, user } = auth;
+
   const { id: testId } = await params;
 
-  // ── Parse input: multipart (new scan) or JSON (reuse stored scan) ─────────
-  let studentId = "";
-  let uploadedFile: File | null = null;
-
-  const contentType = request.headers.get("content-type") ?? "";
-  if (contentType.includes("multipart/form-data")) {
-    const form = await request.formData();
-    studentId = String(form.get("studentId") ?? "");
-    const f = form.get("file");
-    if (f && typeof f !== "string") uploadedFile = f as File;
-  } else {
-    try {
-      const body = (await request.json()) as { studentId?: string };
-      studentId = String(body.studentId ?? "");
-    } catch {
-      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
-    }
+  let body: {
+    studentId?: unknown;
+    fileBase64?: unknown;
+    fileName?: unknown;
+    reuseExistingScan?: unknown;
+  };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const studentId = typeof body.studentId === "string" ? body.studentId.trim() : "";
   if (!studentId) {
     return NextResponse.json({ error: "studentId is required" }, { status: 400 });
   }
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY is not configured" },
+      { error: "ANTHROPIC_API_KEY is not configured on this deployment" },
       { status: 500 }
     );
   }
 
-  // ── Resolve mark schemes ──────────────────────────────────────────────────
-  const { items, coverage } = await resolveTestMarkSchemes(asMarkSchemeDb(supabase), testId);
-  const gradable = items.filter((i) => i.markscheme_source !== "none");
+  // ── Context ───────────────────────────────────────────────────────────────
+  const { data: test, error: testErr } = await supabase
+    .from("tests")
+    .select("id, name")
+    .eq("id", testId)
+    .maybeSingle();
 
-  if (gradable.length === 0) {
+  if (testErr) return NextResponse.json({ error: testErr.message }, { status: 500 });
+  if (!test) return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
+
+  const { data: studentProfile } = await supabase
+    .from("profiles")
+    .select("display_name")
+    .eq("id", studentId)
+    .maybeSingle();
+
+  // ── Mark scheme assembly ──────────────────────────────────────────────────
+  let units: GradingUnit[];
+  let assemblyWarnings: string[];
+  try {
+    const assembled = await assembleMarkScheme(supabase, testId);
+    units = assembled.units;
+    assemblyWarnings = assembled.warnings;
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Mark scheme assembly failed" },
+      { status: 500 }
+    );
+  }
+
+  const gradeable = units.filter((u) => u.markschemeSource !== "none");
+  if (gradeable.length === 0) {
     return NextResponse.json(
       {
         error:
-          "No question in this test has a mark scheme in the PPQ bank. Add mark schemes before grading.",
-        coverage,
+          "No mark scheme text is stored for any part of this assessment. Extract the mark scheme LaTeX in the PPQ Bank first.",
+        warnings: assemblyWarnings,
       },
       { status: 422 }
     );
   }
 
-  // ── Obtain the scan ───────────────────────────────────────────────────────
-  let pdfBase64 = "";
-  let storagePath = "";
+  // ── Resolve the scan ──────────────────────────────────────────────────────
+  let scanBase64: string;
+  let scanStoragePath: string;
 
-  if (uploadedFile) {
-    if (uploadedFile.type && uploadedFile.type !== "application/pdf") {
+  if (typeof body.fileBase64 === "string" && body.fileBase64.length > 0) {
+    const raw = body.fileBase64.replace(/^data:application\/pdf;base64,/, "");
+    const buffer = Buffer.from(raw, "base64");
+
+    if (buffer.length === 0) {
+      return NextResponse.json({ error: "Uploaded scan was empty" }, { status: 400 });
+    }
+    if (buffer.length > MAX_SCAN_BYTES) {
       return NextResponse.json(
-        { error: "Scan must be a PDF. Combine photos into a single PDF first." },
+        {
+          error: `Scan is ${(buffer.length / 1024 / 1024).toFixed(1)}MB; the limit is 30MB. Reduce the scan resolution or split the file.`,
+        },
         { status: 400 }
       );
     }
-    const bytes = Buffer.from(await uploadedFile.arrayBuffer());
-    pdfBase64 = bytes.toString("base64");
-    storagePath = `ai-grading/${testId}/${studentId}/${uploadedFile.name}`;
-    // Store the teacher-supplied scan under its own prefix so it never
-    // collides with the student-facing corrections upload flow.
-    await supabase.storage
-      .from(SCAN_BUCKET)
-      .upload(storagePath, bytes, { upsert: true, contentType: "application/pdf" });
-  } else {
-    const { data: existing } = await supabase
-      .from("pdf_uploads")
-      .select("storage_path")
-      .eq("student_id", studentId)
-      .eq("test_id", testId)
-      .maybeSingle();
-
-    if (!existing?.storage_path) {
+    if (buffer.subarray(0, 5).toString("utf8") !== "%PDF-") {
       return NextResponse.json(
-        { error: "No scan found for this student. Upload a PDF of their work." },
-        { status: 404 }
+        { error: "Uploaded file is not a PDF. Combine photos into a single PDF before uploading." },
+        { status: 400 }
       );
     }
-    storagePath = existing.storage_path as string;
-    const { data: blob, error: dlError } = await supabase.storage
-      .from(SCAN_BUCKET)
-      .download(storagePath);
 
-    if (dlError || !blob) {
+    const safeName =
+      typeof body.fileName === "string" && body.fileName.trim()
+        ? body.fileName.trim().replace(/[^\w.\-]/g, "_")
+        : "scan.pdf";
+    scanStoragePath = `${testId}/${studentId}/${Date.now()}-${safeName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from(SCAN_BUCKET)
+      .upload(scanStoragePath, buffer, { contentType: "application/pdf", upsert: true });
+
+    if (uploadErr) {
+      const hint = uploadErr.message?.toLowerCase().includes("bucket not found")
+        ? ` Create the '${SCAN_BUCKET}' bucket (migration 057_ai_grading.sql).`
+        : "";
       return NextResponse.json(
-        { error: "Could not download the stored scan." },
+        { error: `Scan upload failed: ${uploadErr.message}.${hint}` },
         { status: 500 }
       );
     }
-    pdfBase64 = Buffer.from(await blob.arrayBuffer()).toString("base64");
+
+    scanBase64 = buffer.toString("base64");
+  } else if (body.reuseExistingScan === true) {
+    const { data: priorRun } = await supabase
+      .from("ai_grade_runs")
+      .select("source_storage_path")
+      .eq("test_id", testId)
+      .eq("student_id", studentId)
+      .not("source_storage_path", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!priorRun?.source_storage_path) {
+      return NextResponse.json(
+        { error: "No previously uploaded scan found for this student on this assessment" },
+        { status: 404 }
+      );
+    }
+
+    scanStoragePath = priorRun.source_storage_path;
+    const { data: file, error: dlErr } = await supabase.storage
+      .from(SCAN_BUCKET)
+      .download(scanStoragePath);
+
+    if (dlErr || !file) {
+      return NextResponse.json(
+        { error: `Could not download stored scan: ${dlErr?.message ?? "unknown error"}` },
+        { status: 500 }
+      );
+    }
+    scanBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+  } else {
+    return NextResponse.json(
+      { error: "Provide fileBase64 (a PDF scan) or set reuseExistingScan to true" },
+      { status: 400 }
+    );
   }
 
   // ── Open the run ──────────────────────────────────────────────────────────
-  const { data: run, error: runError } = await supabase
+  const { data: run, error: runErr } = await supabase
     .from("ai_grade_runs")
     .insert({
       test_id: testId,
       student_id: studentId,
       created_by: user.id,
       status: "running",
-      model: AI_GRADING_MODEL,
-      source_storage_path: storagePath,
-      coverage,
+      model: GRADING_MODEL,
+      source_storage_path: scanStoragePath,
     })
     .select("id")
     .single();
 
-  if (runError || !run) {
+  if (runErr || !run) {
     return NextResponse.json(
-      { error: runError?.message ?? "Could not create grading run" },
+      { error: `Could not create grading run: ${runErr?.message ?? "unknown error"}` },
       { status: 500 }
     );
   }
 
-  const runId = run.id as string;
-
-  const fail = async (message: string, status = 500) => {
+  const failRun = async (message: string, status = 500) => {
     await supabase
       .from("ai_grade_runs")
       .update({ status: "failed", error: message, completed_at: new Date().toISOString() })
-      .eq("id", runId);
-    return NextResponse.json({ error: message, runId }, { status });
+      .eq("id", run.id);
+    return NextResponse.json({ error: message, runId: run.id }, { status });
   };
 
   // ── Grade ─────────────────────────────────────────────────────────────────
-  try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    const response = await anthropic.messages.create({
-      model: AI_GRADING_MODEL,
-      max_tokens: 16000,
-      system: AI_GRADING_SYSTEM_PROMPT,
+  let responseText: string;
+  try {
+    const message = await anthropic.messages.create({
+      model: GRADING_MODEL,
+      max_tokens: 16384,
+      system: GRADING_SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
           content: [
             {
               type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: pdfBase64,
-              },
+              source: { type: "base64", media_type: "application/pdf", data: scanBase64 },
             },
-            { type: "text", text: buildGradingBrief(gradable) },
+            {
+              type: "text",
+              text: buildGradingUserPrompt(gradeable, {
+                studentName: studentProfile?.display_name ?? undefined,
+                testName: test.name,
+              }),
+            },
           ],
         },
       ],
     });
 
-    const textBlock = response.content.find((b) => b.type === "text");
-    const raw = textBlock && textBlock.type === "text" ? textBlock.text : "";
-
-    const parsed = parseAiGradeResponse(raw);
-    if (!parsed.ok) {
-      return await fail(`Model response failed validation: ${parsed.error}`, 502);
-    }
-
-    const resolvedById = new Map(gradable.map((i) => [i.test_item_id, i]));
-    const rows = [];
-
-    for (const modelItem of parsed.data.items) {
-      const resolved = resolvedById.get(modelItem.test_item_id);
-      // Ignore hallucinated ids that were not in the brief.
-      if (!resolved) continue;
-
-      const { suggested_marks, confidence } = reconcileItem(modelItem, resolved);
-
-      rows.push({
-        run_id: runId,
-        test_item_id: resolved.test_item_id,
-        suggested_marks,
-        max_marks: resolved.max_marks,
-        confidence,
-        markscheme_source: resolved.markscheme_source,
-        work_found: modelItem.work_found,
-        reasoning: modelItem.reasoning,
-        evidence: modelItem.evidence,
-        mark_breakdown: modelItem.mark_breakdown,
-      });
-    }
-
-    if (rows.length === 0) {
-      return await fail("The model returned no items matching this test.", 502);
-    }
-
-    const { error: insertError } = await supabase.from("ai_grade_results").insert(rows);
-    if (insertError) return await fail(insertError.message);
-
-    await supabase
-      .from("ai_grade_runs")
-      .update({ status: "complete", completed_at: new Date().toISOString() })
-      .eq("id", runId);
-
-    const missing = gradable.length - rows.length;
-
-    return NextResponse.json({
-      runId,
-      graded: rows.length,
-      skipped_no_markscheme: items.length - gradable.length,
-      missing_from_response: missing,
-      coverage,
-    });
+    responseText = message.content
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("\n");
   } catch (e) {
-    return await fail(e instanceof Error ? e.message : "Grading failed");
+    return failRun(`Grading request failed: ${e instanceof Error ? e.message : String(e)}`);
   }
+
+  if (!responseText.trim()) return failRun("Model returned an empty response");
+
+  const validation = validateGradeResponse(responseText, gradeable);
+  if (!validation.ok) return failRun(validation.error, 502);
+
+  const { grades, warnings } = validation.outcome;
+
+  // ── Persist results ───────────────────────────────────────────────────────
+  const rows = grades.map((g) => ({
+    run_id: run.id,
+    test_item_id: g.unit.testItemId,
+    suggested_marks: g.clampedMarks,
+    max_marks: g.unit.maxMarks,
+    confidence: g.confidence,
+    markscheme_source: g.unit.markschemeSource,
+    work_found: g.item.workFound,
+    reasoning: g.item.reasoning,
+    evidence: g.item.evidence,
+    mark_breakdown: g.item.markBreakdown,
+  }));
+
+  const { error: insertErr } = await supabase.from("ai_grade_results").insert(rows);
+  if (insertErr) return failRun(`Could not save results: ${insertErr.message}`);
+
+  const suggestedTotal = grades.reduce((s, g) => s + g.clampedMarks, 0);
+  const maxTotal = gradeable.reduce((s, u) => s + u.maxMarks, 0);
+  const needsReview = grades
+    .filter((g) => g.confidence === "low" || !g.item.workFound)
+    .map((g) => unitLabel(g.unit));
+
+  const coverage = {
+    partsInAssessment: units.length,
+    partsGraded: grades.length,
+    partsWithoutMarkscheme: units.length - gradeable.length,
+    suggestedTotal,
+    maxTotal,
+    needsReview,
+    warnings: [...assemblyWarnings, ...warnings],
+  };
+
+  await supabase
+    .from("ai_grade_runs")
+    .update({ status: "complete", completed_at: new Date().toISOString(), coverage })
+    .eq("id", run.id);
+
+  return NextResponse.json({ runId: run.id, status: "complete", ...coverage });
 }

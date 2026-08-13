@@ -3,12 +3,17 @@ import { getApiTeacher } from "@/lib/auth";
 
 /**
  * POST /api/tests/[id]/ai-grade/accept
- * Body: { runId: string, items: { testItemId: string, marks: number }[] }
+ * Body: {
+ *   runId: string,
+ *   selections: { resultId: string, marks?: number }[]
+ * }
  *
- * Promotes reviewed AI suggestions into student_marks — the only path by which
- * an AI suggestion becomes a real mark. Every write is logged to mark_changes
- * with an explicit reason so the audit trail distinguishes AI-assisted marks
- * from marks the teacher entered directly.
+ * Applies teacher-reviewed AI results to student_marks ("Clev's Marks").
+ *
+ * This is the ONLY path from an AI suggestion to a real mark. Every write is
+ * logged to mark_changes with an explicit reason, so an AI-originated mark stays
+ * distinguishable from one entered by hand. If the teacher overrode the
+ * suggested value, the override is what gets written.
  */
 export async function POST(
   request: NextRequest,
@@ -17,121 +22,124 @@ export async function POST(
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
   const { supabase, user } = auth;
+
   const { id: testId } = await params;
 
-  let body: { runId?: string; items?: { testItemId: string; marks: number }[] };
+  let body: { runId?: unknown; selections?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const runId = body.runId;
-  const incoming = body.items ?? [];
+  const runId = typeof body.runId === "string" ? body.runId.trim() : "";
+  if (!runId) return NextResponse.json({ error: "runId is required" }, { status: 400 });
 
-  if (!runId || incoming.length === 0) {
-    return NextResponse.json(
-      { error: "runId and a non-empty items array are required" },
-      { status: 400 }
-    );
+  if (!Array.isArray(body.selections) || body.selections.length === 0) {
+    return NextResponse.json({ error: "selections must be a non-empty array" }, { status: 400 });
   }
 
-  const { data: run } = await supabase
+  const overrides = new Map<string, number | null>();
+  for (const sel of body.selections as { resultId?: unknown; marks?: unknown }[]) {
+    if (typeof sel.resultId !== "string" || !sel.resultId.trim()) {
+      return NextResponse.json({ error: "Every selection needs a resultId" }, { status: 400 });
+    }
+    const marks = sel.marks === undefined || sel.marks === null ? null : Number(sel.marks);
+    if (marks !== null && (!Number.isInteger(marks) || marks < 0)) {
+      return NextResponse.json(
+        { error: "Override marks must be a non-negative integer" },
+        { status: 400 }
+      );
+    }
+    overrides.set(sel.resultId.trim(), marks);
+  }
+
+  // ── Verify the run belongs to this assessment ─────────────────────────────
+  const { data: run, error: runErr } = await supabase
     .from("ai_grade_runs")
     .select("id, test_id, student_id, status")
     .eq("id", runId)
     .maybeSingle();
 
-  if (!run || run.test_id !== testId) {
+  if (runErr) return NextResponse.json({ error: runErr.message }, { status: 500 });
+  if (!run) return NextResponse.json({ error: "Grading run not found" }, { status: 404 });
+  if (run.test_id !== testId) {
     return NextResponse.json(
-      { error: "Grading run not found for this test" },
+      { error: "This grading run does not belong to the specified assessment" },
+      { status: 400 }
+    );
+  }
+
+  const { data: results, error: rErr } = await supabase
+    .from("ai_grade_results")
+    .select("id, test_item_id, suggested_marks, max_marks, confidence")
+    .eq("run_id", runId)
+    .in("id", [...overrides.keys()]);
+
+  if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
+  if (!results || results.length === 0) {
+    return NextResponse.json(
+      { error: "None of the supplied resultIds belong to this run" },
       { status: 404 }
     );
   }
 
-  const studentId = run.student_id as string;
-  const itemIds = incoming.map((i) => i.testItemId);
+  const applied: { resultId: string; testItemId: string; marks: number }[] = [];
+  const failures: { resultId: string; error: string }[] = [];
 
-  // Validate every item belongs to this test and clamp to its maximum.
-  const { data: testItems } = await supabase
-    .from("test_items")
-    .select("id, max_marks")
-    .eq("test_id", testId)
-    .in("id", itemIds);
+  for (const r of results) {
+    const override = overrides.get(r.id);
+    const requested = override === null || override === undefined ? r.suggested_marks : override;
+    const marks = Math.max(0, Math.min(requested, r.max_marks));
+    const wasOverridden = marks !== r.suggested_marks;
 
-  const maxById = new Map(
-    (testItems ?? []).map((t) => [t.id as string, t.max_marks as number])
-  );
+    // Prior mark, for the audit log
+    const { data: existing } = await supabase
+      .from("student_marks")
+      .select("marks_awarded")
+      .eq("test_item_id", r.test_item_id)
+      .eq("student_id", run.student_id)
+      .maybeSingle();
 
-  const { data: existingMarks } = await supabase
-    .from("student_marks")
-    .select("test_item_id, marks_awarded")
-    .eq("student_id", studentId)
-    .in("test_item_id", itemIds);
+    const oldMarks = existing?.marks_awarded ?? null;
 
-  const oldById = new Map(
-    (existingMarks ?? []).map((m) => [
-      m.test_item_id as string,
-      m.marks_awarded as number,
-    ])
-  );
-
-  const accepted: string[] = [];
-  const rejected: { testItemId: string; reason: string }[] = [];
-
-  for (const item of incoming) {
-    const max = maxById.get(item.testItemId);
-    if (max === undefined) {
-      rejected.push({ testItemId: item.testItemId, reason: "Not an item of this test" });
-      continue;
-    }
-
-    const marks = Math.max(0, Math.min(Math.round(Number(item.marks)), max));
-    if (!Number.isFinite(marks)) {
-      rejected.push({ testItemId: item.testItemId, reason: "Invalid mark value" });
-      continue;
-    }
-
-    const { error: upsertError } = await supabase.from("student_marks").upsert(
+    const { error: upsertErr } = await supabase.from("student_marks").upsert(
       {
-        test_item_id: item.testItemId,
-        student_id: studentId,
+        test_item_id: r.test_item_id,
+        student_id: run.student_id,
         marks_awarded: marks,
       },
       { onConflict: "test_item_id,student_id" }
     );
 
-    if (upsertError) {
-      rejected.push({ testItemId: item.testItemId, reason: upsertError.message });
+    if (upsertErr) {
+      failures.push({ resultId: r.id, error: upsertErr.message });
       continue;
     }
 
     await supabase.from("mark_changes").insert({
-      test_item_id: item.testItemId,
-      student_id: studentId,
+      test_item_id: r.test_item_id,
+      student_id: run.student_id,
       changed_by: user.id,
-      old_marks: oldById.get(item.testItemId) ?? null,
+      old_marks: oldMarks,
       new_marks: marks,
-      reason: `AI-assisted grading, reviewed and accepted (run ${runId})`,
+      reason: wasOverridden
+        ? `AI grading run ${runId} suggested ${r.suggested_marks} (${r.confidence} confidence); teacher applied ${marks}`
+        : `AI grading run ${runId}, suggestion accepted as marked (${r.confidence} confidence)`,
     });
 
     await supabase
       .from("ai_grade_results")
-      .update({
-        accepted: true,
-        accepted_at: new Date().toISOString(),
-        accepted_by: user.id,
-        suggested_marks: marks,
-      })
-      .eq("run_id", runId)
-      .eq("test_item_id", item.testItemId);
+      .update({ accepted: true, accepted_at: new Date().toISOString(), accepted_by: user.id })
+      .eq("id", r.id);
 
-    accepted.push(item.testItemId);
+    applied.push({ resultId: r.id, testItemId: r.test_item_id, marks });
   }
 
   return NextResponse.json({
-    accepted: accepted.length,
-    rejected,
-    studentId,
+    appliedCount: applied.length,
+    applied,
+    failures,
+    totalApplied: applied.reduce((sum, a) => sum + a.marks, 0),
   });
 }
