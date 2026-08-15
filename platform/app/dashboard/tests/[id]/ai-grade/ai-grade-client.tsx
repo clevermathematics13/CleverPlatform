@@ -4,65 +4,75 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 
-type MarkSchemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "none";
+type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "none";
 type Confidence = "high" | "medium" | "low";
+type RunStatus = "running" | "complete" | "failed";
 
-interface Coverage {
-  total_items: number;
-  resolved_items: number;
-  unresolved_items: number;
-  unsegmented_items: number;
-  by_source: Record<MarkSchemeSource, number>;
-  warnings: string[];
-}
-
-interface ItemMeta {
-  test_item_id: string;
-  question_number: number;
-  part_label: string;
-  max_marks: number;
-  ib_question_code: string;
-  markscheme_source: MarkSchemeSource;
-  unsegmented: boolean;
-}
-
-interface RunSummary {
+interface TestItem {
   id: string;
-  status: "running" | "complete" | "failed";
-  created_at: string;
-  error: string | null;
+  question_number: number;
+  part_label: string | null;
+  max_marks: number;
 }
 
-interface StudentRow {
-  student_id: string;
+interface TestDetail {
+  id: string;
+  name: string;
+  course_id: string;
+  test_items: TestItem[];
+}
+
+interface StudentOption {
+  /** profiles.id — what every AI-grade endpoint expects as studentId. */
+  profile_id: string;
   display_name: string;
-  has_scan: boolean;
-  scan_name: string | null;
-  latest_run: RunSummary | null;
+}
+
+interface RunRow {
+  id: string;
+  test_id: string;
+  student_id: string;
+  status: RunStatus;
+  model: string | null;
+  source_storage_path: string | null;
+  coverage: {
+    partsInAssessment?: number;
+    partsGraded?: number;
+    partsWithoutMarkscheme?: number;
+    suggestedTotal?: number;
+    maxTotal?: number;
+    needsReview?: string[];
+    warnings?: string[];
+  } | null;
+  error: string | null;
+  created_at: string;
+  completed_at: string | null;
 }
 
 interface MarkBreakdownEntry {
-  code: string;
-  kind: string;
+  token: string;
   awarded: boolean;
   note: string;
 }
 
 interface ResultRow {
+  id: string;
+  run_id: string;
   test_item_id: string;
   suggested_marks: number;
   max_marks: number;
   confidence: Confidence;
-  markscheme_source: MarkSchemeSource;
+  markscheme_source: MarkschemeSource;
   work_found: boolean;
   reasoning: string | null;
   evidence: string | null;
   mark_breakdown: MarkBreakdownEntry[];
   accepted: boolean;
-  current_marks: number | null;
+  accepted_at: string | null;
+  accepted_by: string | null;
 }
 
-const SOURCE_LABEL: Record<MarkSchemeSource, string> = {
+const SOURCE_LABEL: Record<MarkschemeSource, string> = {
   part_latex: "Part mark scheme",
   part_text: "Part mark scheme (plain text)",
   whole_question: "Whole-question fallback",
@@ -76,96 +86,173 @@ const CONFIDENCE_STYLE: Record<Confidence, string> = {
   low: "bg-red-100 text-red-800 border-red-300",
 };
 
+function itemLabel(item: TestItem | undefined): string {
+  if (!item) return "—";
+  return item.part_label
+    ? `Q${item.question_number}(${item.part_label})`
+    : `Q${item.question_number}`;
+}
+
+/** Read a File into a base64 string (no data: prefix), as the route expects. */
+function fileToBase64(file: File): Promise<{ base64: string; name: string }> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.includes(",") ? result.split(",")[1] : result;
+      resolve({ base64, name: file.name });
+    };
+    reader.onerror = () => reject(new Error("Could not read the selected file."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function AiGradeClient({ testId }: { testId: string }) {
-  const [coverage, setCoverage] = useState<Coverage | null>(null);
-  const [items, setItems] = useState<ItemMeta[]>([]);
-  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [test, setTest] = useState<TestDetail | null>(null);
+  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [runsByStudent, setRunsByStudent] = useState<Record<string, RunRow>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statusLine, setStatusLine] = useState<string | null>(null);
 
   const [focusStudent, setFocusStudent] = useState<string | null>(null);
   const [results, setResults] = useState<ResultRow[]>([]);
-  const [runId, setRunId] = useState<string | null>(null);
-  const [drafts, setDrafts] = useState<Record<string, number>>({});
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [focusRunId, setFocusRunId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, number>>({}); // keyed by result.id
+  const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
-  const [statusLine, setStatusLine] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingUploadStudent = useRef<string | null>(null);
 
-  const itemById = new Map(items.map((i) => [i.test_item_id, i]));
+  const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
 
-  const load = useCallback(
-    async (studentId?: string | null) => {
-      setError(null);
-      const qs = studentId ? `?studentId=${studentId}` : "";
-      const res = await fetch(`/api/tests/${testId}/ai-grade${qs}`);
+  // ── Initial load: test detail (for items + course), roster, latest runs ──
+  const loadOverview = useCallback(async () => {
+    setError(null);
+    const testRes = await fetch(`/api/tests/${testId}`);
+    const testData = await testRes.json();
+    if (!testRes.ok) {
+      setError(testData.error ?? "Could not load this assessment.");
+      return;
+    }
+    setTest(testData);
+
+    const studentsRes = await fetch(`/api/students?courseId=${testData.course_id}`);
+    const studentsData = await studentsRes.json();
+    if (!studentsRes.ok) {
+      setError(studentsData.error ?? "Could not load the class roster.");
+      return;
+    }
+    const roster: StudentOption[] = (studentsData.students ?? [])
+      .filter((s: { profile_id?: string }) => !!s.profile_id)
+      .map((s: { profile_id: string; profiles: { display_name: string; nickname: string | null } }) => ({
+        profile_id: s.profile_id,
+        display_name: s.profiles?.nickname || s.profiles?.display_name || "Unknown",
+      }))
+      .sort((a: StudentOption, b: StudentOption) => a.display_name.localeCompare(b.display_name));
+    setStudents(roster);
+
+    const runsRes = await fetch(`/api/tests/${testId}/ai-grade`);
+    const runsData = await runsRes.json();
+    if (!runsRes.ok) {
+      setError(runsData.error ?? "Could not load grading runs.");
+      return;
+    }
+    const latest: Record<string, RunRow> = {};
+    for (const r of (runsData.runs ?? []) as RunRow[]) {
+      // runs come back newest-first from the API; keep only the first (latest) per student
+      if (!latest[r.student_id]) latest[r.student_id] = r;
+    }
+    setRunsByStudent(latest);
+  }, [testId]);
+
+  useEffect(() => {
+    loadOverview().finally(() => setLoading(false));
+  }, [loadOverview]);
+
+  // ── Load one student's results for review ──
+  const loadResultsFor = useCallback(
+    async (studentId: string) => {
+      const res = await fetch(`/api/tests/${testId}/ai-grade?studentId=${studentId}`);
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Could not load marking data.");
+        setError(data.error ?? "Could not load results for this student.");
         return;
       }
-      setCoverage(data.coverage);
-      setItems(data.items ?? []);
-      setStudents(data.students ?? []);
-      if (studentId) {
-        const rows = (data.results ?? []) as ResultRow[];
-        setResults(rows);
-        setRunId(data.focusedRunId ?? null);
-        setDrafts(
-          Object.fromEntries(rows.map((r) => [r.test_item_id, r.suggested_marks]))
-        );
-        setSelected(
-          new Set(rows.filter((r) => !r.accepted && r.work_found).map((r) => r.test_item_id))
-        );
-      }
+      const runs = (data.runs ?? []) as RunRow[];
+      const latestRun = runs[0] ?? null;
+      const rows = (data.results ?? []) as ResultRow[];
+      const rowsForLatest = latestRun
+        ? rows.filter((r) => r.run_id === latestRun.id)
+        : rows;
+
+      setFocusRunId(latestRun?.id ?? null);
+      setResults(rowsForLatest);
+      setDrafts(Object.fromEntries(rowsForLatest.map((r) => [r.id, r.suggested_marks])));
+      setSelected(
+        new Set(rowsForLatest.filter((r) => !r.accepted && r.work_found).map((r) => r.id))
+      );
+      if (latestRun) setRunsByStudent((prev) => ({ ...prev, [studentId]: latestRun }));
     },
     [testId]
   );
 
-  useEffect(() => {
-    load().finally(() => setLoading(false));
-  }, [load]);
+  const openReview = async (studentId: string) => {
+    setFocusStudent(studentId);
+    setStatusLine(null);
+    setError(null);
+    await loadResultsFor(studentId);
+  };
 
+  // ── Run grading (fresh upload or re-use stored scan) ──
   const runGrading = async (studentId: string, file: File | null) => {
     setBusyStudent(studentId);
+    setError(null);
     setStatusLine(
       file
-        ? "Uploading scan and reading it against the mark scheme…"
-        : "Reading the stored scan against the mark scheme…"
+        ? "Uploading scan and marking it against the mark scheme…"
+        : "Marking the stored scan against the mark scheme…"
     );
     try {
-      let res: Response;
+      const body: Record<string, unknown> = { studentId };
       if (file) {
-        const form = new FormData();
-        form.append("studentId", studentId);
-        form.append("file", file);
-        res = await fetch(`/api/tests/${testId}/ai-grade`, { method: "POST", body: form });
+        const { base64, name } = await fileToBase64(file);
+        body.fileBase64 = base64;
+        body.fileName = name;
       } else {
-        res = await fetch(`/api/tests/${testId}/ai-grade`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ studentId }),
-        });
+        body.reuseExistingScan = true;
       }
+
+      const res = await fetch(`/api/tests/${testId}/ai-grade`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
       const data = await res.json();
       if (!res.ok) {
         setStatusLine(null);
         setError(data.error ?? "Marking failed.");
         return;
       }
-      setStatusLine(
-        `Marked ${data.graded} item(s).` +
-          (data.skipped_no_markscheme
-            ? ` ${data.skipped_no_markscheme} skipped for lack of a mark scheme.`
-            : "")
-      );
+
+      const parts: string[] = [];
+      if (typeof data.partsGraded === "number") {
+        parts.push(`Marked ${data.partsGraded} of ${data.partsInAssessment ?? data.partsGraded} part(s)`);
+      }
+      if (data.suggestedTotal !== undefined && data.maxTotal !== undefined) {
+        parts.push(`suggested total ${data.suggestedTotal}/${data.maxTotal}`);
+      }
+      if (Array.isArray(data.needsReview) && data.needsReview.length > 0) {
+        parts.push(`${data.needsReview.length} part(s) flagged for review`);
+      }
+      setStatusLine(parts.length > 0 ? parts.join(", ") + "." : "Marking complete.");
+
       setFocusStudent(studentId);
-      await load(studentId);
+      await loadResultsFor(studentId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Marking failed.");
       setStatusLine(null);
@@ -182,51 +269,57 @@ export function AiGradeClient({ testId }: { testId: string }) {
     if (file && studentId) await runGrading(studentId, file);
   };
 
-  const openReview = async (studentId: string) => {
-    setFocusStudent(studentId);
-    setStatusLine(null);
-    await load(studentId);
-  };
-
+  // ── Accept selected results into Clev's Marks ──
   const acceptSelected = async () => {
-    if (!runId || selected.size === 0) return;
+    if (!focusRunId || selected.size === 0) return;
     setAccepting(true);
+    setError(null);
     try {
-      const payload = [...selected].map((id) => ({
-        testItemId: id,
-        marks: drafts[id] ?? 0,
+      const selections = [...selected].map((resultId) => ({
+        resultId,
+        marks: drafts[resultId],
       }));
       const res = await fetch(`/api/tests/${testId}/ai-grade/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId, items: payload }),
+        body: JSON.stringify({ runId: focusRunId, selections }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error ?? "Could not accept these marks.");
         return;
       }
-      setStatusLine(`${data.accepted} mark(s) written to Clev's Marks.`);
-      if (focusStudent) await load(focusStudent);
+      setStatusLine(`${data.appliedCount} mark(s) written to Clev's Marks.`);
+      if (focusStudent) await loadResultsFor(focusStudent);
     } finally {
       setAccepting(false);
     }
   };
 
-  const toggle = (id: string) =>
+  const toggle = (resultId: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(resultId)) next.delete(resultId);
+      else next.add(resultId);
       return next;
     });
 
   if (loading) {
-    return <p className="text-sm text-gray-500">Loading mark scheme coverage…</p>;
+    return <p className="text-sm text-gray-500">Loading this assessment…</p>;
   }
 
-  const suggestedTotal = results.reduce((s, r) => s + (drafts[r.test_item_id] ?? 0), 0);
-  const maxTotal = results.reduce((s, r) => s + r.max_marks, 0);
+  if (!test) {
+    return (
+      <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+        {error ?? "This assessment could not be loaded."}
+      </div>
+    );
+  }
+
+  const totalItems = test.test_items.length;
+  const maxTotal = test.test_items.reduce((s, i) => s + i.max_marks, 0);
+  const suggestedTotal = results.reduce((s, r) => s + (drafts[r.id] ?? 0), 0);
+  const focusRun = focusStudent ? runsByStudent[focusStudent] : null;
 
   return (
     <div className="space-y-6">
@@ -250,41 +343,15 @@ export function AiGradeClient({ testId }: { testId: string }) {
         </div>
       )}
 
-      {/* ── Coverage preflight ─────────────────────────────────────────── */}
-      {coverage && (
-        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-900">Mark scheme coverage</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            How much of this exam the PPQ bank can actually mark against.
-          </p>
-
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Stat label="Questions" value={coverage.total_items} />
-            <Stat label="With mark scheme" value={coverage.resolved_items} tone="good" />
-            <Stat
-              label="Missing"
-              value={coverage.unresolved_items}
-              tone={coverage.unresolved_items > 0 ? "bad" : "neutral"}
-            />
-            <Stat
-              label="Whole-question only"
-              value={coverage.unsegmented_items}
-              tone={coverage.unsegmented_items > 0 ? "warn" : "neutral"}
-            />
-          </div>
-
-          {coverage.warnings.length > 0 && (
-            <ul className="mt-4 space-y-1 border-t border-gray-100 pt-3 text-sm text-gray-600">
-              {coverage.warnings.map((w, i) => (
-                <li key={i} className="flex gap-2">
-                  <span aria-hidden>⚠</span>
-                  <span>{w}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      )}
+      {/* ── Assessment summary ────────────────────────────────────────── */}
+      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="text-lg font-bold text-gray-900">{test.name}</h2>
+        <p className="mt-1 text-sm text-gray-500">
+          {totalItems} part{totalItems === 1 ? "" : "s"} · {maxTotal} marks total. Upload a
+          scanned PDF per student — the model marks it against the mark scheme stored in the
+          PPQ bank. Nothing reaches Clev&apos;s Marks until you review and accept it below.
+        </p>
+      </section>
 
       {/* ── Students ───────────────────────────────────────────────────── */}
       <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -294,25 +361,33 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
         {students.length === 0 && (
           <p className="px-5 py-4 text-sm text-gray-500">
-            No students are enrolled in this exam&apos;s class.
+            No students are enrolled in this assessment&apos;s class.
           </p>
         )}
 
         <ul className="divide-y divide-gray-100">
           {students.map((s) => {
-            const busy = busyStudent === s.student_id;
-            const run = s.latest_run;
+            const busy = busyStudent === s.profile_id;
+            const run = runsByStudent[s.profile_id];
             return (
               <li
-                key={s.student_id}
+                key={s.profile_id}
                 className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
               >
                 <div>
                   <p className="font-semibold text-gray-900">{s.display_name}</p>
                   <p className="text-xs text-gray-500">
-                    {s.has_scan ? `Scan on file: ${s.scan_name}` : "No scan on file"}
-                    {run && ` · last run ${run.status}`}
-                    {run?.error && ` — ${run.error}`}
+                    {run ? (
+                      <>
+                        Last run: {run.status}
+                        {run.coverage?.suggestedTotal !== undefined &&
+                          run.coverage?.maxTotal !== undefined &&
+                          ` · ${run.coverage.suggestedTotal}/${run.coverage.maxTotal} suggested`}
+                        {run.error && ` — ${run.error}`}
+                      </>
+                    ) : (
+                      "No scan graded yet"
+                    )}
                   </p>
                 </div>
 
@@ -321,7 +396,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                     type="button"
                     disabled={busy}
                     onClick={() => {
-                      pendingUploadStudent.current = s.student_id;
+                      pendingUploadStudent.current = s.profile_id;
                       fileInputRef.current?.click();
                     }}
                     className="rounded border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
@@ -329,21 +404,21 @@ export function AiGradeClient({ testId }: { testId: string }) {
                     {busy ? "Working…" : "Upload scan & mark"}
                   </button>
 
-                  {s.has_scan && (
+                  {run?.source_storage_path && (
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => runGrading(s.student_id, null)}
+                      onClick={() => runGrading(s.profile_id, null)}
                       className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
                     >
-                      Mark stored scan
+                      Re-mark stored scan
                     </button>
                   )}
 
                   {run?.status === "complete" && (
                     <button
                       type="button"
-                      onClick={() => openReview(s.student_id)}
+                      onClick={() => openReview(s.profile_id)}
                       className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
                     >
                       Review →
@@ -356,19 +431,24 @@ export function AiGradeClient({ testId }: { testId: string }) {
         </ul>
       </section>
 
-      {/* ── Review table ───────────────────────────────────────────────── */}
+      {/* ── Review table ────────────────────────────────────────────── */}
       {focusStudent && results.length > 0 && (
         <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
             <div>
               <h2 className="text-lg font-bold text-gray-900">
-                Review —{" "}
-                {students.find((s) => s.student_id === focusStudent)?.display_name}
+                Review — {students.find((s) => s.profile_id === focusStudent)?.display_name}
               </h2>
               <p className="text-xs text-gray-500">
-                Suggested total {suggestedTotal} / {maxTotal}. Edit any value before
-                accepting.
+                Suggested total {suggestedTotal} / {maxTotal}. Edit any value before accepting.
               </p>
+              {focusRun?.coverage?.warnings && focusRun.coverage.warnings.length > 0 && (
+                <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
+                  {focusRun.coverage.warnings.map((w, i) => (
+                    <li key={i}>⚠ {w}</li>
+                  ))}
+                </ul>
+              )}
             </div>
             <button
               type="button"
@@ -376,9 +456,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
               disabled={accepting || selected.size === 0}
               className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {accepting
-                ? "Writing…"
-                : `Accept ${selected.size} into Clev's Marks`}
+              {accepting ? "Writing…" : `Accept ${selected.size} into Clev's Marks`}
             </button>
           </div>
 
@@ -394,166 +472,139 @@ export function AiGradeClient({ testId }: { testId: string }) {
                   <th className="px-2 py-2 font-semibold">Max</th>
                   <th className="px-2 py-2 font-semibold">Confidence</th>
                   <th className="px-2 py-2 font-semibold">Mark scheme</th>
-                  <th className="px-2 py-2 font-semibold">Clev&apos;s Marks</th>
+                  <th className="px-2 py-2 font-semibold">Status</th>
                   <th className="px-2 py-2 font-semibold" />
                 </tr>
               </thead>
               <tbody>
-                {results.map((r) => {
-                  const meta = itemById.get(r.test_item_id);
-                  const label = meta
-                    ? `Q${meta.question_number}${meta.part_label ? `(${meta.part_label})` : ""}`
-                    : "—";
-                  const isOpen = expanded === r.test_item_id;
-                  return (
-                    <Fragment key={r.test_item_id}>
-                      <tr className="border-b border-gray-100">
-                        <td className="px-4 py-2">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(r.test_item_id)}
-                            onChange={() => toggle(r.test_item_id)}
-                            aria-label={`Accept ${label}`}
-                          />
-                        </td>
-                        <td className="px-2 py-2 font-medium text-gray-900">{label}</td>
-                        <td className="px-2 py-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={r.max_marks}
-                            value={drafts[r.test_item_id] ?? 0}
-                            onChange={(e) =>
-                              setDrafts((prev) => ({
-                                ...prev,
-                                [r.test_item_id]: Math.max(
-                                  0,
-                                  Math.min(r.max_marks, Number(e.target.value))
-                                ),
-                              }))
-                            }
-                            className="w-16 rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
-                          />
-                        </td>
-                        <td className="px-2 py-2 text-gray-500">{r.max_marks}</td>
-                        <td className="px-2 py-2">
-                          <span
-                            className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
-                          >
-                            {r.confidence}
-                          </span>
-                          {!r.work_found && (
-                            <span className="ml-2 text-xs text-gray-500">
-                              no attempt found
+                {results
+                  .slice()
+                  .sort((a, b) => {
+                    const ia = itemById.get(a.test_item_id);
+                    const ib = itemById.get(b.test_item_id);
+                    return (ia?.question_number ?? 0) - (ib?.question_number ?? 0);
+                  })
+                  .map((r) => {
+                    const meta = itemById.get(r.test_item_id);
+                    const label = itemLabel(meta);
+                    const isOpen = expanded === r.id;
+                    return (
+                      <Fragment key={r.id}>
+                        <tr className="border-b border-gray-100">
+                          <td className="px-4 py-2">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(r.id)}
+                              onChange={() => toggle(r.id)}
+                              aria-label={`Accept ${label}`}
+                            />
+                          </td>
+                          <td className="px-2 py-2 font-medium text-gray-900">{label}</td>
+                          <td className="px-2 py-2">
+                            <input
+                              type="number"
+                              min={0}
+                              max={r.max_marks}
+                              value={drafts[r.id] ?? 0}
+                              onChange={(e) =>
+                                setDrafts((prev) => ({
+                                  ...prev,
+                                  [r.id]: Math.max(
+                                    0,
+                                    Math.min(r.max_marks, Number(e.target.value))
+                                  ),
+                                }))
+                              }
+                              className="w-16 rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
+                            />
+                          </td>
+                          <td className="px-2 py-2 text-gray-500">{r.max_marks}</td>
+                          <td className="px-2 py-2">
+                            <span
+                              className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
+                            >
+                              {r.confidence}
                             </span>
-                          )}
-                        </td>
-                        <td className="px-2 py-2 text-xs text-gray-500">
-                          {SOURCE_LABEL[r.markscheme_source]}
-                        </td>
-                        <td className="px-2 py-2">
-                          {r.current_marks === null ? (
-                            <span className="text-gray-400">—</span>
-                          ) : (
-                            <span className="font-semibold text-gray-900">
-                              {r.current_marks}
-                            </span>
-                          )}
-                          {r.accepted && (
-                            <span className="ml-2 text-xs text-green-700">accepted</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-2">
-                          <button
-                            type="button"
-                            onClick={() => setExpanded(isOpen ? null : r.test_item_id)}
-                            className="text-xs text-blue-600 hover:underline"
-                          >
-                            {isOpen ? "Hide" : "Why?"}
-                          </button>
-                        </td>
-                      </tr>
-
-                      {isOpen && (
-                        <tr className="bg-gray-50">
-                          <td colSpan={8} className="px-6 py-4">
-                            <div className="space-y-3">
-                              {r.mark_breakdown.length > 0 && (
-                                <div className="flex flex-wrap gap-2">
-                                  {r.mark_breakdown.map((b, i) => (
-                                    <span
-                                      key={i}
-                                      className={`rounded border px-2 py-0.5 text-xs ${
-                                        b.awarded
-                                          ? "border-green-300 bg-green-50 text-green-800"
-                                          : "border-gray-300 bg-white text-gray-500 line-through"
-                                      }`}
-                                      title={b.note}
-                                    >
-                                      {b.code}
-                                    </span>
-                                  ))}
-                                </div>
-                              )}
-
-                              {r.evidence && (
-                                <div>
-                                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                    Student&apos;s work
-                                  </p>
-                                  <div className="mt-1 rounded border border-gray-200 bg-white p-3">
-                                    <LatexRenderer latex={r.evidence} />
-                                  </div>
-                                </div>
-                              )}
-
-                              {r.reasoning && (
-                                <div>
-                                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                    Examiner reasoning
-                                  </p>
-                                  <div className="mt-1 rounded border border-gray-200 bg-white p-3">
-                                    <LatexRenderer latex={r.reasoning} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                            {!r.work_found && (
+                              <span className="ml-2 text-xs text-gray-500">no attempt found</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2 text-xs text-gray-500">
+                            {SOURCE_LABEL[r.markscheme_source]}
+                          </td>
+                          <td className="px-2 py-2">
+                            {r.accepted ? (
+                              <span className="text-xs text-green-700">accepted</span>
+                            ) : (
+                              <span className="text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => setExpanded(isOpen ? null : r.id)}
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              {isOpen ? "Hide" : "Why?"}
+                            </button>
                           </td>
                         </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
+
+                        {isOpen && (
+                          <tr className="bg-gray-50">
+                            <td colSpan={8} className="px-6 py-4">
+                              <div className="space-y-3">
+                                {r.mark_breakdown.length > 0 && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {r.mark_breakdown.map((b, i) => (
+                                      <span
+                                        key={i}
+                                        className={`rounded border px-2 py-0.5 text-xs ${
+                                          b.awarded
+                                            ? "border-green-300 bg-green-50 text-green-800"
+                                            : "border-gray-300 bg-white text-gray-500 line-through"
+                                        }`}
+                                        title={b.note}
+                                      >
+                                        {b.token}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {r.evidence && (
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                      Student&apos;s work
+                                    </p>
+                                    <div className="mt-1 rounded border border-gray-200 bg-white p-3">
+                                      <LatexRenderer latex={r.evidence} />
+                                    </div>
+                                  </div>
+                                )}
+
+                                {r.reasoning && (
+                                  <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                      Examiner reasoning
+                                    </p>
+                                    <div className="mt-1 rounded border border-gray-200 bg-white p-3">
+                                      <LatexRenderer latex={r.reasoning} />
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
         </section>
       )}
-    </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone = "neutral",
-}: {
-  label: string;
-  value: number;
-  tone?: "neutral" | "good" | "warn" | "bad";
-}) {
-  const toneClass =
-    tone === "good"
-      ? "text-green-700"
-      : tone === "warn"
-      ? "text-amber-700"
-      : tone === "bad"
-      ? "text-red-700"
-      : "text-gray-900";
-  return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
-      <p className={`font-serif text-2xl font-bold ${toneClass}`}>{value}</p>
     </div>
   );
 }

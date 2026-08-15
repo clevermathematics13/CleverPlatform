@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
 
   const { data: students, error } = await supabase
     .from("students")
-    .select("id, profiles:profile_id(display_name, nickname)")
+    .select("id, profile_id, profiles:profile_id(display_name, nickname)")
     .eq("course_id", courseId)
     .eq("hidden", false)
     .order("id");
