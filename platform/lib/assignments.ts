@@ -60,7 +60,7 @@ export type AssignmentQuestion = {
   answerBoxLines?: number;
 };
 
-// ── Nuanced Analysis section enrichments ──────────────────────────────────────
+// ---- Nuanced Analysis section enrichments ----
 
 export type SpotlightBox = { title: string; body: string };
 export type PrerequisiteBox = { items: string[] };
@@ -118,7 +118,7 @@ export function clampInt(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, rounded));
 }
 
-// ── Tier distribution ──────────────────────────────────────────────────────────
+// ---- Tier distribution ----
 
 export type TierDistribution = { t1: number; t2: number; t3: number; untiered: number };
 
@@ -135,7 +135,7 @@ export function computeTierDistribution(draft: AssignmentDraft): TierDistributio
   return dist;
 }
 
-// ── Duplicate detection ────────────────────────────────────────────────────────
+// ---- Duplicate detection ----
 
 export type DuplicatePair = {
   a: { sectionIdx: number; questionIdx: number; prompt: string };
@@ -188,10 +188,34 @@ export function detectDuplicateQuestions(
   return pairs;
 }
 
-// ── Activity Generator (Nuanced Analysis format) ──────────────────────────────
+// ---- Activity Generator (Nuanced Analysis format) ----
 
-export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
+// Pre-DP rolling-bundle rules for Grade 9/10, appended when the target grade
+// is not IB DP. Each distribution is one stapled document: the current
+// section's classwork/homework, then the NEXT section's pre-class prep
+// (P-prefixed so it never collides with the current section's own numbering),
+// then the Teacher's Companion to be torn off before handing out.
+const MYP_ROLLING_BUNDLE_RULES: string[] = [
+  "",
+  "PRE-DP ROLLING BUNDLE STRUCTURE (Grade 9 and Grade 10):",
+  "19. This packet is ONE stapled distribution with three zones, in this order:",
+  "    (a) the current section's classwork and homework, numbered Q1, Q2, Q3, …",
+  "    (b) the NEXT section's pre-class prep, numbered P1, P2, P3, … — the P prefix is mandatory so prep never collides with the packet's own numbering",
+  "    (c) the Teacher's Companion, as the final section, headed so it can be torn off",
+  "20. Do not generate zone (b) if the continuity block states the next section's prep has already shipped.",
+  "21. Zone (b) is preparation, not assessment: it surfaces the intuition the next section will formalise, and it must be completable without any instruction the student has not yet had.",
+  "22. Marks language: always call them Clev's Marks. Never write 'points', 'score', or a bare 'grade'.",
+  "23. Pre-DP command-term demand bands, applied consistently: Write down / State / List = 1 mark; Calculate = 3; Interpret / Describe / Explain / Determine = 4-5; Show that / Justify = 6-7.",
+  "24. Age register: Grade 9 students are 14-15. Keep sentences short and concrete. Introduce formal notation only after the idea it names has been met informally in the same packet.",
+  "25. Plant exactly two misconceptions across the packet, each targeting an error this cohort actually makes, and flag both in the Teacher's Companion with the misconception named.",
+];
+
+export function buildActivityGeneratorSystemPrompt(
+  gradeLevel: string,
+  continuityContext?: string,
+): string {
   const isIB = gradeLevel === "Grade 12" || gradeLevel === "Grade 11";
+  const isMYP = gradeLevel === "Grade 9" || gradeLevel === "Grade 10";
   // A literal double-quote character, built at runtime so the math-syntax rule
   // below can show a quoted-operator example via template-literal interpolation
   // instead of a hand-escaped \" sequence embedded in a single-quoted string
@@ -275,18 +299,25 @@ export function buildActivityGeneratorSystemPrompt(gradeLevel: string): string {
     isIB
       ? "18. For IBDP: include at least one proof question (Show that/Prove), one Broken Math Critique part, and one technology task (GeoGebra/Desmos)."
       : `18. For ${gradeLevel}: include at least one real-world application and one error-analysis question.`,
+    ...(isMYP ? MYP_ROLLING_BUNDLE_RULES : []),
+    ...(continuityContext ? ["", continuityContext] : []),
   ].join("\n");
 }
 
-export function buildActivityGeneratorUserPrompt(description: string, gradeLevel: string): string {
+export function buildActivityGeneratorUserPrompt(
+  description: string,
+  gradeLevel: string,
+  sectionCode?: string,
+): string {
   return [
     `Grade level: ${gradeLevel}`,
+    ...(sectionCode ? [`Section being generated: ${sectionCode}`] : []),
     `Activity description: ${description}`,
     "Generate a complete Nuanced Analysis activity sheet. Return only JSON.",
   ].join("\n");
 }
 
-// ── Standard template system prompt ───────────────────────────────────────────
+// ---- Standard template system prompt ----
 
 export function buildSystemPrompt(gradeLevel: string): string {
   return [
