@@ -521,6 +521,16 @@ export function Grade9PdfSandbox() {
 
   return (
     <div className="space-y-4">
+      {/* This is the generic, course-agnostic PDF sandbox — no continuity
+          awareness, no course/section linkage. If you're working on a
+          Unit 1 A.x Nuanced Analysis packet, use the "🔬 Nuanced Analysis"
+          tab instead, which has its own Grade 9-12 picker plus continuity
+          context pulled from prior packets in the same course. */}
+      <div className="rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+        This is the generic PDF sandbox — it has no course or continuity linkage.
+        For Nuanced Analysis packets (A.1, A.2, …), use the <strong>🔬 Nuanced Analysis</strong> tab instead.
+      </div>
+
       {/* Mode toggle */}
       <div className="flex items-center gap-2">
         <button
