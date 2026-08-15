@@ -16,13 +16,19 @@ type TabOption = {
   emoji: string;
 };
 
+// "Nuanced Analysis" has its OWN grade/course/section picker inside it
+// (covering Grade 9-12), so the plain "Grade N" tabs are a different,
+// older, generic PDF sandbox with no continuity awareness. Labelled
+// "(generic PDF)" here specifically so a person working on Grade 9
+// Nuanced Analysis content doesn't land on this tab by habit and lose
+// the continuity context that only the Nuanced Analysis tab builds.
 const TABS: TabOption[] = [
-  { id: "dp-designer",       label: "DP Designer",      emoji: "🎓" },
-  { id: "nuanced-analysis",  label: "Nuanced Analysis",  emoji: "🔬" },
-  { id: "grade9",            label: "Grade 9",           emoji: "9️⃣" },
-  { id: "grade10",           label: "Grade 10",          emoji: "🔟" },
-  { id: "grade11",           label: "Grade 11",          emoji: "11" },
-  { id: "grade12",           label: "Grade 12",          emoji: "12" },
+  { id: "dp-designer",       label: "DP Designer",             emoji: "🎓" },
+  { id: "nuanced-analysis",  label: "Nuanced Analysis",         emoji: "🔬" },
+  { id: "grade9",            label: "Grade 9 (generic PDF)",    emoji: "9️⃣" },
+  { id: "grade10",           label: "Grade 10 (generic PDF)",   emoji: "🔟" },
+  { id: "grade11",           label: "Grade 11 (generic PDF)",   emoji: "11" },
+  { id: "grade12",           label: "Grade 12 (generic PDF)",   emoji: "12" },
 ];
 
 export function AssignmentsClient() {
