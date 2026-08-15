@@ -2,7 +2,7 @@
 
 /**
  * NuancedAnalysisSandbox
- * ──────────────────────
+ * ----------------------
  * Full sandbox for creating, editing, and exporting Nuanced Analysis packets.
  *
  * Features:
@@ -48,7 +48,7 @@ type ContinuityState = {
   context: string;
 };
 
-// ── Default formatting ────────────────────────────────────────────────────────
+// ---- Default formatting ----
 
 const DEFAULT_FORMATTING: FormattingRequirements = {
   schoolName: "CleverPlatform Mathematics",
@@ -65,7 +65,7 @@ const DEFAULT_FORMATTING: FormattingRequirements = {
   answerStyle: "boxes",
 };
 
-// ── Minimal default draft (shown before first generation) ─────────────────────
+// ---- Minimal default draft (shown before first generation) ----
 
 const DEFAULT_DRAFT: AssignmentDraft = {
   title: "Nuanced Analysis",
@@ -131,7 +131,7 @@ const DEFAULT_DRAFT: AssignmentDraft = {
   ],
 };
 
-// ── Download helpers ──────────────────────────────────────────────────────────
+// ---- Download helpers ----
 
 type PdfStatus = "idle" | "building" | "error";
 
@@ -167,7 +167,7 @@ async function downloadTypstPdf(
   return null;
 }
 
-// ── NuancedAnalysisSandbox ────────────────────────────────────────────────────
+// ---- NuancedAnalysisSandbox ----
 
 export function NuancedAnalysisSandbox() {
   const [draft, setDraft] = useState<AssignmentDraft>(DEFAULT_DRAFT);
@@ -178,7 +178,7 @@ export function NuancedAnalysisSandbox() {
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
 
-  // ── Course / grade / section targeting ──────────────────────────────────────
+  // ---- Course / grade / section targeting ----
   const [gradeLevel, setGradeLevel] = useState<GradeLevel>("Grade 12");
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [courseId, setCourseId] = useState<string>("");
@@ -186,7 +186,7 @@ export function NuancedAnalysisSandbox() {
   const [continuity, setContinuity] = useState<ContinuityState | null>(null);
   const [continuityLoading, setContinuityLoading] = useState(false);
 
-  // ── Save-as-Nuanced-Analysis flow ───────────────────────────────────────────
+  // ---- Save-as-Nuanced-Analysis flow ----
   const [digestModalOpen, setDigestModalOpen] = useState(false);
   const [pendingDigest, setPendingDigest] = useState<PacketDigest | null>(null);
   const [saving, setSaving] = useState(false);
@@ -358,7 +358,7 @@ export function NuancedAnalysisSandbox() {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* ── Targeting bar ───────────────────────────────────────────────────── */}
+      {/* ---- Targeting bar ---- */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/40 px-4 py-2.5">
         <label className="flex items-center gap-1.5 text-xs text-da-muted">
           Grade
@@ -444,7 +444,7 @@ export function NuancedAnalysisSandbox() {
         </div>
       )}
 
-      {/* ── AI generator panel ──────────────────────────────────────────────── */}
+      {/* ---- AI generator panel ---- */}
       <ActivityGeneratorPanel
         gradeLevel={gradeLevel}
         formatting={formatting}
@@ -452,7 +452,7 @@ export function NuancedAnalysisSandbox() {
         continuityContext={sectionContext || undefined}
       />
 
-      {/* ── Toolbar ─────────────────────────────────────────────────────────── */}
+      {/* ---- Toolbar ---- */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/40 px-4 py-2">
         {/* Answer box lines */}
         <label className="flex items-center gap-1.5 text-xs text-da-muted">
@@ -541,7 +541,7 @@ export function NuancedAnalysisSandbox() {
         </div>
       </div>
 
-      {/* ── Live preview ──────────────────────────────────────────────────────── */}
+      {/* ---- Live preview ---- */}
       <div className="rounded-xl border border-da-border bg-white p-4 shadow-sm print:border-0 print:shadow-none">
         <NuancedAnalysisPreview
           draft={draft}
@@ -552,13 +552,13 @@ export function NuancedAnalysisSandbox() {
         />
       </div>
 
-      {/* ── Edit Template modal ──────────────────────────────────────────────── */}
+      {/* ---- Edit Template modal ---- */}
       <EditTemplateModal
         open={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}
       />
 
-      {/* ── Continuity digest confirmation ───────────────────────────────────── */}
+      {/* ---- Continuity digest confirmation ---- */}
       <ContinuityDigestModal
         open={digestModalOpen}
         initial={pendingDigest}
