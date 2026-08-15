@@ -18,7 +18,7 @@ import {
 } from "@/lib/numbering-validator";
 import { createClient } from "@/lib/supabase/client";
 
-// ── Types ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ---- Types ----
 
 type ImageMimeType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 type AttachmentStatus = "uploading" | "ready" | "error";
@@ -46,6 +46,14 @@ type Props = {
   gradeLevel: "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
   formatting: FormattingRequirements;
   onDraftGenerated: (draft: AssignmentDraft) => void;
+  /**
+   * Prompt block describing what prior packets in this course already taught,
+   * built server-side by /api/nuanced-analyses/continuity. Prepended to the
+   * system prompt so the model does not re-teach settled material, re-spend a
+   * TOK provocation, or pre-empt a skill reserved for a later section.
+   * Undefined for the first packet in a course, or when no course is selected.
+   */
+  continuityContext?: string;
 };
 
 const UPLOADS_BUCKET = "uploads";
@@ -191,9 +199,9 @@ async function readClaudeStream(
   );
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ---- Component ----
 
-export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated }: Props) {
+export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerated, continuityContext }: Props) {
   const [description, setDescription] = useState("");
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -535,7 +543,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     ];
 
     const requestBody = JSON.stringify({
-      system: buildActivityGeneratorSystemPrompt(gradeLevel),
+      system: buildActivityGeneratorSystemPrompt(gradeLevel, continuityContext),
       messages,
     });
 
@@ -868,7 +876,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                 {commandTermIssues.map((issue) => (
                   <li key={issue.location} className="text-amber-200/90">
                     <span className="font-medium">{issue.location}:</span>{" "}
-                    <span className="italic text-amber-300/70">“{issue.promptTail}”</span>
+                    <span className="italic text-amber-300/70">"{issue.promptTail}"</span>
                   </li>
                 ))}
               </ul>
