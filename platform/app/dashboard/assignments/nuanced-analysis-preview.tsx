@@ -184,7 +184,7 @@ function ContentSkillTag({
       )}
       {skillTag && (
         <span className="inline-flex items-center gap-1 text-[7.5pt] text-indigo-600 font-medium">
-          <span aria-hidden="true" className="text-indigo-300">⬬</span>
+          <span aria-hidden="true" className="text-indigo-300">⌬</span>
           {skillTag}
         </span>
       )}
