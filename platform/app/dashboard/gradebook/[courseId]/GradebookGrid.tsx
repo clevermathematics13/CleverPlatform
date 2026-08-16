@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback } from "react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 export type TestItem = {
   id: string;
@@ -39,7 +39,7 @@ export type Student = {
 type MarksState = Record<string, Record<string, number | null>>;
 // marks[testItemId][profileId] = marksAwarded | null
 
-// ─── Grade helpers ─────────────────────────────────────────────────────────────
+// --- Grade helpers -------------------------------------------------------------
 
 const COMPONENTS = ["P1", "P2", "P3", "IA"] as const;
 
@@ -214,7 +214,7 @@ function computeOverallGrade(
   return { grade: pctToGradeFallback(pct), pct };
 }
 
-// ─── Boundary set badge ───────────────────────────────────────────────────────
+// --- Boundary set badge -------------------------------------------------------
 
 /** Small pill shown in collapsed test column headers and grade cells. */
 function SetBadge({ name }: { name: string | null }) {
@@ -238,7 +238,7 @@ function SetBadge({ name }: { name: string | null }) {
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 
 interface Props {
   tests: Test[];
@@ -265,7 +265,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
 
-  // ── Handlers ────────────────────────────────────────────────────────────────
+  // -- Handlers ----------------------------------------------------------------
 
   const toggleTest = useCallback((testId: string) => {
     setExpandedTests((prev) => {
@@ -437,14 +437,14 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
     [tests, expandedTests, students, saveCell]
   );
 
-  // ── Styles ───────────────────────────────────────────────────────────────────
+  // -- Styles -------------------------------------------------------------------
 
   const thBase =
     "px-2 py-2 text-center text-xs font-medium text-da-muted bg-da-surface border-b border-da-border whitespace-nowrap select-none";
   const thBtn = `${thBase} cursor-pointer hover:bg-da-hover hover:text-da-accent transition-colors`;
   const tdBase = "px-2 py-2 text-center text-sm border-b border-da-border/50";
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // -- Render -------------------------------------------------------------------
 
   const itemColMap = new Map<string, number>();
   {
@@ -462,7 +462,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
     <div className="overflow-hidden rounded-xl border border-da-border bg-da-surface/85 shadow-sm shadow-black/25">
       <div className="overflow-x-auto">
         <table className="border-collapse min-w-full text-da-text text-sm">
-          {/* ── Header ─────────────────────────────────────────────────── */}
+          {/* -- Header --------------------------------------------------- */}
           <thead>
             <tr>
               {/* Student name */}
@@ -589,7 +589,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                   );
                 }
 
-                // ── Collapsed test header — show name + date + set badge ──
+                // -- Collapsed test header — show name + date + set badge --
                 return (
                   <th
                     key={test.id}
@@ -618,7 +618,7 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
             </tr>
           </thead>
 
-          {/* ── Body ───────────────────────────────────────────────────── */}
+          {/* -- Body ----------------------------------------------------- */}
           <tbody>
             {students.length === 0 && (
               <tr>

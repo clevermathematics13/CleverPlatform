@@ -65,7 +65,7 @@ export const IB_LATEX_STYLE_GUIDE = `IB Mathematics past-paper LaTeX conventions
 - No color formatting: NEVER output \\textcolor{}{}, \\color{}, \\colorbox{}{}, \\definecolor{}, or ANY color macro whatsoever. Return completely plain LaTeX — all visual styling is applied by CSS. Injecting color commands is an anti-pattern that will corrupt the database.
 - Do NOT include \\documentclass, \\usepackage, \\begin{document} or any preamble — return body LaTeX only.
 - Common OCR errors to fix: missing minus signs on negative entries, \\lambda/\\mu confusion, 1 vs l vs I confusion, extra spaces inside \\boldsymbol{}.
-- CRITICAL — preserve visual line breaks: IB question text often ends a displayed sequence or list with an ellipsis ($\\ldots$ or $, \\ldots$) and then continues on a NEW LINE with a sentence beginning "Find", "Show", "Hence", "Determine", etc. These two pieces of text are SEPARATE paragraphs in the original document and MUST be separated by a blank line (\\n\\n) in the LaTeX output. NEVER collapse a post-ellipsis sentence break into a single space. Example of CORRECT output:
+- CRITICAL — preserve visual line breaks: IB question text often ends a displayed sequence or list with an ellipsis ($\\ldots$ or $, \\ldots$) and then continues on a NEW LINE with a sentence beginning "Find", "Show", "Hence", "Determine", etc. These two pieces of text are SEPARATE paragraphs in the original document and MUST be separated by a blank line (\n\n) in the LaTeX output. NEVER collapse a post-ellipsis sentence break into a single space. Example of CORRECT output:
 
   The first terms of an arithmetic sequence are $\\frac{1}{\\log_2 x}, \\frac{1}{\\log_8 x}, \\frac{1}{\\log_{32} x}, \\frac{1}{\\log_{128} x}, \\ldots$
 
@@ -330,7 +330,7 @@ export function postProcessMathpixLatex(raw: string): string {
   return out;
 }
 
-// ─── Mark-token extraction ────────────────────────────────────────────────────
+// --- Mark-token extraction ----------------------------------------------------
 
 /**
  * A single countable mark token parsed from markscheme LaTeX.
