@@ -8,7 +8,7 @@ function computeNotes(examDate: unknown, examTime: unknown): string | null {
   return !hasDate && !hasTime ? "no_datetime" : null;
 }
 
-// ─── GET /api/exams — list saved exams for current teacher ───────────────────
+// --- GET /api/exams — list saved exams for current teacher -------------------
 export async function GET() {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
@@ -74,7 +74,7 @@ export async function GET() {
   return NextResponse.json({ exams });
 }
 
-// ─── POST /api/exams — create a new saved exam ───────────────────────────────
+// --- POST /api/exams — create a new saved exam -------------------------------
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ id: data.id, notes }, { status: 201 });
 }
 
-// ─── PATCH /api/exams — update an existing saved exam ───────────────────────
+// --- PATCH /api/exams — update an existing saved exam -----------------------
 export async function PATCH(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
@@ -153,7 +153,7 @@ export async function PATCH(request: NextRequest) {
   return NextResponse.json({ success: true });
 }
 
-// ─── DELETE /api/exams — delete a saved exam ─────────────────────────────────
+// --- DELETE /api/exams — delete a saved exam ---------------------------------
 export async function DELETE(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
