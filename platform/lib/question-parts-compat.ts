@@ -115,7 +115,7 @@ export function omitUnsupportedColumns<T extends Record<string, unknown>>(
   return result;
 }
 
-// ─── Legacy aliases kept for backward compatibility ──────────────────────────
+// --- Legacy aliases kept for backward compatibility --------------------------
 
 /** @deprecated Use probeQuestionPartsColumns instead. */
 export const INSTRUCTIONAL_CONTEXT_TERMS_FIELD = "instructional_context_terms";

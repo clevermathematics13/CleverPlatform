@@ -6,7 +6,7 @@
 import { createClient } from '@/lib/supabase/client';
 import type { Student, Seat, Rule, Assignment, Setting, SeatingLayout } from '@/lib/seating-types';
 
-// ─── Reads ────────────────────────────────────────────────────────────────────
+// --- Reads --------------------------------------------------------------------
 
 export async function getStudents(): Promise<Student[]> {
   const supabase = createClient();
@@ -84,7 +84,7 @@ export async function getClassGroups(): Promise<string[]> {
   return groups.sort();
 }
 
-// ─── Writes ───────────────────────────────────────────────────────────────────
+// --- Writes -------------------------------------------------------------------
 
 /**
  * Replace all rules in the given class group (or global '*') with the
@@ -192,7 +192,7 @@ export async function appendAssignments(assignments: Assignment[]): Promise<void
   if (error) throw new Error(error.message);
 }
 
-// ─── Named seating chart layouts ──────────────────────────────────────────────
+// --- Named seating chart layouts ----------------------------------------------
 
 export async function listSeatingLayouts(classGroup: string): Promise<SeatingLayout[]> {
   const supabase = createClient();

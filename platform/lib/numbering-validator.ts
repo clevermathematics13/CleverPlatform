@@ -1,6 +1,6 @@
 /**
  * numbering-validator.ts
- * ─────────────────────────────────────────────────────────────────────────
+ * -------------------------------------------------------------------------
  * Numbering-integrity check for generated Nuanced Analysis drafts.
  *
  * WHY THIS EXISTS: a generated packet ("The Anatomy of a Dataset") printed
@@ -110,7 +110,7 @@ export function validateDraftNumbering(draft: DraftLike): NumberingIssue[] {
   const issues: NumberingIssue[] = [];
   if (!draft || !Array.isArray(draft.sections)) return issues;
 
-  // ── Embedded question-number sequence ────────────────────────────────
+  // -- Embedded question-number sequence --------------------------------
   const numbered: { n: number; location: string }[] = [];
 
   draft.sections.forEach((section, sIdx) => {
@@ -167,7 +167,7 @@ export function validateDraftNumbering(draft: DraftLike): NumberingIssue[] {
     }
   }
 
-  // ── "Part N" heading sequence ────────────────────────────────────────
+  // -- "Part N" heading sequence ----------------------------------------
   const parts: { n: number; heading: string }[] = [];
   draft.sections.forEach((section) => {
     if (!section) return;

@@ -2,7 +2,7 @@
 
 /**
  * ContinuityDigestModal
- * ────────────────────
+ * --------------------
  * Review-and-confirm step between generating a packet and saving it.
  *
  * The digest is what the NEXT packet's generation prompt reads. If it is wrong,

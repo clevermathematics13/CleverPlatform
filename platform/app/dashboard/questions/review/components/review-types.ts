@@ -11,7 +11,7 @@ export function canonicalCommandTerm(value: string | null | undefined): string {
   return canonical ?? "";
 }
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// --- Types ------------------------------------------------------------------
 
 export interface QuestionPart {
   id: string;
@@ -72,7 +72,7 @@ export type Field = "content_latex" | "markscheme_latex";
 export type StemField = "stem_latex" | "stem_markscheme_latex";
 export type DraftField = "parts_draft_latex" | "parts_draft_markscheme_latex";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// --- Helpers ----------------------------------------------------------------
 
 export async function getSignedUrls(paths: string[]): Promise<Record<string, string>> {
   const res = await fetch("/api/questions/signed-urls", {
