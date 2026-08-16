@@ -3,7 +3,7 @@
 
 import type { AssignmentDraft } from "@/lib/assignments";
 
-// -- Stage metadata --------------------------
+// ── Stage metadata ──────────────────────────
 
 export type CalculusActivityMeta = {
   stageNumber: number;
@@ -68,7 +68,7 @@ export const ACTIVITY_META: Record<number, CalculusActivityMeta> = {
   },
 };
 
-// -- Stage 1: Polynomial Functions -----------
+// ── Stage 1: Polynomial Functions ───────────
 
 export const STAGE_1_DRAFT: AssignmentDraft = {
   title: "Activity 1: The Shrinking Secant",
@@ -184,7 +184,7 @@ export const STAGE_1_DRAFT: AssignmentDraft = {
   ],
 };
 
-// -- Stage 2: Rational Functions -------------
+// ── Stage 2: Rational Functions ─────────────
 
 export const STAGE_2_DRAFT: AssignmentDraft = {
   title: "Activity 2: Hole or Wall?",
@@ -330,7 +330,7 @@ export const STAGE_2_DRAFT: AssignmentDraft = {
   ],
 };
 
-// -- Stage 3: Exponential & Logarithmic ------
+// ── Stage 3: Exponential & Logarithmic ──────
 
 export const STAGE_3_DRAFT: AssignmentDraft = {
   title: "Activity 3: The Hierarchy of Infinity",
@@ -458,7 +458,7 @@ export const STAGE_3_DRAFT: AssignmentDraft = {
   ],
 };
 
-// -- Stage 4: Trigonometric Functions --------
+// ── Stage 4: Trigonometric Functions ────────
 
 export const STAGE_4_DRAFT: AssignmentDraft = {
   title: "Activity 4: The Squeeze Sandbox",
@@ -612,7 +612,7 @@ export const STAGE_4_DRAFT: AssignmentDraft = {
   ],
 };
 
-// -- Stage 5: Inverse Trig Functions ----------
+// ── Stage 5: Inverse Trig Functions ──────────
 
 export const STAGE_5_DRAFT: AssignmentDraft = {
   title: "Activity 5: Slicing the Wave",
@@ -747,7 +747,7 @@ export const STAGE_5_DRAFT: AssignmentDraft = {
   ],
 };
 
-// -- Master lookup ----------------------------
+// ── Master lookup ────────────────────────────
 
 export const ALL_ACTIVITY_DRAFTS: Record<number, AssignmentDraft> = {
   1: STAGE_1_DRAFT,
