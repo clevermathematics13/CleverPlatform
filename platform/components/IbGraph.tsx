@@ -13,7 +13,7 @@ import {
 } from "mafs";
 import "mafs/core.css";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 /**
  * A declarative JSON spec for an IB-style graph.  Store as base64 in the
@@ -42,13 +42,13 @@ export interface IbGraphSpec {
 }
 
 export type IbGraphElement =
-  // ── Curves ────────────────────────────────────────────────────────────────
+  // -- Curves ----------------------------------------------------------------
   /** y = f(x).  expr uses standard math notation: x^2, sin(x), ln(x), e^x */
   | { type: "fn";         expr: string;  color?: string; dashed?: boolean; label?: string;  xMin?: number; xMax?: number }
   /** Parametric curve (x(t), y(t)) */
   | { type: "parametric"; xt: string;    yt: string;    tMin: number;     tMax: number;    color?: string; label?: string }
 
-  // ── Asymptotes / reference lines ─────────────────────────────────────────
+  // -- Asymptotes / reference lines -----------------------------------------
   /** Vertical dashed line at x = k (vertical asymptote) */
   | { type: "vasymptote"; x: number;     label?: string }
   /** Horizontal dashed line at y = k (horizontal asymptote) */
@@ -57,20 +57,20 @@ export type IbGraphElement =
    *  Optionally bounded: provide xMin/xMax to draw only a segment. */
   | { type: "line";       expr: string;  color?: string; dashed?: boolean; label?: string; xMin?: number; xMax?: number }
 
-  // ── Points ────────────────────────────────────────────────────────────────
+  // -- Points ----------------------------------------------------------------
   /** Filled (or hollow) labeled point */
   | { type: "point"; x: number; y: number; label?: string; open?: boolean; color?: string }
   /** Dashed guide lines from (x, y) to both axes — IB convention */
   | { type: "guide"; x: number; y: number }
 
-  // ── Shading ───────────────────────────────────────────────────────────────
+  // -- Shading ---------------------------------------------------------------
   /** Shaded area between expr1 and expr2 (defaults to y = 0) over [xMin, xMax] */
   | { type: "shade"; expr1: string; expr2?: string; xMin: number; xMax: number; color?: string }
 
-  // ── Annotations ───────────────────────────────────────────────────────────
+  // -- Annotations -----------------------------------------------------------
   | { type: "label"; x: number; y: number; text: string };
 
-// ─── Safe math evaluator ─────────────────────────────────────────────────────
+// --- Safe math evaluator -----------------------------------------------------
 // Translates IB notation (^, ln, e, pi, trig) to JS Math equivalents and wraps
 // in a strict-mode function.  Input is always teacher-authored JSON, not
 // student-supplied text, so the risk surface is already minimal.
@@ -107,7 +107,7 @@ function buildFn(expr: string): (x: number) => number {
   }
 }
 
-// ─── IB color palette ─────────────────────────────────────────────────────────
+// --- IB color palette ---------------------------------------------------------
 
 const CURVE_COLORS: string[] = [
   Theme.blue,
@@ -120,7 +120,7 @@ const CURVE_COLORS: string[] = [
 const ASYMPTOTE_COLOR = "#6b7280";
 const GUIDE_COLOR     = "#9ca3af";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------
 
 function sampleCurve(fn: (x: number) => number, xMin: number, xMax: number, n = 120): [number, number][] {
   const pts: [number, number][] = [];
@@ -155,7 +155,7 @@ function shadePolygon(
   return [...top, ...[...bottom].reverse()];
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// --- Component ---------------------------------------------------------------
 
 interface IbGraphProps {
   spec: IbGraphSpec;
@@ -215,7 +215,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
         {coloredElements.map((el, i) => {
           switch (el.type) {
 
-            // ── Curve: y = f(x) ───────────────────────────────────────────
+            // -- Curve: y = f(x) -------------------------------------------
             case "fn": {
               const fn = buildFn(el.expr);
               const style = el.dashed ? "dashed" : "solid";
@@ -235,7 +235,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
               return <Plot.OfX key={i} y={fn} color={el.color} style={style} />;
             }
 
-            // ── Parametric curve ──────────────────────────────────────────
+            // -- Parametric curve ------------------------------------------
             case "parametric": {
               const xt = buildFn(el.xt);
               const yt = buildFn(el.yt);
@@ -249,7 +249,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
               );
             }
 
-            // ── Vertical asymptote ────────────────────────────────────────
+            // -- Vertical asymptote ----------------------------------------
             case "vasymptote":
               return (
                 <React.Fragment key={i}>
@@ -268,7 +268,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
                 </React.Fragment>
               );
 
-            // ── Horizontal asymptote ──────────────────────────────────────
+            // -- Horizontal asymptote --------------------------------------
             case "hasymptote":
               return (
                 <React.Fragment key={i}>
@@ -287,7 +287,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
                 </React.Fragment>
               );
 
-            // ── Straight line (oblique asymptote, tangent, etc.) ──────────
+            // -- Straight line (oblique asymptote, tangent, etc.) ----------
             case "line": {
               const fn = buildFn(el.expr);
               const style = el.dashed ? "dashed" : "solid";
@@ -315,7 +315,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
               );
             }
 
-            // ── Labeled point ─────────────────────────────────────────────
+            // -- Labeled point ---------------------------------------------
             case "point": {
               const color = el.color ?? Theme.foreground;
               return (
@@ -344,7 +344,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
               );
             }
 
-            // ── Dashed guide lines from point to axes ─────────────────────
+            // -- Dashed guide lines from point to axes ---------------------
             case "guide":
               return (
                 <React.Fragment key={i}>
@@ -367,7 +367,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
                 </React.Fragment>
               );
 
-            // ── Shaded region ─────────────────────────────────────────────
+            // -- Shaded region ---------------------------------------------
             case "shade": {
               const fn1 = buildFn(el.expr1);
               const fn2 = el.expr2 ? buildFn(el.expr2) : () => 0;
@@ -384,7 +384,7 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
               );
             }
 
-            // ── Text label ────────────────────────────────────────────────
+            // -- Text label ------------------------------------------------
             case "label":
               return (
                 <Text key={i} x={el.x} y={el.y} attach="ne" size={13}>
@@ -401,13 +401,13 @@ export default function IbGraph({ spec, className }: IbGraphProps) {
   );
 }
 
-// ─── Spec preview (readonly, smaller) ────────────────────────────────────────
+// --- Spec preview (readonly, smaller) ----------------------------------------
 
 export function IbGraphPreview({ spec }: { spec: IbGraphSpec }) {
   return <IbGraph spec={{ ...spec, height: 220 }} />;
 }
 
-// ─── JSON ↔ base64 helpers (used by LatexRenderer & editor) ─────────────────
+// --- JSON ↔ base64 helpers (used by LatexRenderer & editor) -----------------
 
 export const GRAPH_MARKER_RE = /\[\[GRAPH_JSON:([A-Za-z0-9+/=]+)\]\]/g;
 
@@ -423,7 +423,7 @@ export function decodeGraphSpec(b64: string): IbGraphSpec | null {
   }
 }
 
-// ─── Example spec (for editor placeholder) ───────────────────────────────────
+// --- Example spec (for editor placeholder) -----------------------------------
 
 export const EXAMPLE_SPEC: IbGraphSpec = {
   xRange: [-3, 5],
