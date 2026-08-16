@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
   const { supabase, profile } = auth;
 
-  // ── 1. Parse FormData (supports both JSON and FormData for backwards compat) ─
+  // -- 1. Parse FormData (supports both JSON and FormData for backwards compat) -
 
   let studentId: string = profile.id;
   const attachedFiles: { name: string; type: string; base64: string }[] = [];
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  // ── 2. Fetch mastery data ─────────────────────────────────────────────────
+  // -- 2. Fetch mastery data -------------------------------------------------
 
   const { data: marks } = await supabase
     .from("student_marks")
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── 3. Build target profile ───────────────────────────────────────────────
+  // -- 3. Build target profile -----------------------------------------------
 
   const SECTION_NAMES: Record<number, string> = {
     1: "Number & Algebra",
@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
     .map((n) => `Topic ${n} (${SECTION_NAMES[n] ?? `Section ${n}`})`)
     .join(" · ");
 
-  // ── 4. Build Claude message content blocks ────────────────────────────────
+  // -- 4. Build Claude message content blocks --------------------------------
 
   // Text prompt
   const textBlock: Anthropic.TextBlockParam = {
@@ -207,7 +207,7 @@ Generate the FULL packet (1500–2500 words of student-facing content). Follow e
     }
   }
 
-  // ── 5. Prompt ─────────────────────────────────────────────────────────────
+  // -- 5. Prompt -------------------------------------------------------------
 
   const SYSTEM = `You are an expert IBDP Mathematics AA HL teacher and curriculum designer.
 You write Nuanced Analysis investigation packets — structured, multi-part guided investigations.
@@ -308,7 +308,7 @@ ${
     : ""
 }`;
 
-  // ── 6. Call Claude Sonnet ─────────────────────────────────────────────────
+  // -- 6. Call Claude Sonnet -------------------------------------------------
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -332,7 +332,7 @@ ${
     return NextResponse.json({ error: "Empty response from AI" }, { status: 500 });
   }
 
-  // ── 7. Upsert to mastery_analyses ─────────────────────────────────────────
+  // -- 7. Upsert to mastery_analyses -----------------------------------------
 
   const generatedAt = new Date().toISOString();
   const { error: upsertError } = await supabase
