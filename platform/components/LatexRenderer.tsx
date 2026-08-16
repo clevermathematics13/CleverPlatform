@@ -83,7 +83,7 @@ function splitSegments(
   return segments;
 }
 
-// ─── Line-first grouping ─────────────────────────────────────────────────────
+// --- Line-first grouping -----------------------------------------------------
 //
 // splitSegments() above scans the WHOLE preprocessed string in one pass,
 // pulling out $...$/$$...$$/\[...\]/\(...\) math wherever it appears and
@@ -393,12 +393,12 @@ function mergeLabelLines(src: string): string {
         let k = j + 1;
         while (k < lines.length && lines[k].trim() === "") k++;
         const contentLine = k < lines.length ? lines[k].trim() : "";
-        out.push(`(${letterMatch[1]}) (${romanMatch[1]}) ${contentLine}`);
+        out.push(`(${letterMatch[1]})\\u2002(${romanMatch[1]})\\u2002${contentLine}`);
         i = k + 1;
         continue;
       }
       const contentLine = j < lines.length ? lines[j].trim() : "";
-      out.push(`(${letterMatch[1]}) ${contentLine}`);
+      out.push(`(${letterMatch[1]})\\u2002${contentLine}`);
       i = j + 1;
       continue;
     }
@@ -407,7 +407,7 @@ function mergeLabelLines(src: string): string {
       let k = i + 1;
       while (k < lines.length && lines[k].trim() === "") k++;
       const contentLine = k < lines.length ? lines[k].trim() : "";
-      out.push(`  (${trimmed.slice(1, -1)}) ${contentLine}`);
+      out.push(`\\u2003\\u2003(${trimmed.slice(1, -1)})\\u2002${contentLine}`);
       i = k + 1;
       continue;
     }
@@ -491,8 +491,8 @@ function preprocessLatex(src: string): string {
   // Convert enumerate/itemize content:
   // \item[(label)] → newline + "label " (label already contains parens like (i), (a))
   // \item           → newline + "• "
-  out = out.replace(/\\item\[([^\]]*)\]/g, "\n$1 "); // (i), (ii), (a) ...
-  out = out.replace(/\\item(?!\[)/g, "\n• ");    // bullet
+  out = out.replace(/\\item\[([^\]]*)\]/g, "\n$1\\u2002"); // (i), (ii), (a) ...
+  out = out.replace(/\\item(?!\[)/g, "\n\\u2022\\u2002");    // bullet
 
   // Strip the container environment tags themselves
   out = out.replace(/\\(?:begin|end)\{(?:enumerate|itemize)\}/g, "");
