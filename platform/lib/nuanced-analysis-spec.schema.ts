@@ -1,6 +1,6 @@
 /**
  * nuanced-analysis-spec.schema.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Zod schema for the CleverPlatform **NuancedAnalysisSpec** — the pedagogical
  * "feel" layer of a Nuanced Analysis template.
  *
@@ -37,12 +37,12 @@
  *     NuancedAnalysisSpecSchema,
  *     validateNuancedAnalysisSpec,
  *   } from "@/lib/nuanced-analysis-spec.schema";
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import { z } from "zod";
 
-// ── small reusable pieces ─────────────────────────────────────────────────────
+// -- small reusable pieces -----------------------------------------------------
 
 /**
  * A single named, human-readable rule. This is the workhorse shape: it keeps the
@@ -70,7 +70,7 @@ const CommandTermEntrySchema = z
 
 export type CommandTermEntry = z.infer<typeof CommandTermEntrySchema>;
 
-// ── 1. Identity ───────────────────────────────────────────────────────────────
+// -- 1. Identity ---------------------------------------------------------------
 
 const CourseIdentitySchema = z
   .object({
@@ -105,7 +105,7 @@ const IdentitySchema = z
   })
   .strict();
 
-// ── 2. Core philosophy (the arc + what it is / is not) ────────────────────────
+// -- 2. Core philosophy (the arc + what it is / is not) ------------------------
 
 const CorePhilosophySchema = z
   .object({
@@ -132,7 +132,7 @@ const CorePhilosophySchema = z
   })
   .strict();
 
-// ── 3. Three-phase delivery model (flipped → in-class → take-home) ────────────
+// -- 3. Three-phase delivery model (flipped → in-class → take-home) ------------
 //
 // This is the delivery spine the teacher requested. Every generated packet must
 // route its Parts into exactly these three phases and label them accordingly.
@@ -162,7 +162,7 @@ const ThreePhaseModelSchema = z
   })
   .strict();
 
-// ── 4. Required structural components, in order ───────────────────────────────
+// -- 4. Required structural components, in order -------------------------------
 
 const StructuralComponentSchema = z
   .object({
@@ -201,7 +201,7 @@ const RequiredStructureSchema = z
   })
   .strict();
 
-// ── 5. Command terms ──────────────────────────────────────────────────────────
+// -- 5. Command terms ----------------------------------------------------------
 
 const CommandTermPolicySchema = z
   .object({
@@ -219,7 +219,7 @@ const CommandTermPolicySchema = z
   })
   .strict();
 
-// ── 6. The eight universal design layers ──────────────────────────────────────
+// -- 6. The eight universal design layers --------------------------------------
 
 const DesignLayerSchema = z
   .object({
@@ -258,7 +258,7 @@ const DesignLayersSchema = z
   })
   .strict();
 
-// ── 7. Planted errors ─────────────────────────────────────────────────────────
+// -- 7. Planted errors ---------------------------------------------------------
 
 const PlantedErrorPolicySchema = z
   .object({
@@ -273,7 +273,7 @@ const PlantedErrorPolicySchema = z
   })
   .strict();
 
-// ── 8. TOK + International-mindedness ──────────────────────────────────────────
+// -- 8. TOK + International-mindedness ------------------------------------------
 
 const TokPolicySchema = z
   .object({
@@ -296,7 +296,7 @@ const InternationalMindednessPolicySchema = z
   })
   .strict();
 
-// ── 9. Reflection ─────────────────────────────────────────────────────────────
+// -- 9. Reflection -------------------------------------------------------------
 
 const ReflectionPolicySchema = z
   .object({
@@ -309,7 +309,7 @@ const ReflectionPolicySchema = z
   })
   .strict();
 
-// ── 10. Teacher's Companion contract ──────────────────────────────────────────
+// -- 10. Teacher's Companion contract ------------------------------------------
 
 const TeacherCompanionPolicySchema = z
   .object({
@@ -319,7 +319,7 @@ const TeacherCompanionPolicySchema = z
   })
   .strict();
 
-// ── 11. Verification contract ─────────────────────────────────────────────────
+// -- 11. Verification contract -------------------------------------------------
 
 const VerificationPolicySchema = z
   .object({
@@ -328,7 +328,7 @@ const VerificationPolicySchema = z
   })
   .strict();
 
-// ── 12. Accessibility (cross-cutting) ─────────────────────────────────────────
+// -- 12. Accessibility (cross-cutting) -----------------------------------------
 
 const AccessibilityPolicySchema = z
   .object({
@@ -342,7 +342,7 @@ const AccessibilityPolicySchema = z
   })
   .strict();
 
-// ── 13. IA seeding / Toolbox Wondering ────────────────────────────────────────
+// -- 13. IA seeding / Toolbox Wondering ----------------------------------------
 
 const IaSeedingPolicySchema = z
   .object({
@@ -354,7 +354,7 @@ const IaSeedingPolicySchema = z
   })
   .strict();
 
-// ── 14. Voice / tone / platform copy rules ────────────────────────────────────
+// -- 14. Voice / tone / platform copy rules ------------------------------------
 
 const VoiceAndCopySchema = z
   .object({
@@ -366,7 +366,7 @@ const VoiceAndCopySchema = z
   })
   .strict();
 
-// ── 15. Output contract (what the generator must emit) ────────────────────────
+// -- 15. Output contract (what the generator must emit) ------------------------
 //
 // This is a description of the JSON the generator must produce so it can be
 // inserted into the `nuanced_analyses` table. It is NOT raw code — it is a
@@ -397,7 +397,7 @@ const OutputContractSchema = z
   })
   .strict();
 
-// ── 16. Generation hints (model + budget) ─────────────────────────────────────
+// -- 16. Generation hints (model + budget) -------------------------------------
 
 const GenerationHintsSchema = z
   .object({
@@ -410,7 +410,7 @@ const GenerationHintsSchema = z
   })
   .strict();
 
-// ── Root NuancedAnalysisSpec ──────────────────────────────────────────────────
+// -- Root NuancedAnalysisSpec --------------------------------------------------
 
 export const NuancedAnalysisSpecSchema = z
   .object({
@@ -476,7 +476,7 @@ export const NuancedAnalysisSpecSchema = z
 
 export type NuancedAnalysisSpec = z.infer<typeof NuancedAnalysisSpecSchema>;
 
-// ── Validation helper (mirrors validateTemplateAst) ───────────────────────────
+// -- Validation helper (mirrors validateTemplateAst) ---------------------------
 
 export type NuancedAnalysisSpecValidationResult =
   | { success: true; data: NuancedAnalysisSpec }

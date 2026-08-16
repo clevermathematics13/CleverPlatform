@@ -4,7 +4,7 @@ import { createClient as createServiceSupabaseClient } from "@supabase/supabase-
 
 /**
  * generateNuancedAnalysis — durable workflow for the AI Activity Generator.
- * ─────────────────────────────────────────────────────────────────────
+ * ---------------------------------------------------------------------
  * WHY THIS EXISTS: the previous /api/claude route ran one long, buffered
  * Claude call inside a single Vercel Function invocation. An 11-attachment,
  * two-syllabus-topic generation hit Vercel's ~300s function ceiling and got
@@ -87,7 +87,7 @@ const CONTINUATION_INSTRUCTION = [
   "Either way, respond with ONLY a single, complete, final JSON object for the ENTIRE packet — merging the prior draft's content with anything you add. Same JSON schema and rules as before. No markdown, no preamble.",
 ].join("\n");
 
-// ── Content block types (mirrors the shapes the client sends / route resolves) ──
+// -- Content block types (mirrors the shapes the client sends / route resolves) --
 
 type TextBlock = { type: "text"; text: string };
 type ImageBlock = { type: "image"; source: { type: "base64"; media_type: "image/jpeg" | "image/png" | "image/gif" | "image/webp"; data: string } };
@@ -115,7 +115,7 @@ function getServiceSupabase() {
   );
 }
 
-// ── Steps ─────────────────────────────────────────────────────────────────
+// -- Steps -----------------------------------------------------------------
 
 /**
  * Downloads and base64-encodes every image_ref/document_ref block in
@@ -319,7 +319,7 @@ async function logGeneration(
   }
 }
 
-// ── Workflow ──────────────────────────────────────────────────────────────
+// -- Workflow --------------------------------------------------------------
 
 export async function generateNuancedAnalysis(
   system: string,

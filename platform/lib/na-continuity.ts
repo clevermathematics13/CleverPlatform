@@ -1,6 +1,6 @@
 /**
  * Nuanced Analysis — continuity layer
- * ───────────────────────────────────
+ * -----------------------------------
  * A Nuanced Analysis packet is never standalone. Packet A.3 has to know that
  * A.1 already spent the al-Khwarizmi international-mindedness note, that A.2
  * already planted the "division is commutative" misconception, and that the
@@ -26,7 +26,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssignmentDraft } from "@/lib/assignments";
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// -- Types --------------------------------------------------------------------
 
 /** One entry in the planned scope and sequence. */
 export type UnitSequenceEntry = {
@@ -65,7 +65,7 @@ export type ContinuityRecord = {
   packets: PacketDigest[];
 };
 
-// ── snake_case ↔ camelCase ───────────────────────────────────────────────────
+// -- snake_case ↔ camelCase ---------------------------------------------------
 // The JSONB in na_continuity was authored by hand in snake_case. Rather than
 // migrate the stored shape (and risk breaking a record that is currently the
 // only source of truth for two shipped packets), normalise on read and
@@ -144,7 +144,7 @@ function normalizeUnitEntry(raw: unknown): UnitSequenceEntry | null {
   };
 }
 
-// ── Read ─────────────────────────────────────────────────────────────────────
+// -- Read ---------------------------------------------------------------------
 
 /**
  * Load a course's continuity record. Returns null when the course has no row
@@ -175,7 +175,7 @@ export async function loadContinuity(
   };
 }
 
-// ── Prompt context ───────────────────────────────────────────────────────────
+// -- Prompt context -----------------------------------------------------------
 
 function bulletList(label: string, items: string[]): string[] {
   if (items.length === 0) return [];
@@ -200,7 +200,7 @@ export function buildContinuityContext(
   if (!record || record.packets.length === 0) return "";
 
   const lines: string[] = [
-    "── TEACHING CONTINUITY (authoritative — read before generating) ──",
+    "-- TEACHING CONTINUITY (authoritative — read before generating) --",
     "",
     "This packet is one instalment in a sequence. Prior packets in this course:",
     "",
@@ -259,12 +259,12 @@ export function buildContinuityContext(
   lines.push(
     "Do not re-teach what a prior packet established, and do not pre-empt a skill that the scope and sequence reserves for a later section.",
   );
-  lines.push("── END CONTINUITY ──");
+  lines.push("-- END CONTINUITY --");
 
   return lines.join("\n");
 }
 
-// ── Auto-draft a digest from a generated packet ──────────────────────────────
+// -- Auto-draft a digest from a generated packet ------------------------------
 
 function collectPrompts(draft: AssignmentDraft): string[] {
   const out: string[] = [];
@@ -326,7 +326,7 @@ export function draftDigestFromDraft(
   };
 }
 
-// ── Write ────────────────────────────────────────────────────────────────────
+// -- Write --------------------------------------------------------------------
 
 /**
  * Append (or replace) one packet's digest on the course's continuity record,

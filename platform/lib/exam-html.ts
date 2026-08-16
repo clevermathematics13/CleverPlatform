@@ -136,7 +136,7 @@ ${SECTION_B_REMINDER_HTML}
 <p style="font-family:'Arial',sans-serif;font-size:10pt;margin:0 0 4mm 0;color:#222">Answer <strong>all</strong> questions in the answer booklet provided. Please start each question on a new page.</p>
 </div>`;
 
-// ─── Types (mirror TestQuestion / Student in test-preview-client.tsx) ────────
+// --- Types (mirror TestQuestion / Student in test-preview-client.tsx) --------
 
 export interface ExamHtmlQuestion {
   id: string;
