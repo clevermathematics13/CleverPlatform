@@ -1,6 +1,6 @@
 /**
  * typst-render.service.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * TypstRenderService — Phase 2 of the CleverPlatform document generation
  * pipeline.
  *
@@ -25,13 +25,13 @@
  *   webpack/Turbopack. npm resolves only ONE platform binary via
  *   optionalDependencies (linux-x64-gnu on Vercel, ~37MB unpacked) — it does
  *   not download every platform's variant.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import { validateTemplateAst } from "./template-ast.schema";
 import type { TemplateAst } from "./template-ast.schema";
 
-// ── Activity content AST ──────────────────────────────────────────────────────
+// -- Activity content AST ------------------------------------------------------
 
 /**
  * A MathNode carries a single mathematical expression in Typst native syntax.
@@ -152,7 +152,7 @@ export interface ActivityContentAst {
   sections: ActivitySection[];
 }
 
-// ── Merged payload ────────────────────────────────────────────────────────────
+// -- Merged payload ------------------------------------------------------------
 
 /**
  * ActivityPayload is what TypstRenderService receives.
@@ -176,13 +176,13 @@ export interface ActivityPayload {
   };
 }
 
-// ── TypstRenderService result ─────────────────────────────────────────────────
+// -- TypstRenderService result -------------------------------------------------
 
 export type TypstRenderResult =
   | { success: true; pdfBuffer: Buffer; pageCount?: number }
   | { success: false; error: string; detail?: string };
 
-// ── Lazy Typst compiler initialisation ───────────────────────────────────────
+// -- Lazy Typst compiler initialisation ---------------------------------------
 
 // Compiler singleton — initialised once per server process.
 // @myriaddreamin/typst-ts-node-compiler is a native (napi-rs) addon, not WASM:
@@ -213,7 +213,7 @@ async function getTypstCompiler(): Promise<NodeCompilerLike> {
   return _typstCompiler;
 }
 
-// ── Pacing calculation ────────────────────────────────────────────────────────
+// -- Pacing calculation --------------------------------------------------------
 
 /**
  * Compute estimated minutes from marks using the template pacing formula.
@@ -227,7 +227,7 @@ export function computeEstimatedMinutes(
   return Math.round((marks * numerator) / denominator);
 }
 
-// ── JSON payload builder ──────────────────────────────────────────────────────
+// -- JSON payload builder ------------------------------------------------------
 
 /**
  * Converts an ActivityPayload into a JSON-serialisable object.
@@ -269,7 +269,7 @@ export function buildTypstPayload(
   };
 }
 
-// ── TypstRenderService ────────────────────────────────────────────────────────
+// -- TypstRenderService --------------------------------------------------------
 
 export const TypstRenderService = {
   /**
@@ -343,7 +343,7 @@ export const TypstRenderService = {
   },
 };
 
-// ── Embedded Typst source ─────────────────────────────────────────────────────
+// -- Embedded Typst source -----------------------------------------------------
 
 /**
  * Returns the full Typst template source as a string.
@@ -352,7 +352,7 @@ export const TypstRenderService = {
  */
 function getActivityTypstSource(): string {
   return `
-// ── CleverPlatform Nuanced Analysis — Typst template ────────────────────────
+// -- CleverPlatform Nuanced Analysis — Typst template ------------------------
 #let raw = sys.inputs.at("payload", default: "{}")
 #let data = json.decode(raw)
 #let tmpl = data.template
