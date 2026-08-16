@@ -26,7 +26,7 @@ import { rasterRefineHorizontalSegmentsFromBase64, rasterSnapVerticesFromBase64 
 
 export const maxDuration = 180;
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
+// --- Types ---------------------------------------------------------------------
 
 /** Mirrors IbGraphElement from components/IbGraph.tsx (kept local to avoid a
  *  server-side import of a client component). */
@@ -69,7 +69,7 @@ interface GraphMetadata {
   markschemeHints: string[];
 }
 
-// ─── System prompt for graph extraction ────────────────────────────────────────
+// --- System prompt for graph extraction ----------------------------------------
 
 const GRAPH_EXTRACT_SYSTEM = `You are an expert IB Mathematics examiner and TikZ/Mafs graph specialist.
 When given an image of an IB exam graph, you extract EVERY visual element with mathematical precision
@@ -199,7 +199,7 @@ Return ONLY valid JSON (no markdown):
   "notes": ["..."]
 }`;
 
-// ─── Helpers ───────────────────────────────────────────────────────────────────
+// --- Helpers -------------------------------------------------------------------
 
 function safeParseJson(text: string): unknown {
   // Strip markdown fences if Claude accidentally wraps the JSON
@@ -613,7 +613,7 @@ function regenerateGraphMetaFromSpec(spec: IbGraphSpec, previous: GraphMetadata)
   };
 }
 
-// ─── Route handler ─────────────────────────────────────────────────────────────
+// --- Route handler -------------------------------------------------------------
 
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
@@ -626,7 +626,7 @@ export async function POST(request: NextRequest) {
   if (!questionId)
     return NextResponse.json({ error: "questionId is required" }, { status: 400 });
 
-  // ── 1. Fetch question images ─────────────────────────────────────────────
+  // -- 1. Fetch question images ---------------------------------------------
   const imgResult = await supabase
     .from("question_images")
     .select("id, storage_path, sort_order, image_type")
@@ -665,7 +665,7 @@ export async function POST(request: NextRequest) {
     if (!firstImageBase64) firstImageBase64 = b64;
   }
 
-  // ── 2. Fetch existing draft LaTeX for context ────────────────────────────
+  // -- 2. Fetch existing draft LaTeX for context ----------------------------
   const { data: qRow } = await supabase
     .from("ib_questions")
     .select("parts_draft_latex, parts_draft_markscheme_latex, stem_latex, stem_markscheme_latex, code")
@@ -677,7 +677,7 @@ export async function POST(request: NextRequest) {
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // ── 3. Pass 1 — visual graph extraction ─────────────────────────────────
+  // -- 3. Pass 1 — visual graph extraction ---------------------------------
   const imageContent = base64Images.map((b64) => ({
     type: "image" as const,
     source: { type: "base64" as const, media_type: "image/png" as const, data: b64 },
@@ -723,7 +723,7 @@ Be thorough: include all curves, asymptotes, intercepts, labeled points, guide l
 
   const pass1Spec = graphSpec;
 
-  // ── 4. Pass 2 — verify against question + MS text ──────────────────────
+  // -- 4. Pass 2 — verify against question + MS text ----------------------
   if (questionLatex || msLatex) {
     const contextSections: string[] = [];
     if (questionLatex) contextSections.push(`=== Question LaTeX ===\n${questionLatex}`);
@@ -779,7 +779,7 @@ and list any warnings about discrepancies.`,
     warnings.push("No existing question/MS LaTeX found — skipped Pass 2 verification. Run OCR extraction first for best results.");
   }
 
-  // ── 5. Automatic continuity gate + self-repair ────────────────────────
+  // -- 5. Automatic continuity gate + self-repair ------------------------
   // 5a) Optional vertex audit pass to improve coordinate accuracy
   let usedAuditedVertices = false;
   let rasterSnapApplied = false;
