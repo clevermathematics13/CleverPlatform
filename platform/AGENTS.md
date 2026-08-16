@@ -74,3 +74,51 @@ git add -A && git commit -m "<descriptive message>" && git push
 ```
 This applies to every task, fix, or feature — no exceptions. Do not leave changes uncommitted.
 
+## Sub-projects
+
+This monorepo contains two sub-projects:
+
+| Path | Type | Purpose |
+|---|---|---|
+| `platform/` | Next.js + Supabase | Teacher/student web platform |
+| `platform/msa-grader/` | Google Apps Script (GAS) | OCR + AI grading backend |
+
+### MSA Grader (`platform/msa-grader/`)
+
+The MSA Grader is a GAS project that runs inside Google's infrastructure. It:
+- OCRs student work PDFs via Mathpix
+- Atomises markschemes into structured points
+- Uses Claude to grade student responses against the markscheme
+- Exposes `doGet`/`doPost` HTTP endpoints callable from CleverPlatform
+
+**Deployment:**
+```bash
+cd platform/msa-grader
+npm install          # installs @google/clasp
+npm run push         # push source to GAS (requires clasp login)
+npm run deploy       # create a new versioned GAS Web App deployment
+```
+
+**Configuration (set in Apps Script project properties):**
+- `MATHPIX_APP_ID` / `MATHPIX_APP_KEY` — Mathpix OCR credentials
+- `MSA_PARENT_FOLDER_ID` — Google Drive folder for MSA output
+- `SUPABASE_URL` / `SUPABASE_ANON_KEY` — Supabase credentials (for SupabaseSync.js)
+
+**After deploying**, copy the Web App URL and set it in `platform/.env.local`:
+```
+MSA_GRADER_URL=https://script.google.com/macros/s/AKfy.../exec
+MSA_GRADER_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
+```
+
+### Auto-grading flow (end-to-end)
+
+1. Teacher clicks 🤖 next to a student name in the Gradebook.
+2. A modal appears; teacher enters the student's Google Drive file ID and selects a test.
+3. The platform POSTs to `/api/grader/grade`.
+4. That route calls the GAS Web App (`MSA_GRADER_URL`) with the file ID.
+5. GAS runs OCR → markscheme lookup → Claude grading → returns a marks array.
+6. The route upserts marks into `student_marks` with `auto_graded = true`.
+7. The page reloads; auto-graded marks appear in the gradebook.
+
+Teachers can override auto-graded marks by typing into the cell normally.
+

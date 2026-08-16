@@ -265,6 +265,16 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
 
+  // Auto-grade state
+  const [autoGrading, setAutoGrading] = useState(false);
+  const [autoGradeError, setAutoGradeError] = useState<string | null>(null);
+  const [autoGradeModal, setAutoGradeModal] = useState<{
+    student: Student;
+    testId: string;
+    driveFileId: string;
+    examId: string;
+  } | null>(null);
+
   // ── Handlers ────────────────────────────────────────────────────────────────
 
   const toggleTest = useCallback((testId: string) => {
@@ -436,6 +446,43 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
     },
     [tests, expandedTests, students, saveCell]
   );
+
+  const handleAutoGrade = useCallback(async () => {
+    if (!autoGradeModal) return;
+    const { student, testId, driveFileId, examId } = autoGradeModal;
+    if (!driveFileId.trim()) return;
+
+    setAutoGrading(true);
+    setAutoGradeError(null);
+    try {
+      const res = await fetch("/api/grader/grade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          testId,
+          studentId: student.profile_id,
+          driveFileId: driveFileId.trim(),
+          examId: examId.trim() || testId,
+        }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        marksWritten?: number;
+        error?: string;
+        warning?: string;
+      };
+      if (!res.ok || !data.ok) {
+        setAutoGradeError(data.error ?? "Grading failed");
+        return;
+      }
+      // Refresh the page to reload marks from the database
+      window.location.reload();
+    } catch {
+      setAutoGradeError("Network error — please try again");
+    } finally {
+      setAutoGrading(false);
+    }
+  }, [autoGradeModal]);
 
   // ── Styles ───────────────────────────────────────────────────────────────────
 
@@ -644,7 +691,25 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                   <td
                     className={`${tdBase} text-left sticky left-0 z-10 border-r border-da-border px-4 font-medium ${stickyBg}`}
                   >
-                    {student.name}
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="truncate">{student.name}</span>
+                      {tests.length > 0 && (
+                        <button
+                          onClick={() =>
+                            setAutoGradeModal({
+                              student,
+                              testId: tests[0].id,
+                              driveFileId: "",
+                              examId: "",
+                            })
+                          }
+                          title="Auto-grade this student"
+                          className="flex-shrink-0 text-sm text-da-muted/50 hover:text-violet-400 transition-colors"
+                        >
+                          🤖
+                        </button>
+                      )}
+                    </div>
                   </td>
 
                   {/* Overall / Components */}
@@ -828,7 +893,104 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         <span>Hover grade cells for % and set. Enter marks and press Tab/Enter to save.</span>
         <span className="text-da-border">|</span>
         <span>Expand a test, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
+        <span className="text-da-border">|</span>
+        <span>🤖 Auto-grade a student using the MSA Grader pipeline.</span>
       </div>
+
+      {/* Auto-grade modal */}
+      {autoGradeModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => { if (!autoGrading) { setAutoGradeModal(null); setAutoGradeError(null); } }}
+        >
+          <div
+            className="bg-da-surface border border-da-border rounded-xl p-6 w-full max-w-md shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-da-text font-semibold text-lg mb-1">🤖 Auto-grade</h2>
+            <p className="text-da-muted text-sm mb-4">
+              Student: <strong className="text-da-text">{autoGradeModal.student.name}</strong>
+            </p>
+
+            <div className="space-y-4">
+              {/* Test selector */}
+              <div>
+                <label className="block text-xs text-da-muted mb-1">Test</label>
+                <select
+                  className="w-full bg-da-bg border border-da-border rounded px-3 py-2 text-da-text text-sm focus:outline-none focus:ring-1 focus:ring-da-accent"
+                  value={autoGradeModal.testId}
+                  onChange={(e) =>
+                    setAutoGradeModal((m) => m ? { ...m, testId: e.target.value } : m)
+                  }
+                >
+                  {tests.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Drive file ID */}
+              <div>
+                <label className="block text-xs text-da-muted mb-1">
+                  Google Drive File ID <span className="text-red-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. 1aBcDeFgHiJkLm..."
+                  value={autoGradeModal.driveFileId}
+                  onChange={(e) =>
+                    setAutoGradeModal((m) => m ? { ...m, driveFileId: e.target.value } : m)
+                  }
+                  className="w-full bg-da-bg border border-da-border rounded px-3 py-2 text-da-text text-sm focus:outline-none focus:ring-1 focus:ring-da-accent"
+                  autoFocus
+                />
+                <p className="text-xs text-da-muted/70 mt-1">
+                  The ID of the student&apos;s PDF or image in Google Drive.
+                </p>
+              </div>
+
+              {/* Exam ID (optional) */}
+              <div>
+                <label className="block text-xs text-da-muted mb-1">
+                  Exam / Markscheme ID <span className="text-da-muted/50">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Drive folder or doc ID — defaults to test ID"
+                  value={autoGradeModal.examId}
+                  onChange={(e) =>
+                    setAutoGradeModal((m) => m ? { ...m, examId: e.target.value } : m)
+                  }
+                  className="w-full bg-da-bg border border-da-border rounded px-3 py-2 text-da-text text-sm focus:outline-none focus:ring-1 focus:ring-da-accent"
+                />
+              </div>
+            </div>
+
+            {autoGradeError && (
+              <p className="mt-3 text-sm text-red-400">⚠ {autoGradeError}</p>
+            )}
+
+            <div className="flex gap-3 mt-6 justify-end">
+              <button
+                onClick={() => { setAutoGradeModal(null); setAutoGradeError(null); }}
+                disabled={autoGrading}
+                className="px-4 py-2 rounded text-sm text-da-muted hover:text-da-text border border-da-border hover:bg-da-hover transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAutoGrade}
+                disabled={autoGrading || !autoGradeModal.driveFileId.trim()}
+                className="px-4 py-2 rounded text-sm font-medium bg-violet-600 hover:bg-violet-500 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {autoGrading ? "Grading…" : "Grade"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
