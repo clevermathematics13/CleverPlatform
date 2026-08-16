@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { splitDraftIntoParts } from "./split-draft-into-parts";
 
-// ── Question latex: Part A, BI, BII, C ──────────────────────────────────────
+// -- Question latex: Part A, BI, BII, C --------------------------------------
 
 const Q1_DRAFT = `The function $f$ is defined by $f(x) = \\frac{ax + b}{cx + d}$.
 
@@ -62,7 +62,7 @@ describe("splitDraftIntoParts – Q1 (4 IBPart blocks, labels a bi bii c)", () =
   });
 });
 
-// ── Markscheme: IBPart blocks with no visible (i)/(ii) in some parts ─────────
+// -- Markscheme: IBPart blocks with no visible (i)/(ii) in some parts ---------
 
 const MS_DRAFT = `\\begin{IBPart}
 (i) attempt to use quotient rule
@@ -109,7 +109,7 @@ describe("splitDraftIntoParts – markscheme (4 IBPart blocks, labels a bi bii c
   });
 });
 
-// ── Plain-label fallback (no IBPart environment) ─────────────────────────────
+// -- Plain-label fallback (no IBPart environment) -----------------------------
 
 const PLAIN_DRAFT = `The stem text.
 

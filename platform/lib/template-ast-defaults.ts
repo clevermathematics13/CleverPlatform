@@ -1,11 +1,11 @@
 /**
  * template-ast-defaults.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Default TemplateAst values for CleverPlatform Nuanced Analysis activities.
  *
  * These are valid, fully-specified objects that pass Zod validation.
  * Use them as the starting point for all new templates.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import type { TemplateAst } from "./template-ast.schema";

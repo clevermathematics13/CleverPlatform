@@ -1,6 +1,6 @@
 /**
  * nuanced-analysis-bridge.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Converts a row from the `nuanced_analyses` table (written by the Claude
  * Sonnet 5 packet generator at app/api/generate-packet) into the
  * AssignmentDraft shape used by Assignment Studio's editor
@@ -17,7 +17,7 @@
  *  - vocabulary is packet-level in the source but section-level
  *    (translationTable) in the target, so it's attached once, to the first
  *    section, rather than duplicated across every part.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import type { AssignmentDraft, AssignmentSection, AssignmentQuestion } from "./assignments";

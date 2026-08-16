@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@supabase/supabase-js";
 import type { UserRole, Profile } from "@/lib/types";
 
-// ─── API route auth helpers ──────────────────────────────────────────────────
+// --- API route auth helpers --------------------------------------------------
 // Use these in API route handlers instead of writing the auth boilerplate
 // manually. They return a discriminated union so the caller can short-circuit
 // with `if (!auth.ok) return auth.response`.

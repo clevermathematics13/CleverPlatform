@@ -1,6 +1,6 @@
 /**
  * template-ast.test.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Smoke tests for the TemplateAst Zod validation layer.
  *
  * Run with:  cd platform && npx jest lib/template-ast.test.ts
@@ -11,7 +11,7 @@
  *   3. Unknown extra fields are rejected (strict mode).
  *   4. The default template fixture validates cleanly.
  *   5. The pacing formula is correct.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import { validateTemplateAst } from "./template-ast.schema";

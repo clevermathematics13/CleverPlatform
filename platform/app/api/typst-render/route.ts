@@ -1,6 +1,6 @@
 /**
  * /api/typst-render — POST
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Accepts an ActivityPayload JSON, validates the TemplateAst, compiles to PDF
  * via TypstRenderService, and streams the buffer back.
  *
@@ -10,7 +10,7 @@
  * This route is intentionally separate from /api/pdf so the two rendering
  * paths (KaTeX → Puppeteer, and Typst native compiler) can co-exist during
  * transition.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import { NextRequest, NextResponse } from "next/server";
