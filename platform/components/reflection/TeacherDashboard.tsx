@@ -459,7 +459,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
         </div>
       )}
 
-      {/* ── Student preview panel ────────────────────────────────────────── */}
+      {/* -- Student preview panel ------------------------------------------ */}
       {selectedStudentId && data && (() => {
         const row = visibleRows.find((r) => r.student_id === selectedStudentId);
         if (!row) return null;
