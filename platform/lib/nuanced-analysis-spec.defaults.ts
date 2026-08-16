@@ -1,6 +1,6 @@
 /**
  * nuanced-analysis-spec.defaults.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * The CANONICAL IBDP Mathematics: Analysis & Approaches HL NuancedAnalysisSpec.
  *
  * This is the extensive, hardcoded "feel" of a Nuanced Analysis, expressed as a
@@ -16,7 +16,7 @@
  * Every value here is validated by NuancedAnalysisSpecSchema (see the test).
  * To change what a Nuanced Analysis is, edit this object (or, in production, the
  * DB row) — never scatter the rules across prompt strings again.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import type { NuancedAnalysisSpec } from "./nuanced-analysis-spec.schema";
@@ -27,7 +27,7 @@ import type { NuancedAnalysisSpec } from "./nuanced-analysis-spec.schema";
 const BS = String.fromCharCode(92);
 
 export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
-  // ── 1. Identity ─────────────────────────────────────────────────────────────
+  // -- 1. Identity -------------------------------------------------------------
   identity: {
     specId: "na-spec-aahl-canonical-v1",
     specVersion: "2026-07-14.1",
@@ -50,7 +50,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     pageTargetMax: 22,
   },
 
-  // ── 2. Core philosophy ──────────────────────────────────────────────────────
+  // -- 2. Core philosophy ------------------------------------------------------
   corePhilosophy: {
     definition:
       "A Nuanced Analysis is a coherent, multi-part guided investigation — not a worksheet of harder problems and not a set of unrelated exercises. It develops a single mathematical idea across many representations and rewards reasoning, conjecture, and reflection over answer-getting. It always includes a student-facing packet and a Teacher's Companion, and it earns its cross-topic integration through the mathematics rather than stapling topics on for coverage.",
@@ -100,7 +100,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     ],
   },
 
-  // ── 3. Three-phase delivery model ───────────────────────────────────────────
+  // -- 3. Three-phase delivery model -------------------------------------------
   threePhaseModel: {
     enabled: true,
     flippedClassroom: {
@@ -226,7 +226,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     ],
   },
 
-  // ── 4. Required structure ───────────────────────────────────────────────────
+  // -- 4. Required structure ---------------------------------------------------
   requiredStructure: {
     order: [
       {
@@ -319,7 +319,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     },
   },
 
-  // ── 5. Command terms ────────────────────────────────────────────────────────
+  // -- 5. Command terms --------------------------------------------------------
   commandTerms: {
     boldFirstUse: true,
     boldMainMathematicalObject: true,
@@ -350,7 +350,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     ],
   },
 
-  // ── 6. The eight universal design layers ────────────────────────────────────
+  // -- 6. The eight universal design layers ------------------------------------
   designLayers: {
     layers: [
       {
@@ -461,7 +461,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     translationTableRequiredOnDomainTransfer: true,
   },
 
-  // ── 7. Planted errors ───────────────────────────────────────────────────────
+  // -- 7. Planted errors -------------------------------------------------------
   plantedErrors: {
     minPerPacket: 1,
     maxPerPacket: 2,
@@ -474,7 +474,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
       "The following working was submitted by a student. Your job is not to judge the student — errors like this reveal important distinctions. First decide why the result is unreasonable; then locate the single slip and explain its consequence.",
   },
 
-  // ── 8. TOK + International-mindedness ────────────────────────────────────────
+  // -- 8. TOK + International-mindedness ----------------------------------------
   tok: {
     countExactly: 2,
     mustUseSpecificPacketResults: true,
@@ -499,7 +499,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
       "Attribute the mathematics honestly and include non-European mathematicians where the mathematics genuinely connects (e.g. Mādhava of Sangamagrāma, al-Battānī, Abū al-Wafāʾ, Āryabhaṭa, Mahalanobis, Wessel). Notation is a poor historian — do not force unrelated links.",
   },
 
-  // ── 9. Reflection ───────────────────────────────────────────────────────────
+  // -- 9. Reflection -----------------------------------------------------------
   reflection: {
     requiredElements: [
       { id: "refl-connect", rule: "A concept-connection task: list ≥ 6 concepts/formulae connected in this analysis, naming at least one from each core topic touched." },
@@ -514,7 +514,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     oralOptionRequired: true,
   },
 
-  // ── 10. Teacher's Companion ─────────────────────────────────────────────────
+  // -- 10. Teacher's Companion -------------------------------------------------
   teacherCompanion: {
     separatedByPageBreak: true,
     removedBeforeDistribution: true,
@@ -530,7 +530,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     ],
   },
 
-  // ── 11. Verification ────────────────────────────────────────────────────────
+  // -- 11. Verification --------------------------------------------------------
   verification: {
     requireVerificationReport: true,
     checklist: [
@@ -544,7 +544,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     ],
   },
 
-  // ── 12. Accessibility (cross-cutting) ───────────────────────────────────────
+  // -- 12. Accessibility (cross-cutting) ---------------------------------------
   accessibility: {
     compulsoryCoreListedOnPageOne: true,
     describeSketchDiagramAlternative: true,
@@ -563,7 +563,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     ],
   },
 
-  // ── 13. IA seeding / Toolbox Wondering ──────────────────────────────────────
+  // -- 13. IA seeding / Toolbox Wondering --------------------------------------
   iaSeeding: {
     minBranches: 2,
     branchesFromDifferentTopicAreas: true,
@@ -573,7 +573,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
       "Include a 'Toolbox Wondering': one genuinely interesting, under-specified direction a student could grow into a full IB Mathematical Exploration, named with an initial research question, likely variables, and a method sketch.",
   },
 
-  // ── 14. Voice / tone / platform copy ────────────────────────────────────────
+  // -- 14. Voice / tone / platform copy ----------------------------------------
   voiceAndCopy: {
     tone:
       "Rigorous but accessible. Publishing-grade, never childish and never sterile. The design supports mathematical thinking rather than decorating around it. Prompts invite interpretation and reasoning.",
@@ -586,7 +586,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     ],
   },
 
-  // ── 15. Output contract ─────────────────────────────────────────────────────
+  // -- 15. Output contract -----------------------------------------------------
   outputContract: {
     targetTable: "nuanced_analyses",
     fields: [
@@ -617,7 +617,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
     noMarkdownFences: true,
   },
 
-  // ── 16. Generation hints ────────────────────────────────────────────────────
+  // -- 16. Generation hints ----------------------------------------------------
   generation: {
     preferredModel: "claude-sonnet-5",
     preferredEditingModel: "claude-opus-4-5",
