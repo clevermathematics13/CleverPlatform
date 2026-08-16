@@ -1,6 +1,6 @@
 /**
  * document-orchestrator.ts
- * ─────────────────────────
+ * -------------------------
  * DocumentOrchestratorService owns:
  *   1. Validate  — Zod schema check on the incoming JSON payload
  *   2. Merge     — splice AI content + per-question answerBoxLines into template AST
@@ -20,7 +20,7 @@
  *
  * Also exports generateMarkSchemeHtml() for the separate mark-scheme endpoint.
  *
- * ── Pagination / spatial cohesion ──────────────────────────────────────────
+ * -- Pagination / spatial cohesion ------------------------------------------
  * See /03_Spatial_Cohesion_and_Pagination_Rules.md for the source-of-truth
  * rules. Summary of what's implemented here (CSS print has no dynamic
  * remaining-space measurement like Typst's `layout()`, so we use static
@@ -53,7 +53,7 @@ import {
 } from "./template-schema";
 import { escapeHtml, formatQuestionLabel } from "./assignments";
 
-// ── KaTeX rendering ───────────────────────────────────────────────────────────
+// -- KaTeX rendering -----------------------------------------------------------
 
 export function renderMath(input: string): string {
   let output = input.replace(/\$\$([\s\S]+?)\$\$/g, (_match, tex: string) => {
@@ -69,7 +69,7 @@ export function renderMath(input: string): string {
   return output;
 }
 
-// ── Pagination constants ──────────────────────────────────────────────────────
+// -- Pagination constants ------------------------------------------------------
 //
 // A4 usable height after the largest configured margin (20mm top + 20mm
 // bottom) is ~257mm. We also have to leave room for the question prompt
@@ -94,7 +94,7 @@ const MIN_USEFUL_LINES = 3;
 /** Rule 3 — continuation box gets its own minimum so it isn't a token gesture. */
 const MIN_CONTINUATION_LINES = 4;
 
-// ── Answer box ────────────────────────────────────────────────────────────────
+// -- Answer box ----------------------------------------------------------------
 
 function answerLinesHtml(lines: number, lineHeightMm: number): string {
   return Array.from(
@@ -140,7 +140,7 @@ function renderAnswerBox(lines: number, lineHeightMm: number): string {
     <div class="answer-box continuation-box">${answerLinesHtml(remainingLines, lineHeightMm)}</div>`;
 }
 
-// ── Tier badge ────────────────────────────────────────────────────────────────
+// -- Tier badge ----------------------------------------------------------------
 
 function tierBadge(tier?: 1 | 2 | 3): string {
   if (!tier) return "";
@@ -153,7 +153,7 @@ function tierBadge(tier?: 1 | 2 | 3): string {
   return `<span class="tier-badge" style="${styles[tier]}font-size:8pt;padding:1px 5px;border-radius:3px;margin-left:5px;font-family:serif;">${stars}</span>`;
 }
 
-// ── Question renderer ─────────────────────────────────────────────────────────
+// -- Question renderer ---------------------------------------------------------
 
 type QuestionWithExtras = ValidatedAssignmentPdfRequest["sections"][number]["questions"][number] & {
   tier?: 1 | 2 | 3;
@@ -216,7 +216,7 @@ function renderQuestion(
     </div>`;
 }
 
-// ── CSS ───────────────────────────────────────────────────────────────────────
+// -- CSS -----------------------------------------------------------------------
 
 function buildCss(formatting: ValidatedFormattingRequirements): string {
   const lineHeight = formatting.lineSpacing === "compact" ? "1.3" : formatting.lineSpacing === "relaxed" ? "1.7" : "1.5";
@@ -231,7 +231,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       line-height: ${lineHeight};
     }
 
-    /* ── Header ── */
+    /* -- Header -- */
     .doc-head { margin-bottom: 18px; }
     .school {
       text-align: center;
@@ -283,7 +283,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     }
     .meta-row strong { display: inline; }
 
-    /* ── Command terms tear-off strip ── */
+    /* -- Command terms tear-off strip -- */
     .ct-wrap {
       margin: 16px 0;
       break-inside: avoid;
@@ -354,7 +354,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       padding: 0 1px;
     }
 
-    /* ── TOK block ── */
+    /* -- TOK block -- */
     .tok-block {
       border-left: 3px solid #7c3aed;
       background: #faf5ff;
@@ -374,7 +374,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     .tok-block ol { margin-left: 16px; }
     .tok-block li { font-size: 10pt; margin-bottom: 4px; }
 
-    /* ── International Mindedness block ── */
+    /* -- International Mindedness block -- */
     .im-block {
       border-left: 3px solid #059669;
       background: #f0fdf4;
@@ -393,7 +393,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     }
     .im-block p { font-size: 10pt; }
 
-    /* ── Instructions ── */
+    /* -- Instructions -- */
     .instructions-section {
       margin: 0 0 14px 0;
       break-inside: avoid;
@@ -402,7 +402,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     .instructions-section ol { margin-left: 18px; }
     .instructions-section li { font-size: 10pt; margin: 2px 0; }
 
-    /* ── Sections ── */
+    /* -- Sections -- */
     .assignment-section { margin-top: 16px; }
     .section-heading {
       font-size: 13pt;
@@ -415,7 +415,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       page-break-after: avoid;
     }
 
-    /* ── Prerequisite box ── */
+    /* -- Prerequisite box -- */
     .prerequisite-box {
       border-left: 4px solid #f59e0b;
       background: #fffbeb;
@@ -435,7 +435,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     .prerequisite-box ul { margin-left: 16px; }
     .prerequisite-box li { font-size: 9.5pt; }
 
-    /* ── Spotlight box ── */
+    /* -- Spotlight box -- */
     .spotlight-box {
       border-left: 4px solid #0ea5e9;
       background: #f0f9ff;
@@ -446,7 +446,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     }
     .spotlight-box strong { font-size: 9pt; display: block; margin-bottom: 2px; }
 
-    /* ── Questions ── */
+    /* -- Questions -- */
     .question-block {
       /*
        * Atomic prompt+answer unit (Spatial Cohesion Rule 1 — "Atomic
@@ -524,7 +524,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     }
     .tier-badge { font-family: serif; }
 
-    /* ── Translation table ── */
+    /* -- Translation table -- */
     .translation-table {
       width: 100%;
       border-collapse: collapse;
@@ -540,7 +540,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     }
     .translation-table th { background: #f3f4f6; font-weight: 600; }
 
-    /* ── Geometric box ── */
+    /* -- Geometric box -- */
     .geometric-box {
       border: 0.5pt solid #d1d5db;
       background: #f9fafb;
@@ -551,7 +551,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       page-break-inside: avoid;
     }
 
-    /* ── Answer key ── */
+    /* -- Answer key -- */
     .answers { border-top: 1pt solid #cfcfcf; margin-top: 18px; padding-top: 10px; }
     .answer-row {
       display: grid;
@@ -563,7 +563,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       page-break-inside: avoid;
     }
 
-    /* ── Teacher companion ── */
+    /* -- Teacher companion -- */
     .teacher-separator {
       display: flex;
       align-items: center;
@@ -591,7 +591,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
   `;
 }
 
-// ── Mark scheme CSS ───────────────────────────────────────────────────────────
+// -- Mark scheme CSS -----------------------------------------------------------
 
 function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string {
   return `
@@ -620,7 +620,7 @@ function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string
   `;
 }
 
-// ── Demand scale pills ────────────────────────────────────────────────────────
+// -- Demand scale pills --------------------------------------------------------
 
 const DEMAND_SCALE = [
   { label: "Write down", bg: "#9ca3af", light: true },
@@ -644,7 +644,7 @@ function buildDemandScale(): string {
   }).join("");
 }
 
-// ── HTML assembly ─────────────────────────────────────────────────────────────
+// -- HTML assembly -------------------------------------------------------------
 
 type NuancedDraftExtras = {
   commandTerms?: Array<{ term: string; definition: string }>;
@@ -669,7 +669,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
   const { title, subtitle, instructions, sections, formatting } = validated;
   const nd = validated as unknown as NuancedDraftExtras;
 
-  // ── Header ──
+  // -- Header --
   const nameLineHtml = formatting.includeNameLine ? `
     <div class="meta-field">
       <strong>Student Name:</strong>
@@ -693,7 +693,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
     formatting.teacherName ? `<div class="meta-row"><strong>Teacher:</strong> ${escapeHtml(formatting.teacherName)}</div>` : "",
   ].filter(Boolean).join("\n");
 
-  // ── Command terms strip ──
+  // -- Command terms strip --
   const commandTermsHtml = Array.isArray(nd.commandTerms) && nd.commandTerms.length > 0
     ? `<div class="ct-wrap">
         <div class="ct-dashed-top"></div>
@@ -715,7 +715,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
         <div class="ct-dashed-bottom"></div>
       </div>` : "";
 
-  // ── TOK provocations ──
+  // -- TOK provocations --
   const tokHtml = Array.isArray(nd.tokProvocations) && nd.tokProvocations.length > 0
     ? `<div class="tok-block">
         <div class="block-label">Theory of Knowledge Provocations</div>
@@ -727,14 +727,14 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
         </ol>
       </div>` : "";
 
-  // ── International Mindedness ──
+  // -- International Mindedness --
   const imHtml = nd.internationalMindedness
     ? `<div class="im-block">
         <div class="block-label">International Mindedness</div>
         <p>${escapeHtml(nd.internationalMindedness.body)}</p>
       </div>` : "";
 
-  // ── Instructions ──
+  // -- Instructions --
   const instructionsHtml = instructions.length > 0
     ? `<div class="instructions-section">
         <ol>
@@ -742,7 +742,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
         </ol>
       </div>` : "";
 
-  // ── Sections ──
+  // -- Sections --
   // Detect teacher companion boundary
   const teacherIdx = sections.findIndex((s) => /teacher.{0,10}companion/i.test(s.heading));
 
@@ -792,7 +792,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
     </div>`;
   }).join("");
 
-  // ── Answer key ──
+  // -- Answer key --
   const answersHtml = formatting.includeAnswerKey
     ? `<div class="answers">
         <div class="section-heading">Answer Key</div>
@@ -834,7 +834,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
 </html>`;
 }
 
-// ── Mark scheme HTML assembly ─────────────────────────────────────────────────
+// -- Mark scheme HTML assembly -------------------------------------------------
 
 export type MarkSchemeRequest = {
   title: string;
@@ -898,7 +898,7 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
 </body></html>`;
 }
 
-// ── DocumentOrchestratorService ───────────────────────────────────────────────
+// -- DocumentOrchestratorService -----------------------------------------------
 
 export type OrchestratorResult = { success: true; html: string } | { success: false; error: string };
 

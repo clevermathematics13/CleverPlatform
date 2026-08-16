@@ -13,13 +13,13 @@ import {
 import { NuancedAnalysisPreview } from "../../nuanced-analysis-preview";
 import { useRouter } from "next/navigation";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// -- Types ---------------------------------------------------------------------
 
 type LoadState = "loading" | "ready" | "not-found" | "error";
 type SaveState = "idle" | "saving" | "saved" | "error";
 type ExportState = "idle" | "exporting" | "error";
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// -- Helpers -------------------------------------------------------------------
 
 function defaultFormatting(): FormattingRequirements {
   return {
@@ -47,7 +47,7 @@ function defaultDraft(): AssignmentDraft {
   };
 }
 
-// ── Small UI atoms ────────────────────────────────────────────────────────────
+// -- Small UI atoms ------------------------------------------------------------
 
 function LabeledInput({ label, value, onChange, type = "text" }: {
   label: string; value: string; onChange: (v: string) => void; type?: string;
@@ -115,7 +115,7 @@ function StatPill({ label, value, color = "amber" }: { label: string; value: str
   );
 }
 
-// ── Section editor ────────────────────────────────────────────────────────────
+// -- Section editor ------------------------------------------------------------
 
 function SectionEditor({
   section, sectionIdx, onUpdate, onDelete, onMoveUp, onMoveDown, isFirst, isLast,
@@ -265,7 +265,7 @@ function SectionEditor({
   );
 }
 
-// ── Main editor component ─────────────────────────────────────────────────────
+// -- Main editor component -----------------------------------------------------
 
 export function NuancedAnalysisEditorClient({ id }: { id: string }) {
   const router = useRouter();
@@ -293,7 +293,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
   // suppress unused — kept for future use
   void (router);
 
-  // ── Load ──
+  // -- Load --
   useEffect(() => {
     async function load() {
       try {
@@ -329,7 +329,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
     void load();
   }, [id]);
 
-  // ── Save ──
+  // -- Save --
   const handleSave = useCallback(async () => {
     setSaveState("saving");
     try {
@@ -371,7 +371,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
     }
   }, [id, templateName, draft, formatting, answerBoxLines, totalQ]);
 
-  // ── Keyboard shortcut: Cmd/Ctrl+S ──
+  // -- Keyboard shortcut: Cmd/Ctrl+S --
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
@@ -383,7 +383,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [handleSave]);
 
-  // ── Export PDF ──
+  // -- Export PDF --
   async function handleExportPdf() {
     setExportState("exporting");
     setExportError(null);
@@ -433,7 +433,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
     }
   }
 
-  // ── Section mutation helpers ──
+  // -- Section mutation helpers --
   function addSection() {
     setDraft((d) => ({
       ...d,
@@ -466,7 +466,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
     });
   }
 
-  // ── Instruction helpers ──
+  // -- Instruction helpers --
   function updateInstruction(i: number, val: string) {
     setDraft((d) => {
       const instructions = [...d.instructions];
@@ -481,7 +481,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
     setDraft((d) => ({ ...d, instructions: d.instructions.filter((_, j) => j !== i) }));
   }
 
-  // ── Render states ──
+  // -- Render states --
   if (loadState === "loading") {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-da-border bg-da-surface/80 p-8 text-da-muted">
@@ -518,7 +518,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
 
   return (
     <div className="space-y-4">
-      {/* ── Top bar ── */}
+      {/* -- Top bar -- */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/60 px-4 py-2.5">
         <input
           type="text"
@@ -574,10 +574,10 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
         <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{exportError}</p>
       )}
 
-      {/* ── Main two-column layout ── */}
+      {/* -- Main two-column layout -- */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
 
-        {/* ── Left: structure editor ── */}
+        {/* -- Left: structure editor -- */}
         <div className="space-y-5">
 
           {/* Document header fields */}
@@ -695,7 +695,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
           </div>
         </div>
 
-        {/* ── Right: live preview ── */}
+        {/* -- Right: live preview -- */}
         <div className="space-y-3">
           <div className="rounded-xl border border-da-border bg-da-bg/30 p-4">
             <div
