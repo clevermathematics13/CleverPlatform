@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { GenericAssignmentSandbox } from "./generic-pdf-sandbox";
 import type { FormattingRequirements, AssignmentInput, AssignmentDraft } from "@/lib/assignments";
 
-// ── Formatting (shared across all Grade 9 packets) ───────────────────────────
+// -- Formatting (shared across all Grade 9 packets) ---------------------------
 
 const grade9Formatting: FormattingRequirements = {
   schoolName: "CleverPlatform Mathematics",
@@ -19,7 +19,7 @@ const grade9Formatting: FormattingRequirements = {
   numberingStyle: "numeric",
 };
 
-// ── Unit metadata ─────────────────────────────────────────────────────────────
+// -- Unit metadata -------------------------------------------------------------
 
 type UnitMeta = {
   unit: number;
@@ -69,7 +69,7 @@ const UNIT_META: Record<number, UnitMeta> = {
   },
 };
 
-// ── Review packet drafts ──────────────────────────────────────────────────────
+// -- Review packet drafts ------------------------------------------------------
 
 const UNIT_DRAFTS: Record<number, AssignmentDraft> = {
   1: {
@@ -339,7 +339,7 @@ const UNIT_DRAFTS: Record<number, AssignmentDraft> = {
   },
 };
 
-// ── Unit input configs ────────────────────────────────────────────────────────
+// -- Unit input configs --------------------------------------------------------
 
 function makeUnitInput(unit: number): AssignmentInput {
   const meta = UNIT_META[unit]!;
@@ -357,7 +357,7 @@ function makeUnitInput(unit: number): AssignmentInput {
   };
 }
 
-// ── Unit selector panel ───────────────────────────────────────────────────────
+// -- Unit selector panel -------------------------------------------------------
 
 type UnitSelectorProps = {
   onSelect: (draft: AssignmentDraft, input: AssignmentInput) => void;
@@ -472,7 +472,7 @@ function UnitSelector({ onSelect }: UnitSelectorProps) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// -- Main component ------------------------------------------------------------
 
 type Grade9Mode = "units" | "freeform";
 
