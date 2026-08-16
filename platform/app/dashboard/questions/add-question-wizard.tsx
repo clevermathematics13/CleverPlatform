@@ -7,7 +7,7 @@ import { readJsonSafely } from "@/lib/http-json";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
 import { hasExplicitTopLevelPartStructure } from "./part-structure";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// --- Types ------------------------------------------------------------------
 
 interface Subtopic {
   code: string;
@@ -44,7 +44,7 @@ const SECTION_NAMES: Record<number, string> = {
   5: "Calculus",
 };
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// --- Helpers ----------------------------------------------------------------
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -75,7 +75,7 @@ function isDuplicateKeyError(msg: string): boolean {
   return msg.includes("duplicate key value violates unique constraint");
 }
 
-// ─── WizardStemEditor ────────────────────────────────────────────────────────
+// --- WizardStemEditor --------------------------------------------------------
 
 function WizardStemEditor({
   stemLatex,
@@ -221,7 +221,7 @@ function WizardStemEditor({
   );
 }
 
-// ─── WizardPartEditor ────────────────────────────────────────────────────────
+// --- WizardPartEditor --------------------------------------------------------
 
 function WizardPartEditor({
   part,
@@ -479,7 +479,7 @@ function WizardPartEditor({
   );
 }
 
-// ─── AddQuestionWizard ───────────────────────────────────────────────────────
+// --- AddQuestionWizard -------------------------------------------------------
 
 export function AddQuestionWizard({
   availableSubtopics,
@@ -494,10 +494,10 @@ export function AddQuestionWizard({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  // ── Step state ──
+  // -- Step state --
   const [step, setStep] = useState<WizardStep>("images");
 
-  // ── Step 1: metadata ──
+  // -- Step 1: metadata --
   const [code, setCode] = useState("");
   const [sessionVal, setSessionVal] = useState("25M");
   const [paper, setPaper] = useState<1 | 2 | 3>(2);
@@ -509,13 +509,13 @@ export function AddQuestionWizard({
   pendingImagesRef.current = pendingImages;
   const [step1Error, setStep1Error] = useState<string | null>(null);
 
-  // ── Processing ──
+  // -- Processing --
   const [processingLog, setProcessingLog] = useState<string[]>([]);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const [deletingStub, setDeletingStub] = useState(false);
   const [deleteStubError, setDeleteStubError] = useState<string | null>(null);
 
-  // ── Step 2: review ──
+  // -- Step 2: review --
   const [questionId, setQuestionId] = useState<string | null>(null);
   const [stemLatex, setStemLatex] = useState("");
   const [stemMsLatex, setStemMsLatex] = useState("");
@@ -533,7 +533,7 @@ export function AddQuestionWizard({
     };
   }, []);
 
-  // ── Metadata helpers ──
+  // -- Metadata helpers --
 
   function handleCodeChange(raw: string) {
     setCode(raw);
@@ -557,7 +557,7 @@ export function AddQuestionWizard({
     );
   }
 
-  // ── Image helpers ──
+  // -- Image helpers --
 
   function addPendingImage(imageType: "question" | "markscheme", file: File) {
     const objectUrl = URL.createObjectURL(file);
@@ -609,7 +609,7 @@ export function AddQuestionWizard({
     }
   }
 
-  // ── Stub deletion ──
+  // -- Stub deletion --
 
   async function handleDeleteStub() {
     setDeletingStub(true);
@@ -634,7 +634,7 @@ export function AddQuestionWizard({
     }
   }
 
-  // ── Main extraction / OCR handler ──
+  // -- Main extraction / OCR handler --
 
   async function handleExtract() {
     if (!code.trim()) {
@@ -851,7 +851,7 @@ export function AddQuestionWizard({
     }
   }
 
-  // ── Draft apply ──
+  // -- Draft apply --
 
   function applyDraft(field: Field) {
     const text =
@@ -878,7 +878,7 @@ export function AddQuestionWizard({
     }
   }
 
-  // ── Part management ──
+  // -- Part management --
 
   function updatePart(localId: string, updates: Partial<WizardPart>) {
     setParts((prev) =>
@@ -905,7 +905,7 @@ export function AddQuestionWizard({
     setParts((prev) => prev.filter((p) => p.localId !== localId));
   }
 
-  // ── Final save ──
+  // -- Final save --
 
   async function handleSave() {
     if (!questionId) return;
@@ -983,7 +983,7 @@ export function AddQuestionWizard({
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // -- Render ------------------------------------------------------------------
 
   const stepTitle =
     step === "images"
@@ -1034,9 +1034,9 @@ export function AddQuestionWizard({
         </div>
 
         <div className="p-6 space-y-6 overflow-y-auto max-h-[85vh]">
-          {/* ════════════════════════════════════════════════════════════════
+          {/* ═════════════════════════════════════════════════════════════════════════════════
               STEP 1 — Code + Images
-          ═══════════════════════════════════════════════════════════════════ */}
+          ══════════════════════════════════════════════════════════════════════════════════ */}
           {step === "images" && (
             <>
               {/* Metadata */}
@@ -1230,9 +1230,9 @@ export function AddQuestionWizard({
             </>
           )}
 
-          {/* ════════════════════════════════════════════════════════════════
+          {/* ═════════════════════════════════════════════════════════════════════════════════
               PROCESSING
-          ═══════════════════════════════════════════════════════════════════ */}
+          ══════════════════════════════════════════════════════════════════════════════════ */}
           {step === "processing" && (
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-3">
@@ -1303,9 +1303,9 @@ export function AddQuestionWizard({
             </div>
           )}
 
-          {/* ════════════════════════════════════════════════════════════════
+          {/* ═════════════════════════════════════════════════════════════════════════════════
               STEP 2 — Review & Edit
-          ═══════════════════════════════════════════════════════════════════ */}
+          ══════════════════════════════════════════════════════════════════════════════════ */}
           {step === "review" && (
             <>
               {/* Q / MS toggle */}
