@@ -776,7 +776,12 @@ Be thorough: include all curves, asymptotes, intercepts, labeled points, guide l
               ...imageContent,
               {
                 type: "text",
-                text: `=== IbGraphSpec from image analysis (Pass 1) ===\n${JSON.stringify(graphSpec, null, 2)}\n\n${contextParts.join("\n\n")}\n\nVerify the spec against the image and the written context. Return the refined spec + warnings.`,
+                text: `=== IbGraphSpec from image analysis (Pass 1) ===
+${JSON.stringify(graphSpec, null, 2)}
+
+${contextParts.join("\n\n")}
+
+Verify the spec against the image and the written context. Return the refined spec + warnings.`,
               },
             ],
           },
@@ -936,7 +941,25 @@ Be thorough: include all curves, asymptotes, intercepts, labeled points, guide l
               ...imageContent,
               {
                 type: "text",
-                text: `The current graphSpec failed automatic continuity validation.\n\nContinuity errors:\n${continuity.errors.map((e) => `- ${e}`).join("\n")}\n\nCurrent spec:\n${JSON.stringify(graphSpec, null, 2)}\n\n${questionLatex ? `=== Question LaTeX ===\n${questionLatex}\n` : ""}\n${msLatex ? `=== Mark Scheme LaTeX ===\n${msLatex}\n` : ""}\n\nRepair instructions:\n- Re-extract/snap ordered vertices from the image.\n- Build one bounded segment per interval with exact xMin/xMax.\n- Recompute equations from adjacent vertex pairs.\n- Ensure continuity at touching boundaries unless explicit open/jump markers exist.\n- You MUST return a continuity-valid graphSpec.\n\nReturn ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
+                text: `The current graphSpec failed automatic continuity validation.
+
+Continuity errors:
+${continuity.errors.map((e) => `- ${e}`).join("\n")}
+
+Current spec:
+${JSON.stringify(graphSpec, null, 2)}
+
+${questionLatex ? `=== Question LaTeX ===\n${questionLatex}\n` : ""}
+${msLatex ? `=== Mark Scheme LaTeX ===\n${msLatex}\n` : ""}
+
+Repair instructions:
+- Re-extract/snap ordered vertices from the image.
+- Build one bounded segment per interval with exact xMin/xMax.
+- Recompute equations from adjacent vertex pairs.
+- Ensure continuity at touching boundaries unless explicit open/jump markers exist.
+- You MUST return a continuity-valid graphSpec.
+
+Return ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
               },
             ],
           },
