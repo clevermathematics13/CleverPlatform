@@ -1,6 +1,6 @@
 /**
  * template-schema.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Zod runtime validation schemas for every CleverPlatform document template
  * object.  These are the single source of truth for what shape is accepted by
  * the DocumentOrchestratorService and by the Supabase template-save endpoint.
@@ -11,12 +11,12 @@
  *    ajv-ts-schema's additional weight.
  *  - Works on both Node.js (API routes) and the browser (client-side preview)
  *    without WASM or worker threads.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import { z } from "zod";
 
-// ── Primitives ────────────────────────────────────────────────────────────────
+// -- Primitives ----------------------------------------------------------------
 
 export const FormattingRequirementsSchema = z.object({
   schoolName: z.string().min(1, "School name required"),
@@ -39,7 +39,7 @@ export const FormattingRequirementsSchema = z.object({
 
 export type ValidatedFormattingRequirements = z.infer<typeof FormattingRequirementsSchema>;
 
-// ── Question / Section hierarchy ─────────────────────────────────────────────
+// -- Question / Section hierarchy ---------------------------------------------
 
 export const QuestionSubpartSchema = z.object({
   prompt: z.string().min(1),
@@ -108,7 +108,7 @@ export const InternationalMindednessBoxSchema = z.object({
   body: z.string().min(1),
 });
 
-// ── Top-level draft ───────────────────────────────────────────────────────────
+// -- Top-level draft -----------------------------------------------------------
 
 export const AssignmentDraftSchema = z.object({
   title: z.string().min(1, "Title cannot be empty"),
@@ -133,7 +133,7 @@ export const AssignmentDraftSchema = z.object({
 
 export type ValidatedAssignmentDraft = z.infer<typeof AssignmentDraftSchema>;
 
-// ── Full PDF request (what the API route receives) ────────────────────────────
+// -- Full PDF request (what the API route receives) ----------------------------
 //
 // NOTE: this schema previously only declared title/subtitle/instructions/
 // sections(heading+questions)/formatting. Zod strips any key not declared
@@ -189,7 +189,7 @@ export const AssignmentPdfRequestSchema = z.object({
 
 export type ValidatedAssignmentPdfRequest = z.infer<typeof AssignmentPdfRequestSchema>;
 
-// ── Template save payload (Supabase insert) ───────────────────────────────────
+// -- Template save payload (Supabase insert) -----------------------------------
 
 export const AssignmentInputSchema = z.object({
   gradeLevel: z.enum(["Grade 9", "Grade 10", "Grade 11", "Grade 12"]),
@@ -214,7 +214,7 @@ export const TemplateSavePayloadSchema = z.object({
 
 export type ValidatedTemplateSavePayload = z.infer<typeof TemplateSavePayloadSchema>;
 
-// ── Validation helpers ────────────────────────────────────────────────────────
+// -- Validation helpers --------------------------------------------------------
 
 /**
  * Validates a PDF request body coming in from the API route.

@@ -1,6 +1,6 @@
 /**
  * document-orchestrator-nuanced.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * DocumentOrchestratorService for Nuanced Analysis.
  *
  * Responsibility: accept a NuancedDraft (the shape produced by the AI
@@ -18,7 +18,7 @@
  * The orchestrator does NOT call the Typst renderer itself.
  * The caller is responsible for passing the returned payload to
  * TypstRenderService.render().
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import type { TemplateAst } from "./template-ast.schema";
@@ -37,7 +37,7 @@ import type {
   AssignmentQuestion,
 } from "./assignments";
 
-// ── NuancedDraft shape (extended from AssignmentDraft) ────────────────────────
+// -- NuancedDraft shape (extended from AssignmentDraft) ------------------------
 // We re-declare only the extra fields here to avoid a circular import.
 // The main NuancedDraft interface lives in nuanced-analysis-preview.tsx.
 
@@ -51,7 +51,7 @@ interface NuancedDraftExtra {
 
 type NuancedDraft = AssignmentDraft & NuancedDraftExtra;
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// -- Helpers -------------------------------------------------------------------
 
 /**
  * Coerce a value to a trimmed, non-empty string, or null if it isn't one.
@@ -300,7 +300,7 @@ function mapSection(
   };
 }
 
-// ── DocumentOrchestratorService ───────────────────────────────────────────────
+// -- DocumentOrchestratorService -----------------------------------------------
 
 export type OrchestratorResult =
   | { success: true; payload: ActivityPayload }

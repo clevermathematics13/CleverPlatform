@@ -1,6 +1,6 @@
 /**
  * template-ast.schema.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Zod schemas for the CleverPlatform Nuanced Analysis TemplateAst.
  *
  * These schemas are the single source of truth for:
@@ -16,18 +16,18 @@
  *
  * Usage:
  *   import { TemplateAstSchema, validateTemplateAst } from "@/lib/template-ast.schema";
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import { z } from "zod";
 
-// ── Hex colour validator ──────────────────────────────────────────────────────
+// -- Hex colour validator ------------------------------------------------------
 
 const hexColor = z
   .string()
   .regex(/^#[0-9A-Fa-f]{6}$/, "Must be a 6-digit hex colour (e.g. #1a7a4a)");
 
-// ── 1. Document settings ──────────────────────────────────────────────────────
+// -- 1. Document settings ------------------------------------------------------
 
 export const DocumentSettingsSchema = z
   .object({
@@ -42,7 +42,7 @@ export const DocumentSettingsSchema = z
 
 export type DocumentSettings = z.infer<typeof DocumentSettingsSchema>;
 
-// ── 2. Typography settings ────────────────────────────────────────────────────
+// -- 2. Typography settings ----------------------------------------------------
 
 export const TypographySettingsSchema = z
   .object({
@@ -58,7 +58,7 @@ export const TypographySettingsSchema = z
 
 export type TypographySettings = z.infer<typeof TypographySettingsSchema>;
 
-// ── 3. Colour settings ────────────────────────────────────────────────────────
+// -- 3. Colour settings --------------------------------------------------------
 
 export const ColorSettingsSchema = z
   .object({
@@ -76,7 +76,7 @@ export const ColorSettingsSchema = z
 
 export type ColorSettings = z.infer<typeof ColorSettingsSchema>;
 
-// ── 4. Spacing settings ───────────────────────────────────────────────────────
+// -- 4. Spacing settings -------------------------------------------------------
 
 export const SpacingSettingsSchema = z
   .object({
@@ -89,7 +89,7 @@ export const SpacingSettingsSchema = z
 
 export type SpacingSettings = z.infer<typeof SpacingSettingsSchema>;
 
-// ── 5. Header settings ────────────────────────────────────────────────────────
+// -- 5. Header settings --------------------------------------------------------
 
 export const HeaderSettingsSchema = z
   .object({
@@ -103,7 +103,7 @@ export const HeaderSettingsSchema = z
 
 export type HeaderSettings = z.infer<typeof HeaderSettingsSchema>;
 
-// ── 6. Footer settings ────────────────────────────────────────────────────────
+// -- 6. Footer settings --------------------------------------------------------
 
 export const FooterSettingsSchema = z
   .object({
@@ -115,7 +115,7 @@ export const FooterSettingsSchema = z
 
 export type FooterSettings = z.infer<typeof FooterSettingsSchema>;
 
-// ── 7. Question block cohesion settings ──────────────────────────────────────
+// -- 7. Question block cohesion settings --------------------------------------
 
 export const QuestionBlockSettingsSchema = z
   .object({
@@ -137,7 +137,7 @@ export const QuestionBlockSettingsSchema = z
 
 export type QuestionBlockSettings = z.infer<typeof QuestionBlockSettingsSchema>;
 
-// ── 8. Answer box settings ────────────────────────────────────────────────────
+// -- 8. Answer box settings ----------------------------------------------------
 
 export const AnswerBoxSettingsSchema = z
   .object({
@@ -153,7 +153,7 @@ export const AnswerBoxSettingsSchema = z
 
 export type AnswerBoxSettings = z.infer<typeof AnswerBoxSettingsSchema>;
 
-// ── 9. Math settings ─────────────────────────────────────────────────────────
+// -- 9. Math settings ---------------------------------------------------------
 
 export const MathSettingsSchema = z
   .object({
@@ -168,7 +168,7 @@ export const MathSettingsSchema = z
 
 export type MathSettings = z.infer<typeof MathSettingsSchema>;
 
-// ── 10. Graph settings ────────────────────────────────────────────────────────
+// -- 10. Graph settings --------------------------------------------------------
 
 export const GraphSettingsSchema = z
   .object({
@@ -181,7 +181,7 @@ export const GraphSettingsSchema = z
 
 export type GraphSettings = z.infer<typeof GraphSettingsSchema>;
 
-// ── 11. TOK / Interdisciplinary connection settings ───────────────────────────
+// -- 11. TOK / Interdisciplinary connection settings ---------------------------
 
 export const ConnectionSettingsSchema = z
   .object({
@@ -196,7 +196,7 @@ export const ConnectionSettingsSchema = z
 
 export type ConnectionSettings = z.infer<typeof ConnectionSettingsSchema>;
 
-// ── 12. Spatial cohesion settings ─────────────────────────────────────────────
+// -- 12. Spatial cohesion settings ---------------------------------------------
 //
 // Mirrors 03_Spatial_Cohesion_and_Pagination_Rules.md exactly.
 // These settings are passed into the Typst renderer as layout constraints.
@@ -223,7 +223,7 @@ export const CohesionSettingsSchema = z
 
 export type CohesionSettings = z.infer<typeof CohesionSettingsSchema>;
 
-// ── 13. Progress tracker settings ────────────────────────────────────────────
+// -- 13. Progress tracker settings --------------------------------------------
 
 export const ProgressTrackerSettingsSchema = z
   .object({
@@ -234,7 +234,7 @@ export const ProgressTrackerSettingsSchema = z
 
 export type ProgressTrackerSettings = z.infer<typeof ProgressTrackerSettingsSchema>;
 
-// ── Root TemplateAst ──────────────────────────────────────────────────────────
+// -- Root TemplateAst ----------------------------------------------------------
 
 export const TemplateAstSchema = z
   .object({
@@ -264,7 +264,7 @@ export const TemplateAstSchema = z
 
 export type TemplateAst = z.infer<typeof TemplateAstSchema>;
 
-// ── Validation helpers ────────────────────────────────────────────────────────
+// -- Validation helpers --------------------------------------------------------
 
 export type TemplateAstValidationResult =
   | { success: true; data: TemplateAst }
