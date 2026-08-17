@@ -68,6 +68,28 @@ import { createClient as createServiceSupabaseClient } from "@supabase/supabase-
  * status is mirrored into nuanced_generation_runs so the client can poll
  * ground truth via /api/claude/status/[generationId] rather than inferring
  * run health from whether an SSE socket happens to still be open.
+ *
+ * CORRECTION 2 (2026-08-17, later the same day): a run hit soft_deadline
+ * again with 0 chars, but this time with new diagnostic logging attached:
+ *   connected=true connectMs=10003 thinkingDeltas=0 writingDeltas=0
+ *   textCharsKept=0 streamErrorSeen=none
+ * This ruled out a network stall - the connection opened normally in 10s
+ * and stayed open with zero SDK-level errors for the full 235s. The cause
+ * is a documented Anthropic behaviour: with adaptive thinking (display
+ * defaulting to "summarized"), the model can reason silently for an
+ * extended period with no thinking_delta or text streaming out at all,
+ * especially at higher effort on cold-start, attachment-heavy prompts (see
+ * e.g. github.com/anthropics/claude-code/issues/56356 for another report of
+ * the same "reasoning is happening, nothing streams" pattern). Two changes:
+ *   - THINKING_DISPLAY set to "omitted" - per Anthropic's own guidance this
+ *     reduces time-to-first-token, since the model skips producing a
+ *     human-readable thinking summary before starting the visible response.
+ *     This file already discarded thinking text either way (progress
+ *     pulses only ever signalled that thinking was happening, never showed
+ *     it), so there is no functional loss.
+ *   - SOFT_DEADLINE_MS raised from 235s to 270s, giving genuinely-thinking
+ *     requests more room before this file gives up on them, while keeping
+ *     ~30s of margin below the platform's 300s step ceiling.
  */
 
 const UPLOADS_BUCKET = "uploads";
@@ -90,7 +112,33 @@ const MAX_TOKENS_PER_PASS = 24000;
 // Abort the Anthropic stream at this point and keep the partial text. Must
 // stay comfortably below the platform's per-invocation ceiling (300s) with
 // enough slack for the surrounding step work (logging, status writes).
-const SOFT_DEADLINE_MS = 235_000;
+//
+// RAISED from 235_000 (2026-08-17, same day as the deadline was first
+// added): a run logged connected=true, connectMs=10003, thinkingDeltas=0,
+// writingDeltas=0, textCharsKept=0, streamErrorSeen=none after the full
+// 235s. That is not a network stall - the connection opened normally and
+// stayed open the whole time with zero SDK-level error. It matches a
+// documented Anthropic behaviour: with adaptive thinking, the model can
+// reason silently for an extended period before any thinking_delta or text
+// content streams out, particularly at higher effort levels on cold-start,
+// attachment-heavy prompts. See THINKING_DISPLAY below for the other half
+// of this fix. 270s leaves ~30s of margin below the platform's 300s step
+// ceiling for post-stream cleanup (logGeneration, recordRunStatus) while
+// giving genuinely-thinking requests meaningfully more room than 235s did.
+const SOFT_DEADLINE_MS = 270_000;
+
+// Controls whether thinking content streams as visible thinking_delta
+// events ("summarized", the SDK default) or is generated but not streamed
+// ("omitted", only a signature streams). Set to "omitted" because Anthropic's
+// own adaptive-thinking guidance states this reduces time-to-first-token:
+// the model doesn't pause to produce a human-readable summary of its
+// reasoning before starting the visible text response. This file was
+// already discarding thinking content anyway (progress pulses only report
+// that SOME thinking is happening, never the text itself), so there is no
+// loss from omitting it - only a chance at faster, more visible progress
+// during exactly the silent-thinking window that caused the soft_deadline
+// failures above.
+const THINKING_DISPLAY: Anthropic.ThinkingConfigAdaptive["display"] = "omitted";
 
 // Hard stop on continuation passes, so a model that never returns valid
 // JSON can't loop forever.
@@ -409,7 +457,7 @@ async function callClaude(
   const stream = client.messages.stream({
     model: MODEL,
     max_tokens: MAX_TOKENS_PER_PASS,
-    thinking: { type: "adaptive" },
+    thinking: { type: "adaptive", display: THINKING_DISPLAY },
     output_config: { effort: EFFORT_LEVEL },
     system,
     messages: messagesWithCache as Anthropic.MessageParam[],
@@ -487,6 +535,11 @@ async function callClaude(
       // but silent" apart from "connected, thinking happened, but produced
       // no visible text" is logged together here rather than split across
       // separate lines, so a future occurrence is diagnosable from one line.
+      // NOTE: with THINKING_DISPLAY = "omitted" (see above), thinkingDeltas
+      // will legitimately always read 0 - omitted mode never streams
+      // thinking_delta events at all, only a final signature. A 0 here no
+      // longer distinguishes "not thinking" from "thinking but not shown";
+      // connectMs and streamErrorSeen remain the meaningful signals.
       console.log(
         `[nuanced-analysis-workflow] ${passLabel} soft deadline reached at ${SOFT_DEADLINE_MS}ms - ` +
           `connected=${connectedAt !== null} ` +
