@@ -7,8 +7,9 @@ import { Grade11PdfSandbox } from "./grade11-pdf-sandbox";
 import { Grade12PdfSandbox } from "./grade12-pdf-sandbox";
 import { DPQuestionDesigner } from "./dp-question-designer";
 import { NuancedAnalysisSandbox } from "./nuanced-analysis-sandbox";
+import { NuancedAnalysisManage } from "./nuanced-analysis-manage";
 
-type TabId = "dp-designer" | "nuanced-analysis" | "grade9" | "grade10" | "grade11" | "grade12";
+type TabId = "dp-designer" | "nuanced-analysis" | "manage-nuanced-analysis" | "grade9" | "grade10" | "grade11" | "grade12";
 
 type TabOption = {
   id: TabId;
@@ -23,12 +24,13 @@ type TabOption = {
 // Nuanced Analysis content doesn't land on this tab by habit and lose
 // the continuity context that only the Nuanced Analysis tab builds.
 const TABS: TabOption[] = [
-  { id: "dp-designer",       label: "DP Designer",             emoji: "🎓" },
-  { id: "nuanced-analysis",  label: "Nuanced Analysis",         emoji: "🔬" },
-  { id: "grade9",            label: "Grade 9 (generic PDF)",    emoji: "9️⃣" },
-  { id: "grade10",           label: "Grade 10 (generic PDF)",   emoji: "🔟" },
-  { id: "grade11",           label: "Grade 11 (generic PDF)",   emoji: "11" },
-  { id: "grade12",           label: "Grade 12 (generic PDF)",   emoji: "12" },
+  { id: "dp-designer",               label: "DP Designer",             emoji: "🎓" },
+  { id: "nuanced-analysis",          label: "Nuanced Analysis",         emoji: "🔬" },
+  { id: "manage-nuanced-analysis",   label: "Manage Saved Packets",     emoji: "🗂️" },
+  { id: "grade9",                    label: "Grade 9 (generic PDF)",    emoji: "9️⃣" },
+  { id: "grade10",                   label: "Grade 10 (generic PDF)",   emoji: "🔟" },
+  { id: "grade11",                   label: "Grade 11 (generic PDF)",   emoji: "11" },
+  { id: "grade12",                   label: "Grade 12 (generic PDF)",   emoji: "12" },
 ];
 
 export function AssignmentsClient() {
@@ -60,12 +62,13 @@ export function AssignmentsClient() {
         ))}
       </div>
 
-      {activeTab === "dp-designer"      && <DPQuestionDesigner />}
-      {activeTab === "nuanced-analysis" && <NuancedAnalysisSandbox />}
-      {activeTab === "grade9"           && <Grade9PdfSandbox />}
-      {activeTab === "grade10"          && <Grade10PdfSandbox />}
-      {activeTab === "grade11"          && <Grade11PdfSandbox />}
-      {activeTab === "grade12"          && <Grade12PdfSandbox />}
+      {activeTab === "dp-designer"               && <DPQuestionDesigner />}
+      {activeTab === "nuanced-analysis"          && <NuancedAnalysisSandbox />}
+      {activeTab === "manage-nuanced-analysis"   && <NuancedAnalysisManage />}
+      {activeTab === "grade9"                    && <Grade9PdfSandbox />}
+      {activeTab === "grade10"                   && <Grade10PdfSandbox />}
+      {activeTab === "grade11"                   && <Grade11PdfSandbox />}
+      {activeTab === "grade12"                   && <Grade12PdfSandbox />}
     </div>
   );
 }
