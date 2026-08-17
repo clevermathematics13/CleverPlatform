@@ -1,6 +1,0 @@
-one_backslash_A=[ ]END
-one_backslash_B=[ ]END
-two_backslash_A=[ ]END
-two_backslash_B=[ ]END
-three_backslash=[\\u2002]END
-four_backslash=[\\u2002]END
