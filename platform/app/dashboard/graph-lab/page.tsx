@@ -7,7 +7,7 @@ import { encodeGraphSpec, type IbGraphSpec } from "@/components/IbGraph";
 const IbGraph = dynamic(() => import("@/components/IbGraph"), { ssr: false });
 const GRAPH_LAB_IMAGES_STORAGE_KEY = "graph-lab:images:v1";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types --------------------------------------------------------------------
 
 interface ExtractResult {
   graphSpec: IbGraphSpec;
@@ -81,7 +81,7 @@ interface WindowConfidenceContext {
   warnings?: string[];
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers ------------------------------------------------------------------
 
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -244,7 +244,7 @@ function buildWindowReadout(
   ].join("\n");
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// --- Component ----------------------------------------------------------------
 
 export default function GraphLabPage() {
   const [images, setImages] = useState<Array<{ fileName: string; mimeType: string; b64: string; url: string }>>([]);
@@ -330,7 +330,7 @@ export default function GraphLabPage() {
     }
   }, [images, imagesRestored, freshValidationMode]);
 
-  // ── Image selection ──────────────────────────────────────────────────────
+  // -- Image selection ------------------------------------------------------
   const addFiles = useCallback(async (files: FileList | File[]) => {
     const arr = Array.from(files).filter((f) => f.type.startsWith("image/"));
     const entries = await Promise.all(
@@ -364,7 +364,7 @@ export default function GraphLabPage() {
     setImages((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  // ── Extraction ───────────────────────────────────────────────────────────
+  // -- Extraction -----------------------------------------------------------
   async function runExtract() {
     if (!images.length) return;
     const requestId = buildRequestId("graph-lab");
@@ -579,7 +579,7 @@ export default function GraphLabPage() {
     }
   }
 
-  // ── Parse / preview ──────────────────────────────────────────────────────
+  // -- Parse / preview ------------------------------------------------------
   // Pure — no state side-effects, safe to call during render.
   function tryParseSpec(json: string): IbGraphSpec | null {
     try { return JSON.parse(json) as IbGraphSpec; } catch { return null; }
@@ -913,7 +913,7 @@ export default function GraphLabPage() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6" suppressHydrationWarning>
-          {/* ── Left column: inputs ─────────────────────────────────────── */}
+          {/* -- Left column: inputs --------------------------------------- */}
           <div className="flex flex-col gap-4" suppressHydrationWarning>
 
             {/* Image drop zone */}
@@ -1222,7 +1222,7 @@ export default function GraphLabPage() {
             )}
           </div>
 
-          {/* ── Right column: editor + preview ──────────────────────────── */}
+          {/* -- Right column: editor + preview ---------------------------- */}
           <div className="flex flex-col gap-4" suppressHydrationWarning>
 
             {/* JSON editor */}

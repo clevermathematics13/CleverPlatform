@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  // ── Validate ────────────────────────────────────────────────────────
+  // -- Validate --------------------------------------------------------
 
   const courseId = typeof body.courseId === "string" ? body.courseId : "";
   if (!UUID_RE.test(courseId)) {
@@ -166,7 +166,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Could not derive a slug from the packet" }, { status: 400 });
   }
 
-  // ── Upsert the packet ────────────────────────────────────────────────
+  // -- Upsert the packet ------------------------------------------------
   // onConflict targets the (course_id, section_code) partial unique index added
   // in migration 058, so re-saving a section replaces it instead of creating a
   // second row that would then be counted twice in continuity.
@@ -202,7 +202,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: saveError.message }, { status: 500 });
   }
 
-  // ── Commit continuity ────────────────────────────────────────────────
+  // -- Commit continuity ------------------------------------------------
   // Reported separately rather than rolled back: the packet is saved and the
   // teacher should not lose it because the continuity write failed. The
   // response makes the partial state explicit so the UI can offer a retry.

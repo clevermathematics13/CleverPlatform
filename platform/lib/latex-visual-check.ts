@@ -111,7 +111,7 @@ export function buildRenderDocument(
 </html>`;
 }
 
-// ─── Comparison ──────────────────────────────────────────────────────────────
+// --- Comparison --------------------------------------------------------------
 
 export type DiscrepancyKind =
   | "missing_content"

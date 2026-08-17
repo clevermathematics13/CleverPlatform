@@ -130,7 +130,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
 
-  // ── Initial load: test detail (for items + course), roster, latest runs ──
+  // -- Initial load: test detail (for items + course), roster, latest runs --
   const loadOverview = useCallback(async () => {
     setError(null);
     const testRes = await fetch(`/api/tests/${testId}`);
@@ -174,7 +174,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
     loadOverview().finally(() => setLoading(false));
   }, [loadOverview]);
 
-  // ── Load one student's results for review ──
+  // -- Load one student's results for review --
   const loadResultsFor = useCallback(
     async (studentId: string) => {
       const res = await fetch(`/api/tests/${testId}/ai-grade?studentId=${studentId}`);
@@ -208,7 +208,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
     await loadResultsFor(studentId);
   };
 
-  // ── Run grading (fresh upload or re-use stored scan) ──
+  // -- Run grading (fresh upload or re-use stored scan) --
   const runGrading = async (studentId: string, file: File | null) => {
     setBusyStudent(studentId);
     setError(null);
@@ -269,7 +269,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
     if (file && studentId) await runGrading(studentId, file);
   };
 
-  // ── Accept selected results into Clev's Marks ──
+  // -- Accept selected results into Clev's Marks --
   const acceptSelected = async () => {
     if (!focusRunId || selected.size === 0) return;
     setAccepting(true);
@@ -343,7 +343,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
         </div>
       )}
 
-      {/* ── Assessment summary ────────────────────────────────────────── */}
+      {/* -- Assessment summary ------------------------------------------ */}
       <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-bold text-gray-900">{test.name}</h2>
         <p className="mt-1 text-sm text-gray-500">
@@ -353,7 +353,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
         </p>
       </section>
 
-      {/* ── Students ───────────────────────────────────────────────────── */}
+      {/* -- Students ----------------------------------------------------- */}
       <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="border-b border-gray-100 px-5 py-3">
           <h2 className="text-lg font-bold text-gray-900">Students</h2>
@@ -431,7 +431,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
         </ul>
       </section>
 
-      {/* ── Review table ────────────────────────────────────────────── */}
+      {/* -- Review table ---------------------------------------------- */}
       {focusStudent && results.length > 0 && (
         <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">

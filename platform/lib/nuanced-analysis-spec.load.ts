@@ -1,6 +1,6 @@
 /**
  * nuanced-analysis-spec.load.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Server-only loader that resolves the NuancedAnalysisSpec the generator should
  * use, from the database, with a safe fallback to the code-defined canonical.
  *
@@ -18,7 +18,7 @@
  *
  * Must be called with a SERVICE-ROLE Supabase client (the canonical row is
  * owner_id IS NULL and is only writable by the service role under RLS).
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";

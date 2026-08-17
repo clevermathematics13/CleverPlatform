@@ -437,7 +437,7 @@ export function ExtractionReviewModal({
   );
 
   const modal = minimized ? (
-    /* ── Minimized bar ── */
+    /* -- Minimized bar -- */
     <div className="fixed bottom-0 left-0 right-0 z-[80] bg-white border-t-2 border-blue-400 shadow-xl px-5 py-2 flex items-center gap-4">
       <span className="font-mono font-bold text-blue-900 text-sm">{questionCode}</span>
       <span className="text-xs text-gray-500 truncate">{stepTitle}</span>
@@ -452,7 +452,7 @@ export function ExtractionReviewModal({
       </div>
     </div>
   ) : (
-    /* ── Full-screen split layout ── */
+    /* -- Full-screen split layout -- */
     <div className="fixed inset-0 z-[80] flex flex-col bg-white">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 bg-gray-900 text-white shadow-md shrink-0">
@@ -472,7 +472,7 @@ export function ExtractionReviewModal({
       {/* Split body */}
       <div className="flex-1 overflow-hidden flex">
 
-        {/* ── Left pane: images ── */}
+        {/* -- Left pane: images -- */}
         <div className="w-1/2 border-r border-gray-200 flex flex-col overflow-hidden">
           {/* Zoom toolbar */}
           <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
@@ -522,7 +522,7 @@ export function ExtractionReviewModal({
           </div>
         </div>
 
-        {/* ── Right pane: wizard ── */}
+        {/* -- Right pane: wizard -- */}
         <div className="w-1/2 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto px-6 py-4">{stepContent}</div>
           <div className="px-6 pb-3 shrink-0">

@@ -24,9 +24,9 @@ export const GRADING_MODEL = "claude-opus-4-5";
 /** Storage bucket holding teacher-uploaded scans of completed scripts. */
 export const SCAN_BUCKET = "exam-scans";
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Types
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 export type MarkschemeSource =
   | "part_latex"
@@ -67,9 +67,9 @@ export function unitLabel(u: Pick<GradingUnit, "questionNumber" | "partLabel">):
   return `${u.questionNumber}(${p})`;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Validation layer
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 /** A single mark scheme token and whether the student earned it. */
 export const MarkBreakdownEntrySchema = z.object({
@@ -225,9 +225,9 @@ export function validateGradeResponse(
   return { ok: true, outcome: { grades, warnings } };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Mark scheme assembly
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 /** Normalise a part label so "(b)(ii)", "b ii" and "bii" all compare equal. */
 function normalisePartLabel(label: string | null | undefined): string {
@@ -405,9 +405,9 @@ export async function assembleMarkScheme(
   return { units, warnings };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // Prompts
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 
 export const GRADING_SYSTEM_PROMPT = `You are an experienced IB Diploma Programme Mathematics examiner marking a scanned, handwritten student script against an official IB mark scheme.
 

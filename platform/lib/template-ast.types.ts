@@ -1,6 +1,6 @@
 /**
  * template-ast.types.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * TypeScript types for the CleverPlatform Nuanced Analysis TemplateAst.
  *
  * These types are inferred from the Zod schemas in template-ast.schema.ts.
@@ -8,7 +8,7 @@
  *
  * They are re-exported here as a convenience barrel so consumers
  * can import from one file without importing the full Zod runtime.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 export type {

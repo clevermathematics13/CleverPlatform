@@ -83,7 +83,7 @@ function splitSegments(
   return segments;
 }
 
-// ─── Line-first grouping ─────────────────────────────────────────────────────
+// --- Line-first grouping -----------------------------------------------------
 //
 // splitSegments() above scans the WHOLE preprocessed string in one pass,
 // pulling out $...$/$$...$$/\[...\]/\(...\) math wherever it appears and
@@ -319,8 +319,8 @@ function renderStyledText(
   commandTerm: string | null | undefined,
   contextTerms: string[]
 ): React.ReactNode {
-  const BOLD_OPEN = "\u{E001}", BOLD_CLOSE = "\u{E002}";
-  const ITAL_OPEN = "\u{E003}", ITAL_CLOSE = "\u{E004}";
+  const BOLD_OPEN = "◆", BOLD_CLOSE = "◇";
+  const ITAL_OPEN = "▲", ITAL_CLOSE = "▽";
   const re = new RegExp(`[${BOLD_OPEN}${ITAL_OPEN}]`, "u");
   if (!re.test(text)) return renderWithTermHighlights(text, commandTerm, contextTerms);
 
@@ -393,12 +393,12 @@ function mergeLabelLines(src: string): string {
         let k = j + 1;
         while (k < lines.length && lines[k].trim() === "") k++;
         const contentLine = k < lines.length ? lines[k].trim() : "";
-        out.push(`(${letterMatch[1]})\u2002(${romanMatch[1]})\u2002${contentLine}`);
+        out.push(`(${letterMatch[1]}) (${romanMatch[1]}) ${contentLine}`);
         i = k + 1;
         continue;
       }
       const contentLine = j < lines.length ? lines[j].trim() : "";
-      out.push(`(${letterMatch[1]})\u2002${contentLine}`);
+      out.push(`(${letterMatch[1]}) ${contentLine}`);
       i = j + 1;
       continue;
     }
@@ -407,7 +407,7 @@ function mergeLabelLines(src: string): string {
       let k = i + 1;
       while (k < lines.length && lines[k].trim() === "") k++;
       const contentLine = k < lines.length ? lines[k].trim() : "";
-      out.push(`\u2003\u2003(${trimmed.slice(1, -1)})\u2002${contentLine}`);
+      out.push(`  (${trimmed.slice(1, -1)}) ${contentLine}`);
       i = k + 1;
       continue;
     }
@@ -491,8 +491,8 @@ function preprocessLatex(src: string): string {
   // Convert enumerate/itemize content:
   // \item[(label)] → newline + "label " (label already contains parens like (i), (a))
   // \item           → newline + "• "
-  out = out.replace(/\\item\[([^\]]*)\]/g, "\n$1\u2002"); // (i), (ii), (a) ...
-  out = out.replace(/\\item(?!\[)/g, "\n\u2022\u2002");    // bullet
+  out = out.replace(/\\item\[([^\]]*)\]/g, "\n$1 "); // (i), (ii), (a) ...
+  out = out.replace(/\\item(?!\[)/g, "\n• ");    // bullet
 
   // Strip the container environment tags themselves
   out = out.replace(/\\(?:begin|end)\{(?:enumerate|itemize)\}/g, "");
@@ -509,9 +509,9 @@ function preprocessLatex(src: string): string {
   // Convert LaTeX text-mode formatting commands to Unicode/marker equivalents
   // so they render correctly in text segments (outside math mode).
   // We use distinctive markers that won't appear in normal LaTeX.
-  out = out.replace(/\\textbf\{([^}]*)\}/g, "\u{E001}$1\u{E002}"); // bold markers
-  out = out.replace(/\\textit\{([^}]*)\}/g, "\u{E003}$1\u{E004}"); // italic markers
-  out = out.replace(/\\emph\{([^}]*)\}/g, "\u{E003}$1\u{E004}");   // treat \emph same as \textit
+  out = out.replace(/\\textbf\{([^}]*)\}/g, "◆$1◇"); // bold markers
+  out = out.replace(/\\textit\{([^}]*)\}/g, "▲$1▽"); // italic markers
+  out = out.replace(/\\emph\{([^}]*)\}/g, "▲$1▽");   // treat \emph same as \textit
 
   return out;
 }
@@ -539,7 +539,7 @@ function extractNoteBlocks(src: string): { text: string; notes: string[] } {
   // in \textbf{Note:} by the extraction model — preprocessLatex converts
   // \textbf{} to a private-use bold-open marker before this runs, so a
   // literal "Note:" test alone would miss that case entirely.
-  const NOTE_START_RE = /^\u{E001}?Note:/u;
+  const NOTE_START_RE = /^◆?Note:/u;
   let i = 0;
   while (i < lines.length) {
     const trimmed = lines[i].trim();
@@ -570,7 +570,7 @@ function extractNoteBlocks(src: string): { text: string; notes: string[] } {
  * preprocessLatex converts to the private-use bold-open/close marker pair
  * before this ever runs). Used to strip the prefix — see renderNoteBox.
  */
-const NOTE_PREFIX_RE = /^\u{E001}?Note:\u{E002}?\s*/u;
+const NOTE_PREFIX_RE = /^◆?Note:◇?\s*/u;
 
 /**
  * Render one extracted note in a bordered box, matching the IB source

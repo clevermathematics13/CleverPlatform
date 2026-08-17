@@ -1,6 +1,6 @@
 /**
  * Command-term validator for generated Nuanced Analysis drafts.
- * ─────────────────────────────────────────────────────────────
+ * -------------------------------------------------------------
  * WHY THIS EXISTS: a generated packet ("The Anatomy of a Dataset") shipped
  * with eight questions whose prompts contained a fully-formed setup sentence
  * but NO command term / task instruction at all — the model wrote the setup

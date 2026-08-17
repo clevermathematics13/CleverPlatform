@@ -330,7 +330,7 @@ export function postProcessMathpixLatex(raw: string): string {
   return out;
 }
 
-// ─── Mark-token extraction ────────────────────────────────────────────────────
+// --- Mark-token extraction ----------------------------------------------------
 
 /**
  * A single countable mark token parsed from markscheme LaTeX.

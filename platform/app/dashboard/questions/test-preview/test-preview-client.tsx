@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import QRCode from "qrcode";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------
 
 interface TestBuilderConfig {
   questionIds: string[];
@@ -56,7 +56,7 @@ interface NameField {
   h: number;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------
 
 function formatDate(iso: string): string {
   if (!iso) return "";
@@ -98,7 +98,7 @@ function ibdpDottedLineCount(): number {
 const IB_DOT_ROW =
   ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .";
 
-// ── Page / box geometry constants ──────────────────────────────────────────
+// -- Page / box geometry constants ------------------------------------------
 //
 // The answer box border now fills all remaining space on the page (matching
 // the real IB paper, where the 12 dotted lines are just a suggested
@@ -280,7 +280,7 @@ function renderPageChrome(
   );
 }
 
-// ─── Module-level exam data cache (survives component re-mounts) ─────────────
+// --- Module-level exam data cache (survives component re-mounts) -------------
 
 interface ExamDataCache {
   key: string;
@@ -303,7 +303,7 @@ function cacheKey(config: TestBuilderConfig): string {
   });
 }
 
-// ─── QR generation (async per question per student) ──────────────────────────
+// --- QR generation (async per question per student) --------------------------
 
 async function makeQrDataUrl(
   examName: string,
@@ -320,7 +320,7 @@ async function makeQrDataUrl(
   }
 }
 
-// ─── Component ───────────────────────────────────────────────────────────────
+// --- Component ---------------------------------------------------------------
 
 export function TestPreviewClient() {
   // Lazily read config from sessionStorage so it's available immediately on
@@ -391,7 +391,7 @@ export function TestPreviewClient() {
     error: null,
   });
 
-  // ── Handle missing config ───────────────────────────────────────────────────
+  // -- Handle missing config ---------------------------------------------------
   useEffect(() => {
     if (!config) {
       setError("No exam configuration found. Please return to the question bank and build a test.");
@@ -399,7 +399,7 @@ export function TestPreviewClient() {
     }
   }, [config]);
 
-  // ── Fetch data once config is loaded ───────────────────────────────────────
+  // -- Fetch data once config is loaded ---------------------------------------
   useEffect(() => {
     if (!config) return;
 
@@ -470,7 +470,7 @@ export function TestPreviewClient() {
     fetchAll();
   }, [config]);
 
-  // ── Generate QR codes once students + questions are ready ──────────────────
+  // -- Generate QR codes once students + questions are ready ------------------
   useEffect(() => {
     if (!config || students.length === 0 || questions.length === 0) return;
 
@@ -497,7 +497,7 @@ export function TestPreviewClient() {
     generateQrs();
   }, [config, students, questions]);
 
-  // ─── Derived values ────────────────────────────────────────────────────────
+  // --- Derived values --------------------------------------------------------
 
   const showSections =
     config && config.paper !== 3 && config.curriculum === "AA";
@@ -523,7 +523,7 @@ export function TestPreviewClient() {
     ? [...sectionAQuestions, ...sectionBQuestions]
     : questions;
 
-  // ─── Print layout audit (in-browser print-preview simulation) ─────────────
+  // --- Print layout audit (in-browser print-preview simulation) -------------
   //
   // Measures the *actual rendered* DOM of the general (non-batched) exam —
   // not a guess, not a headless-browser reproduction — to confirm every
@@ -626,7 +626,7 @@ export function TestPreviewClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, error, config, orderedQuestions.length]);
 
-  // ─── PDF export (server-side, bypasses the browser print dialog) ──────────
+  // --- PDF export (server-side, bypasses the browser print dialog) ----------
   //
   // window.print() hands page geometry to whatever Margins/Scale the OS
   // print dialog is set to, which is exactly what broke the Section A
@@ -671,7 +671,7 @@ export function TestPreviewClient() {
     }
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // --- Render ----------------------------------------------------------------
 
   if (loading) {
     return (
@@ -707,7 +707,7 @@ export function TestPreviewClient() {
 
   return (
     <div className="preview-root" style={{ position: "fixed", inset: 0, zIndex: 100, overflow: "hidden", display: "flex", flexDirection: "column", background: "white", color: "#111827" }}>
-      {/* ── Print controls (hidden in print) ── */}
+      {/* -- Print controls (hidden in print) -- */}
       <div
         className="no-print"
         style={{ background: "white", borderBottom: "1px solid #e5e7eb", padding: "12px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", boxShadow: "0 1px 2px rgba(0,0,0,0.05)", flexShrink: 0, printColorAdjust: "exact" }}
@@ -784,7 +784,7 @@ export function TestPreviewClient() {
         </div>
       </div>
 
-      {/* ── Print layout audit banner (hidden in print) ── */}
+      {/* -- Print layout audit banner (hidden in print) -- */}
       {printAudit.status !== "idle" && (
         <div
           className="no-print"
@@ -815,7 +815,7 @@ export function TestPreviewClient() {
         </div>
       )}
 
-      {/* ── PDF export error banner (hidden in print) ── */}
+      {/* -- PDF export error banner (hidden in print) -- */}
       {pdfExport.error && (
         <div
           className="no-print"
@@ -832,10 +832,10 @@ export function TestPreviewClient() {
         </div>
       )}
 
-      {/* ── Single scrollable body ── */}
+      {/* -- Single scrollable body -- */}
       <div className="preview-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
 
-      {/* ── Table of contents (screen only) ── */}
+      {/* -- Table of contents (screen only) -- */}
       {orderedQuestions.length > 0 && (
         <div className="no-print" style={{ margin: "0 0 24px" }}>
           <div style={{ maxWidth: "210mm", margin: "0 auto", padding: "0 20mm" }}>
@@ -906,7 +906,7 @@ export function TestPreviewClient() {
         </div>
       )}
 
-      {/* ── General exam — shown on screen; printed by "Print General Exam" ── */}
+      {/* -- General exam — shown on screen; printed by "Print General Exam" -- */}
       <div className={printMode === "batched" ? "batched-only" : undefined}>
         {thumbnailUrl && (
           <div
@@ -1034,7 +1034,7 @@ export function TestPreviewClient() {
         })}
       </div>
 
-      {/* ── Per-student batched blocks — hidden on screen; printed by "Print Batched Exam" ── */}
+      {/* -- Per-student batched blocks — hidden on screen; printed by "Print Batched Exam" -- */}
       <div className="general-only">
         {students.map((student, sIdx) => {
           const name = studentDisplayName(student);

@@ -106,7 +106,7 @@ export async function POST(
     );
   }
 
-  // ── Context ───────────────────────────────────────────────────────────────
+  // -- Context ---------------------------------------------------------------
   const { data: test, error: testErr } = await supabase
     .from("tests")
     .select("id, name")
@@ -122,7 +122,7 @@ export async function POST(
     .eq("id", studentId)
     .maybeSingle();
 
-  // ── Mark scheme assembly ──────────────────────────────────────────────────
+  // -- Mark scheme assembly --------------------------------------------------
   let units: GradingUnit[];
   let assemblyWarnings: string[];
   try {
@@ -148,7 +148,7 @@ export async function POST(
     );
   }
 
-  // ── Resolve the scan ──────────────────────────────────────────────────────
+  // -- Resolve the scan ------------------------------------------------------
   let scanBase64: string;
   let scanStoragePath: string;
 
@@ -232,7 +232,7 @@ export async function POST(
     );
   }
 
-  // ── Open the run ──────────────────────────────────────────────────────────
+  // -- Open the run ----------------------------------------------------------
   const { data: run, error: runErr } = await supabase
     .from("ai_grade_runs")
     .insert({
@@ -261,7 +261,7 @@ export async function POST(
     return NextResponse.json({ error: message, runId: run.id }, { status });
   };
 
-  // ── Grade ─────────────────────────────────────────────────────────────────
+  // -- Grade -----------------------------------------------------------------
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   let responseText: string;
@@ -304,7 +304,7 @@ export async function POST(
 
   const { grades, warnings } = validation.outcome;
 
-  // ── Persist results ───────────────────────────────────────────────────────
+  // -- Persist results -------------------------------------------------------
   const rows = grades.map((g) => ({
     run_id: run.id,
     test_item_id: g.unit.testItemId,

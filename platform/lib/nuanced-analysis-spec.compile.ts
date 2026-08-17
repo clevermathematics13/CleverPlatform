@@ -1,6 +1,6 @@
 /**
  * nuanced-analysis-spec.compile.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Deterministically compiles a validated NuancedAnalysisSpec into the generation
  * system prompt used by app/api/generate-packet.
  *
@@ -14,7 +14,7 @@
  *     so the prompt can never encode a malformed template.
  *
  * This function does NOT call any model. It is pure (spec → string).
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import type { NuancedAnalysisSpec } from "./nuanced-analysis-spec.schema";

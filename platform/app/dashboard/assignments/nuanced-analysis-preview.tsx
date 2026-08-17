@@ -2,7 +2,7 @@
 
 /**
  * NuancedAnalysisPreview
- * ──────────────────────
+ * ----------------------
  * Full DESIGN_INSTRUCTIONS.md compliant live preview for Nuanced Analysis.
  *
  * Implements all 8 Universal Design Layers:
@@ -48,7 +48,7 @@ import {
   type DuplicatePair,
 } from "@/lib/assignments";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// -- Types ---------------------------------------------------------------------
 
 export interface CommandTermEntry { term: string; definition: string; }
 export interface SpotlightBox { title: string; body: string; }
@@ -123,7 +123,7 @@ export interface NuancedDraft extends AssignmentDraft {
   reflectionQuestions?: string[];
 }
 
-// ── Demand scale ──────────────────────────────────────────────────────────────
+// -- Demand scale --------------------------------------------------------------
 
 const DEMAND_SCALE = [
   { label: "Write down", colour: "#9ca3af" },
@@ -138,7 +138,7 @@ const DEMAND_SCALE = [
   { label: "Justify",    colour: "#991b1b" },
 ];
 
-// ── Helper sub-components ──────────────────────────────────────────────────────
+// -- Helper sub-components ------------------------------------------------------
 
 function TierBadge({ tier }: { tier: 1 | 2 | 3 }) {
   const colours: Record<1 | 2 | 3, string> = {
@@ -364,7 +364,7 @@ function AnswerBox({ lines, style }: { lines: number; style?: "boxes" | "lines" 
   );
 }
 
-// ── Question block ────────────────────────────────────────────────────────────
+// -- Question block ------------------------------------------------------------
 
 function QuestionBlock({
   q,
@@ -482,7 +482,7 @@ function QuestionBlock({
   );
 }
 
-// ── Section controls (per-question marks adjuster) ────────────────────────────
+// -- Section controls (per-question marks adjuster) ----------------------------
 
 function SectionControls({
   section,
@@ -514,7 +514,7 @@ function SectionControls({
   );
 }
 
-// ── Main NuancedAnalysisPreview ────────────────────────────────────────────────
+// -- Main NuancedAnalysisPreview ------------------------------------------------
 
 export function NuancedAnalysisPreview({
   draft,
@@ -582,7 +582,7 @@ export function NuancedAnalysisPreview({
       className="font-serif text-gray-900 max-w-[794px] mx-auto"
       style={{ fontFamily: "'Times New Roman', Times, serif" }}
     >
-      {/* ── Document header ──────────────────────────────────────────────────── */}
+      {/* -- Document header ---------------------------------------------------- */}
       <header className="mb-6">
         <div className="text-center mb-3">
           <p className="text-[9pt] font-bold uppercase tracking-widest text-teal-700 mb-1">
@@ -640,7 +640,7 @@ export function NuancedAnalysisPreview({
         <ProgressTracker sections={studentSections} />
       </header>
 
-      {/* ── Duplicate warning banner ────────────────────────────────────────── */}
+      {/* -- Duplicate warning banner ------------------------------------------ */}
       {duplicatePairs.length > 0 && (
         <div className="mb-4 rounded border border-yellow-400 bg-yellow-50 px-3 py-2">
           <p className="text-[9pt] font-semibold text-yellow-800">
@@ -649,7 +649,7 @@ export function NuancedAnalysisPreview({
         </div>
       )}
 
-      {/* ── Instructions ─────────────────────────────────────────────────────── */}
+      {/* -- Instructions ------------------------------------------------------- */}
       {draft.instructions?.length > 0 && (
         <section className="mb-4">
           <ol className="list-decimal list-outside ml-5 space-y-1 text-[10pt] text-gray-800">
@@ -660,23 +660,23 @@ export function NuancedAnalysisPreview({
         </section>
       )}
 
-      {/* ── Command Terms strip ───────────────────────────────────────────────── */}
+      {/* -- Command Terms strip ------------------------------------------------- */}
       {nd.commandTerms?.length ? <CommandTermsStrip terms={nd.commandTerms} /> : null}
 
-      {/* ── TOK Provocations ──────────────────────────────────────────────────── */}
+      {/* -- TOK Provocations ---------------------------------------------------- */}
       {nd.tokProvocations?.length ? <TokBlock provocations={nd.tokProvocations} /> : null}
 
-      {/* ── International Mindedness ──────────────────────────────────────────── */}
+      {/* -- International Mindedness -------------------------------------------- */}
       {nd.internationalMindedness ? <ImBox im={nd.internationalMindedness} /> : null}
 
-      {/* ── Planted error intro ───────────────────────────────────────────────── */}
+      {/* -- Planted error intro ------------------------------------------------- */}
       {nd.plantedErrorIntro && (
         <div className="my-4 rounded-r border-l-4 border-rose-400 bg-rose-50 px-3 py-2">
           <p className="text-[9.5pt] text-rose-800 leading-relaxed"><LatexRenderer latex={nd.plantedErrorIntro} /></p>
         </div>
       )}
 
-      {/* ── Sections (student-facing only; Teacher's Companion excluded) ─────── */}
+      {/* -- Sections (student-facing only; Teacher's Companion excluded) ------- */}
       {studentSections.map((section, si) => {
         const isCollapsed = collapsed[si] ?? false;
 
@@ -736,7 +736,7 @@ export function NuancedAnalysisPreview({
         );
       })}
 
-      {/* ── Reflection questions ──────────────────────────────────────────────── */}
+      {/* -- Reflection questions ------------------------------------------------ */}
       {nd.reflectionQuestions?.length ? (
         <section className="mt-6 rounded-r border-l-4 border-purple-300 bg-purple-50 px-3 py-3">
           <p className="text-[8.5pt] font-bold text-purple-700 uppercase tracking-wide mb-2">

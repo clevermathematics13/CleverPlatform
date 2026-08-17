@@ -345,7 +345,7 @@ Additional rules:
     if (isQuestionDraft && looksGraphLike(extractedLatex)) graphDetected = true;
   }
 
-  // ── Claude normalisation pass (Mathpix output only) ───────────────────────
+  // -- Claude normalisation pass (Mathpix output only) -----------------------
   // Re-run Claude with the original images + raw Mathpix LaTeX to fix any OCR
   // errors and normalise to IB formatting conventions.
   if (USE_MATHPIX && extractedLatex) {
@@ -391,7 +391,7 @@ Additional rules:
     }
   }
 
-  // ── IBPart boundary correction pass (draft fields only) ──────────────────
+  // -- IBPart boundary correction pass (draft fields only) ------------------
   // Cross-reference the extracted IBPart blocks with the original images to
   // detect and fix interspersed context paragraphs that landed in the wrong
   // block. A common error: text that appears BETWEEN part (c) and (d) in the

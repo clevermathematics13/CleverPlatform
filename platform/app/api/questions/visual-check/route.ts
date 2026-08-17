@@ -110,7 +110,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Load the part and its stored LaTeX ────────────────────────────────────
+  // -- Load the part and its stored LaTeX ------------------------------------
   const { data: part, error: partErr } = await supabase
     .from("question_parts")
     .select("id, question_id, part_label, content_latex, markscheme_latex")
@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Load the source scans this LaTeX was extracted from ───────────────────
+  // -- Load the source scans this LaTeX was extracted from -------------------
   const imageType = field === "markscheme_latex" ? "markscheme" : "question";
   const { data: imageRows, error: imgErr } = await supabase
     .from("question_images")
@@ -251,7 +251,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // ── Compare the render against the source ────────────────────────────────
+  // -- Compare the render against the source --------------------------------
   const compareContent: Anthropic.ContentBlockParam[] = [
     {
       type: "text",
@@ -319,7 +319,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // ── Propose a correction for anything a rewrite could actually fix ───────
+  // -- Propose a correction for anything a rewrite could actually fix -------
   // "formatting" findings are renderer styling, not transcription errors —
   // rewriting the LaTeX cannot fix those, so they never trigger a correction.
   const fixable: Discrepancy[] = comparison.discrepancies.filter(

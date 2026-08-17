@@ -14,7 +14,7 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { SubtopicMastery } from "@/lib/reflection-types";
 
-// ── Props ─────────────────────────────────────────────────────────────────────
+// -- Props ---------------------------------------------------------------------
 
 interface SavedAnalysis {
   analysis_text: string;
@@ -28,7 +28,7 @@ interface StudentDashboardProps {
   savedAnalysis?: SavedAnalysis | null;
 }
 
-// ── Section metadata ──────────────────────────────────────────────────────────
+// -- Section metadata ----------------------------------------------------------
 
 const SECTION_NAMES: Record<number, string> = {
   1: "Number & Algebra",
@@ -50,7 +50,7 @@ const SECTION_ACCENT: Record<number, {
 };
 const FALLBACK_ACCENT = SECTION_ACCENT[1];
 
-// ── Inline math renderer ──────────────────────────────────────────────────────
+// -- Inline math renderer ------------------------------------------------------
 
 function renderDescriptor(text: string): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
@@ -74,7 +74,7 @@ function renderDescriptor(text: string): React.ReactNode[] {
   return parts.length > 0 ? parts : [<span key="full">{text}</span>];
 }
 
-// ── Tier helpers ──────────────────────────────────────────────────────────────
+// -- Tier helpers --------------------------------------------------------------
 
 function tier(pct: number): string {
   if (pct >= 85) return "Mastered";
@@ -89,7 +89,7 @@ function tierColor(pct: number): string {
   return "text-rose-400";
 }
 
-// ── File helpers ──────────────────────────────────────────────────────────────
+// -- File helpers --------------------------------------------------------------
 
 const ACCEPTED_TYPES = [
   "application/pdf",
@@ -127,7 +127,7 @@ interface AttachedFile {
   base64: string; // raw base64, no prefix
 }
 
-// ── NuancedAnalysisPanel ──────────────────────────────────────────────────────
+// -- NuancedAnalysisPanel ------------------------------------------------------
 
 function NuancedAnalysisPanel({
   studentId,
@@ -146,7 +146,7 @@ function NuancedAnalysisPanel({
   const [fileError, setFileError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // ── file handling ────────────────────────────────────────────────────────
+  // -- file handling --------------------------------------------------------
 
   const addFiles = useCallback(async (incoming: FileList | File[]) => {
     setFileError(null);
@@ -200,7 +200,7 @@ function NuancedAnalysisPanel({
     }
   };
 
-  // ── generation ───────────────────────────────────────────────────────────
+  // -- generation -----------------------------------------------------------
 
   async function generate() {
     setLoading(true);
@@ -238,7 +238,7 @@ function NuancedAnalysisPanel({
   return (
     <div className="rounded-2xl border border-da-border bg-da-surface/80 shadow-lg overflow-hidden">
 
-      {/* ── Header ── */}
+      {/* -- Header -- */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-da-border/50 bg-indigo-950/30">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-indigo-400" />
@@ -255,7 +255,7 @@ function NuancedAnalysisPanel({
         </button>
       </div>
 
-      {/* ── Drop zone ── */}
+      {/* -- Drop zone -- */}
       <div className="px-4 pt-4 pb-2">
         <div
           onDragOver={onDragOver}
@@ -338,7 +338,7 @@ function NuancedAnalysisPanel({
         )}
       </div>
 
-      {/* ── Generation output ── */}
+      {/* -- Generation output -- */}
       <div className="px-5 pb-4">
         {error && <p className="text-xs text-rose-400 mb-3">{error}</p>}
         {loading && (
@@ -365,7 +365,7 @@ function NuancedAnalysisPanel({
   );
 }
 
-// ── Subtopic row ──────────────────────────────────────────────────────────────
+// -- Subtopic row --------------------------------------------------------------
 
 function SubtopicRow({ m, studentId, accent }: { m: SubtopicMastery; studentId?: string | null; accent: typeof FALLBACK_ACCENT }) {
   const pct = m.percentage;
@@ -403,7 +403,7 @@ function SubtopicRow({ m, studentId, accent }: { m: SubtopicMastery; studentId?:
   );
 }
 
-// ── Section card ──────────────────────────────────────────────────────────────
+// -- Section card --------------------------------------------------------------
 
 function SectionCard({ section, rows, studentId }: { section: number; rows: SubtopicMastery[]; studentId?: string | null }) {
   const accent = SECTION_ACCENT[section] ?? FALLBACK_ACCENT;
@@ -433,7 +433,7 @@ function SectionCard({ section, rows, studentId }: { section: number; rows: Subt
   );
 }
 
-// ── Overall summary strip ─────────────────────────────────────────────────────
+// -- Overall summary strip -----------------------------------------------------
 
 function OverallStrip({ mastery }: { mastery: SubtopicMastery[] }) {
   const assessed = mastery.filter((m) => m.total_marks > 0);
@@ -475,7 +475,7 @@ function OverallStrip({ mastery }: { mastery: SubtopicMastery[] }) {
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
+// -- Main component ------------------------------------------------------------
 
 export function StudentDashboard({ mastery, studentName: _studentName, studentId, savedAnalysis }: StudentDashboardProps) {
   const bySection = useMemo(() => {

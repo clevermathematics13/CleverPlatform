@@ -15,7 +15,7 @@ import {
   sanitizeCurriculumModule,
 } from "@/lib/dp-question-designer";
 
-// ── Sample module for initial display ────────────────────────────────────────
+// -- Sample module for initial display ----------------------------------------
 const SAMPLE_MODULE: CurriculumModule = {
   title: "Foundations of Calculus: A Function-Family Approach to Limits",
   course: "IBDP Mathematics AA HL",
@@ -181,7 +181,7 @@ const SAMPLE_MODULE: CurriculumModule = {
   ],
 };
 
-// ── Styles ────────────────────────────────────────────────────────────────────
+// -- Styles --------------------------------------------------------------------
 const inputClass =
   "w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
 const labelClass = "block text-xs font-semibold text-gray-700 mb-1";
@@ -192,7 +192,7 @@ const btnSecondary =
 const btnDanger =
   "rounded bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100 transition-colors";
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// -- Component -----------------------------------------------------------------
 
 export function DPQuestionDesigner() {
   // Input form state
@@ -218,7 +218,7 @@ export function DPQuestionDesigner() {
   const [editJson, setEditJson] = useState<string>("");
   const [showJsonEditor, setShowJsonEditor] = useState(false);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // -- Handlers --------------------------------------------------------------
 
   const updateInput = useCallback(
     (updates: Partial<DPQuestionDesignerInput>) => {
@@ -286,7 +286,7 @@ export function DPQuestionDesigner() {
     }
   }, [input]);
 
-  // ── Template management ──────────────────────────────────────────────────
+  // -- Template management --------------------------------------------------
 
   const loadTemplates = useCallback(async () => {
     setLoadingTemplates(true);
@@ -416,7 +416,7 @@ export function DPQuestionDesigner() {
     void navigator.clipboard.writeText(json);
   }, [module]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // -- Render ----------------------------------------------------------------
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -855,7 +855,7 @@ export function DPQuestionDesigner() {
   );
 }
 
-// ── Stage Card Subcomponent ────────────────────────────────────────────────────
+// -- Stage Card Subcomponent ----------------------------------------------------
 
 function StageCard({
   stage,

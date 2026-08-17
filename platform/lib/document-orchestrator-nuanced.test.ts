@@ -1,10 +1,10 @@
 /**
  * document-orchestrator-nuanced.test.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Smoke tests for DocumentOrchestratorService.
  *
  * Run: cd platform && npx vitest run lib/document-orchestrator-nuanced.test.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import { describe, it, expect } from "vitest";
@@ -109,7 +109,7 @@ describe("DocumentOrchestratorService", () => {
     expect(result.success).toBe(true);
   });
 
-  // ── Malformed AI output — regression tests ────────────────────────────────
+  // -- Malformed AI output — regression tests --------------------------------
   // The Typst template accesses these enrichment fields via direct dictionary
   // access (not `.at(key, default:)`), and a missing key is a HARD COMPILE
   // FAILURE for the entire document (confirmed empirically against the real

@@ -54,7 +54,7 @@ export async function POST(
     overrides.set(sel.resultId.trim(), marks);
   }
 
-  // ── Verify the run belongs to this assessment ─────────────────────────────
+  // -- Verify the run belongs to this assessment -----------------------------
   const { data: run, error: runErr } = await supabase
     .from("ai_grade_runs")
     .select("id, test_id, student_id, status")

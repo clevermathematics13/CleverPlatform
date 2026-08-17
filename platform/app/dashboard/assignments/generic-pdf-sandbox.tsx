@@ -219,7 +219,7 @@ export function GenericAssignmentSandbox({
   return (
     <section className="rounded-2xl border border-da-border bg-da-surface/80 p-6 shadow-lg shadow-black/30">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
-        {/* ── Left panel ─────────────────────────────────────────────────────────── */}
+        {/* -- Left panel ----------------------------------------------------------- */}
         <div className="space-y-5">
           <ActivityGeneratorPanel gradeLevel={gradeLevel} formatting={formatting} onDraftGenerated={(g) => setDraft(g)} />
 
@@ -374,7 +374,7 @@ export function GenericAssignmentSandbox({
           )}
         </div>
 
-        {/* ── Right panel ───────────────────────────────────────────────────────── */}
+        {/* -- Right panel --------------------------------------------------------- */}
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/60 px-4 py-2.5">
             <Stat label="Total marks" value={`[${totalMarks}]`} accent="amber" />
@@ -448,7 +448,7 @@ export function GenericAssignmentSandbox({
   );
 }
 
-// ── Small reusable UI atoms ──────────────────────────────────────────────────────────────────────
+// -- Small reusable UI atoms ----------------------------------------------------------------------
 
 function Spinner() {
   return (

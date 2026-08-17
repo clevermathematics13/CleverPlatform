@@ -2,7 +2,7 @@
 
 /**
  * EditTemplateModal
- * ─────────────────
+ * -----------------
  * The "Edit Template" flow for the Nuanced Analysis pedagogical spec
  * (NuancedAnalysisSpec — the validated JSON that defines what every generated
  * packet must contain: the three-phase flipped/in-class/take-home spine, the
@@ -27,7 +27,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NuancedAnalysisSpec } from "@/lib/nuanced-analysis-spec.schema";
 
-// ── API response shapes ───────────────────────────────────────────────────────
+// -- API response shapes -------------------------------------------------------
 
 type SpecSource = "own" | "canonical" | "builtin";
 
@@ -77,7 +77,7 @@ function formatFieldErrors(fieldErrors?: Record<string, string>): string | null 
   return lines.join(" • ") + (more > 0 ? ` • …and ${more} more` : "");
 }
 
-// ── Component ─────────────────────────────────────────────────────────────────
+// -- Component -----------------------------------------------------------------
 
 export function EditTemplateModal({
   open,
@@ -259,7 +259,7 @@ export function EditTemplateModal({
       aria-label="Edit Nuanced Analysis template"
     >
       <div className="flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-da-border bg-da-bg shadow-2xl">
-        {/* ── Header ─────────────────────────────────────────────────────────── */}
+        {/* -- Header ----------------------------------------------------------- */}
         <div className="flex items-start justify-between gap-3 border-b border-da-border px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold text-da-text">
@@ -279,7 +279,7 @@ export function EditTemplateModal({
           </button>
         </div>
 
-        {/* ── Body ───────────────────────────────────────────────────────────── */}
+        {/* -- Body ------------------------------------------------------------- */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loading && <p className="text-xs text-da-muted">Loading template…</p>}
 
@@ -426,7 +426,7 @@ export function EditTemplateModal({
           )}
         </div>
 
-        {/* ── Footer ─────────────────────────────────────────────────────────── */}
+        {/* -- Footer ----------------------------------------------------------- */}
         <div className="flex flex-wrap items-center gap-2 border-t border-da-border px-5 py-3">
           {hasPending && (
             <span className="rounded-full border border-da-accent/50 bg-da-accent/15 px-2.5 py-1 text-[11px] font-semibold text-da-text">

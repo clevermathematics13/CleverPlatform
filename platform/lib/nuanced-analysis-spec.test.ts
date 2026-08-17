@@ -1,6 +1,6 @@
 /**
  * nuanced-analysis-spec.test.ts
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  * Tests for the NuancedAnalysisSpec validation + compilation layer.
  *
  * Run with:  cd platform && npx vitest run lib/nuanced-analysis-spec.test.ts
@@ -11,7 +11,7 @@
  *   3. Cross-field invariants (superRefine) are enforced.
  *   4. The compiler is deterministic and emits every required contract anchor.
  *   5. The checklist summarises the spec.
- * ─────────────────────────────────────────────────────────────────────────────
+ * -----------------------------------------------------------------------------
  */
 
 import { describe, it, expect } from "vitest";

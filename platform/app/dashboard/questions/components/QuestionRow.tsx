@@ -12,7 +12,7 @@ import type {
   Subtopic,
 } from "./types";
 
-// ── Helpers ──────────────────────────────────────────────────────────────
+// -- Helpers --------------------------------------------------------------
 
 export function QuestionRow({
   question,
@@ -609,7 +609,7 @@ export function QuestionRow({
   );
 }
 
-// ── QuestionPartRow ─────────────────────────────────────────────────────────
+// -- QuestionPartRow ---------------------------------------------------------
 
 function QuestionPartRow({
   part, partIdx, question, commandTerms, onUpdateCommandTerm, onAddCustomTerm,
