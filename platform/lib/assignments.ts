@@ -275,7 +275,7 @@ export function buildActivityGeneratorSystemPrompt(
     '}',
     "",
     "DESIGN RULES:",
-    "1. Every section must be Part 0, Part 1, etc. Start with Part 0 as Activating Prior Knowledge.",
+    "1. Every section must be Part 0, Part 1, etc. Start with Part 0 as Activating Prior Knowledge. Part 0's questions are ORDINARY computational, definitional, or short-answer questions on the specific prerequisite skills named in \"prerequisites\"/\"syllabusTopics\" — e.g. a concrete numeric example, a named formula applied to given values, a short definition applied to a specific case. They must read exactly like any other question in the packet (a real number, a real named scenario, a real formula to apply), NOT like a meta-question about the packet itself. NEVER write a Part 0 prompt that refers to \"this analysis\", \"this packet\", \"the prerequisite topic\", \"the topic this builds on\", or any other phrase describing the packet rather than asking the student to do mathematics. If you are unsure what to ask, pick the single most basic fact, formula, or worked example the FIRST real mathematical step of Part 1 depends on, and turn that into a direct question with real numbers.",
     "2. tier: 1=★ (compulsory/entry), 2=★★ (standard), 3=★★★ (optional extension). ALL questions must have a tier.",
     "3. commandTerms: include only terms actually used in the packet.",
     "4. spotlight: the most important command-term distinction for this packet.",
