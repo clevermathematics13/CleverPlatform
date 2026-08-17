@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import { getApiTeacher } from '@/lib/auth';
 import { start } from 'workflow/api';
-import { chunkToSseTransform, sseResponseHeaders } from '@/lib/workflow-sse';
+import { toSseStream, sseResponseHeaders } from '@/lib/workflow-sse';
 import {
   generateNuancedAnalysis,
   type IncomingMessage,
@@ -9,22 +10,21 @@ import {
 } from '@/workflows/nuanced-analysis-generation';
 
 export const runtime = 'nodejs';
-// CORRECTION: this route's own invocation is what holds the streaming HTTP
-// response open to the browser, and that invocation is bound by maxDuration
-// same as any other function — the workflow's steps running unbounded in
-// total does NOT exempt this proxying route from its own ~300s ceiling. A
-// generation whose steps combined (attachment resolution + both Claude
-// passes + cleanup) take longer than that gets its connection to the
-// browser killed mid-stream, even though every individual step succeeded.
+
+// This route's own invocation holds the streaming HTTP response open to the
+// browser, so it is bound by maxDuration like any other function - the
+// workflow's steps running durably in the background does NOT exempt it.
 //
-// The actual fix for that is reconnection, not a bigger number here: the
-// client (readClaudeStream in activity-generator.tsx) treats a stream that
-// ends without a 'done'/'error' chunk as expected-and-recoverable, and
-// reconnects to /api/claude/resume/[runId] with the chunk count it already
-// received — that route resumes the SAME workflow run's stream via
-// run.getReadable({ startIndex }), picking up exactly where this one left
-// off. This is the pattern Vercel's own SDK is built around; its docs list
-// "Vercel Function timeouts" by name as what stream resumption solves.
+// In practice the browser's connection dies well before this ceiling: an
+// idle timeout was observed cutting connections at ~121s (see
+// platform/lib/workflow-sse.ts for the log evidence). Two mechanisms cover
+// that, and neither one is this number:
+//   1. Heartbeat frames (toSseStream) keep an otherwise-silent connection
+//      warm so it stops being cut in the first place.
+//   2. If a connection dies anyway, the client reconnects to
+//      /api/claude/resume/[runId] and, independently, polls
+//      /api/claude/status/[generationId] for ground truth - so a completed
+//      run is never lost just because a socket closed.
 export const maxDuration = 300;
 
 type ClaudeRequestBody = {
@@ -44,21 +44,25 @@ export async function POST(req: Request) {
     );
   }
 
+  // Minted here rather than derived from the workflow run id, so the client
+  // has a key it can poll for status from the very first moment - including
+  // if the initial connection dies before any bytes arrive.
+  const generationId = randomUUID();
+
   const contentLength = req.headers.get('content-length') ?? 'unknown';
   console.log(
-    `[api/claude] starting workflow: content-length=${contentLength} messages=${body.messages.length}`,
+    `[api/claude] starting workflow: generationId=${generationId} content-length=${contentLength} messages=${body.messages.length}`,
   );
 
-  // start() enqueues the run and returns immediately — it does not wait for
-  // the workflow to complete. The generation itself (attachment resolution,
-  // both Claude passes, cleanup) runs as durable steps outside this
-  // request's lifetime.
-  const run = await start(generateNuancedAnalysis, [body.system, body.messages]);
+  // start() enqueues the run and returns immediately - it does not wait for
+  // the workflow to complete. The generation itself runs as durable steps
+  // outside this request's lifetime.
+  const run = await start(generateNuancedAnalysis, [generationId, body.system, body.messages]);
 
-  const sseStream = run.getReadable<NuancedAnalysisChunk>().pipeThrough(chunkToSseTransform());
+  const sseStream = toSseStream(run.getReadable<NuancedAnalysisChunk>());
 
   return new Response(sseStream, {
     status: 200,
-    headers: sseResponseHeaders(run.runId),
+    headers: sseResponseHeaders(run.runId, generationId),
   });
 }
