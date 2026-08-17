@@ -19,12 +19,24 @@
  *     imperative.
  *  2. A lowercase match counts for unambiguous verb terms ("…and hence find
  *     the value of k" is a legitimate IB phrasing).
- *  3. A lowercase match does NOT count on its own for terms that commonly
- *     appear as NOUNS in setup text — "the box plot below", "the initial
- *     state", "the list of values". Those only count when preceded by a
- *     coordinating word ("and state", "or sketch", "then draw",
- *     "hence plot"). Without this, the exact archetype that failed (a
- *     statistics setup mentioning "box plot") would have slipped through.
+ *  3. A lowercase match for terms that commonly appear as NOUNS in setup
+ *     text ("the box plot below", "the initial state", "the list of
+ *     values") is rejected ONLY when immediately preceded by a determiner
+ *     ("the", "a", "an", "this", "that", "these", "those", "its", "your",
+ *     "our", "their") — that possessive/article is what marks the word as a
+ *     noun. Any other lowercase occurrence counts as the verb use, since
+ *     that is how these words actually appear as the task instruction in
+ *     real IB phrasing — e.g. "...find P(X∩Y) = 0.1, state, with a reason,
+ *     whether X and Y are independent events" uses "state" as the sentence's
+ *     own imperative verb, with no coordinating lead-in word before it at
+ *     all. An earlier version of this rule required a lead-in word ("and
+ *     state", "or sketch", "hence plot") before ANY lowercase ambiguous
+ *     term, which incorrectly flagged that exact phrasing as missing a
+ *     command term even though "state" plainly IS the command term there.
+ *     Determiner-exclusion still blocks the noun archetype that motivated
+ *     this rule ("the box plot below" — "state"/"plot"/etc. immediately
+ *     following "the" is excluded) without over-rejecting legitimate verb
+ *     phrasing that happens not to have a coordinating word before it.
  *  4. A question with subparts is treated as a stem: the parent prompt is
  *     exempt (IB stems often carry no command term), but every subpart must
  *     pass.
@@ -64,13 +76,17 @@ const NOUN_AMBIGUOUS_TERMS = new Set([
 ]);
 
 /**
- * Words that mark a lowercase command term as imperative when directly
+ * Determiners that mark an immediately-following ambiguous term as a NOUN
+ * ("the state", "a sketch", "your list") rather than the sentence's
+ * imperative verb. This is a negative lookbehind: a lowercase ambiguous
+ * term is accepted as a command term UNLESS one of these words sits right
  * before it. NOTE: every regex in this file is deliberately built without
- * any backslash escape sequences — command terms are purely alphabetic
- * (letters + spaces), so none are needed, and backslash-free source is
- * immune to the repo's known double-backslash push-corruption failure mode.
+ * any backslash escape sequences — command terms and determiners are purely
+ * alphabetic (letters + spaces), so none are needed, and backslash-free
+ * source is immune to the repo's known double-backslash push-corruption
+ * failure mode.
  */
-const IMPERATIVE_LEADIN = "(?:and|or|then|hence|otherwise)[,]?[ ]+";
+const NOUN_DETERMINERS = "(?:the|a|an|this|that|these|those|its|your|our|their)";
 
 type CompiledTerm = {
   term: string;
@@ -78,8 +94,11 @@ type CompiledTerm = {
   canonical: RegExp;
   /** Case-insensitive, word-bounded. */
   anyCase: RegExp;
-  /** Case-insensitive but requiring an imperative lead-in word. */
-  ledIn: RegExp;
+  /**
+   * Case-insensitive, word-bounded, AND not immediately preceded by a noun
+   * determiner (see NOUN_DETERMINERS above). Used only for ambiguous terms.
+   */
+  verbUse: RegExp;
   ambiguous: boolean;
 };
 
@@ -90,7 +109,22 @@ const COMPILED_TERMS: CompiledTerm[] = DEFAULT_COMMAND_TERMS.map((term) => {
     term,
     canonical: new RegExp(`(?:^|[^A-Za-z])${term}(?![A-Za-z])`),
     anyCase: new RegExp(`(?:^|[^A-Za-z])${term}(?![A-Za-z])`, "i"),
-    ledIn: new RegExp(`${IMPERATIVE_LEADIN}${term}(?![A-Za-z])`, "i"),
+    // The left boundary MUST be a lookbehind, not a consumed [^A-Za-z]
+    // character class: consuming the space before the term shifts the match
+    // start past it, so a determiner-exclusion lookbehind placed right
+    // before the term would then be testing the wrong position (it would
+    // see what's before the consumed space, not before the term itself).
+    // Node's V8 engine supports variable-length lookbehind natively.
+    // TWO lookbehinds, not one: real noun phrases usually have exactly one
+    // word between the determiner and the ambiguous noun ("the box plot",
+    // "the initial state", "your given list") — testing only the
+    // immediately-preceding word missed "the box plot" entirely (the
+    // determiner sits before "box", not before "plot"), which is the exact
+    // archetype this file was originally written to catch.
+    verbUse: new RegExp(
+      `(?<![A-Za-z])(?<!${NOUN_DETERMINERS} )(?<!${NOUN_DETERMINERS} [a-z]+ )${term}(?![A-Za-z])`,
+      "i",
+    ),
     ambiguous: NOUN_AMBIGUOUS_TERMS.has(term.toLowerCase()),
   };
 });
@@ -106,7 +140,7 @@ export function promptContainsCommandTerm(prompt: string): boolean {
   for (const compiled of COMPILED_TERMS) {
     if (compiled.canonical.test(text)) return true;
     if (!compiled.ambiguous && compiled.anyCase.test(text)) return true;
-    if (compiled.ambiguous && compiled.ledIn.test(text)) return true;
+    if (compiled.ambiguous && compiled.verbUse.test(text)) return true;
   }
   return false;
 }
