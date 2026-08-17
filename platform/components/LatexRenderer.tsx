@@ -319,8 +319,8 @@ function renderStyledText(
   commandTerm: string | null | undefined,
   contextTerms: string[]
 ): React.ReactNode {
-  const BOLD_OPEN = "", BOLD_CLOSE = "";
-  const ITAL_OPEN = "", ITAL_CLOSE = "";
+  const BOLD_OPEN = "◆", BOLD_CLOSE = "◇";
+  const ITAL_OPEN = "▲", ITAL_CLOSE = "▽";
   const re = new RegExp(`[${BOLD_OPEN}${ITAL_OPEN}]`, "u");
   if (!re.test(text)) return renderWithTermHighlights(text, commandTerm, contextTerms);
 
@@ -509,9 +509,9 @@ function preprocessLatex(src: string): string {
   // Convert LaTeX text-mode formatting commands to Unicode/marker equivalents
   // so they render correctly in text segments (outside math mode).
   // We use distinctive markers that won't appear in normal LaTeX.
-  out = out.replace(/\\textbf\{([^}]*)\}/g, "$1"); // bold markers
-  out = out.replace(/\\textit\{([^}]*)\}/g, "$1"); // italic markers
-  out = out.replace(/\\emph\{([^}]*)\}/g, "$1");   // treat \emph same as \textit
+  out = out.replace(/\\textbf\{([^}]*)\}/g, "◆$1◇"); // bold markers
+  out = out.replace(/\\textit\{([^}]*)\}/g, "▲$1▽"); // italic markers
+  out = out.replace(/\\emph\{([^}]*)\}/g, "▲$1▽");   // treat \emph same as \textit
 
   return out;
 }
@@ -539,7 +539,7 @@ function extractNoteBlocks(src: string): { text: string; notes: string[] } {
   // in \textbf{Note:} by the extraction model — preprocessLatex converts
   // \textbf{} to a private-use bold-open marker before this runs, so a
   // literal "Note:" test alone would miss that case entirely.
-  const NOTE_START_RE = /^?Note:/u;
+  const NOTE_START_RE = /^◆?Note:/u;
   let i = 0;
   while (i < lines.length) {
     const trimmed = lines[i].trim();
@@ -570,7 +570,7 @@ function extractNoteBlocks(src: string): { text: string; notes: string[] } {
  * preprocessLatex converts to the private-use bold-open/close marker pair
  * before this ever runs). Used to strip the prefix — see renderNoteBox.
  */
-const NOTE_PREFIX_RE = /^?Note:?\s*/u;
+const NOTE_PREFIX_RE = /^◆?Note:◇?\s*/u;
 
 /**
  * Render one extracted note in a bordered box, matching the IB source
