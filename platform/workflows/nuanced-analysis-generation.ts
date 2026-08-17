@@ -365,7 +365,45 @@ async function callClaude(
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new FatalError("ANTHROPIC_API_KEY not set");
 
-  const client = new Anthropic({ apiKey });
+  // maxRetries and timeout are set explicitly rather than left at SDK
+  // defaults (timeout: 10 minutes, maxRetries: 2) for two reasons:
+  //   1. The SDK's own docs warn request timeouts are retried by default,
+  //      "so in a worst-case scenario you may wait much longer than this
+  //      timeout" - and that retrying happens silently inside the SDK, with
+  //      no visibility from this file. A run that logged 0 chars after the
+  //      full SOFT_DEADLINE_MS could plausibly have been the SDK silently
+  //      retrying a stalled connection the whole time.
+  //   2. SOFT_DEADLINE_MS (235s) is well under the 10-minute SDK default,
+  //      so this file's own deadline was always going to fire first in
+  //      practice - but a low per-request timeout here means a genuinely
+  //      stalled connection gets retried (and logged) quickly, rather than
+  //      sitting silently until the outer deadline finally cuts it off.
+  //      timeout only bounds each individual fetch attempt - the SDK's
+  //      fetchWithTimeout clears the timer as soon as fetch() resolves
+  //      (i.e. once HTTP headers arrive), so an already-connected, actively
+  //      streaming response is unaffected regardless of how slowly Claude
+  //      produces tokens.
+  const client = new Anthropic({
+    apiKey,
+    maxRetries: 2,
+    timeout: 60_000,
+    fetch: async (url, init) => {
+      const attemptStartedAt = Date.now();
+      try {
+        return await fetch(url, init);
+      } catch (err) {
+        // A network-level failure here (not an HTTP error status - those
+        // don't throw) is exactly the silent-stall case this logging
+        // exists for. The SDK will retry it per maxRetries above; this
+        // makes each attempt visible instead of only the final outcome.
+        console.warn(
+          `[nuanced-analysis-workflow] ${passLabel} fetch to Anthropic failed after ${Date.now() - attemptStartedAt}ms:`,
+          err instanceof Error ? err.message : err,
+        );
+        throw err;
+      }
+    },
+  });
   const messagesWithCache = withCacheBreakpoint(resolved);
 
   const stream = client.messages.stream({
@@ -392,9 +430,42 @@ async function callClaude(
   let latestSnapshot = "";
   let timedOut = false;
   let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  const passStartedAt = Date.now();
+  let connectedAt: number | null = null;
+  let thinkingDeltaCount = 0;
+  let writingDeltaCount = 0;
+  let streamErrorSeen: string | null = null;
 
   try {
-    let thinkingDeltaCount = 0;
+    // WHY THESE THREE LISTENERS EXIST (added 2026-08-17): a run failed with
+    // stop_reason=soft_deadline and 0 chars after the full 235s budget, with
+    // nothing in the logs to say whether the request ever reached Anthropic
+    // at all. Two very different problems produce that same symptom:
+    //   1. The HTTP request itself never connected/stalled - plausible given
+    //      the Anthropic SDK's documented behaviour that "request timeouts
+    //      are retried by default" (maxRetries: 2), which happens silently
+    //      inside the SDK with no visibility from this code.
+    //   2. The request connected fine and Claude was genuinely thinking (or
+    //      stuck) in silence for the full budget - large-attachment,
+    //      cold-start prompts at effort:"high" can plausibly run long.
+    // 'connect' fires on HTTP response headers, before any content -
+    // logging it splits these two cases cleanly next time this happens.
+    // 'error' is a distinct event from the promise rejection callClaude
+    // already catches; without a listener here, an error surfaced only via
+    // the event (rather than by rejecting stream.finalMessage()) would have
+    // been silently dropped instead of ending up in extractErrorMessage().
+    stream.on("connect", () => {
+      connectedAt = Date.now();
+      console.log(
+        `[nuanced-analysis-workflow] ${passLabel} connected after ${connectedAt - passStartedAt}ms`,
+      );
+    });
+
+    stream.on("error", (err) => {
+      streamErrorSeen = err instanceof Error ? err.message : String(err);
+      console.error(`[nuanced-analysis-workflow] ${passLabel} stream error event:`, err);
+    });
+
     stream.on("thinking", () => {
       thinkingDeltaCount++;
       if (thinkingDeltaCount % THINKING_PROGRESS_EVERY_N_DELTAS === 1) {
@@ -402,7 +473,6 @@ async function callClaude(
       }
     });
 
-    let writingDeltaCount = 0;
     stream.on("text", (_delta, snapshot) => {
       latestSnapshot = snapshot;
       writingDeltaCount++;
@@ -413,8 +483,16 @@ async function callClaude(
 
     deadlineTimer = setTimeout(() => {
       timedOut = true;
+      // Every field needed to tell "never connected" apart from "connected
+      // but silent" apart from "connected, thinking happened, but produced
+      // no visible text" is logged together here rather than split across
+      // separate lines, so a future occurrence is diagnosable from one line.
       console.log(
-        `[nuanced-analysis-workflow] ${passLabel} soft deadline reached at ${SOFT_DEADLINE_MS}ms, aborting stream with ${latestSnapshot.length} chars kept`,
+        `[nuanced-analysis-workflow] ${passLabel} soft deadline reached at ${SOFT_DEADLINE_MS}ms - ` +
+          `connected=${connectedAt !== null} ` +
+          `connectMs=${connectedAt !== null ? connectedAt - passStartedAt : "n/a"} ` +
+          `thinkingDeltas=${thinkingDeltaCount} writingDeltas=${writingDeltaCount} ` +
+          `textCharsKept=${latestSnapshot.length} streamErrorSeen=${streamErrorSeen ?? "none"}`,
       );
       stream.abort();
     }, SOFT_DEADLINE_MS);
