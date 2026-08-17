@@ -31,8 +31,8 @@ import { createClient as createServiceSupabaseClient } from "@supabase/supabase-
  *
  * THE FIX, in three parts:
  *
- *   a) THINKING IS BOUNDED. THINKING_BUDGET_TOKENS is set explicitly rather
- *      than left adaptive, so a pass's token spend is predictable.
+ *   a) THINKING IS BOUNDED. See CORRECTION below for why this is
+ *      output_config.effort rather than a fixed token budget.
  *
  *   b) A PASS CANNOT HIT THE HARD CEILING. SOFT_DEADLINE_MS aborts the
  *      Anthropic stream well before the platform would kill the invocation,
@@ -46,6 +46,24 @@ import { createClient as createServiceSupabaseClient } from "@supabase/supabase-
  *      wall-clock time and removes the verbatim-reproduction step that was
  *      corrupting prompts and renumbering questions.
  *
+ * CORRECTION (2026-08-17, same day): the first version of this fix used
+ * `thinking: { type: "enabled", budget_tokens: N }` to bound reasoning. That
+ * is the FIXED-BUDGET thinking interface, and claude-sonnet-5 rejects it
+ * outright with a 400:
+ *   "thinking.type.enabled" is not supported for this model. Use
+ *   "thinking.type.adaptive" and "output_config.effort" to control
+ *   thinking behavior.
+ * claude-sonnet-5 only accepts ADAPTIVE thinking: `thinking: { type:
+ * "adaptive" }` plus a sibling top-level `output_config: { effort: ... }`
+ * (not nested inside `thinking`). There is no token-count knob on this
+ * model - EFFORT_LEVEL ("low"|"medium"|"high"|"xhigh"|"max") is the
+ * equivalent control, and "high" is the closest match to the original
+ * 12k-token intent from testing. Every request failed pass-1 with this bug
+ * (see nuanced_generation_runs: status=failed, char_count=0), which is also
+ * why the error surfacing fix below exists - the client only ever showed
+ * "Generation failed (pass-1)", the literal fallback string, because the
+ * real 400 message never made it past a truthiness check.
+ *
  * Every pass's raw output is logged to nuanced_generation_logs, and run
  * status is mirrored into nuanced_generation_runs so the client can poll
  * ground truth via /api/claude/status/[generationId] rather than inferring
@@ -56,13 +74,17 @@ const UPLOADS_BUCKET = "uploads";
 
 const MODEL = "claude-sonnet-5";
 
-// Bounded rather than adaptive. 12k leaves real room for the model to plan a
-// multi-section IB packet while keeping total per-pass output predictable.
-const THINKING_BUDGET_TOKENS = 12000;
+// claude-sonnet-5 only supports adaptive thinking (thinking.type must be
+// "adaptive"; the fixed budget_tokens interface is rejected with a 400 -
+// see the CORRECTION note above). "high" is the closest available control to
+// the original 12k-token intent: enough room to plan a multi-section IB
+// packet without licensing unbounded reasoning. Valid values are "low",
+// "medium", "high", "xhigh", "max".
+const EFFORT_LEVEL: Anthropic.OutputConfig["effort"] = "high";
 
-// Must exceed THINKING_BUDGET_TOKENS; the remainder is the visible JSON. A
-// full packet's JSON has measured at roughly 10-12k tokens, so this fits a
-// complete packet in one pass without licensing an unbounded one.
+// A full packet's JSON has measured at roughly 10-12k tokens; this leaves
+// comfortable headroom for a complete packet in one pass without licensing
+// an unbounded one.
 const MAX_TOKENS_PER_PASS = 24000;
 
 // Abort the Anthropic stream at this point and keep the partial text. Must
@@ -122,6 +144,55 @@ export type NuancedAnalysisResult = { text: string; stopReason: string | null; e
 
 type PassLabel = string;
 type PassOutcome = { text: string; stopReason: string | null };
+
+/**
+ * Pulls a human-readable message out of whatever a failed step throws.
+ *
+ * WHY THIS EXISTS: the client showed the literal fallback string
+ * "Generation failed (pass-1)" - with no indication a 400 invalid_request
+ * error (wrong thinking-config shape) was the actual cause - because a
+ * plain `err instanceof Error ? err.message : fallback` check isn't enough
+ * here. Two things can defeat it:
+ *   1. The Vercel Workflow runtime retries a failing step automatically
+ *      (its own logs: "Max retries reached, bubbling error to parent
+ *      workflow"), and the object it re-throws to the workflow body after
+ *      exhausting retries is not guaranteed to be the original Error
+ *      instance with a populated .message - it may be a wrapper whose own
+ *      .message is empty while the real cause lives in .cause, a nested
+ *      .error.message, or only in its .toString()/stack.
+ *   2. Anthropic's own APIError can likewise carry the useful text in
+ *      err.error.error.message (the parsed response body) rather than the
+ *      top-level .message in some SDK versions/paths.
+ * This checks several plausible locations before falling back, so a future
+ * API error is at minimum visible enough to diagnose from the run's stored
+ * error column without needing a Vercel log dive.
+ */
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+
+  if (err && typeof err === "object") {
+    const withCause = err as { cause?: unknown };
+    if (withCause.cause instanceof Error && withCause.cause.message) {
+      return withCause.cause.message;
+    }
+    const withNestedError = err as { error?: { message?: unknown; error?: { message?: unknown } } };
+    if (typeof withNestedError.error?.message === "string" && withNestedError.error.message) {
+      return withNestedError.error.message;
+    }
+    if (typeof withNestedError.error?.error?.message === "string" && withNestedError.error.error.message) {
+      return withNestedError.error.error.message;
+    }
+    if (err instanceof Error && typeof err.stack === "string" && err.stack.trim()) {
+      // Better than nothing: the raw stack often contains the upstream
+      // API's JSON error body even when .message is empty.
+      return err.stack.split("\n")[0] || fallback;
+    }
+  }
+
+  if (typeof err === "string" && err) return err;
+
+  return fallback;
+}
 
 function getServiceSupabase() {
   return createServiceSupabaseClient(
@@ -300,7 +371,8 @@ async function callClaude(
   const stream = client.messages.stream({
     model: MODEL,
     max_tokens: MAX_TOKENS_PER_PASS,
-    thinking: { type: "enabled", budget_tokens: THINKING_BUDGET_TOKENS },
+    thinking: { type: "adaptive" },
+    output_config: { effort: EFFORT_LEVEL },
     system,
     messages: messagesWithCache as Anthropic.MessageParam[],
   });
@@ -509,7 +581,7 @@ export async function generateNuancedAnalysis(
     resolved = result.resolved;
     paths = result.paths;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Failed to resolve attachments";
+    const message = extractErrorMessage(err, "Failed to resolve attachments");
     return fail(message, null);
   }
 
@@ -529,7 +601,12 @@ export async function generateNuancedAnalysis(
       outcome = await callClaude(system, conversation, passLabel);
       await logGeneration(passLabel, outcome.text, outcome.stopReason, null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : `Generation failed (${passLabel})`;
+      const message = extractErrorMessage(err, `Generation failed (${passLabel})`);
+      // Logged once here, in addition to whatever the workflow runtime
+      // already logged, specifically so a future "fallback string with no
+      // detail" report can be cross-checked against the raw shape rather
+      // than guessed at again.
+      console.error(`[nuanced-analysis-workflow] ${passLabel} failed, raw error:`, err);
       await logGeneration(passLabel, "", null, message);
       return fail(message, paths);
     }
