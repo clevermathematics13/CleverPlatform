@@ -90,6 +90,27 @@ import { createClient as createServiceSupabaseClient } from "@supabase/supabase-
  *   - SOFT_DEADLINE_MS raised from 235s to 270s, giving genuinely-thinking
  *     requests more room before this file gives up on them, while keeping
  *     ~30s of margin below the platform's 300s step ceiling.
+ *
+ * CORRECTION 3 (2026-08-17, evening): a run failed with
+ * "Generation produced no usable output on pass-1 (stop reason:
+ * max_tokens)" and char_count=0. The server log showed why:
+ *   pass-1 stop_reason=max_tokens blocks=[thinking]
+ *   usage={... "output_tokens":24000 ...}
+ * blocks=[thinking] with NO text block: the model spent every one of the
+ * 24000 allowed output tokens on internal reasoning and never began writing
+ * the JSON. Two facts made this possible and neither was accounted for in
+ * the previous sizing:
+ *   1. max_tokens is a hard ceiling on thinking PLUS response text. Thinking
+ *      tokens are not a separate budget - they consume the same allowance.
+ *   2. THINKING_DISPLAY="omitted" (CORRECTION 2) stops thinking from being
+ *      STREAMED, but does nothing to limit how much thinking happens. It
+ *      is not a cost or budget control.
+ * There is no per-thinking budget available on this model (OutputConfig has
+ * only `effort` and `format`), so Anthropic's stated remedy for a max_tokens
+ * stop applies: raise the ceiling or lower the effort. Both are applied -
+ * effort "high" -> "medium" and max_tokens 24000 -> 32000 - because the 300s
+ * per-step ceiling limits how far max_tokens alone can go (Anthropic suggests
+ * 64000 for high effort, which cannot stream inside a 270s pass).
  */
 
 const UPLOADS_BUCKET = "uploads";
@@ -98,16 +119,33 @@ const MODEL = "claude-sonnet-5";
 
 // claude-sonnet-5 only supports adaptive thinking (thinking.type must be
 // "adaptive"; the fixed budget_tokens interface is rejected with a 400 -
-// see the CORRECTION note above). "high" is the closest available control to
-// the original 12k-token intent: enough room to plan a multi-section IB
-// packet without licensing unbounded reasoning. Valid values are "low",
-// "medium", "high", "xhigh", "max".
-const EFFORT_LEVEL: Anthropic.OutputConfig["effort"] = "high";
+// see the CORRECTION note above). There is NO separate thinking-token
+// budget on this model: Anthropic.OutputConfig exposes only `effort` and
+// `format`, so effort is the sole lever over how much of max_tokens gets
+// spent on reasoning. Valid values: "low", "medium", "high", "xhigh", "max".
+//
+// LOWERED from "high" (see CORRECTION 3): at "high" the model spent the
+// ENTIRE 24000-token budget on thinking and emitted no text block at all.
+// Anthropic's guidance for a max_tokens stop is explicit - either raise the
+// ceiling or lower the effort. Both are done here, because the 300s
+// per-step platform ceiling caps how far the ceiling alone can be raised.
+const EFFORT_LEVEL: Anthropic.OutputConfig["effort"] = "medium";
 
-// A full packet's JSON has measured at roughly 10-12k tokens; this leaves
-// comfortable headroom for a complete packet in one pass without licensing
-// an unbounded one.
-const MAX_TOKENS_PER_PASS = 24000;
+// max_tokens is a HARD ceiling on thinking PLUS visible response text - not
+// just the response (thinking counts toward max_tokens, per the SDK's own
+// docs on the thinking param). 24000 was sized on the mistaken assumption
+// that thinking would take a modest slice and leave 10-12k for the JSON;
+// in practice a "high"-effort pass consumed all 24000 on reasoning alone.
+//
+// Sizing rationale: successful runs measure ~29800-35900 chars of final
+// JSON across 2-3 passes, i.e. roughly 12-15k visible tokens per pass, and
+// each pass already runs close to the full SOFT_DEADLINE_MS. Anthropic
+// suggests starting at 64000 for high-effort work, but that is unreachable
+// here - a 64000-token response cannot stream within a 270s pass before the
+// 300s step ceiling kills the invocation. 32000 is the largest ceiling that
+// still fits the time budget while leaving genuine room for both a full
+// thinking phase and a complete JSON packet.
+const MAX_TOKENS_PER_PASS = 32000;
 
 // Abort the Anthropic stream at this point and keep the partial text. Must
 // stay comfortably below the platform's per-invocation ceiling (300s) with
@@ -197,31 +235,49 @@ type PassOutcome = { text: string; stopReason: string | null };
  * Pulls a human-readable message out of whatever a failed step throws.
  *
  * WHY THIS EXISTS: the client showed the literal fallback string
- * "Generation failed (pass-1)" - with no indication a 400 invalid_request
- * error (wrong thinking-config shape) was the actual cause - because a
- * plain `err instanceof Error ? err.message : fallback` check isn't enough
- * here. Two things can defeat it:
- *   1. The Vercel Workflow runtime retries a failing step automatically
- *      (its own logs: "Max retries reached, bubbling error to parent
- *      workflow"), and the object it re-throws to the workflow body after
- *      exhausting retries is not guaranteed to be the original Error
- *      instance with a populated .message - it may be a wrapper whose own
- *      .message is empty while the real cause lives in .cause, a nested
- *      .error.message, or only in its .toString()/stack.
- *   2. Anthropic's own APIError can likewise carry the useful text in
- *      err.error.error.message (the parsed response body) rather than the
- *      top-level .message in some SDK versions/paths.
- * This checks several plausible locations before falling back, so a future
- * API error is at minimum visible enough to diagnose from the run's stored
- * error column without needing a Vercel log dive.
+ * "Generation failed (pass-1)" with zero detail, even for a 400 whose real
+ * message ("Your credit balance is too low...") was sitting right there.
+ *
+ * ROOT CAUSE (found 2026-08-17, confirmed by direct reproduction): this
+ * function's very first check was `err instanceof Error && err.message`.
+ * `instanceof` only walks the prototype chain - it does NOT check whether
+ * an object merely LOOKS like an Error. An Error thrown by code running in
+ * a different realm, VM context, or bundled module instance than the one
+ * `Error` was imported from in THIS file fails `instanceof Error` even
+ * though it is a completely normal Error object with a perfectly intact
+ * `.message` string:
+ *
+ *   const vm = require("vm");
+ *   const e = vm.runInNewContext('new Error("real message")');
+ *   e instanceof Error   // false
+ *   e.message             // "real message"  <- still there!
+ *
+ * The Vercel Workflow runtime runs each "use step" function as its own
+ * invocation and re-throws failures back into the "use workflow" body;
+ * whatever mechanism it uses to do that (a different bundled copy of the
+ * SDK, a VM boundary, etc.) produced exactly this shape - an object that
+ * console.error prints as "Error [FatalError]: <full message text>" (proof
+ * the message was never lost) but which this function's `instanceof Error`
+ * gate rejected outright, falling straight through to the fallback string
+ * without ever reading the message that was sitting right there.
+ *
+ * THE FIX: duck-type on `.message` first - any object with a non-empty
+ * string `.message`, from any realm, is accepted - rather than gating on
+ * `instanceof Error`. This is strictly more permissive and cannot regress
+ * the cases the old code already handled (a real same-realm Error also has
+ * a `.message` string, so it still matches the very first branch).
  */
 function extractErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error && err.message) return err.message;
+  if (err && typeof err === "object" && "message" in err) {
+    const msg = (err as { message?: unknown }).message;
+    if (typeof msg === "string" && msg) return msg;
+  }
 
   if (err && typeof err === "object") {
     const withCause = err as { cause?: unknown };
-    if (withCause.cause instanceof Error && withCause.cause.message) {
-      return withCause.cause.message;
+    if (withCause.cause && typeof withCause.cause === "object" && "message" in withCause.cause) {
+      const causeMsg = (withCause.cause as { message?: unknown }).message;
+      if (typeof causeMsg === "string" && causeMsg) return causeMsg;
     }
     const withNestedError = err as { error?: { message?: unknown; error?: { message?: unknown } } };
     if (typeof withNestedError.error?.message === "string" && withNestedError.error.message) {
@@ -230,16 +286,30 @@ function extractErrorMessage(err: unknown, fallback: string): string {
     if (typeof withNestedError.error?.error?.message === "string" && withNestedError.error.error.message) {
       return withNestedError.error.error.message;
     }
-    if (err instanceof Error && typeof err.stack === "string" && err.stack.trim()) {
+    const withStack = err as { stack?: unknown };
+    if (typeof withStack.stack === "string" && withStack.stack.trim()) {
       // Better than nothing: the raw stack often contains the upstream
-      // API's JSON error body even when .message is empty.
-      return err.stack.split("\n")[0] || fallback;
+      // API's JSON error body even when .message is somehow still empty.
+      return withStack.stack.split("\n")[0] || fallback;
     }
   }
 
   if (typeof err === "string" && err) return err;
 
   return fallback;
+}
+
+/**
+ * Detects Anthropic's "credit balance too low" 400 response by matching its
+ * distinctive wording, so the UI can show a specific, actionable banner
+ * ("add credits at console.anthropic.com") instead of a generic failure
+ * message. NOTE: the API account that matters here is the Anthropic Console
+ * / API organization behind ANTHROPIC_API_KEY - a completely separate
+ * account and balance from any claude.ai consumer subscription.
+ */
+function isBillingError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return lower.includes("credit balance is too low") || lower.includes("plans & billing");
 }
 
 function getServiceSupabase() {
@@ -446,7 +516,9 @@ async function callClaude(
         // makes each attempt visible instead of only the final outcome.
         console.warn(
           `[nuanced-analysis-workflow] ${passLabel} fetch to Anthropic failed after ${Date.now() - attemptStartedAt}ms:`,
-          err instanceof Error ? err.message : err,
+          err && typeof err === "object" && typeof (err as { message?: unknown }).message === "string"
+            ? (err as { message: string }).message
+            : err,
         );
         throw err;
       }
@@ -510,7 +582,10 @@ async function callClaude(
     });
 
     stream.on("error", (err) => {
-      streamErrorSeen = err instanceof Error ? err.message : String(err);
+      streamErrorSeen =
+        err && typeof err === "object" && typeof (err as { message?: unknown }).message === "string"
+          ? (err as { message: string }).message
+          : String(err);
       console.error(`[nuanced-analysis-workflow] ${passLabel} stream error event:`, err);
     });
 
@@ -644,7 +719,7 @@ async function recordRunStatus(
   } catch (e) {
     console.error(
       "[nuanced-analysis-workflow] run status step failed:",
-      e instanceof Error ? e.message : e,
+      e && typeof e === "object" && typeof (e as { message?: unknown }).message === "string" ? (e as { message: string }).message : e,
     );
   }
 }
@@ -680,7 +755,7 @@ async function logGeneration(
   } catch (e) {
     console.error(
       "[nuanced-analysis-workflow] generation log step failed:",
-      e instanceof Error ? e.message : e,
+      e && typeof e === "object" && typeof (e as { message?: unknown }).message === "string" ? (e as { message: string }).message : e,
     );
   }
 }
@@ -747,8 +822,18 @@ export async function generateNuancedAnalysis(
     if (isComplete(outcome)) break;
 
     if (!outcome.text.trim()) {
+      // A max_tokens stop with zero visible text has one specific cause
+      // worth naming outright (see CORRECTION 3): the entire token budget
+      // went to internal reasoning before any response was written. That is
+      // a configuration problem, not a transient one - retrying the same
+      // request unchanged will reproduce it - so the message says what to
+      // actually change rather than leaving a dead end.
+      const diagnosis =
+        outcome.stopReason === "max_tokens"
+          ? ` The whole ${MAX_TOKENS_PER_PASS}-token budget was consumed before any packet text was written, which usually means internal reasoning used it all. Lower EFFORT_LEVEL or raise MAX_TOKENS_PER_PASS in platform/workflows/nuanced-analysis-generation.ts, or narrow the request (fewer attachments, fewer sections).`
+          : "";
       return fail(
-        `Generation produced no usable output on ${passLabel} (stop reason: ${outcome.stopReason ?? "unknown"}).`,
+        `Generation produced no usable output on ${passLabel} (stop reason: ${outcome.stopReason ?? "unknown"}).${diagnosis}`,
         paths,
       );
     }
