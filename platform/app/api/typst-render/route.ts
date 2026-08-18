@@ -54,6 +54,17 @@ export async function POST(req: NextRequest) {
   const result = await TypstRenderService.render(payload);
 
   if (!result.success) {
+    // Log the compiler's own message server-side, not just the generic
+    // headline. Previously only `error` ("Typst compilation failed.")
+    // reached the teacher and NOTHING was logged here, so a failed export
+    // left no way at all to find out which construct in the packet broke
+    // the compile - the one piece of information needed to fix it.
+    console.error(
+      "[api/typst-render] render failed:",
+      result.error,
+      "| detail:",
+      result.detail ?? "(none)",
+    );
     return NextResponse.json(
       { error: result.error, detail: result.detail ?? null },
       { status: 422 }
