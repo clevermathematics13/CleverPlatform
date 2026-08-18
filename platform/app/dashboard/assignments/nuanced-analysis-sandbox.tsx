@@ -66,7 +66,24 @@ const DEFAULT_FORMATTING: FormattingRequirements = {
 };
 
 // ---- Minimal default draft (shown before first generation) ----
-
+//
+// WHY THIS IS FULLY WORKED RATHER THAN A TEMPLATE SKELETON: every question
+// here once read like "Write down the key result or definition from the
+// prerequisite topic that this analysis builds on" - a placeholder wearing
+// the costume of a question. It names no topic, no result, no numbers, so a
+// student cannot answer it and a teacher previewing the tool sees a broken
+// example of the format. Worse, it repeatedly got mistaken for AI output
+// during debugging (it is not - it never leaves this file), sending several
+// rounds of prompt fixes after the wrong target.
+//
+// The rule this file must hold to is the same one the generator's own
+// system prompt enforces (see DESIGN RULE 0, SELF-CONTAINMENT, in
+// platform/lib/assignments.ts): a student reading ONLY this page must be
+// able to answer every question with no outside knowledge. Nothing here may
+// refer to "the prerequisite topic", "that result", "the key relationship",
+// or "your conjecture" unless this same page has already stated it
+// concretely. If this default is ever edited, keep it a real, answerable
+// mini-packet - named function, real numbers, explicitly stated conjecture.
 const DEFAULT_DRAFT: AssignmentDraft = {
   title: "Nuanced Analysis",
   subtitle: "IBDP Mathematics — Analysis & Approaches HL",
@@ -79,32 +96,47 @@ const DEFAULT_DRAFT: AssignmentDraft = {
   sections: [
     {
       heading: "Part 0 — Activating Prior Knowledge",
+      prerequisiteBox: {
+        items: [
+          "Laws of logarithms: log(ab) = log a + log b",
+          "Evaluating logarithms with a given base",
+        ],
+      },
       questions: [
         {
+          prompt: "★ Write down the value of $log_2 8$.",
+          marks: 1,
+          tier: 1,
+        },
+        {
           prompt:
-            "★ Write down the key result or definition from the prerequisite topic that this analysis builds on.",
+            "★ Given that $log_10 2 approx 0.301$ and $log_10 3 approx 0.477$, find $log_10 6$ without using a calculator.",
           marks: 2,
           tier: 1,
         },
         {
-          prompt: "★ Describe, in one sentence, the geometric meaning of that result.",
-          marks: 2,
+          prompt:
+            "★ State the law of logarithms that allows $log a + log b$ to be written as a single logarithm.",
+          marks: 1,
           tier: 1,
         },
       ],
     },
     {
       heading: "Part 1 — Conjecture",
-      prerequisiteBox: { items: ["Result from Part 0"] },
+      prerequisiteBox: {
+        items: ["The law $log(a b) = log a + log b$ from Part 0, Q3"],
+      },
       questions: [
         {
           prompt:
-            "★ Use specific numerical values to investigate the key relationship. Write down your results in a table.",
+            "★ Evaluate $log_2 4 + log_2 8$ and $log_2 32$. Write down what you notice about the two answers.",
           marks: 3,
           tier: 1,
         },
         {
-          prompt: "★★ Show that your conjecture holds in the general case. Show every logical step.",
+          prompt:
+            "★★ A student conjectures that $log_b x + log_b y = log_b (x y)$ for all positive $x$ and $y$. Show that this conjecture is true, using the definition $log_b x = m$ means $b^m = x$. Show every logical step.",
           marks: 4,
           tier: 2,
         },
