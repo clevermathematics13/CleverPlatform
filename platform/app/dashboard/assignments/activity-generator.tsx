@@ -696,6 +696,18 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     }
   }
 
+  // WARNING (2026-08-19): this saves to public.assignment_templates via
+  // /api/assignments/templates/create — a plain, un-tracked draft store, NOT
+  // public.nuanced_analyses. It will NOT show up in "Manage Saved Packets",
+  // will NOT get a course_id/section_code, and will NOT update continuity.
+  // This function's button used to be labelled "Save as Nuanced Analysis" —
+  // identical wording to the REAL Nuanced-Analysis-save button in
+  // nuanced-analysis-sandbox.tsx (which posts to /api/nuanced-analyses and IS
+  // what Manage Saved Packets reads). A teacher's packet landed here twice
+  // with a "saved" confirmation shown, and never appeared in Manage because
+  // it never touched nuanced_analyses. See nuanced-analysis-sandbox.tsx's
+  // handleConfirmSave for the save flow that actually belongs to "Nuanced
+  // Analysis" packets — this one is only for parking an in-progress draft.
   async function handleSaveTemplate() {
     if (!lastDraft) return;
     setSaveStatus("saving");
@@ -980,9 +992,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
               type="button"
               onClick={() => void handleSaveTemplate()}
               disabled={saveStatus === "saving"}
+              title="Parks a draft copy in your Templates list. This is NOT a Nuanced Analysis save — it has no course, section, or continuity tracking, and will not appear in Manage Saved Packets. Use the 'Save as Nuanced Analysis' button below the preview for that."
               className="w-full rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-1.5 text-xs font-medium text-da-muted transition-colors hover:bg-da-hover disabled:opacity-50"
             >
-              {saveStatus === "saving" ? "Saving…" : saveStatus === "saved" ? "✓ Saved as Nuanced Analysis" : saveStatus === "error" ? "Save failed" : "Save as Nuanced Analysis"}
+              {saveStatus === "saving" ? "Saving draft…" : saveStatus === "saved" ? "✓ Draft saved (not a Nuanced Analysis — see below)" : saveStatus === "error" ? "Save failed" : "Save draft (not a Nuanced Analysis)"}
             </button>
           )}
         </div>
