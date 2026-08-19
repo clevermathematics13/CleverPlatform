@@ -50,6 +50,14 @@ export async function GET(req: Request) {
       hasContinuity: record !== null && record.packets.length > 0,
       packetCount: record?.packets.length ?? 0,
       unitSequence: record?.unitSequence ?? [],
+      // Full packet digests, not just the rendered prompt-block string.
+      // WHY: draftDigestFromDraft()'s vocabulary-diff feature needs the raw
+      // vocabularyIntroduced arrays to check candidate terms against — the
+      // context string above is prose meant for the generator's system
+      // prompt, not something a client should re-parse to recover structured
+      // data. This was already loaded via loadContinuity() above; it just was
+      // not being sent to the client.
+      packets: record?.packets ?? [],
       nextSection,
       context,
     },
