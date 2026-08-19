@@ -26,7 +26,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AssignmentDraft, FormattingRequirements } from "@/lib/assignments";
-import { draftDigestFromDraft, type PacketDigest, type UnitSequenceEntry } from "@/lib/na-continuity";
+import {
+  draftDigestFromDraft,
+  diffVocabularyAgainstContinuity,
+  collectCandidateVocabulary,
+  type PacketDigest,
+  type UnitSequenceEntry,
+  type VocabularyCandidate,
+} from "@/lib/na-continuity";
 import { createClient } from "@/lib/supabase/client";
 import { NuancedAnalysisPreview } from "./nuanced-analysis-preview";
 import { ActivityGeneratorPanel } from "./activity-generator";
@@ -44,6 +51,9 @@ type ContinuityState = {
   hasContinuity: boolean;
   packetCount: number;
   unitSequence: UnitSequenceEntry[];
+  /** Full prior-packet digests, needed to diff this packet's candidate
+   *  vocabulary against what has already been introduced in the course. */
+  packets: PacketDigest[];
   nextSection: string | null;
   context: string;
 };
@@ -221,6 +231,7 @@ export function NuancedAnalysisSandbox() {
   // ---- Save-as-Nuanced-Analysis flow ----
   const [digestModalOpen, setDigestModalOpen] = useState(false);
   const [pendingDigest, setPendingDigest] = useState<PacketDigest | null>(null);
+  const [pendingVocabCandidates, setPendingVocabCandidates] = useState<VocabularyCandidate[]>([]);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
@@ -325,7 +336,11 @@ export function NuancedAnalysisSandbox() {
   function openDigestModal() {
     setSaveError(null);
     setSaveNotice(null);
-    setPendingDigest(draftDigestFromDraft(draft, { section: sectionCode }));
+    const priorPackets = continuity?.packets ?? [];
+    setPendingDigest(draftDigestFromDraft(draft, { section: sectionCode }, priorPackets));
+    setPendingVocabCandidates(
+      diffVocabularyAgainstContinuity(collectCandidateVocabulary(draft), priorPackets),
+    );
     setDigestModalOpen(true);
   }
 
@@ -624,6 +639,7 @@ export function NuancedAnalysisSandbox() {
       <ContinuityDigestModal
         open={digestModalOpen}
         initial={pendingDigest}
+        vocabularyCandidates={pendingVocabCandidates}
         sectionCode={sectionCode}
         saving={saving}
         error={saveError}
