@@ -280,17 +280,113 @@ function collectPrompts(draft: AssignmentDraft): string[] {
 }
 
 /**
+ * Candidate vocabulary terms drawn from every question and subpart's
+ * contentTag/skillTag fields (e.g. "Topic 1.13 — De Moivre's Theorem",
+ * "Proof by mathematical induction") — the generator's own concise naming of
+ * what each question teaches. Deliberately NOT free-text extraction from
+ * prompt prose: contentTag/skillTag are already short, specific, and written
+ * by the model for exactly this purpose, so they are a far more reliable
+ * vocabulary signal than trying to regex terms out of a sentence.
+ *
+ * Returns candidates in first-appearance order with duplicates removed
+ * (a term named on three questions in one packet should appear once).
+ */
+function collectCandidateVocabulary(draft: AssignmentDraft): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (tag: string | undefined) => {
+    const trimmed = (tag ?? "").trim();
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      out.push(trimmed);
+    }
+  };
+  for (const section of draft.sections ?? []) {
+    for (const q of section.questions ?? []) {
+      add(q.contentTag);
+      add(q.skillTag);
+      for (const sp of q.subparts ?? []) {
+        add(sp.contentTag);
+        add(sp.skillTag);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * One vocabulary candidate from THIS packet, already classified against
+ * everything continuity has recorded so far. The modal uses `alreadySeen` to
+ * pre-check only genuinely new terms, and shows the already-seen ones
+ * unchecked (with their origin) purely for the teacher's awareness — a term
+ * reappearing is not itself a problem, silently treating a repeat as "newly
+ * introduced" is.
+ */
+export type VocabularyCandidate = {
+  term: string;
+  alreadySeen: boolean;
+  /** Section that first introduced this term, if alreadySeen. */
+  firstSeenIn?: string;
+};
+
+/**
+ * Diffs this packet's candidate vocabulary against every term continuity has
+ * already recorded as introduced, across all prior packets in the course.
+ * Case-insensitive, trimmed comparison: "Show that" and "show that " should
+ * not be treated as different terms because of stray whitespace or casing a
+ * teacher typed differently across two packets.
+ */
+export function diffVocabularyAgainstContinuity(
+  candidates: string[],
+  priorPackets: PacketDigest[],
+): VocabularyCandidate[] {
+  const priorByNormalized = new Map<string, string>(); // normalized term -> section it first appeared in
+  for (const packet of priorPackets) {
+    for (const term of packet.vocabularyIntroduced ?? []) {
+      const key = term.trim().toLowerCase();
+      if (key && !priorByNormalized.has(key)) {
+        priorByNormalized.set(key, packet.section);
+      }
+    }
+  }
+
+  return candidates.map((term) => {
+    const key = term.trim().toLowerCase();
+    const firstSeenIn = priorByNormalized.get(key);
+    return firstSeenIn
+      ? { term, alreadySeen: true, firstSeenIn }
+      : { term, alreadySeen: false };
+  });
+}
+
+/**
  * Produce a best-effort digest from a generated draft.
  *
- * This is a DRAFT, not a commit. The fields it can fill mechanically (TOK
- * provocations, command terms, question count) it fills; the field that
- * actually matters most — whereItLeftOff — it cannot infer, because "what this
- * packet deliberately did not do" is a pedagogical judgement that exists
- * nowhere in the draft JSON. The teacher writes that one before committing.
+ * This is a DRAFT, not a commit — every field stays fully editable in the
+ * confirm modal. What changed (2026-08-19): NEITHER field the teacher used to
+ * have to fill from a blank box is blank anymore.
+ *
+ *   - vocabularyIntroduced now starts pre-populated with candidate terms
+ *     (from collectCandidateVocabulary) that do NOT already appear anywhere
+ *     in priorPackets' recorded vocabulary — i.e. it is a pre-computed diff,
+ *     not a guess. A term this packet reuses from three packets ago is
+ *     correctly left off the "newly introduced" list rather than requiring
+ *     the teacher to know that and manually exclude it.
+ *   - whereItLeftOff now starts with a real mechanical summary (last
+ *     question's contentTag, if present) instead of "". It is still the
+ *     single most important field to actually get right, and the teacher
+ *     should still read and likely rewrite it — the modal no longer BLOCKS
+ *     saving on it being empty (see continuity-digest-modal.tsx), because a
+ *     mechanical guess that is merely unedited is a better failure mode than
+ *     a required field that stops a save the teacher wanted to make.
+ *
+ * priorPackets is optional so this function still works standalone (e.g. in
+ * a context with no continuity loaded yet, such as a course's first packet).
  */
 export function draftDigestFromDraft(
   draft: AssignmentDraft,
   meta: { section: string; slug?: string },
+  priorPackets: PacketDigest[] = [],
 ): PacketDigest {
   const prompts = collectPrompts(draft);
 
@@ -301,19 +397,40 @@ export function draftDigestFromDraft(
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "");
 
+  // Only terms genuinely new to this course are pre-checked. A term this
+  // packet reuses from an earlier section is correctly excluded here, rather
+  // than requiring the teacher to already know that and manually uncheck it.
+  const vocabularyCandidates = diffVocabularyAgainstContinuity(
+    collectCandidateVocabulary(draft),
+    priorPackets,
+  );
+  const vocabularyIntroduced = vocabularyCandidates
+    .filter((c) => !c.alreadySeen)
+    .map((c) => c.term);
+
+  // Mechanical starting point, not a substitute for the teacher's own
+  // judgement (see the doc comment above): names the last section covered
+  // and, if the final question tagged one, the last content point reached.
+  // Deliberately does NOT attempt to guess what the packet did NOT do —
+  // that half of the field is the part this function truly cannot infer,
+  // and papering over it with a plausible-sounding sentence would be worse
+  // than an honest gap the teacher notices and fills in.
+  const lastSection = draft.sections?.[draft.sections.length - 1];
+  const lastQuestionTag = lastSection?.questions
+    ?.slice()
+    .reverse()
+    .map((q) => q.contentTag)
+    .find((tag) => tag && tag.trim());
+  const whereItLeftOff = lastSection
+    ? `Ends having covered "${lastSection.heading}"${lastQuestionTag ? `, up to ${lastQuestionTag}` : ""}. Did NOT yet… [edit this — what did this packet deliberately hold back for a later section?]`
+    : "";
+
   return {
     section: meta.section,
     slug,
     title: draft.title || "Untitled",
-    // Deliberately blank: requires teacher judgement. The confirm UI marks this
-    // field required so a packet cannot be committed with an empty handoff.
-    whereItLeftOff: "",
-    // Left empty on purpose. A packet's command-term glossary is not the same
-    // thing as the mathematical vocabulary it formally introduces — a glossary
-    // routinely restates terms established three packets ago. Auto-filling this
-    // would poison the "already introduced, do not re-define" list. The teacher
-    // fills it at confirm time.
-    vocabularyIntroduced: [],
+    whereItLeftOff,
+    vocabularyIntroduced,
     notationConventions: (draft.commandTerms ?? []).map(
       (c) => `Command term in glossary: ${c.term}`,
     ),
@@ -325,6 +442,7 @@ export function draftDigestFromDraft(
     contentSpent: [],
   };
 }
+
 
 // -- Write --------------------------------------------------------------------
 
