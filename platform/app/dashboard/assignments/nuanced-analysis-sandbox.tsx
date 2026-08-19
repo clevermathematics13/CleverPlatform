@@ -381,7 +381,18 @@ export function NuancedAnalysisSandbox() {
     }
   }
 
-  const canSave = Boolean(courseId && /^[A-Z]{1,2}\.\d{1,2}$/.test(sectionCode));
+  // A specific reason string, not just a boolean, so the toolbar can show
+  // the teacher exactly what's blocking Save instead of a silently disabled
+  // button whose only explanation was a hover-only title attribute (easy to
+  // miss entirely, and unreachable on touch devices). Empty string = ready.
+  const saveBlockedReason = !courseId
+    ? "Select a course to save this packet."
+    : !sectionCode.trim()
+      ? "Enter a section code (e.g. A.3) to save this packet."
+      : !/^[A-Z]{1,2}\.\d{1,2}$/.test(sectionCode)
+        ? `Section code "${sectionCode}" doesn't match the required format (e.g. A.3, AB.12 — one or two letters, a period, then a number).`
+        : "";
+  const canSave = saveBlockedReason === "";
 
   const sectionOptions = useMemo(
     () => continuity?.unitSequence ?? [],
@@ -447,7 +458,7 @@ export function NuancedAnalysisSandbox() {
               type="text"
               value={sectionCode}
               onChange={(e) => setSectionCode(e.target.value.toUpperCase())}
-              placeholder="A.3"
+              placeholder="e.g. A.3"
               className="w-16 rounded border border-da-border/50 bg-da-bg/30 px-2 py-1 text-xs text-da-text focus:outline-none"
             />
           )}
@@ -542,6 +553,11 @@ export function NuancedAnalysisSandbox() {
               {pdfError}
             </span>
           )}
+          {saveBlockedReason && (
+            <span className="max-w-xs text-xs text-amber-400" title={saveBlockedReason}>
+              {saveBlockedReason}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setTemplateModalOpen(true)}
@@ -556,7 +572,7 @@ export function NuancedAnalysisSandbox() {
             title={
               canSave
                 ? "Save to nuanced_analyses and update this course's continuity record"
-                : "Select a course and a section code first"
+                : saveBlockedReason
             }
             className="rounded-lg border border-da-border bg-da-bg/60 px-3 py-1.5 text-xs font-semibold text-da-text transition-colors hover:bg-da-bg disabled:cursor-not-allowed disabled:opacity-50"
           >
