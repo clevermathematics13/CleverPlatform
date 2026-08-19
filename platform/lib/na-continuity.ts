@@ -290,8 +290,14 @@ function collectPrompts(draft: AssignmentDraft): string[] {
  *
  * Returns candidates in first-appearance order with duplicates removed
  * (a term named on three questions in one packet should appear once).
+ *
+ * EXPORTED (2026-08-19) so continuity-digest-modal.tsx's confirm UI can
+ * build a checklist from the same candidate set draftDigestFromDraft()
+ * diffs internally — previously private, which meant the modal had no way
+ * to show already-seen terms for the teacher's awareness; it could only
+ * see draftDigestFromDraft()'s already-filtered "new terms only" output.
  */
-function collectCandidateVocabulary(draft: AssignmentDraft): string[] {
+export function collectCandidateVocabulary(draft: AssignmentDraft): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   const add = (tag: string | undefined) => {
