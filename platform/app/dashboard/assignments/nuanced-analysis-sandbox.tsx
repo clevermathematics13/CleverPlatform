@@ -385,12 +385,26 @@ export function NuancedAnalysisSandbox() {
   // the teacher exactly what's blocking Save instead of a silently disabled
   // button whose only explanation was a hover-only title attribute (easy to
   // miss entirely, and unreachable on touch devices). Empty string = ready.
+  //
+  // The required section-code FORMAT is grade-dependent, mirroring
+  // app/api/nuanced-analyses/route.ts's sectionRegexFor exactly: Grade 9/10
+  // keeps the MYP rolling-bundle format ("A.1", "B.4"); Grade 11/12 (IBDP)
+  // uses "S3E11" / "S2E7" (Season/Episode) instead, deliberately distinct so
+  // a code can never be ambiguous about which grade band it came from. If
+  // this pattern ever needs to change, update the server's copy too - the
+  // server is the authority (it rejects a mismatched save outright), this
+  // is only here so the teacher sees the problem before submitting.
+  const isIbdpGrade = gradeLevel === "Grade 11" || gradeLevel === "Grade 12";
+  const sectionFormatExample = isIbdpGrade
+    ? "S3E11 or S2E7 (Season/Episode)"
+    : "A.3";
+  const sectionFormatRe = isIbdpGrade ? /^S\d{1,2}E\d{1,3}$/ : /^[A-Z]{1,2}\.\d{1,2}$/;
   const saveBlockedReason = !courseId
     ? "Select a course to save this packet."
     : !sectionCode.trim()
-      ? "Enter a section code (e.g. A.3) to save this packet."
-      : !/^[A-Z]{1,2}\.\d{1,2}$/.test(sectionCode)
-        ? `Section code "${sectionCode}" doesn't match the required format (e.g. A.3, AB.12 — one or two letters, a period, then a number).`
+      ? `Enter a section code (e.g. ${sectionFormatExample}) to save this packet.`
+      : !sectionFormatRe.test(sectionCode)
+        ? `Section code "${sectionCode}" doesn't match the required format for ${gradeLevel} (e.g. ${sectionFormatExample}).`
         : "";
   const canSave = saveBlockedReason === "";
 
@@ -458,7 +472,7 @@ export function NuancedAnalysisSandbox() {
               type="text"
               value={sectionCode}
               onChange={(e) => setSectionCode(e.target.value.toUpperCase())}
-              placeholder="e.g. A.3"
+              placeholder={isIbdpGrade ? "e.g. S3E11" : "e.g. A.3"}
               className="w-16 rounded border border-da-border/50 bg-da-bg/30 px-2 py-1 text-xs text-da-text focus:outline-none"
             />
           )}
