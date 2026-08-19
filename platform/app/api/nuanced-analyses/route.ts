@@ -46,7 +46,28 @@ type SaveBody = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SECTION_RE = /^[A-Z]{1,2}\.\d{1,2}$/;
+
+// Two section-code formats, chosen by grade level:
+//   - Grade 9/10 (the pre-DP rolling-bundle sequence): "A.1", "B.4" - a unit
+//     letter, a period, a sub-section number. See MYP_ROLLING_BUNDLE_RULES
+//     in lib/assignments.ts for where this numbering is generated.
+//   - Grade 11/12 (IBDP): "S3E11", "S2E7" - Season/Episode style, S = the
+//     IBDP teaching sequence number, E = the packet's position within it.
+//     Chosen deliberately distinct from the MYP format so a code can never
+//     be ambiguous about which grade band it belongs to.
+const SECTION_RE_MYP = /^[A-Z]{1,2}\.\d{1,2}$/;
+const SECTION_RE_IBDP = /^S\d{1,2}E\d{1,3}$/;
+const IBDP_GRADES = new Set(["Grade 11", "Grade 12"]);
+
+function sectionRegexFor(gradeLevel: string): RegExp {
+  return IBDP_GRADES.has(gradeLevel) ? SECTION_RE_IBDP : SECTION_RE_MYP;
+}
+
+function sectionFormatHintFor(gradeLevel: string): string {
+  return IBDP_GRADES.has(gradeLevel)
+    ? "'S3E11' or 'S2E7' (Season/Episode) for Grade 11/12"
+    : "'A.1' or 'B.4' for Grade 9/10";
+}
 
 function slugify(input: string): string {
   return input
@@ -103,17 +124,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "courseId is required and must be a UUID" }, { status: 400 });
   }
 
-  const sectionCode = typeof body.sectionCode === "string" ? body.sectionCode.trim() : "";
-  if (!SECTION_RE.test(sectionCode)) {
-    return NextResponse.json(
-      { error: "sectionCode is required and must look like 'A.1' or 'B.4'" },
-      { status: 400 },
-    );
-  }
-
   const gradeLevel = typeof body.gradeLevel === "string" ? body.gradeLevel.trim() : "";
   if (!gradeLevel) {
     return NextResponse.json({ error: "gradeLevel is required" }, { status: 400 });
+  }
+
+  // gradeLevel must be known before sectionCode can be validated, since the
+  // two grade bands use different formats (see sectionRegexFor above).
+  const sectionCode = typeof body.sectionCode === "string" ? body.sectionCode.trim() : "";
+  if (!sectionRegexFor(gradeLevel).test(sectionCode)) {
+    return NextResponse.json(
+      { error: `sectionCode is required and must look like ${sectionFormatHintFor(gradeLevel)}` },
+      { status: 400 },
+    );
   }
 
   if (!body.draft || typeof body.draft !== "object") {
