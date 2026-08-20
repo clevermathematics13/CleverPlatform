@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { TestRow } from "./page";
+import { ImportFromPpqModal } from "./import-from-ppq-modal";
 
 interface Course {
   id: string;
@@ -30,6 +31,7 @@ const emptyItem = (): ItemDraft => ({
 export function TestsClient({ initialTests, courses }: TestsClientProps) {
   const [tests, setTests] = useState<TestRow[]>(initialTests);
   const [showCreate, setShowCreate] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -59,6 +61,14 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
     setItems((prev) => prev.filter((_, idx) => idx !== i));
   const updateItem = (i: number, patch: Partial<ItemDraft>) =>
     setItems((prev) => prev.map((item, idx) => (idx === i ? { ...item, ...patch } : item)));
+
+  const fetchAndPrependTest = async (testId: string) => {
+    const detailRes = await fetch(`/api/tests/${testId}`);
+    const detail = await detailRes.json();
+    if (detailRes.ok) {
+      setTests((prev) => [{ ...detail, hidden: detail.hidden ?? false } as TestRow, ...prev]);
+    }
+  };
 
   const handleCreate = async () => {
     if (!name.trim() || !courseId) {
@@ -98,13 +108,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create test");
       const createdId = data?.id as string | undefined;
-      if (createdId) {
-        const detailRes = await fetch(`/api/tests/${createdId}`);
-        const detail = await detailRes.json();
-        if (detailRes.ok) {
-          setTests((prev) => [{ ...detail, hidden: detail.hidden ?? false } as TestRow, ...prev]);
-        }
-      }
+      if (createdId) await fetchAndPrependTest(createdId);
       setShowCreate(false);
       setName("");
       setTestDate("");
@@ -147,15 +151,34 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
 
   return (
     <div className="space-y-4">
-      {/* Create button */}
+      {/* Create / Import buttons */}
       {!showCreate && (
-        <button
-          type="button"
-          onClick={() => setShowCreate(true)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          + Create Test
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            + Create Test
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowImport(true)}
+            className="rounded-lg border border-purple-300 bg-purple-50 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100"
+          >
+            Import from PPQ Bank
+          </button>
+        </div>
+      )}
+
+      {showImport && (
+        <ImportFromPpqModal
+          onClose={() => setShowImport(false)}
+          onImported={async (testId) => {
+            await fetchAndPrependTest(testId);
+            setShowImport(false);
+          }}
+        />
       )}
 
       {/* Create form */}
