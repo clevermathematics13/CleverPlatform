@@ -505,3 +505,231 @@ ${blocks.join("\n\n")}
 
 Return the JSON object now.`;
 }
+
+// -----------------------------------------------------------------------------
+// Batch scan segmentation
+// -----------------------------------------------------------------------------
+//
+// A batch scan is a single PDF covering several students' scripts, one after
+// another, each beginning with a cover/divider page that names the student.
+// A student's own work is not guaranteed to stay contiguous: overflow work on
+// loose-leaf paper can be appended after the student's own pages but before
+// the next student's cover page, and in principle after any later student's
+// pages too if scripts were shuffled during scanning. Segmentation therefore
+// asks the model to assign every page to a student (or "unassigned") rather
+// than just detect N-1 cut points between N covers.
+//
+// This stage never grades anything and never touches ai_grade_runs. It only
+// proposes a page ownership mapping for the teacher to confirm before any
+// PDF is split or sent for grading.
+
+export const SEGMENTATION_MODEL = "claude-opus-4-5";
+
+/** Anthropic's PDF document block caps at 100 pages regardless of size. */
+export const MAX_BATCH_PAGES = 100;
+
+export const SegmentedStudentSchema = z.object({
+  /** The student's name exactly as it appears written on their cover page. */
+  label: z.string().min(1),
+  /** Every page number (1-indexed, matching the source PDF) belonging to this student. */
+  pages: z.array(z.number().int().min(1)).min(1),
+  confidence: z.enum(["high", "medium", "low"]),
+  /** e.g. "pages 7-8 are loose-leaf continuation paper, not part of the printed booklet" */
+  note: z.string().default(""),
+});
+
+export const SegmentationResponseSchema = z.object({
+  students: z.array(SegmentedStudentSchema).min(1),
+  /** Pages the model could not confidently attribute to any student. */
+  unassignedPages: z.array(z.number().int().min(1)).default([]),
+});
+
+export type SegmentedStudent = z.infer<typeof SegmentedStudentSchema>;
+export type SegmentationResponse = z.infer<typeof SegmentationResponseSchema>;
+
+/** A proposed segment after matching its label against the class roster. */
+export interface ProposedSegment {
+  label: string;
+  pages: number[];
+  confidence: Confidence;
+  note: string;
+  /** profiles.id of the roster match, or null if no confident match was found. */
+  matchedStudentId: string | null;
+  /** display_name of the matched roster row, for the review UI. */
+  matchedStudentName: string | null;
+}
+
+export const SEGMENTATION_SYSTEM_PROMPT = `You are looking at a single PDF that is a batch scan of MULTIPLE students' completed exam scripts, scanned one after another into one file.
+
+Each student's script begins with a cover or divider page bearing their name — usually a printed exam cover sheet with a handwritten "Candidate Name" field, but it may instead be a plain header page or the first page of their answer booklet with a name written at the top.
+
+Your job is to assign EVERY page in the document to the student it belongs to.
+
+IMPORTANT — pages are not guaranteed to be contiguous per student:
+- A student may run out of room in the printed booklet and continue on a loose sheet of lined paper. That continuation page is usually appended immediately after that student's own pages, but it can also appear later in the document, even after a different student's cover page, if scripts were shuffled during scanning.
+- A continuation page is often self-labelled (the student's name or initials handwritten at the top, or a circled question number matching an earlier page) — use that as strong evidence for which student it belongs to, even if it is physically out of order.
+- Blank pages, the backs of loose sheets bleeding through, or illegible fragments should go in unassignedPages rather than being guessed into a student's set.
+
+For each student you identify, report:
+- label: their name exactly as written on their cover page (best-effort transcription of handwriting — do not normalise or guess a "corrected" spelling)
+- pages: EVERY page number belonging to them, in ascending order, including any non-contiguous continuation pages
+- confidence: "high" if every page assignment is clear; "medium" if the cover page is clear but one or more page assignments (e.g. a continuation page) required judgement; "low" if the name itself is hard to read or you are genuinely unsure about page ownership
+- note: briefly explain anything non-obvious (e.g. "pages 7-8 are a loose-leaf continuation of question 4, name matches cover page")
+
+Return ONLY a JSON object, no markdown fences, no commentary:
+
+{
+  "students": [
+    { "label": "Pedro Costa", "pages": [1,2,3,4,5,6,7,8], "confidence": "high", "note": "pages 7-8 are a self-labelled loose-leaf continuation" }
+  ],
+  "unassignedPages": []
+}
+
+Every page number from 1 to the last page of the document must appear exactly once, either in exactly one student's "pages" array or in "unassignedPages". Double-check this before responding.`;
+
+export function buildSegmentationUserPrompt(pageCount: number): string {
+  return `This PDF has ${pageCount} pages and contains multiple students' exam scripts. Identify each student from their cover page and assign every page (1 to ${pageCount}) to the correct student, per the system instructions. Return the JSON object now.`;
+}
+
+/**
+ * Validate the raw segmentation response: well-formed JSON matching the
+ * schema, and every page 1..pageCount accounted for exactly once. Does not
+ * touch the database or match against a roster — see matchSegmentsToRoster.
+ */
+export function validateSegmentationResponse(
+  rawText: string,
+  pageCount: number
+): { ok: true; response: SegmentationResponse; warnings: string[] } | { ok: false; error: string } {
+  const json = extractJsonBlock(rawText);
+  if (!json) return { ok: false, error: "No JSON object found in segmentation response" };
+
+  let parsedUnknown: unknown;
+  try {
+    parsedUnknown = JSON.parse(json);
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Segmentation response was not valid JSON: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+
+  const parsed = SegmentationResponseSchema.safeParse(parsedUnknown);
+  if (!parsed.success) {
+    return { ok: false, error: `Segmentation response failed schema validation: ${parsed.error.message}` };
+  }
+
+  const warnings: string[] = [];
+  const seenPages = new Map<number, string>(); // page -> owner label (or "unassigned")
+  const duplicates = new Set<number>();
+
+  for (const student of parsed.data.students) {
+    for (const page of student.pages) {
+      if (page > pageCount) {
+        warnings.push(`${student.label}: page ${page} is beyond the document's ${pageCount} pages — dropped`);
+        continue;
+      }
+      if (seenPages.has(page)) {
+        duplicates.add(page);
+        warnings.push(
+          `Page ${page} was assigned to both "${seenPages.get(page)}" and "${student.label}" — left with its first assignment, flag for manual review`
+        );
+        continue;
+      }
+      seenPages.set(page, student.label);
+    }
+  }
+
+  for (const page of parsed.data.unassignedPages) {
+    if (page > pageCount) continue;
+    if (seenPages.has(page)) {
+      warnings.push(`Page ${page} was in both a student's set and unassignedPages — kept as assigned`);
+      continue;
+    }
+    seenPages.set(page, "unassigned");
+  }
+
+  const missing: number[] = [];
+  for (let p = 1; p <= pageCount; p++) {
+    if (!seenPages.has(p)) missing.push(p);
+  }
+  if (missing.length > 0) {
+    warnings.push(
+      `Page(s) ${missing.join(", ")} were not mentioned in the segmentation response — added to unassigned`
+    );
+  }
+
+  return { ok: true, response: parsed.data, warnings };
+}
+
+/** A minimal roster row for name matching — avoids importing UI-layer types here. */
+export interface RosterEntry {
+  profileId: string;
+  displayName: string;
+}
+
+/**
+ * Loosely normalise a name for matching: lowercase, strip punctuation and
+ * extra whitespace, drop generational suffixes. Deliberately permissive —
+ * this only produces a *proposed* match; the teacher confirms it.
+ */
+function normaliseName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // strip accents
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Match each segmented label against the class roster by name similarity.
+ * A match is only proposed when reasonably confident; otherwise
+ * matchedStudentId stays null and the teacher must pick manually. This
+ * NEVER auto-selects a match the teacher hasn't seen — it only pre-fills
+ * the review UI's dropdown.
+ */
+export function matchSegmentsToRoster(
+  students: SegmentedStudent[],
+  roster: RosterEntry[]
+): ProposedSegment[] {
+  const normalisedRoster = roster.map((r) => ({
+    ...r,
+    normalised: normaliseName(r.displayName),
+    tokens: new Set(normaliseName(r.displayName).split(" ").filter(Boolean)),
+  }));
+
+  return students.map((s) => {
+    const target = normaliseName(s.label);
+    const targetTokens = new Set(target.split(" ").filter(Boolean));
+
+    let best: { entry: (typeof normalisedRoster)[number]; score: number } | null = null;
+
+    for (const entry of normalisedRoster) {
+      let score = 0;
+      if (entry.normalised === target) {
+        score = 1;
+      } else {
+        // Token overlap: shared first/last name tokens count strongly.
+        let shared = 0;
+        for (const t of targetTokens) if (entry.tokens.has(t)) shared++;
+        const denom = Math.max(entry.tokens.size, targetTokens.size, 1);
+        score = shared / denom;
+      }
+      if (score > 0 && (!best || score > best.score)) best = { entry, score };
+    }
+
+    // Require a reasonably strong match before proposing it — a weak partial
+    // overlap is worse than no suggestion, since it invites a careless accept.
+    const matched = best && best.score >= 0.5 ? best.entry : null;
+
+    return {
+      label: s.label,
+      pages: [...s.pages].sort((a, b) => a - b),
+      confidence: s.confidence,
+      note: s.note,
+      matchedStudentId: matched?.profileId ?? null,
+      matchedStudentName: matched?.displayName ?? null,
+    };
+  });
+}
