@@ -80,8 +80,25 @@ export function DashboardShell({
         ["--exam-builder-width" as string]: "28rem",
       }}
     >
-      {/* Full-page subtle psychedelic background behind main content */}
-      <MandelbrotBg subtle />
+      {/* Full-page subtle psychedelic background behind main content.
+       *
+       * FIXED, not absolute (2026-08-20): MandelbrotBg's own wrapper is
+       * `position: absolute; inset: 0`, which anchors it to THIS div's own
+       * box — and this div is only `min-h-screen` tall, i.e. exactly one
+       * viewport, while <main>'s actual content routinely runs much longer.
+       * Once a page is scrolled past that first viewport, this decorative
+       * layer had already scrolled out of view, leaving raw, un-backgrounded
+       * body underneath — which any `fixed` modal opened at that scroll
+       * position (e.g. ContinuityDigestModal) would then render its
+       * semi-transparent backdrop over, producing an unreadable panel with
+       * page content bleeding through. `position: fixed` on this wrapping
+       * div makes it track the viewport rather than the page, so it is
+       * present and correct behind a fixed modal at any scroll position.
+       * pointer-events: none preserves click-through to the real page
+       * content, matching MandelbrotBg's own inner pointerEvents: "none". */}
+      <div className="fixed inset-0 -z-10 pointer-events-none">
+        <MandelbrotBg subtle />
+      </div>
       {/* Hover zone: thin strip that expands into the sidebar */}
       <div
         className="fixed left-0 top-0 h-full z-40 flex"
