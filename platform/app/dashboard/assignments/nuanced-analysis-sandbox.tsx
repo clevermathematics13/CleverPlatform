@@ -259,6 +259,41 @@ export function NuancedAnalysisSandbox() {
     };
   }, []);
 
+  // Grade 9 is taught as two curriculum TRACKS, not four separate class
+  // rosters: "Grade 9 Extended" (9A, 9C, 9G) and "Grade 9 Standard" (9D).
+  // Nuanced Analysis packets are shared across every class on a track, so
+  // continuity and saving must target one of two virtual courses created for
+  // exactly this purpose (see migration
+  // add_grade9_extended_standard_virtual_courses) — never an individual
+  // class's roster course. Those roster courses (9A, 9C, 9D, 9G) remain the
+  // FK target for students/gradebook/tests/Google Classroom sync and are
+  // deliberately excluded from this picker so a teacher can never
+  // accidentally save a Grade 9 packet's continuity against a single class
+  // instead of its whole track.
+  const GRADE_9_TRACK_COURSE_NAMES = useMemo(() => ["Grade 9 Extended", "Grade 9 Standard"], []);
+
+  const gradeFilteredCourses = useMemo(() => {
+    if (gradeLevel === "Grade 9") {
+      return courses.filter((c) => GRADE_9_TRACK_COURSE_NAMES.includes(c.name));
+    }
+    return courses.filter((c) => !GRADE_9_TRACK_COURSE_NAMES.includes(c.name));
+  }, [courses, gradeLevel, GRADE_9_TRACK_COURSE_NAMES]);
+
+  // If the grade changes and the currently-selected course no longer belongs
+  // to that grade's offered list, clear the selection rather than silently
+  // keeping a stale course/section pairing (e.g. switching from Grade 9 to
+  // Grade 12 while "Grade 9 Extended" was still selected).
+  useEffect(() => {
+    setCourseId((current) => {
+      if (current && !gradeFilteredCourses.some((c) => c.id === current)) {
+        setSectionCode("");
+        return "";
+      }
+      return current;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gradeLevel]);
+
   // Continuity for the selected course. Refetched when the course changes so
   // the generator never runs against a stale picture of what has been taught.
   useEffect(() => {
@@ -465,7 +500,7 @@ export function NuancedAnalysisSandbox() {
         </label>
 
         <label className="flex items-center gap-1.5 text-xs text-da-muted">
-          Course
+          {gradeLevel === "Grade 9" ? "Track" : "Course"}
           <select
             value={courseId}
             onChange={(e) => {
@@ -475,7 +510,7 @@ export function NuancedAnalysisSandbox() {
             className="rounded border border-da-border/50 bg-da-bg/30 px-2 py-1 text-xs text-da-text focus:outline-none"
           >
             <option value="">— none (no continuity) —</option>
-            {courses.map((c) => (
+            {gradeFilteredCourses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
