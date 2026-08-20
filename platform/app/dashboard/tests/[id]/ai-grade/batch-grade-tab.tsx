@@ -228,7 +228,7 @@ export function BatchGradeTab({
     if (!batch || !canSplit) return;
     setSplitting(true);
     setError(null);
-    setStatusLine("Splitting the batch and grading each student — this can take several minutes for a full class…");
+    setStatusLine("Splitting the batch into per-student scans…");
     try {
       const res = await fetch(`/api/tests/${testId}/ai-grade/batch/${batch.id}/split`, {
         method: "POST",
@@ -239,10 +239,59 @@ export function BatchGradeTab({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Splitting failed.");
-      setSplitResults(data.results ?? []);
+
+      const splitRows: { studentId: string; label: string; status: string; error?: string }[] =
+        data.results ?? [];
+
+      // Grading each student is its own request against the existing
+      // single-student route (reuseExistingScan picks up the just-split
+      // scan) — kept sequential and client-driven so no single serverless
+      // invocation has to grade a whole class inside one duration budget.
+      const graded: SplitResultRow[] = [];
+      for (const sr of splitRows) {
+        if (sr.status !== "split") {
+          graded.push({ studentId: sr.studentId, label: sr.label, runId: null, status: "failed", error: sr.error });
+          setSplitResults([...graded]);
+          continue;
+        }
+        setStatusLine(`Marking ${sr.label}'s script (${graded.length + 1} of ${splitRows.length})…`);
+        try {
+          const gradeRes = await fetch(`/api/tests/${testId}/ai-grade`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ studentId: sr.studentId, reuseExistingScan: true }),
+          });
+          const gradeData = await gradeRes.json();
+          if (!gradeRes.ok) {
+            graded.push({ studentId: sr.studentId, label: sr.label, runId: gradeData.runId ?? null, status: "failed", error: gradeData.error });
+          } else {
+            graded.push({
+              studentId: sr.studentId,
+              label: sr.label,
+              runId: gradeData.runId ?? null,
+              status: "complete",
+              suggestedTotal: gradeData.suggestedTotal,
+              maxTotal: gradeData.maxTotal,
+              partsGraded: gradeData.partsGraded,
+            });
+          }
+        } catch (e) {
+          graded.push({
+            studentId: sr.studentId,
+            label: sr.label,
+            runId: null,
+            status: "failed",
+            error: e instanceof Error ? e.message : "Marking failed.",
+          });
+        }
+        setSplitResults([...graded]);
+      }
+
+      const completedCount = graded.filter((r) => r.status === "complete").length;
+      const failedCount = graded.filter((r) => r.status === "failed").length;
       setStatusLine(
-        `Graded ${data.completedCount} of ${(data.results ?? []).length} student(s). ${
-          data.failedCount > 0 ? `${data.failedCount} failed — see below.` : "Review each student from the Individual tab."
+        `Graded ${completedCount} of ${graded.length} student(s). ${
+          failedCount > 0 ? `${failedCount} failed — see below.` : "Review each student from the Individual tab."
         }`
       );
     } catch (e) {
