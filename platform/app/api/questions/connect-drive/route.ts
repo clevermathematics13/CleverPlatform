@@ -16,7 +16,13 @@ export async function GET(request: NextRequest) {
   await requireTeacher();
 
   const base = getBaseUrl(request);
-  const redirectUri = `${base}/auth/google-drive/callback`;
+  // Both Drive and Classroom OAuth land on the same shared callback handler
+  // (platform/app/auth/google-classroom/callback/route.ts), which branches
+  // on state === "google-drive" vs the Classroom default. This route used to
+  // point at /auth/google-drive/callback, which has never existed as an
+  // actual route — Google would have 404'd after the consent screen instead
+  // of returning here.
+  const redirectUri = `${base}/auth/google-classroom/callback`;
   const url = getDriveAuthUrl(redirectUri);
   return NextResponse.redirect(url);
 }
