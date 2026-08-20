@@ -14,14 +14,21 @@
  *   - "Download PDF (Typst)" via DocumentOrchestratorService
  *   - "Save as Nuanced Analysis": writes the packet to public.nuanced_analyses
  *     and commits its continuity digest, after teacher confirmation
+ *   - "Load draft": recovers a packet parked with the generator panel's
+ *     draft-save button (public.assignment_templates) back into this sandbox
  *
  * On the two save paths
  * ---------------------
- * The generator panel's own "Save template" button still writes to
+ * The generator panel's own draft-save button still writes to
  * assignment_templates. That is a draft store and stays as-is — it is how a
  * work-in-progress is parked. Saving as a Nuanced Analysis is a different act:
  * it declares the packet taught, records what it covered, and makes the next
  * packet's generation depend on it. Only the second one touches continuity.
+ * "Load draft" (new, 2026-08-19) is the bridge between the two: it pulls a
+ * parked draft's content back into this sandbox's live state, so a packet
+ * saved under the two buttons' old, confusingly-identical labels isn't
+ * stranded — from there, the real "Save as Nuanced Analysis" flow applies
+ * exactly as normal.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -39,6 +46,7 @@ import { NuancedAnalysisPreview } from "./nuanced-analysis-preview";
 import { ActivityGeneratorPanel } from "./activity-generator";
 import { EditTemplateModal } from "./edit-template-modal";
 import { ContinuityDigestModal } from "./continuity-digest-modal";
+import { LoadDraftModal } from "./load-draft-modal";
 import { DocumentOrchestratorService } from "@/lib/document-orchestrator-nuanced";
 
 type GradeLevel = "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
@@ -219,6 +227,7 @@ export function NuancedAnalysisSandbox() {
   const [pdfStatus, setPdfStatus] = useState<PdfStatus>("idle");
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [loadDraftModalOpen, setLoadDraftModalOpen] = useState(false);
 
   // ---- Course / grade / section targeting ----
   const [gradeLevel, setGradeLevel] = useState<GradeLevel>("Grade 12");
@@ -314,6 +323,14 @@ export function NuancedAnalysisSandbox() {
 
   const handleDraftChange = useCallback((d: AssignmentDraft) => {
     setDraft(d);
+  }, []);
+
+  /** Loading a saved draft goes through the exact same state setter a fresh
+   *  generation uses — from this point on it is ordinary sandbox state,
+   *  with no distinction from anything the AI generator just produced. */
+  const handleDraftLoaded = useCallback((d: AssignmentDraft) => {
+    setDraft(d);
+    setSaveNotice(`Loaded "${d.title || "Untitled"}" — review it below, then Save as Nuanced Analysis when ready.`);
   }, []);
 
   async function handleDownloadPdf() {
@@ -589,6 +606,14 @@ export function NuancedAnalysisSandbox() {
           )}
           <button
             type="button"
+            onClick={() => setLoadDraftModalOpen(true)}
+            title="Load a packet previously saved with the generator panel's 'Save draft' button"
+            className="rounded-lg border border-da-border bg-da-bg/60 px-3 py-1.5 text-xs font-semibold text-da-text transition-colors hover:bg-da-bg"
+          >
+            ⇪ Load Draft
+          </button>
+          <button
+            type="button"
             onClick={() => setTemplateModalOpen(true)}
             className="rounded-lg border border-da-border bg-da-bg/60 px-3 py-1.5 text-xs font-semibold text-da-text transition-colors hover:bg-da-bg"
           >
@@ -633,6 +658,13 @@ export function NuancedAnalysisSandbox() {
       <EditTemplateModal
         open={templateModalOpen}
         onClose={() => setTemplateModalOpen(false)}
+      />
+
+      {/* ---- Load Draft modal ---- */}
+      <LoadDraftModal
+        open={loadDraftModalOpen}
+        onClose={() => setLoadDraftModalOpen(false)}
+        onLoad={handleDraftLoaded}
       />
 
       {/* ---- Continuity digest confirmation ---- */}
