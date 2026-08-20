@@ -5,8 +5,13 @@ import {
   saveDriveTokenToCookie,
 } from "@/lib/google-drive";
 
-// Google OAuth callback. Classroom tokens are persisted server-side in
-// public.google_oauth_tokens; Drive still uses its own cookie store.
+// Google OAuth callback, shared by both providers (branches on `state`).
+// Both Classroom and Drive tokens are persisted server-side in
+// public.google_oauth_tokens (provider = "google-classroom" / "google-drive"
+// respectively) so each connection survives cookie clears, device changes,
+// and works from background jobs — not just the connecting browser session.
+// saveDriveTokenToCookie keeps its historical name (see lib/google-drive.ts)
+// but now writes through to the same DB-backed store Classroom already used.
 
 function getBaseUrl(request: NextRequest): string {
   const forwardedHost = request.headers.get("x-forwarded-host");
@@ -41,7 +46,8 @@ export async function GET(request: NextRequest) {
 
   try {
     if (isDrive) {
-      // Drive token for clevermathematics@gmail.com (question docs)
+      // Drive token for clevermathematics@gmail.com (question docs).
+      // Persisted server-side, same as Classroom below.
       const redirectUri = `${base}/auth/google-classroom/callback`;
       const token = await exchangeDriveCodeForToken(code, redirectUri);
       await saveDriveTokenToCookie(token);
