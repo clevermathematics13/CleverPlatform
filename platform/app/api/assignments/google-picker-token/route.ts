@@ -3,7 +3,7 @@
  *
  * Returns the Google access token AND API key for initializing the Google Picker.
  * The Picker requires both:
- *   - OAuth token (user auth, from Drive cookie)
+ *   - OAuth token (user auth, from the stored Drive credential)
  *   - API key / developer key (project auth, from env)
  *
  * Returns: { token: string; apiKey: string } or { error: string }
@@ -19,8 +19,8 @@ export async function GET() {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
 
-  const token = await getDriveTokenFromCookie();
-  if (!token) {
+  const credentials = await getDriveTokenFromCookie();
+  if (!credentials?.access_token) {
     return NextResponse.json({ error: "Google Drive not connected" }, { status: 401 });
   }
 
@@ -32,5 +32,9 @@ export async function GET() {
     );
   }
 
-  return NextResponse.json({ token, apiKey });
+  // The Picker SDK's setOAuthToken() (see activity-generator.tsx) expects a
+  // bare access-token string. getDriveTokenFromCookie() now returns the full
+  // Credentials object (see lib/google-drive.ts) rather than the raw cookie
+  // JSON this route used to forward directly — extract just the token.
+  return NextResponse.json({ token: credentials.access_token, apiKey });
 }
