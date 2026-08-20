@@ -29,6 +29,23 @@
  * recorded continuity. Terms that DO already appear are shown too, unchecked,
  * so the teacher can see (and correct, if the auto-classification is wrong)
  * rather than have them silently vanish from view.
+ *
+ * BACKDROP OPACITY (2026-08-20): a teacher reported the whole panel
+ * "impossible to read" — page content behind it (tab labels, other cards)
+ * was bleeding straight through both the black scrim and the panel itself.
+ * Root cause: dashboard-shell.tsx's decorative MandelbrotBg layer is
+ * `position: absolute` inside a `min-h-screen` container, so it only covers
+ * the first viewport of page height. This modal is `position: fixed`,
+ * which is correct for a modal, but the teacher had scrolled well past that
+ * first viewport to reach the Save button that opens it — so the area this
+ * modal renders over was raw, un-backgrounded body content, and a 50%-alpha
+ * black scrim over uncontrolled content is not reliably legible. A modal's
+ * backdrop must not depend on what happens to be painted behind it at
+ * whatever scroll position the page is in: the scrim is bumped to bg-black/80
+ * (opaque enough to read through almost anything) and the panel itself now
+ * pins an explicit solid background colour rather than the bg-da-bg utility
+ * class alone, so both layers are correct regardless of scroll position or
+ * what CSS custom properties happen to resolve to at runtime.
  */
 
 import { useEffect, useState } from "react";
@@ -131,8 +148,14 @@ export function ContinuityDigestModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
-      <div className="my-8 w-full max-w-2xl rounded-xl border border-da-border bg-da-bg shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.8)" }}
+    >
+      <div
+        className="my-8 w-full max-w-2xl rounded-xl border border-da-border shadow-xl"
+        style={{ backgroundColor: "var(--color-da-bg, #160904)" }}
+      >
         <div className="border-b border-da-border px-5 py-3">
           <h2 className="text-sm font-semibold text-da-text">
             Confirm continuity record — {sectionCode}
