@@ -385,6 +385,12 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                   >
                     Enter Marks →
                   </a>
+                  <a
+                    href={`/dashboard/tests/${test.id}/ai-grade`}
+                    className="rounded border border-purple-300 bg-purple-50 px-3 py-1 text-xs text-purple-700 hover:bg-purple-100"
+                  >
+                    Mark Scans →
+                  </a>
                   <button
                     type="button"
                     onClick={() =>
