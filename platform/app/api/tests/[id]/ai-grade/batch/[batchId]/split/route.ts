@@ -1,19 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
-import {
-  GRADING_MODEL,
-  GRADING_SYSTEM_PROMPT,
-  SCAN_BUCKET,
-  assembleMarkScheme,
-  buildGradingUserPrompt,
-  unitLabel,
-  validateGradeResponse,
-  type GradingUnit,
-} from "@/lib/ai-grading";
+import { SCAN_BUCKET } from "@/lib/ai-grading";
 
-export const maxDuration = 800;
+// Hobby-plan serverless functions cap at 300s. Grading a full class
+// sequentially in one request (as an earlier version of this route did)
+// can exceed that for anything beyond a handful of students, so this route
+// does the FAST part only — split the batch PDF and create one queued
+// ai_grade_runs row per student — and returns immediately. Actual grading
+// happens as separate calls to the existing single-student
+// POST /api/tests/[id]/ai-grade route (reuseExistingScan: true), one per
+// student, made by the client after this route returns. That keeps every
+// grading call inside its own 300s budget regardless of class size.
+export const maxDuration = 120;
 
 interface ConfirmedSegment {
   label: string;
@@ -27,18 +26,12 @@ interface ConfirmedSegment {
  *
  * Applies the teacher's CONFIRMED page-to-student mapping (which may differ
  * from the model's proposal — every segment here needs an explicit studentId,
- * there is no roster auto-match fallback at this step): splits the batch PDF
- * into one PDF per student via pdf-lib, uploads each to the same exam-scans
- * bucket single-student scans already use, and grades each one using EXACTLY
- * the same assembleMarkScheme / prompt / validateGradeResponse pipeline as
- * POST /api/tests/[id]/ai-grade. This route does not duplicate that grading
- * logic's design — a batch student's ai_grade_runs / ai_grade_results rows
- * are indistinguishable from a directly-uploaded single-student scan's,
- * except for source_storage_path pointing at the split-out batch page range.
- *
- * Grades sequentially (not in parallel) to stay well inside Anthropic rate
- * limits for a class-sized batch; each student's failure is isolated and
- * does not stop the rest of the batch.
+ * there is no roster auto-match fallback at this step) and splits the batch
+ * PDF into one PDF per student via pdf-lib, uploading each to the same
+ * exam-scans bucket single-student scans already use. Returns the storage
+ * path per student; the caller then triggers grading for each one via the
+ * existing single-student route. This route never calls the model and never
+ * writes to ai_grade_runs or ai_grade_results itself.
  */
 export async function POST(
   request: NextRequest,
@@ -46,7 +39,7 @@ export async function POST(
 ) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
-  const { supabase, user } = auth;
+  const { supabase } = auth;
   const { id: testId, batchId } = await params;
 
   let body: { segments?: unknown };
@@ -85,13 +78,6 @@ export async function POST(
     );
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json(
-      { error: "ANTHROPIC_API_KEY is not configured on this deployment" },
-      { status: 500 }
-    );
-  }
-
   // -- Load the batch and the source PDF -------------------------------------
   const { data: batch, error: batchErr } = await supabase
     .from("ai_grade_batches")
@@ -106,7 +92,7 @@ export async function POST(
   }
   if (batch.status === "split") {
     return NextResponse.json(
-      { error: "This batch has already been split and graded. Re-upload to grade again." },
+      { error: "This batch has already been split. Re-upload to grade again." },
       { status: 409 }
     );
   }
@@ -141,61 +127,15 @@ export async function POST(
     );
   }
 
-  await supabase.from("ai_grade_batches").update({ status: "segmenting" }).eq("id", batchId);
-
-  // -- Mark scheme, once for the whole batch (identical to the single-student route) --
-  let units: GradingUnit[];
-  let assemblyWarnings: string[];
-  try {
-    const assembled = await assembleMarkScheme(supabase, testId);
-    units = assembled.units;
-    assemblyWarnings = assembled.warnings;
-  } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Mark scheme assembly failed" },
-      { status: 500 }
-    );
-  }
-  const gradeable = units.filter((u) => u.markschemeSource !== "none");
-  if (gradeable.length === 0) {
-    return NextResponse.json(
-      {
-        error:
-          "No mark scheme text is stored for any part of this assessment. Extract the mark scheme LaTeX in the PPQ Bank first.",
-        warnings: assemblyWarnings,
-      },
-      { status: 422 }
-    );
-  }
-
-  const { data: test } = await supabase.from("tests").select("name").eq("id", testId).maybeSingle();
-
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
   const results: {
     studentId: string;
     label: string;
-    runId: string | null;
-    status: "complete" | "failed";
+    status: "split" | "failed";
     error?: string;
-    suggestedTotal?: number;
-    maxTotal?: number;
-    partsGraded?: number;
   }[] = [];
 
-  // Sequential by design — see maxDuration note above.
   for (const segment of segments) {
-    const runInsert = {
-      test_id: testId,
-      student_id: segment.studentId,
-      created_by: user.id,
-      status: "running" as const,
-      model: GRADING_MODEL,
-      source_storage_path: null as string | null,
-    };
-
     try {
-      // -- Split out this student's pages into their own PDF -----------------
       const splitDoc = await PDFDocument.create();
       const copiedPages = await splitDoc.copyPages(
         sourceDoc,
@@ -210,116 +150,11 @@ export async function POST(
         .upload(splitPath, splitBytes, { contentType: "application/pdf", upsert: true });
       if (uploadErr) throw new Error(`Could not store split scan: ${uploadErr.message}`);
 
-      runInsert.source_storage_path = splitPath;
-
-      const { data: run, error: runErr } = await supabase
-        .from("ai_grade_runs")
-        .insert(runInsert)
-        .select("id")
-        .single();
-      if (runErr || !run) throw new Error(`Could not create grading run: ${runErr?.message ?? "unknown"}`);
-
-      const failRun = async (message: string) => {
-        await supabase
-          .from("ai_grade_runs")
-          .update({ status: "failed", error: message, completed_at: new Date().toISOString() })
-          .eq("id", run.id);
-        results.push({ studentId: segment.studentId, label: segment.label, runId: run.id, status: "failed", error: message });
-      };
-
-      // -- Grade, identically to the single-student route ---------------------
-      const message = await anthropic.messages.create({
-        model: GRADING_MODEL,
-        max_tokens: 16384,
-        system: GRADING_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: { type: "base64", media_type: "application/pdf", data: splitBytes.toString("base64") },
-              },
-              {
-                type: "text",
-                text: buildGradingUserPrompt(gradeable, {
-                  studentName: segment.label,
-                  testName: test?.name,
-                }),
-              },
-            ],
-          },
-        ],
-      });
-
-      const responseText = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-      if (!responseText.trim()) {
-        await failRun("Model returned an empty response");
-        continue;
-      }
-
-      const validation = validateGradeResponse(responseText, gradeable);
-      if (!validation.ok) {
-        await failRun(validation.error);
-        continue;
-      }
-
-      const { grades, warnings } = validation.outcome;
-      const rows = grades.map((g) => ({
-        run_id: run.id,
-        test_item_id: g.unit.testItemId,
-        suggested_marks: g.clampedMarks,
-        max_marks: g.unit.maxMarks,
-        confidence: g.confidence,
-        markscheme_source: g.unit.markschemeSource,
-        work_found: g.item.workFound,
-        reasoning: g.item.reasoning,
-        evidence: g.item.evidence,
-        mark_breakdown: g.item.markBreakdown,
-      }));
-
-      const { error: insertErr } = await supabase.from("ai_grade_results").insert(rows);
-      if (insertErr) {
-        await failRun(`Could not save results: ${insertErr.message}`);
-        continue;
-      }
-
-      const suggestedTotal = grades.reduce((s, g) => s + g.clampedMarks, 0);
-      const maxTotal = gradeable.reduce((s, u) => s + u.maxMarks, 0);
-      const needsReview = grades
-        .filter((g) => g.confidence === "low" || !g.item.workFound)
-        .map((g) => unitLabel(g.unit));
-
-      const coverage = {
-        partsInAssessment: units.length,
-        partsGraded: grades.length,
-        partsWithoutMarkscheme: units.length - gradeable.length,
-        suggestedTotal,
-        maxTotal,
-        needsReview,
-        warnings: [...assemblyWarnings, ...warnings],
-        fromBatch: batchId,
-      };
-
-      await supabase
-        .from("ai_grade_runs")
-        .update({ status: "complete", completed_at: new Date().toISOString(), coverage })
-        .eq("id", run.id);
-
-      results.push({
-        studentId: segment.studentId,
-        label: segment.label,
-        runId: run.id,
-        status: "complete",
-        suggestedTotal,
-        maxTotal,
-        partsGraded: grades.length,
-      });
+      results.push({ studentId: segment.studentId, label: segment.label, status: "split" });
     } catch (e) {
       results.push({
         studentId: segment.studentId,
         label: segment.label,
-        runId: null,
         status: "failed",
         error: e instanceof Error ? e.message : String(e),
       });
@@ -344,7 +179,7 @@ export async function POST(
   return NextResponse.json({
     batchId,
     results,
-    completedCount: results.filter((r) => r.status === "complete").length,
+    splitCount: results.filter((r) => r.status === "split").length,
     failedCount: results.filter((r) => r.status === "failed").length,
   });
 }
