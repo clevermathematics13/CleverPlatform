@@ -45,6 +45,19 @@ const CONFIDENCE_STYLE: Record<Confidence, string> = {
   low: "bg-red-100 text-red-800 border-red-300",
 };
 
+// Proven legible styling for form controls sitting on the dark "whiskey
+// wood" theme (see globals.css: the .bg-white select / select.bg-white
+// override rule gives these a solid white background, near-black text,
+// and color-scheme: light so native dropdown chrome doesn't fall back to
+// the OS dark appearance). Matches classroom-client.tsx's Classroom course
+// picker exactly rather than a shorter class list, since font-medium and
+// the focus ring aren't just cosmetic here -- shadow-sm gives the white
+// background a visible edge against the equally-dark card behind it.
+const SELECT_CLASS =
+  "block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent";
+const INPUT_CLASS =
+  "rounded-lg border border-da-border bg-white px-2 py-1 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent disabled:bg-gray-50";
+
 function parsePageList(text: string): number[] {
   const pages = new Set<number>();
   for (const part of text.split(",").map((p) => p.trim()).filter(Boolean)) {
@@ -241,7 +254,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             setVersionId(e.target.value);
             reset();
           }}
-          className="mt-1 w-full rounded border border-da-border bg-white px-3 py-2 text-sm text-gray-900"
+          className={`mt-1 ${SELECT_CLASS}`}
         >
           {versions.map((v) => (
             <option key={v.id} value={v.id}>
@@ -251,12 +264,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           ))}
         </select>
         {version && !version.courseId && (
-          <p className="mt-2 text-xs text-red-600">
+          <p className="mt-2 text-xs text-da-danger">
             This packet version has no linked course — roster matching will find nothing.
           </p>
         )}
         {version && version.courseId && version.roster.length === 0 && (
-          <p className="mt-2 text-xs text-amber-600">
+          <p className="mt-2 text-xs text-da-warning">
             This course has no invited students yet — every segment will come back unmatched.
           </p>
         )}
@@ -350,7 +363,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                           value={r.label}
                           onChange={(e) => updateRow(r.key, { label: e.target.value })}
                           disabled={!!rawStage2}
-                          className="w-40 rounded border border-da-border bg-white px-2 py-1 text-sm text-gray-900 disabled:bg-gray-50"
+                          className={`w-40 ${INPUT_CLASS}`}
                         />
                         {r.note && <p className="mt-0.5 text-xs text-da-muted">{r.note}</p>}
                       </td>
@@ -360,9 +373,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                           onChange={(e) => updateRow(r.key, { pages: parsePageList(e.target.value) })}
                           disabled={!!rawStage2}
                           placeholder="e.g. 1-8"
-                          className={`w-28 rounded border bg-white px-2 py-1 text-sm text-gray-900 disabled:bg-gray-50 ${
-                            conflicted ? "border-red-400" : "border-da-border"
-                          }`}
+                          className={`w-28 ${INPUT_CLASS} ${conflicted ? "border-red-400" : ""}`}
                         />
                       </td>
                       <td className="px-2 py-2">
@@ -370,7 +381,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                           value={r.invitedId}
                           onChange={(e) => updateRow(r.key, { invitedId: e.target.value })}
                           disabled={!!rawStage2}
-                          className="rounded border border-da-border bg-white px-2 py-1 text-sm text-gray-900 disabled:bg-gray-50"
+                          className={SELECT_CLASS}
                         >
                           <option value="">— pick a student —</option>
                           {version?.roster.map((s) => (
