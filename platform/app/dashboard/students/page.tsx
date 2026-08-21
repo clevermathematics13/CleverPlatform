@@ -119,15 +119,28 @@ export default async function StudentsPage({
     (inv) => !enrolledEmails.has(inv.email)
   );
 
-  // Fetch courses for the add form and course picker
+  // Course picker options: only non-archived courses show up in the dropdown.
   const { data: courses } = await supabase
     .from("courses")
     .select("id, name")
+    .eq("archived", false)
     .order("name");
 
-  const activeCourse = courseFilter
-    ? (courses ?? []).find((c) => c.id === courseFilter) ?? null
-    : null;
+  // The active course (from ?course=) resolves by ID regardless of archived
+  // status, so a direct link to an archived course's roster still works —
+  // it just won't appear in the picker dropdown itself.
+  let activeCourse: { id: string; name: string } | null = null;
+  if (courseFilter) {
+    activeCourse = (courses ?? []).find((c) => c.id === courseFilter) ?? null;
+    if (!activeCourse) {
+      const { data: directCourse } = await supabase
+        .from("courses")
+        .select("id, name")
+        .eq("id", courseFilter)
+        .maybeSingle();
+      activeCourse = directCourse ?? null;
+    }
+  }
 
   // Determine whether the currently-filtered class is fully archived (every
   // enrolled + invited student hidden) so the picker can offer the right
