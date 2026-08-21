@@ -49,6 +49,8 @@ export interface InvitedRosterEntry {
   fullName: string;
   /** Populated once the student has registered; null until then. */
   profileId: string | null;
+  /** The real class course this student is actually enrolled/invited on. */
+  sourceCourseId: string;
 }
 
 export interface ProposedInvitedSegment {
@@ -130,22 +132,68 @@ export function matchSegmentsToInvitedRoster(
   });
 }
 
-/** Loads the invited-student roster for a course, for use with matchSegmentsToInvitedRoster. */
+export interface RosterResolution {
+  roster: InvitedRosterEntry[];
+  /** The course IDs actually queried for students -- either [courseId] itself, or its track_courses members. */
+  sourceCourseIds: string[];
+  /** True if courseId was resolved as a track (its members were pooled) rather than queried directly. */
+  isTrack: boolean;
+}
+
+/**
+ * Loads the invited-student roster for a course, for use with
+ * matchSegmentsToInvitedRoster.
+ *
+ * Some courses (Grade 9 Extended, Grade 9 Standard) are virtual "track"
+ * groupings with no roster of their own -- their real students are split
+ * across several actual class courses (e.g. Grade 9 Extended = 9A, 9C, 9G).
+ * See the track_courses table. If courseId has one or more rows in
+ * track_courses, this pools invited students from every member course
+ * instead of querying courseId directly, since a direct query would always
+ * return zero rows for a track course by design.
+ *
+ * Returns which course IDs were actually queried (sourceCourseIds) so
+ * callers can show the teacher what was pooled rather than hiding it --
+ * important here because an incomplete track_courses mapping (e.g. a real
+ * class not yet added) would silently under-count the roster otherwise.
+ */
 export async function loadInvitedRoster(
   supabase: SupabaseClient,
   courseId: string
-): Promise<InvitedRosterEntry[]> {
+): Promise<RosterResolution> {
+  const { data: trackMembers, error: trackErr } = await supabase
+    .from("track_courses")
+    .select("member_course_id")
+    .eq("track_course_id", courseId);
+
+  if (trackErr) throw new Error(`Failed to resolve track_courses for ${courseId}: ${trackErr.message}`);
+
+  const isTrack = (trackMembers ?? []).length > 0;
+  const sourceCourseIds = isTrack
+    ? (trackMembers ?? []).map((r) => r.member_course_id as string)
+    : [courseId];
+
   const { data, error } = await supabase
     .from("invited_students")
-    .select("id, full_name, profile_id")
-    .eq("course_id", courseId)
+    .select("id, full_name, profile_id, course_id")
+    .in("course_id", sourceCourseIds)
     .eq("hidden", false);
 
   if (error) throw new Error(`Failed to load invited roster: ${error.message}`);
 
-  return (data ?? [])
-    .filter((r): r is { id: string; full_name: string; profile_id: string | null } => !!r.full_name)
-    .map((r) => ({ invitedId: r.id, fullName: r.full_name, profileId: r.profile_id }));
+  const roster = (data ?? [])
+    .filter(
+      (r): r is { id: string; full_name: string; profile_id: string | null; course_id: string } =>
+        !!r.full_name
+    )
+    .map((r) => ({
+      invitedId: r.id,
+      fullName: r.full_name,
+      profileId: r.profile_id,
+      sourceCourseId: r.course_id,
+    }));
+
+  return { roster, sourceCourseIds, isTrack };
 }
 
 // -----------------------------------------------------------------------------
