@@ -1,6 +1,7 @@
 "use server";
 
 import { requireTeacher } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import {
   listCourses,
   listStudentsInCourse,
@@ -26,18 +27,44 @@ export interface SubmissionRow extends SubmissionItem {
   email: string;
 }
 
+/** A Classroom course, annotated with the CleverPlatform course it's linked
+ *  to (if any) via course_google_classroom_links, managed on the Students
+ *  page. Lets the picker default to "our classes" instead of every course
+ *  visible in the connected Google account (PD courses, Olympiad, etc). */
+export interface ClassroomCourseWithLink extends ClassroomCourse {
+  linkedCourseName: string | null;
+}
+
 function message(err: unknown): string {
   if (err instanceof ClassroomError) return err.message;
   return err instanceof Error ? err.message : "Google Classroom request failed.";
 }
 
 export async function fetchCourses(): Promise<{
-  courses: ClassroomCourse[];
+  courses: ClassroomCourseWithLink[];
   error?: string;
 }> {
   await requireTeacher();
   try {
-    return { courses: await listCourses() };
+    const courses = await listCourses();
+
+    const supabase = await createClient();
+    const { data: links } = await supabase
+      .from("course_google_classroom_links")
+      .select("google_course_id, courses:course_id ( name )");
+
+    const linkedNameByGcId = new Map<string, string>();
+    for (const link of links ?? []) {
+      const course = link.courses as unknown as { name: string } | null;
+      if (course) linkedNameByGcId.set(link.google_course_id, course.name);
+    }
+
+    return {
+      courses: courses.map((c) => ({
+        ...c,
+        linkedCourseName: linkedNameByGcId.get(c.id) ?? null,
+      })),
+    };
   } catch (err) {
     return { courses: [], error: message(err) };
   }
