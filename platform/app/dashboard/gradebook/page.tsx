@@ -9,6 +9,7 @@ export default async function GradebookPage() {
   const { data: courses } = await supabase
     .from("courses")
     .select("id, name")
+    .eq("archived", false)
     .order("name");
 
   const courseList = courses ?? [];
