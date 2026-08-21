@@ -18,6 +18,10 @@ interface PacketVersionOption {
   title: string | null;
   courseId: string | null;
   roster: RosterEntry[];
+  /** True if courseId is a virtual track course whose roster was pooled from real member classes. */
+  rosterIsTrack: boolean;
+  /** Names of the real courses the roster was pooled from (only meaningful when rosterIsTrack). */
+  rosterSourceCourseNames: string[];
 }
 
 interface ProposedSegment {
@@ -182,8 +186,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           invitedId: s.matchedInvitedId ?? "",
         }))
       );
+      const poolNote =
+        data.rosterIsTrack && Array.isArray(version.rosterSourceCourseNames) && version.rosterSourceCourseNames.length
+          ? ` (pooled from ${version.rosterSourceCourseNames.join(", ")})`
+          : "";
       setStatusLine(
-        `Stage 1 done. Found ${segments.length} student(s) across ${data.pageCount} pages, roster size ${data.rosterSize}. Review before splitting.`
+        `Stage 1 done. Found ${segments.length} student(s) across ${data.pageCount} pages, roster size ${data.rosterSize}${poolNote}. Review before splitting.`
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload or segmentation failed.");
@@ -260,6 +268,9 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             <option key={v.id} value={v.id}>
               {v.title ?? v.versionLabel} — {v.pageCount ?? "?"} pages
               {v.anchorsLocked ? "" : " (anchors NOT locked)"} — roster: {v.roster.length}
+              {v.rosterIsTrack && v.rosterSourceCourseNames.length
+                ? ` (pooled: ${v.rosterSourceCourseNames.join(", ")})`
+                : ""}
             </option>
           ))}
         </select>
@@ -268,9 +279,23 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             This packet version has no linked course — roster matching will find nothing.
           </p>
         )}
-        {version && version.courseId && version.roster.length === 0 && (
+        {version && version.courseId && version.roster.length === 0 && !version.rosterIsTrack && (
           <p className="mt-2 text-xs text-da-warning">
             This course has no invited students yet — every segment will come back unmatched.
+          </p>
+        )}
+        {version && version.rosterIsTrack && version.roster.length === 0 && (
+          <p className="mt-2 text-xs text-da-danger">
+            This is a track course (Grade 9) but no member classes have any invited students yet
+            {version.rosterSourceCourseNames.length
+              ? ` — checked ${version.rosterSourceCourseNames.join(", ")}`
+              : ", and no member classes are mapped in track_courses at all"}
+            . Every segment will come back unmatched.
+          </p>
+        )}
+        {version && version.rosterIsTrack && version.roster.length > 0 && (
+          <p className="mt-2 text-xs text-da-muted">
+            Roster pooled from real classes: {version.rosterSourceCourseNames.join(", ")}.
           </p>
         )}
       </section>
