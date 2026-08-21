@@ -4,9 +4,9 @@ import { getApiTeacher } from "@/lib/auth";
 const SCAN_BUCKET = "exam-scans";
 
 // POST /api/na-review/ingest-pilot
-// One-time ingestion route for the A.1 pilot: takes the crop PNGs (base64)
-// and their matching AI assessment records, uploads each crop to Storage,
-// and writes the full na_scan_batches -> na_packet_scans ->
+// One-time ingestion route for the A.1 pilot: takes ONE crop PNG (base64)
+// at a time, plus its matching AI assessment record, uploads it to
+// Storage, and writes/reuses the na_scan_batches -> na_packet_scans ->
 // na_response_crops -> na_feedback chain so the review UI has real data
 // to work against.
 //
@@ -18,167 +18,180 @@ const SCAN_BUCKET = "exam-scans";
 // null and id_status = 'needs_review', matching how a real batch would
 // look before the name-matching step runs.
 //
-// Body: {
-//   packetVersionId: string,
-//   packets: [{
-//     packetNum: number,
-//     crops: [{
-//       qid: string,
-//       filename: string,
-//       base64: string,
-//       inkDensity: number,
-//       isBlank: boolean,
-//       boundaryExpanded: boolean,
-//       assessment: { ... } | null   // null for un-assessed (e.g. no rubric) crops
-//     }]
-//   }]
-// }
+// Deliberately ONE CROP PER REQUEST rather than a batched payload: pilot
+// crops run up to ~2.6MB raw (~3.5MB base64), and this platform has no
+// custom Vercel body-size config, so it inherits the serverless default
+// body limit -- a multi-crop payload risked silently exceeding that.
+// Single-crop requests stay safely under it regardless of image size,
+// and a failed request only ever loses one crop, not a whole batch.
+//
+// Idempotent: call once with `createBatch: true` to get a batchId back,
+// then call repeatedly with that batchId + packetNum + crop data. Calling
+// again with the same batchId + packetNum reuses the existing
+// na_packet_scans row rather than creating a duplicate (looked up by
+// batch_id + packet_seq). Calling with the same crop filename twice
+// upserts the storage object but WILL create a second na_response_crops
+// row -- the caller is responsible for not re-sending a crop that
+// already succeeded (the runner script tracks this via response status).
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
   const { supabase, user } = auth;
 
   const body = await request.json();
-  const { packetVersionId, packets } = body as {
+
+  // Step 1: create a new batch (called once, first)
+  if (body.createBatch) {
+    const { packetVersionId } = body as { packetVersionId: string };
+    if (!packetVersionId) {
+      return NextResponse.json({ error: "packetVersionId is required" }, { status: 400 });
+    }
+    const { data: batch, error: batchErr } = await supabase
+      .from("na_scan_batches")
+      .insert({
+        packet_version_id: packetVersionId,
+        uploaded_by: user.id,
+        source_filename: "pilot-ingestion",
+        page_count: null,
+        status: "cropped",
+      })
+      .select("id")
+      .single();
+
+    if (batchErr || !batch) {
+      return NextResponse.json({ error: batchErr?.message ?? "Failed to create batch" }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, batchId: batch.id });
+  }
+
+  // Step 2: ingest one crop
+  const {
+    batchId,
+    packetVersionId,
+    packetNum,
+    qid,
+    filename,
+    base64,
+    inkDensity,
+    isBlank,
+    boundaryExpanded,
+    assessment,
+  } = body as {
+    batchId: string;
     packetVersionId: string;
-    packets: {
-      packetNum: number;
-      crops: {
-        qid: string;
-        filename: string;
-        base64: string;
-        inkDensity: number | null;
-        isBlank: boolean;
-        boundaryExpanded: boolean;
-        assessment: Record<string, unknown> | null;
-      }[];
-    }[];
+    packetNum: number;
+    qid: string;
+    filename: string;
+    base64: string;
+    inkDensity: number | null;
+    isBlank: boolean;
+    boundaryExpanded: boolean;
+    assessment: Record<string, unknown> | null;
   };
 
-  if (!packetVersionId || !Array.isArray(packets)) {
+  if (!batchId || !packetVersionId || !packetNum || !qid || !filename || !base64) {
     return NextResponse.json(
-      { error: "packetVersionId and packets are required" },
+      { error: "batchId, packetVersionId, packetNum, qid, filename, and base64 are required" },
       { status: 400 }
     );
   }
 
-  const { data: anchors, error: anchorsErr } = await supabase
+  const { data: anchor, error: anchorErr } = await supabase
     .from("na_anchors")
-    .select("id, qid")
-    .eq("packet_version_id", packetVersionId);
-
-  if (anchorsErr) return NextResponse.json({ error: anchorsErr.message }, { status: 500 });
-
-  const anchorByQid = new Map((anchors ?? []).map((a) => [a.qid, a.id]));
-
-  const { data: batch, error: batchErr } = await supabase
-    .from("na_scan_batches")
-    .insert({
-      packet_version_id: packetVersionId,
-      uploaded_by: user.id,
-      source_filename: "pilot-ingestion",
-      page_count: null,
-      status: "cropped",
-    })
     .select("id")
-    .single();
+    .eq("packet_version_id", packetVersionId)
+    .eq("qid", qid)
+    .maybeSingle();
 
-  if (batchErr || !batch) {
-    return NextResponse.json({ error: batchErr?.message ?? "Failed to create batch" }, { status: 500 });
+  if (anchorErr) return NextResponse.json({ error: anchorErr.message }, { status: 500 });
+  if (!anchor) {
+    return NextResponse.json({ error: `No anchor found for qid ${qid}`, skipped: true }, { status: 200 });
   }
 
-  let totalCrops = 0;
-  let totalFeedback = 0;
-  const skippedQids = new Set<string>();
+  // find-or-create the packet_scan for this batch+packetNum (idempotent
+  // across repeated calls for the same packet)
+  const { data: existingScan } = await supabase
+    .from("na_packet_scans")
+    .select("id")
+    .eq("batch_id", batchId)
+    .eq("packet_seq", packetNum)
+    .maybeSingle();
 
-  for (const packet of packets) {
-    const { data: packetScan, error: scanErr } = await supabase
+  let packetScanId = existingScan?.id;
+  if (!packetScanId) {
+    const { data: newScan, error: scanErr } = await supabase
       .from("na_packet_scans")
       .insert({
-        batch_id: batch.id,
+        batch_id: batchId,
         packet_version_id: packetVersionId,
-        packet_seq: packet.packetNum,
+        packet_seq: packetNum,
         student_profile_id: null,
         id_status: "needs_review",
         status: "assessed",
       })
       .select("id")
       .single();
-
-    if (scanErr || !packetScan) {
-      console.error("Failed to create packet scan", scanErr);
-      continue;
+    if (scanErr || !newScan) {
+      return NextResponse.json({ error: scanErr?.message ?? "Failed to create packet scan" }, { status: 500 });
     }
+    packetScanId = newScan.id;
+  }
 
-    for (const crop of packet.crops) {
-      const anchorId = anchorByQid.get(crop.qid);
-      if (!anchorId) {
-        skippedQids.add(crop.qid);
-        continue;
-      }
+  const storagePath = `pilot/packet-${packetNum}/${filename}`;
+  const buffer = Buffer.from(base64, "base64");
 
-      const storagePath = `pilot/packet-${packet.packetNum}/${crop.filename}`;
-      const buffer = Buffer.from(crop.base64, "base64");
+  const { error: uploadErr } = await supabase.storage
+    .from(SCAN_BUCKET)
+    .upload(storagePath, buffer, { contentType: "image/png", upsert: true });
 
-      const { error: uploadErr } = await supabase.storage
-        .from(SCAN_BUCKET)
-        .upload(storagePath, buffer, { contentType: "image/png", upsert: true });
+  if (uploadErr) {
+    return NextResponse.json({ error: `Upload failed: ${uploadErr.message}` }, { status: 500 });
+  }
 
-      if (uploadErr) {
-        console.error(`Upload failed for ${crop.filename}:`, uploadErr.message);
-        continue;
-      }
+  const { data: cropRow, error: cropErr } = await supabase
+    .from("na_response_crops")
+    .insert({
+      packet_scan_id: packetScanId,
+      anchor_id: anchor.id,
+      storage_path: storagePath,
+      ink_density: inkDensity,
+      is_blank: isBlank,
+      boundary_expanded: boundaryExpanded,
+    })
+    .select("id")
+    .single();
 
-      const { data: cropRow, error: cropErr } = await supabase
-        .from("na_response_crops")
-        .insert({
-          packet_scan_id: packetScan.id,
-          anchor_id: anchorId,
-          storage_path: storagePath,
-          ink_density: crop.inkDensity,
-          is_blank: crop.isBlank,
-          boundary_expanded: crop.boundaryExpanded,
-        })
-        .select("id")
-        .single();
+  if (cropErr || !cropRow) {
+    return NextResponse.json({ error: cropErr?.message ?? "Failed to insert crop row" }, { status: 500 });
+  }
 
-      if (cropErr || !cropRow) {
-        console.error(`Failed to insert crop row for ${crop.filename}:`, cropErr);
-        continue;
-      }
-      totalCrops += 1;
-
-      if (crop.assessment) {
-        const a = crop.assessment as Record<string, unknown>;
-        const { error: fbErr } = await supabase.from("na_feedback").insert({
-          crop_id: cropRow.id,
-          ai_attempted: a.attempted ?? null,
-          ai_transcription: a.transcription ?? null,
-          ai_verdict: a.verdict ?? null,
-          ai_marks_awarded: a.marks_awarded ?? null,
-          ai_marks_available: a.marks_available_for_crop ?? null,
-          ai_misconception_tags: a.misconception_tags ?? null,
-          ai_margin_comment: a.margin_comment ?? null,
-          ai_next_step: a.next_step ?? null,
-          ai_confidence: a.confidence ?? null,
-          ai_teacher_note: a.teacher_note ?? null,
-          ai_validation_error: a.validation_error ?? null,
-          ai_raw_response: a,
-        });
-        if (fbErr) {
-          console.error(`Failed to insert feedback for ${crop.filename}:`, fbErr);
-        } else {
-          totalFeedback += 1;
-        }
-      }
-    }
+  let feedbackWritten = false;
+  if (assessment) {
+    const a = assessment;
+    const { error: fbErr } = await supabase.from("na_feedback").insert({
+      crop_id: cropRow.id,
+      ai_attempted: a.attempted ?? null,
+      ai_transcription: a.transcription ?? null,
+      ai_verdict: a.verdict ?? null,
+      ai_marks_awarded: a.marks_awarded ?? null,
+      ai_marks_available: a.marks_available_for_crop ?? null,
+      ai_misconception_tags: a.misconception_tags ?? null,
+      ai_margin_comment: a.margin_comment ?? null,
+      ai_next_step: a.next_step ?? null,
+      ai_confidence: a.confidence ?? null,
+      ai_teacher_note: a.teacher_note ?? null,
+      ai_validation_error: a.validation_error ?? null,
+      ai_raw_response: a,
+    });
+    feedbackWritten = !fbErr;
+    if (fbErr) console.error(`Failed to insert feedback for ${filename}:`, fbErr);
   }
 
   return NextResponse.json({
     ok: true,
-    batchId: batch.id,
-    totalCrops,
-    totalFeedback,
-    skippedQids: Array.from(skippedQids),
+    batchId,
+    packetScanId,
+    cropId: cropRow.id,
+    feedbackWritten,
   });
 }
