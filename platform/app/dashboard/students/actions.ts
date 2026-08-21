@@ -1,4 +1,3 @@
-
 "use server";
 
 export async function setStudentExtraTime(formData: FormData) {
@@ -248,4 +247,74 @@ export async function updateInvitedFullName(formData: FormData) {
     throw new Error(`Failed to save name: ${error.message}`);
   }
   revalidatePath("/dashboard/students");
+}
+
+/**
+ * Bulk-archive an entire class: sets hidden = true for every enrolled and
+ * invited student in a course. Reversible via unarchiveClassStudents.
+ * Reuses the exact same `hidden` semantics as the per-student Hide button.
+ */
+export async function archiveClassStudents(formData: FormData) {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const courseId = formData.get("course_id") as string;
+  if (!courseId) return { error: "No course selected." };
+
+  const { error: studentsError } = await supabase
+    .from("students")
+    .update({ hidden: true })
+    .eq("course_id", courseId);
+
+  if (studentsError) {
+    console.error("[archiveClassStudents] Failed to hide students:", studentsError.message, studentsError.code);
+    return { error: `Failed to archive class: ${studentsError.message}` };
+  }
+
+  const { error: invitedError } = await supabase
+    .from("invited_students")
+    .update({ hidden: true })
+    .eq("course_id", courseId);
+
+  if (invitedError) {
+    console.error("[archiveClassStudents] Failed to hide invited students:", invitedError.message, invitedError.code);
+    return { error: `Archived enrolled students, but invited students failed: ${invitedError.message}` };
+  }
+
+  revalidatePath("/dashboard/students");
+  revalidatePath("/dashboard/courses");
+  return { success: true };
+}
+
+/** Reverses archiveClassStudents: sets hidden = false for the whole class. */
+export async function unarchiveClassStudents(formData: FormData) {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const courseId = formData.get("course_id") as string;
+  if (!courseId) return { error: "No course selected." };
+
+  const { error: studentsError } = await supabase
+    .from("students")
+    .update({ hidden: false })
+    .eq("course_id", courseId);
+
+  if (studentsError) {
+    console.error("[unarchiveClassStudents] Failed to unhide students:", studentsError.message, studentsError.code);
+    return { error: `Failed to unarchive class: ${studentsError.message}` };
+  }
+
+  const { error: invitedError } = await supabase
+    .from("invited_students")
+    .update({ hidden: false })
+    .eq("course_id", courseId);
+
+  if (invitedError) {
+    console.error("[unarchiveClassStudents] Failed to unhide invited students:", invitedError.message, invitedError.code);
+    return { error: `Unarchived enrolled students, but invited students failed: ${invitedError.message}` };
+  }
+
+  revalidatePath("/dashboard/students");
+  revalidatePath("/dashboard/courses");
+  return { success: true };
 }

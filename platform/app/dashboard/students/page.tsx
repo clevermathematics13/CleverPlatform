@@ -6,6 +6,7 @@ import { GoogleClassroomImport } from "./google-classroom-import";
 import { GoogleClassroomLinks } from "./google-classroom-links";
 import { isGoogleConnected, fetchClassroomLinks } from "./google-classroom-actions";
 import { StudentsTable, type StudentRow } from "./StudentsTable";
+import { CourseFilterBar } from "./CourseFilterBar";
 import Link from "next/link";
 
 export default async function StudentsPage({
@@ -118,7 +119,7 @@ export default async function StudentsPage({
     (inv) => !enrolledEmails.has(inv.email)
   );
 
-  // Fetch courses for the add form
+  // Fetch courses for the add form and course picker
   const { data: courses } = await supabase
     .from("courses")
     .select("id, name")
@@ -127,6 +128,17 @@ export default async function StudentsPage({
   const activeCourse = courseFilter
     ? (courses ?? []).find((c) => c.id === courseFilter) ?? null
     : null;
+
+  // Determine whether the currently-filtered class is fully archived (every
+  // enrolled + invited student hidden) so the picker can offer the right
+  // action (Archive vs Unarchive). Only meaningful when a course is selected
+  // and it actually has students.
+  const classMemberCount = (students?.length ?? 0) + pendingStudents.length;
+  const classIsFullyArchived =
+    Boolean(activeCourse) &&
+    classMemberCount > 0 &&
+    (students ?? []).every((s) => s.hidden) &&
+    pendingStudents.every((s) => s.hidden);
 
   const gcConnected = await isGoogleConnected();
   const classroomLinks = gcConnected ? await fetchClassroomLinks() : [];
@@ -194,15 +206,15 @@ export default async function StudentsPage({
               : "Invite students by importing from Google Classroom."}
           </p>
         </div>
-        {activeCourse && (
-          <Link
-            href="/dashboard/students"
-            className="text-sm text-gray-500 hover:text-gray-700 underline"
-          >
-            Clear filter
-          </Link>
-        )}
       </div>
+
+      {/* Course picker + bulk archive/unarchive */}
+      <CourseFilterBar
+        courses={courses ?? []}
+        activeCourseId={activeCourse?.id ?? null}
+        classMemberCount={classMemberCount}
+        classIsFullyArchived={classIsFullyArchived}
+      />
 
       <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-6">
         <h2 className="text-xl font-bold text-blue-900">
@@ -239,7 +251,9 @@ export default async function StudentsPage({
         ) : (
           <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center">
             <p className="text-sm text-gray-500">
-              No students enrolled yet. Import students from Google Classroom below.
+              {activeCourse
+                ? "No students in this course yet."
+                : "No students enrolled yet. Import students from Google Classroom below."}
             </p>
           </div>
         )}
