@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { removeStudent, setInvitedStudentExtraTime, setInvitedStudentHidden, setStudentExtraTime, setStudentHidden } from "./actions";
 import { startStudentImpersonation } from "../impersonate-actions";
 import { GoogleClassroomImport } from "./google-classroom-import";
-import { isGoogleConnected } from "./google-classroom-actions";
+import { GoogleClassroomLinks } from "./google-classroom-links";
+import { isGoogleConnected, fetchClassroomLinks } from "./google-classroom-actions";
 import { StudentsTable, type StudentRow } from "./StudentsTable";
 import Link from "next/link";
 
@@ -128,6 +129,7 @@ export default async function StudentsPage({
     : null;
 
   const gcConnected = await isGoogleConnected();
+  const classroomLinks = gcConnected ? await fetchClassroomLinks() : [];
 
   // Normalize both enrolled and invited into unified rows
   const rows: StudentRow[] = [
@@ -185,8 +187,8 @@ export default async function StudentsPage({
               ← Back to Courses
             </Link>
           )}
-          <h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">Students</h1>
-          <p className="mt-1 text-base font-medium text-blue-700">
+          <h1 className="text-3xl font-extrabold text-da-text drop-shadow-sm">Students</h1>
+          <p className="mt-1 text-base font-medium text-da-accent">
             {activeCourse
               ? `Showing students in ${activeCourse.name}`
               : "Invite students by importing from Google Classroom."}
@@ -211,9 +213,18 @@ export default async function StudentsPage({
         </p>
       </div>
 
+      {/* Linked classes — which Google Classroom course backs which
+         CleverPlatform course. Set up once per class; both the roster
+         import below and the Classroom grading page read from this. */}
+      <GoogleClassroomLinks
+        courses={courses ?? []}
+        initialConnected={gcConnected}
+        initialLinks={classroomLinks}
+      />
+
       {/* Student List */}
       <div className="mt-8">
-        <h2 className="text-xl font-bold text-blue-900">
+        <h2 className="text-xl font-bold text-da-text">
           Enrolled Students ({(students?.length ?? 0) + (pendingStudents.length)})
         </h2>
 
