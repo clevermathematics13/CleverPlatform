@@ -11,6 +11,7 @@ export default async function SyllabusPage() {
   const { data: courses } = await supabase
     .from("courses")
     .select("id, name")
+    .eq("archived", false)
     .order("name");
 
   // Fetch all subtopics
