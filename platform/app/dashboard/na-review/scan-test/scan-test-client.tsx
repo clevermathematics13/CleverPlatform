@@ -18,9 +18,7 @@ interface PacketVersionOption {
   title: string | null;
   courseId: string | null;
   roster: RosterEntry[];
-  /** True if courseId is a virtual track course whose roster was pooled from real member classes. */
   rosterIsTrack: boolean;
-  /** Names of the real courses the roster was pooled from (only meaningful when rosterIsTrack). */
   rosterSourceCourseNames: string[];
 }
 
@@ -43,20 +41,28 @@ interface ReviewRow {
   invitedId: string; // "" until picked
 }
 
+/** One chunk's full lifecycle: pending segmentation -> segmented (rows to review) -> split. */
+interface ChunkState {
+  batchId: string;
+  chunkIndex: number;
+  chunkCount: number;
+  startPage: number;
+  endPage: number;
+  storagePath: string;
+  status: "pending" | "segmenting" | "segmented" | "split-pending" | "split" | "failed";
+  rows: ReviewRow[];
+  unassignedPages: number[];
+  rawSegmentResponse: unknown;
+  rawSplitResponse: unknown;
+  error: string | null;
+}
+
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
   high: "bg-green-100 text-green-800 border-green-300",
   medium: "bg-amber-100 text-amber-800 border-amber-300",
   low: "bg-red-100 text-red-800 border-red-300",
 };
 
-// Proven legible styling for form controls sitting on the dark "whiskey
-// wood" theme (see globals.css: the .bg-white select / select.bg-white
-// override rule gives these a solid white background, near-black text,
-// and color-scheme: light so native dropdown chrome doesn't fall back to
-// the OS dark appearance). Matches classroom-client.tsx's Classroom course
-// picker exactly rather than a shorter class list, since font-medium and
-// the focus ring aren't just cosmetic here -- shadow-sm gives the white
-// background a visible edge against the equally-dark card behind it.
 const SELECT_CLASS =
   "block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent";
 const INPUT_CLASS =
@@ -106,14 +112,20 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
+  // Non-chunked path: a single batch, same shape as before.
   const [batchId, setBatchId] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [unassignedPages, setUnassignedPages] = useState<number[]>([]);
   const [rawStage1, setRawStage1] = useState<unknown>(null);
-
   const [splitting, setSplitting] = useState(false);
   const [rawStage2, setRawStage2] = useState<unknown>(null);
+
+  // Chunked path: an oversized upload split into several chunks, each
+  // going through its own segment -> review -> split lifecycle.
+  const [parentBatchId, setParentBatchId] = useState<string | null>(null);
+  const [chunks, setChunks] = useState<ChunkState[]>([]);
+  const [presplitWarnings, setPresplitWarnings] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -136,8 +148,59 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setUnassignedPages([]);
     setRawStage1(null);
     setRawStage2(null);
+    setParentBatchId(null);
+    setChunks([]);
+    setPresplitWarnings([]);
     setStatusLine(null);
     setError(null);
+  };
+
+  const updateChunk = (batchId: string, patch: Partial<ChunkState>) =>
+    setChunks((prev) => prev.map((c) => (c.batchId === batchId ? { ...c, ...patch } : c)));
+
+  /** Runs stage 1 (segmentation) for one chunk by calling the same route with its own storagePath. */
+  const segmentChunk = async (chunk: ChunkState) => {
+    if (!version) return;
+    updateChunk(chunk.batchId, { status: "segmenting" });
+    try {
+      const res = await fetch("/api/na-review/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          packetVersionId: version.id,
+          storagePath: chunk.storagePath,
+          fileName: `chunk-${chunk.chunkIndex}.pdf`,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Segmentation failed for this chunk.");
+      if (data.chunked) {
+        // A chunk should never itself be oversized (it was built to fit
+        // under MAX_BATCH_PAGES), but guard against a planning bug rather
+        // than silently mishandling an unexpected nested chunk response.
+        throw new Error("This chunk came back oversized again — unexpected, please report this.");
+      }
+
+      const segments: ProposedSegment[] = data.segments ?? [];
+      updateChunk(chunk.batchId, {
+        status: "segmented",
+        rows: segments.map((s, i) => ({
+          key: `${i}-${s.label}`,
+          label: s.label,
+          pages: s.pages,
+          confidence: s.confidence,
+          note: s.note,
+          invitedId: s.matchedInvitedId ?? "",
+        })),
+        unassignedPages: data.unassignedPages ?? [],
+        rawSegmentResponse: data,
+      });
+    } catch (e) {
+      updateChunk(chunk.batchId, {
+        status: "failed",
+        error: e instanceof Error ? e.message : "Segmentation failed.",
+      });
+    }
   };
 
   const handleUpload = async (file: File) => {
@@ -162,7 +225,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         .upload(storagePath, file, { contentType: "application/pdf", upsert: false });
       if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
 
-      setUploadProgress("Reading cover pages and matching against the roster — can take a minute…");
+      setUploadProgress("Checking size and reading cover pages — can take a minute…");
       const res = await fetch("/api/na-review/batch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -172,27 +235,65 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       setRawStage1(data);
       if (!res.ok) throw new Error(data.error ?? "Segmentation failed.");
 
-      const segments: ProposedSegment[] = data.segments ?? [];
-      setBatchId(data.batchId);
-      setPageCount(data.pageCount);
-      setUnassignedPages(data.unassignedPages ?? []);
-      setRows(
-        segments.map((s, i) => ({
-          key: `${i}-${s.label}`,
-          label: s.label,
-          pages: s.pages,
-          confidence: s.confidence,
-          note: s.note,
-          invitedId: s.matchedInvitedId ?? "",
-        }))
-      );
-      const poolNote =
-        data.rosterIsTrack && Array.isArray(version.rosterSourceCourseNames) && version.rosterSourceCourseNames.length
-          ? ` (pooled from ${version.rosterSourceCourseNames.join(", ")})`
-          : "";
-      setStatusLine(
-        `Stage 1 done. Found ${segments.length} student(s) across ${data.pageCount} pages, roster size ${data.rosterSize}${poolNote}. Review before splitting.`
-      );
+      if (data.chunked) {
+        // Oversized upload: the route already split it into whole-packet
+        // chunks. Set up chunk state, then segment each one in turn (one
+        // request per chunk, so no single request risks the function
+        // timeout that motivated NOT segmenting all chunks server-side).
+        setParentBatchId(data.parentBatchId);
+        setPresplitWarnings(data.warnings ?? []);
+        const initialChunks: ChunkState[] = (data.chunks ?? []).map(
+          (c: { batchId: string; chunkIndex: number; startPage: number; endPage: number; storagePath: string }, i: number) => ({
+            batchId: c.batchId,
+            chunkIndex: c.chunkIndex,
+            chunkCount: data.chunks.length,
+            startPage: c.startPage,
+            endPage: c.endPage,
+            storagePath: c.storagePath,
+            status: "pending" as const,
+            rows: [],
+            unassignedPages: [],
+            rawSegmentResponse: null,
+            rawSplitResponse: null,
+            error: null,
+          })
+        );
+        setChunks(initialChunks);
+        setStatusLine(
+          `This scan was too large for one batch (${data.pageCount} pages). Split automatically into ${initialChunks.length} chunks of whole student packets. Segmenting each in turn…`
+        );
+
+        // Segment chunks sequentially -- each is its own request with its
+        // own time budget, so a slow model response on one chunk can't
+        // starve the others.
+        for (const c of initialChunks) {
+          setStatusLine(`Segmenting chunk ${c.chunkIndex} of ${initialChunks.length} (pages ${c.startPage}-${c.endPage})…`);
+          await segmentChunk(c);
+        }
+        setStatusLine(`All ${initialChunks.length} chunks segmented. Review each one below before splitting.`);
+      } else {
+        const segments: ProposedSegment[] = data.segments ?? [];
+        setBatchId(data.batchId);
+        setPageCount(data.pageCount);
+        setUnassignedPages(data.unassignedPages ?? []);
+        setRows(
+          segments.map((s, i) => ({
+            key: `${i}-${s.label}`,
+            label: s.label,
+            pages: s.pages,
+            confidence: s.confidence,
+            note: s.note,
+            invitedId: s.matchedInvitedId ?? "",
+          }))
+        );
+        const poolNote =
+          data.rosterIsTrack && version.rosterSourceCourseNames.length
+            ? ` (pooled from ${version.rosterSourceCourseNames.join(", ")})`
+            : "";
+        setStatusLine(
+          `Stage 1 done. Found ${segments.length} student(s) across ${data.pageCount} pages, roster size ${data.rosterSize}${poolNote}. Review before splitting.`
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload or segmentation failed.");
     } finally {
@@ -207,6 +308,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     if (file) await handleUpload(file);
   };
 
+  // -- Non-chunked row editing (unchanged) -------------------------------------
   const updateRow = (key: string, patch: Partial<ReviewRow>) =>
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const removeRow = (key: string) => setRows((prev) => prev.filter((r) => r.key !== key));
@@ -249,6 +351,149 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       setSplitting(false);
     }
   };
+
+  // -- Chunk row editing --------------------------------------------------------
+  const updateChunkRow = (chunkBatchId: string, rowKey: string, patch: Partial<ReviewRow>) =>
+    setChunks((prev) =>
+      prev.map((c) =>
+        c.batchId === chunkBatchId
+          ? { ...c, rows: c.rows.map((r) => (r.key === rowKey ? { ...r, ...patch } : r)) }
+          : c
+      )
+    );
+  const removeChunkRow = (chunkBatchId: string, rowKey: string) =>
+    setChunks((prev) =>
+      prev.map((c) => (c.batchId === chunkBatchId ? { ...c, rows: c.rows.filter((r) => r.key !== rowKey) } : c))
+    );
+  const addChunkRow = (chunkBatchId: string) =>
+    setChunks((prev) =>
+      prev.map((c) =>
+        c.batchId === chunkBatchId
+          ? {
+              ...c,
+              rows: [
+                ...c.rows,
+                { key: `manual-${Date.now()}`, label: "New student", pages: [], confidence: "low", note: "Added manually", invitedId: "" },
+              ],
+            }
+          : c
+      )
+    );
+
+  const chunkConflicts = (chunk: ChunkState) => {
+    const owners = new Map<number, string[]>();
+    for (const r of chunk.rows) for (const p of r.pages) owners.set(p, [...(owners.get(p) ?? []), r.key]);
+    const conflicted = new Set<string>();
+    for (const [, keys] of owners) if (keys.length > 1) for (const k of keys) conflicted.add(k);
+    return conflicted;
+  };
+
+  const chunkCanSplit = (chunk: ChunkState) =>
+    chunk.status === "segmented" &&
+    chunk.rows.length > 0 &&
+    chunk.rows.every((r) => r.invitedId && r.pages.length > 0) &&
+    chunkConflicts(chunk).size === 0 &&
+    new Set(chunk.rows.map((r) => r.invitedId)).size === chunk.rows.length;
+
+  const handleSplitChunk = async (chunk: ChunkState) => {
+    if (!chunkCanSplit(chunk)) return;
+    updateChunk(chunk.batchId, { status: "split-pending" });
+    try {
+      const res = await fetch(`/api/na-review/batch/${chunk.batchId}/split`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          segments: chunk.rows.map((r) => ({ label: r.label, pages: r.pages, invitedId: r.invitedId })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Split failed for this chunk.");
+      updateChunk(chunk.batchId, { status: "split", rawSplitResponse: data });
+    } catch (e) {
+      updateChunk(chunk.batchId, {
+        status: "failed",
+        error: e instanceof Error ? e.message : "Split failed.",
+      });
+    }
+  };
+
+  const renderReviewTable = (
+    chunkRows: ReviewRow[],
+    conflicts: Set<string>,
+    disabled: boolean,
+    onUpdate: (key: string, patch: Partial<ReviewRow>) => void,
+    onRemove: (key: string) => void
+  ) => (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
+            <th className="px-4 py-2 font-semibold">Name on cover page</th>
+            <th className="px-2 py-2 font-semibold">Pages</th>
+            <th className="px-2 py-2 font-semibold">Matched student (invited)</th>
+            <th className="px-2 py-2 font-semibold">Confidence</th>
+            <th className="px-2 py-2 font-semibold" />
+          </tr>
+        </thead>
+        <tbody>
+          {chunkRows.map((r) => {
+            const conflicted = conflicts.has(r.key);
+            return (
+              <tr key={r.key} className="border-b border-da-border/60">
+                <td className="px-4 py-2">
+                  <input
+                    value={r.label}
+                    onChange={(e) => onUpdate(r.key, { label: e.target.value })}
+                    disabled={disabled}
+                    className={`w-40 ${INPUT_CLASS}`}
+                  />
+                  {r.note && <p className="mt-0.5 text-xs text-da-muted">{r.note}</p>}
+                </td>
+                <td className="px-2 py-2">
+                  <input
+                    value={formatPageList(r.pages)}
+                    onChange={(e) => onUpdate(r.key, { pages: parsePageList(e.target.value) })}
+                    disabled={disabled}
+                    placeholder="e.g. 1-8"
+                    className={`w-28 ${INPUT_CLASS} ${conflicted ? "border-red-400" : ""}`}
+                  />
+                </td>
+                <td className="px-2 py-2">
+                  <select
+                    value={r.invitedId}
+                    onChange={(e) => onUpdate(r.key, { invitedId: e.target.value })}
+                    disabled={disabled}
+                    className={SELECT_CLASS}
+                  >
+                    <option value="">— pick a student —</option>
+                    {version?.roster.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td className="px-2 py-2">
+                  <span className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}>
+                    {r.confidence}
+                  </span>
+                </td>
+                <td className="px-2 py-2">
+                  {!disabled && (
+                    <button type="button" onClick={() => onRemove(r.key)} className="text-xs text-red-400 hover:text-red-600">
+                      Remove
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+
+  const anyChunked = chunks.length > 0;
 
   return (
     <div className="space-y-6">
@@ -298,6 +543,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             Roster pooled from real classes: {version.rosterSourceCourseNames.join(", ")}.
           </p>
         )}
+        {version && version.pageCount == null && (
+          <p className="mt-2 text-xs text-da-warning">
+            This packet version has no known page count — a large scan can&apos;t be auto pre-split without it.
+          </p>
+        )}
       </section>
 
       {error && (
@@ -306,13 +556,24 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       {statusLine && (
         <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">{statusLine}</div>
       )}
+      {presplitWarnings.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-medium">Pre-split notes:</p>
+          <ul className="mt-1 list-disc pl-5">
+            {presplitWarnings.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
-      {!batchId && (
+      {!batchId && !anyChunked && (
         <section className="rounded-xl border border-da-border bg-da-surface p-5">
           <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
           <p className="mt-1 text-sm text-da-muted">
             One PDF covering multiple students of this packet, each starting with a page showing
-            their name.
+            their name. A scan larger than Anthropic&apos;s 100-page limit is split automatically
+            into whole-packet chunks — no need to cut it up yourself.
           </p>
           <button
             type="button"
@@ -325,6 +586,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         </section>
       )}
 
+      {/* Non-chunked review table (unchanged from before) */}
       {batchId && (
         <section className="rounded-xl border border-da-border bg-da-surface">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
@@ -367,73 +629,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             </div>
           )}
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
-                  <th className="px-4 py-2 font-semibold">Name on cover page</th>
-                  <th className="px-2 py-2 font-semibold">Pages</th>
-                  <th className="px-2 py-2 font-semibold">Matched student (invited)</th>
-                  <th className="px-2 py-2 font-semibold">Confidence</th>
-                  <th className="px-2 py-2 font-semibold" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const conflicted = rowsWithConflicts.has(r.key);
-                  return (
-                    <tr key={r.key} className="border-b border-da-border/60">
-                      <td className="px-4 py-2">
-                        <input
-                          value={r.label}
-                          onChange={(e) => updateRow(r.key, { label: e.target.value })}
-                          disabled={!!rawStage2}
-                          className={`w-40 ${INPUT_CLASS}`}
-                        />
-                        {r.note && <p className="mt-0.5 text-xs text-da-muted">{r.note}</p>}
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          value={formatPageList(r.pages)}
-                          onChange={(e) => updateRow(r.key, { pages: parsePageList(e.target.value) })}
-                          disabled={!!rawStage2}
-                          placeholder="e.g. 1-8"
-                          className={`w-28 ${INPUT_CLASS} ${conflicted ? "border-red-400" : ""}`}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <select
-                          value={r.invitedId}
-                          onChange={(e) => updateRow(r.key, { invitedId: e.target.value })}
-                          disabled={!!rawStage2}
-                          className={SELECT_CLASS}
-                        >
-                          <option value="">— pick a student —</option>
-                          {version?.roster.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.fullName}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-2 py-2">
-                        <span className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}>
-                          {r.confidence}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2">
-                        {!rawStage2 && (
-                          <button type="button" onClick={() => removeRow(r.key)} className="text-xs text-red-400 hover:text-red-600">
-                            Remove
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          {renderReviewTable(rows, rowsWithConflicts, !!rawStage2, updateRow, removeRow)}
 
           {!rawStage2 && (
             <div className="border-t border-da-border px-5 py-3">
@@ -445,7 +641,112 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         </section>
       )}
 
-      {rawStage1 !== null && (
+      {/* Chunked review: one card per chunk */}
+      {anyChunked && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-da-muted">
+              Parent upload {parentBatchId?.slice(0, 8)}… split into {chunks.length} chunk(s).
+            </p>
+            <button type="button" onClick={reset} className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover">
+              Start over
+            </button>
+          </div>
+
+          {chunks.map((chunk) => {
+            const conflicts = chunkConflicts(chunk);
+            const canSplitThis = chunkCanSplit(chunk);
+            return (
+              <section key={chunk.batchId} className="rounded-xl border border-da-border bg-da-surface">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
+                  <div>
+                    <h3 className="text-base font-bold text-da-text">
+                      Chunk {chunk.chunkIndex} of {chunk.chunkCount} — pages {chunk.startPage}-{chunk.endPage} (
+                      {chunk.endPage - chunk.startPage + 1} pages)
+                    </h3>
+                    <p className="text-xs text-da-muted">
+                      Batch {chunk.batchId.slice(0, 8)}… — status: {chunk.status}
+                    </p>
+                  </div>
+                  {chunk.status === "segmented" && (
+                    <button
+                      type="button"
+                      onClick={() => handleSplitChunk(chunk)}
+                      disabled={!canSplitThis}
+                      className="rounded-lg bg-da-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                    >
+                      Confirm & split {chunk.rows.length} student(s)
+                    </button>
+                  )}
+                  {chunk.status === "pending" && (
+                    <button
+                      type="button"
+                      onClick={() => segmentChunk(chunk)}
+                      className="rounded-lg border border-da-accent/40 bg-da-accent/10 px-4 py-2 text-sm font-medium text-da-accent hover:bg-da-accent/20"
+                    >
+                      Segment this chunk
+                    </button>
+                  )}
+                </div>
+
+                {chunk.status === "segmenting" && (
+                  <p className="px-5 py-4 text-sm text-da-muted">Reading cover pages…</p>
+                )}
+                {chunk.status === "split-pending" && (
+                  <p className="px-5 py-4 text-sm text-da-muted">Splitting…</p>
+                )}
+                {chunk.status === "failed" && (
+                  <p className="px-5 py-4 text-sm text-red-500">{chunk.error}</p>
+                )}
+
+                {(chunk.status === "segmented" || chunk.status === "split" || chunk.status === "split-pending") && (
+                  <>
+                    {conflicts.size > 0 && chunk.status === "segmented" && (
+                      <div className="border-b border-red-200 bg-red-50 px-5 py-2 text-xs text-red-700">
+                        ⚠ Some pages are claimed by more than one row.
+                      </div>
+                    )}
+                    {chunk.unassignedPages.length > 0 && (
+                      <div className="border-b border-da-border px-5 py-2 text-xs text-da-muted">
+                        Model reported unassigned pages: {formatPageList(chunk.unassignedPages)}
+                      </div>
+                    )}
+                    {renderReviewTable(
+                      chunk.rows,
+                      conflicts,
+                      chunk.status !== "segmented",
+                      (key, patch) => updateChunkRow(chunk.batchId, key, patch),
+                      (key) => removeChunkRow(chunk.batchId, key)
+                    )}
+                    {chunk.status === "segmented" && (
+                      <div className="border-t border-da-border px-5 py-3">
+                        <button
+                          type="button"
+                          onClick={() => addChunkRow(chunk.batchId)}
+                          className="text-sm text-da-accent hover:underline"
+                        >
+                          + Add a student row (for a page the model missed)
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {chunk.status === "split" && (
+                  <details className="border-t border-da-border p-4">
+                    <summary className="cursor-pointer text-sm font-medium text-da-text">Raw split response</summary>
+                    <pre className="mt-3 overflow-x-auto rounded bg-black/80 p-3 text-xs text-green-300">
+                      {JSON.stringify(chunk.rawSplitResponse, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </section>
+            );
+          })}
+        </div>
+      )}
+
+      {rawStage1 !== null && !anyChunked && (
         <details className="rounded-xl border border-da-border bg-da-surface p-4">
           <summary className="cursor-pointer text-sm font-medium text-da-text">Raw stage 1 response (segmentation)</summary>
           <pre className="mt-3 overflow-x-auto rounded bg-black/80 p-3 text-xs text-green-300">
