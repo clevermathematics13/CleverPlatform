@@ -1,28 +1,25 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { CourseList } from "./course-list";
+import { ArchivedCourseList } from "./archived-course-list";
 import Link from "next/link";
 
-export default async function CoursesPage() {
+export default async function ArchivedCoursesPage() {
   await requireTeacher();
   const supabase = await createClient();
 
-  const [coursesRes, studentsRes, invitedRes, testsRes, archivedCountRes] = await Promise.all([
+  const [coursesRes, studentsRes, invitedRes, testsRes] = await Promise.all([
     supabase
       .from("courses")
       .select("id, name, description, created_at")
-      .eq("archived", false)
+      .eq("archived", true)
       .order("name"),
-    supabase.from("students").select("course_id").eq("hidden", false),
-    // Only count invited students who haven't signed in yet (no profile_id) to avoid double-counting
+    supabase.from("students").select("course_id"),
     supabase
       .from("invited_students")
       .select("course_id")
       .eq("registered", true)
-      .eq("hidden", false)
       .is("profile_id", null),
     supabase.from("tests").select("course_id"),
-    supabase.from("courses").select("id", { count: "exact", head: true }).eq("archived", true),
   ]);
 
   const studentsByCourse: Record<string, number> = {};
@@ -46,26 +43,25 @@ export default async function CoursesPage() {
     testCount: testsByCourse[c.id] ?? 0,
   }));
 
-  const archivedCount = archivedCountRes.count ?? 0;
-
   return (
     <div>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-serif text-3xl font-bold text-da-text">Courses</h1>
+          <Link
+            href="/dashboard/courses"
+            className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            ← Back to Courses
+          </Link>
+          <h1 className="font-serif text-3xl font-bold text-da-text">Archived Courses</h1>
           <p className="mt-1 text-base text-da-muted">
-            Manage class groups and their enrollments.
+            Courses hidden from Students, Gradebook, and other pickers. Unarchive to restore, or
+            delete permanently.
           </p>
         </div>
-        <Link
-          href="/dashboard/archived-courses"
-          className="inline-flex items-center gap-2 rounded-lg border border-da-border px-4 py-2 text-sm font-medium text-da-text transition-colors hover:bg-da-hover"
-        >
-          🗄️ Archived Courses{archivedCount > 0 ? ` (${archivedCount})` : ""}
-        </Link>
       </div>
 
-      <CourseList courses={courses} />
+      <ArchivedCourseList courses={courses} />
     </div>
   );
 }

@@ -35,6 +35,7 @@ export default async function DashboardLayout({
     const { data } = await supabase
       .from("courses")
       .select("id, name")
+      .eq("archived", false)
       .order("name");
     gradebookCourses = data ?? [];
   }
@@ -101,6 +102,7 @@ function getSettingsNavigation(role: string) {
       { href: "/dashboard/students", label: "Students", icon: "👥" },
       { href: "/dashboard/parents", label: "Parents", icon: "👪" },
       { href: "/dashboard/courses", label: "Courses", icon: "📚" },
+      { href: "/dashboard/archived-courses", label: "Archived Courses", icon: "🗄️" },
       { href: "/dashboard/syllabus", label: "Syllabus", icon: "📖" },
       { href: "/dashboard/archived-exams", label: "Archived Exams", icon: "🗄️" },
       { href: "/dashboard/archived-saved-exams", label: "Archived Saved Exams", icon: "🗃️" },

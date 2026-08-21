@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createCourse, updateCourse, deleteCourse } from "./actions";
+import { createCourse, updateCourse, deleteCourse, archiveCourse } from "./actions";
 
 interface CourseRow {
   id: string;
@@ -17,6 +17,7 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
   const [showCreate, setShowCreate] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -54,6 +55,17 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
     setIsLoading(false);
     if (result.error) setGlobalError(result.error);
     else setDeletingId(null);
+  }
+
+  async function handleArchive(id: string) {
+    setIsLoading(true);
+    setGlobalError(null);
+    const fd = new FormData();
+    fd.set("id", id);
+    const result = await archiveCourse(fd);
+    setIsLoading(false);
+    if (result.error) setGlobalError(result.error);
+    else setArchivingId(null);
   }
 
   return (
@@ -133,6 +145,35 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                     </button>
                   </div>
                 </div>
+              ) : archivingId === course.id ? (
+                <div className="p-5 flex-1">
+                  <p className="text-sm font-medium text-gray-900 mb-1">
+                    Archive &ldquo;{course.name}&rdquo;?
+                  </p>
+                  <p className="text-xs text-gray-500 mb-4">
+                    This hides the course and its {course.studentCount} student
+                    {course.studentCount !== 1 ? "s" : ""} from Students, Gradebook, and other
+                    pickers. Nothing is deleted — you can unarchive it anytime from Archived
+                    Courses.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleArchive(course.id)}
+                      disabled={isLoading}
+                      className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                    >
+                      {isLoading ? "Archiving…" : "Yes, archive course"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setArchivingId(null)}
+                      className="rounded-lg border border-da-border px-3 py-1.5 text-xs font-medium text-da-text hover:bg-da-hover transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
                   {/* Card body */}
@@ -142,7 +183,7 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                       <div className="flex gap-1 shrink-0">
                         <button
                           type="button"
-                          onClick={() => { setEditingId(course.id); setDeletingId(null); setShowCreate(false); }}
+                          onClick={() => { setEditingId(course.id); setDeletingId(null); setArchivingId(null); setShowCreate(false); }}
                           className="rounded p-1 text-da-muted hover:bg-da-hover hover:text-da-text transition-colors"
                           title="Edit"
                         >
@@ -150,7 +191,15 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                         </button>
                         <button
                           type="button"
-                          onClick={() => { setDeletingId(course.id); setEditingId(null); setShowCreate(false); }}
+                          onClick={() => { setArchivingId(course.id); setEditingId(null); setDeletingId(null); setShowCreate(false); }}
+                          className="rounded p-1 text-da-muted hover:bg-amber-900/25 hover:text-amber-300 transition-colors"
+                          title="Archive course"
+                        >
+                          🗄️
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setDeletingId(course.id); setEditingId(null); setArchivingId(null); setShowCreate(false); }}
                           className="rounded p-1 text-da-muted hover:bg-red-900/25 hover:text-red-300 transition-colors"
                           title="Delete"
                         >
