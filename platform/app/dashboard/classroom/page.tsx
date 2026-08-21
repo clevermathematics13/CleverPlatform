@@ -9,10 +9,10 @@ export default async function ClassroomPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">
+      <h1 className="text-3xl font-extrabold text-da-text drop-shadow-sm">
         Google Classroom
       </h1>
-      <p className="mt-1 text-base font-medium text-blue-700">
+      <p className="mt-1 text-base font-medium text-da-accent">
         Read and assess student work submitted to Google Classroom.
       </p>
 
