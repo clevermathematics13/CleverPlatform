@@ -60,12 +60,21 @@ const VERDICT_KEYS: Record<string, "correct" | "partial" | "incorrect" | "unclea
   "4": "unclear",
 };
 
-const VERDICT_STYLES: Record<string, { bg: string; text: string; glyph: string }> = {
-  correct: { bg: "bg-green-500/15", text: "text-green-500", glyph: "✓" },
-  partial: { bg: "bg-amber-500/15", text: "text-amber-500", glyph: "◐" },
-  incorrect: { bg: "bg-red-500/15", text: "text-red-500", glyph: "✕" },
-  unclear: { bg: "bg-slate-500/15", text: "text-slate-400", glyph: "?" },
-};
+// Marks carry the color now, not a separate verdict chip -- the two were
+// redundant (the number already says what happened) and could visibly
+// disagree with each other during editing, which was confusing on its
+// own. Full marks = green, zero = red, everything between interpolates
+// so a 2/3 reads as more "correct" than a 1/3 rather than all partial
+// marks looking identical.
+function marksColorClasses(marks: number, max: number | undefined): string {
+  if (max === undefined || max <= 0) return "text-da-text";
+  const frac = Math.max(0, Math.min(1, marks / max));
+  if (frac === 1) return "text-green-500";
+  if (frac === 0) return "text-red-500";
+  if (frac >= 0.67) return "text-lime-500";
+  if (frac >= 0.34) return "text-amber-500";
+  return "text-orange-500";
+}
 
 export default function AnchorReviewClient({
   anchor,
@@ -342,7 +351,8 @@ export default function AnchorReviewClient({
           const displayedMarks = fb?.final_marks_awarded ?? fb?.ai_marks_awarded ?? null;
           const maxMarks = fb?.ai_marks_available ?? anchor.marks_available ?? undefined;
           const isReviewed = !!fb?.approved_at;
-          const style = displayedVerdict ? VERDICT_STYLES[displayedVerdict] : null;
+          const marksColor =
+            displayedMarks !== null ? marksColorClasses(displayedMarks, maxMarks) : "text-da-text";
           const lowConfidence =
             fb?.ai_confidence !== null && fb?.ai_confidence !== undefined && fb.ai_confidence < 0.6;
 
@@ -379,11 +389,6 @@ export default function AnchorReviewClient({
                       ⚠ invalid
                     </span>
                   )}
-                  {style && (
-                    <span className={`px-1.5 py-0.5 rounded ${style.bg} ${style.text} font-medium`}>
-                      {style.glyph} {displayedVerdict}
-                    </span>
-                  )}
                   {displayedMarks !== null &&
                     (editingMarks === row.cropId ? (
                       <input
@@ -411,7 +416,7 @@ export default function AnchorReviewClient({
                           e.stopPropagation();
                           setEditingMarks(row.cropId);
                         }}
-                        className="text-da-text font-medium cursor-text hover:bg-da-hover/50 rounded px-1"
+                        className={`font-semibold cursor-text hover:bg-da-hover/50 rounded px-1 ${marksColor}`}
                         title="Click to edit"
                       >
                         {displayedMarks}/{maxMarks}
