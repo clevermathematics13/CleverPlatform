@@ -78,6 +78,7 @@ export default function AnchorReviewClient({
   const [showNames, setShowNames] = useState(false);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   const [editingComment, setEditingComment] = useState<string | null>(null);
+  const [editingMarks, setEditingMarks] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [bulkThreshold, setBulkThreshold] = useState(0.85);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -161,12 +162,37 @@ export default function AnchorReviewClient({
   const setVerdictOverride = useCallback(
     (row: Row, verdict: "correct" | "partial" | "incorrect" | "unclear") => {
       if (!row.feedback) return;
-      const marks =
-        row.feedback.final_marks_awarded ?? row.feedback.ai_marks_awarded ?? 0;
+      const currentMarks = row.feedback.final_marks_awarded ?? row.feedback.ai_marks_awarded ?? 0;
+      const maxMarks = row.feedback.ai_marks_available ?? anchor.marks_available ?? 0;
+      // Pressing a verdict key must also make a sensible choice about the
+      // mark, not silently keep whatever number was already there. A
+      // real bug found in testing: pressing "3" (incorrect) on a response
+      // the AI had marked "correct, 3/3" kept the mark at 3/3 while
+      // changing the verdict label to "incorrect" -- a nonsensical
+      // pairing. correct/incorrect/unclear each have an unambiguous
+      // implied mark (full, zero, zero); "partial" has no single right
+      // answer, so it keeps the existing number and the teacher adjusts
+      // it directly via the marks field next to the verdict chip.
+      let marks = currentMarks;
+      if (verdict === "correct") marks = maxMarks;
+      else if (verdict === "incorrect" || verdict === "unclear") marks = 0;
+
       const comment = row.feedback.final_margin_comment ?? row.feedback.ai_margin_comment ?? "";
       const next = row.feedback.final_next_step ?? row.feedback.ai_next_step ?? "";
-      const wasAiVerdict = verdict === row.feedback.ai_verdict;
-      saveDecision(row, verdict, marks, comment, next, !wasAiVerdict || row.feedback.teacher_edited);
+      const unchanged =
+        verdict === row.feedback.ai_verdict && marks === (row.feedback.ai_marks_awarded ?? 0);
+      saveDecision(row, verdict, marks, comment, next, !unchanged || row.feedback.teacher_edited);
+    },
+    [saveDecision, anchor.marks_available]
+  );
+
+  const setMarksOverride = useCallback(
+    (row: Row, marks: number) => {
+      if (!row.feedback) return;
+      const verdict = row.feedback.final_verdict ?? row.feedback.ai_verdict ?? "unclear";
+      const comment = row.feedback.final_margin_comment ?? row.feedback.ai_margin_comment ?? "";
+      const next = row.feedback.final_next_step ?? row.feedback.ai_next_step ?? "";
+      saveDecision(row, verdict, marks, comment, next, true);
     },
     [saveDecision]
   );
@@ -181,7 +207,6 @@ export default function AnchorReviewClient({
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      // refetch to reflect bulk changes rather than reconstructing locally
       const detail = await fetch(`/api/na-review/anchor/${anchor.id}`).then((r) => r.json());
       setRows(detail.rows);
       alert(`Accepted ${data.accepted} response(s) at confidence >= ${bulkThreshold}.`);
@@ -193,12 +218,10 @@ export default function AnchorReviewClient({
     }
   }, [anchor.id, bulkThreshold]);
 
-  // keyboard shortcuts: 1-4 set verdict on the active card, Enter accepts
-  // the AI draft as-is, / opens the comment editor, arrows move focus
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (activeIdx === null) return;
-      if (editingComment !== null) return; // don't hijack typing in the textarea
+      if (editingComment !== null || editingMarks !== null) return;
       const row = rows[activeIdx];
       if (!row) return;
 
@@ -211,6 +234,9 @@ export default function AnchorReviewClient({
       } else if (e.key === "/") {
         e.preventDefault();
         setEditingComment(row.cropId);
+      } else if (e.key === "m") {
+        e.preventDefault();
+        setEditingMarks(row.cropId);
       } else if (e.key === "ArrowDown" || e.key === "j") {
         e.preventDefault();
         setActiveIdx((i) => (i === null ? 0 : Math.min(rows.length - 1, i + 1)));
@@ -221,7 +247,7 @@ export default function AnchorReviewClient({
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [activeIdx, rows, editingComment, setVerdictOverride, acceptAiDraft]);
+  }, [activeIdx, rows, editingComment, editingMarks, setVerdictOverride, acceptAiDraft]);
 
   return (
     <div className="space-y-4">
@@ -250,7 +276,6 @@ export default function AnchorReviewClient({
         </div>
       </div>
 
-      {/* Rubric panel, pinned */}
       <div className="rounded-xl border border-da-border bg-da-surface p-4 space-y-2 sticky top-0 z-10 shadow-lg shadow-black/20">
         {anchor.open_rubric ? (
           <div>
@@ -274,13 +299,19 @@ export default function AnchorReviewClient({
           </div>
         )}
 
-        <div className="flex items-center gap-3 pt-2 border-t border-da-border text-xs text-da-muted">
+        <div className="flex items-center gap-3 pt-2 border-t border-da-border text-xs text-da-muted flex-wrap">
           <span>
             Keys: <kbd className="px-1 bg-da-hover rounded">1</kbd> correct{" "}
             <kbd className="px-1 bg-da-hover rounded">2</kbd> partial{" "}
             <kbd className="px-1 bg-da-hover rounded">3</kbd> incorrect{" "}
             <kbd className="px-1 bg-da-hover rounded">4</kbd> unclear{" "}
+            <kbd className="px-1 bg-da-hover rounded">m</kbd> edit marks{" "}
             <kbd className="px-1 bg-da-hover rounded">Enter</kbd> accept AI
+          </span>
+          <span className="text-da-muted/70">
+            (1/3/4 also set the mark to full/zero/zero — use{" "}
+            <kbd className="px-1 bg-da-hover rounded">m</kbd> or click the mark to set a specific
+            number, e.g. for partial credit)
           </span>
           <span className="ml-auto flex items-center gap-2">
             <input
@@ -303,15 +334,16 @@ export default function AnchorReviewClient({
         </div>
       </div>
 
-      {/* Grid of crops */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {rows.map((row, idx) => {
           const fb = row.feedback;
           const displayedVerdict = fb?.final_verdict ?? fb?.ai_verdict ?? null;
           const displayedMarks = fb?.final_marks_awarded ?? fb?.ai_marks_awarded ?? null;
+          const maxMarks = fb?.ai_marks_available ?? anchor.marks_available ?? undefined;
           const isReviewed = !!fb?.approved_at;
           const style = displayedVerdict ? VERDICT_STYLES[displayedVerdict] : null;
-          const lowConfidence = fb?.ai_confidence !== null && fb?.ai_confidence !== undefined && fb.ai_confidence < 0.6;
+          const lowConfidence =
+            fb?.ai_confidence !== null && fb?.ai_confidence !== undefined && fb.ai_confidence < 0.6;
 
           return (
             <div
@@ -325,29 +357,65 @@ export default function AnchorReviewClient({
                 <span className="text-da-muted">
                   {showNames ? row.studentName ?? "Unknown" : `#${row.packetSeq ?? "?"}`}
                   {row.idStatus === "needs_review" && (
-                    <span className="ml-1 text-amber-500" title="ID needs review">⚠</span>
+                    <span className="ml-1 text-amber-500" title="ID needs review">
+                      ⚠
+                    </span>
                   )}
                 </span>
                 <div className="flex items-center gap-1.5">
                   {row.boundaryExpanded && (
-                    <span className="text-da-muted" title="Crop was adaptively expanded">⤢</span>
+                    <span className="text-da-muted" title="Crop was adaptively expanded">
+                      ⤢
+                    </span>
                   )}
                   {lowConfidence && (
-                    <span className="text-amber-500" title="Low AI confidence">⚡</span>
+                    <span className="text-amber-500" title="Low AI confidence">
+                      ⚡
+                    </span>
                   )}
                   {fb?.ai_validation_error && (
-                    <span className="text-red-500" title={fb.ai_validation_error}>⚠ invalid</span>
+                    <span className="text-red-500" title={fb.ai_validation_error}>
+                      ⚠ invalid
+                    </span>
                   )}
                   {style && (
                     <span className={`px-1.5 py-0.5 rounded ${style.bg} ${style.text} font-medium`}>
                       {style.glyph} {displayedVerdict}
                     </span>
                   )}
-                  {displayedMarks !== null && (
-                    <span className="text-da-text font-medium">
-                      {displayedMarks}/{fb?.ai_marks_available ?? anchor.marks_available}
-                    </span>
-                  )}
+                  {displayedMarks !== null &&
+                    (editingMarks === row.cropId ? (
+                      <input
+                        type="number"
+                        autoFocus
+                        min={0}
+                        max={maxMarks}
+                        step={0.5}
+                        defaultValue={displayedMarks}
+                        onClick={(e) => e.stopPropagation()}
+                        onBlur={(e) => {
+                          const val = Number(e.target.value);
+                          if (!Number.isNaN(val)) setMarksOverride(row, val);
+                          setEditingMarks(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                          if (e.key === "Escape") setEditingMarks(null);
+                        }}
+                        className="w-14 border border-da-accent rounded px-1 py-0.5 text-xs bg-da-surface text-da-text"
+                      />
+                    ) : (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingMarks(row.cropId);
+                        }}
+                        className="text-da-text font-medium cursor-text hover:bg-da-hover/50 rounded px-1"
+                        title="Click to edit"
+                      >
+                        {displayedMarks}/{maxMarks}
+                      </span>
+                    ))}
                   {isReviewed && <span className="text-green-500">✓</span>}
                 </div>
               </div>
