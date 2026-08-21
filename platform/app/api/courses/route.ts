@@ -9,6 +9,7 @@ export async function GET() {
   const { data: courses, error } = await supabase
     .from("courses")
     .select("id, name")
+    .eq("archived", false)
     .order("name");
 
   if (error) {
