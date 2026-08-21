@@ -323,12 +323,23 @@ input, textarea, select {
   background-color: transparent;
 }
 
-/* Any input/textarea/select inside a white or light-grey surface gets dark text */
+/* Any input/textarea/select inside a white or light-grey surface gets dark text.
+   This covers both cases: bg-white as an ANCESTOR (descendant selector), and
+   bg-white applied DIRECTLY on the input/select/textarea itself (self selector).
+   The self-selector case was previously missed here — a <select className="bg-white ...">
+   with no wrapping bg-white container fell through to the ivory-on-transparent
+   rule above, rendering pale text on a see-through control against the dark
+   page background (nearly unreadable, e.g. Classroom course/Assignment pickers). */
 .bg-white input, .bg-white textarea, .bg-white select,
 .bg-gray-50 input, .bg-gray-50 textarea, .bg-gray-50 select,
 .bg-blue-50 input, .bg-blue-50 textarea, .bg-blue-50 select,
-.bg-indigo-50 input, .bg-indigo-50 textarea, .bg-indigo-50 select {
+.bg-indigo-50 input, .bg-indigo-50 textarea, .bg-indigo-50 select,
+input.bg-white, textarea.bg-white, select.bg-white,
+input.bg-gray-50, textarea.bg-gray-50, select.bg-gray-50,
+input.bg-blue-50, textarea.bg-blue-50, select.bg-blue-50,
+input.bg-indigo-50, textarea.bg-indigo-50, select.bg-indigo-50 {
   color: #111827;
+  color-scheme: light;
 }
 
 /* Tailwind text-gray-900 utility should always win over the global rule */
