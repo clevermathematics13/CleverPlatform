@@ -29,22 +29,36 @@ export interface StudentRow {
   signedIn: boolean;
 }
 
-type SortCol = "name" | "nickname" | "course";
+type SortCol = "name" | "lastName" | "nickname" | "course";
 type SortDir = "asc" | "desc";
 
 function firstWord(s: string | null) {
   return (s ?? "").trim().split(/\s+/)[0];
 }
 
+// Takes the final whitespace-separated token as the "last name". Good
+// enough for the current roster (first name + single/compound surname,
+// e.g. "De La Puente" typed as one token-run is still just the last
+// token here -- "Puente" -- which is a simplification, not a full
+// compound-surname parse). Names with suffixes (Jr., III) or other
+// edge cases aren't handled specially; a real name-parsing library
+// would be needed for full correctness.
+function lastWord(s: string | null) {
+  const parts = (s ?? "").trim().split(/\s+/);
+  return parts[parts.length - 1] ?? "";
+}
+
 function sortRows(rows: StudentRow[], col: SortCol, dir: SortDir): StudentRow[] {
   return [...rows].sort((a, b) => {
     const courseA = (a.courseName ?? "").localeCompare(b.courseName ?? "");
     const nameA = firstWord(a.name).localeCompare(firstWord(b.name));
+    const lastNameA = lastWord(a.name).localeCompare(lastWord(b.name));
     const nickA = (a.nickname ?? "").localeCompare(b.nickname ?? "");
 
-    if (col === "course") return (dir === "asc" ? courseA : -courseA) || nameA;
-    if (col === "name")   return (dir === "asc" ? nameA  : -nameA)  || courseA;
-    /* nickname */        return (dir === "asc" ? nickA  : -nickA)  || courseA || nameA;
+    if (col === "course")   return (dir === "asc" ? courseA   : -courseA)   || nameA;
+    if (col === "name")     return (dir === "asc" ? nameA     : -nameA)     || courseA;
+    if (col === "lastName") return (dir === "asc" ? lastNameA : -lastNameA) || courseA;
+    /* nickname */          return (dir === "asc" ? nickA     : -nickA)     || courseA || nameA;
   });
 }
 
@@ -86,8 +100,14 @@ export function StudentsTable({ rows }: Props) {
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
-            <th className={thClass("name")} onClick={() => handleHeader("name")}>
-              Student <SortIcon col="name" active={sortCol} dir={sortDir} />
+            <th className={thClass("name")}>
+              <span onClick={() => handleHeader("name")}>
+                Student <SortIcon col="name" active={sortCol} dir={sortDir} />
+              </span>
+              <span className="mx-1 text-gray-300 normal-case font-normal">/</span>
+              <span onClick={() => handleHeader("lastName")}>
+                Last name <SortIcon col="lastName" active={sortCol} dir={sortDir} />
+              </span>
             </th>
             <th className={thClass("nickname")} onClick={() => handleHeader("nickname")}>
               Nickname <SortIcon col="nickname" active={sortCol} dir={sortDir} />
