@@ -1,13 +1,13 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
   fetchCourseWork,
   fetchSubmissions,
   saveGrade,
   type SubmissionRow,
+  type ClassroomCourseWithLink,
 } from "./actions";
-import type { ClassroomCourse } from "@/lib/google-classroom";
 import type { CourseWorkItem } from "@/lib/google-classroom-work";
 
 interface Analysis {
@@ -38,9 +38,11 @@ export function ClassroomClient({
   courses,
   initialError,
 }: {
-  courses: ClassroomCourse[];
+  courses: ClassroomCourseWithLink[];
   initialError?: string;
 }) {
+  const hasAnyLinks = courses.some((c) => c.linkedCourseName);
+  const [showAllCourses, setShowAllCourses] = useState(!hasAnyLinks);
   const [courseId, setCourseId] = useState("");
   const [work, setWork] = useState<CourseWorkItem[]>([]);
   const [courseWorkId, setCourseWorkId] = useState("");
@@ -53,6 +55,11 @@ export function ClassroomClient({
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const selectedWork = work.find((w) => w.id === courseWorkId);
+
+  const visibleCourses = useMemo(() => {
+    if (showAllCourses || !hasAnyLinks) return courses;
+    return courses.filter((c) => c.linkedCourseName);
+  }, [courses, showAllCourses, hasAnyLinks]);
 
   async function onCourseChange(id: string) {
     setCourseId(id);
@@ -139,22 +146,43 @@ export function ClassroomClient({
       {/* Selectors */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-semibold text-da-text">
-            Classroom course
-          </label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-sm font-semibold text-da-text">
+              Classroom course
+            </label>
+            {hasAnyLinks && (
+              <button
+                type="button"
+                onClick={() => setShowAllCourses((v) => !v)}
+                className="text-xs text-da-accent hover:underline"
+              >
+                {showAllCourses ? "Show linked classes only" : "Show all courses"}
+              </button>
+            )}
+          </div>
           <select
             value={courseId}
             onChange={(e) => onCourseChange(e.target.value)}
             className="block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
           >
             <option value="">Select a course...</option>
-            {courses.map((c) => (
+            {visibleCourses.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
                 {c.section ? ` — ${c.section}` : ""}
+                {c.linkedCourseName ? ` (${c.linkedCourseName})` : ""}
               </option>
             ))}
           </select>
+          {hasAnyLinks && !showAllCourses && (
+            <p className="mt-1 text-xs text-da-muted">
+              Showing classes linked on the{" "}
+              <a href="/dashboard/students" className="underline hover:text-da-accent">
+                Students page
+              </a>
+              .
+            </p>
+          )}
         </div>
 
         <div>
