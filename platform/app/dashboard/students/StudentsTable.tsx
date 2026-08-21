@@ -36,23 +36,53 @@ function firstWord(s: string | null) {
   return (s ?? "").trim().split(/\s+/)[0];
 }
 
-// Takes the final whitespace-separated token as the "last name". Good
-// enough for the current roster (first name + single/compound surname,
-// e.g. "De La Puente" typed as one token-run is still just the last
-// token here -- "Puente" -- which is a simplification, not a full
-// compound-surname parse). Names with suffixes (Jr., III) or other
-// edge cases aren't handled specially; a real name-parsing library
-// would be needed for full correctness.
-function lastWord(s: string | null) {
-  const parts = (s ?? "").trim().split(/\s+/);
-  return parts[parts.length - 1] ?? "";
+// Lowercase surname particles common in Spanish/Portuguese names (and a
+// couple of other European traditions represented on the roster). When one
+// of these appears as its own token, the surname is taken to start there
+// and run to the end of the name -- e.g. "Ana De La Puente" -> "De La
+// Puente", "Thiana Del Valle" -> "Del Valle". Matched case-insensitively
+// since the source data is inconsistently cased ("De La Puente" vs a
+// hypothetical "de la Puente").
+//
+// Deliberately NOT "grab the last two words" or similar positional rule:
+// that would wrongly treat an ordinary middle given name as part of the
+// surname, e.g. "Rafaella Amalia Rosell" is First="Rafaella" Middle="Amalia"
+// Surname="Rosell", not Surname="Amalia Rosell" -- "Amalia" isn't a
+// particle, so it correctly stays out of the match here.
+const SURNAME_PARTICLES = new Set([
+  "de", "del", "dela", "dos", "das", "do", "da",
+  "la", "los", "las",
+  "van", "von", "der", "den",
+  "di", "du",
+]);
+
+// Extracts the surname as everything from the first detected particle
+// token onward, or just the final token if no particle is found. Does not
+// handle suffixes (Jr., III) specially, and a particle word used as a
+// genuine given name (rare, not present on the current roster) would be
+// mis-split -- a real name-parsing library would be needed for full
+// correctness across arbitrary names.
+function surnameKey(s: string | null) {
+  const parts = (s ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "";
+  if (parts.length === 1) return parts[0];
+
+  // Only look for a particle among the words AFTER the first (the first
+  // word is always the given name, never part of the surname), so a
+  // particle-like first name can't accidentally trigger this.
+  for (let i = 1; i < parts.length; i++) {
+    if (SURNAME_PARTICLES.has(parts[i].toLowerCase())) {
+      return parts.slice(i).join(" ");
+    }
+  }
+  return parts[parts.length - 1];
 }
 
 function sortRows(rows: StudentRow[], col: SortCol, dir: SortDir): StudentRow[] {
   return [...rows].sort((a, b) => {
     const courseA = (a.courseName ?? "").localeCompare(b.courseName ?? "");
     const nameA = firstWord(a.name).localeCompare(firstWord(b.name));
-    const lastNameA = lastWord(a.name).localeCompare(lastWord(b.name));
+    const lastNameA = surnameKey(a.name).localeCompare(surnameKey(b.name));
     const nickA = (a.nickname ?? "").localeCompare(b.nickname ?? "");
 
     if (col === "course")   return (dir === "asc" ? courseA   : -courseA)   || nameA;
