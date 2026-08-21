@@ -1,5 +1,6 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { loadInvitedRoster } from "@/lib/na-scanning";
 import { ScanTestClient } from "./scan-test-client";
 
 /**
@@ -35,25 +36,45 @@ export default async function ScanTestPage() {
     };
   });
 
-  // Pre-load every course's invited roster up front so the harness can
-  // show "N students on roster" per packet version without a client round
-  // trip. Fine at this scale (a handful of packet versions); the real
-  // upload UI should load only the roster for the one course in view.
-  const courseIds = [...new Set(versions.map((v) => v.courseId).filter((c): c is string => !!c))];
-  const { data: invited } = courseIds.length
-    ? await supabase
-        .from("invited_students")
-        .select("id, full_name, course_id")
-        .in("course_id", courseIds)
-        .eq("hidden", false)
-    : { data: [] };
+  // Uses the same track-aware resolution the real stage 1 route uses
+  // (lib/na-scanning.ts): a packet's course may be a virtual track (e.g.
+  // Grade 9 Extended) with no roster of its own, whose real students are
+  // split across several actual class courses via track_courses. Calling
+  // this per packet version (rather than a single invited_students query
+  // across raw courseIds, as this page used to) is what actually resolves
+  // that -- a direct query against a track course's ID always returns
+  // zero, which is exactly the "roster: 0" bug this replaces.
+  const rosterByPacketVersion = new Map<
+    string,
+    { id: string; fullName: string }[]
+  >();
+  const resolutionByPacketVersion = new Map<
+    string,
+    { isTrack: boolean; sourceCourseIds: string[] }
+  >();
 
-  const rosterByCourse = new Map<string, { id: string; fullName: string }[]>();
-  for (const row of invited ?? []) {
-    const list = rosterByCourse.get(row.course_id) ?? [];
-    list.push({ id: row.id, fullName: row.full_name ?? "(no name)" });
-    rosterByCourse.set(row.course_id, list);
+  for (const v of versions) {
+    if (!v.courseId) continue;
+    const resolution = await loadInvitedRoster(supabase, v.courseId);
+    rosterByPacketVersion.set(
+      v.id,
+      resolution.roster.map((r) => ({ id: r.invitedId, fullName: r.fullName }))
+    );
+    resolutionByPacketVersion.set(v.id, {
+      isTrack: resolution.isTrack,
+      sourceCourseIds: resolution.sourceCourseIds,
+    });
   }
+
+  // For any track resolution, resolve source course IDs to names too, so
+  // the UI can show "pooled from 9A, 9G" rather than bare UUIDs.
+  const allSourceCourseIds = [
+    ...new Set([...resolutionByPacketVersion.values()].flatMap((r) => r.sourceCourseIds)),
+  ];
+  const { data: sourceCourses } = allSourceCourseIds.length
+    ? await supabase.from("courses").select("id, name").in("id", allSourceCourseIds)
+    : { data: [] };
+  const courseNameById = new Map((sourceCourses ?? []).map((c) => [c.id, c.name as string]));
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -72,10 +93,17 @@ export default async function ScanTestPage() {
       </div>
 
       <ScanTestClient
-        versions={versions.map((v) => ({
-          ...v,
-          roster: v.courseId ? rosterByCourse.get(v.courseId) ?? [] : [],
-        }))}
+        versions={versions.map((v) => {
+          const resolution = resolutionByPacketVersion.get(v.id);
+          return {
+            ...v,
+            roster: rosterByPacketVersion.get(v.id) ?? [],
+            rosterIsTrack: resolution?.isTrack ?? false,
+            rosterSourceCourseNames: (resolution?.sourceCourseIds ?? []).map(
+              (id) => courseNameById.get(id) ?? id
+            ),
+          };
+        })}
       />
     </div>
   );
