@@ -94,6 +94,118 @@ export async function fetchGoogleStudents(
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Class links: which Google Classroom course backs which CleverPlatform     */
+/*  course. This is a small persistent mapping (course_google_classroom_links) */
+/*  separate from the one-off roster import above and from the Classroom      */
+/*  grading page — it exists so both of those can agree on "our classes"      */
+/*  instead of re-picking a Google course from scratch every time.            */
+/* -------------------------------------------------------------------------- */
+
+export interface ClassroomLink {
+  id: string;
+  courseId: string;
+  courseName: string;
+  googleCourseId: string;
+  googleCourseName: string;
+  googleCourseSection: string | null;
+}
+
+export async function fetchClassroomLinks(): Promise<ClassroomLink[]> {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("course_google_classroom_links")
+    .select(`
+      id,
+      google_course_id,
+      google_course_name,
+      google_course_section,
+      courses:course_id ( id, name )
+    `)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[GC] fetchClassroomLinks:", error.message);
+    return [];
+  }
+
+  return (data ?? []).flatMap((row) => {
+    const course = row.courses as unknown as { id: string; name: string } | null;
+    if (!course) return [];
+    return [
+      {
+        id: row.id,
+        courseId: course.id,
+        courseName: course.name,
+        googleCourseId: row.google_course_id,
+        googleCourseName: row.google_course_name,
+        googleCourseSection: row.google_course_section,
+      },
+    ];
+  });
+}
+
+export async function linkClassroomCourse(formData: FormData) {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const courseId = formData.get("course_id") as string;
+  const googleCourseId = formData.get("google_course_id") as string;
+  const googleCourseName = formData.get("google_course_name") as string;
+  const googleCourseSection = (formData.get("google_course_section") as string) || null;
+
+  if (!courseId || !googleCourseId || !googleCourseName) {
+    return { error: "Select both a Google Classroom course and a CleverPlatform course." };
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { error } = await supabase
+    .from("course_google_classroom_links")
+    .upsert(
+      {
+        course_id: courseId,
+        google_course_id: googleCourseId,
+        google_course_name: googleCourseName,
+        google_course_section: googleCourseSection,
+        linked_by: user?.id ?? null,
+      },
+      { onConflict: "course_id" }
+    );
+
+  if (error) {
+    console.error("[GC] linkClassroomCourse:", error.message);
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard/students");
+  revalidatePath("/dashboard/classroom");
+  return { success: true };
+}
+
+export async function unlinkClassroomCourse(linkId: string) {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from("course_google_classroom_links")
+    .delete()
+    .eq("id", linkId);
+
+  if (error) {
+    console.error("[GC] unlinkClassroomCourse:", error.message);
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard/students");
+  revalidatePath("/dashboard/classroom");
+  return { success: true };
+}
+
 export async function importGoogleStudents(formData: FormData) {
   await requireTeacher();
   const supabase = await createClient();
