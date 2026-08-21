@@ -41,7 +41,10 @@ export const maxDuration = 300;
  *
  * Roster matching here is against invited_students, not students/profiles:
  * the current 9A roster has been invited but nobody has logged in yet, so
- * there are no profiles rows to match against. See lib/na-scanning.ts.
+ * there are no profiles rows to match against. Some packets (Grade 9) live
+ * on a virtual "track" course with no roster of its own; loadInvitedRoster
+ * resolves that through track_courses and pools every real member class.
+ * See lib/na-scanning.ts.
  */
 
 export async function GET(request: NextRequest) {
@@ -213,8 +216,13 @@ export async function POST(request: NextRequest) {
   if (!validation.ok) return failBatch(validation.error, 502);
 
   // -- Match against the invited-student roster ------------------------------
-  const roster = courseId ? await loadInvitedRoster(supabase, courseId) : [];
-  const proposedSegments = matchSegmentsToInvitedRoster(validation.response.students, roster);
+  // courseId may be a virtual track course (e.g. Grade 9 Extended) with no
+  // roster of its own -- loadInvitedRoster resolves that via track_courses
+  // and pools every real member class automatically.
+  const rosterResolution = courseId
+    ? await loadInvitedRoster(supabase, courseId)
+    : { roster: [], sourceCourseIds: [], isTrack: false };
+  const proposedSegments = matchSegmentsToInvitedRoster(validation.response.students, rosterResolution.roster);
 
   const unassignedPages = [
     ...new Set([
@@ -244,6 +252,8 @@ export async function POST(request: NextRequest) {
     segments: proposedSegments,
     unassignedPages,
     warnings: validation.warnings,
-    rosterSize: roster.length,
+    rosterSize: rosterResolution.roster.length,
+    rosterIsTrack: rosterResolution.isTrack,
+    rosterSourceCourseIds: rosterResolution.sourceCourseIds,
   });
 }
