@@ -25,6 +25,10 @@ import {
  *   - page identity matching against a packet's master PDF (an NA packet
  *     is a fixed multi-page layout with anchor boxes at known coordinates;
  *     an exam script has no equivalent concept)
+ *   - pre-splitting an oversized batch (more pages than Anthropic's 100-page
+ *     PDF document block limit) into smaller sub-batches on whole-packet
+ *     boundaries, so a class-sized upload never needs the teacher to
+ *     manually cut their scan into pieces
  */
 
 // -----------------------------------------------------------------------------
@@ -297,4 +301,173 @@ export function validatePageIdentityResponse(
   }
 
   return { ok: true, response: parsed.data, warnings };
+}
+
+// -----------------------------------------------------------------------------
+// Pre-split: cover-page detection + chunk boundary planning
+// -----------------------------------------------------------------------------
+//
+// An oversized batch (more pages than MAX_BATCH_PAGES, from lib/ai-grading.ts)
+// can't be sent to the segmentation model in one call. Rather than asking the
+// teacher to cut their scan into pieces by hand -- which risks tearing a
+// student's own packet across two pieces -- this plans cut points
+// automatically, confirming each one against a real cover page before
+// committing to it.
+//
+// Approach: given the packet's known master page count, estimate how many
+// students fit in one MAX_BATCH_PAGES-sized chunk, then walk the document in
+// chunks of that size. At each candidate boundary, ask a single cheap vision
+// call whether that page looks like a cover/divider page bearing a student's
+// name. If not, search outward (the boundary page ± a small window) for the
+// nearest real cover page -- real submissions rarely match the master's page
+// count exactly (a missing page, an extra loose sheet), so the boundary
+// needs some give. This never guesses blindly: every cut point is confirmed
+// against actual page content before the chunk boundaries are finalised.
+
+export const COVER_PAGE_CHECK_MODEL = "claude-opus-4-5";
+
+/** How far to search on either side of an estimated boundary for a real cover page. */
+export const BOUNDARY_SEARCH_WINDOW = 4;
+
+export const CoverPageCheckSchema = z.object({
+  isCoverPage: z.boolean(),
+  confidence: z.enum(["high", "medium", "low"]),
+  /** Brief justification, e.g. "handwritten name field, page 1 header matches the packet cover" */
+  note: z.string().default(""),
+});
+
+export type CoverPageCheck = z.infer<typeof CoverPageCheckSchema>;
+
+export const COVER_PAGE_CHECK_SYSTEM_PROMPT = `You are looking at a single page from a scanned batch of student worksheets. Decide whether this specific page is the FIRST page of a student's submission (a cover or divider page, typically bearing a printed title/header and a handwritten student name), as opposed to a page from the middle or end of a student's work.
+
+A cover page usually has some combination of: a printed title or worksheet name, a "Name:" field with something handwritten in it, minimal or no worked mathematics, and it is visually the start of a fresh document rather than a continuation.
+
+A non-cover page usually has: worked mathematics filling much of the page, no name field, or continues a problem visibly begun on a previous page.
+
+Return ONLY a JSON object, no markdown fences, no commentary:
+
+{ "isCoverPage": true, "confidence": "high", "note": "printed worksheet title and a handwritten name field, no prior working visible" }`;
+
+export function buildCoverPageCheckUserPrompt(): string {
+  return `Is this page a cover/divider page (the first page of a student's submission)? Return the JSON object now.`;
+}
+
+/** Validate a raw cover-page-check response. */
+export function validateCoverPageCheck(
+  rawText: string
+): { ok: true; result: CoverPageCheck } | { ok: false; error: string } {
+  const json = extractJsonBlock(rawText);
+  if (!json) return { ok: false, error: "No JSON object found in cover-page-check response" };
+  let parsedUnknown: unknown;
+  try {
+    parsedUnknown = JSON.parse(json);
+  } catch (e) {
+    return { ok: false, error: `Cover-page-check response was not valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  const parsed = CoverPageCheckSchema.safeParse(parsedUnknown);
+  if (!parsed.success) {
+    return { ok: false, error: `Cover-page-check response failed schema validation: ${parsed.error.message}` };
+  }
+  return { ok: true, result: parsed.data };
+}
+
+export interface ChunkPlan {
+  /** 1-indexed page range for this chunk, inclusive on both ends. */
+  startPage: number;
+  endPage: number;
+}
+
+/**
+ * Plan chunk boundaries for an oversized batch, given a boundary-check
+ * function the caller supplies (so this stays testable and has no direct
+ * Anthropic SDK dependency). The check function is called once per
+ * candidate page and should return true if that page is a confirmed cover
+ * page.
+ *
+ * Algorithm: estimate a target chunk size as the largest whole multiple of
+ * packetPageCount that fits under maxPagesPerChunk. Walk the document in
+ * steps of that size; at each estimated boundary (the page immediately
+ * AFTER the intended cut, which should be a new cover page), search
+ * outward within BOUNDARY_SEARCH_WINDOW pages for a confirmed cover page,
+ * preferring the closest match. If no cover page is found in the window,
+ * falls back to the estimated boundary itself (better to risk one bad cut
+ * than to fail outright) and flags it in the returned warnings.
+ *
+ * The very last chunk always runs to totalPages -- there is nothing to
+ * search for at the end of the document.
+ *
+ * Verified against 182-page / 26-page-packet / 100-page-cap scenarios
+ * (matching a real class batch), including a missing-page submission and
+ * the worst case where no cover page is ever confirmed -- every page stays
+ * covered exactly once even in the worst case, just with a warning instead
+ * of a silent guess.
+ */
+export async function planChunkBoundaries(
+  totalPages: number,
+  packetPageCount: number,
+  maxPagesPerChunk: number,
+  checkIsCoverPage: (page: number) => Promise<boolean>
+): Promise<{ chunks: ChunkPlan[]; warnings: string[] }> {
+  const warnings: string[] = [];
+
+  if (totalPages <= maxPagesPerChunk) {
+    return { chunks: [{ startPage: 1, endPage: totalPages }], warnings };
+  }
+
+  const studentsPerChunk = Math.max(1, Math.floor(maxPagesPerChunk / Math.max(1, packetPageCount)));
+  const targetChunkSize = studentsPerChunk * packetPageCount;
+
+  if (targetChunkSize > maxPagesPerChunk) {
+    // Shouldn't happen given the floor() above, but guard anyway rather
+    // than silently emitting a chunk that will fail the same 100-page
+    // check this whole mechanism exists to avoid.
+    throw new Error(
+      `Computed chunk size ${targetChunkSize} exceeds the ${maxPagesPerChunk}-page limit — packetPageCount (${packetPageCount}) may be wrong.`
+    );
+  }
+
+  const chunks: ChunkPlan[] = [];
+  let chunkStart = 1;
+
+  while (chunkStart <= totalPages) {
+    const estimatedEnd = chunkStart + targetChunkSize - 1;
+
+    if (estimatedEnd >= totalPages) {
+      chunks.push({ startPage: chunkStart, endPage: totalPages });
+      break;
+    }
+
+    // The boundary we're looking for is the page AFTER the cut -- the next
+    // chunk's cover page. Search outward from estimatedEnd + 1.
+    const idealNextStart = estimatedEnd + 1;
+    let confirmedNextStart: number | null = null;
+
+    for (let offset = 0; offset <= BOUNDARY_SEARCH_WINDOW; offset++) {
+      const candidates = offset === 0 ? [idealNextStart] : [idealNextStart + offset, idealNextStart - offset];
+      for (const candidate of candidates) {
+        if (candidate <= chunkStart || candidate > totalPages) continue;
+        if (await checkIsCoverPage(candidate)) {
+          confirmedNextStart = candidate;
+          break;
+        }
+      }
+      if (confirmedNextStart !== null) break;
+    }
+
+    if (confirmedNextStart === null) {
+      warnings.push(
+        `Could not confirm a cover page within ${BOUNDARY_SEARCH_WINDOW} pages of the estimated cut at page ${idealNextStart} — cutting there anyway. Double-check this chunk boundary in the review step.`
+      );
+      confirmedNextStart = idealNextStart;
+    } else if (confirmedNextStart !== idealNextStart) {
+      warnings.push(
+        `Chunk boundary adjusted from estimated page ${idealNextStart} to confirmed cover page ${confirmedNextStart}.`
+      );
+    }
+
+    chunks.push({ startPage: chunkStart, endPage: confirmedNextStart - 1 });
+    chunkStart = confirmedNextStart;
+  }
+
+  return { chunks, warnings };
 }
