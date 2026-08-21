@@ -162,33 +162,35 @@ export default function AnchorReviewClient({
   const setVerdictOverride = useCallback(
     (row: Row, verdict: "correct" | "partial" | "incorrect" | "unclear") => {
       if (!row.feedback) return;
-      const currentMarks = row.feedback.final_marks_awarded ?? row.feedback.ai_marks_awarded ?? 0;
-      const maxMarks = row.feedback.ai_marks_available ?? anchor.marks_available ?? 0;
-      // Pressing a verdict key must also make a sensible choice about the
-      // mark, not silently keep whatever number was already there. A
-      // real bug found in testing: pressing "3" (incorrect) on a response
-      // the AI had marked "correct, 3/3" kept the mark at 3/3 while
-      // changing the verdict label to "incorrect" -- a nonsensical
-      // pairing. correct/incorrect/unclear each have an unambiguous
-      // implied mark (full, zero, zero); "partial" has no single right
-      // answer, so it keeps the existing number and the teacher adjusts
-      // it directly via the marks field next to the verdict chip.
-      let marks = currentMarks;
-      if (verdict === "correct") marks = maxMarks;
-      else if (verdict === "incorrect" || verdict === "unclear") marks = 0;
-
+      // Verdict and marks are independent fields, saved independently.
+      // An earlier version tried to be "helpful" by auto-setting the
+      // mark whenever the verdict changed (full/zero/zero for correct/
+      // incorrect/unclear) -- this created a worse bug than the one it
+      // fixed: setting the mark directly afterward, then changing the
+      // verdict again, silently overwrote the mark the teacher had JUST
+      // set, because the verdict-setter had no way to know the mark
+      // field had been touched since. Two functions independently
+      // "deriving" one field from the other is inherently fragile.
+      // Pressing a verdict key now ONLY sets the verdict. The mark stays
+      // exactly as it was until the teacher explicitly changes it via
+      // the mark field (click it or press 'm') -- if that leaves a
+      // visibly mismatched pairing like "correct, 1/3", that mismatch is
+      // the correct, honest signal that the mark still needs setting,
+      // not something to paper over with a guess.
+      const marks = row.feedback.final_marks_awarded ?? row.feedback.ai_marks_awarded ?? 0;
       const comment = row.feedback.final_margin_comment ?? row.feedback.ai_margin_comment ?? "";
       const next = row.feedback.final_next_step ?? row.feedback.ai_next_step ?? "";
-      const unchanged =
-        verdict === row.feedback.ai_verdict && marks === (row.feedback.ai_marks_awarded ?? 0);
+      const unchanged = verdict === row.feedback.ai_verdict;
       saveDecision(row, verdict, marks, comment, next, !unchanged || row.feedback.teacher_edited);
     },
-    [saveDecision, anchor.marks_available]
+    [saveDecision]
   );
 
   const setMarksOverride = useCallback(
     (row: Row, marks: number) => {
       if (!row.feedback) return;
+      // Marks-only change -- see comment in setVerdictOverride above for
+      // why this never also touches the verdict.
       const verdict = row.feedback.final_verdict ?? row.feedback.ai_verdict ?? "unclear";
       const comment = row.feedback.final_margin_comment ?? row.feedback.ai_margin_comment ?? "";
       const next = row.feedback.final_next_step ?? row.feedback.ai_next_step ?? "";
@@ -309,9 +311,8 @@ export default function AnchorReviewClient({
             <kbd className="px-1 bg-da-hover rounded">Enter</kbd> accept AI
           </span>
           <span className="text-da-muted/70">
-            (1/3/4 also set the mark to full/zero/zero — use{" "}
-            <kbd className="px-1 bg-da-hover rounded">m</kbd> or click the mark to set a specific
-            number, e.g. for partial credit)
+            (verdict and marks are set independently — a key press changes only the verdict; click
+            the mark or press <kbd className="px-1 bg-da-hover rounded">m</kbd> to set the number)
           </span>
           <span className="ml-auto flex items-center gap-2">
             <input
