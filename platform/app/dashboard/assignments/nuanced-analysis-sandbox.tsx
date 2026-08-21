@@ -247,11 +247,17 @@ export function NuancedAnalysisSandbox() {
 
   // Course list. Read directly through the browser Supabase client, consistent
   // with the other dashboard clients — RLS already scopes this to the teacher.
+  // Archived courses are excluded — this picker targets active generation,
+  // not historical/archived class groups.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       const supabase = createClient();
-      const { data } = await supabase.from("courses").select("id, name").order("name");
+      const { data } = await supabase
+        .from("courses")
+        .select("id, name")
+        .eq("archived", false)
+        .order("name");
       if (!cancelled && data) setCourses(data as CourseOption[]);
     })();
     return () => {
