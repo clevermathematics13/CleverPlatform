@@ -18,7 +18,7 @@ export default async function TestsPage() {
          test_items(id, question_number, part_label, max_marks, sort_order)`
       )
       .order("test_date", { ascending: false }),
-    supabase.from("courses").select("id, name").order("name"),
+    supabase.from("courses").select("id, name").eq("archived", false).order("name"),
   ]);
 
   return (
