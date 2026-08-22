@@ -3,21 +3,15 @@ import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import {
-  SEGMENTATION_MODEL,
-  SEGMENTATION_SYSTEM_PROMPT,
-  MAX_BATCH_PAGES,
-  buildSegmentationUserPrompt,
-  validateSegmentationResponse,
-} from "@/lib/ai-grading";
-import {
   NA_SCAN_BUCKET,
   loadInvitedRoster,
   matchSegmentsToInvitedRoster,
-  planChunkBoundaries,
+  scanCoverPages,
   COVER_PAGE_CHECK_MODEL,
   COVER_PAGE_CHECK_SYSTEM_PROMPT,
   buildCoverPageCheckUserPrompt,
   validateCoverPageCheck,
+  type CoverPageCheck,
 } from "@/lib/na-scanning";
 
 export const maxDuration = 300;
@@ -30,37 +24,35 @@ export const maxDuration = 300;
  * Body: { packetVersionId: string, storagePath: string, fileName?: string }
  *
  * Stage 1 of the NA scan pipeline. The client uploads the raw batch PDF
- * directly to Supabase Storage BEFORE calling this route, then passes the
- * storage path here.
+ * directly to Supabase Storage BEFORE calling this route (a class set of
+ * scans runs to hundreds of megabytes, far past what a serverless
+ * function's request body can carry), then passes the storage path here.
  *
- * Two outcomes depending on size:
+ * Segmentation works by checking only candidate COVER pages rather than
+ * sending the whole document to the model — see scanCoverPages in
+ * lib/na-scanning.ts for the reasoning and the measured savings. Two
+ * consequences worth knowing when reading this route:
  *
- * SMALL BATCH (<= MAX_BATCH_PAGES, from lib/ai-grading.ts — Anthropic's
- * 100-page PDF document block limit): runs segmentation immediately, same
- * as before. Response has `chunked: false` and the usual segments/
- * warnings/rosterSize fields.
+ *   1. Cost. On a 20-student class this sends ~20 pages to the model
+ *      instead of ~520, on Haiku rather than Opus. Roughly $0.03 per
+ *      batch instead of $6.02.
  *
- * OVERSIZED BATCH: does NOT run segmentation itself. Instead it pre-splits
- * the source PDF into several smaller chunk PDFs, each guaranteed to
- * contain only whole student packets (never a packet torn across two
- * chunks) — see lib/na-scanning.ts's planChunkBoundaries, which confirms
- * every cut point against a real cover page via a cheap single-page vision
- * call before committing to it, rather than trusting page-count arithmetic
- * blindly. Each chunk becomes its own na_scan_batches row with
- * parent_batch_id pointing back to this upload, uploaded to storage and
- * ready to segment — but this route does NOT run segmentation on each
- * chunk inline, since 3+ sequential full segmentation calls plus the
- * boundary checks could plausibly exceed this function's own time budget.
- * The client is expected to call this same route again — passing the
- * chunk's own storagePath — to run segmentation on it; that storagePath
- * already lives under na-batches/ and is already under MAX_BATCH_PAGES, so
- * it takes the small-batch path below automatically. No separate route was
- * needed for this. Response has `chunked: true` and a `chunks` array
- * instead of segments.
+ *   2. No size limits apply. Every request carries exactly ONE page, so
+ *      neither Anthropic's 100-page PDF document limit nor its 32MB
+ *      request size limit can be reached, whatever the upload's size or
+ *      scan resolution. An earlier version of this route pre-split
+ *      oversized uploads into chunk batches to work around those limits;
+ *      that machinery is gone because the limits are no longer reachable.
  *
- * Roster matching (for the small-batch path) is against invited_students,
- * not students/profiles, and resolves virtual track courses (e.g. Grade 9
- * Extended) through track_courses. See lib/na-scanning.ts.
+ * This route does NOT split the PDF or write any na_packet_scans rows —
+ * it only proposes a page-to-student mapping, persisted to
+ * na_scan_batches.proposed_segments. Only a teacher-confirmed mapping
+ * (via POST .../batch/[batchId]/split) ever creates packet scans.
+ *
+ * Roster matching is against invited_students, not students/profiles (the
+ * current Grade 9 roster has been invited but nobody has logged in yet, so
+ * there are no profiles rows), and resolves virtual track courses like
+ * Grade 9 Extended through track_courses.
  */
 
 export async function GET(request: NextRequest) {
@@ -76,7 +68,7 @@ export async function GET(request: NextRequest) {
   const { data: batches, error } = await supabase
     .from("na_scan_batches")
     .select(
-      "id, packet_version_id, course_id, status, source_filename, page_count, proposed_segments, confirmed_segments, unassigned_pages, error_message, created_at, segmented_at, split_at, parent_batch_id, chunk_index, chunk_count"
+      "id, packet_version_id, course_id, status, source_filename, page_count, proposed_segments, confirmed_segments, unassigned_pages, error_message, created_at, segmented_at, split_at"
     )
     .eq("packet_version_id", packetVersionId)
     .order("created_at", { ascending: false })
@@ -135,6 +127,19 @@ export async function POST(request: NextRequest) {
   const courseId = (naRow as { course_id: string | null } | null)?.course_id ?? null;
   const packetPageCount = (packetVersion.page_count as number | null) ?? null;
 
+  // The packet's page count is what makes cover-page-only scanning possible
+  // -- it's the stride used to predict where the next packet begins. Without
+  // it there's nothing to search around.
+  if (!packetPageCount || packetPageCount <= 0) {
+    return NextResponse.json(
+      {
+        error:
+          "This packet version has no recorded page count, which is needed to locate where each student's packet begins. Set the packet version's page count first.",
+      },
+      { status: 400 }
+    );
+  }
+
   // -- Download the uploaded batch PDF ---------------------------------------
   const { data: file, error: dlErr } = await supabase.storage.from(NA_SCAN_BUCKET).download(storagePath);
   if (dlErr || !file) {
@@ -163,174 +168,7 @@ export async function POST(request: NextRequest) {
   const fileName =
     typeof body.fileName === "string" && body.fileName.trim() ? body.fileName.trim() : "batch-scan.pdf";
 
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  // ===========================================================================
-  // OVERSIZED PATH: pre-split into chunk batches, no segmentation here.
-  // ===========================================================================
-  if (pageCount > MAX_BATCH_PAGES) {
-    if (!packetPageCount || packetPageCount <= 0) {
-      return NextResponse.json(
-        {
-          error: `This scan has ${pageCount} pages (over the ${MAX_BATCH_PAGES}-page limit), but this packet version has no known page_count to plan a split against. Set the packet version's page count first, or split the scan manually.`,
-        },
-        { status: 400 }
-      );
-    }
-
-    // -- Create the parent row -----------------------------------------------
-    const { data: parentBatch, error: parentErr } = await supabase
-      .from("na_scan_batches")
-      .insert({
-        packet_version_id: packetVersionId,
-        course_id: courseId,
-        uploaded_by: user.id,
-        status: "presplitting",
-        source_filename: fileName,
-        source_storage_path: storagePath,
-        page_count: pageCount,
-      })
-      .select("id")
-      .single();
-
-    if (parentErr || !parentBatch) {
-      return NextResponse.json(
-        { error: `Could not create parent batch record: ${parentErr?.message ?? "unknown error"}` },
-        { status: 500 }
-      );
-    }
-
-    const failParent = async (message: string, status = 500) => {
-      await supabase
-        .from("na_scan_batches")
-        .update({ status: "failed", error_message: message })
-        .eq("id", parentBatch.id);
-      return NextResponse.json({ error: message, batchId: parentBatch.id }, { status });
-    };
-
-    // -- Plan chunk boundaries, confirming each cut against a real cover page --
-    const checkIsCoverPage = async (page: number): Promise<boolean> => {
-      try {
-        const singlePageDoc = await PDFDocument.create();
-        const [copied] = await singlePageDoc.copyPages(sourceDoc, [page - 1]);
-        singlePageDoc.addPage(copied);
-        const singlePageBytes = await singlePageDoc.save();
-
-        const message = await anthropic.messages.create({
-          model: COVER_PAGE_CHECK_MODEL,
-          max_tokens: 512,
-          system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "document",
-                  source: {
-                    type: "base64",
-                    media_type: "application/pdf",
-                    data: Buffer.from(singlePageBytes).toString("base64"),
-                  },
-                },
-                { type: "text", text: buildCoverPageCheckUserPrompt() },
-              ],
-            },
-          ],
-        });
-        const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-        const validated = validateCoverPageCheck(text);
-        return validated.ok && validated.result.isCoverPage;
-      } catch {
-        // A failed check is treated as "not a cover page" -- planChunkBoundaries
-        // will keep searching the window and fall back to the estimate with a
-        // warning rather than this route throwing outright.
-        return false;
-      }
-    };
-
-    let plan: { chunks: { startPage: number; endPage: number }[]; warnings: string[] };
-    try {
-      plan = await planChunkBoundaries(pageCount, packetPageCount, MAX_BATCH_PAGES, checkIsCoverPage);
-    } catch (e) {
-      return failParent(`Could not plan chunk boundaries: ${e instanceof Error ? e.message : String(e)}`);
-    }
-
-    // -- Split the source PDF at the confirmed boundaries and create child rows --
-    const chunkResults: {
-      batchId: string;
-      chunkIndex: number;
-      startPage: number;
-      endPage: number;
-      pageCount: number;
-      storagePath: string;
-    }[] = [];
-
-    for (let i = 0; i < plan.chunks.length; i++) {
-      const { startPage, endPage } = plan.chunks[i];
-      const chunkPageIndices = Array.from({ length: endPage - startPage + 1 }, (_, k) => startPage - 1 + k);
-
-      const chunkDoc = await PDFDocument.create();
-      const copiedPages = await chunkDoc.copyPages(sourceDoc, chunkPageIndices);
-      for (const p of copiedPages) chunkDoc.addPage(p);
-      const chunkBytes = Buffer.from(await chunkDoc.save());
-
-      const chunkPath = `na-batches/${parentBatch.id}/chunk-${i + 1}-${Date.now()}.pdf`;
-      const { error: uploadErr } = await supabase.storage
-        .from(NA_SCAN_BUCKET)
-        .upload(chunkPath, chunkBytes, { contentType: "application/pdf", upsert: true });
-      if (uploadErr) {
-        return failParent(`Could not upload chunk ${i + 1}: ${uploadErr.message}`);
-      }
-
-      const { data: childBatch, error: childErr } = await supabase
-        .from("na_scan_batches")
-        .insert({
-          packet_version_id: packetVersionId,
-          course_id: courseId,
-          uploaded_by: user.id,
-          status: "uploaded",
-          source_filename: `${fileName} (chunk ${i + 1} of ${plan.chunks.length}, pages ${startPage}-${endPage})`,
-          source_storage_path: chunkPath,
-          page_count: chunkPageIndices.length,
-          parent_batch_id: parentBatch.id,
-          chunk_index: i + 1,
-          chunk_count: plan.chunks.length,
-        })
-        .select("id")
-        .single();
-
-      if (childErr || !childBatch) {
-        return failParent(`Could not create chunk ${i + 1} batch record: ${childErr?.message ?? "unknown error"}`);
-      }
-
-      chunkResults.push({
-        batchId: childBatch.id,
-        chunkIndex: i + 1,
-        startPage,
-        endPage,
-        pageCount: chunkPageIndices.length,
-        storagePath: chunkPath,
-      });
-    }
-
-    await supabase
-      .from("na_scan_batches")
-      .update({ status: "chunked" })
-      .eq("id", parentBatch.id);
-
-    return NextResponse.json({
-      chunked: true,
-      parentBatchId: parentBatch.id,
-      pageCount,
-      packetPageCount,
-      chunks: chunkResults,
-      warnings: plan.warnings,
-    });
-  }
-
-  // ===========================================================================
-  // SMALL BATCH PATH: unchanged from before -- segment immediately.
-  // ===========================================================================
+  // -- Open the batch row ------------------------------------------------------
   const { data: batch, error: insertErr } = await supabase
     .from("na_scan_batches")
     .insert({
@@ -357,56 +195,84 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: message, batchId: batch.id }, { status });
   };
 
-  let responseText: string;
+  // -- Segment by checking candidate cover pages only -------------------------
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // Extracts a single page as its own one-page PDF and asks whether it's a
+  // cover page (and if so, whose). One page per request is what keeps this
+  // clear of Anthropic's document-size and page-count limits entirely.
+  const checkPage = async (page: number): Promise<CoverPageCheck> => {
+    const notCover: CoverPageCheck = {
+      isCoverPage: false,
+      studentName: null,
+      confidence: "low",
+      note: "",
+    };
+    try {
+      const singlePageDoc = await PDFDocument.create();
+      const [copied] = await singlePageDoc.copyPages(sourceDoc, [page - 1]);
+      singlePageDoc.addPage(copied);
+      const singlePageBytes = await singlePageDoc.save();
+
+      const message = await anthropic.messages.create({
+        model: COVER_PAGE_CHECK_MODEL,
+        max_tokens: 512,
+        system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: {
+                  type: "base64",
+                  media_type: "application/pdf",
+                  data: Buffer.from(singlePageBytes).toString("base64"),
+                },
+              },
+              { type: "text", text: buildCoverPageCheckUserPrompt() },
+            ],
+          },
+        ],
+      });
+      const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+      const validated = validateCoverPageCheck(text);
+      return validated.ok ? validated.result : notCover;
+    } catch {
+      // A failed check reads as "not a cover page": scanCoverPages keeps
+      // searching its window and falls back to the expected boundary with a
+      // warning, which is a better outcome than aborting the whole batch
+      // over one bad page.
+      return notCover;
+    }
+  };
+
+  let scan: Awaited<ReturnType<typeof scanCoverPages>>;
   try {
-    const message = await anthropic.messages.create({
-      model: SEGMENTATION_MODEL,
-      max_tokens: 8192,
-      system: SEGMENTATION_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: buffer.toString("base64") },
-            },
-            { type: "text", text: buildSegmentationUserPrompt(pageCount) },
-          ],
-        },
-      ],
-    });
-    responseText = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+    scan = await scanCoverPages(pageCount, packetPageCount, checkPage);
   } catch (e) {
-    return failBatch(`Segmentation request failed: ${e instanceof Error ? e.message : String(e)}`);
+    return failBatch(`Cover-page scan failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 
-  if (!responseText.trim()) return failBatch("Model returned an empty segmentation response");
+  if (scan.segments.length === 0) {
+    return failBatch("No student packets could be identified in this scan.", 502);
+  }
 
-  const validation = validateSegmentationResponse(responseText, pageCount);
-  if (!validation.ok) return failBatch(validation.error, 502);
-
+  // -- Match against the invited-student roster ------------------------------
+  // courseId may be a virtual track course (e.g. Grade 9 Extended) with no
+  // roster of its own -- loadInvitedRoster resolves that via track_courses
+  // and pools every real member class automatically.
   const rosterResolution = courseId
     ? await loadInvitedRoster(supabase, courseId)
     : { roster: [], sourceCourseIds: [], isTrack: false };
-  const proposedSegments = matchSegmentsToInvitedRoster(validation.response.students, rosterResolution.roster);
-
-  const unassignedPages = [
-    ...new Set([
-      ...validation.response.unassignedPages,
-      ...validation.warnings.flatMap((w) => {
-        const m = w.match(/^Page\(s\) (.+) were not mentioned/);
-        return m ? m[1].split(", ").map(Number) : [];
-      }),
-    ]),
-  ].sort((a, b) => a - b);
+  const proposedSegments = matchSegmentsToInvitedRoster(scan.segments, rosterResolution.roster);
 
   const { error: updateErr } = await supabase
     .from("na_scan_batches")
     .update({
       status: "segmented",
       proposed_segments: proposedSegments,
-      unassigned_pages: unassignedPages,
+      unassigned_pages: [],
       segmented_at: new Date().toISOString(),
     })
     .eq("id", batch.id);
@@ -417,9 +283,15 @@ export async function POST(request: NextRequest) {
     chunked: false,
     batchId: batch.id,
     pageCount,
+    packetPageCount,
     segments: proposedSegments,
-    unassignedPages,
-    warnings: validation.warnings,
+    // Cover-page scanning assigns every page to exactly one student by
+    // construction (each runs from its cover to the page before the next),
+    // so there is never an unassigned page to report. Kept in the response
+    // shape so the client doesn't need a special case.
+    unassignedPages: [],
+    warnings: scan.warnings,
+    pagesChecked: scan.pagesChecked,
     rosterSize: rosterResolution.roster.length,
     rosterIsTrack: rosterResolution.isTrack,
     rosterSourceCourseIds: rosterResolution.sourceCourseIds,
