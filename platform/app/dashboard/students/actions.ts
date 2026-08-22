@@ -250,9 +250,17 @@ export async function updateInvitedFullName(formData: FormData) {
 }
 
 /**
- * Bulk-archive an entire class: sets hidden = true for every enrolled and
- * invited student in a course. Reversible via unarchiveClassStudents.
- * Reuses the exact same `hidden` semantics as the per-student Hide button.
+ * Archives a whole class by setting the COURSE's archived flag, which is
+ * what removes it from course pickers and from the default student list.
+ *
+ * Deliberately does NOT touch any student's `hidden` flag. Archiving a class
+ * and hiding an individual student are separate, independent mechanisms:
+ * archiving says "this class is over", hiding says "this one student should
+ * not appear" (e.g. they left mid-year). An earlier version of this action
+ * hid every student instead of archiving the course, which meant an
+ * "archived" class still showed up in every dropdown while its students
+ * silently disappeared from roster queries that filter on hidden -- the
+ * worst of both behaviours.
  */
 export async function archiveClassStudents(formData: FormData) {
   await requireTeacher();
@@ -261,24 +269,14 @@ export async function archiveClassStudents(formData: FormData) {
   const courseId = formData.get("course_id") as string;
   if (!courseId) return { error: "No course selected." };
 
-  const { error: studentsError } = await supabase
-    .from("students")
-    .update({ hidden: true })
-    .eq("course_id", courseId);
+  const { error } = await supabase
+    .from("courses")
+    .update({ archived: true })
+    .eq("id", courseId);
 
-  if (studentsError) {
-    console.error("[archiveClassStudents] Failed to hide students:", studentsError.message, studentsError.code);
-    return { error: `Failed to archive class: ${studentsError.message}` };
-  }
-
-  const { error: invitedError } = await supabase
-    .from("invited_students")
-    .update({ hidden: true })
-    .eq("course_id", courseId);
-
-  if (invitedError) {
-    console.error("[archiveClassStudents] Failed to hide invited students:", invitedError.message, invitedError.code);
-    return { error: `Archived enrolled students, but invited students failed: ${invitedError.message}` };
+  if (error) {
+    console.error("[archiveClassStudents] Failed to archive course:", error.message, error.code);
+    return { error: `Failed to archive class: ${error.message}` };
   }
 
   revalidatePath("/dashboard/students");
@@ -286,7 +284,7 @@ export async function archiveClassStudents(formData: FormData) {
   return { success: true };
 }
 
-/** Reverses archiveClassStudents: sets hidden = false for the whole class. */
+/** Reverses archiveClassStudents: clears the course's archived flag. */
 export async function unarchiveClassStudents(formData: FormData) {
   await requireTeacher();
   const supabase = await createClient();
@@ -294,24 +292,14 @@ export async function unarchiveClassStudents(formData: FormData) {
   const courseId = formData.get("course_id") as string;
   if (!courseId) return { error: "No course selected." };
 
-  const { error: studentsError } = await supabase
-    .from("students")
-    .update({ hidden: false })
-    .eq("course_id", courseId);
+  const { error } = await supabase
+    .from("courses")
+    .update({ archived: false })
+    .eq("id", courseId);
 
-  if (studentsError) {
-    console.error("[unarchiveClassStudents] Failed to unhide students:", studentsError.message, studentsError.code);
-    return { error: `Failed to unarchive class: ${studentsError.message}` };
-  }
-
-  const { error: invitedError } = await supabase
-    .from("invited_students")
-    .update({ hidden: false })
-    .eq("course_id", courseId);
-
-  if (invitedError) {
-    console.error("[unarchiveClassStudents] Failed to unhide invited students:", invitedError.message, invitedError.code);
-    return { error: `Unarchived enrolled students, but invited students failed: ${invitedError.message}` };
+  if (error) {
+    console.error("[unarchiveClassStudents] Failed to unarchive course:", error.message, error.code);
+    return { error: `Failed to unarchive class: ${error.message}` };
   }
 
   revalidatePath("/dashboard/students");
