@@ -12,11 +12,12 @@ interface Course {
 interface Props {
   courses: Course[];
   activeCourseId: string | null;
+  activeCourseName?: string | null;
   classMemberCount: number;
   classIsFullyArchived: boolean;
 }
 
-export function CourseFilterBar({ courses, activeCourseId, classMemberCount, classIsFullyArchived }: Props) {
+export function CourseFilterBar({ courses, activeCourseId, activeCourseName, classMemberCount, classIsFullyArchived }: Props) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +63,13 @@ export function CourseFilterBar({ courses, activeCourseId, classMemberCount, cla
               {c.name}
             </option>
           ))}
+          {/* An archived course is deliberately absent from `courses`, but if
+              one is currently selected it still needs an option to render
+              against -- otherwise the select falls back to "All courses" and
+              the Unarchive button becomes unreachable. */}
+          {activeCourseId && !courses.some((c) => c.id === activeCourseId) && (
+            <option value={activeCourseId}>{activeCourseName ?? "(archived class)"} — archived</option>
+          )}
         </select>
       </label>
 
@@ -69,14 +77,14 @@ export function CourseFilterBar({ courses, activeCourseId, classMemberCount, cla
         <>
           <div className="h-5 w-px bg-da-border" />
 
-          {classMemberCount === 0 ? (
+          {classMemberCount === 0 && !classIsFullyArchived ? (
             <span className="text-xs text-da-muted">No students in this class yet.</span>
           ) : confirming ? (
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-da-text">
                 {classIsFullyArchived
-                  ? `Unarchive all ${classMemberCount} student${classMemberCount !== 1 ? "s" : ""} in this class?`
-                  : `Archive all ${classMemberCount} student${classMemberCount !== 1 ? "s" : ""} in this class? They'll be hidden but not deleted.`}
+                  ? "Unarchive this class? It'll reappear in course pickers and the student list."
+                  : "Archive this class? It'll be hidden from course pickers and the student list. Students are kept, not deleted."}
               </span>
               <button
                 type="button"
