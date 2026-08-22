@@ -106,7 +106,6 @@ export default async function StudentsPage({
   if (importedError) {
     console.error("[StudentsPage] invited_students query error:", importedError.message, importedError.code);
   }
-  console.log("[StudentsPage] invited_students count:", importedStudents?.length ?? 0, "courseFilter:", courseFilter);
 
   // Exclude invited students who are already enrolled (appear in students table)
   const enrolledEmails = new Set(
@@ -126,6 +125,16 @@ export default async function StudentsPage({
     .eq("archived", false)
     .order("name");
 
+  // Archived classes get their own section rather than vanishing entirely --
+  // otherwise there's no way back to them except by remembering a URL.
+  const { data: archivedCourses } = await supabase
+    .from("courses")
+    .select("id, name")
+    .eq("archived", true)
+    .order("name");
+
+  const archivedCourseIds = new Set((archivedCourses ?? []).map((c) => c.id));
+
   // The active course (from ?course=) resolves by ID regardless of archived
   // status, so a direct link to an archived course's roster still works —
   // it just won't appear in the picker dropdown itself.
@@ -142,62 +151,78 @@ export default async function StudentsPage({
     }
   }
 
-  // Determine whether the currently-filtered class is fully archived (every
-  // enrolled + invited student hidden) so the picker can offer the right
-  // action (Archive vs Unarchive). Only meaningful when a course is selected
-  // and it actually has students.
+  // Whether the selected class is archived is now a property of the COURSE,
+  // not a derived "are all its students hidden" guess. Those came apart
+  // badly before: the old Archive button hid every student without ever
+  // archiving the course, so a class could look archived here while still
+  // appearing in every picker.
   const classMemberCount = (students?.length ?? 0) + pendingStudents.length;
-  const classIsFullyArchived =
-    Boolean(activeCourse) &&
-    classMemberCount > 0 &&
-    (students ?? []).every((s) => s.hidden) &&
-    pendingStudents.every((s) => s.hidden);
+  const classIsFullyArchived = Boolean(activeCourse) && archivedCourseIds.has(activeCourse!.id);
 
   const gcConnected = await isGoogleConnected();
   const classroomLinks = gcConnected ? await fetchClassroomLinks() : [];
 
+  // A student from an archived class shouldn't appear in the default list.
+  // When a specific course IS selected we show it regardless, so a direct
+  // link to an archived class still works and its roster is reviewable.
+  const hideArchived = !courseFilter;
+  const inArchivedCourse = (courseId: string | null | undefined) =>
+    !!courseId && archivedCourseIds.has(courseId);
+
   // Normalize both enrolled and invited into unified rows
   const rows: StudentRow[] = [
-    ...(students ?? []).map((student) => {
-      const profile = student.profiles as unknown as {
-        id: string; email: string; display_name: string; nickname: string | null;
-      } | null;
-      const course = student.courses as unknown as { id: string; name: string } | null;
-      return {
-        key: `enrolled-${student.id}`,
-        type: "enrolled" as const,
-        name: profile?.display_name ?? null,
-        nickname: profile?.nickname ?? null,
-        email: profile?.email ?? null,
-        courseName: course?.name ?? null,
-        profileId: profile?.id ?? null,
-        invitedId: null,
-        studentId: student.id,
-        hidden: student.hidden ?? false,
-        extraTime: student.extra_time ?? 0,
-        supportsExtraTime,
-        signedIn: false,
-      };
-    }),
-    ...pendingStudents.map((inv) => {
-      const course = inv.courses as unknown as { id: string; name: string } | null;
-      const typedInv = inv as unknown as { nickname: string | null } & typeof inv;
-      return {
-        key: `invited-${inv.id}`,
-        type: "invited" as const,
-        name: inv.full_name ?? null,
-        nickname: typedInv.nickname ?? null,
-        email: inv.email,
-        courseName: course?.name ?? null,
-        profileId: null,
-        invitedId: inv.id,
-        studentId: null,
-        hidden: inv.hidden ?? false,
-        extraTime: inv.extra_time ?? 0,
-        supportsExtraTime: supportsInvitedExtraTime,
-        signedIn: false,
-      };
-    }),
+    ...(students ?? [])
+      .filter((student) => {
+        if (!hideArchived) return true;
+        const c = student.courses as unknown as { id: string } | null;
+        return !inArchivedCourse(c?.id);
+      })
+      .map((student) => {
+        const profile = student.profiles as unknown as {
+          id: string; email: string; display_name: string; nickname: string | null;
+        } | null;
+        const course = student.courses as unknown as { id: string; name: string } | null;
+        return {
+          key: `enrolled-${student.id}`,
+          type: "enrolled" as const,
+          name: profile?.display_name ?? null,
+          nickname: profile?.nickname ?? null,
+          email: profile?.email ?? null,
+          courseName: course?.name ?? null,
+          profileId: profile?.id ?? null,
+          invitedId: null,
+          studentId: student.id,
+          hidden: student.hidden ?? false,
+          extraTime: student.extra_time ?? 0,
+          supportsExtraTime,
+          signedIn: false,
+        };
+      }),
+    ...pendingStudents
+      .filter((inv) => {
+        if (!hideArchived) return true;
+        const c = inv.courses as unknown as { id: string } | null;
+        return !inArchivedCourse(c?.id);
+      })
+      .map((inv) => {
+        const course = inv.courses as unknown as { id: string; name: string } | null;
+        const typedInv = inv as unknown as { nickname: string | null } & typeof inv;
+        return {
+          key: `invited-${inv.id}`,
+          type: "invited" as const,
+          name: inv.full_name ?? null,
+          nickname: typedInv.nickname ?? null,
+          email: inv.email,
+          courseName: course?.name ?? null,
+          profileId: null,
+          invitedId: inv.id,
+          studentId: null,
+          hidden: inv.hidden ?? false,
+          extraTime: inv.extra_time ?? 0,
+          supportsExtraTime: supportsInvitedExtraTime,
+          signedIn: false,
+        };
+      }),
   ];
 
   return (
@@ -225,6 +250,7 @@ export default async function StudentsPage({
       <CourseFilterBar
         courses={courses ?? []}
         activeCourseId={activeCourse?.id ?? null}
+        activeCourseName={activeCourse?.name ?? null}
         classMemberCount={classMemberCount}
         classIsFullyArchived={classIsFullyArchived}
       />
@@ -250,7 +276,7 @@ export default async function StudentsPage({
       {/* Student List */}
       <div className="mt-8">
         <h2 className="text-xl font-bold text-da-text">
-          Enrolled Students ({(students?.length ?? 0) + (pendingStudents.length)})
+          Enrolled Students ({rows.length})
         </h2>
 
         {error && (
@@ -259,7 +285,7 @@ export default async function StudentsPage({
           </p>
         )}
 
-        {((students && students.length > 0) || pendingStudents.length > 0) ? (
+        {rows.length > 0 ? (
           <StudentsTable rows={rows} />
         ) : (
           <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center">
@@ -271,6 +297,32 @@ export default async function StudentsPage({
           </div>
         )}
       </div>
+
+      {/* Archived classes — visible but out of the way, with a route back in. */}
+      {(archivedCourses ?? []).length > 0 && (
+        <div className="mt-10">
+          <h2 className="text-xl font-bold text-da-text">
+            Archived classes ({(archivedCourses ?? []).length})
+          </h2>
+          <p className="mt-1 text-sm text-da-muted">
+            These classes are hidden from course pickers and from the student list above.
+            Their students are still stored — open one to review or unarchive it.
+          </p>
+          <ul className="mt-3 divide-y divide-da-border rounded-xl border border-da-border bg-da-surface/70">
+            {(archivedCourses ?? []).map((c) => (
+              <li key={c.id} className="flex items-center justify-between px-4 py-3">
+                <span className="text-sm font-medium text-da-text">{c.name}</span>
+                <Link
+                  href={`/dashboard/students?course=${c.id}`}
+                  className="text-sm font-medium text-da-accent hover:underline"
+                >
+                  Open / unarchive →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Google Classroom Import — at the bottom */}
       <GoogleClassroomImport
