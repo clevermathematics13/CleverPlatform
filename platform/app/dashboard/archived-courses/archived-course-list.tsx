@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { unarchiveCourse, deleteCourse } from "../courses/actions";
+import { unarchiveCourse, deleteCourse, updateCourse } from "../courses/actions";
 
 interface CourseRow {
   id: string;
@@ -14,6 +14,7 @@ interface CourseRow {
 }
 
 export function ArchivedCourseList({ courses }: { courses: CourseRow[] }) {
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -26,6 +27,19 @@ export function ArchivedCourseList({ courses }: { courses: CourseRow[] }) {
     const result = await unarchiveCourse(fd);
     setIsLoading(false);
     if (result.error) setGlobalError(result.error);
+  }
+
+  async function handleUpdate(id: string, name: string, description: string) {
+    setIsLoading(true);
+    setGlobalError(null);
+    const fd = new FormData();
+    fd.set("id", id);
+    fd.set("name", name);
+    fd.set("description", description);
+    const result = await updateCourse(fd);
+    setIsLoading(false);
+    if (result.error) setGlobalError(result.error);
+    else setEditingId(null);
   }
 
   async function handleDelete(id: string) {
@@ -64,7 +78,17 @@ export function ArchivedCourseList({ courses }: { courses: CourseRow[] }) {
               key={course.id}
               className="flex flex-col rounded-xl border border-da-border bg-da-surface/60 opacity-90 shadow-sm shadow-black/35"
             >
-              {deletingId === course.id ? (
+              {editingId === course.id ? (
+                <div className="p-5 flex-1">
+                  <ArchivedCourseForm
+                    initialName={course.name}
+                    initialDescription={course.description ?? ""}
+                    onCancel={() => setEditingId(null)}
+                    onSave={(name, description) => handleUpdate(course.id, name, description)}
+                    isPending={isLoading}
+                  />
+                </div>
+              ) : deletingId === course.id ? (
                 <div className="p-5 flex-1">
                   <p className="text-sm font-medium text-gray-900 mb-1">
                     Permanently delete &ldquo;{course.name}&rdquo;?
@@ -97,9 +121,19 @@ export function ArchivedCourseList({ courses }: { courses: CourseRow[] }) {
                   <div className="p-5 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <h2 className="text-lg font-bold leading-tight text-da-text">{course.name}</h2>
-                      <span className="shrink-0 rounded-full bg-da-hover px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-da-muted">
-                        Archived
-                      </span>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="rounded-full bg-da-hover px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-da-muted">
+                          Archived
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => { setEditingId(course.id); setDeletingId(null); }}
+                          className="rounded p-1 text-da-muted hover:bg-da-hover hover:text-da-text transition-colors"
+                          title="Rename / edit"
+                        >
+                          ✏️
+                        </button>
+                      </div>
                     </div>
 
                     {course.description && (
@@ -146,5 +180,78 @@ export function ArchivedCourseList({ courses }: { courses: CourseRow[] }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Same shape as the CourseForm on the active Courses page, kept as its own
+ * copy here rather than a shared import: this one is always in "edit"
+ * mode (archived courses are only ever renamed, never created from this
+ * page), so the isEdit branching and create-specific copy on the other
+ * component would just be dead weight here.
+ */
+function ArchivedCourseForm({
+  initialName,
+  initialDescription,
+  onSave,
+  onCancel,
+  isPending,
+}: {
+  initialName: string;
+  initialDescription: string;
+  onSave: (name: string, description: string) => void;
+  onCancel: () => void;
+  isPending: boolean;
+}) {
+  const [name, setName] = useState(initialName);
+  const [description, setDescription] = useState(initialDescription);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onSave(name, description);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div>
+        <label className="block text-sm font-medium text-da-text">
+          Course name <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          className="mt-1 block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+          autoFocus
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-da-text">Description</label>
+        <input
+          type="text"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Optional"
+          className="mt-1 block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+        />
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={isPending || !name.trim()}
+          className="rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-bold text-black shadow-md shadow-black/40 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/40 disabled:text-black/50 disabled:shadow-none"
+        >
+          {isPending ? "Saving…" : "Save changes"}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg border border-da-border px-4 py-2.5 text-sm font-medium text-da-text transition-colors hover:bg-da-hover"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
