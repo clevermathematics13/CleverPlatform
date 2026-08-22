@@ -75,7 +75,7 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
         <button
           type="button"
           onClick={() => { setShowCreate(true); setEditingId(null); setGlobalError(null); }}
-          className="inline-flex items-center gap-2 rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] shadow-sm transition-colors hover:bg-da-amber"
+          className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-bold text-black shadow-md shadow-black/40 transition-colors hover:bg-amber-400"
         >
           + New Course
         </button>
@@ -276,7 +276,7 @@ function CourseForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3">
+    <form onSubmit={handleSubmit} className="space-y-3 rounded-xl border border-da-border bg-da-surface/85 p-5 shadow-sm shadow-black/35">
       <div>
         <label className="block text-sm font-medium text-da-text">
           Course name <span className="text-red-500">*</span>
@@ -287,7 +287,7 @@ function CourseForm({
           onChange={(e) => setName(e.target.value)}
           required
           placeholder="e.g. IBDP AAHL"
-          className="mt-1 block w-full rounded-lg border border-da-border bg-da-bg/70 px-3 py-2 text-sm text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+          className="mt-1 block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
           autoFocus
         />
       </div>
@@ -298,21 +298,21 @@ function CourseForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Optional — e.g. IB Analysis & Approaches Higher Level"
-          className="mt-1 block w-full rounded-lg border border-da-border bg-da-bg/70 px-3 py-2 text-sm text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+          className="mt-1 block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
         />
       </div>
-      <div className="flex gap-2">
+      <div className="flex gap-2 pt-1">
         <button
           type="submit"
           disabled={isPending || !name.trim()}
-          className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
+          className="rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-bold text-black shadow-md shadow-black/40 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:bg-amber-500/40 disabled:text-black/50 disabled:shadow-none"
         >
           {isPending ? "Saving…" : isEdit ? "Save changes" : "Create course"}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-lg border border-da-border px-4 py-2 text-sm font-medium text-da-text transition-colors hover:bg-da-hover"
+          className="rounded-lg border border-da-border px-4 py-2.5 text-sm font-medium text-da-text transition-colors hover:bg-da-hover"
         >
           Cancel
         </button>
