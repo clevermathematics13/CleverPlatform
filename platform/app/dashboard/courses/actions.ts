@@ -47,7 +47,11 @@ export async function updateCourse(formData: FormData) {
 
   if (error) return { error: error.message };
 
+  // Also revalidate archived-courses: this same action now renames archived
+  // courses too (see archived-course-list.tsx), so a rename there needs its
+  // list to refresh, not just the active Courses page's.
   revalidatePath("/dashboard/courses");
+  revalidatePath("/dashboard/archived-courses");
   return { success: true };
 }
 
