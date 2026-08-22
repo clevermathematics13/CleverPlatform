@@ -15,6 +15,18 @@ import { ScanTestClient } from "./scan-test-client";
  * Once the real upload UI is built at /dashboard/na-review, this page
  * should be deleted rather than kept around as a second entry point.
  */
+
+// This page's entire purpose is inspecting the CURRENT state of the scan
+// pipeline (roster membership, track_courses mappings, packet versions),
+// all of which change during active development. Without this, Next.js
+// can statically cache the render at build time and keep serving a stale
+// roster/course list to every load until the next deploy -- which is
+// exactly what happened after the track_courses fix for Grade 9 Extended
+// (9A/9C/9G): the database was correct, but this page kept showing the
+// old pooled-from-9G-(2025-2026) roster because nothing forced a fresh
+// render.
+export const dynamic = "force-dynamic";
+
 export default async function ScanTestPage() {
   await requireTeacher();
   const supabase = await createClient();
@@ -44,9 +56,14 @@ export default async function ScanTestPage() {
   // across raw courseIds, as this page used to) is what actually resolves
   // that -- a direct query against a track course's ID always returns
   // zero, which is exactly the "roster: 0" bug this replaces.
+  //
+  // Each roster entry now also carries sourceCourseId, so the client can
+  // show which real class (9A/9C/9G) a student belongs to -- useful once a
+  // track pools several classes together, since "Tanja Blomqvist" alone
+  // doesn't say whether she's 9A, 9C, or 9G.
   const rosterByPacketVersion = new Map<
     string,
-    { id: string; fullName: string }[]
+    { id: string; fullName: string; sourceCourseId: string }[]
   >();
   const resolutionByPacketVersion = new Map<
     string,
@@ -58,7 +75,7 @@ export default async function ScanTestPage() {
     const resolution = await loadInvitedRoster(supabase, v.courseId);
     rosterByPacketVersion.set(
       v.id,
-      resolution.roster.map((r) => ({ id: r.invitedId, fullName: r.fullName }))
+      resolution.roster.map((r) => ({ id: r.invitedId, fullName: r.fullName, sourceCourseId: r.sourceCourseId }))
     );
     resolutionByPacketVersion.set(v.id, {
       isTrack: resolution.isTrack,
@@ -67,7 +84,9 @@ export default async function ScanTestPage() {
   }
 
   // For any track resolution, resolve source course IDs to names too, so
-  // the UI can show "pooled from 9A, 9G" rather than bare UUIDs.
+  // the UI can show "pooled from 9A, 9G" rather than bare UUIDs, and so
+  // each roster entry's sourceCourseId above can be turned into a real
+  // class label like "9A" next to the student's name.
   const allSourceCourseIds = [
     ...new Set([...resolutionByPacketVersion.values()].flatMap((r) => r.sourceCourseIds)),
   ];
@@ -95,9 +114,14 @@ export default async function ScanTestPage() {
       <ScanTestClient
         versions={versions.map((v) => {
           const resolution = resolutionByPacketVersion.get(v.id);
+          const roster = rosterByPacketVersion.get(v.id) ?? [];
           return {
             ...v,
-            roster: rosterByPacketVersion.get(v.id) ?? [],
+            roster: roster.map((r) => ({
+              id: r.id,
+              fullName: r.fullName,
+              courseName: courseNameById.get(r.sourceCourseId) ?? "",
+            })),
             rosterIsTrack: resolution?.isTrack ?? false,
             rosterSourceCourseNames: (resolution?.sourceCourseIds ?? []).map(
               (id) => courseNameById.get(id) ?? id
