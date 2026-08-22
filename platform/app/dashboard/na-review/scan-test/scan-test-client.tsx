@@ -8,6 +8,8 @@ type Confidence = "high" | "medium" | "low";
 interface RosterEntry {
   id: string;
   fullName: string;
+  /** e.g. "9A" -- which real class this student belongs to. Empty string if unknown. */
+  courseName: string;
 }
 
 interface PacketVersionOption {
@@ -101,6 +103,11 @@ function formatPageList(pages: number[]): string {
     }
   }
   return parts.join(", ");
+}
+
+/** Roster option label, e.g. "Freya Delisle — 9A", or just the name if the class is unknown. */
+function rosterOptionLabel(s: RosterEntry): string {
+  return s.courseName ? `${s.fullName} — ${s.courseName}` : s.fullName;
 }
 
 export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }) {
@@ -430,7 +437,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
             <th className="px-4 py-2 font-semibold">Name on cover page</th>
             <th className="px-2 py-2 font-semibold">Pages</th>
-            <th className="px-2 py-2 font-semibold">Matched student (invited)</th>
+            <th className="w-72 px-2 py-2 font-semibold">Matched student (invited)</th>
             <th className="px-2 py-2 font-semibold">Confidence</th>
             <th className="px-2 py-2 font-semibold" />
           </tr>
@@ -458,17 +465,17 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                     className={`w-28 ${INPUT_CLASS} ${conflicted ? "border-red-400" : ""}`}
                   />
                 </td>
-                <td className="px-2 py-2">
+                <td className="w-72 px-2 py-2">
                   <select
                     value={r.invitedId}
                     onChange={(e) => onUpdate(r.key, { invitedId: e.target.value })}
                     disabled={disabled}
-                    className={SELECT_CLASS}
+                    className={`w-full min-w-[16rem] ${SELECT_CLASS}`}
                   >
                     <option value="">— pick a student —</option>
                     {version?.roster.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.fullName}
+                        {rosterOptionLabel(s)}
                       </option>
                     ))}
                   </select>
