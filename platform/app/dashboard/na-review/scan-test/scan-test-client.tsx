@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 
 type Confidence = "high" | "medium" | "low";
@@ -108,6 +108,161 @@ function formatPageList(pages: number[]): string {
 /** Roster option label, e.g. "Freya Delisle — 9A", or just the name if the class is unknown. */
 function rosterOptionLabel(s: RosterEntry): string {
   return s.courseName ? `${s.fullName} — ${s.courseName}` : s.fullName;
+}
+
+/**
+ * Type-to-filter student picker, replacing a plain <select>. A roster of
+ * ~50 names (and growing as more classes are pooled onto a track) is slow
+ * to scan by scrolling -- a native <select> only jumps to the next option
+ * starting with whatever key was last pressed, which doesn't help for a
+ * name like "Ines Palomino" if the list is already scrolled elsewhere.
+ * This filters on every keystroke against name AND class, so typing "9c"
+ * narrows to that class and typing part of a name narrows to matches
+ * anywhere in the name (not just a prefix).
+ */
+function StudentPicker({
+  roster,
+  value,
+  onChange,
+  disabled,
+}: {
+  roster: RosterEntry[];
+  value: string; // invitedId, "" if none picked
+  onChange: (invitedId: string) => void;
+  disabled: boolean;
+}) {
+  const selected = roster.find((s) => s.id === value) ?? null;
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [highlighted, setHighlighted] = useState(0);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // What the input actually shows: the selected student's label while
+  // closed/unfocused, or the in-progress search text while typing.
+  const displayValue = open ? query : selected ? rosterOptionLabel(selected) : "";
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return roster;
+    return roster.filter((s) => rosterOptionLabel(s).toLowerCase().includes(q));
+  }, [roster, query]);
+
+  useEffect(() => {
+    setHighlighted(0);
+  }, [query, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  const pick = (s: RosterEntry) => {
+    onChange(s.id);
+    setOpen(false);
+    setQuery("");
+  };
+
+  const clear = () => {
+    onChange("");
+    setOpen(false);
+    setQuery("");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        e.preventDefault();
+        setOpen(true);
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlighted((h) => Math.min(h + 1, filtered.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlighted((h) => Math.max(h - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const s = filtered[highlighted];
+      if (s) pick(s);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+      setQuery("");
+      inputRef.current?.blur();
+    } else if (e.key === "Backspace" && query === "" && selected) {
+      // Backspacing on an already-picked student clears the pick, matching
+      // the intuitive "delete to change my answer" behaviour of a normal
+      // text field rather than requiring a separate clear action first.
+      clear();
+    }
+  };
+
+  return (
+    <div ref={containerRef} className="relative w-full min-w-[16rem]">
+      <input
+        ref={inputRef}
+        type="text"
+        value={displayValue}
+        disabled={disabled}
+        placeholder="Type a name…"
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          if (!open) setOpen(true);
+        }}
+        onKeyDown={handleKeyDown}
+        className={`w-full ${SELECT_CLASS} ${!selected && !open ? "text-gray-400" : ""}`}
+      />
+      {open && !disabled && (
+        <ul
+          role="listbox"
+          className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-da-border bg-white shadow-lg"
+        >
+          <li>
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={clear}
+              className="block w-full px-3 py-1.5 text-left text-sm text-gray-500 hover:bg-gray-100"
+            >
+              — pick a student —
+            </button>
+          </li>
+          {filtered.length === 0 && (
+            <li className="px-3 py-1.5 text-sm text-gray-400">No students match &ldquo;{query}&rdquo;</li>
+          )}
+          {filtered.map((s, i) => (
+            <li key={s.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(s)}
+                onMouseEnter={() => setHighlighted(i)}
+                className={`block w-full px-3 py-1.5 text-left text-sm ${
+                  i === highlighted ? "bg-da-accent/10 text-gray-900" : "text-gray-900 hover:bg-gray-100"
+                } ${s.id === value ? "font-semibold" : ""}`}
+              >
+                {rosterOptionLabel(s)}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }) {
@@ -466,19 +621,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                   />
                 </td>
                 <td className="w-72 px-2 py-2">
-                  <select
+                  <StudentPicker
+                    roster={version?.roster ?? []}
                     value={r.invitedId}
-                    onChange={(e) => onUpdate(r.key, { invitedId: e.target.value })}
+                    onChange={(invitedId) => onUpdate(r.key, { invitedId })}
                     disabled={disabled}
-                    className={`w-full min-w-[16rem] ${SELECT_CLASS}`}
-                  >
-                    <option value="">— pick a student —</option>
-                    {version?.roster.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {rosterOptionLabel(s)}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </td>
                 <td className="px-2 py-2">
                   <span className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}>
