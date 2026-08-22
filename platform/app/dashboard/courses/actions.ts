@@ -13,11 +13,20 @@ export async function createCourse(formData: FormData) {
 
   if (!name) return { error: "Course name is required" };
 
-  const { error } = await supabase.from("courses").insert({ name, description });
+  // Returns the new course's id so callers that need to act on it straight
+  // away -- e.g. the Google Classroom import picker, which creates a course
+  // and then immediately selects it as the import target -- don't have to
+  // re-query by name and guess at which row they just made.
+  const { data, error } = await supabase
+    .from("courses")
+    .insert({ name, description })
+    .select("id, name")
+    .single();
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard/courses");
-  return { success: true };
+  revalidatePath("/dashboard/students");
+  return { success: true, courseId: data.id as string, courseName: data.name as string };
 }
 
 export async function updateCourse(formData: FormData) {
