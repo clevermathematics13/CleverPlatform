@@ -8,11 +8,11 @@
   --color-da-bg: #160904;
   --color-da-surface: #241007;
   --color-da-hover: #30180d;
-  --color-da-border: #6b3d1c;
-  --color-da-text: #f6e9d4;
-  --color-da-muted: #c49a78;
-  --color-da-accent: #c88a1a;
-  --color-da-amber: #e8a030;
+  --color-da-border: #8a5529;
+  --color-da-text: #fbf3e6;
+  --color-da-muted: #dcb694;
+  --color-da-accent: #e0a02c;
+  --color-da-amber: #f5b545;
 
   --color-da-success: #7fd38f;
   --color-da-warning: #f2c66d;
@@ -37,153 +37,12 @@
   --da-bg-grad-end: #100501;
 }
 
-/* Palette 2: oceanic midnight */
-[data-theme="ocean"] {
-  --background: #041525;
-  --foreground: #dff3ff;
+/* Single theme. The alternate [data-theme] palettes (ocean, slate, forest,
+   midnight) were removed deliberately: with five palettes in play, every new
+   component had to be contrast-checked five ways and in practice never was,
+   which is how unreadable controls kept shipping. One dark palette, tuned
+   once for contrast, is the thing that actually stays readable. */
 
-  --color-da-bg: #041525;
-  --color-da-surface: #082238;
-  --color-da-hover: #0f2f49;
-  --color-da-border: #1f5b82;
-  --color-da-text: #dff3ff;
-  --color-da-muted: #8fc0df;
-  --color-da-accent: #2fb0de;
-  --color-da-amber: #54c6ea;
-
-  --color-da-success: #7fe0bf;
-  --color-da-warning: #ffc46e;
-  --color-da-danger: #ff8f8b;
-  --color-da-info: #88c8ff;
-
-  --color-da-button-bg: #11324b;
-  --color-da-button-hover: #18435f;
-  --color-da-button-border: #2c6f96;
-  --color-da-button-text: #e6f7ff;
-
-  --color-module-dashboard: #2fb0de;
-  --color-module-reflection: #5dbde8;
-  --color-module-questions: #7cb5ff;
-  --color-module-seating: #53a3d0;
-  --color-module-mastery: #74c4d9;
-
-  --da-bg-glow-a: rgba(47, 176, 222, 0.13);
-  --da-bg-glow-b: rgba(124, 181, 255, 0.12);
-  --da-bg-grad-start: #02101a;
-  --da-bg-grad-mid: #06233a;
-  --da-bg-grad-end: #04121f;
-}
-
-/* Palette 3: slate graphite */
-[data-theme="slate"] {
-  --background: #141619;
-  --foreground: #eceef2;
-
-  --color-da-bg: #141619;
-  --color-da-surface: #1f242a;
-  --color-da-hover: #2a3139;
-  --color-da-border: #566172;
-  --color-da-text: #eceef2;
-  --color-da-muted: #b1bac7;
-  --color-da-accent: #8ba4c8;
-  --color-da-amber: #a2b7d5;
-
-  --color-da-success: #95d3a4;
-  --color-da-warning: #e0c283;
-  --color-da-danger: #e3a19a;
-  --color-da-info: #9fc2e8;
-
-  --color-da-button-bg: #2a3037;
-  --color-da-button-hover: #333b45;
-  --color-da-button-border: #667486;
-  --color-da-button-text: #eceef2;
-
-  --color-module-dashboard: #8ba4c8;
-  --color-module-reflection: #a4b3cf;
-  --color-module-questions: #9cbde7;
-  --color-module-seating: #8bb4b0;
-  --color-module-mastery: #b7afc7;
-
-  --da-bg-glow-a: rgba(139, 164, 200, 0.1);
-  --da-bg-glow-b: rgba(183, 175, 199, 0.1);
-  --da-bg-grad-start: #111317;
-  --da-bg-grad-mid: #1a1e24;
-  --da-bg-grad-end: #12151a;
-}
-
-/* Palette 4: deep forest emerald */
-[data-theme="forest"] {
-  --background: #0d1f14;
-  --foreground: #e0f0e8;
-
-  --color-da-bg: #0d1f14;
-  --color-da-surface: #152b1e;
-  --color-da-hover: #1f3d2c;
-  --color-da-border: #2d6640;
-  --color-da-text: #e0f0e8;
-  --color-da-muted: #85b898;
-  --color-da-accent: #4caf78;
-  --color-da-amber: #7dd69a;
-
-  --color-da-success: #a8e6b8;
-  --color-da-warning: #f0d080;
-  --color-da-danger: #f09090;
-  --color-da-info: #80ccee;
-
-  --color-da-button-bg: #1c3a28;
-  --color-da-button-hover: #264d36;
-  --color-da-button-border: #3d8050;
-  --color-da-button-text: #e0f0e8;
-
-  --color-module-dashboard: #4caf78;
-  --color-module-reflection: #68c48e;
-  --color-module-questions: #85d4a8;
-  --color-module-seating: #4aa86a;
-  --color-module-mastery: #6cbd90;
-
-  --da-bg-glow-a: rgba(76, 175, 120, 0.1);
-  --da-bg-glow-b: rgba(125, 214, 154, 0.08);
-  --da-bg-grad-start: #0a1810;
-  --da-bg-grad-mid: #122019;
-  --da-bg-grad-end: #0b1913;
-}
-
-/* Palette 5: midnight violet */
-[data-theme="midnight"] {
-  --background: #0f0b1e;
-  --foreground: #e8e0ff;
-
-  --color-da-bg: #0f0b1e;
-  --color-da-surface: #19142e;
-  --color-da-hover: #261f42;
-  --color-da-border: #4a3c78;
-  --color-da-text: #e8e0ff;
-  --color-da-muted: #9b8fc4;
-  --color-da-accent: #8b5cf6;
-  --color-da-amber: #a78bfa;
-
-  --color-da-success: #7ddbb0;
-  --color-da-warning: #fbbf60;
-  --color-da-danger: #f08080;
-  --color-da-info: #7eb8f8;
-
-  --color-da-button-bg: #221b3a;
-  --color-da-button-hover: #2f274d;
-  --color-da-button-border: #604d9a;
-  --color-da-button-text: #e8e0ff;
-
-  --color-module-dashboard: #8b5cf6;
-  --color-module-reflection: #a07cf8;
-  --color-module-questions: #b89cf6;
-  --color-module-seating: #7a6cde;
-  --color-module-mastery: #9e8ae0;
-
-  --da-bg-glow-a: rgba(139, 92, 246, 0.12);
-  --da-bg-glow-b: rgba(167, 139, 250, 0.1);
-  --da-bg-grad-start: #0c0918;
-  --da-bg-grad-mid: #150f28;
-  --da-bg-grad-end: #0d0a1c;
-}
 
 @theme inline {
   --color-background: var(--background);
@@ -198,6 +57,7 @@
   --color-da-danger: var(--color-da-danger);
   --color-da-info: var(--color-da-info);
 }
+
 
 body {
   background: var(--background);
@@ -318,9 +178,32 @@ input:focus, textarea:focus, select:focus {
   box-shadow: 0 0 0 2px rgba(200, 138, 26, 0.45);
 }
 
+/* ── Form controls ───────────────────────────────────────────────────────────
+   These rules are NOT inside a cascade layer, and Tailwind's utilities ARE.
+   Unlayered CSS beats layered CSS, so anything set here wins over a utility
+   class like `bg-white` no matter how it's written in the component. That is
+   exactly how this file used to break every input on the platform: it set
+   `background-color: transparent`, which silently overrode every `bg-white`
+   in the codebase and left dark text sitting on a dark page. Someone patched
+   the symptom for text (`input.text-gray-900 { color: !important }`) but the
+   background kept winning, so controls stayed unreadable.
+
+   The fix is to give controls a real, high-contrast dark appearance by
+   default -- which is what a dark platform wants anyway -- and to make the
+   light-surface overrides below set background AND colour together, with
+   !important so a utility class can still opt a control into a light
+   treatment when it genuinely sits on a light card. Nothing here relies on a
+   component remembering to add the right class. */
 input, textarea, select {
-  color: #f0e6d3; /* warm ivory — matches DA foreground */
-  background-color: transparent;
+  color: #fbf3e6;
+  background-color: #2a1710;      /* readable against both page and card */
+  border-color: #8a5529;
+  caret-color: #f5b545;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #b08b6a;                 /* visible, but clearly secondary to real input */
+  opacity: 1;                     /* Firefox dims placeholders by default */
 }
 
 /* Any input/textarea/select inside a white or light-grey surface gets dark text.
@@ -338,8 +221,21 @@ input.bg-white, textarea.bg-white, select.bg-white,
 input.bg-gray-50, textarea.bg-gray-50, select.bg-gray-50,
 input.bg-blue-50, textarea.bg-blue-50, select.bg-blue-50,
 input.bg-indigo-50, textarea.bg-indigo-50, select.bg-indigo-50 {
-  color: #111827;
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border-color: #9ca3af;
   color-scheme: light;
+}
+
+/* Light-surface placeholders need the matching treatment, or they inherit the
+   dark-theme placeholder colour and vanish against white. */
+.bg-white input::placeholder, .bg-white textarea::placeholder,
+.bg-gray-50 input::placeholder, .bg-gray-50 textarea::placeholder,
+.bg-blue-50 input::placeholder, .bg-blue-50 textarea::placeholder,
+input.bg-white::placeholder, textarea.bg-white::placeholder,
+input.bg-gray-50::placeholder, textarea.bg-gray-50::placeholder {
+  color: #6b7280;
+  opacity: 1;
 }
 
 /* Tailwind text-gray-900 utility should always win over the global rule */
