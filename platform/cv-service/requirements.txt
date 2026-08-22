@@ -4,3 +4,20 @@ numpy==2.2.6
 scipy==1.15.3
 scikit-image==0.25.2
 pillow==11.2.1
+
+# Added for the NA scan pipeline's page-identity fallback. ORB feature
+# matching + estimateAffinePartial2D is what recovers the true rotation
+# between a scan page and its master page -- the pilot proved match-count
+# "voting" gives false negatives on a genuinely 180-degree-rotated page,
+# while the fitted affine angle reads 179.9 correctly. Headless build: this
+# service never opens a window, and the GUI variant drags in libGL which
+# isn't present in python:3.11-slim.
+#
+# Verified: coexists with the numpy 2.2.6 pin above, and the graph
+# extractor produces byte-identical output with cv2 loaded.
+opencv-python-headless==4.11.0.86
+
+# Anchor extraction from a packet master's vector geometry (get_drawings)
+# and page rasterisation for crop extraction. Currently a manual one-off
+# per packet version; belongs here so it can become a service endpoint.
+pymupdf==1.24.14
