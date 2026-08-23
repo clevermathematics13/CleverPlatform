@@ -76,6 +76,35 @@ interface CropState {
   error: string | null;
 }
 
+/** One crop as listed by GET /api/na-review/packet-scans/[id]/assess. */
+interface AssessCropListItem {
+  cropId: string;
+  qid: string;
+  sortOrder: number;
+  isBlank: boolean;
+  alreadyAssessed: boolean;
+  verdict: string | null;
+  marksAwarded: number | null;
+  marksAvailable: number | null;
+}
+
+/** Stage 5's per-crop assessment lifecycle, keyed by cropId. */
+interface AssessCropState {
+  status: "idle" | "assessing" | "assessed" | "skipped" | "failed";
+  verdict: string | null;
+  marksAwarded: number | null;
+  marksAvailable: number | null;
+  reason: string | null;
+  rawResponse: unknown;
+}
+
+/** Stage 5's lifecycle for one already-cropped student, as a whole panel. */
+interface AssessPanelState {
+  status: "idle" | "loading-list" | "ready" | "assessing-all";
+  crops: AssessCropListItem[];
+  error: string | null;
+}
+
 /** A batch listed by GET /api/na-review/batch?packetVersionId=... -- used
  *  to populate the "recent batches" picker so a teacher doesn't need to
  *  know or paste a batchId by hand. */
@@ -92,6 +121,13 @@ const CONFIDENCE_STYLE: Record<Confidence, string> = {
   high: "bg-green-100 text-green-800 border-green-300",
   medium: "bg-amber-100 text-amber-800 border-amber-300",
   low: "bg-red-100 text-red-800 border-red-300",
+};
+
+const VERDICT_STYLE: Record<string, string> = {
+  correct: "bg-green-100 text-green-800 border-green-300",
+  partial: "bg-amber-100 text-amber-800 border-amber-300",
+  incorrect: "bg-red-100 text-red-800 border-red-300",
+  unclear: "bg-gray-100 text-gray-700 border-gray-300",
 };
 
 const SELECT_CLASS =
@@ -349,6 +385,16 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   // interfering with each other.
   const [cropAllRunning, setCropAllRunning] = useState<Record<string, boolean>>({});
 
+  // Stage 5: one AssessPanelState per packetScanId (the whole student's
+  // crop list + its loading state) and one AssessCropState per cropId
+  // (each individual question's live assessment status). Kept separate
+  // because the panel can be "loading its crop list" while individual
+  // crops are still "idle", and because "assess all" needs to track
+  // progress across every crop in a panel independently of any other
+  // panel on screen (mirrors cropAllRunning's per-panelKey approach).
+  const [assessPanels, setAssessPanels] = useState<Record<string, AssessPanelState>>({});
+  const [assessCropState, setAssessCropState] = useState<Record<string, AssessCropState>>({});
+
   // Chunked path: an oversized upload split into several chunks, each
   // going through its own segment -> review -> split lifecycle.
   const [parentBatchId, setParentBatchId] = useState<string | null>(null);
@@ -384,6 +430,8 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setSplitResults([]);
     setCropState({});
     setCropAllRunning({});
+    setAssessPanels({});
+    setAssessCropState({});
     setParentBatchId(null);
     setChunks([]);
     setPresplitWarnings([]);
@@ -540,12 +588,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         const reconstructedRows = segmentsToRows(b.confirmed_segments ?? b.proposed_segments ?? []);
         setRows(reconstructedRows);
 
-        if (b.status === "split") {
+        if (b.status === "split" || b.status === "cropped" || b.status === "assessed") {
           const results = applyPacketScans(reconstructedRows, packetScansByInvitedId);
           setSplitResults(results);
           setRawStage2({ batchId: b.id, results, note: "Reloaded from a prior session." });
           setStatusLine(
-            `Reloaded batch ${b.id.slice(0, 8)}… — already split (${results.filter((r) => r.status === "split").length} student(s)). Stage 4 panel is below.`
+            `Reloaded batch ${b.id.slice(0, 8)}… — already split (${results.filter((r) => r.status === "split").length} student(s)). Stage 4/5 panels are below.`
           );
         } else if (b.status === "segmented") {
           setStatusLine(`Reloaded batch ${b.id.slice(0, 8)}… — segmented, not yet split. Review and confirm below.`);
@@ -821,6 +869,120 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     }
   };
 
+  /** Loads (or reloads) one student's crop list for stage 5, via the
+   *  listing GET. Called once when a student's crop panel first opens,
+   *  and again after "Assess all" finishes so the panel reflects fresh
+   *  alreadyAssessed/verdict/marks values pulled from the database rather
+   *  than only what this session's own requests happened to return. */
+  const loadAssessPanel = async (packetScanId: string) => {
+    setAssessPanels((prev) => ({
+      ...prev,
+      [packetScanId]: { status: "loading-list", crops: prev[packetScanId]?.crops ?? [], error: null },
+    }));
+    try {
+      const res = await fetch(`/api/na-review/packet-scans/${packetScanId}/assess`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not load this student's crops.");
+      const crops: AssessCropListItem[] = data.crops ?? [];
+      setAssessPanels((prev) => ({ ...prev, [packetScanId]: { status: "ready", crops, error: null } }));
+      // Seed per-crop state from what the list already knows, so a crop
+      // assessed in an earlier session shows correctly without needing to
+      // be re-run.
+      setAssessCropState((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          crops.map((c) => [
+            c.cropId,
+            {
+              status: c.alreadyAssessed ? "assessed" : c.isBlank ? "idle" : "idle",
+              verdict: c.verdict,
+              marksAwarded: c.marksAwarded,
+              marksAvailable: c.marksAvailable,
+              reason: null,
+              rawResponse: null,
+            } as AssessCropState,
+          ])
+        ),
+      }));
+    } catch (e) {
+      setAssessPanels((prev) => ({
+        ...prev,
+        [packetScanId]: { status: "idle", crops: [], error: e instanceof Error ? e.message : "Failed to load." },
+      }));
+    }
+  };
+
+  /** Stage 5 for one crop: calls the per-crop assess route. Bounded to a
+   *  single Sonnet call server-side (see the route's comments) so this
+   *  always resolves in a few seconds regardless of how many crops a
+   *  student has -- the earlier whole-student design hit
+   *  FUNCTION_INVOCATION_TIMEOUT on a real run and is why this is
+   *  one-crop-at-a-time from the client instead. */
+  const handleAssessCrop = async (cropId: string) => {
+    setAssessCropState((prev) => ({
+      ...prev,
+      [cropId]: {
+        status: "assessing",
+        verdict: prev[cropId]?.verdict ?? null,
+        marksAwarded: prev[cropId]?.marksAwarded ?? null,
+        marksAvailable: prev[cropId]?.marksAvailable ?? null,
+        reason: null,
+        rawResponse: null,
+      },
+    }));
+    try {
+      const res = await fetch(`/api/na-review/response-crops/${cropId}/assess`, { method: "POST" });
+      const data = await res.json();
+      const status: AssessCropState["status"] =
+        data.status === "assessed" ? "assessed" : data.status === "skipped" ? "skipped" : "failed";
+      setAssessCropState((prev) => ({
+        ...prev,
+        [cropId]: {
+          status,
+          verdict: data.verdict ?? null,
+          marksAwarded: data.marksAwarded ?? null,
+          marksAvailable: data.marksAvailable ?? null,
+          reason: data.reason ?? (res.ok ? null : data.error ?? "Assessment failed."),
+          rawResponse: data,
+        },
+      }));
+    } catch (e) {
+      setAssessCropState((prev) => ({
+        ...prev,
+        [cropId]: {
+          status: "failed",
+          verdict: null,
+          marksAwarded: null,
+          marksAvailable: null,
+          reason: e instanceof Error ? e.message : "Assessment failed.",
+          rawResponse: null,
+        },
+      }));
+    }
+  };
+
+  /** Runs stage 5 for every not-yet-assessed crop in one student's panel,
+   *  one at a time -- same sequential, individually-bounded pattern as
+   *  handleCropAll. Skips crops already "assessed" or "skipped" (blank /
+   *  ungraded) so re-running after fixing one failure only retries what's
+   *  actually still needed. Reloads the panel's list at the end so
+   *  "already assessed" reflects the database, not just this run. */
+  const handleAssessAll = async (packetScanId: string, crops: AssessCropListItem[]) => {
+    setAssessPanels((prev) => ({
+      ...prev,
+      [packetScanId]: { ...(prev[packetScanId] ?? { crops, error: null }), status: "assessing-all" },
+    }));
+    try {
+      for (const c of crops) {
+        const current = assessCropState[c.cropId];
+        if (current?.status === "assessed" || current?.status === "skipped" || current?.status === "assessing") continue;
+        await handleAssessCrop(c.cropId);
+      }
+    } finally {
+      await loadAssessPanel(packetScanId);
+    }
+  };
+
   // -- Chunk row editing --------------------------------------------------------
   const updateChunkRow = (chunkBatchId: string, rowKey: string, patch: Partial<ReviewRow>) =>
     setChunks((prev) =>
@@ -1081,6 +1243,147 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     );
   };
 
+  /** Stage 5 panel: one card per successfully-cropped student. Unlike
+   *  stage 4 (which only needs a packetScanId to act), stage 5 needs the
+   *  student's actual crop list before it can show anything useful, so
+   *  each student starts collapsed with an "Open" button that calls
+   *  loadAssessPanel on first click -- avoids firing N list-fetches the
+   *  moment this section renders for a whole class. */
+  const renderAssessPanel = (results: SplitResult[]) => {
+    const splitOnly = results.filter((r) => r.status === "split" && r.packetScanId);
+    if (splitOnly.length === 0) return null;
+    return (
+      <section className="rounded-xl border border-da-border bg-da-surface">
+        <div className="border-b border-da-border px-5 py-3">
+          <h2 className="text-lg font-bold text-da-text">Stage 5 — AI assessment</h2>
+          <p className="text-xs text-da-muted">
+            One Sonnet call per question, marked against this packet&apos;s real rubric from{" "}
+            <code>na_anchors</code>. Produces a proposal only — nothing here is a released grade.
+          </p>
+        </div>
+        <div className="divide-y divide-da-border/60">
+          {splitOnly.map((r) => {
+            const scanId = r.packetScanId as string;
+            const panel = assessPanels[scanId];
+            const totalAwarded = (panel?.crops ?? []).reduce((sum, c) => {
+              const s = assessCropState[c.cropId];
+              return sum + (s?.status === "assessed" ? s.marksAwarded ?? 0 : 0);
+            }, 0);
+            const totalAvailable = (panel?.crops ?? []).reduce((sum, c) => {
+              const s = assessCropState[c.cropId];
+              return sum + (s?.status === "assessed" ? s.marksAvailable ?? 0 : 0);
+            }, 0);
+            const remaining = (panel?.crops ?? []).filter((c) => {
+              const s = assessCropState[c.cropId];
+              return s?.status !== "assessed" && s?.status !== "skipped";
+            }).length;
+
+            return (
+              <div key={scanId} className="px-5 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-da-text">{r.label}</p>
+                    <p className="text-xs text-da-muted">packet_scan_id {scanId.slice(0, 8)}…</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {panel && panel.crops.length > 0 && (
+                      <span className="text-xs text-da-muted">
+                        {totalAwarded}/{totalAvailable} marks
+                      </span>
+                    )}
+                    {!panel && (
+                      <button
+                        type="button"
+                        onClick={() => void loadAssessPanel(scanId)}
+                        className="rounded-lg border border-da-accent/40 bg-da-accent/10 px-3 py-1.5 text-xs font-medium text-da-accent hover:bg-da-accent/20"
+                      >
+                        Open
+                      </button>
+                    )}
+                    {panel && panel.status === "loading-list" && (
+                      <span className="text-xs text-da-muted">Loading…</span>
+                    )}
+                    {panel && panel.crops.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void handleAssessAll(scanId, panel.crops)}
+                        disabled={panel.status === "assessing-all" || remaining === 0}
+                        className="rounded-lg bg-da-accent px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+                      >
+                        {panel.status === "assessing-all"
+                          ? "Assessing…"
+                          : remaining === 0
+                            ? "All assessed"
+                            : `Assess all ${remaining} question(s)`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {panel?.error && <p className="mt-2 text-xs text-red-600">{panel.error}</p>}
+
+                {panel && panel.crops.length > 0 && (
+                  <div className="mt-3 divide-y divide-da-border/40 rounded-lg border border-da-border/60">
+                    {panel.crops.map((c) => {
+                      const s = assessCropState[c.cropId] ?? {
+                        status: "idle" as const,
+                        verdict: null,
+                        marksAwarded: null,
+                        marksAvailable: null,
+                        reason: null,
+                        rawResponse: null,
+                      };
+                      return (
+                        <div key={c.cropId} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="text-sm font-medium text-da-text">{c.qid}</span>
+                            {s.status === "assessed" && s.verdict && (
+                              <span
+                                className={`rounded border px-2 py-0.5 text-xs font-medium ${VERDICT_STYLE[s.verdict] ?? ""}`}
+                              >
+                                {s.verdict}
+                                {s.marksAvailable != null ? ` — ${s.marksAwarded ?? 0}/${s.marksAvailable}` : ""}
+                              </span>
+                            )}
+                            {s.status === "skipped" && (
+                              <span className="rounded border border-gray-300 bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                                skipped ({s.reason ?? (c.isBlank ? "blank" : "ungraded")})
+                              </span>
+                            )}
+                            {s.status === "failed" && (
+                              <span
+                                className="max-w-xs truncate rounded border border-red-300 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800"
+                                title={s.reason ?? undefined}
+                              >
+                                failed{s.reason ? `: ${s.reason}` : ""}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAssessCrop(c.cropId)}
+                            disabled={s.status === "assessing" || panel.status === "assessing-all"}
+                            className="rounded border border-da-accent/40 bg-da-accent/10 px-2 py-1 text-xs font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
+                          >
+                            {s.status === "assessing"
+                              ? "…"
+                              : s.status === "assessed" || s.status === "failed"
+                                ? "Re-run"
+                                : "Assess"}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
+
   const anyChunked = chunks.length > 0;
   const anyBatchLoaded = !!batchId || anyChunked;
 
@@ -1279,6 +1582,9 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       {/* Stage 4: crop extraction, one panel per successfully split student */}
       {batchId && splitResults.length > 0 && renderCropPanel(batchId, splitResults)}
 
+      {/* Stage 5: AI assessment, one panel per successfully split student */}
+      {batchId && splitResults.length > 0 && renderAssessPanel(splitResults)}
+
       {/* Chunked review: one card per chunk */}
       {anyChunked && (
         <div className="space-y-4">
@@ -1389,7 +1695,10 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                 )}
 
                 {chunk.status === "split" && chunkSplitResults.length > 0 && (
-                  <div className="border-t border-da-border p-4">{renderCropPanel(chunk.batchId, chunkSplitResults)}</div>
+                  <div className="border-t border-da-border p-4 space-y-4">
+                    {renderCropPanel(chunk.batchId, chunkSplitResults)}
+                    {renderAssessPanel(chunkSplitResults)}
+                  </div>
                 )}
               </section>
             );
