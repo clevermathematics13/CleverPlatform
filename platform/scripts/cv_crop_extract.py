@@ -56,9 +56,21 @@ import cv2
 import fitz  # PyMuPDF
 import numpy as np
 
-# Render resolution for crops. 200dpi was what the pilot confirmed
-# produces legible handwriting; matches CROP_DPI used there.
-CROP_DPI = 200
+# Render resolution for crops. Raised from 200 to 300dpi after a real
+# miss: at 200dpi, four compressed lines of working in a narrow answer
+# column ("30(2*7+11)" through a boxed final answer) rendered legibly
+# enough for a human to read on the actual scan, but Sonnet's assessment
+# of that same crop mistakenly reported the final line as "cut off at the
+# bottom" -- the crop was NOT cut off (confirmed against the source scan;
+# boundary_expanded was also False, meaning no ink was even detected
+# touching the edge). Small/faint pencil strokes near a crop's edge are
+# the most resolution-sensitive content this pipeline produces, so a
+# higher DPI is the cheapest lever to reduce genuine legibility loss --
+# see na-assessment.ts's system prompt for the complementary fix (explicit
+# instruction not to conflate "small/faint" with "missing"), and the
+# assess route for boundary_expanded being passed to the model as a
+# corroborating signal.
+CROP_DPI = 300
 PT_TO_PX = CROP_DPI / 72.0
 
 # Bleed added on every side before adaptive expansion has a chance to run,
