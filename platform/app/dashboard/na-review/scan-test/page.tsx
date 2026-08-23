@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { loadInvitedRoster } from "@/lib/na-scanning";
@@ -7,10 +8,10 @@ import { ScanTestClient } from "./scan-test-client";
  * TEST HARNESS — not the real upload UI.
  *
  * This page exists purely to drive and inspect stages 1 (upload +
- * segmentation) and 2 (confirm + split) of the NA scan pipeline directly,
- * without needing curl/devtools. It stops after split and prints the raw
- * results — it does not attempt page-identity matching, cropping, or
- * assessment (stages 3-5), which don't exist yet.
+ * segmentation), 2 (confirm + split), and 4 (crop extraction) of the NA
+ * scan pipeline directly, without needing curl/devtools. It does not
+ * attempt page-identity matching or assessment (stages 3, 5), which don't
+ * exist yet.
  *
  * Once the real upload UI is built at /dashboard/na-review, this page
  * should be deleted rather than kept around as a second entry point.
@@ -104,31 +105,41 @@ export default async function ScanTestPage() {
         <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-amber-600">
           Test harness — not the real upload flow
         </p>
-        <h1 className="font-serif text-3xl font-bold text-da-text">Scan pipeline: stage 1 + 2 test</h1>
+        <h1 className="font-serif text-3xl font-bold text-da-text">Scan pipeline: stage 1, 2 + 4 test</h1>
         <p className="mt-1 text-sm text-da-muted">
-          Upload a batch scan, review the AI&apos;s proposed student mapping, confirm it, and
-          split the PDF. Stops there — no page-identity matching, cropping, or assessment yet.
+          Upload a batch scan, review the AI&apos;s proposed student mapping, confirm it, split the
+          PDF, then run crop extraction per student. No page-identity matching or assessment yet
+          (stages 3, 5). Progress is saved to the URL — refreshing or returning to a link with
+          <code>?batchId=…</code> reloads exactly where you left off.
         </p>
       </div>
 
-      <ScanTestClient
-        versions={versions.map((v) => {
-          const resolution = resolutionByPacketVersion.get(v.id);
-          const roster = rosterByPacketVersion.get(v.id) ?? [];
-          return {
-            ...v,
-            roster: roster.map((r) => ({
-              id: r.id,
-              fullName: r.fullName,
-              courseName: courseNameById.get(r.sourceCourseId) ?? "",
-            })),
-            rosterIsTrack: resolution?.isTrack ?? false,
-            rosterSourceCourseNames: (resolution?.sourceCourseIds ?? []).map(
-              (id) => courseNameById.get(id) ?? id
-            ),
-          };
-        })}
-      />
+      {/* useSearchParams() inside ScanTestClient requires a Suspense
+          boundary in the App Router -- without this, the build fails
+          (or, in some Next.js versions, silently forces this whole route
+          to opt out of static rendering in a way that's easy to miss).
+          The fallback only ever flashes briefly since the page itself is
+          already force-dynamic and versions are already resolved above. */}
+      <Suspense fallback={<div className="text-sm text-da-muted">Loading…</div>}>
+        <ScanTestClient
+          versions={versions.map((v) => {
+            const resolution = resolutionByPacketVersion.get(v.id);
+            const roster = rosterByPacketVersion.get(v.id) ?? [];
+            return {
+              ...v,
+              roster: roster.map((r) => ({
+                id: r.id,
+                fullName: r.fullName,
+                courseName: courseNameById.get(r.sourceCourseId) ?? "",
+              })),
+              rosterIsTrack: resolution?.isTrack ?? false,
+              rosterSourceCourseNames: (resolution?.sourceCourseIds ?? []).map(
+                (id) => courseNameById.get(id) ?? id
+              ),
+            };
+          })}
+        />
+      </Suspense>
     </div>
   );
 }
