@@ -162,7 +162,14 @@ export async function POST(
   try {
     const message = await anthropic.messages.create({
       model: ASSESSMENT_MODEL,
-      max_tokens: 1024,
+      // Raised from 1024 after a real truncation: the model reasoned in
+      // prose before the JSON on one crop and got cut off mid-response
+      // (see na-assessment.ts's updated system prompt, which now forbids
+      // that pattern at the source). This higher ceiling is a second line
+      // of defense, not the primary fix -- a well-behaved JSON-only
+      // response needs nowhere near 2048 tokens, but it's cheap insurance
+      // against a similarly verbose response slipping through.
+      max_tokens: 2048,
       system: ASSESSMENT_SYSTEM_PROMPT,
       messages: [
         {
