@@ -72,6 +72,16 @@ export interface AnchorContext {
   answerSketch: string | null;
   openRubric: string | null;
   misconceptionContext: string | null;
+  /** Whether stage 4's adaptive boundary expansion grew this crop beyond
+   *  its base bleed -- i.e. whether the automated ink-density check found
+   *  evidence of writing actually touching the crop's edge. Passed
+   *  through so the model has a real signal to weigh a "this looks cut
+   *  off" impression against, rather than reasoning about truncation
+   *  from the image alone. See buildRubricBlock for how this is framed.
+   *  Optional/undefined when the caller doesn't have this information
+   *  (e.g. older crops from before na_response_crops.boundary_expanded
+   *  was queried here). */
+  boundaryExpanded?: boolean;
 }
 
 /**
@@ -101,6 +111,7 @@ Marking rules:
 - Partial credit is normal and expected. A student who sets up correctly but arithmetic-slips has earned most of the marks; say so.
 - "unclear" is a real verdict, not a failure. If the handwriting is genuinely illegible, or the box is empty, or what's written doesn't appear to answer this question at all, return "unclear" with marksAwarded 0 and explain why in teacherNote. NEVER guess at a verdict you cannot support from what you can actually see -- a wrong confident mark on a real student's work is worse than an honest "a teacher needs to look at this".
 - Mathematical correctness is judged on the mathematics, not on handwriting neatness, spelling, or whether the student showed more working than required.
+- Before concluding that content is cut off or missing at a crop's edge, look carefully: small, faint, or compressed handwriting near an edge is NOT the same as content that was actually truncated. Only report something as "cut off" if you can see the crop boundary genuinely intersecting a character mid-stroke, or a printed box/line that is visibly incomplete. If the crop notes say the boundary was NOT automatically expanded, that means an automated check already looked for ink touching the edge and found none -- treat that as evidence AGAINST truncation, and look again at what's actually there before assuming something is missing. A confident "cut off, marks withheld" on content that is actually fully present and legible is a real error, not a safe default.
 
 If a MISCONCEPTION note is supplied, it describes a specific error this question was designed to catch. If the student's work shows that error, name it in misconceptionTags. If they avoided it, do not invent a tag.
 
@@ -130,6 +141,15 @@ Return ONLY the JSON object below. No markdown fences, no commentary, no analysi
  * own content block at the call site) because it is IDENTICAL for every
  * student answering the same question -- which is exactly what makes it
  * worth marking for prompt caching.
+ *
+ * NOTE: boundaryExpanded is deliberately per-student, not per-question,
+ * so including it here means this block is no longer byte-identical
+ * across every student answering a given question -- it varies with
+ * whether THIS student's crop got expanded. That's an intentional
+ * tradeoff: prompt caching benefit is reduced slightly, but the model
+ * gets a real per-crop signal directly alongside the rubric it's already
+ * reading, rather than needing a second content block that would fragment
+ * the cache boundary anyway.
  */
 export function buildRubricBlock(a: AnchorContext): string {
   const lines: string[] = [];
@@ -145,6 +165,14 @@ export function buildRubricBlock(a: AnchorContext): string {
       a.marksAvailable != null ? " (this is already this crop's own share -- do not exceed it)" : ""
     }`
   );
+
+  if (a.boundaryExpanded !== undefined) {
+    lines.push(
+      a.boundaryExpanded
+        ? "CROP BOUNDARY: automatically expanded -- ink was detected touching the original edge, so this crop was grown to include more content. Some content near the new edge may still be tight; use judgement."
+        : "CROP BOUNDARY: NOT expanded -- no ink was detected touching the edge, meaning genuine truncation of this student's answer is unlikely. Treat an apparent 'cut off' impression with real skepticism."
+    );
+  }
 
   if (a.answerSketch?.trim()) {
     lines.push(`\nTEACHER'S ANSWER KEY:\n${a.answerSketch.trim()}`);
