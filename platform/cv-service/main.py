@@ -23,6 +23,7 @@ from cv_crop_extract import (  # type: ignore  # noqa: E402
     crop_page_count_mismatch,
     extract_crops,
 )
+from inspect_fillrects import inspect_fillrects  # type: ignore  # noqa: E402
 
 
 class ExtractRequest(BaseModel):
@@ -48,7 +49,12 @@ class CropRequest(BaseModel):
     rotationHint: int = 0
 
 
-app = FastAPI(title="Graph Lab CV Service", version="1.1.0")
+class InspectFillrectsRequest(BaseModel):
+    studentPdfBase64: str
+    pageIndex: int
+
+
+app = FastAPI(title="Graph Lab CV Service", version="1.2.0")
 
 
 def _check_secret(request: Request) -> JSONResponse | None:
@@ -221,3 +227,41 @@ async def crop(request: Request, req: CropRequest) -> JSONResponse:
         },
         status_code=200,
     )
+
+
+@app.post("/inspect-fillrects")
+async def inspect_fillrects_endpoint(request: Request, req: InspectFillrectsRequest) -> JSONResponse:
+    """
+    Debug/authoring tool, NOT part of the stage 1-5 pipeline. Lists
+    candidate answer-region rectangles on one page of a student's split
+    PDF -- filled shapes (what the original auto_fillrect anchor
+    extraction detects) and clustered stroke-only regions like ruled
+    grids (what it would miss). Used to find real coordinates for a
+    question whose anchor was never created, e.g. A.1's Q26(a) plotting
+    grid. See inspect_fillrects.py's module docstring for the full
+    reasoning and how the two candidate categories were verified.
+
+    Read-only: returns candidates for a human to choose from, does not
+    write to na_anchors.
+    """
+    auth_err = _check_secret(request)
+    if auth_err:
+        return auth_err
+    if not req.studentPdfBase64:
+        return JSONResponse({"error": "studentPdfBase64 is required"}, status_code=400)
+
+    import base64 as _base64
+
+    try:
+        pdf_bytes = _base64.b64decode(req.studentPdfBase64)
+    except Exception as exc:
+        return JSONResponse({"error": f"studentPdfBase64 could not be decoded: {exc}"}, status_code=400)
+
+    try:
+        result = inspect_fillrects(pdf_bytes, req.pageIndex)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:  # pragma: no cover - defensive runtime guard
+        return JSONResponse({"error": f"Inspection failed: {exc}"}, status_code=500)
+
+    return JSONResponse(result, status_code=200)
