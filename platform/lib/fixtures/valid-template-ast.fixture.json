@@ -1,5 +1,4 @@
 {
-  "_comment": "Valid fixture — passes TemplateAstSchema validation. Used in smoke tests.",
   "schemaVersion": "2025-06-01.1",
   "templateId": "nuanced-analysis-default-v1",
   "templateName": "Nuanced Analysis — Default (IBDP AA HL)",
