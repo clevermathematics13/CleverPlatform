@@ -343,6 +343,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   // actually split successfully (a packetScanId is what stage 4 needs to
   // look up the split PDF and the packet's locked anchors).
   const [cropState, setCropState] = useState<Record<string, CropState>>({});
+  // "Crop all" running per SplitResult[] batch -- keyed by a stable id (the
+  // batchId, or a chunk's batchId) so multiple crop panels on screen (one
+  // per chunk) can each show their own "Cropping X of Y" progress without
+  // interfering with each other.
+  const [cropAllRunning, setCropAllRunning] = useState<Record<string, boolean>>({});
 
   // Chunked path: an oversized upload split into several chunks, each
   // going through its own segment -> review -> split lifecycle.
@@ -378,6 +383,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setRawStage2(null);
     setSplitResults([]);
     setCropState({});
+    setCropAllRunning({});
     setParentBatchId(null);
     setChunks([]);
     setPresplitWarnings([]);
@@ -790,6 +796,31 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     }
   };
 
+  /** Runs stage 4 for every not-yet-cropped student in a split batch, one
+   *  at a time -- same "sequential, own budget each, one slow/failed
+   *  student can't block the rest" reasoning already used for chunk
+   *  segmentation above. panelKey identifies which crop panel is running
+   *  (a top-level batchId or a chunk's batchId) so several panels on
+   *  screen at once (chunked uploads) track "running" independently and a
+   *  second click on a different panel isn't blocked by the first. Skips
+   *  students already "done" or currently "cropping" so re-running "Crop
+   *  all" after fixing one failure only retries what's actually needed. */
+  const handleCropAll = async (panelKey: string, results: SplitResult[]) => {
+    const targets = results.filter((r) => r.status === "split" && r.packetScanId);
+    if (targets.length === 0) return;
+    setCropAllRunning((prev) => ({ ...prev, [panelKey]: true }));
+    try {
+      for (const r of targets) {
+        const scanId = r.packetScanId as string;
+        const current = cropState[scanId];
+        if (current?.status === "done" || current?.status === "cropping") continue;
+        await handleCrop(scanId);
+      }
+    } finally {
+      setCropAllRunning((prev) => ({ ...prev, [panelKey]: false }));
+    }
+  };
+
   // -- Chunk row editing --------------------------------------------------------
   const updateChunkRow = (chunkBatchId: string, rowKey: string, patch: Partial<ReviewRow>) =>
     setChunks((prev) =>
@@ -935,19 +966,39 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
 
   /** Stage 4 panel: one row per successfully-split student, with a Crop
    *  button, live status, and a raw-response viewer -- same pattern as the
-   *  stage 1/2 raw response viewers elsewhere on this page. */
-  const renderCropPanel = (results: SplitResult[]) => {
+   *  stage 1/2 raw response viewers elsewhere on this page. panelKey
+   *  identifies this panel for the "Crop all" running-state tracking above
+   *  (a top-level batchId, or a chunk's own batchId). */
+  const renderCropPanel = (panelKey: string, results: SplitResult[]) => {
     const splitOnly = results.filter((r) => r.status === "split" && r.packetScanId);
     if (splitOnly.length === 0) return null;
+    const runningAll = cropAllRunning[panelKey] ?? false;
+    const remaining = splitOnly.filter((r) => {
+      const s = cropState[r.packetScanId as string];
+      return s?.status !== "done";
+    }).length;
     return (
       <section className="rounded-xl border border-da-border bg-da-surface">
-        <div className="border-b border-da-border px-5 py-3">
-          <h2 className="text-lg font-bold text-da-text">Stage 4 — crop extraction</h2>
-          <p className="text-xs text-da-muted">
-            Runs one student at a time against the CV service&apos;s /crop endpoint. Uses this packet
-            version&apos;s locked anchors and deterministic page mapping — see the crop route&apos;s comments
-            for why no page-identity matching runs here by default.
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
+          <div>
+            <h2 className="text-lg font-bold text-da-text">Stage 4 — crop extraction</h2>
+            <p className="text-xs text-da-muted">
+              Uses this packet version&apos;s locked anchors and deterministic page mapping — see the
+              crop route&apos;s comments for why no page-identity matching runs here by default.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleCropAll(panelKey, splitOnly)}
+            disabled={runningAll || remaining === 0}
+            className="rounded-lg bg-da-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {runningAll
+              ? "Cropping…"
+              : remaining === 0
+                ? "All students cropped"
+                : `Crop all ${remaining} student(s)`}
+          </button>
         </div>
         <div className="divide-y divide-da-border/60">
           {splitOnly.map((r) => {
@@ -974,7 +1025,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                     <button
                       type="button"
                       onClick={() => handleCrop(scanId)}
-                      disabled={state.status === "cropping"}
+                      disabled={state.status === "cropping" || runningAll}
                       className="rounded-lg border border-da-accent/40 bg-da-accent/10 px-3 py-1.5 text-xs font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
                     >
                       {state.status === "cropping"
@@ -1226,7 +1277,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       )}
 
       {/* Stage 4: crop extraction, one panel per successfully split student */}
-      {splitResults.length > 0 && renderCropPanel(splitResults)}
+      {batchId && splitResults.length > 0 && renderCropPanel(batchId, splitResults)}
 
       {/* Chunked review: one card per chunk */}
       {anyChunked && (
@@ -1338,7 +1389,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                 )}
 
                 {chunk.status === "split" && chunkSplitResults.length > 0 && (
-                  <div className="border-t border-da-border p-4">{renderCropPanel(chunkSplitResults)}</div>
+                  <div className="border-t border-da-border p-4">{renderCropPanel(chunk.batchId, chunkSplitResults)}</div>
                 )}
               </section>
             );
