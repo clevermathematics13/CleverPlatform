@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -75,6 +76,18 @@ interface CropState {
   error: string | null;
 }
 
+/** A batch listed by GET /api/na-review/batch?packetVersionId=... -- used
+ *  to populate the "recent batches" picker so a teacher doesn't need to
+ *  know or paste a batchId by hand. */
+interface RecentBatch {
+  id: string;
+  status: string;
+  source_filename: string | null;
+  page_count: number | null;
+  created_at: string;
+  parent_batch_id?: string | null;
+}
+
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
   high: "bg-green-100 text-green-800 border-green-300",
   medium: "bg-amber-100 text-amber-800 border-amber-300",
@@ -124,6 +137,28 @@ function formatPageList(pages: number[]): string {
 /** Roster option label, e.g. "Freya Delisle — 9A", or just the name if the class is unknown. */
 function rosterOptionLabel(s: RosterEntry): string {
   return s.courseName ? `${s.fullName} — ${s.courseName}` : s.fullName;
+}
+
+/** Builds ReviewRow[] from a batch's proposed_segments/confirmed_segments
+ *  JSONB, and optionally overlays known packetScanIds so already-split
+ *  rows carry the invitedId a confirmed segment recorded. Shared by the
+ *  initial POST /batch response handling and by loadBatch() below so the
+ *  two paths can't silently drift apart. */
+function segmentsToRows(segments: ProposedSegment[] | { label: string; pages: number[]; invitedId: string }[]): ReviewRow[] {
+  return segments.map((s, i) => {
+    const invitedId =
+      "invitedId" in s ? s.invitedId : (s as ProposedSegment).matchedInvitedId ?? "";
+    const confidence = "confidence" in s ? (s as ProposedSegment).confidence : "high";
+    const note = "note" in s ? (s as ProposedSegment).note : "";
+    return {
+      key: `${i}-${s.label}`,
+      label: s.label,
+      pages: s.pages,
+      confidence,
+      note,
+      invitedId,
+    };
+  });
 }
 
 /**
@@ -282,6 +317,9 @@ function StudentPicker({
 }
 
 export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
   const [versionId, setVersionId] = useState(versions[0]?.id ?? "");
   const version = versions.find((v) => v.id === versionId) ?? null;
 
@@ -289,6 +327,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [statusLine, setStatusLine] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
+  const [loadingBatch, setLoadingBatch] = useState(false);
 
   // Non-chunked path: a single batch, same shape as before.
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -310,6 +349,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [parentBatchId, setParentBatchId] = useState<string | null>(null);
   const [chunks, setChunks] = useState<ChunkState[]>([]);
   const [presplitWarnings, setPresplitWarnings] = useState<string[]>([]);
+
+  // Recent batches for this packet version, so a teacher can pick their way
+  // back into an in-progress batch instead of needing to know its UUID.
+  const [recentBatches, setRecentBatches] = useState<RecentBatch[]>([]);
+  const [recentBatchesLoading, setRecentBatchesLoading] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -341,6 +385,187 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setError(null);
   };
 
+  /** Writes ?batchId=... into the URL (replace, not push, so Back doesn't
+   *  step through every intermediate stage transition) whenever a batch
+   *  exists to reload, and clears it when reset(). This is the actual
+   *  persistence: a page refresh or a bookmarked/shared link re-triggers
+   *  loadBatch() below via the effect that watches searchParams. */
+  const syncUrl = useCallback(
+    (id: string | null) => {
+      const params = new URLSearchParams(searchParams.toString());
+      if (id) params.set("batchId", id);
+      else params.delete("batchId");
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
+
+  const fetchRecentBatches = useCallback(async (packetVersionId: string) => {
+    setRecentBatchesLoading(true);
+    try {
+      const res = await fetch(`/api/na-review/batch?packetVersionId=${encodeURIComponent(packetVersionId)}`);
+      const data = await res.json();
+      if (res.ok) setRecentBatches(data.batches ?? []);
+    } catch {
+      // Non-critical -- the picker just stays empty; the teacher can still
+      // paste a batchId into the URL directly if they have one.
+    } finally {
+      setRecentBatchesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (version) void fetchRecentBatches(version.id);
+  }, [version, fetchRecentBatches]);
+
+  /** Seeds crop state from a packetScansByInvitedId map (as returned by
+   *  GET .../batch/[batchId]) for every row that already has a
+   *  packetScanId, and returns the SplitResult[] shape the crop panel
+   *  renderer expects -- so a reloaded already-split batch shows the same
+   *  "Crop this student" panel a fresh split would, without re-splitting. */
+  const applyPacketScans = (
+    currentRows: ReviewRow[],
+    packetScansByInvitedId: Record<string, { packetScanId: string; status: string }>
+  ): SplitResult[] => {
+    const results: SplitResult[] = currentRows.map((r) => {
+      const scan = packetScansByInvitedId[r.invitedId];
+      return scan
+        ? { invitedId: r.invitedId, label: r.label, status: "split" as const, packetScanId: scan.packetScanId }
+        : { invitedId: r.invitedId, label: r.label, status: "failed" as const, error: "Not split yet" };
+    });
+    setCropState((prev) => ({
+      ...prev,
+      ...Object.fromEntries(
+        results
+          .filter((r) => r.status === "split" && r.packetScanId)
+          .map((r) => [
+            r.packetScanId as string,
+            {
+              status: packetScansByInvitedId[r.invitedId]?.status === "cropped" ? "done" : "idle",
+              rawResponse: null,
+              error: null,
+            } as CropState,
+          ])
+      ),
+    }));
+    return results;
+  };
+
+  /** Reloads one batch from GET /api/na-review/batch/[batchId] and
+   *  reconstructs every piece of state a fresh upload->segment->split run
+   *  would have produced -- the actual fix for the harness losing its
+   *  place on refresh. Handles both a plain batch and one that's part of
+   *  a chunked parent upload. */
+  const loadBatch = useCallback(
+    async (id: string) => {
+      setLoadingBatch(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/na-review/batch/${id}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not load this batch.");
+
+        const b = data.batch as {
+          id: string;
+          packet_version_id: string;
+          status: string;
+          page_count: number | null;
+          proposed_segments: ProposedSegment[] | null;
+          confirmed_segments: { label: string; pages: number[]; invitedId: string }[] | null;
+          unassigned_pages: number[] | null;
+          parent_batch_id: string | null;
+          chunk_index: number | null;
+          chunk_count: number | null;
+        };
+        const packetScansByInvitedId = data.packetScansByInvitedId ?? {};
+        const siblingChunks: { id: string; chunk_index: number | null; chunk_count: number | null; status: string }[] =
+          data.siblingChunks ?? [];
+
+        if (b.packet_version_id !== versionId) setVersionId(b.packet_version_id);
+
+        if (b.parent_batch_id || siblingChunks.length > 0) {
+          // This batch is one chunk of a larger upload. Reload every
+          // sibling chunk individually (each may be at a different stage)
+          // rather than trying to reconstruct the whole chunked view from
+          // this one response.
+          setParentBatchId(b.parent_batch_id ?? b.id);
+          const chunkIds = siblingChunks.length > 0 ? siblingChunks.map((c) => c.id) : [b.id];
+          const loaded: ChunkState[] = [];
+          for (const chunkId of chunkIds) {
+            const cRes = await fetch(`/api/na-review/batch/${chunkId}`);
+            const cData = await cRes.json();
+            if (!cRes.ok) continue;
+            const cb = cData.batch;
+            const cRows = segmentsToRows(cb.confirmed_segments ?? cb.proposed_segments ?? []);
+            const cResults =
+              cb.status === "split" ? applyPacketScans(cRows, cData.packetScansByInvitedId ?? {}) : [];
+            loaded.push({
+              batchId: cb.id,
+              chunkIndex: cb.chunk_index ?? 1,
+              chunkCount: cb.chunk_count ?? chunkIds.length,
+              startPage: 0,
+              endPage: cb.page_count ?? 0,
+              storagePath: "",
+              status:
+                cb.status === "split"
+                  ? "split"
+                  : cb.status === "segmented"
+                    ? "segmented"
+                    : cb.status === "failed"
+                      ? "failed"
+                      : "pending",
+              rows: cRows,
+              unassignedPages: cb.unassigned_pages ?? [],
+              rawSegmentResponse: null,
+              rawSplitResponse: cb.status === "split" ? { results: cResults } : null,
+              error: cb.error_message ?? null,
+            });
+          }
+          setChunks(loaded.sort((a, b2) => a.chunkIndex - b2.chunkIndex));
+          setStatusLine(`Reloaded batch ${b.id.slice(0, 8)}… (part of a ${chunkIds.length}-chunk upload).`);
+          syncUrl(b.id);
+          return;
+        }
+
+        setBatchId(b.id);
+        setPageCount(b.page_count);
+        setUnassignedPages(b.unassigned_pages ?? []);
+
+        const reconstructedRows = segmentsToRows(b.confirmed_segments ?? b.proposed_segments ?? []);
+        setRows(reconstructedRows);
+
+        if (b.status === "split") {
+          const results = applyPacketScans(reconstructedRows, packetScansByInvitedId);
+          setSplitResults(results);
+          setRawStage2({ batchId: b.id, results, note: "Reloaded from a prior session." });
+          setStatusLine(
+            `Reloaded batch ${b.id.slice(0, 8)}… — already split (${results.filter((r) => r.status === "split").length} student(s)). Stage 4 panel is below.`
+          );
+        } else if (b.status === "segmented") {
+          setStatusLine(`Reloaded batch ${b.id.slice(0, 8)}… — segmented, not yet split. Review and confirm below.`);
+        } else {
+          setStatusLine(`Reloaded batch ${b.id.slice(0, 8)}… — status: ${b.status}.`);
+        }
+        syncUrl(b.id);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load this batch.");
+      } finally {
+        setLoadingBatch(false);
+      }
+    },
+    [versionId, syncUrl]
+  );
+
+  // On mount (and whenever the URL's batchId changes, e.g. Back/Forward or
+  // a pasted link), load that batch if we don't already have it in state.
+  useEffect(() => {
+    const urlBatchId = searchParams.get("batchId");
+    if (urlBatchId && urlBatchId !== batchId && chunks.every((c) => c.batchId !== urlBatchId) && !loadingBatch) {
+      void loadBatch(urlBatchId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const updateChunk = (batchId: string, patch: Partial<ChunkState>) =>
     setChunks((prev) => prev.map((c) => (c.batchId === batchId ? { ...c, ...patch } : c)));
 
@@ -370,14 +595,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       const segments: ProposedSegment[] = data.segments ?? [];
       updateChunk(chunk.batchId, {
         status: "segmented",
-        rows: segments.map((s, i) => ({
-          key: `${i}-${s.label}`,
-          label: s.label,
-          pages: s.pages,
-          confidence: s.confidence,
-          note: s.note,
-          invitedId: s.matchedInvitedId ?? "",
-        })),
+        rows: segmentsToRows(segments),
         unassignedPages: data.unassignedPages ?? [],
         rawSegmentResponse: data,
       });
@@ -397,6 +615,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setUploading(true);
     setError(null);
     reset();
+    syncUrl(null);
 
     try {
       setUploadProgress("Uploading scan to storage…");
@@ -448,6 +667,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         setStatusLine(
           `This scan was too large for one batch (${data.pageCount} pages). Split automatically into ${initialChunks.length} chunks of whole student packets. Segmenting each in turn…`
         );
+        syncUrl(data.parentBatchId);
 
         // Segment chunks sequentially -- each is its own request with its
         // own time budget, so a slow model response on one chunk can't
@@ -462,16 +682,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         setBatchId(data.batchId);
         setPageCount(data.pageCount);
         setUnassignedPages(data.unassignedPages ?? []);
-        setRows(
-          segments.map((s, i) => ({
-            key: `${i}-${s.label}`,
-            label: s.label,
-            pages: s.pages,
-            confidence: s.confidence,
-            note: s.note,
-            invitedId: s.matchedInvitedId ?? "",
-          }))
-        );
+        setRows(segmentsToRows(segments));
         const poolNote =
           data.rosterIsTrack && version.rosterSourceCourseNames.length
             ? ` (pooled from ${version.rosterSourceCourseNames.join(", ")})`
@@ -479,6 +690,8 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         setStatusLine(
           `Stage 1 done. Found ${segments.length} student(s) across ${data.pageCount} pages, roster size ${data.rosterSize}${poolNote}. Review before splitting.`
         );
+        syncUrl(data.batchId);
+        void fetchRecentBatches(version.id);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload or segmentation failed.");
@@ -773,7 +986,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                   </div>
                 </div>
                 {state.error && <p className="mt-2 text-xs text-red-600">{state.error}</p>}
-                {state.status === "done" && (() => {
+                {state.status === "done" && state.rawResponse != null && (() => {
                   const d = state.rawResponse as {
                     pageCountMismatch: number | null;
                     savedCount: number;
@@ -796,6 +1009,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                     </div>
                   );
                 })()}
+                {state.status === "done" && state.rawResponse == null && (
+                  <p className="mt-2 text-xs text-da-muted">
+                    Marked cropped in an earlier session — re-run to see fresh counts and the raw response.
+                  </p>
+                )}
                 {state.rawResponse != null && (
                   <details className="mt-2">
                     <summary className="cursor-pointer text-xs font-medium text-da-text">Raw crop response</summary>
@@ -813,6 +1031,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   };
 
   const anyChunked = chunks.length > 0;
+  const anyBatchLoaded = !!batchId || anyChunked;
 
   return (
     <div className="space-y-6">
@@ -825,6 +1044,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           onChange={(e) => {
             setVersionId(e.target.value);
             reset();
+            syncUrl(null);
           }}
           className={`mt-1 ${SELECT_CLASS}`}
         >
@@ -869,6 +1089,44 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         )}
       </section>
 
+      {/* Recent batches picker -- lets a teacher pick their way back into
+          an in-progress batch instead of needing its UUID. Only shown when
+          nothing is currently loaded, so it doesn't compete for attention
+          once a batch is already on screen. */}
+      {!anyBatchLoaded && version && (recentBatches.length > 0 || recentBatchesLoading) && (
+        <section className="rounded-xl border border-da-border bg-da-surface p-5">
+          <h2 className="text-sm font-medium text-da-text">Recent batches for this packet</h2>
+          {recentBatchesLoading && <p className="mt-2 text-xs text-da-muted">Loading…</p>}
+          {!recentBatchesLoading && (
+            <ul className="mt-2 divide-y divide-da-border/60">
+              {recentBatches
+                .filter((b) => !b.parent_batch_id) // top-level batches only; chunks load via their parent
+                .slice(0, 10)
+                .map((b) => (
+                  <li key={b.id} className="flex items-center justify-between gap-3 py-2">
+                    <div>
+                      <p className="text-sm text-da-text">
+                        {b.source_filename ?? "batch-scan.pdf"} — {b.page_count ?? "?"} pages
+                      </p>
+                      <p className="text-xs text-da-muted">
+                        {new Date(b.created_at).toLocaleString()} — status: {b.status}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void loadBatch(b.id)}
+                      disabled={loadingBatch}
+                      className="rounded-lg border border-da-accent/40 bg-da-accent/10 px-3 py-1.5 text-xs font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
+                    >
+                      {loadingBatch ? "Loading…" : "Resume"}
+                    </button>
+                  </li>
+                ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       {error && (
         <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
       )}
@@ -886,7 +1144,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         </div>
       )}
 
-      {!batchId && !anyChunked && (
+      {!anyBatchLoaded && (
         <section className="rounded-xl border border-da-border bg-da-surface p-5">
           <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
           <p className="mt-1 text-sm text-da-muted">
@@ -918,7 +1176,14 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={reset} className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover">
+              <button
+                type="button"
+                onClick={() => {
+                  reset();
+                  syncUrl(null);
+                }}
+                className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
+              >
                 Start over
               </button>
               <button
@@ -970,7 +1235,14 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             <p className="text-sm text-da-muted">
               Parent upload {parentBatchId?.slice(0, 8)}… split into {chunks.length} chunk(s).
             </p>
-            <button type="button" onClick={reset} className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover">
+            <button
+              type="button"
+              onClick={() => {
+                reset();
+                syncUrl(null);
+              }}
+              className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
+            >
               Start over
             </button>
           </div>
