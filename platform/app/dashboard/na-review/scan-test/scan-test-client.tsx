@@ -59,6 +59,22 @@ interface ChunkState {
   error: string | null;
 }
 
+/** Stage 2's per-student split result, as returned by the split route. */
+interface SplitResult {
+  invitedId: string;
+  label: string;
+  status: "split" | "failed";
+  packetScanId?: string;
+  error?: string;
+}
+
+/** Stage 4's crop lifecycle for one already-split student. */
+interface CropState {
+  status: "idle" | "cropping" | "done" | "failed";
+  rawResponse: unknown;
+  error: string | null;
+}
+
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
   high: "bg-green-100 text-green-800 border-green-300",
   medium: "bg-amber-100 text-amber-800 border-amber-300",
@@ -282,6 +298,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [rawStage1, setRawStage1] = useState<unknown>(null);
   const [splitting, setSplitting] = useState(false);
   const [rawStage2, setRawStage2] = useState<unknown>(null);
+  const [splitResults, setSplitResults] = useState<SplitResult[]>([]);
+
+  // Stage 4: crop lifecycle per packetScanId, only for students stage 2
+  // actually split successfully (a packetScanId is what stage 4 needs to
+  // look up the split PDF and the packet's locked anchors).
+  const [cropState, setCropState] = useState<Record<string, CropState>>({});
 
   // Chunked path: an oversized upload split into several chunks, each
   // going through its own segment -> review -> split lifecycle.
@@ -310,6 +332,8 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setUnassignedPages([]);
     setRawStage1(null);
     setRawStage2(null);
+    setSplitResults([]);
+    setCropState({});
     setParentBatchId(null);
     setChunks([]);
     setPresplitWarnings([]);
@@ -504,13 +528,52 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       const data = await res.json();
       setRawStage2(data);
       if (!res.ok) throw new Error(data.error ?? "Split failed.");
+      const results: SplitResult[] = data.results ?? [];
+      setSplitResults(results);
+      // Seed crop state for every successfully split student so the stage
+      // 4 panel can render "Crop" buttons immediately.
+      setCropState(
+        Object.fromEntries(
+          results
+            .filter((r) => r.status === "split" && r.packetScanId)
+            .map((r) => [r.packetScanId as string, { status: "idle", rawResponse: null, error: null } as CropState])
+        )
+      );
       setStatusLine(
-        `Stage 2 done. ${data.splitCount} split, ${data.failedCount} failed. Verify na_packet_scans and Storage directly — see the raw response below.`
+        `Stage 2 done. ${data.splitCount} split, ${data.failedCount} failed. Run stage 4 (crop) per student below, or verify na_packet_scans/Storage directly.`
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Split failed.");
     } finally {
       setSplitting(false);
+    }
+  };
+
+  /** Stage 4 for one already-split student: calls the crop route by packetScanId. */
+  const handleCrop = async (packetScanId: string) => {
+    setCropState((prev) => ({
+      ...prev,
+      [packetScanId]: { status: "cropping", rawResponse: null, error: null },
+    }));
+    try {
+      const res = await fetch(`/api/na-review/packet-scans/${packetScanId}/crop`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Crop extraction failed.");
+      setCropState((prev) => ({
+        ...prev,
+        [packetScanId]: { status: "done", rawResponse: data, error: null },
+      }));
+    } catch (e) {
+      setCropState((prev) => ({
+        ...prev,
+        [packetScanId]: {
+          status: "failed",
+          rawResponse: null,
+          error: e instanceof Error ? e.message : "Crop extraction failed.",
+        },
+      }));
     }
   };
 
@@ -571,6 +634,15 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Split failed for this chunk.");
       updateChunk(chunk.batchId, { status: "split", rawSplitResponse: data });
+      const results: SplitResult[] = data.results ?? [];
+      setCropState((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          results
+            .filter((r) => r.status === "split" && r.packetScanId)
+            .map((r) => [r.packetScanId as string, { status: "idle", rawResponse: null, error: null } as CropState])
+        ),
+      }));
     } catch (e) {
       updateChunk(chunk.batchId, {
         status: "failed",
@@ -647,6 +719,98 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       </table>
     </div>
   );
+
+  /** Stage 4 panel: one row per successfully-split student, with a Crop
+   *  button, live status, and a raw-response viewer -- same pattern as the
+   *  stage 1/2 raw response viewers elsewhere on this page. */
+  const renderCropPanel = (results: SplitResult[]) => {
+    const splitOnly = results.filter((r) => r.status === "split" && r.packetScanId);
+    if (splitOnly.length === 0) return null;
+    return (
+      <section className="rounded-xl border border-da-border bg-da-surface">
+        <div className="border-b border-da-border px-5 py-3">
+          <h2 className="text-lg font-bold text-da-text">Stage 4 — crop extraction</h2>
+          <p className="text-xs text-da-muted">
+            Runs one student at a time against the CV service&apos;s /crop endpoint. Uses this packet
+            version&apos;s locked anchors and deterministic page mapping — see the crop route&apos;s comments
+            for why no page-identity matching runs here by default.
+          </p>
+        </div>
+        <div className="divide-y divide-da-border/60">
+          {splitOnly.map((r) => {
+            const scanId = r.packetScanId as string;
+            const state = cropState[scanId] ?? { status: "idle" as const, rawResponse: null, error: null };
+            return (
+              <div key={scanId} className="px-5 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-medium text-da-text">{r.label}</p>
+                    <p className="text-xs text-da-muted">packet_scan_id {scanId.slice(0, 8)}…</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {state.status === "done" && (
+                      <span className="rounded border border-green-300 bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                        cropped
+                      </span>
+                    )}
+                    {state.status === "failed" && (
+                      <span className="rounded border border-red-300 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                        failed
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleCrop(scanId)}
+                      disabled={state.status === "cropping"}
+                      className="rounded-lg border border-da-accent/40 bg-da-accent/10 px-3 py-1.5 text-xs font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
+                    >
+                      {state.status === "cropping"
+                        ? "Cropping…"
+                        : state.status === "done"
+                          ? "Re-crop"
+                          : "Crop this student"}
+                    </button>
+                  </div>
+                </div>
+                {state.error && <p className="mt-2 text-xs text-red-600">{state.error}</p>}
+                {state.status === "done" && (() => {
+                  const d = state.rawResponse as {
+                    pageCountMismatch: number | null;
+                    savedCount: number;
+                    failedCount: number;
+                    blankCount: number;
+                    expandedCount: number;
+                  };
+                  return (
+                    <div className="mt-2 flex flex-wrap gap-3 text-xs text-da-muted">
+                      <span>{d.savedCount} saved</span>
+                      {d.failedCount > 0 && <span className="text-red-600">{d.failedCount} failed</span>}
+                      <span>{d.expandedCount} boundary-expanded</span>
+                      <span>{d.blankCount} flagged blank</span>
+                      {d.pageCountMismatch !== null && (
+                        <span className="font-medium text-amber-700">
+                          ⚠ page count mismatch: {d.pageCountMismatch} pages in this student&apos;s PDF — page
+                          mapping may not be reliable, review manually
+                        </span>
+                      )}
+                    </div>
+                  );
+                })()}
+                {state.rawResponse != null && (
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-xs font-medium text-da-text">Raw crop response</summary>
+                    <pre className="mt-2 overflow-x-auto rounded bg-black/80 p-3 text-xs text-green-300">
+                      {JSON.stringify(state.rawResponse, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+    );
+  };
 
   const anyChunked = chunks.length > 0;
 
@@ -796,6 +960,9 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         </section>
       )}
 
+      {/* Stage 4: crop extraction, one panel per successfully split student */}
+      {splitResults.length > 0 && renderCropPanel(splitResults)}
+
       {/* Chunked review: one card per chunk */}
       {anyChunked && (
         <div className="space-y-4">
@@ -811,6 +978,8 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           {chunks.map((chunk) => {
             const conflicts = chunkConflicts(chunk);
             const canSplitThis = chunkCanSplit(chunk);
+            const chunkSplitResults: SplitResult[] =
+              chunk.status === "split" ? ((chunk.rawSplitResponse as { results?: SplitResult[] })?.results ?? []) : [];
             return (
               <section key={chunk.batchId} className="rounded-xl border border-da-border bg-da-surface">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
@@ -895,6 +1064,10 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                     </pre>
                   </details>
                 )}
+
+                {chunk.status === "split" && chunkSplitResults.length > 0 && (
+                  <div className="border-t border-da-border p-4">{renderCropPanel(chunkSplitResults)}</div>
+                )}
               </section>
             );
           })}
@@ -911,7 +1084,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       )}
 
       {rawStage2 !== null && (
-        <details open className="rounded-xl border border-da-border bg-da-surface p-4">
+        <details className="rounded-xl border border-da-border bg-da-surface p-4">
           <summary className="cursor-pointer text-sm font-medium text-da-text">Raw stage 2 response (split)</summary>
           <pre className="mt-3 overflow-x-auto rounded bg-black/80 p-3 text-xs text-green-300">
             {JSON.stringify(rawStage2, null, 2)}
