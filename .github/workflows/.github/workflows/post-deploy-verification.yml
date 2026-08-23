@@ -169,10 +169,9 @@ jobs:
           1. Review the workflow logs above
           2. Check Vercel build logs: https://vercel.com/clevermathematics13/cleverplatform/deployments
           3. Verify git commit was pushed correctly
-          4. Manual redeploy (if needed): 
-```bash
-             curl "https://clever-platform.vercel.app/api/deploy?target=production&secret=cleverplatform-deploy-23571113"
-```
+          4. Manual redeploy (if needed): see the DEPLOY_SECRET-gated endpoint
+             documented in the deployment runbook. The secret itself is stored
+             in Vercel env vars — never paste it here.
           
           EOF
           
