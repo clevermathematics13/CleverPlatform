@@ -73,7 +73,7 @@ export async function POST(
   const { data: crop, error: cropErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, storage_path, is_blank, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context)"
+      "id, storage_path, is_blank, boundary_expanded, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context)"
     )
     .eq("id", cropId)
     .maybeSingle();
@@ -94,6 +94,13 @@ export async function POST(
     answerSketch: anchor.answer_sketch,
     openRubric: anchor.open_rubric,
     misconceptionContext: anchor.misconception_context,
+    // Real, per-crop signal from stage 4's ink-density check -- see
+    // buildRubricBlock and the system prompt for how this is used to
+    // push back on a false "cut off" read (found on Ines Palomino's
+    // Q1(d): boundary_expanded was false, meaning no ink was ever
+    // detected touching the edge, yet the model reported truncation
+    // anyway on content that was actually fully present).
+    boundaryExpanded: crop.boundary_expanded ?? undefined,
   };
 
   /** Writes one na_feedback row, replacing any prior assessment for this
@@ -177,11 +184,10 @@ export async function POST(
           content: [
             { type: "image", source: { type: "base64", media_type: "image/png", data: imageBase64 } },
             {
-              // Byte-identical across every student answering this same
-              // question, so it's the one part of the request worth
-              // caching -- cached input is billed at a fraction of the
-              // normal rate, which is where this stage's cost saving
-              // comes from without giving up one-call-per-crop isolation.
+              // NOTE: no longer byte-identical across every student for a
+              // given question, since it now includes this crop's own
+              // boundaryExpanded value (see buildRubricBlock's docstring
+              // for the caching tradeoff this accepts).
               type: "text",
               text: buildRubricBlock(ctx),
               cache_control: { type: "ephemeral" },
