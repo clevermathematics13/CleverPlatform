@@ -17,6 +17,13 @@ import { getApiTeacher } from "@/lib/auth";
  * rather than raising the timeout further: each individual assess call is
  * now small and bounded, and a slow or failed crop can't take the rest of
  * the student's assessment down with it.
+ *
+ * Includes ai_transcription/ai_margin_comment/ai_next_step/ai_teacher_note
+ * alongside the verdict and marks -- a real gap found when a teacher asked
+ * why a student lost a mark on a question that had every one of these
+ * fields populated with a specific, useful explanation in na_feedback,
+ * but nothing in the UI surfaced anything beyond the bare number. The
+ * model's reasoning was never missing; it just wasn't being shown.
  */
 export async function GET(
   request: NextRequest,
@@ -38,21 +45,32 @@ export async function GET(
   const { data: cropRows, error: cropsErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, is_blank, anchor_id, na_anchors(qid, sort_order), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error)"
+      "id, is_blank, anchor_id, na_anchors(qid, sort_order), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags)"
     )
     .eq("packet_scan_id", packetScanId);
 
   if (cropsErr) return NextResponse.json({ error: cropsErr.message }, { status: 500 });
+
+  type Feedback = {
+    ai_attempted: boolean | null;
+    ai_verdict: string | null;
+    ai_marks_awarded: number | null;
+    ai_marks_available: number | null;
+    ai_validation_error: string | null;
+    ai_transcription: string | null;
+    ai_margin_comment: string | null;
+    ai_next_step: string | null;
+    ai_teacher_note: string | null;
+    ai_confidence: number | null;
+    ai_misconception_tags: string[] | null;
+  };
 
   type Row = {
     id: string;
     is_blank: boolean | null;
     anchor_id: string;
     na_anchors: { qid: string; sort_order: number | null } | { qid: string; sort_order: number | null }[] | null;
-    na_feedback:
-      | { ai_attempted: boolean | null; ai_verdict: string | null; ai_marks_awarded: number | null; ai_marks_available: number | null; ai_validation_error: string | null }
-      | { ai_attempted: boolean | null; ai_verdict: string | null; ai_marks_awarded: number | null; ai_marks_available: number | null; ai_validation_error: string | null }[]
-      | null;
+    na_feedback: Feedback | Feedback[] | null;
   };
 
   const crops = ((cropRows ?? []) as Row[]).map((r) => {
@@ -71,6 +89,12 @@ export async function GET(
       verdict: feedback?.ai_verdict ?? null,
       marksAwarded: feedback?.ai_marks_awarded ?? null,
       marksAvailable: feedback?.ai_marks_available ?? null,
+      transcription: feedback?.ai_transcription ?? null,
+      marginComment: feedback?.ai_margin_comment ?? null,
+      nextStep: feedback?.ai_next_step ?? null,
+      teacherNote: feedback?.ai_teacher_note ?? null,
+      confidence: feedback?.ai_confidence ?? null,
+      misconceptionTags: feedback?.ai_misconception_tags ?? [],
     };
   });
 
