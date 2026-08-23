@@ -86,9 +86,20 @@ interface AssessCropListItem {
   verdict: string | null;
   marksAwarded: number | null;
   marksAvailable: number | null;
+  transcription: string | null;
+  marginComment: string | null;
+  nextStep: string | null;
+  teacherNote: string | null;
+  confidence: number | null;
+  misconceptionTags: string[];
 }
 
-/** Stage 5's per-crop assessment lifecycle, keyed by cropId. */
+/** Stage 5's per-crop assessment lifecycle, keyed by cropId. Carries the
+ *  full explanation (transcription, margin comment, next step, teacher
+ *  note) alongside the bare verdict/marks -- a real bug found in review:
+ *  na_feedback already had a specific, careful explanation for a lost
+ *  mark, but the UI only ever showed the number. See the listing route's
+ *  comments for the full story. */
 interface AssessCropState {
   status: "idle" | "assessing" | "assessed" | "skipped" | "failed";
   verdict: string | null;
@@ -96,6 +107,12 @@ interface AssessCropState {
   marksAvailable: number | null;
   reason: string | null;
   rawResponse: unknown;
+  transcription: string | null;
+  marginComment: string | null;
+  nextStep: string | null;
+  teacherNote: string | null;
+  confidence: number | null;
+  misconceptionTags: string[];
 }
 
 /** Stage 5's lifecycle for one already-cropped student, as a whole panel. */
@@ -900,6 +917,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
               marksAvailable: c.marksAvailable,
               reason: null,
               rawResponse: null,
+              transcription: c.transcription,
+              marginComment: c.marginComment,
+              nextStep: c.nextStep,
+              teacherNote: c.teacherNote,
+              confidence: c.confidence,
+              misconceptionTags: c.misconceptionTags,
             } as AssessCropState,
           ])
         ),
@@ -928,6 +951,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         marksAvailable: prev[cropId]?.marksAvailable ?? null,
         reason: null,
         rawResponse: null,
+        transcription: prev[cropId]?.transcription ?? null,
+        marginComment: prev[cropId]?.marginComment ?? null,
+        nextStep: prev[cropId]?.nextStep ?? null,
+        teacherNote: prev[cropId]?.teacherNote ?? null,
+        confidence: prev[cropId]?.confidence ?? null,
+        misconceptionTags: prev[cropId]?.misconceptionTags ?? [],
       },
     }));
     try {
@@ -935,6 +964,13 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       const data = await res.json();
       const status: AssessCropState["status"] =
         data.status === "assessed" ? "assessed" : data.status === "skipped" ? "skipped" : "failed";
+      // The per-crop assess route's response doesn't currently echo back
+      // transcription/marginComment/nextStep/teacherNote (only
+      // verdict/marks/warnings) -- so a fresh single-crop assess shows the
+      // verdict immediately but the detail panel catches up once
+      // loadAssessPanel next re-reads na_feedback (e.g. via "Assess all",
+      // which reloads the list when it finishes). This is a minor UX gap,
+      // not a data gap -- the full explanation is already saved correctly.
       setAssessCropState((prev) => ({
         ...prev,
         [cropId]: {
@@ -944,6 +980,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           marksAvailable: data.marksAvailable ?? null,
           reason: data.reason ?? (res.ok ? null : data.error ?? "Assessment failed."),
           rawResponse: data,
+          transcription: prev[cropId]?.transcription ?? null,
+          marginComment: prev[cropId]?.marginComment ?? null,
+          nextStep: prev[cropId]?.nextStep ?? null,
+          teacherNote: prev[cropId]?.teacherNote ?? null,
+          confidence: prev[cropId]?.confidence ?? null,
+          misconceptionTags: prev[cropId]?.misconceptionTags ?? [],
         },
       }));
     } catch (e) {
@@ -956,6 +998,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           marksAvailable: null,
           reason: e instanceof Error ? e.message : "Assessment failed.",
           rawResponse: null,
+          transcription: null,
+          marginComment: null,
+          nextStep: null,
+          teacherNote: null,
+          confidence: null,
+          misconceptionTags: [],
         },
       }));
     }
@@ -1332,45 +1380,120 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                         marksAvailable: null,
                         reason: null,
                         rawResponse: null,
+                        transcription: null,
+                        marginComment: null,
+                        nextStep: null,
+                        teacherNote: null,
+                        confidence: null,
+                        misconceptionTags: [],
                       };
+                      // Only a partial mark (marksAwarded < marksAvailable)
+                      // genuinely NEEDS an explanation open by default --
+                      // that's exactly the "why did they lose a mark"
+                      // question this whole panel exists to answer. A
+                      // full-marks or zero-marks verdict is usually
+                      // self-explanatory and stays collapsed to avoid
+                      // cluttering the list.
+                      const lostSomeMarks =
+                        s.status === "assessed" &&
+                        s.marksAvailable != null &&
+                        s.marksAwarded != null &&
+                        s.marksAwarded < s.marksAvailable &&
+                        s.marksAwarded > 0;
+                      const hasDetail =
+                        !!s.transcription || !!s.marginComment || !!s.nextStep || !!s.teacherNote;
                       return (
-                        <div key={c.cropId} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <span className="text-sm font-medium text-da-text">{c.qid}</span>
-                            {s.status === "assessed" && s.verdict && (
-                              <span
-                                className={`rounded border px-2 py-0.5 text-xs font-medium ${VERDICT_STYLE[s.verdict] ?? ""}`}
-                              >
-                                {s.verdict}
-                                {s.marksAvailable != null ? ` — ${s.marksAwarded ?? 0}/${s.marksAvailable}` : ""}
-                              </span>
-                            )}
-                            {s.status === "skipped" && (
-                              <span className="rounded border border-gray-300 bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
-                                skipped ({s.reason ?? (c.isBlank ? "blank" : "ungraded")})
-                              </span>
-                            )}
-                            {s.status === "failed" && (
-                              <span
-                                className="max-w-xs truncate rounded border border-red-300 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800"
-                                title={s.reason ?? undefined}
-                              >
-                                failed{s.reason ? `: ${s.reason}` : ""}
-                              </span>
-                            )}
+                        <div key={c.cropId} className="px-3 py-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="text-sm font-medium text-da-text">{c.qid}</span>
+                              {s.status === "assessed" && s.verdict && (
+                                <span
+                                  className={`rounded border px-2 py-0.5 text-xs font-medium ${VERDICT_STYLE[s.verdict] ?? ""}`}
+                                >
+                                  {s.verdict}
+                                  {s.marksAvailable != null ? ` — ${s.marksAwarded ?? 0}/${s.marksAvailable}` : ""}
+                                </span>
+                              )}
+                              {s.status === "assessed" && s.confidence != null && s.confidence < 0.6 && (
+                                <span
+                                  className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700"
+                                  title="Low model confidence -- worth a second look even if the verdict looks reasonable."
+                                >
+                                  low confidence
+                                </span>
+                              )}
+                              {s.status === "skipped" && (
+                                <span className="rounded border border-gray-300 bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">
+                                  skipped ({s.reason ?? (c.isBlank ? "blank" : "ungraded")})
+                                </span>
+                              )}
+                              {s.status === "failed" && (
+                                <span
+                                  className="max-w-xs truncate rounded border border-red-300 bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800"
+                                  title={s.reason ?? undefined}
+                                >
+                                  failed{s.reason ? `: ${s.reason}` : ""}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleAssessCrop(c.cropId)}
+                              disabled={s.status === "assessing" || panel.status === "assessing-all"}
+                              className="rounded border border-da-accent/40 bg-da-accent/10 px-2 py-1 text-xs font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
+                            >
+                              {s.status === "assessing"
+                                ? "…"
+                                : s.status === "assessed" || s.status === "failed"
+                                  ? "Re-run"
+                                  : "Assess"}
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => handleAssessCrop(c.cropId)}
-                            disabled={s.status === "assessing" || panel.status === "assessing-all"}
-                            className="rounded border border-da-accent/40 bg-da-accent/10 px-2 py-1 text-xs font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
-                          >
-                            {s.status === "assessing"
-                              ? "…"
-                              : s.status === "assessed" || s.status === "failed"
-                                ? "Re-run"
-                                : "Assess"}
-                          </button>
+                          {hasDetail && (
+                            <details className="mt-1" open={lostSomeMarks}>
+                              <summary className="cursor-pointer text-xs text-da-accent hover:underline">
+                                Why this mark — transcription, comment &amp; notes
+                              </summary>
+                              <div className="mt-2 space-y-2 rounded-lg bg-da-hover/50 p-3 text-xs">
+                                {s.transcription && (
+                                  <div>
+                                    <p className="font-semibold text-da-text">What the student wrote</p>
+                                    <p className="mt-0.5 whitespace-pre-wrap text-da-muted">{s.transcription}</p>
+                                  </div>
+                                )}
+                                {s.marginComment && (
+                                  <div>
+                                    <p className="font-semibold text-da-text">Margin comment (shown to student)</p>
+                                    <p className="mt-0.5 text-da-muted">{s.marginComment}</p>
+                                  </div>
+                                )}
+                                {s.nextStep && (
+                                  <div>
+                                    <p className="font-semibold text-da-text">Next step (shown to student)</p>
+                                    <p className="mt-0.5 text-da-muted">{s.nextStep}</p>
+                                  </div>
+                                )}
+                                {s.misconceptionTags.length > 0 && (
+                                  <div>
+                                    <p className="font-semibold text-da-text">Misconception tags</p>
+                                    <p className="mt-0.5 text-da-muted">{s.misconceptionTags.join(", ")}</p>
+                                  </div>
+                                )}
+                                {s.teacherNote && (
+                                  <div className="rounded border border-amber-300 bg-amber-50 p-2">
+                                    <p className="font-semibold text-amber-800">
+                                      Teacher note (not shown to student) — this is usually WHY marks were lost
+                                    </p>
+                                    <p className="mt-0.5 text-amber-800">{s.teacherNote}</p>
+                                  </div>
+                                )}
+                                {s.confidence != null && (
+                                  <p className="text-da-muted">Model confidence: {Math.round(s.confidence * 100)}%</p>
+                                )}
+                              </div>
+                            </details>
+                          )}
                         </div>
                       );
                     })}
