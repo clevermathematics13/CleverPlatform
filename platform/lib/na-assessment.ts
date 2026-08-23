@@ -110,7 +110,9 @@ nextStep is one concrete action, not a platitude. "Re-read the question and chec
 
 teacherNote is for the teacher only and never shown to the student. Use it for anything that affects trust in this mark: a crop that looks cut off, work that seems to belong to a different question, an answer that's right by a method the rubric didn't anticipate, or your reason for an "unclear" verdict. Leave it as an empty string when there is genuinely nothing to flag.
 
-Return ONLY a JSON object, no markdown fences, no commentary:
+Do your reasoning silently. Do NOT write out your analysis, working, or reasoning as prose before the JSON -- go straight to the JSON object with no preamble. Every part of your reasoning that matters belongs INSIDE the JSON fields themselves (transcription, teacherNote, marginComment, nextStep), not before them. A response that reasons in prose first risks being cut off before the JSON ever appears, which throws away the entire assessment -- so the JSON object must always come first and immediately, not last.
+
+Return ONLY the JSON object below. No markdown fences, no commentary, no analysis before or after it -- your entire response must be this JSON object and nothing else:
 
 {
   "transcription": "what the student actually wrote, as best you can read it",
@@ -164,7 +166,7 @@ export function buildRubricBlock(a: AnchorContext): string {
 }
 
 export function buildAssessmentUserPrompt(): string {
-  return "Mark the handwritten answer in the image above against the rubric. Return the JSON object now.";
+  return "Mark the handwritten answer in the image above against the rubric. Return the JSON object now -- go straight to the JSON, no reasoning or analysis beforehand.";
 }
 
 /** Extracts a JSON object from a model response that may or may not be
