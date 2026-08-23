@@ -66,11 +66,32 @@ cd platform && npx vitest        # watch mode (same as the auto task)
 - `npm test` must exit 0 on `main` at all times.
 - All tests must pass before merging or shipping a feature.
 
-## Git — Push After Every Change
+## Git — Build and Test Locally Before Pushing
 
-**After completing any code change, always run:**
+**Every push to `main` deploys immediately to production, where real students' data lives. Do not push broken code.**
+
+Before committing any change, run:
+```bash
+cd platform
+npm run build
+npm test
+```
+
+Both must succeed before you push. If the build fails locally, fix it locally — do not push to see if Vercel catches it.
+
+Once the build and tests pass:
 ```bash
 git add -A && git commit -m "<descriptive message>" && git push
 ```
-This applies to every task, fix, or feature — no exceptions. Do not leave changes uncommitted.
 
+### Why this matters
+- There is no staging environment. `main` = production.
+- A broken build means real students cannot access their work.
+- Build time is ~90-110 seconds — catching errors locally is faster than waiting for Vercel to fail.
+
+### Dev server
+```bash
+cd platform && npm run dev   # always --webpack, never --turbopack
+```
+
+Turbopack is disabled intentionally — box-drawing characters in comments crash its Rust code-frame highlighter. Use plain ASCII dashes (`----`) in all comment dividers, never Unicode box-drawing characters.
