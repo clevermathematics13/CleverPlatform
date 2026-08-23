@@ -44,9 +44,9 @@ export const maxDuration = 60;
  * with ai_attempted=false so "chose not to mark" is distinguishable from
  * "marking failed":
  *   - is_blank: stage 4 already found no ink in the box.
- *   - genuinely ungraded anchors (no marks, no answer sketch, no open
- *     rubric) -- in A.1 that's the Desmos "noticings from the sandbox"
- *     thinking space, which has no correct answer by design.
+ *   - genuinely ungraded anchors (no marks and no key of any kind) --
+ *     in A.1 that's the Desmos "noticings from the sandbox" thinking
+ *     space, which has no correct answer by design.
  *
  * A response that fails schema validation is NOT discarded and NOT
  * coerced into a plausible-looking mark: it's written with
@@ -73,7 +73,7 @@ export async function POST(
   const { data: crop, error: cropErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, storage_path, is_blank, boundary_expanded, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context)"
+      "id, storage_path, is_blank, boundary_expanded, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks)"
     )
     .eq("id", cropId)
     .maybeSingle();
@@ -94,6 +94,13 @@ export async function POST(
     answerSketch: anchor.answer_sketch,
     openRubric: anchor.open_rubric,
     misconceptionContext: anchor.misconception_context,
+    // The question the student was actually asked, and the richer
+    // authored answer key. Both were absent from this prompt until a
+    // real mismark exposed the gap -- see na-assessment.ts's
+    // AnchorContext docs for the specific case (A.1 Q1(e)).
+    questionText: anchor.question_text,
+    questionAnswer: anchor.question_answer,
+    questionMarks: anchor.question_marks,
     // Real, per-crop signal from stage 4's ink-density check -- see
     // buildRubricBlock and the system prompt for how this is used to
     // push back on a false "cut off" read (found on Ines Palomino's
