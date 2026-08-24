@@ -22,7 +22,6 @@ const nextConfig: NextConfig = {
         "localhost:3000",
         "www.clevermathematics.com",
         "clevermathematics.com",
-        "clever-platform.vercel.app",
       ],
       bodySizeLimit: "20mb",
     },
