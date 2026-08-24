@@ -458,14 +458,19 @@ Return ONLY a JSON object. No preamble, no markdown fences, no commentary.
 
 Return exactly one entry for every part you were given, in the order given.`;
 
-/** Build the user-turn text listing every part and its mark scheme. */
+/**
+ * Build the mark-scheme block: everything about a test's parts and how to mark
+ * them, with no student-specific content. This text is byte-identical for
+ * every student sitting the same test, so callers should attach a
+ * cache_control breakpoint to it — on a batch upload, every student after the
+ * first hits a cache read instead of re-sending the whole mark scheme.
+ */
 export function buildGradingUserPrompt(
   units: GradingUnit[],
-  opts: { studentName?: string; testName?: string } = {}
+  opts: { testName?: string } = {}
 ): string {
   const header = [
     opts.testName ? `Assessment: ${opts.testName}` : null,
-    opts.studentName ? `Student: ${opts.studentName}` : null,
     `Parts to mark: ${units.length}`,
     `Total marks available: ${units.reduce((s, u) => s + u.maxMarks, 0)}`,
   ]
@@ -497,13 +502,25 @@ export function buildGradingUserPrompt(
 
   return `${header}
 
-The attached PDF is a scan of this student's handwritten work for the whole assessment. Locate each part below in the scan and mark it against its mark scheme.
+Each attached PDF is a scan of one student's handwritten work for the whole assessment above. Locate each part below in the scan and mark it against its mark scheme.
 
 The scan may be out of order, may include rough working, and may span multiple pages per question. Search the whole document before concluding a part is missing.
 
-${blocks.join("\n\n")}
+${blocks.join("\n\n")}`;
+}
 
-Return the JSON object now.`;
+/**
+ * Build the small per-student text that follows the cached mark-scheme block
+ * and the attached PDF. Deliberately kept out of buildGradingUserPrompt so
+ * that block stays byte-identical across students and the cache hits.
+ */
+export function buildGradingStudentPrompt(studentName?: string): string {
+  return [
+    studentName ? `Student: ${studentName}` : null,
+    `Mark the attached PDF against the mark scheme above. Return the JSON object now.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 // -----------------------------------------------------------------------------

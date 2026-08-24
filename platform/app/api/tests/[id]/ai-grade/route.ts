@@ -6,6 +6,7 @@ import {
   GRADING_SYSTEM_PROMPT,
   SCAN_BUCKET,
   assembleMarkScheme,
+  buildGradingStudentPrompt,
   buildGradingUserPrompt,
   unitLabel,
   validateGradeResponse,
@@ -269,21 +270,26 @@ export async function POST(
     const message = await anthropic.messages.create({
       model: GRADING_MODEL,
       max_tokens: 16384,
-      system: GRADING_SYSTEM_PROMPT,
+      // Identical for every grading call in the app, so it's always worth caching.
+      system: [{ type: "text", text: GRADING_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",
           content: [
+            {
+              // Identical for every student on this test — cached so a batch
+              // upload only pays full price for the first student's call.
+              type: "text",
+              text: buildGradingUserPrompt(gradeable, { testName: test.name }),
+              cache_control: { type: "ephemeral" },
+            },
             {
               type: "document",
               source: { type: "base64", media_type: "application/pdf", data: scanBase64 },
             },
             {
               type: "text",
-              text: buildGradingUserPrompt(gradeable, {
-                studentName: studentProfile?.display_name ?? undefined,
-                testName: test.name,
-              }),
+              text: buildGradingStudentPrompt(studentProfile?.display_name ?? undefined),
             },
           ],
         },
