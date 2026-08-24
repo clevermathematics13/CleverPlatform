@@ -707,6 +707,37 @@ function normaliseName(name: string): string {
     .trim();
 }
 
+/** Standard Levenshtein edit distance between two strings. */
+function levenshteinDistance(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[b.length];
+}
+
+/**
+ * Two name tokens count as the same word if they're identical, or — for
+ * tokens long enough that a coincidental near-match is unlikely — a
+ * single edit apart. Catches common handwriting-OCR misreads ("Felloh" for
+ * "Fellah", "Seungjin" for "Seungjun") without conflating genuinely
+ * different short names (kept exact-only below 4 characters).
+ */
+function tokensMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4) return false;
+  const dist = levenshteinDistance(a, b);
+  return dist <= 1 || dist / Math.max(a.length, b.length) <= 0.2;
+}
+
 /**
  * Match each segmented label against the class roster by name similarity.
  * A match is only proposed when reasonably confident; otherwise
@@ -721,32 +752,44 @@ export function matchSegmentsToRoster(
   const normalisedRoster = roster.map((r) => ({
     ...r,
     normalised: normaliseName(r.displayName),
-    tokens: new Set(normaliseName(r.displayName).split(" ").filter(Boolean)),
+    tokens: [...new Set(normaliseName(r.displayName).split(" ").filter(Boolean))],
   }));
 
   return students.map((s) => {
     const target = normaliseName(s.label);
-    const targetTokens = new Set(target.split(" ").filter(Boolean));
+    const targetTokens = [...new Set(target.split(" ").filter(Boolean))];
 
-    let best: { entry: (typeof normalisedRoster)[number]; score: number } | null = null;
-
+    const scored: { entry: (typeof normalisedRoster)[number]; score: number }[] = [];
     for (const entry of normalisedRoster) {
       let score = 0;
       if (entry.normalised === target) {
         score = 1;
-      } else {
-        // Token overlap: shared first/last name tokens count strongly.
+      } else if (targetTokens.length > 0 && entry.tokens.length > 0) {
+        // Token overlap, fuzzy per word. Scored against whichever side has
+        // FEWER tokens, so a nickname-only roster entry ("Luciana") isn't
+        // penalised for matching only part of a longer OCR-read cover-page
+        // name ("Luciana Rojas More"), and a sparse cover-page read isn't
+        // penalised against a longer roster name either.
         let shared = 0;
-        for (const t of targetTokens) if (entry.tokens.has(t)) shared++;
-        const denom = Math.max(entry.tokens.size, targetTokens.size, 1);
-        score = shared / denom;
+        for (const t of targetTokens) {
+          if (entry.tokens.some((et) => tokensMatch(t, et))) shared++;
+        }
+        score = shared / Math.min(targetTokens.length, entry.tokens.length);
       }
-      if (score > 0 && (!best || score > best.score)) best = { entry, score };
+      if (score > 0) scored.push({ entry, score });
     }
+    scored.sort((a, b) => b.score - a.score);
 
     // Require a reasonably strong match before proposing it — a weak partial
-    // overlap is worse than no suggestion, since it invites a careless accept.
-    const matched = best && best.score >= 0.5 ? best.entry : null;
+    // overlap is worse than no suggestion, since it invites a careless
+    // accept. Also require it not be a near-tie with the next-best roster
+    // entry (e.g. two students who share a first name) — an ambiguous
+    // match is exactly the case where the teacher must pick manually.
+    const [best, second] = scored;
+    const matched =
+      best && best.score >= 0.5 && (!second || best.score - second.score >= 0.15)
+        ? best.entry
+        : null;
 
     return {
       label: s.label,
