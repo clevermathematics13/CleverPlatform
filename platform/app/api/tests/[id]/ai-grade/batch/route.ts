@@ -7,6 +7,7 @@ import {
   SEGMENTATION_MODEL,
   SEGMENTATION_SYSTEM_PROMPT,
   MAX_BATCH_PAGES,
+  MAX_SCAN_BYTES,
   buildSegmentationUserPrompt,
   validateSegmentationResponse,
   matchSegmentsToRoster,
@@ -111,6 +112,14 @@ export async function POST(
   const buffer = Buffer.from(await file.arrayBuffer());
   if (buffer.subarray(0, 5).toString("utf8") !== "%PDF-") {
     return NextResponse.json({ error: "Uploaded file is not a PDF" }, { status: 400 });
+  }
+  if (buffer.length > MAX_SCAN_BYTES) {
+    return NextResponse.json(
+      {
+        error: `This batch scan is ${(buffer.length / 1024 / 1024).toFixed(1)}MB; Anthropic's API caps a single request at 32MB regardless of page count. Rescan at a lower resolution (or in grayscale/black-and-white) or split the class into two smaller batches.`,
+      },
+      { status: 400 }
+    );
   }
 
   let pageCount: number;

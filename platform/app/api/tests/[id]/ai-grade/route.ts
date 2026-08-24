@@ -4,6 +4,7 @@ import { getApiTeacher } from "@/lib/auth";
 import {
   GRADING_MODEL,
   GRADING_SYSTEM_PROMPT,
+  MAX_SCAN_BYTES,
   SCAN_BUCKET,
   assembleMarkScheme,
   buildGradingStudentPrompt,
@@ -14,9 +15,6 @@ import {
 import type { GradingUnit } from "@/lib/ai-grading";
 
 export const maxDuration = 300;
-
-/** Anthropic caps PDF document blocks at 32MB / 100 pages. */
-const MAX_SCAN_BYTES = 30 * 1024 * 1024;
 
 /**
  * GET /api/tests/[id]/ai-grade?studentId=...

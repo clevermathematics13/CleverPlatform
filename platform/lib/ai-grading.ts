@@ -24,6 +24,14 @@ export const GRADING_MODEL = "claude-opus-4-5";
 /** Storage bucket holding teacher-uploaded scans of completed scripts. */
 export const SCAN_BUCKET = "exam-scans";
 
+/**
+ * Anthropic caps a Messages API request at 32MB total, independent of the
+ * 100-page PDF limit — a batch scan can be well under 100 pages and still
+ * exceed this on byte size alone at real scan resolution. Stay under with
+ * margin for the request's JSON overhead.
+ */
+export const MAX_SCAN_BYTES = 30 * 1024 * 1024;
+
 // -----------------------------------------------------------------------------
 // Types
 // -----------------------------------------------------------------------------
