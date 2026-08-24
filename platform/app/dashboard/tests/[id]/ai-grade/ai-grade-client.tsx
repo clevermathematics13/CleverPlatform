@@ -356,7 +356,13 @@ export function AiGradeClient({ testId }: { testId: string }) {
         </button>
       </div>
 
-      {tab === "batch" && <BatchGradeTab testId={testId} students={students} />}
+      {/* Kept mounted (not conditionally rendered) so switching to Individual
+          and back doesn't wipe BatchGradeTab's own state — its matched rows
+          and grading progress live in that component, not here, and a
+          conditional render would unmount and reset it on every tab switch. */}
+      <div className={tab === "batch" ? undefined : "hidden"}>
+        <BatchGradeTab testId={testId} students={students} />
+      </div>
 
       {tab === "individual" && (
         <>
