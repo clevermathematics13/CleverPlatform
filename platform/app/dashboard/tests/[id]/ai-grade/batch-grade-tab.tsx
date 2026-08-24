@@ -240,15 +240,18 @@ export function BatchGradeTab({
       if (!ok) throw new Error((data.error as string) ?? "Splitting failed.");
 
       const splitRows =
-        (data.results as { studentId: string; label: string; status: string; error?: string }[]) ?? [];
+        (data.results as
+          | { studentId: string; label: string; status: string; storagePath?: string; error?: string }[]
+          | undefined) ?? [];
 
       // Grading each student is its own request against the existing
-      // single-student route (reuseExistingScan picks up the just-split
-      // scan) — kept sequential and client-driven so no single serverless
-      // invocation has to grade a whole class inside one duration budget.
+      // single-student route, passed the exact scan this route just split
+      // and uploaded — kept sequential and client-driven so no single
+      // serverless invocation has to grade a whole class inside one
+      // duration budget.
       const graded: SplitResultRow[] = [];
       for (const sr of splitRows) {
-        if (sr.status !== "split") {
+        if (sr.status !== "split" || !sr.storagePath) {
           graded.push({ studentId: sr.studentId, label: sr.label, runId: null, status: "failed", error: sr.error });
           setSplitResults([...graded]);
           continue;
@@ -258,7 +261,7 @@ export function BatchGradeTab({
           const { ok: gradeOk, data: gradeData } = await fetchJson(`/api/tests/${testId}/ai-grade`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ studentId: sr.studentId, reuseExistingScan: true }),
+            body: JSON.stringify({ studentId: sr.studentId, storagePath: sr.storagePath }),
           });
           if (!gradeOk) {
             graded.push({

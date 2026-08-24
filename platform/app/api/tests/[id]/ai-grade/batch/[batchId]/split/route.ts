@@ -131,6 +131,7 @@ export async function POST(
     studentId: string;
     label: string;
     status: "split" | "failed";
+    storagePath?: string;
     error?: string;
   }[] = [];
 
@@ -150,7 +151,12 @@ export async function POST(
         .upload(splitPath, splitBytes, { contentType: "application/pdf", upsert: true });
       if (uploadErr) throw new Error(`Could not store split scan: ${uploadErr.message}`);
 
-      results.push({ studentId: segment.studentId, label: segment.label, status: "split" });
+      results.push({
+        studentId: segment.studentId,
+        label: segment.label,
+        status: "split",
+        storagePath: splitPath,
+      });
     } catch (e) {
       results.push({
         studentId: segment.studentId,
