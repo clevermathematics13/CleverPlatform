@@ -136,6 +136,36 @@ export function BatchGradeTab({
     return conflicted;
   })();
 
+  // Same student matched to more than one row — typically a continuation
+  // sheet the model treated as its own cover page. Splitting would 409:
+  // every row needs a unique studentId, so surface a one-click fix instead
+  // of making the teacher manually merge page ranges and delete a row.
+  const duplicateStudentGroups: [string, string[]][] = (() => {
+    const byStudent = new Map<string, string[]>();
+    for (const r of rows) {
+      if (!r.studentId) continue;
+      byStudent.set(r.studentId, [...(byStudent.get(r.studentId) ?? []), r.key]);
+    }
+    return [...byStudent.entries()].filter(([, keys]) => keys.length > 1);
+  })();
+  const duplicateRowKeys = new Set(duplicateStudentGroups.flatMap(([, keys]) => keys));
+
+  const mergeDuplicates = (studentId: string) =>
+    setRows((prev) => {
+      const group = prev.filter((r) => r.studentId === studentId);
+      if (group.length < 2) return prev;
+      const mergedPages = [...new Set(group.flatMap((r) => r.pages))].sort((a, b) => a - b);
+      const merged: ReviewRow = {
+        key: group[0].key,
+        label: group[0].label,
+        pages: mergedPages,
+        confidence: group[0].confidence,
+        note: [...new Set(group.map((r) => r.note).filter(Boolean))].join(" / "),
+        studentId,
+      };
+      return [...prev.filter((r) => r.studentId !== studentId), merged];
+    });
+
   const handleUpload = async (file: File) => {
     setUploading(true);
     setError(null);
@@ -405,6 +435,28 @@ export function BatchGradeTab({
               splitting.
             </div>
           )}
+          {duplicateStudentGroups.length > 0 && !splitResults && (
+            <div className="space-y-1 border-b border-red-100 bg-red-50 px-5 py-2 text-xs text-red-700">
+              {duplicateStudentGroups.map(([studentId, keys]) => {
+                const name = students.find((st) => st.profile_id === studentId)?.display_name ?? "This student";
+                return (
+                  <div key={studentId} className="flex flex-wrap items-center gap-2">
+                    <span>
+                      ⚠ {name} is matched to {keys.length} rows — likely a continuation sheet the
+                      model read as its own cover page.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => mergeDuplicates(studentId)}
+                      className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                    >
+                      Merge into one row
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -420,6 +472,7 @@ export function BatchGradeTab({
               <tbody>
                 {rows.map((r) => {
                   const conflicted = rowsWithConflicts.has(r.key);
+                  const duplicateStudent = duplicateRowKeys.has(r.key);
                   const result = splitResults?.find((sr) => sr.studentId === r.studentId);
                   return (
                     <tr key={r.key} className="border-b border-gray-100">
@@ -448,7 +501,9 @@ export function BatchGradeTab({
                           value={r.studentId}
                           onChange={(e) => updateRow(r.key, { studentId: e.target.value })}
                           disabled={!!splitResults}
-                          className="rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-gray-50"
+                          className={`rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-gray-50 ${
+                            duplicateStudent ? "border-red-400" : "border-gray-300"
+                          }`}
                         >
                           <option value="">— pick a student —</option>
                           {students.map((s) => (

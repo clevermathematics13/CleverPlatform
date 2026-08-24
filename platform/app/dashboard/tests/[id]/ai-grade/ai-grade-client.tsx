@@ -140,10 +140,19 @@ export function AiGradeClient({ testId }: { testId: string }) {
       type RosterRow = { profile_id?: string; profiles: { display_name: string; nickname: string | null } };
       const roster: StudentOption[] = ((students1.data.students as RosterRow[]) ?? [])
         .filter((s): s is RosterRow & { profile_id: string } => !!s.profile_id)
-        .map((s) => ({
-          profile_id: s.profile_id,
-          display_name: s.profiles?.nickname || s.profiles?.display_name || "Unknown",
-        }))
+        .map((s) => {
+          const fullName = s.profiles?.display_name;
+          const nickname = s.profiles?.nickname;
+          // Full name first — the batch-upload dropdown needs it to tell
+          // apart students who share a first name or nickname. Nickname
+          // shown alongside when it differs, since that's often what a
+          // teacher recognises a cover-page name against.
+          const label =
+            fullName && nickname && nickname !== fullName
+              ? `${fullName} (${nickname})`
+              : fullName || nickname || "Unknown";
+          return { profile_id: s.profile_id, display_name: label };
+        })
         .sort((a: StudentOption, b: StudentOption) => a.display_name.localeCompare(b.display_name));
       setStudents(roster);
 
