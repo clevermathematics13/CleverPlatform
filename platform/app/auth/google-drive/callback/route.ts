@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   exchangeDriveCodeForToken,
-  saveDriveTokenToCookie,
+  saveDriveToken,
 } from "@/lib/google-drive";
 
 function getBaseUrl(request: NextRequest): string {
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   try {
     const redirectUri = `${base}/auth/google-drive/callback`;
     const token = await exchangeDriveCodeForToken(code, redirectUri);
-    await saveDriveTokenToCookie(token);
+    await saveDriveToken(token);
     return NextResponse.redirect(
       `${base}/dashboard/questions?drive_connected=true`
     );

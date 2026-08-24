@@ -34,11 +34,21 @@ grep -n "KEY_STRING" /home/claude/CleverPlatform/path/to/file.tsx
 
 ---
 
-### Step 3 -- Push to GitHub via GitHub MCP
+### Step 3 -- Push to GitHub
 
-**Do not attempt `git push` -- it will fail (no credentials in the container).**
+`git push` works, provided the Claude GitHub App is installed for the repository
+(https://github.com/apps/claude/installations/select_target). Use it:
 
-Use `GitHub MCP:push_files` directly.
+```bash
+git push -u origin <branch>
+```
+
+If the App is not installed, the push 403s with "Claude doesn't have GitHub access
+to clevermathematics13/CleverPlatform". Note that `git fetch` and `git clone` keep
+working in that state -- the failure is push-only, so "no credentials" is the wrong
+diagnosis. `GitHub MCP:push_files` is the fallback, but it can only add and update
+files, not delete them, and it mints its own commits, so local SHAs then diverge
+from the remote.
 
 ---
 
@@ -72,9 +82,12 @@ The secret is stored in Vercel environment variables -- never paste it in code o
 
 ---
 
-## Why `git push` Fails
+## If `git push` Fails
 
-The bash container has no GitHub credentials. The only authenticated path to GitHub is through the **GitHub MCP connector**.
+A 403 means the Claude GitHub App is not installed for this repository, not that the
+container lacks credentials. Install it at
+https://github.com/apps/claude/installations/select_target and retry. The App grants
+read+write to code *and* workflows, so files under `.github/workflows/` push fine.
 
 ## Multi-file Push Pattern
 

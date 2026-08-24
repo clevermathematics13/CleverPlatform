@@ -17,9 +17,9 @@ import {
 // own browser session was live — no background job, no other device, no
 // reconnect-once-and-forget. It now lives in public.google_oauth_tokens
 // (provider = "google-drive"), the same DB-backed store Classroom already
-// used, with the same auto-refresh-and-persist behaviour. Every function
-// below keeps its original name and return shape so existing callers don't
-// need to change.
+// used, with the same auto-refresh-and-persist behaviour. Return shapes are
+// unchanged, so call sites only had to follow the rename from the old
+// *TokenToCookie / *TokenFromCookie names, which had outlived the cookie.
 
 const SCOPES = [
   "https://www.googleapis.com/auth/drive.readonly",
@@ -61,10 +61,10 @@ export async function exchangeDriveCodeForToken(
 
 /**
  * Persist a freshly issued or refreshed Drive token. Replaces the old
- * cookie-based saveDriveTokenToCookie — same name kept for compatibility
+ * cookie-based saveDriveToken — same name kept for compatibility
  * with the OAuth callback route, but now writes through to the DB.
  */
-export async function saveDriveTokenToCookie(tokens: Credentials): Promise<void> {
+export async function saveDriveToken(tokens: Credentials): Promise<void> {
   await saveProviderToken(PROVIDER, tokens);
 }
 
@@ -72,11 +72,11 @@ export async function saveDriveTokenToCookie(tokens: Credentials): Promise<void>
  * Returns the stored Drive credential as a plain object shaped exactly like
  * what OAuth2Client#setCredentials expects, refreshing first if the access
  * token is expired or close to it. Every existing call site does
- * `getAuthedClient(await getDriveTokenFromCookie())` — that pattern keeps
+ * `getAuthedClient(await getDriveToken())` — that pattern keeps
  * working unchanged; the only difference is the token now comes from the DB
  * and may already have been silently refreshed before this returns.
  */
-export async function getDriveTokenFromCookie(): Promise<Credentials | null> {
+export async function getDriveToken(): Promise<Credentials | null> {
   const stored = await loadProviderToken(PROVIDER);
   if (!stored || (!stored.access_token && !stored.refresh_token)) return null;
 
@@ -123,7 +123,7 @@ export async function clearDriveTokenCookie(): Promise<void> {
 }
 
 export async function getDriveAccessToken(): Promise<string | null> {
-  const token = await getDriveTokenFromCookie();
+  const token = await getDriveToken();
   if (!token) return null;
 
   const oauth2Client = getOAuth2Client();

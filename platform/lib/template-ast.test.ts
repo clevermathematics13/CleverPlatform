@@ -3,7 +3,7 @@
  * -----------------------------------------------------------------------------
  * Smoke tests for the TemplateAst Zod validation layer.
  *
- * Run with:  cd platform && npx jest lib/template-ast.test.ts
+ * Run with:  cd platform && npx vitest run lib/template-ast.test.ts
  *
  * What these tests prove:
  *   1. A valid template AST passes validation and returns the typed object.
@@ -14,6 +14,7 @@
  * -----------------------------------------------------------------------------
  */
 
+import { describe, it, expect } from "vitest";
 import { validateTemplateAst } from "./template-ast.schema";
 import { DEFAULT_NUANCED_ANALYSIS_TEMPLATE } from "./template-ast-defaults";
 import { computeEstimatedMinutes } from "./typst-render.service";

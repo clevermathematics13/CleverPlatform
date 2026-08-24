@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { exchangeCodeForToken, saveToken } from "@/lib/google-classroom";
 import {
   exchangeDriveCodeForToken,
-  saveDriveTokenToCookie,
+  saveDriveToken,
 } from "@/lib/google-drive";
 
 // Google OAuth callback, shared by both providers (branches on `state`).
@@ -10,8 +10,7 @@ import {
 // public.google_oauth_tokens (provider = "google-classroom" / "google-drive"
 // respectively) so each connection survives cookie clears, device changes,
 // and works from background jobs — not just the connecting browser session.
-// saveDriveTokenToCookie keeps its historical name (see lib/google-drive.ts)
-// but now writes through to the same DB-backed store Classroom already used.
+// saveDriveToken writes through to that same DB-backed store.
 
 function getBaseUrl(request: NextRequest): string {
   const forwardedHost = request.headers.get("x-forwarded-host");
@@ -50,7 +49,7 @@ export async function GET(request: NextRequest) {
       // Persisted server-side, same as Classroom below.
       const redirectUri = `${base}/auth/google-classroom/callback`;
       const token = await exchangeDriveCodeForToken(code, redirectUri);
-      await saveDriveTokenToCookie(token);
+      await saveDriveToken(token);
       return NextResponse.redirect(`${base}/dashboard/questions?drive_connected=true`);
     }
 

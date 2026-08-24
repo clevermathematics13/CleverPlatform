@@ -10,7 +10,7 @@
 
 import { NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
-import { getDriveTokenFromCookie } from "@/lib/google-drive";
+import { getDriveToken } from "@/lib/google-drive";
 
 export const runtime = "nodejs";
 
@@ -18,6 +18,6 @@ export async function GET() {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
 
-  const token = await getDriveTokenFromCookie();
+  const token = await getDriveToken();
   return NextResponse.json({ connected: token !== null });
 }

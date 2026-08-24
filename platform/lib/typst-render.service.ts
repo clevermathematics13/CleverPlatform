@@ -487,10 +487,46 @@ function getActivityTypstSource(): string {
 // than typesetting the math, which is unacceptable on a mathematics platform.
 // An odd number of $ (malformed/unbalanced input) falls back to literal text
 // instead of a hard compile failure.
+// Multi-letter runs inside $...$ are variable lookups in Typst math, so a
+// prose word makes eval() raise "unknown variable: <word>" and abort the
+// entire compile. Not hypothetical: "Pencils cost $2.50 per package and
+// pens cost $3 per package" pairs two currency dollars into a fake math
+// segment and dies on "per". Typst has no try/catch, so the check has to
+// come before eval -- a segment counts as math only when every multi-letter
+// run in it is an identifier Typst math actually defines. Deliberately
+// conservative: words that are both math identifiers and ordinary English
+// ("and", "in", "not", "times", "text", "dot", "min", "max") are left out,
+// because in this content they are overwhelmingly prose.
+#let math-idents = (
+  "sin","cos","tan","sec","csc","cot","sinh","cosh","tanh",
+  "arcsin","arccos","arctan","log","ln","exp","sqrt","root","abs",
+  "floor","ceil","sum","product","integral","lim","dif","partial",
+  "infinity","approx","neq","leq","geq","cdot","pm","mp",
+  "frac","binom","vec","mat","cases","overline","underline","hat","tilde",
+  "quad","gcd","lcm","alpha","beta","gamma","delta","epsilon","zeta","eta",
+  "theta","iota","kappa","lambda","mu","nu","xi","rho","sigma","tau",
+  "upsilon","phi","chi","psi","omega","pi",
+)
+
+#let looks-like-math(seg) = {
+  for m in seg.matches(regex("[A-Za-z]{2,}")) {
+    if not math-idents.contains(lower(m.text)) { return false }
+  }
+  true
+}
+
 #let rich(s) = {
   let parts = s.split("$")
   if calc.rem(parts.len(), 2) == 0 {
     return [#s]
+  }
+  // A candidate segment that is really prose means the $-pairing was never
+  // math; render the string exactly as written rather than evaluating a
+  // fragment that would take the whole document down with it.
+  for (i, part) in parts.enumerate() {
+    if calc.rem(i, 2) == 1 and not looks-like-math(part) {
+      return [#s]
+    }
   }
   let out = []
   for (i, part) in parts.enumerate() {
