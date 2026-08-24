@@ -215,9 +215,13 @@ export async function POST(
     roster = (studentRows ?? [])
       .map((s) => {
         const profile = s.profiles as unknown as { display_name: string; nickname: string | null } | null;
+        // Full name, not nickname: matchSegmentsToRoster needs the surname
+        // to resolve cover-page reads where the OCR'd first name is badly
+        // garbled but the last name is still recognisable (or vice versa).
+        // A nickname-only roster entry silently drops that signal.
         return {
           profileId: s.profile_id as string,
-          displayName: profile?.nickname || profile?.display_name || "",
+          displayName: profile?.display_name || profile?.nickname || "",
         };
       })
       .filter((r): r is RosterEntry => !!r.displayName);
