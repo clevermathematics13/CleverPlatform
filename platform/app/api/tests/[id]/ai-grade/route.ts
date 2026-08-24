@@ -6,6 +6,7 @@ import {
   GRADING_SYSTEM_PROMPT,
   SCAN_BUCKET,
   assembleMarkScheme,
+  buildGradingStudentPrompt,
   buildGradingUserPrompt,
   unitLabel,
   validateGradeResponse,
@@ -63,10 +64,16 @@ export async function GET(
  * POST /api/tests/[id]/ai-grade
  * Body: {
  *   studentId: string,
- *   fileBase64?: string,          // a fresh PDF scan to upload and grade
- *   fileName?: string,
+ *   storagePath?: string,         // a fresh PDF scan the client already
+ *                                  // uploaded to Storage — see below
  *   reuseExistingScan?: boolean   // re-grade the scan already stored
  * }
+ *
+ * The client uploads the raw PDF directly to Supabase Storage (bucket
+ * "exam-scans", path "{testId}/{studentId}/...") BEFORE calling this route —
+ * a scanned exam script easily exceeds Vercel's serverless request-body
+ * limit as JSON, the same reason the batch-upload route takes a storage path
+ * rather than file bytes.
  *
  * Grades one student's scanned script against the mark scheme held in the PPQ
  * bank and stores the outcome in ai_grade_results for teacher review.
@@ -84,8 +91,7 @@ export async function POST(
 
   let body: {
     studentId?: unknown;
-    fileBase64?: unknown;
-    fileName?: unknown;
+    storagePath?: unknown;
     reuseExistingScan?: unknown;
   };
   try {
@@ -152,10 +158,28 @@ export async function POST(
   let scanBase64: string;
   let scanStoragePath: string;
 
-  if (typeof body.fileBase64 === "string" && body.fileBase64.length > 0) {
-    const raw = body.fileBase64.replace(/^data:application\/pdf;base64,/, "");
-    const buffer = Buffer.from(raw, "base64");
+  if (typeof body.storagePath === "string" && body.storagePath.length > 0) {
+    scanStoragePath = body.storagePath.trim();
 
+    // Guards against pointing this route at an unrelated object in the bucket.
+    if (!scanStoragePath.startsWith(`${testId}/${studentId}/`)) {
+      return NextResponse.json(
+        { error: "storagePath must be under this test and student's own scan folder" },
+        { status: 400 }
+      );
+    }
+
+    const { data: file, error: dlErr } = await supabase.storage
+      .from(SCAN_BUCKET)
+      .download(scanStoragePath);
+    if (dlErr || !file) {
+      return NextResponse.json(
+        { error: `Could not read the uploaded scan: ${dlErr?.message ?? "not found"}` },
+        { status: 404 }
+      );
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
     if (buffer.length === 0) {
       return NextResponse.json({ error: "Uploaded scan was empty" }, { status: 400 });
     }
@@ -171,26 +195,6 @@ export async function POST(
       return NextResponse.json(
         { error: "Uploaded file is not a PDF. Combine photos into a single PDF before uploading." },
         { status: 400 }
-      );
-    }
-
-    const safeName =
-      typeof body.fileName === "string" && body.fileName.trim()
-        ? body.fileName.trim().replace(/[^\w.\-]/g, "_")
-        : "scan.pdf";
-    scanStoragePath = `${testId}/${studentId}/${Date.now()}-${safeName}`;
-
-    const { error: uploadErr } = await supabase.storage
-      .from(SCAN_BUCKET)
-      .upload(scanStoragePath, buffer, { contentType: "application/pdf", upsert: true });
-
-    if (uploadErr) {
-      const hint = uploadErr.message?.toLowerCase().includes("bucket not found")
-        ? ` Create the '${SCAN_BUCKET}' bucket (migration 057_ai_grading.sql).`
-        : "";
-      return NextResponse.json(
-        { error: `Scan upload failed: ${uploadErr.message}.${hint}` },
-        { status: 500 }
       );
     }
 
@@ -227,7 +231,7 @@ export async function POST(
     scanBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
   } else {
     return NextResponse.json(
-      { error: "Provide fileBase64 (a PDF scan) or set reuseExistingScan to true" },
+      { error: "Provide storagePath (an uploaded PDF scan) or set reuseExistingScan to true" },
       { status: 400 }
     );
   }
@@ -269,21 +273,26 @@ export async function POST(
     const message = await anthropic.messages.create({
       model: GRADING_MODEL,
       max_tokens: 16384,
-      system: GRADING_SYSTEM_PROMPT,
+      // Identical for every grading call in the app, so it's always worth caching.
+      system: [{ type: "text", text: GRADING_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",
           content: [
+            {
+              // Identical for every student on this test — cached so a batch
+              // upload only pays full price for the first student's call.
+              type: "text",
+              text: buildGradingUserPrompt(gradeable, { testName: test.name }),
+              cache_control: { type: "ephemeral" },
+            },
             {
               type: "document",
               source: { type: "base64", media_type: "application/pdf", data: scanBase64 },
             },
             {
               type: "text",
-              text: buildGradingUserPrompt(gradeable, {
-                studentName: studentProfile?.display_name ?? undefined,
-                testName: test.name,
-              }),
+              text: buildGradingStudentPrompt(studentProfile?.display_name ?? undefined),
             },
           ],
         },

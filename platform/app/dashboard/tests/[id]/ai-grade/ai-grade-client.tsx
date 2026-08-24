@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import { BatchGradeTab } from "./batch-grade-tab";
+import { fetchJson } from "./fetch-json";
 
 type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "none";
 type Confidence = "high" | "medium" | "low";
@@ -94,20 +95,6 @@ function itemLabel(item: TestItem | undefined): string {
     : `Q${item.question_number}`;
 }
 
-/** Read a File into a base64 string (no data: prefix), as the route expects. */
-function fileToBase64(file: File): Promise<{ base64: string; name: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.includes(",") ? result.split(",")[1] : result;
-      resolve({ base64, name: file.name });
-    };
-    reader.onerror = () => reject(new Error("Could not read the selected file."));
-    reader.readAsDataURL(file);
-  });
-}
-
 export function AiGradeClient({ testId }: { testId: string }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
 
@@ -136,41 +123,44 @@ export function AiGradeClient({ testId }: { testId: string }) {
   // -- Initial load: test detail (for items + course), roster, latest runs --
   const loadOverview = useCallback(async () => {
     setError(null);
-    const testRes = await fetch(`/api/tests/${testId}`);
-    const testData = await testRes.json();
-    if (!testRes.ok) {
-      setError(testData.error ?? "Could not load this assessment.");
-      return;
-    }
-    setTest(testData);
+    try {
+      const test1 = await fetchJson(`/api/tests/${testId}`);
+      if (!test1.ok) {
+        setError((test1.data.error as string) ?? "Could not load this assessment.");
+        return;
+      }
+      const testData = test1.data as unknown as TestDetail;
+      setTest(testData);
 
-    const studentsRes = await fetch(`/api/students?courseId=${testData.course_id}`);
-    const studentsData = await studentsRes.json();
-    if (!studentsRes.ok) {
-      setError(studentsData.error ?? "Could not load the class roster.");
-      return;
-    }
-    const roster: StudentOption[] = (studentsData.students ?? [])
-      .filter((s: { profile_id?: string }) => !!s.profile_id)
-      .map((s: { profile_id: string; profiles: { display_name: string; nickname: string | null } }) => ({
-        profile_id: s.profile_id,
-        display_name: s.profiles?.nickname || s.profiles?.display_name || "Unknown",
-      }))
-      .sort((a: StudentOption, b: StudentOption) => a.display_name.localeCompare(b.display_name));
-    setStudents(roster);
+      const students1 = await fetchJson(`/api/students?courseId=${testData.course_id}`);
+      if (!students1.ok) {
+        setError((students1.data.error as string) ?? "Could not load the class roster.");
+        return;
+      }
+      type RosterRow = { profile_id?: string; profiles: { display_name: string; nickname: string | null } };
+      const roster: StudentOption[] = ((students1.data.students as RosterRow[]) ?? [])
+        .filter((s): s is RosterRow & { profile_id: string } => !!s.profile_id)
+        .map((s) => ({
+          profile_id: s.profile_id,
+          display_name: s.profiles?.nickname || s.profiles?.display_name || "Unknown",
+        }))
+        .sort((a: StudentOption, b: StudentOption) => a.display_name.localeCompare(b.display_name));
+      setStudents(roster);
 
-    const runsRes = await fetch(`/api/tests/${testId}/ai-grade`);
-    const runsData = await runsRes.json();
-    if (!runsRes.ok) {
-      setError(runsData.error ?? "Could not load grading runs.");
-      return;
+      const runs1 = await fetchJson(`/api/tests/${testId}/ai-grade`);
+      if (!runs1.ok) {
+        setError((runs1.data.error as string) ?? "Could not load grading runs.");
+        return;
+      }
+      const latest: Record<string, RunRow> = {};
+      for (const r of ((runs1.data.runs as RunRow[]) ?? [])) {
+        // runs come back newest-first from the API; keep only the first (latest) per student
+        if (!latest[r.student_id]) latest[r.student_id] = r;
+      }
+      setRunsByStudent(latest);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load this assessment.");
     }
-    const latest: Record<string, RunRow> = {};
-    for (const r of (runsData.runs ?? []) as RunRow[]) {
-      // runs come back newest-first from the API; keep only the first (latest) per student
-      if (!latest[r.student_id]) latest[r.student_id] = r;
-    }
-    setRunsByStudent(latest);
   }, [testId]);
 
   useEffect(() => {
@@ -180,26 +170,29 @@ export function AiGradeClient({ testId }: { testId: string }) {
   // -- Load one student's results for review --
   const loadResultsFor = useCallback(
     async (studentId: string) => {
-      const res = await fetch(`/api/tests/${testId}/ai-grade?studentId=${studentId}`);
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Could not load results for this student.");
-        return;
-      }
-      const runs = (data.runs ?? []) as RunRow[];
-      const latestRun = runs[0] ?? null;
-      const rows = (data.results ?? []) as ResultRow[];
-      const rowsForLatest = latestRun
-        ? rows.filter((r) => r.run_id === latestRun.id)
-        : rows;
+      try {
+        const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade?studentId=${studentId}`);
+        if (!ok) {
+          setError((data.error as string) ?? "Could not load results for this student.");
+          return;
+        }
+        const runs = (data.runs ?? []) as RunRow[];
+        const latestRun = runs[0] ?? null;
+        const rows = (data.results ?? []) as ResultRow[];
+        const rowsForLatest = latestRun
+          ? rows.filter((r) => r.run_id === latestRun.id)
+          : rows;
 
-      setFocusRunId(latestRun?.id ?? null);
-      setResults(rowsForLatest);
-      setDrafts(Object.fromEntries(rowsForLatest.map((r) => [r.id, r.suggested_marks])));
-      setSelected(
-        new Set(rowsForLatest.filter((r) => !r.accepted && r.work_found).map((r) => r.id))
-      );
-      if (latestRun) setRunsByStudent((prev) => ({ ...prev, [studentId]: latestRun }));
+        setFocusRunId(latestRun?.id ?? null);
+        setResults(rowsForLatest);
+        setDrafts(Object.fromEntries(rowsForLatest.map((r) => [r.id, r.suggested_marks])));
+        setSelected(
+          new Set(rowsForLatest.filter((r) => !r.accepted && r.work_found).map((r) => r.id))
+        );
+        if (latestRun) setRunsByStudent((prev) => ({ ...prev, [studentId]: latestRun }));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load results for this student.");
+      }
     },
     [testId]
   );
@@ -215,30 +208,35 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const runGrading = async (studentId: string, file: File | null) => {
     setBusyStudent(studentId);
     setError(null);
-    setStatusLine(
-      file
-        ? "Uploading scan and marking it against the mark scheme…"
-        : "Marking the stored scan against the mark scheme…"
-    );
+    setStatusLine(file ? "Uploading scan…" : "Marking the stored scan against the mark scheme…");
     try {
       const body: Record<string, unknown> = { studentId };
       if (file) {
-        const { base64, name } = await fileToBase64(file);
-        body.fileBase64 = base64;
-        body.fileName = name;
+        // Scanned PDFs can exceed Vercel's serverless request-body limit, so
+        // upload straight to Storage from the browser (same as the batch
+        // upload tab) and send only the path through JSON, never the file.
+        const supaModule = await import("@/lib/supabase/client");
+        const supabase = supaModule.createClient();
+        const safeName = file.name.replace(/[^\w.\-]/g, "_");
+        const storagePath = `${testId}/${studentId}/${Date.now()}-${safeName}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("exam-scans")
+          .upload(storagePath, file, { contentType: "application/pdf", upsert: true });
+        if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
+        body.storagePath = storagePath;
+        setStatusLine("Marking it against the mark scheme…");
       } else {
         body.reuseExistingScan = true;
       }
 
-      const res = await fetch(`/api/tests/${testId}/ai-grade`, {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) {
+      if (!ok) {
         setStatusLine(null);
-        setError(data.error ?? "Marking failed.");
+        setError((data.error as string) ?? "Marking failed.");
         return;
       }
 
@@ -282,18 +280,19 @@ export function AiGradeClient({ testId }: { testId: string }) {
         resultId,
         marks: drafts[resultId],
       }));
-      const res = await fetch(`/api/tests/${testId}/ai-grade/accept`, {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ runId: focusRunId, selections }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Could not accept these marks.");
+      if (!ok) {
+        setError((data.error as string) ?? "Could not accept these marks.");
         return;
       }
       setStatusLine(`${data.appliedCount} mark(s) written to Clev's Marks.`);
       if (focusStudent) await loadResultsFor(focusStudent);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not accept these marks.");
     } finally {
       setAccepting(false);
     }
