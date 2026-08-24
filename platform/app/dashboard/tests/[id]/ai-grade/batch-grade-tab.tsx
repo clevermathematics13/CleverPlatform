@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import { fetchJson } from "./fetch-json";
 
 type Confidence = "high" | "medium" | "low";
 type BatchStatus = "uploaded" | "segmenting" | "segmented" | "failed" | "split";
@@ -159,23 +160,22 @@ export function BatchGradeTab({
       if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
 
       setUploadProgress("Reading cover pages and matching names — this can take a minute for a full class…");
-      const res = await fetch(`/api/tests/${testId}/ai-grade/batch`, {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ storagePath, fileName: file.name }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Segmentation failed.");
+      if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
 
-      const segments: ProposedSegment[] = data.segments ?? [];
+      const segments: ProposedSegment[] = (data.segments as ProposedSegment[]) ?? [];
       setBatch({
-        id: data.batchId,
+        id: data.batchId as string,
         status: "segmented",
         file_name: file.name,
-        page_count: data.pageCount,
+        page_count: data.pageCount as number,
         proposed_segments: segments,
         confirmed_segments: null,
-        unassigned_pages: data.unassignedPages ?? [],
+        unassigned_pages: (data.unassignedPages as number[]) ?? [],
         error: null,
         created_at: new Date().toISOString(),
       });
@@ -230,18 +230,17 @@ export function BatchGradeTab({
     setError(null);
     setStatusLine("Splitting the batch into per-student scans…");
     try {
-      const res = await fetch(`/api/tests/${testId}/ai-grade/batch/${batch.id}/split`, {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch/${batch.id}/split`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           segments: rows.map((r) => ({ label: r.label, pages: r.pages, studentId: r.studentId })),
         }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Splitting failed.");
+      if (!ok) throw new Error((data.error as string) ?? "Splitting failed.");
 
-      const splitRows: { studentId: string; label: string; status: string; error?: string }[] =
-        data.results ?? [];
+      const splitRows =
+        (data.results as { studentId: string; label: string; status: string; error?: string }[]) ?? [];
 
       // Grading each student is its own request against the existing
       // single-student route (reuseExistingScan picks up the just-split
@@ -256,23 +255,28 @@ export function BatchGradeTab({
         }
         setStatusLine(`Marking ${sr.label}'s script (${graded.length + 1} of ${splitRows.length})…`);
         try {
-          const gradeRes = await fetch(`/api/tests/${testId}/ai-grade`, {
+          const { ok: gradeOk, data: gradeData } = await fetchJson(`/api/tests/${testId}/ai-grade`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ studentId: sr.studentId, reuseExistingScan: true }),
           });
-          const gradeData = await gradeRes.json();
-          if (!gradeRes.ok) {
-            graded.push({ studentId: sr.studentId, label: sr.label, runId: gradeData.runId ?? null, status: "failed", error: gradeData.error });
+          if (!gradeOk) {
+            graded.push({
+              studentId: sr.studentId,
+              label: sr.label,
+              runId: (gradeData.runId as string) ?? null,
+              status: "failed",
+              error: gradeData.error as string,
+            });
           } else {
             graded.push({
               studentId: sr.studentId,
               label: sr.label,
-              runId: gradeData.runId ?? null,
+              runId: (gradeData.runId as string) ?? null,
               status: "complete",
-              suggestedTotal: gradeData.suggestedTotal,
-              maxTotal: gradeData.maxTotal,
-              partsGraded: gradeData.partsGraded,
+              suggestedTotal: gradeData.suggestedTotal as number,
+              maxTotal: gradeData.maxTotal as number,
+              partsGraded: gradeData.partsGraded as number,
             });
           }
         } catch (e) {
