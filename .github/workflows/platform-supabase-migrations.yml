@@ -38,7 +38,7 @@ jobs:
             echo "Skipping migration push because CLEVERPLATFORM_SUPABASE_DB_URL is not configured."
             exit 0
           fi
-          supabase db push --db-url "$SUPABASE_DB_URL" --include-all
+          supabase db push --db-url "$SUPABASE_DB_URL"
       - name: Verify production schema after migrations
         working-directory: platform
         env:
