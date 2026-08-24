@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
-import { getDriveTokenFromCookie } from "@/lib/google-drive";
+import { getDriveToken } from "@/lib/google-drive";
 import { isBlockedQuestionImage } from "@/lib/question-image-filter";
 import { google } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
@@ -130,7 +130,7 @@ export async function POST(request: NextRequest) {
   };
 
   // Google Drive token
-  const token = (await getDriveTokenFromCookie()) as Record<string, unknown> | null;
+  const token = (await getDriveToken()) as Record<string, unknown> | null;
   if (!token) {
     return NextResponse.json(
       { error: "Google Drive not connected. Please connect first.", diagnostics: finish() },

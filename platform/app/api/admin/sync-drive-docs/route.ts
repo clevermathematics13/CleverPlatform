@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
-import { getDriveTokenFromCookie } from "@/lib/google-drive";
+import { getDriveToken } from "@/lib/google-drive";
 import { google, drive_v3 } from "googleapis";
 import { OAuth2Client } from "google-auth-library";
 import {
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response;
     const { supabase, user, profile } = auth;
 
-    const token = (await getDriveTokenFromCookie()) as Record<string, unknown> | null;
+    const token = (await getDriveToken()) as Record<string, unknown> | null;
     if (!token) {
       return NextResponse.json({ error: "Google Drive not connected" }, { status: 401 });
     }

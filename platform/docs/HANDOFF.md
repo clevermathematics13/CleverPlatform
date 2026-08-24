@@ -250,9 +250,7 @@ committed so the tree stays clean.
 
 **Medium**
 
-4. Drive OAuth migration to a DB-backed store, matching the Classroom pattern.
-   Classroom uses `google_oauth_tokens`; Drive is still cookie-based.
-5. Grade 9 Standard NA packets - none seeded.
+4. Grade 9 Standard NA packets - none seeded.
 
 **Low**
 
@@ -267,6 +265,14 @@ committed so the tree stays clean.
 - Post-deploy verification workflow at the broken nested path - deleted; it had
   never run and could not have worked.
 - Stale `clever-platform.vercel.app` origin - removed.
+- Drive OAuth migration to a DB-backed store - **was already done** before this
+  session, in commit `829669a`, and the previous handoff was simply out of date.
+  Both `google-classroom` and `google-drive` rows exist in `google_oauth_tokens`
+  with refresh tokens, and no cookie-based token handling remains anywhere. The
+  functions had kept their historical names (`saveDriveTokenToCookie`,
+  `getDriveTokenFromCookie`) long after the cookie was gone, which is an active
+  trap when auditing where credentials live - they have been renamed to
+  `saveDriveToken` / `getDriveToken` across all 14 call sites.
 - `debug_log` audit - **keep it.** 0 rows, 16 kB, RLS on with correct policies. It
   has one live writer, `app/api/override/save/route.ts`, reachable from
   `components/reflection/OverrideModal.tsx`. Schema and RLS both check out, so the

@@ -11,7 +11,7 @@
 
 import { NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
-import { getDriveTokenFromCookie } from "@/lib/google-drive";
+import { getDriveToken } from "@/lib/google-drive";
 
 export const runtime = "nodejs";
 
@@ -19,7 +19,7 @@ export async function GET() {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
 
-  const credentials = await getDriveTokenFromCookie();
+  const credentials = await getDriveToken();
   if (!credentials?.access_token) {
     return NextResponse.json({ error: "Google Drive not connected" }, { status: 401 });
   }
@@ -33,7 +33,7 @@ export async function GET() {
   }
 
   // The Picker SDK's setOAuthToken() (see activity-generator.tsx) expects a
-  // bare access-token string. getDriveTokenFromCookie() now returns the full
+  // bare access-token string. getDriveToken() now returns the full
   // Credentials object (see lib/google-drive.ts) rather than the raw cookie
   // JSON this route used to forward directly — extract just the token.
   return NextResponse.json({ token: credentials.access_token, apiKey });
