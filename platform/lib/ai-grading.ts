@@ -725,17 +725,21 @@ function levenshteinDistance(a: string, b: string): number {
 }
 
 /**
- * Two name tokens count as the same word if they're identical, or — for
- * tokens long enough that a coincidental near-match is unlikely — a
- * single edit apart. Catches common handwriting-OCR misreads ("Felloh" for
- * "Fellah", "Seungjin" for "Seungjun") without conflating genuinely
- * different short names (kept exact-only below 4 characters).
+ * Two name tokens count as the same word if they're identical, or close
+ * enough that a coincidental match is unlikely — a single edit for short
+ * tokens, proportionally more for longer ones (two edits in a 6-letter
+ * word is still clearly the same name; the same two edits in a 4-letter
+ * word usually isn't). Catches common handwriting-OCR misreads ("Felloh"
+ * or "Kelloh" for "Fellah", "Seungjin" for "Seungjun") without conflating
+ * genuinely different short names (kept exact-only below 4 characters).
  */
 function tokensMatch(a: string, b: string): boolean {
   if (a === b) return true;
   if (a.length < 4 || b.length < 4) return false;
   const dist = levenshteinDistance(a, b);
-  return dist <= 1 || dist / Math.max(a.length, b.length) <= 0.2;
+  const maxLen = Math.max(a.length, b.length);
+  const allowed = maxLen < 6 ? 1 : Math.floor(maxLen * 0.34);
+  return dist <= allowed;
 }
 
 /**
