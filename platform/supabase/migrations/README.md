@@ -2,7 +2,7 @@
 
 Every `.sql` file in this directory corresponds one-to-one with a row in the live
 database's `supabase_migrations.schema_migrations` ledger, matched on the 14-digit
-version prefix in the filename. As of 24 Aug 2026 that is 82 files / 82 rows, and
+version prefix in the filename. As of 24 Aug 2026 that is 83 files / 83 rows, and
 each file is byte-identical to the SQL recorded in the ledger.
 
 Keep it that way. `supabase db push` decides what to apply by comparing the version
