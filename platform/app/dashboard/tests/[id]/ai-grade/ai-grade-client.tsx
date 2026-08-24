@@ -94,20 +94,6 @@ function itemLabel(item: TestItem | undefined): string {
     : `Q${item.question_number}`;
 }
 
-/** Read a File into a base64 string (no data: prefix), as the route expects. */
-function fileToBase64(file: File): Promise<{ base64: string; name: string }> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.includes(",") ? result.split(",")[1] : result;
-      resolve({ base64, name: file.name });
-    };
-    reader.onerror = () => reject(new Error("Could not read the selected file."));
-    reader.readAsDataURL(file);
-  });
-}
-
 export function AiGradeClient({ testId }: { testId: string }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
 
@@ -215,17 +201,23 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const runGrading = async (studentId: string, file: File | null) => {
     setBusyStudent(studentId);
     setError(null);
-    setStatusLine(
-      file
-        ? "Uploading scan and marking it against the mark scheme…"
-        : "Marking the stored scan against the mark scheme…"
-    );
+    setStatusLine(file ? "Uploading scan…" : "Marking the stored scan against the mark scheme…");
     try {
       const body: Record<string, unknown> = { studentId };
       if (file) {
-        const { base64, name } = await fileToBase64(file);
-        body.fileBase64 = base64;
-        body.fileName = name;
+        // Scanned PDFs can exceed Vercel's serverless request-body limit, so
+        // upload straight to Storage from the browser (same as the batch
+        // upload tab) and send only the path through JSON, never the file.
+        const supaModule = await import("@/lib/supabase/client");
+        const supabase = supaModule.createClient();
+        const safeName = file.name.replace(/[^\w.\-]/g, "_");
+        const storagePath = `${testId}/${studentId}/${Date.now()}-${safeName}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("exam-scans")
+          .upload(storagePath, file, { contentType: "application/pdf", upsert: true });
+        if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
+        body.storagePath = storagePath;
+        setStatusLine("Marking it against the mark scheme…");
       } else {
         body.reuseExistingScan = true;
       }
