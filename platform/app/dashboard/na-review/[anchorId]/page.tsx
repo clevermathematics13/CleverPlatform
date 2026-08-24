@@ -24,6 +24,12 @@ export default async function AnchorReviewPage({
 
   if (anchorErr || !anchor) redirect("/dashboard/na-review");
 
+  const { data: students } = await supabase
+    .from("profiles")
+    .select("id, display_name, nickname")
+    .eq("role", "student")
+    .order("display_name");
+
   const { data: crops } = await supabase
     .from("na_response_crops")
     .select(
@@ -74,5 +80,5 @@ export default async function AnchorReviewPage({
 
   rows.sort((a, b) => (a.packetSeq ?? 0) - (b.packetSeq ?? 0));
 
-  return <AnchorReviewClient anchor={anchor} initialRows={rows} />;
+  return <AnchorReviewClient anchor={anchor} initialRows={rows} students={students ?? []} />;
 }

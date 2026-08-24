@@ -76,18 +76,27 @@ function marksColorClasses(marks: number, max: number | undefined): string {
   return "text-orange-500";
 }
 
+type Student = {
+  id: string;
+  display_name: string | null;
+  nickname: string | null;
+};
+
 export default function AnchorReviewClient({
   anchor,
   initialRows,
+  students,
 }: {
   anchor: Anchor;
   initialRows: Row[];
+  students: Student[];
 }) {
   const [rows, setRows] = useState(initialRows);
   const [showNames, setShowNames] = useState(false);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   const [editingComment, setEditingComment] = useState<string | null>(null);
   const [editingMarks, setEditingMarks] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string | null>(null);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [bulkThreshold, setBulkThreshold] = useState(0.85);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -151,6 +160,40 @@ export default function AnchorReviewClient({
       }
     },
     []
+  );
+
+  const reassignStudent = useCallback(
+    async (row: Row, studentProfileId: string) => {
+      if (!row.packetScanId) return;
+      const student = students.find((s) => s.id === studentProfileId);
+      if (!student) return;
+      setSavingIds((prev) => new Set(prev).add(row.cropId));
+      try {
+        const res = await fetch(`/api/na-review/packet-scan/${row.packetScanId}/reassign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentProfileId }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        setRows((prev) =>
+          prev.map((r) =>
+            r.cropId === row.cropId
+              ? { ...r, studentName: student.nickname ?? student.display_name, idStatus: "confirmed" }
+              : r
+          )
+        );
+      } catch (e) {
+        console.error("Reassign failed", e);
+        alert("Could not reassign student -- see console.");
+      } finally {
+        setSavingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(row.cropId);
+          return next;
+        });
+      }
+    },
+    [students]
   );
 
   const acceptAiDraft = useCallback(
@@ -366,7 +409,50 @@ export default function AnchorReviewClient({
             >
               <div className="flex items-center justify-between px-3 py-2 border-b border-da-border text-xs">
                 <span className="text-da-muted">
-                  {showNames ? row.studentName ?? "Unknown" : `#${row.packetSeq ?? "?"}`}
+                  {showNames ? (
+                    editingName === row.cropId ? (
+                      <select
+                        autoFocus
+                        defaultValue=""
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val) reassignStudent(row, val);
+                          setEditingName(null);
+                        }}
+                        onBlur={() => setEditingName(null)}
+                        className="border border-da-accent rounded px-1 py-0.5 text-xs bg-da-surface text-da-text"
+                      >
+                        <option value="" disabled>
+                          {row.studentName ?? "Unknown"} -- reassign to...
+                        </option>
+                        {students.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nickname ?? s.display_name ?? s.id}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (row.packetScanId) setEditingName(row.cropId);
+                        }}
+                        className={
+                          row.packetScanId ? "cursor-text hover:bg-da-hover/50 rounded px-1 -mx-1" : ""
+                        }
+                        title={
+                          row.packetScanId
+                            ? "Click to reassign this packet to a different student"
+                            : undefined
+                        }
+                      >
+                        {row.studentName ?? "Unknown"}
+                      </span>
+                    )
+                  ) : (
+                    `#${row.packetSeq ?? "?"}`
+                  )}
                   {row.idStatus === "needs_review" && (
                     <span className="ml-1 text-amber-500" title="ID needs review">
                       ⚠
