@@ -329,7 +329,12 @@ export async function POST(
   if (insertErr) return failRun(`Could not save results: ${insertErr.message}`);
 
   const suggestedTotal = grades.reduce((s, g) => s + g.clampedMarks, 0);
+  // maxTotal covers only parts that had a mark scheme to grade against;
+  // testTotalMarks is the assessment's real total, so the UI can show
+  // "17/20 of 33" instead of a misleading "17/20" when parts are missing
+  // a mark scheme.
   const maxTotal = gradeable.reduce((s, u) => s + u.maxMarks, 0);
+  const testTotalMarks = units.reduce((s, u) => s + u.maxMarks, 0);
   const needsReview = grades
     .filter((g) => g.confidence === "low" || !g.item.workFound)
     .map((g) => unitLabel(g.unit));
@@ -340,6 +345,7 @@ export async function POST(
     partsWithoutMarkscheme: units.length - gradeable.length,
     suggestedTotal,
     maxTotal,
+    testTotalMarks,
     needsReview,
     warnings: [...assemblyWarnings, ...warnings],
   };

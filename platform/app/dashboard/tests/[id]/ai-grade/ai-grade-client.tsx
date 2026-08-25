@@ -43,6 +43,7 @@ interface RunRow {
     partsWithoutMarkscheme?: number;
     suggestedTotal?: number;
     maxTotal?: number;
+    testTotalMarks?: number;
     needsReview?: string[];
     warnings?: string[];
   } | null;
@@ -254,7 +255,11 @@ export function AiGradeClient({ testId }: { testId: string }) {
         parts.push(`Marked ${data.partsGraded} of ${data.partsInAssessment ?? data.partsGraded} part(s)`);
       }
       if (data.suggestedTotal !== undefined && data.maxTotal !== undefined) {
-        parts.push(`suggested total ${data.suggestedTotal}/${data.maxTotal}`);
+        const gradeableSuffix =
+          typeof data.testTotalMarks === "number" && data.testTotalMarks !== data.maxTotal
+            ? ` of ${data.testTotalMarks} total`
+            : "";
+        parts.push(`suggested total ${data.suggestedTotal}/${data.maxTotal}${gradeableSuffix}`);
       }
       if (Array.isArray(data.needsReview) && data.needsReview.length > 0) {
         parts.push(`${data.needsReview.length} part(s) flagged for review`);
@@ -425,7 +430,12 @@ export function AiGradeClient({ testId }: { testId: string }) {
                             Last run: {run.status}
                             {run.coverage?.suggestedTotal !== undefined &&
                               run.coverage?.maxTotal !== undefined &&
-                              ` · ${run.coverage.suggestedTotal}/${run.coverage.maxTotal} suggested`}
+                              ` · ${run.coverage.suggestedTotal}/${run.coverage.maxTotal}${
+                                typeof run.coverage.testTotalMarks === "number" &&
+                                run.coverage.testTotalMarks !== run.coverage.maxTotal
+                                  ? ` of ${run.coverage.testTotalMarks} total`
+                                  : ""
+                              } suggested`}
                             {run.error && ` — ${run.error}`}
                           </>
                         ) : (
