@@ -28,6 +28,25 @@ interface Course {
   name: string;
 }
 
+/** Wrap a field in quotes and escape embedded quotes only when needed. */
+function csvField(value: string): string {
+  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** Student-rows × question-part-columns matrix of teacher marks, as a 2D array. */
+function buildMarksMatrix(data: ClassData, rows: StudentReflectionRow[]): string[][] {
+  const header = ["Student", ...data.items.map((it) => `Q${it.question_number}${it.part_label}`), "Total"];
+  const body = rows.map((row) => {
+    const cells = data.items.map((item) => {
+      const cell = row.items.find((c) => c.test_item_id === item.id);
+      return cell?.marks_awarded != null ? String(cell.marks_awarded) : "";
+    });
+    const total = row.items.reduce((s, c) => s + (c.marks_awarded ?? 0), 0);
+    return [row.display_name, ...cells, String(total)];
+  });
+  return [header, ...body];
+}
+
 export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourse, setSelectedCourse] = useState<string>("");
@@ -41,6 +60,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const [saving, setSaving] = useState<CellKey | null>(null);
   const [savedCells, setSavedCells] = useState<Set<CellKey>>(new Set());
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
+  const [copyStatus, setCopyStatus] = useState<"idle" | "copied" | "failed">("idle");
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Fetch courses for filter
@@ -171,6 +191,38 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
   const visibleRows = data?.rows.filter((r) => !r.hidden) ?? [];
   const firstName = (fullName: string) => fullName.trim().split(/\s+/)[0] ?? fullName;
 
+  const exportFileBase =
+    tests.find((t) => t.id === selectedTest)?.name.replace(/[^\w.\-]+/g, "_") || "marks";
+
+  const downloadMarksCsv = () => {
+    if (!data) return;
+    const csv = buildMarksMatrix(data, visibleRows)
+      .map((row) => row.map(csvField).join(","))
+      .join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${exportFileBase}-marks.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyMarksToClipboard = async () => {
+    if (!data) return;
+    const tsv = buildMarksMatrix(data, visibleRows)
+      .map((row) => row.join("\t"))
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(tsv);
+      setCopyStatus("copied");
+    } catch {
+      setCopyStatus("failed");
+    } finally {
+      setTimeout(() => setCopyStatus("idle"), 2000);
+    }
+  };
+
   const classAverageByItem = data?.items.map((item) => {
     const idx = data.items.findIndex((i) => i.id === item.id);
     const teacherVals = visibleRows
@@ -244,9 +296,20 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
           ))}
         </select>
 
+        {data && data.items.length > 0 && (
+          <div className="ml-auto flex items-center gap-2">
+            <button type="button" onClick={copyMarksToClipboard} className="da-btn da-btn-ghost text-sm">
+              {copyStatus === "copied" ? "✓ Copied" : copyStatus === "failed" ? "Copy failed" : "Copy marks"}
+            </button>
+            <button type="button" onClick={downloadMarksCsv} className="da-btn da-btn-ghost text-sm">
+              ⬇ Download CSV
+            </button>
+          </div>
+        )}
+
         <a
           href="/dashboard/tests"
-          className="ml-auto da-btn-link text-sm"
+          className={data && data.items.length > 0 ? "da-btn-link text-sm" : "ml-auto da-btn-link text-sm"}
         >
           + Manage Tests
         </a>

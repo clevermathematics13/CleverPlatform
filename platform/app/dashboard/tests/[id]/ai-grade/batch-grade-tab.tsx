@@ -41,6 +41,7 @@ interface SplitResultRow {
   error?: string;
   suggestedTotal?: number;
   maxTotal?: number;
+  testTotalMarks?: number;
   partsGraded?: number;
 }
 
@@ -309,6 +310,7 @@ export function BatchGradeTab({
               status: "complete",
               suggestedTotal: gradeData.suggestedTotal as number,
               maxTotal: gradeData.maxTotal as number,
+              testTotalMarks: gradeData.testTotalMarks as number,
               partsGraded: gradeData.partsGraded as number,
             });
           }
@@ -525,6 +527,9 @@ export function BatchGradeTab({
                           result.status === "complete" ? (
                             <span className="text-xs text-green-700">
                               graded {result.suggestedTotal}/{result.maxTotal}
+                              {typeof result.testTotalMarks === "number" &&
+                                result.testTotalMarks !== result.maxTotal &&
+                                ` of ${result.testTotalMarks} total`}
                             </span>
                           ) : (
                             <span className="text-xs text-red-600" title={result.error}>
