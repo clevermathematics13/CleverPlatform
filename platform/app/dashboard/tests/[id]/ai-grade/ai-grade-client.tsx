@@ -116,6 +116,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const [drafts, setDrafts] = useState<Record<string, number>>({}); // keyed by result.id
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
@@ -640,7 +641,9 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                             <img
                                               src={r.evidence_image_url}
                                               alt="Cropped scan region the model read this part's work from"
-                                              className="max-h-64 rounded border border-gray-200"
+                                              title="Click to enlarge"
+                                              onClick={() => setLightboxUrl(r.evidence_image_url)}
+                                              className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
                                             />
                                           )}
                                           {r.evidence && (
@@ -664,7 +667,9 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                               key={i}
                                               src={url}
                                               alt="Mark scheme source image"
-                                              className="max-h-64 rounded border border-gray-200"
+                                              title="Click to enlarge"
+                                              onClick={() => setLightboxUrl(url)}
+                                              className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
                                             />
                                           ))}
                                         </div>
@@ -694,6 +699,34 @@ export function AiGradeClient({ testId }: { testId: string }) {
             </section>
           )}
         </>
+      )}
+
+      {lightboxUrl && (
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Close enlarged image"
+          onClick={() => setLightboxUrl(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Enter") setLightboxUrl(null);
+          }}
+          className="fixed inset-0 z-50 flex cursor-zoom-out items-center justify-center bg-black/80 p-6"
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-6 top-6 rounded-full bg-white/10 px-3 py-1 text-sm text-white hover:bg-white/20"
+          >
+            Close ✕
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Enlarged view"
+            className="max-h-[90vh] max-w-[90vw] cursor-default rounded object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   );
