@@ -107,18 +107,22 @@ export const EvidenceBoxSchema = z.object({
  * Shape the model is instructed to return. Deliberately strict: anything
  * outside this shape is rejected rather than coerced into a mark.
  */
+// Field order mirrors GRADING_SYSTEM_PROMPT's WORKING ORDER / OUTPUT sections:
+// each later field is meant to be derived from the ones before it (most
+// importantly, suggestedMarks from markBreakdown), so the schema is ordered
+// the same way the model is instructed to generate them.
 export const AiGradeItemSchema = z.object({
   /** Must echo back the testItemId supplied in the prompt. */
   testItemId: z.string().min(1),
-  suggestedMarks: z.number().int().min(0),
-  confidence: z.enum(["high", "medium", "low"]),
   /** False when the part could not be located in the scan. */
   workFound: z.boolean(),
-  markBreakdown: z.array(MarkBreakdownEntrySchema).default([]),
-  reasoning: z.string().default(""),
   evidence: z.string().default(""),
   /** Null when the model couldn't confidently localise the work on the page. */
   evidenceBox: EvidenceBoxSchema.nullable().default(null),
+  markBreakdown: z.array(MarkBreakdownEntrySchema).default([]),
+  reasoning: z.string().default(""),
+  suggestedMarks: z.number().int().min(0),
+  confidence: z.enum(["high", "medium", "low"]),
 });
 
 export const AiGradeResponseSchema = z.object({
@@ -592,39 +596,54 @@ MARKING RULES
 8. If handwriting is ambiguous, mark the most plausible reading in the student's favour and lower your confidence.
 9. Do not deduct marks for poor presentation, notation slips, or missing units unless the mark scheme requires them.
 
-MARK BREAKDOWN
-For each part, itemise the mark scheme tokens (M1, A1, R1, AG, ...) and state whether the student earned each one. The tokens you mark as awarded must add up to suggestedMarks.
+WORKING ORDER — follow these steps in sequence for each part, because the later
+fields in OUTPUT below are DERIVED from the earlier ones, not independent
+judgement calls made in parallel:
 
-CONFIDENCE
-- "high": the work is legible and maps cleanly onto the mark scheme.
-- "medium": legible but needs a judgement call (alternative method, partial working, follow-through).
-- "low": illegible, ambiguous, hard to locate, or a genuinely borderline award.
-Anything marked "low" is flagged for the teacher to mark by hand. Be honest — an over-confident wrong mark is far more damaging than a flagged uncertain one.
-
-EVIDENCE LOCATION
-When workFound is true, also report evidenceBox: the page and a bounding box, as a
-fraction of that page's full width/height (0 = left/top edge, 1 = right/bottom
-edge), that tightly bounds the student's handwritten working for THIS part —
-e.g. {"page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61}. This is used to
-show the teacher the exact scan region your evidence came from, so it must
-actually contain the work, not just be somewhere on the right page. If you
-cannot localise it confidently, set evidenceBox to null rather than guessing —
-a missing crop is fine, a wrong one is not.
+1. EVIDENCE: transcribe what the student actually wrote for this part.
+2. EVIDENCE LOCATION: report evidenceBox — the page and a bounding box, as a
+   fraction of that page's full width/height (0 = left/top edge, 1 =
+   right/bottom edge), that tightly bounds the student's handwritten working
+   for THIS part, e.g. {"page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1":
+   0.61}. This is used to show the teacher the exact scan region your
+   evidence came from, so it must actually contain the work, not just be
+   somewhere on the right page. If you cannot localise it confidently, set
+   evidenceBox to null rather than guessing — a missing crop is fine, a
+   wrong one is not. Omit entirely (null) when workFound is false.
+3. MARK BREAKDOWN: itemise every mark scheme token (M1, A1, R1, AG, ...) for
+   this part and decide, one token at a time, whether the transcribed
+   evidence earns it.
+4. REASONING: briefly explain the itemisation above.
+5. SUGGESTED MARKS: suggestedMarks is NOT a separate judgement call — it is
+   the count of tokens you just marked awarded in step 3 (every token here
+   is worth exactly one mark; there is no M2 or A2). Compute it by counting,
+   don't estimate it separately from a general impression of the work. If a
+   number you were about to write down doesn't match that count, the count
+   is right and the number is wrong — go back and recheck the breakdown
+   against the mark scheme rather than reporting a total that disagrees
+   with your own itemisation.
+6. CONFIDENCE: assessed last, since it depends on everything above.
+   - "high": the work is legible and maps cleanly onto the mark scheme.
+   - "medium": legible but needs a judgement call (alternative method, partial working, follow-through).
+   - "low": illegible, ambiguous, hard to locate, or a genuinely borderline award.
+   Anything marked "low" is flagged for the teacher to mark by hand. Be honest — an over-confident wrong mark is far more damaging than a flagged uncertain one.
 
 OUTPUT
 Return ONLY a JSON object. No preamble, no markdown fences, no commentary.
+Fields are listed in the order you should decide them (see WORKING ORDER above) —
+generate the JSON in this order too, since suggestedMarks depends on markBreakdown.
 
 {
   "items": [
     {
       "testItemId": "<echo back exactly the testItemId given to you>",
-      "suggestedMarks": <integer>,
-      "confidence": "high" | "medium" | "low",
       "workFound": <boolean>,
+      "evidence": "<what the student actually wrote, briefly>",
+      "evidenceBox": { "page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61 } | null,
       "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }],
       "reasoning": "<one or two sentences citing the tokens satisfied or missed>",
-      "evidence": "<what the student actually wrote, briefly>",
-      "evidenceBox": { "page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61 } | null
+      "suggestedMarks": <the count of markBreakdown entries above with awarded: true>,
+      "confidence": "high" | "medium" | "low"
     }
   ]
 }
