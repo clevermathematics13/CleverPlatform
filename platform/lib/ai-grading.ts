@@ -438,21 +438,21 @@ export interface MarkschemeImageRef {
 }
 
 /**
- * Find the mark scheme source image(s) — the scanned page image the PPQ
- * bank's markscheme_latex was originally transcribed from — for each test
- * item, so the grading review UI can show the teacher what the AI's mark
- * scheme text was actually extracted from.
+ * Find the PPQ bank's source image(s) of a given type ("question" or
+ * "markscheme") for each test item, so the grading review UI can show the
+ * teacher what the AI's question/mark-scheme text was actually transcribed
+ * from.
  *
  * Mirrors assembleMarkScheme's test_items -> ib_questions -> question_parts
  * join (by code, then by normalised part label) but only needs question_images.
  * A part-specific image (question_images.part_id set) takes priority; when
- * none exists, falls back to the question's shared (part_id null) markscheme
- * images, since many scans have one mark-scheme image per question rather
- * than per part.
+ * none exists, falls back to the question's shared (part_id null) images,
+ * since many scans have one image per question rather than per part.
  */
-export async function assembleMarkschemeImages(
+async function assembleQuestionBankImages(
   supabase: SupabaseClient,
-  testId: string
+  testId: string,
+  imageType: "question" | "markscheme"
 ): Promise<MarkschemeImageRef[]> {
   const { data: itemRows, error: itemsError } = await supabase
     .from("test_items")
@@ -493,10 +493,10 @@ export async function assembleMarkschemeImages(
   const { data: imageRows, error: imgError } = await supabase
     .from("question_images")
     .select("question_id, part_id, storage_path, sort_order")
-    .eq("image_type", "markscheme")
+    .eq("image_type", imageType)
     .in("question_id", questionIds)
     .order("sort_order", { ascending: true });
-  if (imgError) throw new Error(`Failed to load markscheme images: ${imgError.message}`);
+  if (imgError) throw new Error(`Failed to load ${imageType} images: ${imgError.message}`);
 
   const images = (imageRows ?? []) as {
     question_id: string;
@@ -532,6 +532,20 @@ export async function assembleMarkschemeImages(
   }
 
   return result;
+}
+
+export function assembleMarkschemeImages(
+  supabase: SupabaseClient,
+  testId: string
+): Promise<MarkschemeImageRef[]> {
+  return assembleQuestionBankImages(supabase, testId, "markscheme");
+}
+
+export function assembleQuestionImages(
+  supabase: SupabaseClient,
+  testId: string
+): Promise<MarkschemeImageRef[]> {
+  return assembleQuestionBankImages(supabase, testId, "question");
 }
 
 // -----------------------------------------------------------------------------

@@ -9,6 +9,7 @@ import {
   SCAN_BUCKET,
   assembleMarkScheme,
   assembleMarkschemeImages,
+  assembleQuestionImages,
   buildGradingStudentPrompt,
   buildGradingUserPrompt,
   unitLabel,
@@ -170,15 +171,18 @@ export async function GET(
     }
   }
 
-  // -- Mark scheme source images (private "question-images" bucket) -----------
+  // -- PPQ bank source images (private "question-images" bucket) --------------
   // Looked up fresh on every request rather than cached on the result row --
-  // it reflects whatever is currently in the PPQ bank, not what existed when
-  // the run was graded.
-  let markschemeUrlsByTestItem = new Map<string, string[]>();
-  try {
-    const refs = await assembleMarkschemeImages(supabase, testId);
-    const paths = [...new Set(refs.map((r) => r.storagePath))];
-    if (paths.length > 0) {
+  // they reflect whatever is currently in the PPQ bank, not what existed when
+  // the run was graded. Never fails the whole review load: a missing image
+  // lookup is a nice-to-have alongside the suggested grade.
+  const loadImageUrlsByTestItem = async (
+    assemble: typeof assembleMarkschemeImages
+  ): Promise<Map<string, string[]>> => {
+    try {
+      const refs = await assemble(supabase, testId);
+      const paths = [...new Set(refs.map((r) => r.storagePath))];
+      if (paths.length === 0) return new Map();
       const { data: signed } = await supabase.storage.from("question-images").createSignedUrls(paths, 3600);
       const urlByPath = new Map((signed ?? []).map((s) => [s.path ?? "", s.signedUrl ?? null]));
       const byItem = new Map<string, string[]>();
@@ -189,16 +193,21 @@ export async function GET(
         list.push(url);
         byItem.set(ref.testItemId, list);
       }
-      markschemeUrlsByTestItem = byItem;
+      return byItem;
+    } catch {
+      return new Map();
     }
-  } catch {
-    // Mark scheme images are a nice-to-have alongside the suggested grade --
-    // never fail the whole review load over them.
-  }
+  };
+
+  const [markschemeUrlsByTestItem, questionUrlsByTestItem] = await Promise.all([
+    loadImageUrlsByTestItem(assembleMarkschemeImages),
+    loadImageUrlsByTestItem(assembleQuestionImages),
+  ]);
 
   const resultsWithImages = rows.map((r) => ({
     ...r,
     evidence_image_url: r.evidence_image_path ? evidenceUrlByPath.get(r.evidence_image_path) ?? null : null,
+    question_image_urls: questionUrlsByTestItem.get(r.test_item_id) ?? [],
     markscheme_image_urls: markschemeUrlsByTestItem.get(r.test_item_id) ?? [],
   }));
 

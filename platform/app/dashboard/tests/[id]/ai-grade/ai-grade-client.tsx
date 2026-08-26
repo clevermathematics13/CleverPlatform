@@ -71,6 +71,8 @@ interface ResultRow {
   evidence: string | null;
   /** Cropped scan region the model used to produce `evidence`, if it could localise the work. */
   evidence_image_url: string | null;
+  /** Question source image(s) from the PPQ bank, if any are on file for this part. */
+  question_image_urls: string[];
   /** Mark scheme source image(s) from the PPQ bank, if any are on file for this part. */
   markscheme_image_urls: string[];
   mark_breakdown: MarkBreakdownEntry[];
@@ -627,6 +629,27 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                             {b.token}
                                           </span>
                                         ))}
+                                      </div>
+                                    )}
+
+                                    {r.question_image_urls.length > 0 && (
+                                      <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                          Question
+                                        </p>
+                                        <div className="mt-1 flex flex-wrap gap-2">
+                                          {r.question_image_urls.map((url, i) => (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                              key={i}
+                                              src={url}
+                                              alt="Question source image"
+                                              title="Click to enlarge"
+                                              onClick={() => setLightboxUrl(url)}
+                                              className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
+                                            />
+                                          ))}
+                                        </div>
                                       </div>
                                     )}
 
