@@ -69,6 +69,10 @@ interface ResultRow {
   work_found: boolean;
   reasoning: string | null;
   evidence: string | null;
+  /** Cropped scan region the model used to produce `evidence`, if it could localise the work. */
+  evidence_image_url: string | null;
+  /** Mark scheme source image(s) from the PPQ bank, if any are on file for this part. */
+  markscheme_image_urls: string[];
   mark_breakdown: MarkBreakdownEntry[];
   accepted: boolean;
   accepted_at: string | null;
@@ -625,13 +629,44 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                       </div>
                                     )}
 
-                                    {r.evidence && (
+                                    {(r.evidence || r.evidence_image_url) && (
                                       <div>
                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                                           Student&apos;s work
                                         </p>
-                                        <div className="mt-1 rounded border border-gray-200 bg-white p-3">
-                                          <LatexRenderer latex={r.evidence} />
+                                        <div className="mt-1 space-y-2">
+                                          {r.evidence_image_url && (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                              src={r.evidence_image_url}
+                                              alt="Cropped scan region the model read this part's work from"
+                                              className="max-h-64 rounded border border-gray-200"
+                                            />
+                                          )}
+                                          {r.evidence && (
+                                            <div className="rounded border border-gray-200 bg-white p-3">
+                                              <LatexRenderer latex={r.evidence} />
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {r.markscheme_image_urls.length > 0 && (
+                                      <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                          Mark scheme
+                                        </p>
+                                        <div className="mt-1 flex flex-wrap gap-2">
+                                          {r.markscheme_image_urls.map((url, i) => (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                              key={i}
+                                              src={url}
+                                              alt="Mark scheme source image"
+                                              className="max-h-64 rounded border border-gray-200"
+                                            />
+                                          ))}
                                         </div>
                                       </div>
                                     )}

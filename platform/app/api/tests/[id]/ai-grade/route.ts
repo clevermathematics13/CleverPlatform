@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import {
   GRADING_MODEL,
@@ -7,14 +8,117 @@ import {
   MAX_SCAN_BYTES,
   SCAN_BUCKET,
   assembleMarkScheme,
+  assembleMarkschemeImages,
   buildGradingStudentPrompt,
   buildGradingUserPrompt,
   unitLabel,
   validateGradeResponse,
 } from "@/lib/ai-grading";
-import type { GradingUnit } from "@/lib/ai-grading";
+import type { GradingUnit, ValidatedGrade } from "@/lib/ai-grading";
 
 export const maxDuration = 300;
+
+interface CvCropResult {
+  qid: string;
+  imageBase64: string;
+}
+
+/**
+ * Best-effort: renders one cropped PNG per graded part from the model's
+ * reported evidenceBox, via the same Railway CV service the NA scan
+ * pipeline uses (see platform/app/api/na-review/packet-scans/[id]/crop/route.ts
+ * for the sibling usage). Unlike that pipeline, anchors here are per-request
+ * and AI-located rather than pre-locked in the database — the CV service's
+ * /crop endpoint takes anchors directly in the request body either way, so
+ * no server-side changes were needed to reuse it.
+ *
+ * Never throws: a crop is a nice-to-have alongside the suggested grade, not
+ * something worth failing (or even warning on) a whole grading run over.
+ * Returns an empty map on any failure, including GRAPH_LAB_CV_SERVICE_URL
+ * being unset (most local/dev environments).
+ */
+async function fetchEvidenceCrops(
+  scanBase64: string,
+  grades: ValidatedGrade[]
+): Promise<Map<string, Buffer>> {
+  const byTestItemId = new Map<string, Buffer>();
+
+  const serviceUrl = process.env.GRAPH_LAB_CV_SERVICE_URL;
+  if (!serviceUrl) return byTestItemId;
+
+  let pageCount: number;
+  const pageSizePt: { width: number; height: number }[] = [];
+  try {
+    const pdfDoc = await PDFDocument.load(Buffer.from(scanBase64, "base64"));
+    pageCount = pdfDoc.getPageCount();
+    for (const page of pdfDoc.getPages()) {
+      pageSizePt.push({ width: page.getWidth(), height: page.getHeight() });
+    }
+  } catch {
+    return byTestItemId;
+  }
+
+  const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+  const anchors = grades
+    .map((g) => {
+      const box = g.item.evidenceBox;
+      if (!g.item.workFound || !box) return null;
+      const pageIndex = box.page - 1;
+      if (pageIndex < 0 || pageIndex >= pageCount) return null;
+      const { width, height } = pageSizePt[pageIndex];
+      const x0 = clamp01(box.x0);
+      const y0 = clamp01(box.y0);
+      const x1 = clamp01(box.x1);
+      const y1 = clamp01(box.y1);
+      if (x1 <= x0 || y1 <= y0) return null;
+      return {
+        qid: g.unit.testItemId,
+        pageIndex,
+        x0Pt: x0 * width,
+        y0Pt: y0 * height,
+        x1Pt: x1 * width,
+        y1Pt: y1 * height,
+      };
+    })
+    .filter((a): a is NonNullable<typeof a> => a !== null);
+
+  if (anchors.length === 0) return byTestItemId;
+
+  const serviceBase = serviceUrl.trim().replace(/\/$/, "");
+  const target = `${/^https?:\/\//i.test(serviceBase) ? serviceBase : `https://${serviceBase}`}/crop`;
+  const cvSecret = process.env.CV_SERVICE_SECRET ?? "";
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45000);
+  try {
+    const upstream = await fetch(target, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cvSecret ? { "X-CV-Secret": cvSecret } : {}),
+      },
+      body: JSON.stringify({
+        studentPdfBase64: scanBase64,
+        expectedPageCount: pageCount,
+        rotationHint: 0,
+        anchors,
+      }),
+      signal: controller.signal,
+    });
+    if (!upstream.ok) return byTestItemId;
+    const data = (await upstream.json()) as { crops?: CvCropResult[] };
+    for (const crop of data.crops ?? []) {
+      if (crop.imageBase64) byTestItemId.set(crop.qid, Buffer.from(crop.imageBase64, "base64"));
+    }
+  } catch {
+    // Network/timeout failure -- crops stay empty, grading still succeeds.
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  return byTestItemId;
+}
 
 /**
  * GET /api/tests/[id]/ai-grade?studentId=...
@@ -46,7 +150,7 @@ export async function GET(
   const { data: results, error: rErr } = await supabase
     .from("ai_grade_results")
     .select(
-      "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, mark_breakdown, accepted, accepted_at, accepted_by"
+      "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, mark_breakdown, accepted, accepted_at, accepted_by"
     )
     .in(
       "run_id",
@@ -54,8 +158,51 @@ export async function GET(
     );
 
   if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
+  const rows = results ?? [];
 
-  return NextResponse.json({ runs, results: results ?? [] });
+  // -- Evidence crop images (private "exam-scans" bucket) ---------------------
+  const evidencePaths = [...new Set(rows.map((r) => r.evidence_image_path).filter((p): p is string => !!p))];
+  const evidenceUrlByPath = new Map<string, string>();
+  if (evidencePaths.length > 0) {
+    const { data: signed } = await supabase.storage.from(SCAN_BUCKET).createSignedUrls(evidencePaths, 3600);
+    for (const s of signed ?? []) {
+      if (s.signedUrl) evidenceUrlByPath.set(s.path ?? "", s.signedUrl);
+    }
+  }
+
+  // -- Mark scheme source images (private "question-images" bucket) -----------
+  // Looked up fresh on every request rather than cached on the result row --
+  // it reflects whatever is currently in the PPQ bank, not what existed when
+  // the run was graded.
+  let markschemeUrlsByTestItem = new Map<string, string[]>();
+  try {
+    const refs = await assembleMarkschemeImages(supabase, testId);
+    const paths = [...new Set(refs.map((r) => r.storagePath))];
+    if (paths.length > 0) {
+      const { data: signed } = await supabase.storage.from("question-images").createSignedUrls(paths, 3600);
+      const urlByPath = new Map((signed ?? []).map((s) => [s.path ?? "", s.signedUrl ?? null]));
+      const byItem = new Map<string, string[]>();
+      for (const ref of refs) {
+        const url = urlByPath.get(ref.storagePath);
+        if (!url) continue;
+        const list = byItem.get(ref.testItemId) ?? [];
+        list.push(url);
+        byItem.set(ref.testItemId, list);
+      }
+      markschemeUrlsByTestItem = byItem;
+    }
+  } catch {
+    // Mark scheme images are a nice-to-have alongside the suggested grade --
+    // never fail the whole review load over them.
+  }
+
+  const resultsWithImages = rows.map((r) => ({
+    ...r,
+    evidence_image_url: r.evidence_image_path ? evidenceUrlByPath.get(r.evidence_image_path) ?? null : null,
+    markscheme_image_urls: markschemeUrlsByTestItem.get(r.test_item_id) ?? [],
+  }));
+
+  return NextResponse.json({ runs, results: resultsWithImages });
 }
 
 /**
@@ -311,6 +458,17 @@ export async function POST(
 
   const { grades, warnings } = validation.outcome;
 
+  // -- Evidence crops (best-effort; never blocks or fails the run) -----------
+  const crops = await fetchEvidenceCrops(scanBase64, grades);
+  const evidenceImagePathByTestItemId = new Map<string, string>();
+  for (const [testItemId, imageBytes] of crops) {
+    const storagePath = `${testId}/${studentId}/evidence/${run.id}/${testItemId}.png`;
+    const { error: cropUploadErr } = await supabase.storage
+      .from(SCAN_BUCKET)
+      .upload(storagePath, imageBytes, { contentType: "image/png", upsert: true });
+    if (!cropUploadErr) evidenceImagePathByTestItemId.set(testItemId, storagePath);
+  }
+
   // -- Persist results -------------------------------------------------------
   const rows = grades.map((g) => ({
     run_id: run.id,
@@ -322,6 +480,7 @@ export async function POST(
     work_found: g.item.workFound,
     reasoning: g.item.reasoning,
     evidence: g.item.evidence,
+    evidence_image_path: evidenceImagePathByTestItemId.get(g.unit.testItemId) ?? null,
     mark_breakdown: g.item.markBreakdown,
   }));
 

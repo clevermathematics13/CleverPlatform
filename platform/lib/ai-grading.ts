@@ -87,6 +87,23 @@ export const MarkBreakdownEntrySchema = z.object({
 });
 
 /**
+ * Where the model saw a part's handwritten work, as a fraction of the full
+ * page (0 = left/top edge, 1 = right/bottom edge) rather than absolute
+ * points — the model is never told each page's point dimensions, so a
+ * fraction is the only coordinate space it can report reliably. The
+ * grading route converts this to PDF points (using the real page size from
+ * the uploaded scan) before asking the CV service to render the crop.
+ */
+export const EvidenceBoxSchema = z.object({
+  /** 1-indexed page number within the uploaded scan. */
+  page: z.number().int().min(1),
+  x0: z.number(),
+  y0: z.number(),
+  x1: z.number(),
+  y1: z.number(),
+});
+
+/**
  * Shape the model is instructed to return. Deliberately strict: anything
  * outside this shape is rejected rather than coerced into a mark.
  */
@@ -100,6 +117,8 @@ export const AiGradeItemSchema = z.object({
   markBreakdown: z.array(MarkBreakdownEntrySchema).default([]),
   reasoning: z.string().default(""),
   evidence: z.string().default(""),
+  /** Null when the model couldn't confidently localise the work on the page. */
+  evidenceBox: EvidenceBoxSchema.nullable().default(null),
 });
 
 export const AiGradeResponseSchema = z.object({
@@ -238,7 +257,7 @@ export function validateGradeResponse(
 // -----------------------------------------------------------------------------
 
 /** Normalise a part label so "(b)(ii)", "b ii" and "bii" all compare equal. */
-function normalisePartLabel(label: string | null | undefined): string {
+export function normalisePartLabel(label: string | null | undefined): string {
   return (label ?? "")
     .toLowerCase()
     .replace(/[()\[\]\s.]/g, "")
@@ -413,6 +432,108 @@ export async function assembleMarkScheme(
   return { units, warnings };
 }
 
+export interface MarkschemeImageRef {
+  testItemId: string;
+  storagePath: string;
+}
+
+/**
+ * Find the mark scheme source image(s) — the scanned page image the PPQ
+ * bank's markscheme_latex was originally transcribed from — for each test
+ * item, so the grading review UI can show the teacher what the AI's mark
+ * scheme text was actually extracted from.
+ *
+ * Mirrors assembleMarkScheme's test_items -> ib_questions -> question_parts
+ * join (by code, then by normalised part label) but only needs question_images.
+ * A part-specific image (question_images.part_id set) takes priority; when
+ * none exists, falls back to the question's shared (part_id null) markscheme
+ * images, since many scans have one mark-scheme image per question rather
+ * than per part.
+ */
+export async function assembleMarkschemeImages(
+  supabase: SupabaseClient,
+  testId: string
+): Promise<MarkschemeImageRef[]> {
+  const { data: itemRows, error: itemsError } = await supabase
+    .from("test_items")
+    .select("id, part_label, ib_question_code")
+    .eq("test_id", testId);
+  if (itemsError) throw new Error(`Failed to load test items: ${itemsError.message}`);
+
+  const items = (itemRows ?? []) as { id: string; part_label: string | null; ib_question_code: string }[];
+  if (items.length === 0) return [];
+
+  const codes = [...new Set(items.map((i) => i.ib_question_code).filter(Boolean))];
+
+  const { data: questionRows, error: qError } = await supabase
+    .from("ib_questions")
+    .select("id, code")
+    .in("code", codes);
+  if (qError) throw new Error(`Failed to load questions: ${qError.message}`);
+
+  const questions = (questionRows ?? []) as { id: string; code: string }[];
+  const questionByCode = new Map(questions.map((q) => [q.code, q]));
+  const questionIds = questions.map((q) => q.id);
+  if (questionIds.length === 0) return [];
+
+  const { data: partRows, error: pError } = await supabase
+    .from("question_parts")
+    .select("id, question_id, part_label")
+    .in("question_id", questionIds);
+  if (pError) throw new Error(`Failed to load question parts: ${pError.message}`);
+
+  const parts = (partRows ?? []) as { id: string; question_id: string; part_label: string | null }[];
+  const partsByQuestion = new Map<string, typeof parts>();
+  for (const p of parts) {
+    const list = partsByQuestion.get(p.question_id) ?? [];
+    list.push(p);
+    partsByQuestion.set(p.question_id, list);
+  }
+
+  const { data: imageRows, error: imgError } = await supabase
+    .from("question_images")
+    .select("question_id, part_id, storage_path, sort_order")
+    .eq("image_type", "markscheme")
+    .in("question_id", questionIds)
+    .order("sort_order", { ascending: true });
+  if (imgError) throw new Error(`Failed to load markscheme images: ${imgError.message}`);
+
+  const images = (imageRows ?? []) as {
+    question_id: string;
+    part_id: string | null;
+    storage_path: string;
+  }[];
+  const imagesByQuestion = new Map<string, typeof images>();
+  for (const img of images) {
+    const list = imagesByQuestion.get(img.question_id) ?? [];
+    list.push(img);
+    imagesByQuestion.set(img.question_id, list);
+  }
+
+  const result: MarkschemeImageRef[] = [];
+  for (const item of items) {
+    const question = questionByCode.get(item.ib_question_code);
+    if (!question) continue;
+    const questionImages = imagesByQuestion.get(question.id) ?? [];
+    if (questionImages.length === 0) continue;
+
+    const questionParts = partsByQuestion.get(question.id) ?? [];
+    const wanted = normalisePartLabel(item.part_label);
+    let matched = questionParts.find((p) => normalisePartLabel(p.part_label) === wanted);
+    if (!matched && wanted === "" && questionParts.length === 1) matched = questionParts[0];
+
+    const forPart = matched ? questionImages.filter((img) => img.part_id === matched!.id) : [];
+    const shared = questionImages.filter((img) => img.part_id === null);
+    const chosen = forPart.length > 0 ? forPart : shared;
+
+    for (const img of chosen) {
+      result.push({ testItemId: item.id, storagePath: img.storage_path });
+    }
+  }
+
+  return result;
+}
+
 // -----------------------------------------------------------------------------
 // Prompts
 // -----------------------------------------------------------------------------
@@ -447,6 +568,16 @@ CONFIDENCE
 - "low": illegible, ambiguous, hard to locate, or a genuinely borderline award.
 Anything marked "low" is flagged for the teacher to mark by hand. Be honest — an over-confident wrong mark is far more damaging than a flagged uncertain one.
 
+EVIDENCE LOCATION
+When workFound is true, also report evidenceBox: the page and a bounding box, as a
+fraction of that page's full width/height (0 = left/top edge, 1 = right/bottom
+edge), that tightly bounds the student's handwritten working for THIS part —
+e.g. {"page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61}. This is used to
+show the teacher the exact scan region your evidence came from, so it must
+actually contain the work, not just be somewhere on the right page. If you
+cannot localise it confidently, set evidenceBox to null rather than guessing —
+a missing crop is fine, a wrong one is not.
+
 OUTPUT
 Return ONLY a JSON object. No preamble, no markdown fences, no commentary.
 
@@ -459,7 +590,8 @@ Return ONLY a JSON object. No preamble, no markdown fences, no commentary.
       "workFound": <boolean>,
       "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }],
       "reasoning": "<one or two sentences citing the tokens satisfied or missed>",
-      "evidence": "<what the student actually wrote, briefly>"
+      "evidence": "<what the student actually wrote, briefly>",
+      "evidenceBox": { "page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61 } | null
     }
   ]
 }
