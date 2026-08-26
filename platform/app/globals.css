@@ -131,7 +131,7 @@ body {
   color: var(--color-module-mastery);
 }
 
-/* ── Wood-grain texture overlay ─────────────────────────────────────────────
+/* -- Wood-grain texture overlay ---------------------------------------------
    Applied via .wood-surface utility — a subtle repeating grain pattern on
    dark walnut surfaces. Uses two offset gradients to fake annual rings. */
 .wood-surface {
@@ -152,7 +152,7 @@ body {
     );
 }
 
-/* ── Leather pebble texture ──────────────────────────────────────────────────
+/* -- Leather pebble texture --------------------------------------------------
    Fine crosshatch on form panels and cards. */
 .leather-surface {
   background-image:
@@ -172,13 +172,13 @@ body {
     );
 }
 
-/* ── Whiskey glow on focus ───────────────────────────────────────────────── */
+/* -- Whiskey glow on focus ------------------------------------------------- */
 input:focus, textarea:focus, select:focus {
   outline: none;
   box-shadow: 0 0 0 2px rgba(200, 138, 26, 0.45);
 }
 
-/* ── Form controls ───────────────────────────────────────────────────────────
+/* -- Form controls -----------------------------------------------------------
    These rules are NOT inside a cascade layer, and Tailwind's utilities ARE.
    Unlayered CSS beats layered CSS, so anything set here wins over a utility
    class like `bg-white` no matter how it's written in the component. That is
@@ -270,7 +270,7 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
    rather than as a scaled single curved glyph.
    margin: 0.3em overrides KaTeX's default margin: 1em 0 which caused excessive
    spacing between consecutive display equations in mark schemes. */
-/* ── Mafs graph canvas — always white, IB-style ──────────────────────────────
+/* -- Mafs graph canvas — always white, IB-style ------------------------------
    Mafs declares --mafs-bg: black directly on .MafsView, so parent-div CSS
    variable overrides are ignored. We must target .MafsView itself here. */
 .MafsView {

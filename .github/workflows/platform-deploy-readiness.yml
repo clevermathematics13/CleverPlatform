@@ -29,6 +29,12 @@ jobs:
       - name: Install platform dependencies
         working-directory: platform
         run: npm ci
+      - name: Typecheck
+        working-directory: platform
+        run: npx tsc --noEmit
+      - name: Unit tests
+        working-directory: platform
+        run: npm test
       - name: Build platform
         working-directory: platform
         run: npm run build

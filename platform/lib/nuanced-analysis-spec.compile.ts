@@ -33,6 +33,15 @@ function ruleBullets(rules: { id: string; rule: string; rationale?: string }[]):
     .join(NL);
 }
 
+// Section divider used inside the system prompt below.
+// Written as a \u2550 escape rather than a literal U+2550 character:
+// Turbopack's Rust code-frame highlighter panics with a byte-boundary
+// crash ("end byte index N is not a char boundary") when it renders a
+// build error on a line containing multi-byte box-drawing characters.
+// The runtime string is unchanged, so the prompt Claude receives is
+// byte-for-byte identical to before.
+const RULE = "\u2550".repeat(72);
+
 /**
  * Compile the full generation system prompt from a spec.
  * Sections are emitted in a fixed order so output is stable across runs.
@@ -77,9 +86,9 @@ export function compileSpecToSystemPrompt(spec: NuancedAnalysisSpec): string {
 
 Your job is to turn a syllabus topic or a set of rough questions into a complete, publishing-grade Nuanced Analysis packet that obeys the pedagogical contract below EXACTLY. This contract is authoritative; do not silently omit any required component. If a required element is genuinely inappropriate for the given topic, explain why in the Teacher's Companion Design Note rather than fabricating it.
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 WHAT A NUANCED ANALYSIS IS
-════════════════════════════════════════════════════════════════════════
+${RULE}
 ${s.corePhilosophy.definition}
 
 The cognitive arc, in order: ${s.corePhilosophy.arc.join(" → ")}.
@@ -88,9 +97,9 @@ Develop representational fluency across: ${s.corePhilosophy.representationForms.
 What this packet is NOT:
 ${ruleBullets(s.corePhilosophy.antiPatterns)}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 THREE-PHASE DELIVERY MODEL (every Part is tagged with one phase)
-════════════════════════════════════════════════════════════════════════
+${RULE}
 This packet is delivered in three phases. Tag every Part with its phase using the "${s.outputContract.partPhaseTagField}" field (one of: ${s.outputContract.partPhaseTagValues.join(", ")}).
 
 PHASE 1 — FLIPPED CLASSROOM (before the lesson, ~${p.flippedClassroom.timingGuidanceMinutes} min):
@@ -117,9 +126,9 @@ Deliverables: ${p.takeHome.deliverables.join("; ")}
 Phase continuity (non-negotiable):
 ${ruleBullets(p.continuityRules)}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 REQUIRED PACKET ORDER
-════════════════════════════════════════════════════════════════════════
+${RULE}
 ${packetOrder}
 
 Every Part must:
@@ -131,9 +140,9 @@ Every Part must:
 Use ${s.requiredStructure.numbering.continuous ? "continuous" : "per-part"} question numbering and ${s.requiredStructure.numbering.subpartStyle} style subparts.
 Part 0 purpose: ${s.requiredStructure.partContract.part0Purpose}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 COMMAND TERMS
-════════════════════════════════════════════════════════════════════════
+${RULE}
 - Bold each command term on first use${s.commandTerms.boldMainMathematicalObject ? " and bold the main mathematical object in each stem" : ""}.
 - One instruction per sentence; separate context (boxed) from task demand.
 - Every "Hence" must name the earlier result to use.
@@ -141,9 +150,9 @@ COMMAND TERMS
 Canonical command-term glossary to draw from:
 ${commandGlossary}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 THE EIGHT UNIVERSAL DESIGN LAYERS (apply all)
-════════════════════════════════════════════════════════════════════════
+${RULE}
 ${layers}
 
 Tiers:
@@ -158,56 +167,56 @@ Rule of Four: every key result appears in at least ${s.designLayers.ruleOfFourMi
       : ""
   }
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 PLANTED ERRORS ("Broken Math Critique" / "Find the Fatal Error")
-════════════════════════════════════════════════════════════════════════
+${RULE}
 - Include between ${s.plantedErrors.minPerPacket} and ${s.plantedErrors.maxPerPacket} planted errors.
 - Each planted error sits on exactly one line and is a single teachable conceptual misconception (not an arithmetic slip).
 - Frame positively; ask WHY the result is unreasonable BEFORE asking students to locate and correct it.
 - Name the misconception and the concept it tests in the Teacher's Companion.
 Framing text to use: "${s.plantedErrors.framingText}"
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 TOK & INTERNATIONAL-MINDEDNESS
-════════════════════════════════════════════════════════════════════════
+${RULE}
 - Include EXACTLY ${s.tok.countExactly} TOK provocations, placed at the top and returned to in the Reflection. Each must be answerable using a SPECIFIC result from this packet (no abstract-only TOK).
 - Useful TOK angles:
 ${bullets(s.tok.angles)}
 - International-mindedness: ${s.internationalMindedness.guidance}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 REFLECTION
-════════════════════════════════════════════════════════════════════════
+${RULE}
 ${ruleBullets(s.reflection.requiredElements)}
 - Provide a concept-map template, a position-statement frame, and a modelled mentor-text paragraph.
 - Offer a bullet-point option and an oral alternative for every reflection question.
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 IA-SEEDING & TOOLBOX WONDERING
-════════════════════════════════════════════════════════════════════════
+${RULE}
 - Include at least ${s.iaSeeding.minBranches} optional, deliberately under-specified extension branches, each from a different topic area.
 - ${s.iaSeeding.toolboxWonderingGuidance}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 TEACHER'S COMPANION (separated by a page break; removed before distribution)
-════════════════════════════════════════════════════════════════════════
+${RULE}
 ${ruleBullets(s.teacherCompanion.requiredSections)}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 VERIFICATION (do this before declaring the packet complete)
-════════════════════════════════════════════════════════════════════════
+${RULE}
 ${ruleBullets(s.verification.checklist)}
 ${s.verification.requireVerificationReport ? "Return a short Mathematical Verification Report of the checks you ran and any assumptions." : ""}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 VOICE, TONE & PLATFORM COPY RULES (enforced)
-════════════════════════════════════════════════════════════════════════
+${RULE}
 Tone: ${s.voiceAndCopy.tone}
 ${ruleBullets(s.voiceAndCopy.copyRules)}
 
-════════════════════════════════════════════════════════════════════════
+${RULE}
 OUTPUT CONTRACT — emit ONE JSON object for the "${s.outputContract.targetTable}" table
-════════════════════════════════════════════════════════════════════════
+${RULE}
 Fields:
 ${outputFields}
 Each Part carries a "${s.outputContract.partPhaseTagField}" field (${s.outputContract.partPhaseTagValues.join(" | ")}) and each question carries a "tier" field (★ | ★★ | ★★★).
