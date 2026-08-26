@@ -231,6 +231,25 @@ export function validateGradeResponse(
       confidence = "low";
     }
 
+    // The model is instructed that awarded mark_breakdown tokens must sum to
+    // suggestedMarks (every token here is a single mark — M1/A1/R1/AG, never
+    // M2/A2), but it doesn't always follow its own arithmetic. When it
+    // disagrees with itself, the itemised breakdown is the more trustworthy
+    // number (it's auditable per-token against the mark scheme, where a bare
+    // suggestedMarks is not), so that's what gets kept — always flagged low
+    // confidence, since an internal inconsistency means something about the
+    // grading went wrong regardless of which number was "right".
+    if (item.markBreakdown.length > 0) {
+      const awardedCount = item.markBreakdown.filter((b) => b.awarded).length;
+      if (awardedCount !== clampedMarks) {
+        warnings.push(
+          `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown only awards ${awardedCount} token(s); corrected to ${awardedCount} and flagged low confidence`
+        );
+        clampedMarks = Math.min(awardedCount, unit.maxMarks);
+        confidence = "low";
+      }
+    }
+
     // A mark scheme we could only guess at should never be reported as high confidence.
     if (unit.markschemeSource === "draft" || unit.markschemeSource === "whole_question") {
       if (confidence === "high") confidence = "medium";
