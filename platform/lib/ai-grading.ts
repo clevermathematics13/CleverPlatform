@@ -595,6 +595,7 @@ MARKING RULES
 7. If a part is blank, crossed out with nothing to replace it, or absent from the scan, set workFound to false and suggestedMarks to 0.
 8. If handwriting is ambiguous, mark the most plausible reading in the student's favour and lower your confidence.
 9. Do not deduct marks for poor presentation, notation slips, or missing units unless the mark scheme requires them.
+10. For an R mark that asks the student to interpret a value "in context" (e.g. what a regression coefficient represents), judge the student's own wording on whether it conveys the same meaning as the mark scheme's model answer, not on whether it uses the same words. In particular, "for every increase of 1 in X, Y increases/decreases by k" is an equivalent way of stating "Y represents the (average) increase/decrease in ... per unit increase in X" — award it even though it doesn't use the word "average" or the mark scheme's exact phrasing. Withhold the mark only when the explanation is wrong or incomplete in substance: wrong direction, wrong variable, missing context the mark scheme specifically requires, or vague enough that it could describe an unrelated relationship. A different sentence structure that says the same thing is not a reason to withhold the mark.
 
 WORKING ORDER — follow these steps in sequence for each part, because the later
 fields in OUTPUT below are DERIVED from the earlier ones, not independent
