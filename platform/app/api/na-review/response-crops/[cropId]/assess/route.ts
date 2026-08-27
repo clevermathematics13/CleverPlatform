@@ -73,7 +73,7 @@ export async function POST(
   const { data: crop, error: cropErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, storage_path, is_blank, boundary_expanded, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks)"
+      "id, storage_path, is_blank, boundary_expanded, possibly_truncated, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks)"
     )
     .eq("id", cropId)
     .maybeSingle();
@@ -108,6 +108,7 @@ export async function POST(
     // detected touching the edge, yet the model reported truncation
     // anyway on content that was actually fully present).
     boundaryExpanded: crop.boundary_expanded ?? undefined,
+    possiblyTruncated: crop.possibly_truncated ?? undefined,
   };
 
   /** Writes one na_feedback row, replacing any prior assessment for this

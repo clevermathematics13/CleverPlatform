@@ -26,6 +26,7 @@ interface CvCropResult {
   pageIndex: number;
   imageBase64: string;
   expanded: boolean;
+  possiblyTruncated: boolean;
   warnings: string[];
 }
 
@@ -186,6 +187,7 @@ export async function POST(
     status: "saved" | "failed";
     cropId?: string;
     expanded?: boolean;
+    possiblyTruncated?: boolean;
     isBlank?: boolean;
     error?: string;
   }[] = [];
@@ -240,6 +242,7 @@ export async function POST(
           .update({
             storage_path: storagePath,
             boundary_expanded: crop.expanded,
+            possibly_truncated: crop.possiblyTruncated,
             is_blank: isBlank,
           })
           .eq("id", cropId);
@@ -252,6 +255,7 @@ export async function POST(
             anchor_id: anchor.id,
             storage_path: storagePath,
             boundary_expanded: crop.expanded,
+            possibly_truncated: crop.possiblyTruncated,
             is_blank: isBlank,
           })
           .select("id")
@@ -260,7 +264,14 @@ export async function POST(
         cropId = newCrop.id;
       }
 
-      results.push({ qid: crop.qid, status: "saved", cropId, expanded: crop.expanded, isBlank });
+      results.push({
+        qid: crop.qid,
+        status: "saved",
+        cropId,
+        expanded: crop.expanded,
+        possiblyTruncated: crop.possiblyTruncated,
+        isBlank,
+      });
     } catch (e) {
       results.push({ qid: crop.qid, status: "failed", error: e instanceof Error ? e.message : String(e) });
     }
@@ -286,5 +297,6 @@ export async function POST(
     failedCount,
     blankCount: results.filter((r) => r.isBlank).length,
     expandedCount: results.filter((r) => r.expanded).length,
+    possiblyTruncatedCount: results.filter((r) => r.possiblyTruncated).length,
   });
 }

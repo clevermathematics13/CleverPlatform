@@ -54,7 +54,7 @@ class InspectFillrectsRequest(BaseModel):
     pageIndex: int
 
 
-app = FastAPI(title="Graph Lab CV Service", version="1.2.0")
+app = FastAPI(title="Graph Lab CV Service", version="1.3.0")
 
 
 def _check_secret(request: Request) -> JSONResponse | None:
@@ -220,6 +220,7 @@ async def crop(request: Request, req: CropRequest) -> JSONResponse:
                     "pageIndex": r.page_index,
                     "imageBase64": r.image_base64,
                     "expanded": r.expanded,
+                    "possiblyTruncated": r.possibly_truncated,
                     "warnings": r.warnings,
                 }
                 for r in results

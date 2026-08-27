@@ -82,6 +82,7 @@ interface AssessCropListItem {
   qid: string;
   sortOrder: number;
   isBlank: boolean;
+  possiblyTruncated: boolean;
   imageUrl: string | null;
   alreadyAssessed: boolean;
   verdict: string | null;
@@ -1464,12 +1465,25 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                         s.marksAwarded < s.marksAvailable &&
                         s.marksAwarded > 0;
                       const hasDetail =
-                        !!s.transcription || !!s.marginComment || !!s.nextStep || !!s.teacherNote || !!c.imageUrl;
+                        !!s.transcription ||
+                        !!s.marginComment ||
+                        !!s.nextStep ||
+                        !!s.teacherNote ||
+                        !!c.imageUrl ||
+                        c.possiblyTruncated;
                       return (
                         <div key={c.cropId} className="px-3 py-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex min-w-0 items-center gap-2">
                               <span className="text-sm font-medium text-da-text">{c.qid}</span>
+                              {c.possiblyTruncated && (
+                                <span
+                                  className="rounded border border-red-300 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700"
+                                  title="Stage 4's automatic crop expansion hit this question's layout limit while the student's writing was still touching the edge -- the image may be missing content. Check the crop against the original scan before trusting this mark."
+                                >
+                                  may be cut off
+                                </span>
+                              )}
                               {s.status === "assessed" && s.verdict && (
                                 <span
                                   className={`rounded border px-2 py-0.5 text-xs font-medium ${VERDICT_STYLE[s.verdict] ?? ""}`}
@@ -1514,7 +1528,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                             </button>
                           </div>
                           {hasDetail && (
-                            <details className="mt-1" open={lostSomeMarks}>
+                            <details className="mt-1" open={lostSomeMarks || c.possiblyTruncated}>
                               <summary className="cursor-pointer text-xs text-da-accent hover:underline">
                                 Why this mark — transcription, comment &amp; notes
                               </summary>
