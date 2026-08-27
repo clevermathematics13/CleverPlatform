@@ -74,21 +74,26 @@ export async function GET(
   const scans = (scanRows ?? []) as unknown as ScanRow[];
   const scanIds = scans.map((s) => s.id);
 
+  type Feedback = {
+    ai_attempted: boolean | null;
+    ai_marks_awarded: number | null;
+    ai_marks_available: number | null;
+    ai_validation_error: string | null;
+    final_marks_awarded: number | null;
+  };
+
   type CropRow = {
     id: string;
     anchor_id: string;
     packet_scan_id: string;
-    na_feedback:
-      | { ai_attempted: boolean | null; ai_marks_awarded: number | null; ai_marks_available: number | null; ai_validation_error: string | null }
-      | { ai_attempted: boolean | null; ai_marks_awarded: number | null; ai_marks_available: number | null; ai_validation_error: string | null }[]
-      | null;
+    na_feedback: Feedback | Feedback[] | null;
   };
 
   const cropsByScan = new Map<string, CropRow[]>();
   if (scanIds.length > 0) {
     const { data: cropRows, error: cropErr } = await supabase
       .from("na_response_crops")
-      .select("id, anchor_id, packet_scan_id, na_feedback(ai_attempted, ai_marks_awarded, ai_marks_available, ai_validation_error)")
+      .select("id, anchor_id, packet_scan_id, na_feedback(ai_attempted, ai_marks_awarded, ai_marks_available, ai_validation_error, final_marks_awarded)")
       .in("packet_scan_id", scanIds);
     if (cropErr) return NextResponse.json({ error: cropErr.message }, { status: 500 });
     for (const c of (cropRows ?? []) as CropRow[]) {
@@ -115,7 +120,11 @@ export async function GET(
       const fb = Array.isArray(c.na_feedback) ? c.na_feedback[0] : c.na_feedback;
       if (fb?.ai_attempted === true && !fb.ai_validation_error) {
         assessedCount += 1;
-        marksAwarded += fb.ai_marks_awarded ?? 0;
+        // A teacher override (final_marks_awarded) is the actual current
+        // mark once one exists -- summing ai_marks_awarded unconditionally
+        // would silently show a stale AI draft after a correction, exactly
+        // the kind of number this whole page exists to get right.
+        marksAwarded += fb.final_marks_awarded ?? fb.ai_marks_awarded ?? 0;
         marksAvailable += fb.ai_marks_available ?? 0;
       }
     }
