@@ -162,18 +162,25 @@ A.1 packet: spec `4821f182-4331-4868-91a2-948c71ee4d6f`, packet version
 `aabd94f4-aa08-405e-bccb-5003d31696cb`. **40 anchors** (was 39 before Q26(a) was
 added on 24 Aug 2026).
 
-**Corrected 27 Aug 2026: the "11 packet scans" figure above was wrong.** There are
-actually **17** `na_packet_scans` rows for this packet version:
+**Corrected 27 Aug 2026: the "11 packet scans" figure above was wrong.** There were
+**17** `na_packet_scans` rows for this packet version:
 - 7 real students, each with **two** scans from two separate teacher uploads of the
   literal same `Scan (corrected).pdf` a day apart - `batch db4d3a05` (22 Aug, the
   live one, carrying the real `na_feedback`) and `batch f5519dd6` (23 Aug, a
-  near-duplicate upload with almost no feedback, 1 row). Nobody has resolved which
-  of the pair is authoritative or deleted the duplicate; see Open Items.
+  near-duplicate upload with almost no feedback, 1 row).
 - 3 orphaned scans from an early `pilot-ingestion` batch (`invited_student_id` and
   `name_crop_storage_path` both NULL, `id_status = needs_review`), already 38/39
   assessed, with no source PDF recorded anywhere in the schema (`na_scan_batches`
   for that batch has `source_storage_path = NULL` too). Not identifiable from the
-  database and not backfillable for Q26(a) as a result.
+  database and not backfillable for Q26(a) as a result. Still unresolved - see
+  Open Items.
+
+**The `f5519dd6` duplicate batch was deleted 27 Aug 2026** (teacher, via the Supabase
+dashboard - Storage UI for the crop/PDF files, then one `DELETE FROM na_scan_batches`
+which cascaded to its 7 `na_packet_scans`, 280 `na_response_crops`, and the 1 stray
+`na_feedback` row). Verified after: 10 total `na_packet_scans` remain for this packet
+version (7 live + 3 orphan), `db4d3a05`'s own 7/280/70 scans/crops/feedback
+untouched. This is why the count above is now consistently 10, not 17.
 
 **Q26(a) backfill is done** (27 Aug 2026) for the 7 live (`db4d3a05`) scans: 280
 crops written (40 per scan), then stage 5 run on the 7 new Q26(a) crops
@@ -276,14 +283,7 @@ committed so the tree stays clean.
    merge, the migration landmine fix is not in effect.
 2. **Rotate the leaked Google OAuth client secret** and decide whether the repo
    should stay public (§7).
-3. **Resolve the duplicate A.1 batch upload.** 7 students each have two
-   `na_packet_scans` rows from two separate uploads of the same source PDF
-   (`batch db4d3a05`, live, carries real feedback; `batch f5519dd6`, near-duplicate,
-   almost no feedback) - see §5. Nobody has decided whether to delete the
-   duplicate's scans/crops or leave them. Low urgency (not confusing any grading
-   currently in progress) but it's dead weight in the review UI and very nearly
-   confused the Q26(a) backfill into re-cropping the wrong 7 scans.
-4. **Identify or archive the 3 orphaned `pilot-ingestion` packet scans** (§5) - no
+3. **Identify or archive the 3 orphaned `pilot-ingestion` packet scans** (§5) - no
    `invited_student_id`, no source PDF recorded anywhere, already 38/39 assessed.
    Investigated 27 Aug 2026: not identifiable from the database (no name crop, no
    confidence, `id_status = needs_review`). Either someone recognizes whose work
@@ -292,11 +292,11 @@ committed so the tree stays clean.
 
 **Medium**
 
-5. Grade 9 Standard NA packets - none seeded.
+4. Grade 9 Standard NA packets - none seeded.
 
 **Low**
 
-6. Full NA generation wiring for Grade 9. The generator is hardcoded to Grade 12,
+5. Full NA generation wiring for Grade 9. The generator is hardcoded to Grade 12,
    `buildActivityGeneratorSystemPrompt()` does not fetch `na_continuity`, and saves
    do not write back.
 
@@ -305,9 +305,13 @@ committed so the tree stays clean.
 - Migration drift - reconciled, 83/83, invariant documented.
 - Q26(a) anchor - added (see below).
 - **Q26(a) crop backfill** - done 27 Aug 2026 for the 7 live scans (280 crops, then
-  stage 5 on the 7 new crops, 0 failures). Spawned two new open items instead
-  (the duplicate batch, and the 3 unbackfillable orphan scans) rather than closing
-  cleanly - see §5 and Open Items above.
+  stage 5 on the 7 new crops, 0 failures). Spawned two new open items instead of
+  closing cleanly - the duplicate batch (now also closed, see next) and the 3
+  unbackfillable orphan scans (still open, see §5 and Open Items above).
+- **Duplicate A.1 batch upload** - resolved 27 Aug 2026. The `f5519dd6` batch (7
+  students' worth of near-duplicate, near-unassessed scans/crops) was deleted via
+  the Supabase dashboard; the live `db4d3a05` batch was verified untouched
+  afterward. See §5 for the full before/after.
 - Post-deploy verification workflow at the broken nested path - deleted; it had
   never run and could not have worked.
 - Stale `clever-platform.vercel.app` origin - removed.
