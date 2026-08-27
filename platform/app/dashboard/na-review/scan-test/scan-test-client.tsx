@@ -82,6 +82,7 @@ interface AssessCropListItem {
   qid: string;
   sortOrder: number;
   isBlank: boolean;
+  imageUrl: string | null;
   alreadyAssessed: boolean;
   verdict: string | null;
   marksAwarded: number | null;
@@ -1401,7 +1402,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                         s.marksAwarded < s.marksAvailable &&
                         s.marksAwarded > 0;
                       const hasDetail =
-                        !!s.transcription || !!s.marginComment || !!s.nextStep || !!s.teacherNote;
+                        !!s.transcription || !!s.marginComment || !!s.nextStep || !!s.teacherNote || !!c.imageUrl;
                       return (
                         <div key={c.cropId} className="px-3 py-2">
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1456,6 +1457,17 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                 Why this mark — transcription, comment &amp; notes
                               </summary>
                               <div className="mt-2 space-y-2 rounded-lg bg-da-hover/50 p-3 text-xs">
+                                {c.imageUrl && (
+                                  <div>
+                                    <p className="font-semibold text-da-text">Crop</p>
+                                    {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset Next's image optimizer can handle */}
+                                    <img
+                                      src={c.imageUrl}
+                                      alt={`${c.qid} crop`}
+                                      className="mt-1 max-h-96 w-auto rounded border border-da-border bg-white"
+                                    />
+                                  </div>
+                                )}
                                 {s.transcription && (
                                   <div>
                                     <p className="font-semibold text-da-text">What the student wrote</p>

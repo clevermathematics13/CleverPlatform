@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { NA_SCAN_BUCKET } from "@/lib/na-scanning";
+
+const SIGNED_URL_TTL_SECONDS = 3600;
 
 /**
  * GET /api/na-review/packet-scans/[packetScanId]/assess
@@ -45,11 +48,25 @@ export async function GET(
   const { data: cropRows, error: cropsErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, is_blank, anchor_id, na_anchors(qid, sort_order), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags)"
+      "id, storage_path, is_blank, anchor_id, na_anchors(qid, sort_order), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags)"
     )
     .eq("packet_scan_id", packetScanId);
 
   if (cropsErr) return NextResponse.json({ error: cropsErr.message }, { status: 500 });
+
+  // Batch-sign every crop's image in one call rather than one round trip
+  // per crop -- a student can have 40 crops, and this route already learned
+  // the hard way (see the module docstring) that per-crop work here adds up.
+  const cropPaths = (cropRows ?? []).map((r) => r.storage_path).filter((p): p is string => !!p);
+  const signedUrlByPath = new Map<string, string>();
+  if (cropPaths.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from(NA_SCAN_BUCKET)
+      .createSignedUrls(cropPaths, SIGNED_URL_TTL_SECONDS);
+    for (const s of signed ?? []) {
+      if (s.signedUrl && s.path) signedUrlByPath.set(s.path, s.signedUrl);
+    }
+  }
 
   type Feedback = {
     ai_attempted: boolean | null;
@@ -67,6 +84,7 @@ export async function GET(
 
   type Row = {
     id: string;
+    storage_path: string | null;
     is_blank: boolean | null;
     anchor_id: string;
     na_anchors: { qid: string; sort_order: number | null } | { qid: string; sort_order: number | null }[] | null;
@@ -81,6 +99,7 @@ export async function GET(
       qid: anchor?.qid ?? "(unknown)",
       sortOrder: anchor?.sort_order ?? 0,
       isBlank: r.is_blank ?? false,
+      imageUrl: r.storage_path ? (signedUrlByPath.get(r.storage_path) ?? null) : null,
       // "assessed" here means na_feedback exists AND is a real, complete
       // verdict -- not merely attempted-but-invalid. A row with
       // ai_validation_error set still needs a retry, so it's reported as
