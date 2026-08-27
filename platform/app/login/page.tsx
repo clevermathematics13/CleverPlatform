@@ -10,8 +10,15 @@ function LoginForm() {
   const redirectTo = searchParams.get("redirectTo") ?? "/dashboard";
   const invitedEmail = searchParams.get("invitedEmail");
   const [staySignedIn, setStaySignedIn] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   const handleGoogleLogin = async () => {
+    // Guard against a second click firing before the redirect happens --
+    // each call generates its own PKCE code verifier and overwrites the
+    // one stored for the in-flight attempt, so a double-fire here is a
+    // real cause of "PKCE code verifier not found in storage" failures.
+    if (signingIn) return;
+    setSigningIn(true);
     const supabase = createClient();
     const callbackParams = new URLSearchParams({
       next: redirectTo,
@@ -88,8 +95,9 @@ function LoginForm() {
           </label>
           <button
             onClick={handleGoogleLogin}
+            disabled={signingIn}
             style={{ backgroundColor: "#c88a1a", color: "#2b1408" }}
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-da-accent/40 px-4 py-3 text-sm font-semibold shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-da-accent/40 px-4 py-3 text-sm font-semibold shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface disabled:cursor-not-allowed disabled:opacity-60"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
               <path
@@ -109,7 +117,7 @@ function LoginForm() {
                 fill="#EA4335"
               />
             </svg>
-            Sign in with Google
+            {signingIn ? "Redirecting…" : "Sign in with Google"}
           </button>
         </div>
 
