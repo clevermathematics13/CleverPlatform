@@ -195,6 +195,47 @@ assessment but partial/1 in the live one - same handwriting, different verdict,
 almost certainly an older rubric/prompt version in the pilot pipeline. Don't treat
 the pilot data as a second source of truth for anything.
 
+### Stage 5 quality pass, 27 Aug 2026 - a real answer-key defect, plus AI self-contradictions
+
+After the full re-assessment above, scanned every `na_feedback.ai_teacher_note`
+system-wide for backtracking language ("wait", "reconsidering", etc. - the same
+detector now built into `validateAssessment`, see below). Found 6 matches; 4 were
+the model rambling but still landing on a self-consistent number (no action), 2
+were real:
+
+- **Q9's answer key had a genuine typo**, not an AI error: `na_anchors.question_answer`
+  said `(2,4) -> 360` for one row of the ticket-pricing table, but 60×2+30×4=240,
+  not 360 - arithmetically impossible. `answer_sketch` on the same anchor already
+  had the correct pair (`(4,c)->360 gives c=4`), but `buildRubricBlock` prefers
+  `question_answer`, so the model never saw the fix. All 7 students' physical
+  worksheets independently confirm the row gives children=4 and total=$360 with
+  adults blank to solve - the unique correct answer is adults=4. Corrected the
+  anchor text, then re-ran stage 5 fresh on all 7 students' Q9 crops. 4 of 7 marks
+  changed as a direct result: Freya Delisle 3->4, Roberto Aurelio Gamio 2->3,
+  Ruifeng Wu 3->4, Santiago Caipo 3->4 (out of 5). Davi Verma, Ines Palomino, and
+  Kaito Fujii were unaffected - Kaito's row 4 has its own separate, genuine error
+  (wrote adults=1, which doesn't satisfy the corrected key either), confirming his
+  original mark wasn't a key-bug victim.
+- **Kaito Fujii's Q1** and **Freya Delisle's Q23** had real teacherNote/marksAwarded
+  mismatches (see below) - manually corrected via the normal teacher-override
+  fields (`final_verdict`/`final_marks_awarded`/`approved_by`/`approved_at`).
+- **Santiago Caipo's Q5** wasn't a mismatch but an unjustified score bump: the
+  model's own note worked out the strictly-correct total (1/5, only part (b)
+  correct) then overrode it with "being generous I'll give 2" - corrected to 1/5,
+  keeping the original (accurate) margin comment.
+
+**`validateAssessment` (`platform/lib/na-assessment.ts`) now detects this class of
+bug going forward.** It scans `teacherNote` for backtracking markers ("wait",
+"on second thought", "reconsidering", etc.) and appends a warning into
+`ai_teacher_note` when found - deliberately biased toward over-flagging, since a
+false positive costs a few seconds' recheck and a missed real case costs a wrong
+mark on a student's grade. The system prompt was also strengthened to forbid this
+pattern outright. This does NOT retroactively re-scan anything created before 27
+Aug 2026 - the scan above was a one-time manual sweep, not an ongoing job.
+Consider re-running that same regex sweep periodically, or after any large
+re-assessment run, since it's cheap and already found 2 real defects out of 213
+crops on its first use.
+
 Not deleted - documented here only. See Open Items for the pending decision on
 whether to remove this now-redundant pilot data.
 
