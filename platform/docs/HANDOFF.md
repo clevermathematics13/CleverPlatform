@@ -171,9 +171,32 @@ added on 24 Aug 2026).
 - 3 orphaned scans from an early `pilot-ingestion` batch (`invited_student_id` and
   `name_crop_storage_path` both NULL, `id_status = needs_review`), already 38/39
   assessed, with no source PDF recorded anywhere in the schema (`na_scan_batches`
-  for that batch has `source_storage_path = NULL` too). Not identifiable from the
-  database and not backfillable for Q26(a) as a result. Still unresolved - see
-  Open Items.
+  for that batch has `source_storage_path = NULL` too). Not backfillable for
+  Q26(a) as a result (no split PDF to feed the CV service).
+
+**Identified 27 Aug 2026, by matching handwriting/answers, not database fields**
+(nothing in the DB pointed at these students - the crops themselves did): all 3
+orphan scans are duplicates of students who are ALSO live in `db4d3a05`, scanned
+individually through a one-off `pilot/packet-N/...` Storage path that predates the
+batch-upload system entirely (created 21 Aug, a day before `db4d3a05`).
+- `0525197b-2ab2-45d4-9519-0b02d47b56cf` (`pilot/packet-1/`) = **Ines Palomino**
+  (`25fa37ae-17d0-4891-91f4-dfe0440b5cbe`)
+- `f854e03e-e14e-4a26-9ec4-4832fcdb5eb3` (`pilot/packet-2/`) = **Freya Delisle**
+  (`9ea1b42b-a9f0-484e-8b5b-42156f6d8820`)
+- `475e3a0d-9a83-46bb-b063-891dc28e8dba` (`pilot/packet-3/`) = **Davi Verma**
+  (`9c83399d-c5d3-437a-bd7a-68cadb2e1f8d`)
+
+Confirmed by pixel-identical crop images (same handwriting, same stray pencil
+marks) for Ines Palomino and Davi Verma, and by near-verbatim-identical
+transcriptions for Freya Delisle (no unassessed comparison crop was available for
+her at identification time). Found one real grading discrepancy in the process:
+Davi Verma's Q3 ("It was a coincidence.") scored incorrect/0 in the pilot
+assessment but partial/1 in the live one - same handwriting, different verdict,
+almost certainly an older rubric/prompt version in the pilot pipeline. Don't treat
+the pilot data as a second source of truth for anything.
+
+Not deleted - documented here only. See Open Items for the pending decision on
+whether to remove this now-redundant pilot data.
 
 **The `f5519dd6` duplicate batch was deleted 27 Aug 2026** (teacher, via the Supabase
 dashboard - Storage UI for the crop/PDF files, then one `DELETE FROM na_scan_batches`
@@ -283,12 +306,14 @@ committed so the tree stays clean.
    merge, the migration landmine fix is not in effect.
 2. **Rotate the leaked Google OAuth client secret** and decide whether the repo
    should stay public (§7).
-3. **Identify or archive the 3 orphaned `pilot-ingestion` packet scans** (§5) - no
-   `invited_student_id`, no source PDF recorded anywhere, already 38/39 assessed.
-   Investigated 27 Aug 2026: not identifiable from the database (no name crop, no
-   confidence, `id_status = needs_review`). Either someone recognizes whose work
-   this is and can supply the source PDF, or these should be archived/deleted as
-   unrecoverable pilot data.
+3. **Decide whether to delete the 3 orphaned `pilot-ingestion` packet scans** (§5).
+   Identified 27 Aug 2026 (by matching handwriting/answers, since nothing in the
+   database pointed at them) as duplicates of 3 already-live students - Ines
+   Palomino, Freya Delisle, Davi Verma - from a one-off pre-batch-system pilot
+   run. Same situation as the `f5519dd6` duplicate that was already deleted: dead
+   weight in the review UI, and at least one grading discrepancy found against
+   the live assessment (§5) means the pilot data shouldn't be trusted alongside
+   it. Not deleted yet - teacher chose to document only, for now.
 
 **Medium**
 
