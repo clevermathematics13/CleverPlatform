@@ -122,6 +122,12 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
+
+  /** How many of a run's results are accepted, keyed by run id — drives the roster's status dot. */
+  const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
+    {}
+  );
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingUploadStudent = useRef<string | null>(null);
@@ -175,6 +181,15 @@ export function AiGradeClient({ testId }: { testId: string }) {
         if (!latest[r.student_id]) latest[r.student_id] = r;
       }
       setRunsByStudent(latest);
+
+      const counts: Record<string, { accepted: number; total: number }> = {};
+      for (const r of ((runs1.data.results as { run_id: string; accepted: boolean }[]) ?? [])) {
+        const c = counts[r.run_id] ?? { accepted: 0, total: 0 };
+        c.total += 1;
+        if (r.accepted) c.accepted += 1;
+        counts[r.run_id] = c;
+      }
+      setAcceptanceByRun(counts);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load this assessment.");
     }
@@ -206,7 +221,16 @@ export function AiGradeClient({ testId }: { testId: string }) {
         setSelected(
           new Set(rowsForLatest.filter((r) => !r.accepted && r.work_found).map((r) => r.id))
         );
-        if (latestRun) setRunsByStudent((prev) => ({ ...prev, [studentId]: latestRun }));
+        if (latestRun) {
+          setRunsByStudent((prev) => ({ ...prev, [studentId]: latestRun }));
+          setAcceptanceByRun((prev) => ({
+            ...prev,
+            [latestRun.id]: {
+              accepted: rowsForLatest.filter((r) => r.accepted).length,
+              total: rowsForLatest.length,
+            },
+          }));
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not load results for this student.");
       }
@@ -319,6 +343,33 @@ export function AiGradeClient({ testId }: { testId: string }) {
     }
   };
 
+  // -- Accept a single result into Clev's Marks (per-row, from the Status column) --
+  const acceptOne = async (resultId: string) => {
+    if (!focusRunId) return;
+    setAcceptingRowId(resultId);
+    setError(null);
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          runId: focusRunId,
+          selections: [{ resultId, marks: drafts[resultId] }],
+        }),
+      });
+      if (!ok) {
+        setError((data.error as string) ?? "Could not accept this mark.");
+        return;
+      }
+      setStatusLine(`${data.appliedCount} mark(s) written to Clev's Marks.`);
+      if (focusStudent) await loadResultsFor(focusStudent);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not accept this mark.");
+    } finally {
+      setAcceptingRowId(null);
+    }
+  };
+
   const toggle = (resultId: string) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -424,13 +475,35 @@ export function AiGradeClient({ testId }: { testId: string }) {
               {students.map((s) => {
                 const busy = busyStudent === s.profile_id;
                 const run = runsByStudent[s.profile_id];
+                const acceptance = run ? acceptanceByRun[run.id] : undefined;
+                const dot =
+                  run?.status === "complete" && acceptance && acceptance.total > 0
+                    ? acceptance.accepted === acceptance.total
+                      ? { color: "bg-green-500", title: "All suggested marks accepted into Clev's Marks" }
+                      : acceptance.accepted === 0
+                        ? { color: "bg-red-500", title: "No suggested marks accepted yet" }
+                        : {
+                            color: "bg-amber-500",
+                            title: `${acceptance.accepted} of ${acceptance.total} suggested marks accepted`,
+                          }
+                    : null;
                 return (
                   <li
                     key={s.profile_id}
                     className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
                   >
                     <div>
-                      <p className="font-semibold text-gray-900">{s.display_name}</p>
+                      <p className="flex items-center gap-2 font-semibold text-gray-900">
+                        {dot && (
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${dot.color}`}
+                            role="img"
+                            aria-label={dot.title}
+                            title={dot.title}
+                          />
+                        )}
+                        {s.display_name}
+                      </p>
                       <p className="text-xs text-gray-500">
                         {run ? (
                           <>
@@ -596,7 +669,14 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                 {r.accepted ? (
                                   <span className="text-xs text-green-700">accepted</span>
                                 ) : (
-                                  <span className="text-gray-400">—</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => acceptOne(r.id)}
+                                    disabled={acceptingRowId === r.id}
+                                    className="rounded border border-blue-300 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                  >
+                                    {acceptingRowId === r.id ? "Accepting…" : "Accept"}
+                                  </button>
                                 )}
                               </td>
                               <td className="px-2 py-2">
