@@ -1,11 +1,16 @@
 # CleverPlatform — Technical Handoff
 
-**Supersedes the 23 Aug 2026 handoff. Last verified against production: 24 Aug 2026.**
+**Supersedes the 24 Aug 2026 handoff. Last verified against production: 27 Aug 2026.**
 
 Every figure here was checked against the live database, the live Vercel project or
 the repo on the date above. Where the previous handoff was wrong, the correction is
 called out inline, because two of its errors caused real mistakes in the session
 that produced this file.
+
+**27 Aug 2026 session: `GRAPH_LAB_CV_SERVICE_URL` and `CV_SERVICE_SECRET` were added
+to this agent environment and the Railway domain was allowed in the network policy.**
+This changed §6 materially - see the corrected table below. The Q26(a) backfill
+(§9, previously blocked on exactly this) is now done.
 
 ---
 
@@ -155,8 +160,28 @@ new crops.
 A.1 packet: spec `4821f182-4331-4868-91a2-948c71ee4d6f`, packet version
 `1462a2f2-fc2a-4bab-8135-ed3aefeb0aff`, `nuanced_analysis`
 `aabd94f4-aa08-405e-bccb-5003d31696cb`. **40 anchors** (was 39 before Q26(a) was
-added on 24 Aug 2026), 11 packet scans, 429 crops pending the Q26(a) backfill
-(440 after), 178 feedback rows.
+added on 24 Aug 2026).
+
+**Corrected 27 Aug 2026: the "11 packet scans" figure above was wrong.** There are
+actually **17** `na_packet_scans` rows for this packet version:
+- 7 real students, each with **two** scans from two separate teacher uploads of the
+  literal same `Scan (corrected).pdf` a day apart - `batch db4d3a05` (22 Aug, the
+  live one, carrying the real `na_feedback`) and `batch f5519dd6` (23 Aug, a
+  near-duplicate upload with almost no feedback, 1 row). Nobody has resolved which
+  of the pair is authoritative or deleted the duplicate; see Open Items.
+- 3 orphaned scans from an early `pilot-ingestion` batch (`invited_student_id` and
+  `name_crop_storage_path` both NULL, `id_status = needs_review`), already 38/39
+  assessed, with no source PDF recorded anywhere in the schema (`na_scan_batches`
+  for that batch has `source_storage_path = NULL` too). Not identifiable from the
+  database and not backfillable for Q26(a) as a result.
+
+**Q26(a) backfill is done** (27 Aug 2026) for the 7 live (`db4d3a05`) scans: 280
+crops written (40 per scan), then stage 5 run on the 7 new Q26(a) crops
+specifically (not a full re-assessment) - all 7 assessed, 0 failures. The 3 orphan
+scans could not be backfilled (no split PDF to feed the CV service) and the 7
+duplicate (`f5519dd6`) scans already had a Q26(a) crop from before this session (no
+feedback on it, since nothing has assessed that batch). Total feedback rows for the
+live scans: 178 (pre-Q26a) + 7 = 185.
 
 `na_packet_versions.master_pdf_storage_path` for A.1 is **NULL** - the master PDF was
 never stored. Anchor geometry can only be re-derived from a copy of the rendered
@@ -166,23 +191,30 @@ packet PDF; a student's split PDF is pixel-identical page content and stands in.
 
 ## 6. What an agent session can and cannot reach
 
-Verified 24 Aug 2026. This is the single most useful thing to know before planning
-work, and the previous handoff did not record it.
+Verified 24 Aug 2026, corrected 27 Aug 2026. This is the single most useful thing to
+know before planning work, and both handoffs before this one got it wrong in ways
+that mattered.
 
 | Capability | Status |
 |---|---|
 | Supabase SQL (via MCP) | Full - connects as `postgres` superuser |
-| Supabase Storage | **Blocked** - egress proxy 403s `qnawglgnoojrlaivylou.supabase.co` |
-| Railway / CV service | **No access** - no connector, no CLI, egress blocked |
+| Supabase REST + Storage (direct HTTPS, service-role key) | **Full**, as of 27 Aug 2026 - both `qnawglgnoojrlaivylou.supabase.co/rest/v1/` and `/storage/v1/` returned 200 to a plain `curl` with `SUPABASE_SERVICE_ROLE_KEY`. The 24 Aug handoff called Storage blocked; that was either wrong at the time or the network policy changed since - either way, don't trust that line without re-testing, since this table has now been wrong in both directions. |
+| Railway / CV service | **Full**, as of 27 Aug 2026 - `GRAPH_LAB_CV_SERVICE_URL` and `CV_SERVICE_SECRET` were added to the agent environment and the Railway domain was allowed in the network policy. `curl -H "X-CV-Secret: $CV_SERVICE_SECRET" $GRAPH_LAB_CV_SERVICE_URL/health` returns `{"status":"ok"}`. This was the literal blocker on the Q26(a) backfill (§9) and is now resolved. |
 | Vercel (via MCP) | Full - projects, deployments, logs |
 | GitHub | Full, once the Claude GitHub App is installed |
 | Google Drive | Read |
-| Direct HTTPS to the app | **Blocked** - `clevermathematics.com` and `*.vercel.app` 403 at the gateway |
+| Direct HTTPS to the app | **Blocked** - `clevermathematics.com` and `*.vercel.app` 403 at the gateway (not re-tested 27 Aug, only Supabase and Railway were) |
 
-Consequences: an agent can read and write every database row but cannot fetch a
-single file out of Storage, and cannot run any pipeline stage that depends on the CV
-service. Anything requiring a PDF must have the PDF supplied directly into the
-session.
+Consequences, updated: an agent session can now read/write Storage directly and run
+CV-service-dependent pipeline stages (crop extraction, and stage 5 assessment via a
+script that imports `lib/na-assessment.ts` directly rather than going through the
+app's authenticated API routes) as long as it has `SUPABASE_SERVICE_ROLE_KEY`,
+`GRAPH_LAB_CV_SERVICE_URL`/`CV_SERVICE_SECRET`, and an Anthropic key in its own env
+(this session had `GRADING_ANTHROPIC_API_KEY`, not `ANTHROPIC_API_KEY` - the app's
+own routes read `ANTHROPIC_API_KEY` specifically, so confirm that's actually set on
+the Vercel deployment too, or stage 5 will 500 there even though it worked from this
+session). None of this is available by default - re-verify reachability each
+session rather than trusting this table, which has already been wrong twice.
 
 ---
 
@@ -244,13 +276,23 @@ committed so the tree stays clean.
    merge, the migration landmine fix is not in effect.
 2. **Rotate the leaked Google OAuth client secret** and decide whether the repo
    should stay public (§7).
-3. **Q26(a) crop backfill.** The anchor and rubric item now exist; 11 packet scans
-   still have no Q26(a) crop. Re-run stage 4 per student, then stage 5. Needs the CV
-   service, so it cannot be done from an agent session.
+3. **Resolve the duplicate A.1 batch upload.** 7 students each have two
+   `na_packet_scans` rows from two separate uploads of the same source PDF
+   (`batch db4d3a05`, live, carries real feedback; `batch f5519dd6`, near-duplicate,
+   almost no feedback) - see §5. Nobody has decided whether to delete the
+   duplicate's scans/crops or leave them. Low urgency (not confusing any grading
+   currently in progress) but it's dead weight in the review UI and very nearly
+   confused the Q26(a) backfill into re-cropping the wrong 7 scans.
+4. **Identify or archive the 3 orphaned `pilot-ingestion` packet scans** (§5) - no
+   `invited_student_id`, no source PDF recorded anywhere, already 38/39 assessed.
+   Investigated 27 Aug 2026: not identifiable from the database (no name crop, no
+   confidence, `id_status = needs_review`). Either someone recognizes whose work
+   this is and can supply the source PDF, or these should be archived/deleted as
+   unrecoverable pilot data.
 
 **Medium**
 
-4. Grade 9 Standard NA packets - none seeded.
+5. Grade 9 Standard NA packets - none seeded.
 
 **Low**
 
@@ -262,6 +304,10 @@ committed so the tree stays clean.
 
 - Migration drift - reconciled, 83/83, invariant documented.
 - Q26(a) anchor - added (see below).
+- **Q26(a) crop backfill** - done 27 Aug 2026 for the 7 live scans (280 crops, then
+  stage 5 on the 7 new crops, 0 failures). Spawned two new open items instead
+  (the duplicate batch, and the 3 unbackfillable orphan scans) rather than closing
+  cleanly - see §5 and Open Items above.
 - Post-deploy verification workflow at the broken nested path - deleted; it had
   never run and could not have worked.
 - Stale `clever-platform.vercel.app` origin - removed.
