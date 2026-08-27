@@ -122,6 +122,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingUploadStudent = useRef<string | null>(null);
@@ -316,6 +317,33 @@ export function AiGradeClient({ testId }: { testId: string }) {
       setError(e instanceof Error ? e.message : "Could not accept these marks.");
     } finally {
       setAccepting(false);
+    }
+  };
+
+  // -- Accept a single result into Clev's Marks (per-row, from the Status column) --
+  const acceptOne = async (resultId: string) => {
+    if (!focusRunId) return;
+    setAcceptingRowId(resultId);
+    setError(null);
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          runId: focusRunId,
+          selections: [{ resultId, marks: drafts[resultId] }],
+        }),
+      });
+      if (!ok) {
+        setError((data.error as string) ?? "Could not accept this mark.");
+        return;
+      }
+      setStatusLine(`${data.appliedCount} mark(s) written to Clev's Marks.`);
+      if (focusStudent) await loadResultsFor(focusStudent);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not accept this mark.");
+    } finally {
+      setAcceptingRowId(null);
     }
   };
 
@@ -596,7 +624,14 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                 {r.accepted ? (
                                   <span className="text-xs text-green-700">accepted</span>
                                 ) : (
-                                  <span className="text-gray-400">—</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => acceptOne(r.id)}
+                                    disabled={acceptingRowId === r.id}
+                                    className="rounded border border-blue-300 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                  >
+                                    {acceptingRowId === r.id ? "Accepting…" : "Accept"}
+                                  </button>
                                 )}
                               </td>
                               <td className="px-2 py-2">
