@@ -287,7 +287,10 @@ export default function AnchorReviewClient({
         </div>
       </div>
 
-      <div className="rounded-xl border border-da-border bg-da-surface p-4 space-y-2 sticky top-0 z-10 shadow-lg shadow-black/20">
+      <div
+        className="rounded-xl border border-da-border bg-da-surface p-4 space-y-2 sticky top-0 z-10 shadow-lg shadow-black/20"
+        style={{ backgroundColor: "var(--color-da-surface)" }}
+      >
         {anchor.open_rubric ? (
           <div>
             <p className="text-xs font-semibold text-da-accent uppercase tracking-wide">
