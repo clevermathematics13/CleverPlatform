@@ -1,11 +1,16 @@
 # CleverPlatform — Technical Handoff
 
-**Supersedes the 23 Aug 2026 handoff. Last verified against production: 24 Aug 2026.**
+**Supersedes the 24 Aug 2026 handoff. Last verified against production: 27 Aug 2026.**
 
 Every figure here was checked against the live database, the live Vercel project or
 the repo on the date above. Where the previous handoff was wrong, the correction is
 called out inline, because two of its errors caused real mistakes in the session
 that produced this file.
+
+**27 Aug 2026 session: `GRAPH_LAB_CV_SERVICE_URL` and `CV_SERVICE_SECRET` were added
+to this agent environment and the Railway domain was allowed in the network policy.**
+This changed §6 materially - see the corrected table below. The Q26(a) backfill
+(§9, previously blocked on exactly this) is now done.
 
 ---
 
@@ -155,8 +160,99 @@ new crops.
 A.1 packet: spec `4821f182-4331-4868-91a2-948c71ee4d6f`, packet version
 `1462a2f2-fc2a-4bab-8135-ed3aefeb0aff`, `nuanced_analysis`
 `aabd94f4-aa08-405e-bccb-5003d31696cb`. **40 anchors** (was 39 before Q26(a) was
-added on 24 Aug 2026), 11 packet scans, 429 crops pending the Q26(a) backfill
-(440 after), 178 feedback rows.
+added on 24 Aug 2026).
+
+**Corrected 27 Aug 2026: the "11 packet scans" figure above was wrong.** There were
+**17** `na_packet_scans` rows for this packet version:
+- 7 real students, each with **two** scans from two separate teacher uploads of the
+  literal same `Scan (corrected).pdf` a day apart - `batch db4d3a05` (22 Aug, the
+  live one, carrying the real `na_feedback`) and `batch f5519dd6` (23 Aug, a
+  near-duplicate upload with almost no feedback, 1 row).
+- 3 orphaned scans from an early `pilot-ingestion` batch (`invited_student_id` and
+  `name_crop_storage_path` both NULL, `id_status = needs_review`), already 38/39
+  assessed, with no source PDF recorded anywhere in the schema (`na_scan_batches`
+  for that batch has `source_storage_path = NULL` too). Not backfillable for
+  Q26(a) as a result (no split PDF to feed the CV service).
+
+**Identified 27 Aug 2026, by matching handwriting/answers, not database fields**
+(nothing in the DB pointed at these students - the crops themselves did): all 3
+orphan scans are duplicates of students who are ALSO live in `db4d3a05`, scanned
+individually through a one-off `pilot/packet-N/...` Storage path that predates the
+batch-upload system entirely (created 21 Aug, a day before `db4d3a05`).
+- `0525197b-2ab2-45d4-9519-0b02d47b56cf` (`pilot/packet-1/`) = **Ines Palomino**
+  (`25fa37ae-17d0-4891-91f4-dfe0440b5cbe`)
+- `f854e03e-e14e-4a26-9ec4-4832fcdb5eb3` (`pilot/packet-2/`) = **Freya Delisle**
+  (`9ea1b42b-a9f0-484e-8b5b-42156f6d8820`)
+- `475e3a0d-9a83-46bb-b063-891dc28e8dba` (`pilot/packet-3/`) = **Davi Verma**
+  (`9c83399d-c5d3-437a-bd7a-68cadb2e1f8d`)
+
+Confirmed by pixel-identical crop images (same handwriting, same stray pencil
+marks) for Ines Palomino and Davi Verma, and by near-verbatim-identical
+transcriptions for Freya Delisle (no unassessed comparison crop was available for
+her at identification time). Found one real grading discrepancy in the process:
+Davi Verma's Q3 ("It was a coincidence.") scored incorrect/0 in the pilot
+assessment but partial/1 in the live one - same handwriting, different verdict,
+almost certainly an older rubric/prompt version in the pilot pipeline. Don't treat
+the pilot data as a second source of truth for anything.
+
+### Stage 5 quality pass, 27 Aug 2026 - a real answer-key defect, plus AI self-contradictions
+
+After the full re-assessment above, scanned every `na_feedback.ai_teacher_note`
+system-wide for backtracking language ("wait", "reconsidering", etc. - the same
+detector now built into `validateAssessment`, see below). Found 6 matches; 4 were
+the model rambling but still landing on a self-consistent number (no action), 2
+were real:
+
+- **Q9's answer key had a genuine typo**, not an AI error: `na_anchors.question_answer`
+  said `(2,4) -> 360` for one row of the ticket-pricing table, but 60×2+30×4=240,
+  not 360 - arithmetically impossible. `answer_sketch` on the same anchor already
+  had the correct pair (`(4,c)->360 gives c=4`), but `buildRubricBlock` prefers
+  `question_answer`, so the model never saw the fix. All 7 students' physical
+  worksheets independently confirm the row gives children=4 and total=$360 with
+  adults blank to solve - the unique correct answer is adults=4. Corrected the
+  anchor text, then re-ran stage 5 fresh on all 7 students' Q9 crops. 4 of 7 marks
+  changed as a direct result: Freya Delisle 3->4, Roberto Aurelio Gamio 2->3,
+  Ruifeng Wu 3->4, Santiago Caipo 3->4 (out of 5). Davi Verma, Ines Palomino, and
+  Kaito Fujii were unaffected - Kaito's row 4 has its own separate, genuine error
+  (wrote adults=1, which doesn't satisfy the corrected key either), confirming his
+  original mark wasn't a key-bug victim.
+- **Kaito Fujii's Q1** and **Freya Delisle's Q23** had real teacherNote/marksAwarded
+  mismatches (see below) - manually corrected via the normal teacher-override
+  fields (`final_verdict`/`final_marks_awarded`/`approved_by`/`approved_at`).
+- **Santiago Caipo's Q5** wasn't a mismatch but an unjustified score bump: the
+  model's own note worked out the strictly-correct total (1/5, only part (b)
+  correct) then overrode it with "being generous I'll give 2" - corrected to 1/5,
+  keeping the original (accurate) margin comment.
+
+**`validateAssessment` (`platform/lib/na-assessment.ts`) now detects this class of
+bug going forward.** It scans `teacherNote` for backtracking markers ("wait",
+"on second thought", "reconsidering", etc.) and appends a warning into
+`ai_teacher_note` when found - deliberately biased toward over-flagging, since a
+false positive costs a few seconds' recheck and a missed real case costs a wrong
+mark on a student's grade. The system prompt was also strengthened to forbid this
+pattern outright. This does NOT retroactively re-scan anything created before 27
+Aug 2026 - the scan above was a one-time manual sweep, not an ongoing job.
+Consider re-running that same regex sweep periodically, or after any large
+re-assessment run, since it's cheap and already found 2 real defects out of 213
+crops on its first use.
+
+Not deleted - documented here only. See Open Items for the pending decision on
+whether to remove this now-redundant pilot data.
+
+**The `f5519dd6` duplicate batch was deleted 27 Aug 2026** (teacher, via the Supabase
+dashboard - Storage UI for the crop/PDF files, then one `DELETE FROM na_scan_batches`
+which cascaded to its 7 `na_packet_scans`, 280 `na_response_crops`, and the 1 stray
+`na_feedback` row). Verified after: 10 total `na_packet_scans` remain for this packet
+version (7 live + 3 orphan), `db4d3a05`'s own 7/280/70 scans/crops/feedback
+untouched. This is why the count above is now consistently 10, not 17.
+
+**Q26(a) backfill is done** (27 Aug 2026) for the 7 live (`db4d3a05`) scans: 280
+crops written (40 per scan), then stage 5 run on the 7 new Q26(a) crops
+specifically (not a full re-assessment) - all 7 assessed, 0 failures. The 3 orphan
+scans could not be backfilled (no split PDF to feed the CV service) and the 7
+duplicate (`f5519dd6`) scans already had a Q26(a) crop from before this session (no
+feedback on it, since nothing has assessed that batch). Total feedback rows for the
+live scans: 178 (pre-Q26a) + 7 = 185.
 
 `na_packet_versions.master_pdf_storage_path` for A.1 is **NULL** - the master PDF was
 never stored. Anchor geometry can only be re-derived from a copy of the rendered
@@ -166,23 +262,30 @@ packet PDF; a student's split PDF is pixel-identical page content and stands in.
 
 ## 6. What an agent session can and cannot reach
 
-Verified 24 Aug 2026. This is the single most useful thing to know before planning
-work, and the previous handoff did not record it.
+Verified 24 Aug 2026, corrected 27 Aug 2026. This is the single most useful thing to
+know before planning work, and both handoffs before this one got it wrong in ways
+that mattered.
 
 | Capability | Status |
 |---|---|
 | Supabase SQL (via MCP) | Full - connects as `postgres` superuser |
-| Supabase Storage | **Blocked** - egress proxy 403s `qnawglgnoojrlaivylou.supabase.co` |
-| Railway / CV service | **No access** - no connector, no CLI, egress blocked |
+| Supabase REST + Storage (direct HTTPS, service-role key) | **Full**, as of 27 Aug 2026 - both `qnawglgnoojrlaivylou.supabase.co/rest/v1/` and `/storage/v1/` returned 200 to a plain `curl` with `SUPABASE_SERVICE_ROLE_KEY`. The 24 Aug handoff called Storage blocked; that was either wrong at the time or the network policy changed since - either way, don't trust that line without re-testing, since this table has now been wrong in both directions. |
+| Railway / CV service | **Full**, as of 27 Aug 2026 - `GRAPH_LAB_CV_SERVICE_URL` and `CV_SERVICE_SECRET` were added to the agent environment and the Railway domain was allowed in the network policy. `curl -H "X-CV-Secret: $CV_SERVICE_SECRET" $GRAPH_LAB_CV_SERVICE_URL/health` returns `{"status":"ok"}`. This was the literal blocker on the Q26(a) backfill (§9) and is now resolved. |
 | Vercel (via MCP) | Full - projects, deployments, logs |
 | GitHub | Full, once the Claude GitHub App is installed |
 | Google Drive | Read |
-| Direct HTTPS to the app | **Blocked** - `clevermathematics.com` and `*.vercel.app` 403 at the gateway |
+| Direct HTTPS to the app | **Blocked** - `clevermathematics.com` and `*.vercel.app` 403 at the gateway (not re-tested 27 Aug, only Supabase and Railway were) |
 
-Consequences: an agent can read and write every database row but cannot fetch a
-single file out of Storage, and cannot run any pipeline stage that depends on the CV
-service. Anything requiring a PDF must have the PDF supplied directly into the
-session.
+Consequences, updated: an agent session can now read/write Storage directly and run
+CV-service-dependent pipeline stages (crop extraction, and stage 5 assessment via a
+script that imports `lib/na-assessment.ts` directly rather than going through the
+app's authenticated API routes) as long as it has `SUPABASE_SERVICE_ROLE_KEY`,
+`GRAPH_LAB_CV_SERVICE_URL`/`CV_SERVICE_SECRET`, and an Anthropic key in its own env
+(this session had `GRADING_ANTHROPIC_API_KEY`, not `ANTHROPIC_API_KEY` - the app's
+own routes read `ANTHROPIC_API_KEY` specifically, so confirm that's actually set on
+the Vercel deployment too, or stage 5 will 500 there even though it worked from this
+session). None of this is available by default - re-verify reachability each
+session rather than trusting this table, which has already been wrong twice.
 
 ---
 
@@ -244,9 +347,14 @@ committed so the tree stays clean.
    merge, the migration landmine fix is not in effect.
 2. **Rotate the leaked Google OAuth client secret** and decide whether the repo
    should stay public (§7).
-3. **Q26(a) crop backfill.** The anchor and rubric item now exist; 11 packet scans
-   still have no Q26(a) crop. Re-run stage 4 per student, then stage 5. Needs the CV
-   service, so it cannot be done from an agent session.
+3. **Decide whether to delete the 3 orphaned `pilot-ingestion` packet scans** (§5).
+   Identified 27 Aug 2026 (by matching handwriting/answers, since nothing in the
+   database pointed at them) as duplicates of 3 already-live students - Ines
+   Palomino, Freya Delisle, Davi Verma - from a one-off pre-batch-system pilot
+   run. Same situation as the `f5519dd6` duplicate that was already deleted: dead
+   weight in the review UI, and at least one grading discrepancy found against
+   the live assessment (§5) means the pilot data shouldn't be trusted alongside
+   it. Not deleted yet - teacher chose to document only, for now.
 
 **Medium**
 
@@ -254,7 +362,7 @@ committed so the tree stays clean.
 
 **Low**
 
-6. Full NA generation wiring for Grade 9. The generator is hardcoded to Grade 12,
+5. Full NA generation wiring for Grade 9. The generator is hardcoded to Grade 12,
    `buildActivityGeneratorSystemPrompt()` does not fetch `na_continuity`, and saves
    do not write back.
 
@@ -262,6 +370,14 @@ committed so the tree stays clean.
 
 - Migration drift - reconciled, 83/83, invariant documented.
 - Q26(a) anchor - added (see below).
+- **Q26(a) crop backfill** - done 27 Aug 2026 for the 7 live scans (280 crops, then
+  stage 5 on the 7 new crops, 0 failures). Spawned two new open items instead of
+  closing cleanly - the duplicate batch (now also closed, see next) and the 3
+  unbackfillable orphan scans (still open, see §5 and Open Items above).
+- **Duplicate A.1 batch upload** - resolved 27 Aug 2026. The `f5519dd6` batch (7
+  students' worth of near-duplicate, near-unassessed scans/crops) was deleted via
+  the Supabase dashboard; the live `db4d3a05` batch was verified untouched
+  afterward. See §5 for the full before/after.
 - Post-deploy verification workflow at the broken nested path - deleted; it had
   never run and could not have worked.
 - Stale `clever-platform.vercel.app` origin - removed.

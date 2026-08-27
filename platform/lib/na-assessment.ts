@@ -150,6 +150,8 @@ nextStep is one concrete action, not a platitude. "Re-read the question and chec
 
 teacherNote is for the teacher only and never shown to the student. Use it for anything that affects trust in this mark: a crop that looks cut off, work that seems to belong to a different question, an answer that's right by a method the key didn't anticipate, or your reason for an "unclear" verdict. Leave it as an empty string when there is genuinely nothing to flag.
 
+teacherNote must state your reasoning ONCE, not narrate you changing your mind. Never write "wait", "actually, reconsidering", "on second thought", or any similar mid-explanation reversal -- if you catch yourself about to write one, that means you have not actually finished reasoning yet. Resolve the uncertainty first, THEN write teacherNote as a single, final account of why you landed on the verdict and marksAwarded you are about to submit. A teacherNote whose own stated conclusion doesn't match marksAwarded is a real error -- worse than an honest "unclear" -- because it looks confident while being wrong, and a teacher skimming past the number would never catch it. If you genuinely remain torn between two readings after reasoning it through, that is what "unclear" is for, not a hedged teacherNote paired with a picked-at-random number.
+
 Do your reasoning silently. Do NOT write out your analysis, working, or reasoning as prose before the JSON -- go straight to the JSON object with no preamble. Every part of your reasoning that matters belongs INSIDE the JSON fields themselves (transcription, teacherNote, marginComment, nextStep), not before them. A response that reasons in prose first risks being cut off before the JSON ever appears, which throws away the entire assessment -- so the JSON object must always come first and immediately, not last.
 
 Return ONLY the JSON object below. No markdown fences, no commentary, no analysis before or after it -- your entire response must be this JSON object and nothing else:
@@ -316,6 +318,26 @@ export function validateAssessment(
       `Verdict was "unclear" but ${a.marksAwarded} marks were awarded -- marks zeroed pending teacher review.`
     );
     a.marksAwarded = 0;
+  }
+
+  // Real failure mode found in production: on A.1 Q1 for Kaito Fujii, the
+  // model's own teacherNote reasoned through to "I should award 3/3" --
+  // twice -- while the marksAwarded field it submitted in that same
+  // response was 2. The schema has no way to catch this because both
+  // fields individually validate fine; only the prose and the number
+  // disagree with each other. Can't reliably parse "the number the note
+  // concluded with" out of free text, so instead of trying to auto-correct
+  // it, detect the tell-tale sign that the model backtracked mid-note
+  // (which is when this mismatch happens) and surface it loudly rather
+  // than silently trusting a number the model's own reasoning may have
+  // already abandoned. The system prompt now also tells the model not to
+  // do this at all -- this is the safety net for when it does anyway.
+  const BACKTRACK_PATTERN =
+    /\bwait[\s,.—-]|\bactually,?\s+(re-?examining|reconsidering|wait)\b|\bon second thought\b|\blet me\s+re-?(examine|consider)\b|\bre-?examining\b|\breconsidering\b/i;
+  if (BACKTRACK_PATTERN.test(a.teacherNote)) {
+    warnings.push(
+      `teacherNote shows the model changing its mind mid-explanation -- verify marksAwarded (${a.marksAwarded}) actually matches what the note concludes before trusting this mark.`
+    );
   }
 
   return { ok: true, assessment: a, warnings };
