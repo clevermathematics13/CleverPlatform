@@ -258,6 +258,35 @@ live scans: 178 (pre-Q26a) + 7 = 185.
 never stored. Anchor geometry can only be re-derived from a copy of the rendered
 packet PDF; a student's split PDF is pixel-identical page content and stands in.
 
+### Crop-expansion bug found via the scan-test crop-image feature, 27 Aug 2026
+
+Once the scan-test page started showing the actual crop image (not just the AI's
+transcription) in the "why this mark" panel, the teacher spotted a real clip: Ines
+Palomino's A.1 Q1 crop cut off her boxed final answer for part (d) ("750") - the
+image genuinely stopped mid-box, confirmed against the full scanned page.
+
+Root cause in `cv_crop_extract.py`'s adaptive expansion: `_edge_ink_density`
+averaged ink density across the *entire* width of the edge band before deciding
+whether to grow the crop. A boxed answer occupying only a narrow slice of a wide
+crop dilutes to a low average - this exact crop measured 0.048 against the 0.05
+trigger threshold, so expansion never fired at all despite a legible boxed answer
+sitting right at the edge. Fixed to take the max density over segments along the
+band instead (`platform/scripts/cv_crop_extract_test.py` has regression tests).
+Also bumped this specific Q1 anchor's `expand_max_y1_pt` (440 -> 448pt in
+`na_anchors`), since the answer sat right at the template's boundary with the next
+question and even a fully-triggered expansion needed the cap raised to reach it.
+
+Checked all 7 students at this anchor for the same clipping: **Kaito Fujii's Q1
+crop had the identical bug** ("(d)=750" half-cut). His mark was unaffected - it
+was already manually corrected to 3/3 earlier in the 27 Aug pass (independently
+verified against the same content) - but the stored crop image and AI draft were
+refreshed to the untruncated version for future review clarity. The other 5
+students' crops at this anchor were unaffected (already fully captured).
+
+This was a one-time targeted check of one anchor, not a system-wide sweep. Worth
+doing the same audit (re-crop every `boundary_expanded=false` row and diff against
+the fixed CV service) across all anchors if this pattern shows up again.
+
 ---
 
 ## 6. What an agent session can and cannot reach
