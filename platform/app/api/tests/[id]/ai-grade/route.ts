@@ -60,6 +60,15 @@ async function fetchEvidenceCrops(
   }
 
   const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
+  // The model's evidenceBox is an estimate, and it skews tight rather than
+  // loose -- it's especially prone to clipping the tail end of a line that
+  // runs further right or lower than expected (e.g. a final numeric answer
+  // after "=" ). Pad every edge outward before cropping: proportional to the
+  // box's own size so a large block of working doesn't get padded away past
+  // the page, with a fraction-of-page floor so a small, tightly-drawn box
+  // still gets a meaningful margin.
+  const PAD_PROPORTION = 0.18;
+  const PAD_FLOOR = 0.03;
   const anchors = grades
     .map((g) => {
       const box = g.item.evidenceBox;
@@ -67,11 +76,17 @@ async function fetchEvidenceCrops(
       const pageIndex = box.page - 1;
       if (pageIndex < 0 || pageIndex >= pageCount) return null;
       const { width, height } = pageSizePt[pageIndex];
-      const x0 = clamp01(box.x0);
-      const y0 = clamp01(box.y0);
-      const x1 = clamp01(box.x1);
-      const y1 = clamp01(box.y1);
-      if (x1 <= x0 || y1 <= y0) return null;
+      const rawX0 = clamp01(box.x0);
+      const rawY0 = clamp01(box.y0);
+      const rawX1 = clamp01(box.x1);
+      const rawY1 = clamp01(box.y1);
+      if (rawX1 <= rawX0 || rawY1 <= rawY0) return null;
+      const padX = Math.max((rawX1 - rawX0) * PAD_PROPORTION, PAD_FLOOR);
+      const padY = Math.max((rawY1 - rawY0) * PAD_PROPORTION, PAD_FLOOR);
+      const x0 = clamp01(rawX0 - padX);
+      const y0 = clamp01(rawY0 - padY);
+      const x1 = clamp01(rawX1 + padX);
+      const y1 = clamp01(rawY1 + padY);
       return {
         qid: g.unit.testItemId,
         pageIndex,
