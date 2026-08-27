@@ -135,6 +135,42 @@ interface RecentBatch {
   parent_batch_id?: string | null;
 }
 
+/** One student's row in the results-by-class summary, as returned by
+ *  GET /api/na-review/packet-version/[packetVersionId]/results. Keyed by
+ *  packetScanId, not invitedId -- a student could in principle have more
+ *  than one scan for the same packet version (see HANDOFF.md's duplicate
+ *  batch history), and each scan's own progress is what matters here. */
+interface ResultsStudentRow {
+  packetScanId: string;
+  studentName: string;
+  courseId: string | null;
+  courseName: string;
+  status: string;
+  totalCrops: number;
+  assessedCount: number;
+  totalGradable: number;
+  marksAwarded: number;
+  marksAvailable: number;
+}
+
+interface ResultsCourse {
+  courseId: string | null;
+  courseName: string;
+  students: ResultsStudentRow[];
+}
+
+interface ResultsData {
+  totalGradable: number;
+  totalMarksAvailable: number;
+  courses: ResultsCourse[];
+}
+
+interface ResultsPanelState {
+  status: "idle" | "loading" | "ready" | "failed";
+  data: ResultsData | null;
+  error: string | null;
+}
+
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
   high: "bg-green-100 text-green-800 border-green-300",
   medium: "bg-amber-100 text-amber-800 border-amber-300",
@@ -424,6 +460,13 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [recentBatches, setRecentBatches] = useState<RecentBatch[]>([]);
   const [recentBatchesLoading, setRecentBatchesLoading] = useState(false);
 
+  // Results-by-class summary for the selected packet version -- independent
+  // of any particular upload batch, since a student's assessed work can
+  // (and in A.1's case, did) end up split across more than one batch. Starts
+  // collapsed so it doesn't fire a request the moment this page loads.
+  const [resultsOpen, setResultsOpen] = useState(false);
+  const [resultsPanel, setResultsPanel] = useState<ResultsPanelState>({ status: "idle", data: null, error: null });
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const claimedPages = new Set(rows.flatMap((r) => r.pages));
@@ -489,6 +532,25 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   useEffect(() => {
     if (version) void fetchRecentBatches(version.id);
   }, [version, fetchRecentBatches]);
+
+  const fetchResults = useCallback(async (packetVersionId: string) => {
+    setResultsPanel((prev) => ({ ...prev, status: "loading" }));
+    try {
+      const res = await fetch(`/api/na-review/packet-version/${packetVersionId}/results`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not load results.");
+      setResultsPanel({ status: "ready", data, error: null });
+    } catch (e) {
+      setResultsPanel({ status: "failed", data: null, error: e instanceof Error ? e.message : "Could not load results." });
+    }
+  }, []);
+
+  // Reset to collapsed/idle on version change so a stale packet's results
+  // can't be mistaken for the newly selected one before a refetch.
+  useEffect(() => {
+    setResultsOpen(false);
+    setResultsPanel({ status: "idle", data: null, error: null });
+  }, [versionId]);
 
   /** Seeds crop state from a packetScansByInvitedId map (as returned by
    *  GET .../batch/[batchId]) for every row that already has a
@@ -1577,6 +1639,93 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           </p>
         )}
       </section>
+
+      {/* Results by class -- every identified scan for this packet version,
+          grouped by the student's real course, independent of which upload
+          batch produced the scan (a student's assessed work can end up
+          split across more than one batch -- see HANDOFF.md). Collapsed by
+          default so opening this page never fires an extra request. */}
+      {version && (
+        <section className="rounded-xl border border-da-border bg-da-surface">
+          <button
+            type="button"
+            onClick={() => {
+              const next = !resultsOpen;
+              setResultsOpen(next);
+              if (next && resultsPanel.status === "idle") void fetchResults(version.id);
+            }}
+            className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left"
+          >
+            <div>
+              <h2 className="text-lg font-bold text-da-text">Results by class</h2>
+              <p className="text-xs text-da-muted">
+                Every identified student for this packet, grouped by 9A / 9C / 9G, with assessed-question counts and
+                marks so far.
+              </p>
+            </div>
+            <span className="text-da-muted">{resultsOpen ? "▲" : "▼"}</span>
+          </button>
+          {resultsOpen && (
+            <div className="border-t border-da-border px-5 py-4">
+              {resultsPanel.status === "loading" && <p className="text-sm text-da-muted">Loading…</p>}
+              {resultsPanel.status === "failed" && <p className="text-sm text-red-600">{resultsPanel.error}</p>}
+              {resultsPanel.status === "ready" && resultsPanel.data && (
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-da-muted">
+                      {resultsPanel.data.totalGradable} gradable questions per student — {resultsPanel.data.totalMarksAvailable}{" "}
+                      Clev&apos;s Marks total.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void fetchResults(version.id)}
+                      className="rounded border border-da-border px-2 py-1 text-xs text-da-muted hover:bg-da-hover"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {resultsPanel.data.courses.length === 0 && (
+                    <p className="text-sm text-da-muted">No identified scans yet for this packet version.</p>
+                  )}
+                  {resultsPanel.data.courses.map((course) => (
+                    <div key={course.courseName}>
+                      <h3 className="text-sm font-semibold text-da-text">{course.courseName}</h3>
+                      <div className="mt-2 overflow-x-auto rounded-lg border border-da-border/60">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
+                              <th className="px-3 py-2 font-semibold">Student</th>
+                              <th className="px-3 py-2 font-semibold">Assessed</th>
+                              <th className="px-3 py-2 font-semibold">Clev&apos;s Marks</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {course.students.map((s) => {
+                              const done = s.assessedCount === s.totalGradable && s.totalGradable > 0;
+                              return (
+                                <tr key={s.packetScanId} className="border-b border-da-border/40 last:border-0">
+                                  <td className="px-3 py-2 text-da-text">{s.studentName}</td>
+                                  <td className="px-3 py-2 text-da-muted">
+                                    {s.assessedCount} / {s.totalGradable}
+                                    {done && <span className="ml-1.5 text-green-500">✓</span>}
+                                  </td>
+                                  <td className="px-3 py-2 text-da-muted">
+                                    {s.marksAwarded} / {s.marksAvailable}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Recent batches picker -- lets a teacher pick their way back into
           an in-progress batch instead of needing its UUID. Only shown when
