@@ -120,20 +120,50 @@ def crop_page_count_mismatch(student_pdf_bytes: bytes, expected_page_count: int)
     return None if actual == expected_page_count else actual
 
 
+EDGE_DENSITY_SEGMENTS = 8
+
+
 def _edge_ink_density(gray_img: np.ndarray, side: str, band_frac: float = EXPAND_BAND_FRAC) -> float:
-    """Ink density in a thin band just inside one edge of a crop --
-    unchanged from the pilot. Used to detect whether student writing is
-    touching (and likely continuing past) that edge."""
+    """Ink density in a thin band just inside one edge of a crop -- used to
+    detect whether student writing is touching (and likely continuing
+    past) that edge.
+
+    Real miss (A.1 Q1, Ines Palomino): a boxed final answer sat entirely in
+    the last ~20% of the bottom band's width, giving that band an overall
+    density of 0.048 -- just under EXPAND_DENSITY_THRESHOLD (0.05) -- while
+    the rest of the band's width was blank. A single average over the
+    whole band dilutes exactly this common case (a boxed answer written in
+    one corner, not spread across the full edge), so this instead splits
+    the band along its long edge into EDGE_DENSITY_SEGMENTS pieces and
+    returns the densest one -- localized ink no longer gets diluted by
+    blank space elsewhere along the same edge.
+    """
     h, w = gray_img.shape
     if side == "right":
         band = gray_img[:, int(w * (1 - band_frac)) :]
+        long_axis = 0  # rows
     elif side == "bottom":
         band = gray_img[int(h * (1 - band_frac)) :, :]
+        long_axis = 1  # columns
     else:
         raise ValueError(side)
     if band.size == 0:
         return 0.0
-    return float((band < 200).sum()) / band.size
+
+    length = band.shape[long_axis]
+    if length == 0:
+        return 0.0
+    seg_len = max(1, length // EDGE_DENSITY_SEGMENTS)
+    best = 0.0
+    for start in range(0, length, seg_len):
+        end = min(length, start + seg_len)
+        segment = band[start:end, :] if long_axis == 0 else band[:, start:end]
+        if segment.size == 0:
+            continue
+        density = float((segment < 200).sum()) / segment.size
+        if density > best:
+            best = density
+    return best
 
 
 def _adaptive_crop_bounds(
