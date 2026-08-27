@@ -155,34 +155,65 @@ new crops.
 A.1 packet: spec `4821f182-4331-4868-91a2-948c71ee4d6f`, packet version
 `1462a2f2-fc2a-4bab-8135-ed3aefeb0aff`, `nuanced_analysis`
 `aabd94f4-aa08-405e-bccb-5003d31696cb`. **40 anchors** (was 39 before Q26(a) was
-added on 24 Aug 2026), 11 packet scans, 429 crops pending the Q26(a) backfill
-(440 after), 178 feedback rows.
+added on 24 Aug 2026). As of 27 Aug 2026: 17 packet scans (was 11), 7 of which have
+a Q26(a) crop (was 0) - the backfill is progressing outside agent sessions (via the
+production app, not something an agent session can drive - see §6).
 
 `na_packet_versions.master_pdf_storage_path` for A.1 is **NULL** - the master PDF was
 never stored. Anchor geometry can only be re-derived from a copy of the rendered
 packet PDF; a student's split PDF is pixel-identical page content and stands in.
+This is why `lib/na-anchor-locking.ts` and its lock-anchors route (below) refuse
+to lock any FUTURE packet version with a null master_pdf_storage_path.
+
+**Anchor-locking validation gate, added 27 Aug 2026.** Nothing in the codebase had
+ever set `anchors_locked = true` except a one-off SQL statement run by hand for
+A.1 - there was no gate at all, which is how A.1 shipped with 9 days of undetected
+bugs (mark splits not summing to the question total, Q26(a) missing entirely, no
+master PDF retained). `POST /api/na-review/packet-versions/[packetVersionId]/lock-
+anchors` is now the only place `anchors_locked` is ever set. It refuses to lock
+unless: every base question's anchors sum to its authoritative `parts[]` total,
+every gradable (`marks > 0`) `parts[]` question has at least one anchor, a master
+PDF is on file (or supplied in the request and uploaded there and then), and it
+writes `na_rubric_items` directly from `parts[]` as part of locking rather than
+leaving that as a later backfill. See `lib/na-anchor-locking.ts` for the validation
+logic (unit-tested in `lib/na-anchor-locking.test.ts`, and hand-verified against
+A.1's real 40-anchor/35-question data before being trusted) and why the positional
+mapping against `parts[]` is safe. Nothing currently calls this route automatically
+- stage 0 (anchor extraction) is still a one-off manual process, not wired
+end-to-end - so this is a gate future automation must be built to call, not yet a
+fully closed loop.
 
 ---
 
 ## 6. What an agent session can and cannot reach
 
-Verified 24 Aug 2026. This is the single most useful thing to know before planning
-work, and the previous handoff did not record it.
+Verified 24 Aug 2026; Storage corrected 27 Aug 2026 (was wrong - see below). This is
+the single most useful thing to know before planning work.
 
 | Capability | Status |
 |---|---|
 | Supabase SQL (via MCP) | Full - connects as `postgres` superuser |
-| Supabase Storage | **Blocked** - egress proxy 403s `qnawglgnoojrlaivylou.supabase.co` |
-| Railway / CV service | **No access** - no connector, no CLI, egress blocked |
+| Supabase Storage | **Full**, via direct HTTPS to `qnawglgnoojrlaivylou.supabase.co/storage/v1` with `SUPABASE_SERVICE_ROLE_KEY` (present in the session env) - see correction below |
+| Railway / CV service | **No access** - no connector, no CLI, egress blocked (unverified 27 Aug 2026 - not re-tested, only Storage was) |
 | Vercel (via MCP) | Full - projects, deployments, logs |
 | GitHub | Full, once the Claude GitHub App is installed |
 | Google Drive | Read |
-| Direct HTTPS to the app | **Blocked** - `clevermathematics.com` and `*.vercel.app` 403 at the gateway |
+| Direct HTTPS to the app | **Blocked** - `clevermathematics.com` and `*.vercel.app` 403 at the gateway (re-confirmed 27 Aug 2026) |
 
-Consequences: an agent can read and write every database row but cannot fetch a
-single file out of Storage, and cannot run any pipeline stage that depends on the CV
-service. Anything requiring a PDF must have the PDF supplied directly into the
-session.
+Consequences: an agent can read and write every database row. It can also now
+download from and upload to Storage directly (confirmed 27 Aug 2026 by downloading
+a real 4.9MB student scan PDF and re-verified with a plain `curl` + service-role
+key, not just the Supabase MCP tools) - the 24 Aug entry below claiming Storage
+was blocked was wrong for this session's environment. What still cannot be done
+from an agent session is anything requiring the Railway CV service (crop
+extraction, stages 4/5) or the live app itself, since both remain unreachable.
+
+**Correction (27 Aug 2026):** the previous handoff stated Storage egress 403s at
+the gateway. That was tested and found false in this session: `curl` with
+`Authorization`/`apikey` headers set to `$SUPABASE_SERVICE_ROLE_KEY` against
+`https://qnawglgnoojrlaivylou.supabase.co/storage/v1/object/...` returned 200 and
+the real file. Re-verify this in any future session rather than trusting either
+version by default - egress policy can differ between environments/sessions.
 
 ---
 
@@ -244,13 +275,20 @@ committed so the tree stays clean.
    merge, the migration landmine fix is not in effect.
 2. **Rotate the leaked Google OAuth client secret** and decide whether the repo
    should stay public (§7).
-3. **Q26(a) crop backfill.** The anchor and rubric item now exist; 11 packet scans
-   still have no Q26(a) crop. Re-run stage 4 per student, then stage 5. Needs the CV
+3. **Q26(a) crop backfill.** The anchor and rubric item now exist; as of 27 Aug 2026,
+   7 of 17 packet scans have a Q26(a) crop (progressing outside agent sessions, via
+   the production app). Re-run stage 4 for the rest, then stage 5. Needs the CV
    service, so it cannot be done from an agent session.
 
 **Medium**
 
 4. Grade 9 Standard NA packets - none seeded.
+5. **Wire stage 0 (anchor extraction) to call the new lock-anchors gate.**
+   `POST /api/na-review/packet-versions/[packetVersionId]/lock-anchors` (added
+   27 Aug 2026, see §5) enforces mark-split/coverage/master-PDF/rubric checks, but
+   nothing calls it yet - anchor extraction itself is still a one-off manual
+   process for A.1, not a reusable pipeline stage. Whenever that gets built, it
+   should end by calling this route rather than setting `anchors_locked` directly.
 
 **Low**
 
