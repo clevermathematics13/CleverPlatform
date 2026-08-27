@@ -104,6 +104,18 @@ export interface AnchorContext {
    *  (e.g. older crops from before na_response_crops.boundary_expanded
    *  was queried here). */
   boundaryExpanded?: boolean;
+  /** True when stage 4's adaptive expansion stopped only because it hit
+   *  the anchor's expand_max_x1_pt/expand_max_y1_pt cap while ink was
+   *  still touching that edge -- i.e. boundaryExpanded=true does NOT mean
+   *  the whole answer was captured. Real case: A.1 Q1(d)/Q1(e), where a
+   *  student's boxed final answer ran into the printed boundary of the
+   *  next question, so even full expansion couldn't reach the rest of it.
+   *  Distinct from boundaryExpanded because "expanded, but still cut off
+   *  at the new edge" is a materially different situation from "expanded,
+   *  and now contains everything" -- the model (and the teacher review
+   *  UI) needs to tell them apart rather than treating any expansion as
+   *  proof of completeness. */
+  possiblyTruncated?: boolean;
 }
 
 /**
@@ -212,7 +224,15 @@ export function buildRubricBlock(a: AnchorContext): string {
     }`
   );
 
-  if (a.boundaryExpanded !== undefined) {
+  if (a.possiblyTruncated) {
+    // Checked first and stated unconditionally when true: this is a
+    // stronger, opposite-direction signal from boundaryExpanded below, so
+    // it must not be shadowed by that more common (and usually reassuring)
+    // message.
+    lines.push(
+      "CROP BOUNDARY: this crop's image may be INCOMPLETE. An automated check found ink still touching the crop's edge even after growing it as far as this question's layout allows -- the student's answer may continue beyond what you can see. Do not penalise the student for content that may simply be missing from this image. If what you can see is already unambiguous, mark it normally; otherwise say so plainly in teacherNote so a teacher checks the original page."
+    );
+  } else if (a.boundaryExpanded !== undefined) {
     lines.push(
       a.boundaryExpanded
         ? "CROP BOUNDARY: automatically expanded -- ink was detected touching the original edge, so this crop was grown to include more content. Some content near the new edge may still be tight; use judgement."

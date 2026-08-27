@@ -106,6 +106,11 @@ class CropResult:
     page_index: int
     image_base64: str  # PNG, base64-encoded
     expanded: bool  # True if adaptive expansion grew the crop beyond bleed
+    # True if expansion stopped only because it hit expand_max_x1_pt/
+    # expand_max_y1_pt while ink was still touching that edge -- i.e. this
+    # crop may be missing content that continues beyond what the anchor's
+    # geometry allows capturing. See _adaptive_crop_bounds's docstring.
+    possibly_truncated: bool
     warnings: list[str]
 
 
@@ -175,14 +180,23 @@ def _adaptive_crop_bounds(
     max_bx1: int,
     max_by1: int,
     step_px: int,
-) -> tuple[int, int, bool]:
+) -> tuple[int, int, bool, bool]:
     """Grow a crop's right/bottom edges outward, one step at a time, while
     ink density right at that edge stays above threshold. Capped by
-    (max_bx1, max_by1). Ported unchanged from the pilot's
-    adaptive_crop_bounds, operating here in already-upright page pixel
-    space (see module docstring on why that ordering matters).
+    (max_bx1, max_by1). Ported from the pilot's adaptive_crop_bounds,
+    operating here in already-upright page pixel space (see module
+    docstring on why that ordering matters).
 
-    Returns (final_bx1, final_by1, expanded)."""
+    Returns (final_bx1, final_by1, expanded, possibly_truncated).
+
+    possibly_truncated distinguishes two different reasons growth can stop:
+    ink density dropping below threshold (content genuinely ended -- fine),
+    versus still finding ink at the edge when there was no more room left
+    to grow into (max_bx1/max_by1, i.e. na_anchors.expand_max_*_pt, was
+    reached). The second case means this crop may still be missing content
+    that continues beyond what the anchor's geometry allows capturing --
+    worth a real, visible flag rather than silently trusting the crop is
+    complete just because expansion happened at all."""
     cur_bx1, cur_by1 = bx1, by1
     expanded = False
     for _ in range(EXPAND_MAX_STEPS):
@@ -206,7 +220,20 @@ def _adaptive_crop_bounds(
 
         if not grew:
             break
-    return cur_bx1, cur_by1, expanded
+
+    # One last look at the final edges: if either sits exactly on its cap
+    # AND still shows ink above threshold, we stopped because we ran out
+    # of allowed room, not because the content actually ended there.
+    possibly_truncated = False
+    final_crop = page_img[by0:cur_by1, bx0:cur_bx1]
+    if final_crop.size > 0:
+        gray = cv2.cvtColor(final_crop, cv2.COLOR_BGR2GRAY) if final_crop.ndim == 3 else final_crop
+        if cur_bx1 >= max_bx1 and _edge_ink_density(gray, "right") > EXPAND_DENSITY_THRESHOLD:
+            possibly_truncated = True
+        if cur_by1 >= max_by1 and _edge_ink_density(gray, "bottom") > EXPAND_DENSITY_THRESHOLD:
+            possibly_truncated = True
+
+    return cur_bx1, cur_by1, expanded, possibly_truncated
 
 
 def _render_page_upright(doc: fitz.Document, page_index: int, rotation_hint: int) -> np.ndarray:
@@ -256,6 +283,7 @@ def extract_crops(
                         page_index=page_index,
                         image_base64="",
                         expanded=False,
+                        possibly_truncated=False,
                         warnings=[
                             f"page_index {page_index} is out of range for this student's "
                             f"{doc.page_count}-page packet -- likely a missing page or a "
@@ -288,12 +316,19 @@ def extract_crops(
             )
             step_px = int(EXPAND_STEP_PT * PT_TO_PX)
 
-            final_bx1, final_by1, expanded = _adaptive_crop_bounds(
+            final_bx1, final_by1, expanded, possibly_truncated = _adaptive_crop_bounds(
                 page_img, bx0, by0, bx1, by1, max_bx1, max_by1, step_px
             )
 
             crop = page_img[by0:final_by1, bx0:final_bx1]
             page_warnings = list(warnings)
+            if possibly_truncated:
+                page_warnings.append(
+                    f"Anchor {a.qid}: expansion stopped at the anchor's configured limit "
+                    "(expand_max_x1_pt/expand_max_y1_pt) while ink was still touching that "
+                    "edge -- this crop may be missing content beyond what could be captured. "
+                    "Consider widening the anchor's expand_max in na_anchors."
+                )
             if crop.size == 0:
                 page_warnings.append(
                     f"Anchor {a.qid}: computed crop region is empty (bx0={bx0}, by0={by0}, "
@@ -306,6 +341,7 @@ def extract_crops(
                         page_index=page_index,
                         image_base64="",
                         expanded=False,
+                        possibly_truncated=possibly_truncated,
                         warnings=page_warnings,
                     )
                 )
@@ -320,6 +356,7 @@ def extract_crops(
                         page_index=page_index,
                         image_base64="",
                         expanded=expanded,
+                        possibly_truncated=possibly_truncated,
                         warnings=page_warnings,
                     )
                 )
@@ -331,6 +368,7 @@ def extract_crops(
                     page_index=page_index,
                     image_base64=base64.b64encode(buf.tobytes()).decode("ascii"),
                     expanded=expanded,
+                    possibly_truncated=possibly_truncated,
                     warnings=page_warnings,
                 )
             )
