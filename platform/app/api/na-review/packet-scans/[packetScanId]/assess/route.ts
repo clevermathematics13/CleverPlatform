@@ -48,7 +48,7 @@ export async function GET(
   const { data: cropRows, error: cropsErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, storage_path, is_blank, possibly_truncated, anchor_id, na_anchors(qid, sort_order), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags)"
+      "id, storage_path, is_blank, possibly_truncated, anchor_id, na_anchors(qid, sort_order, question_text), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags)"
     )
     .eq("packet_scan_id", packetScanId);
 
@@ -88,7 +88,10 @@ export async function GET(
     is_blank: boolean | null;
     possibly_truncated: boolean | null;
     anchor_id: string;
-    na_anchors: { qid: string; sort_order: number | null } | { qid: string; sort_order: number | null }[] | null;
+    na_anchors:
+      | { qid: string; sort_order: number | null; question_text: string | null }
+      | { qid: string; sort_order: number | null; question_text: string | null }[]
+      | null;
     na_feedback: Feedback | Feedback[] | null;
   };
 
@@ -99,6 +102,7 @@ export async function GET(
       cropId: r.id,
       qid: anchor?.qid ?? "(unknown)",
       sortOrder: anchor?.sort_order ?? 0,
+      questionText: anchor?.question_text ?? null,
       isBlank: r.is_blank ?? false,
       possiblyTruncated: r.possibly_truncated ?? false,
       imageUrl: r.storage_path ? (signedUrlByPath.get(r.storage_path) ?? null) : null,
