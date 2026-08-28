@@ -287,6 +287,49 @@ This was a one-time targeted check of one anchor, not a system-wide sweep. Worth
 doing the same audit (re-crop every `boundary_expanded=false` row and diff against
 the fixed CV service) across all anchors if this pattern shows up again.
 
+### Full-packet crop audit and a real detector, 27 Aug 2026 (later same day)
+
+The teacher then spotted a second, different crop cut off (Q1(e)) - a strong
+signal the Q1-only fix above wasn't the whole story. Rather than fix these one at
+a time as spotted, built a real signal into stage 4 itself: `_adaptive_crop_bounds`
+now distinguishes expansion stopping because ink density genuinely dropped
+(content ended, fine) from stopping only because it hit the anchor's
+`expand_max_x1_pt`/`expand_max_y1_pt` cap while ink was still touching that edge
+(content may continue beyond what the geometry allows capturing). New
+`na_response_crops.possibly_truncated` column, threaded into the AI assessment
+prompt and a "may be cut off" badge in the scan-test UI.
+
+Then ran the audit this enabled: re-cropped **all 280 crops** across all 7 live
+students against the fixed service and compared byte size against what was
+stored. **123 crops changed** (a real answer's content was previously clipped to
+some degree) and **46 still came back `possibly_truncated=true`** even at full
+expansion (a real anchor-geometry constraint, not a bug - these anchors'
+`expand_max_*_pt` caps sit too close to the printed box for some students'
+handwriting; verified two samples by hand against the raw scan and both were
+genuine, e.g. Roberto Aurelio Gamio's Q4 definition of "Constant" running off the
+right edge mid-word, "sa[me]" and "a numb[er]"). Applied the new images to
+Storage + `na_response_crops` for all 123, then re-ran stage 5 (`ai_*` only,
+never `final_*`) on all of them.
+
+**30 of the 123 re-grades changed marks** (listed in full in the session log, not
+reproduced here) - mostly increases (previously-hidden correct working now
+visible), a handful of decreases (newly-visible content revealing a real error
+that a truncated crop had been hiding, e.g. Ines Palomino's Q25 going 1 -> 0 once
+her full "no combination of factors" explanation was visible and shown to lack
+the required divisibility argument). Spot-checked three of the decreases against
+the raw `ai_teacher_note` reasoning - all specific and well-justified, not model
+noise. One existing teacher override (Santiago Caipo's Q5, `final_marks_awarded=1`
+from earlier in the day) was correctly left untouched. Two crops hit the same
+class of real schema-validation miss documented earlier (missing `confidence`/
+`nextStep`) and succeeded on a single retry.
+
+**Not yet done:** the 46 `possibly_truncated=true` crops are a real, live list of
+anchors whose printed-template geometry is too tight for some students' actual
+handwriting (`expand_max_x1_pt`/`expand_max_y1_pt` genuinely too close to the
+answer box). Widening those specific anchors' caps in `na_anchors` (the way Q1
+was widened above) and re-cropping again would likely resolve most of them - not
+done this session, left as the next open item.
+
 ---
 
 ## 6. What an agent session can and cannot reach
@@ -388,10 +431,16 @@ committed so the tree stays clean.
 **Medium**
 
 4. Grade 9 Standard NA packets - none seeded.
+5. **Widen the 46 anchors still flagged `possibly_truncated=true`** after the 27
+   Aug crop-expansion fix and full-packet audit (§5). Their `expand_max_x1_pt`/
+   `expand_max_y1_pt` caps sit too close to the printed answer box for at least
+   one student's actual handwriting even at full expansion - the same fix already
+   applied to the Q1 anchor (raising the cap, then re-cropping and re-grading)
+   should resolve most of these. Not done this session.
 
 **Low**
 
-5. Full NA generation wiring for Grade 9. The generator is hardcoded to Grade 12,
+6. Full NA generation wiring for Grade 9. The generator is hardcoded to Grade 12,
    `buildActivityGeneratorSystemPrompt()` does not fetch `na_continuity`, and saves
    do not write back.
 
