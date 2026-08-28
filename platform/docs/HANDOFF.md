@@ -638,8 +638,8 @@ committed so the tree stays clean.
    these are unrelated judgment calls, not the same bug). Each has `ai_teacher_note`
    containing "changing its mind mid-explanation" - the model's own reasoning
    reached one number in prose but submitted a different `marksAwarded`:
-   - A.1 Q1, Gian luca Del corral (`5e18cf75`) - noted 3/3, submitted 2/3. Should
-     resolve cleanly on re-run now that Q1/Q1(e) below is fixed.
+   - ~~A.1 Q1, Gian luca Del corral (`5e18cf75`) - noted 3/3, submitted 2/3.~~
+     **Resolved 28 Aug 2026** by the re-run below - now 3/3 cleanly, no warning.
    - A.1 Q15, Davi Verma (`fb4b6967`) - genuine partial-credit judgment call
      (unconventional but valid algebra), submitted 3/4.
    - A.1 Q6, Kaito Fujii (`3797e2c9`) - genuine partial-credit judgment call
@@ -674,9 +674,24 @@ committed so the tree stays clean.
    version's anchors were touched - a future packet version authored fresh from
    the same `nuanced_analyses` row would need the same split applied again if its
    anchor extraction also copies `parts` verbatim onto multiple sub-part anchors.
-   13 students already have Q1/Q1(e) assessed under the old un-scoped text; only
-   Gian luca Del corral's shows the backtrack flag, but re-running the rest was
-   left for the teacher to decide given the (small but real) added Claude cost.
+   **Re-run completed 28 Aug 2026** for the 10 real, identified students (20
+   crops: Q1 + Q1(e) each), via a one-off script
+   (`platform/scripts/reassess-q1-tmp.ts`, run with `npx tsx` and deleted after
+   - not committed, mirrored `response-crops/[cropId]/assess/route.ts` exactly
+   rather than reimplementing its logic) using `SUPABASE_SERVICE_ROLE_KEY` +
+   `GRADING_ANTHROPIC_API_KEY` from the agent environment, since direct HTTPS to
+   the app is blocked from this environment (§6) so the authenticated route
+   itself couldn't be called. Deliberately excluded packet_scans `0525197b`,
+   `f854e03e`, `475e3a0d` - these are the 3 orphaned pilot-ingestion duplicate
+   scans already in Open Items #3 (`needs_review`, not real distinct students,
+   not worth spending Claude calls on data pending a delete decision). Result:
+   all 20 assessed cleanly, **zero warnings** (no backtracking, no clamped
+   marks, no unclear-with-marks contradiction) - confirms the scope fix removed
+   the ambiguity at the source. Gian luca Del corral's Q1 now correctly reads
+   3/3. A few genuinely `unclear`/low marks came back (Davi Verma and Roberto
+   Aurelio Gamio's Q1(e) both 0/1 unclear; Yunseo Oh's Q1 0/3 unclear; Galo
+   Masias's Q1 1/3) - these are the model's honest read of what it could see,
+   not errors, and worth a normal teacher glance like any `unclear` verdict.
 5. ~~Widen the 46 anchors still flagged `possibly_truncated=true`~~ **Closed, 27
    Aug 2026.** The full anchor-geometry audit (§5) plus the follow-up "relies on
    expansion" sweep found and fixed every genuine case: Q1, Q3, Q6, Q26(b),
