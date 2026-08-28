@@ -411,8 +411,65 @@ anchor's authored coordinate rather than that neighbor's true visual
 position - could recur wherever original anchor extraction measured a box's
 start a bit early. `possibly_truncated=false` does NOT rule this out, since
 the cap itself can be wrong independent of whether ink was detected against
-it. No systematic re-check of every anchor pair's authored-vs-visual gap has
-been done.
+it.
+
+### Full anchor-geometry audit, 27 Aug 2026 (later same day)
+
+Ran that systematic re-check. Built an automated detector using the
+PRINTED left accent bar every answer box has -- a template element,
+independent of any student's handwriting -- to find each anchor's TRUE
+bottom border directly, by scanning down the bar's column for where its
+color drops to white. Validated against the two known-real cases (Q3, Q6)
+before trusting it: both matched manual measurement closely.
+
+First pass flagged 4 "problems" and 4 "no border found" across all ~40
+anchors. **Verifying before touching anything caught that most were
+detector artifacts, not real bugs**: several flagged anchors reported a
+`true_border` value IDENTICAL to their neighbor's own reading - the scan
+had bled through a too-small print gap into the NEXT anchor's bar, exactly
+the false-positive mechanism a small confirm-window can hit. Re-ran with
+the search bounded near each anchor's own cap instead of wide-open, which
+resolved the conflation for Q1, ACTIVITY, and Q13(b)'s "problem" (Q1 was
+already fixed and independently visually verified earlier the same day).
+
+**3 confirmed real issues, fixed and re-graded:**
+- **Q26(b)**: genuine handwriting ("by 2 for every 1 additional adult
+  ticket") ran past `expand_max_y1_pt` (644.43). Widened to 665.0.
+- **Q13(b)**: box's true border sits past its cap (504.47) by a few points.
+  Widened to 522.0.
+- **Q30 (last question, last page)**: the serious one - a student's full
+  paragraph of reasoning ran all the way to within a few points of the
+  PHYSICAL PAGE EDGE (842pt). `expand_max_y1_pt` (811.89) missed a
+  significant closing chunk of Ines Palomino's answer ("...the distributive
+  property (my argument) shows why they always give the same result.").
+  Since this is the last anchor on the last page (zero collision risk),
+  widened the anchor's own `y1_pt` directly to 830.0 rather than relying on
+  adaptive expansion, which was independently stalling early here too
+  (the same per-step ink-density-gap limitation documented above, just
+  encountered on a different anchor - not the reverted lookahead fix,
+  which stays reverted).
+- **Q7(b)**: box border sits ~5pt past its cap (811.89 -> 825.0), but no
+  student's ink ever reached that far - cosmetic-only, fixed for
+  consistency, zero crops actually changed.
+
+Re-cropped and re-graded all 7 students at each of the 4 widened anchors.
+**2 real mark changes**: Santiago Caipo's Q13(b) (0 -> 1/1, a previously-
+invisible correct answer) and **Ines Palomino's Q30 (4 -> 6/6, full marks)**
+once her complete argument became visible. Both verified against the
+`ai_teacher_note` reasoning - specific, evidence-based, not noise.
+
+Some crops still read `possibly_truncated=true` after fixing (e.g. Ines's
+Q30, Ruifeng Wu's Q30) despite being visually confirmed complete - false
+positives from the detector picking up the page's own footer text/border
+line right at the physical edge, not missing content. Not worth chasing
+further; the model's own teacherNote already reasons past this correctly
+when the visible content is self-evidently complete.
+
+**Still open:** the "ok (relies on expansion)" anchors (roughly two dozen,
+where the true border sits between `y1_pt` and `expand_max_y1_pt`) were
+*not* re-cropped - their caps are wide enough, so they depend on adaptive
+expansion actually firing, which the segment-max fix (PR#23) should handle
+for genuine handwriting. Not independently verified per-anchor.
 
 ---
 
