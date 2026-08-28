@@ -1850,7 +1850,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                 type="button"
                 onClick={handleSplit}
                 disabled={!canSplit || splitting}
-                className="rounded-lg bg-da-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                className="rounded-lg border border-da-accent bg-da-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
               >
                 {splitting ? "Splitting…" : `Confirm & split ${rows.length} student(s)`}
               </button>
@@ -1932,7 +1932,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                       type="button"
                       onClick={() => handleSplitChunk(chunk)}
                       disabled={!canSplitThis}
-                      className="rounded-lg bg-da-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+                      className="rounded-lg border border-da-accent bg-da-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
                     >
                       Confirm & split {chunk.rows.length} student(s)
                     </button>
