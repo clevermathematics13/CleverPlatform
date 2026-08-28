@@ -85,6 +85,17 @@ EXPAND_DENSITY_THRESHOLD = 0.05
 EXPAND_MAX_STEPS = 12
 EXPAND_BAND_FRAC = 0.06
 
+# Real miss (A.1 Q3, Ines Palomino): a 3-line ruled answer box where line 3
+# ("wouldn't produce the same answer.") sat just past a blank ruled-paper
+# gap after line 2. Per-step growth checks a thin band right at the
+# CURRENT edge (EXPAND_BAND_FRAC of the crop's height) -- when that step's
+# edge happens to land in the gap between two ruled lines, the density
+# check sees blank paper and gives up, even though real content resumes
+# only a few points further down. One extra look further ahead before
+# truly giving up bridges exactly this gap without changing the normal
+# per-step precision for a genuinely-finished answer.
+LOOKAHEAD_STEPS = 5
+
 
 @dataclass
 class Anchor:
@@ -152,9 +163,18 @@ def _edge_ink_density(gray_img: np.ndarray, side: str, band_frac: float = EXPAND
         long_axis = 1  # columns
     else:
         raise ValueError(side)
+    return _segmented_max_density(band, long_axis)
+
+
+def _segmented_max_density(band: np.ndarray, long_axis: int) -> float:
+    """Splits `band` into EDGE_DENSITY_SEGMENTS pieces along `long_axis`
+    (0=rows, 1=columns) and returns the densest segment's ink fraction --
+    shared by _edge_ink_density (a thin band at a crop's current edge) and
+    the lookahead probe in _adaptive_crop_bounds (a whole candidate
+    extension region), so content localized to one part of either doesn't
+    get diluted by blank space elsewhere in the same check."""
     if band.size == 0:
         return 0.0
-
     length = band.shape[long_axis]
     if length == 0:
         return 0.0
@@ -218,8 +238,46 @@ def _adaptive_crop_bounds(
                 grew = True
                 expanded = True
 
-        if not grew:
-            break
+        if grew:
+            continue
+
+        # Stalled at this edge -- before concluding the content actually
+        # ended here, look further ahead than one step. A blank ruled-paper
+        # gap between two lines of writing can be wider than EXPAND_STEP_PT,
+        # and a real answer's next line sitting just past that gap must not
+        # read the same as an answer that genuinely stopped. If ink resumes
+        # within the lookahead window, jump the edge there and keep going;
+        # the loop's normal per-step logic then takes over again from the
+        # new position, so this doesn't sacrifice precision on a genuinely
+        # short answer.
+        # Check density WITHIN the candidate extension itself (not a band
+        # relative to the whole, now-larger crop) -- a real miss during
+        # development: reusing _edge_ink_density on the widened crop only
+        # re-examined a thin band near the FAR end of the lookahead window,
+        # which is usually still blank even when the gap really did bridge
+        # to real content sitting in the middle of that window.
+        bridged = False
+        if cur_bx1 < max_bx1:
+            probe_bx1 = min(max_bx1, cur_bx1 + LOOKAHEAD_STEPS * step_px)
+            window = page_img[by0:cur_by1, cur_bx1:probe_bx1]
+            window_gray = cv2.cvtColor(window, cv2.COLOR_BGR2GRAY) if window.ndim == 3 else window
+            if probe_bx1 > cur_bx1 and _segmented_max_density(window_gray, long_axis=0) > EXPAND_DENSITY_THRESHOLD:
+                cur_bx1 = probe_bx1
+                bridged = True
+
+        if cur_by1 < max_by1:
+            probe_by1 = min(max_by1, cur_by1 + LOOKAHEAD_STEPS * step_px)
+            window = page_img[cur_by1:probe_by1, bx0:cur_bx1]
+            window_gray = cv2.cvtColor(window, cv2.COLOR_BGR2GRAY) if window.ndim == 3 else window
+            if probe_by1 > cur_by1 and _segmented_max_density(window_gray, long_axis=1) > EXPAND_DENSITY_THRESHOLD:
+                cur_by1 = probe_by1
+                bridged = True
+
+        if bridged:
+            expanded = True
+            continue
+
+        break
 
     # One last look at the final edges: if either sits exactly on its cap
     # AND still shows ink above threshold, we stopped because we ran out

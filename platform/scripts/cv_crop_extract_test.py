@@ -79,6 +79,28 @@ def test_adaptive_crop_bounds_no_expansion_when_truly_blank():
     assert (final_bx1, final_by1) == (380, 150)
 
 
+def test_adaptive_crop_bounds_bridges_a_ruled_paper_gap_between_lines():
+    """Real production miss (A.1 Q3, Ines Palomino): a 3-line ruled answer
+    box where line 3 ("wouldn't produce the same answer.") sat just past a
+    blank gap after line 2 -- wider than one EXPAND_STEP_PT step. The
+    per-step check stalled exactly in that gap and gave up, leaving line 3
+    entirely outside the crop despite there being plenty of allowed room
+    (max_by1) to include it. The lookahead probe must bridge this."""
+    page = _blank_page(h=300, w=400)
+    bx0, by0, bx1, by1 = 20, 20, 380, 150
+    # Line 2 ends right at by1 (already inside the initial crop). A blank
+    # gap follows, then line 3 starts well past a single step_px away.
+    page[130:148, 50:350] = 0  # line 2, partly inside the initial crop
+    page[190:210, 50:350] = 0  # line 3, 40px past by1 -- 4 steps at step_px=10
+
+    final_bx1, final_by1, expanded, possibly_truncated = _adaptive_crop_bounds(
+        page, bx0, by0, bx1, by1, max_bx1=380, max_by1=280, step_px=10
+    )
+    assert expanded is True
+    assert final_by1 >= 210, "line 3 must be included, not left just past a stalled edge"
+    assert possibly_truncated is False
+
+
 def test_adaptive_crop_bounds_flags_possibly_truncated_when_capped():
     """Real production case (A.1 Q1(e) and others): a student's answer
     genuinely continues past the anchor's expand_max_y1_pt (the next
