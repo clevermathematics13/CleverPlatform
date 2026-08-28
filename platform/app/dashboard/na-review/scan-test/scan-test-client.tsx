@@ -182,6 +182,24 @@ interface ResultsPanelState {
   error: string | null;
 }
 
+/** Live progress for one running autoCropAndAssessAll call, keyed by
+ *  panelKey (a top-level batchId or a chunk's batchId) so the "is this
+ *  still running" banner can answer that question at a glance instead of
+ *  leaving a teacher staring at a status line that hasn't visibly changed
+ *  in a while -- each of a student's ~40 crops is its own Claude call, so
+ *  tens of seconds of apparent silence between status-line updates is
+ *  normal, not a hang. Deleted from the autoRuns map the moment the run
+ *  ends (success or not), so the banner's mere presence answers "is it
+ *  still going" without needing a separate boolean. */
+interface AutoRunInfo {
+  startedAt: number;
+  totalStudents: number;
+  studentIndex: number; // 0-based index of the student currently being processed
+  studentLabel: string;
+  currentScanId: string | null;
+  stage: "cropping" | "assessing";
+}
+
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
   high: "bg-green-100 text-green-800 border-green-300",
   medium: "bg-amber-100 text-amber-800 border-amber-300",
@@ -522,6 +540,18 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   // per chunk) can each show their own "Cropping X of Y" progress without
   // interfering with each other.
   const [cropAllRunning, setCropAllRunning] = useState<Record<string, boolean>>({});
+
+  // Live progress for the automated pipeline -- see AutoRunInfo's comment.
+  // A live-ticking clock (updated every second while anything is running,
+  // otherwise left alone) drives the elapsed-time display without needing
+  // every autoRuns update to itself carry a fresh timestamp.
+  const [autoRuns, setAutoRuns] = useState<Record<string, AutoRunInfo>>({});
+  const [autoRunClockTick, setAutoRunClockTick] = useState(0);
+  useEffect(() => {
+    if (Object.keys(autoRuns).length === 0) return;
+    const id = setInterval(() => setAutoRunClockTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [Object.keys(autoRuns).length > 0]);
 
   // Stage 5: one AssessPanelState per packetScanId (the whole student's
   // crop list + its loading state) and one AssessCropState per cropId
@@ -1398,26 +1428,54 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const autoCropAndAssessAll = async (panelKey: string, results: SplitResult[]) => {
     const targets = results.filter((r) => r.status === "split" && r.packetScanId);
     if (targets.length === 0) return;
-    setStatusLine(`Automatic run: cropping ${targets.length} student(s)…`);
-    const cropOutcomes = await handleCropAll(panelKey, targets);
-    const readyForAssess = targets.filter((r) => cropOutcomes[r.packetScanId as string] === "done");
-    const failedToCrop = targets.length - readyForAssess.length;
 
-    for (let i = 0; i < readyForAssess.length; i++) {
-      const r = readyForAssess[i];
-      const scanId = r.packetScanId as string;
-      setStatusLine(`Automatic run: assessing ${r.label} (${i + 1}/${readyForAssess.length})…`);
-      const crops = await loadAssessPanel(scanId);
-      const stillNeeded = crops.filter((c) => !c.alreadyAssessed);
-      if (stillNeeded.length === 0) continue;
-      await handleAssessAll(scanId, stillNeeded);
+    setAutoRuns((prev) => ({
+      ...prev,
+      [panelKey]: {
+        startedAt: Date.now(),
+        totalStudents: targets.length,
+        studentIndex: 0,
+        studentLabel: "",
+        currentScanId: null,
+        stage: "cropping",
+      },
+    }));
+
+    try {
+      setStatusLine(`Automatic run: cropping ${targets.length} student(s)…`);
+      const cropOutcomes = await handleCropAll(panelKey, targets);
+      const readyForAssess = targets.filter((r) => cropOutcomes[r.packetScanId as string] === "done");
+      const failedToCrop = targets.length - readyForAssess.length;
+
+      for (let i = 0; i < readyForAssess.length; i++) {
+        const r = readyForAssess[i];
+        const scanId = r.packetScanId as string;
+        setAutoRuns((prev) => ({
+          ...prev,
+          [panelKey]: { ...prev[panelKey], studentIndex: i, studentLabel: r.label, currentScanId: scanId, stage: "assessing" },
+        }));
+        setStatusLine(`Automatic run: assessing ${r.label} (${i + 1}/${readyForAssess.length})…`);
+        const crops = await loadAssessPanel(scanId);
+        const stillNeeded = crops.filter((c) => !c.alreadyAssessed);
+        if (stillNeeded.length === 0) continue;
+        await handleAssessAll(scanId, stillNeeded);
+      }
+
+      setStatusLine(
+        failedToCrop > 0
+          ? `Automatic run finished: ${readyForAssess.length} student(s) fully assessed. ${failedToCrop} student(s) failed to crop even after retries -- see their panel below and click "Crop this student" to try again.`
+          : `Automatic run finished: all ${readyForAssess.length} student(s) cropped and assessed. See Results by class above for marks.`
+      );
+    } finally {
+      // Cleared whether the run finished normally or an unexpected error
+      // escaped the try block -- the banner's job is "is this still
+      // running", and it must never keep claiming so after it's stopped.
+      setAutoRuns((prev) => {
+        const next = { ...prev };
+        delete next[panelKey];
+        return next;
+      });
     }
-
-    setStatusLine(
-      failedToCrop > 0
-        ? `Automatic run finished: ${readyForAssess.length} student(s) fully assessed. ${failedToCrop} student(s) failed to crop even after retries -- see their panel below and click "Crop this student" to try again.`
-        : `Automatic run finished: all ${readyForAssess.length} student(s) cropped and assessed. See Results by class above for marks.`
-    );
   };
 
   // -- Chunk row editing --------------------------------------------------------
@@ -1956,10 +2014,61 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
 
   const anyChunked = chunks.length > 0;
   const anyBatchLoaded = !!batchId || anyChunked;
+  const runningAutoRuns = Object.entries(autoRuns);
+  void autoRunClockTick; // referenced so the ticking interval's re-render actually recomputes elapsed time below
 
   return (
     <div className="space-y-6">
       <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFilePicked} className="hidden" />
+
+      {/* "Is this still running?" banner -- sticky so it stays visible while
+          scrolling through results, since a full batch (dozens of crops per
+          student, each its own Claude call) can run for minutes with no
+          visible change to the page below. Its mere presence answers the
+          question: autoRuns entries are deleted the instant a run ends
+          (success or failure), so if this isn't showing, nothing is running. */}
+      {runningAutoRuns.length > 0 && (
+        <div className="sticky top-0 z-20 space-y-2">
+          {runningAutoRuns.map(([panelKey, info]) => {
+            const elapsedSec = Math.max(0, Math.floor((Date.now() - info.startedAt) / 1000));
+            const mm = Math.floor(elapsedSec / 60);
+            const ss = elapsedSec % 60;
+            const elapsed = `${mm}:${ss.toString().padStart(2, "0")}`;
+            const cropProgress =
+              info.stage === "assessing" && info.currentScanId
+                ? (() => {
+                    const panelCrops = assessPanels[info.currentScanId as string]?.crops ?? [];
+                    if (panelCrops.length === 0) return null;
+                    const done = panelCrops.filter((c) => {
+                      const s = assessCropState[c.cropId];
+                      return s?.status === "assessed" || s?.status === "skipped";
+                    }).length;
+                    return { done, total: panelCrops.length };
+                  })()
+                : null;
+            return (
+              <div
+                key={panelKey}
+                className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-da-accent/60 bg-da-accent/15 px-5 py-3 shadow-lg shadow-black/30 backdrop-blur"
+              >
+                <span className="relative flex h-3 w-3 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-da-accent opacity-75" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-da-accent" />
+                </span>
+                <span className="text-sm font-bold text-da-text">Automatic run in progress</span>
+                <span className="font-mono text-sm text-da-text">{elapsed} elapsed</span>
+                <span className="text-sm text-da-muted">
+                  {info.stage === "cropping"
+                    ? `Cropping ${info.totalStudents} student(s)…`
+                    : `Student ${info.studentIndex + 1} of ${info.totalStudents} — ${info.studentLabel}${
+                        cropProgress ? ` — question ${cropProgress.done}/${cropProgress.total}` : ""
+                      }`}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <section className="rounded-xl border border-da-border bg-da-surface p-5">
         <label className="block text-sm font-medium text-da-text">Packet version</label>
