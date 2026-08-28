@@ -61,6 +61,26 @@ export async function POST(
   const { supabase } = auth;
   const { packetScanId } = await params;
 
+  // Optional { offset, limit } -- lets the client crop a slice of this
+  // student's anchors (ordered by sort_order, same as the query below, so
+  // paging is stable across calls) instead of all ~40 in one request. This
+  // is the adaptive-chunking fallback for the 60s function cap: the client
+  // first tries a full-student call (fewest requests, fastest when it
+  // works) and only switches to requesting anchors in small pages after
+  // that call times out or fails. No body at all (the original client
+  // behavior) means "crop everything", same as before this existed.
+  let pageOffset: number | null = null;
+  let pageLimit: number | null = null;
+  try {
+    const body = await request.json();
+    if (Number.isFinite(body?.offset) && Number.isFinite(body?.limit)) {
+      pageOffset = Math.max(0, Math.floor(body.offset));
+      pageLimit = Math.max(1, Math.floor(body.limit));
+    }
+  } catch {
+    /* no body / not JSON -- default to cropping every anchor */
+  }
+
   if (!process.env.GRAPH_LAB_CV_SERVICE_URL) {
     return NextResponse.json(
       {
@@ -114,6 +134,16 @@ export async function POST(
     );
   }
 
+  // The full anchor list still drives "is this student fully cropped?"
+  // below; requestedAnchors is only what this particular call sends to the
+  // CV service and saves. `anchors` is already ordered by sort_order, so
+  // slicing it here is stable across repeated paged calls.
+  const isPaged = pageOffset !== null && pageLimit !== null;
+  const requestedAnchors = isPaged ? anchors.slice(pageOffset!, pageOffset! + pageLimit!) : anchors;
+  if (requestedAnchors.length === 0) {
+    return NextResponse.json({ error: "offset is past the end of this packet's anchor list." }, { status: 400 });
+  }
+
   // -- Download the student's split PDF ---------------------------------------
   const { data: pdfFile, error: dlErr } = await supabase.storage
     .from(NA_SCAN_BUCKET)
@@ -146,7 +176,7 @@ export async function POST(
         studentPdfBase64: pdfBase64,
         expectedPageCount,
         rotationHint: 0,
-        anchors: anchors.map((a) => ({
+        anchors: requestedAnchors.map((a) => ({
           qid: a.qid,
           pageIndex: a.page_index,
           x0Pt: a.x0_pt,
@@ -280,9 +310,27 @@ export async function POST(
   const savedCount = results.filter((r) => r.status === "saved").length;
   const failedCount = results.filter((r) => r.status === "failed").length;
 
-  // Only mark the scan cropped if every anchor actually saved -- a partial
-  // failure should stay visibly incomplete rather than reading as done.
-  if (failedCount === 0 && cvResponse.pageCountMismatch === null) {
+  // "Cropped" is judged against every locked anchor, not just this call's
+  // subset -- a chunked run saves a few anchors per request, so a single
+  // request's own failedCount === 0 doesn't mean the student is done. This
+  // also preserves the original single-call behavior: a full-batch request
+  // saves everything at once, so totalSaved immediately reaches
+  // anchors.length in that same request.
+  let totalSaved = savedCount;
+  if (isPaged) {
+    const { count } = await supabase
+      .from("na_response_crops")
+      .select("id", { count: "exact", head: true })
+      .eq("packet_scan_id", packetScanId)
+      .in(
+        "anchor_id",
+        anchors.map((a) => a.id)
+      );
+    totalSaved = count ?? savedCount;
+  }
+  const allAnchorsCropped = totalSaved >= anchors.length;
+
+  if (allAnchorsCropped && cvResponse.pageCountMismatch === null) {
     await supabase
       .from("na_packet_scans")
       .update({ status: "cropped", updated_at: new Date().toISOString() })
@@ -298,5 +346,8 @@ export async function POST(
     blankCount: results.filter((r) => r.isBlank).length,
     expandedCount: results.filter((r) => r.expanded).length,
     possiblyTruncatedCount: results.filter((r) => r.possiblyTruncated).length,
+    totalAnchors: anchors.length,
+    totalSaved,
+    allAnchorsCropped,
   });
 }

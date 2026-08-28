@@ -69,11 +69,15 @@ interface SplitResult {
   error?: string;
 }
 
-/** Stage 4's crop lifecycle for one already-split student. */
+/** Stage 4's crop lifecycle for one already-split student. progress is only
+ *  set while the paged-anchor fallback is running (see handleCrop) so the
+ *  UI can show "N of M anchors" instead of a bare spinner during a slow,
+ *  chunked run. */
 interface CropState {
   status: "idle" | "cropping" | "done" | "failed";
   rawResponse: unknown;
   error: string | null;
+  progress?: { done: number; total: number } | null;
 }
 
 /** One crop as listed by GET /api/na-review/packet-scans/[id]/assess. */
@@ -226,6 +230,60 @@ function formatPageList(pages: number[]): string {
   return parts.join(", ");
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** fetch + res.json() with bounded retries, used by every stage-4/5 call in
+ *  the automated pipeline below. Retries on a network error, a non-2xx
+ *  response, AND a non-JSON body -- that last case is exactly what a
+ *  platform request timeout looks like (Vercel returns a plain-text/HTML
+ *  page instead of the route's JSON), and is the root cause behind the
+ *  cryptic "Unexpected token... is not valid JSON" errors this page used to
+ *  surface verbatim. A timeout is very often transient, so retrying the
+ *  same request first (before any chunking fallback) is usually enough.
+ *  Never retries a request that already succeeded -- only failures loop. */
+async function fetchJsonWithRetry(
+  url: string,
+  init: RequestInit,
+  { retries = 2, backoffMs = 1200 }: { retries?: number; backoffMs?: number } = {}
+): Promise<{ ok: boolean; status: number; data: any }> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      let data: unknown = null;
+      let parseError: unknown = null;
+      try {
+        data = await res.json();
+      } catch (e) {
+        parseError = e;
+      }
+      if (parseError !== null) {
+        if (attempt < retries) {
+          await sleep(backoffMs * 2 ** attempt);
+          continue;
+        }
+        throw new Error(
+          `Server returned a non-JSON response (HTTP ${res.status}) -- most likely a request timeout, not a real error. Try again.`
+        );
+      }
+      if (!res.ok && attempt < retries) {
+        await sleep(backoffMs * 2 ** attempt);
+        continue;
+      }
+      return { ok: res.ok, status: res.status, data };
+    } catch (e) {
+      lastErr = e;
+      if (attempt < retries) {
+        await sleep(backoffMs * 2 ** attempt);
+        continue;
+      }
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Request failed after retries.");
+}
+
 /** Roster option label, e.g. "Freya Delisle — 9A", or just the name if the class is unknown. */
 function rosterOptionLabel(s: RosterEntry): string {
   return s.courseName ? `${s.fullName} — ${s.courseName}` : s.fullName;
@@ -251,6 +309,25 @@ function segmentsToRows(segments: ProposedSegment[] | { label: string; pages: nu
       invitedId,
     };
   });
+}
+
+/** Gate for the automated pipeline's "skip the review click" fast path:
+ *  every row must be matched, unique, non-conflicting, AND high confidence.
+ *  Anything less -- an ambiguous handwriting read, a duplicate/missing
+ *  match -- stops here and waits for one manual "Confirm & split" instead
+ *  of silently grading a page under the wrong student's name. Only ever
+ *  called with freshly-computed rows (never component state), since it
+ *  runs the instant stage 1 returns, before any state update has
+ *  committed. */
+function rowsReadyForAutoSplit(rows: ReviewRow[]): boolean {
+  if (rows.length === 0) return false;
+  if (!rows.every((r) => r.invitedId && r.pages.length > 0)) return false;
+  if (!rows.every((r) => r.confidence === "high")) return false;
+  if (new Set(rows.map((r) => r.invitedId)).size !== rows.length) return false;
+  const owners = new Map<number, number>();
+  for (const r of rows) for (const p of r.pages) owners.set(p, (owners.get(p) ?? 0) + 1);
+  if ([...owners.values()].some((n) => n > 1)) return false;
+  return true;
 }
 
 /**
@@ -702,12 +779,53 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // Automated pipeline (stage 4 crop + stage 5 assess), driven off split
+  // results rather than called inline right after performSplit -- see
+  // autoCropAndAssessAll's own comment for why: this component's async
+  // handlers don't re-render between steps, so reading cropState back out
+  // of the same closure right after a split would risk seeing a stale
+  // snapshot. An effect instead runs fresh each time splitResults actually
+  // changes, which happens exactly when a split completes -- whether that
+  // was a fresh upload with all-high-confidence matches, a manual "Confirm
+  // & split" click after reviewing flagged rows, or reloading a batch that
+  // was already split in an earlier session (the "survives closing the
+  // tab" resume case). The ref guards against firing twice for one batch.
+  const autoStartedBatchRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!batchId || splitResults.length === 0) return;
+    if (autoStartedBatchRef.current === batchId) return;
+    autoStartedBatchRef.current = batchId;
+    void autoCropAndAssessAll(batchId, splitResults);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchId, splitResults]);
+
+  // Same idea for the chunked upload path, tracked per chunk batchId since
+  // each chunk finishes its own split independently.
+  const autoStartedChunksRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const c of chunks) {
+      if (c.status !== "split") continue;
+      if (autoStartedChunksRef.current.has(c.batchId)) continue;
+      const results = (c.rawSplitResponse as { results?: SplitResult[] })?.results ?? [];
+      if (results.length === 0) continue;
+      autoStartedChunksRef.current.add(c.batchId);
+      void autoCropAndAssessAll(c.batchId, results);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chunks]);
+
   const updateChunk = (batchId: string, patch: Partial<ChunkState>) =>
     setChunks((prev) => prev.map((c) => (c.batchId === batchId ? { ...c, ...patch } : c)));
 
-  /** Runs stage 1 (segmentation) for one chunk by calling the same route with its own storagePath. */
-  const segmentChunk = async (chunk: ChunkState) => {
-    if (!version) return;
+  /** Runs stage 1 (segmentation) for one chunk by calling the same route
+   *  with its own storagePath. Returns the resulting chunk (merged with
+   *  whatever patch was applied) rather than relying on the caller to read
+   *  it back out of chunks state -- handleUpload's loop needs the freshly
+   *  segmented rows immediately, in the same tick, to decide whether this
+   *  chunk qualifies for auto-split, and component state doesn't update
+   *  synchronously. */
+  const segmentChunk = async (chunk: ChunkState): Promise<ChunkState> => {
+    if (!version) return chunk;
     updateChunk(chunk.batchId, { status: "segmenting" });
     try {
       const res = await fetch("/api/na-review/batch", {
@@ -729,17 +847,21 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       }
 
       const segments: ProposedSegment[] = data.segments ?? [];
-      updateChunk(chunk.batchId, {
+      const patch: Partial<ChunkState> = {
         status: "segmented",
         rows: segmentsToRows(segments),
         unassignedPages: data.unassignedPages ?? [],
         rawSegmentResponse: data,
-      });
+      };
+      updateChunk(chunk.batchId, patch);
+      return { ...chunk, ...patch };
     } catch (e) {
-      updateChunk(chunk.batchId, {
+      const patch: Partial<ChunkState> = {
         status: "failed",
         error: e instanceof Error ? e.message : "Segmentation failed.",
-      });
+      };
+      updateChunk(chunk.batchId, patch);
+      return { ...chunk, ...patch };
     }
   };
 
@@ -807,27 +929,56 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
 
         // Segment chunks sequentially -- each is its own request with its
         // own time budget, so a slow model response on one chunk can't
-        // starve the others.
+        // starve the others. A chunk whose matches are ALL high confidence
+        // continues straight into split + crop + assess with no further
+        // clicks; anything less-confident stops at "segmented" for a
+        // quick manual review (the button is right there on that chunk's
+        // card) and only THAT chunk waits -- the rest keep going.
+        let autoCount = 0;
+        let reviewCount = 0;
         for (const c of initialChunks) {
           setStatusLine(`Segmenting chunk ${c.chunkIndex} of ${initialChunks.length} (pages ${c.startPage}-${c.endPage})…`);
-          await segmentChunk(c);
+          const segmented = await segmentChunk(c);
+          if (segmented.status === "segmented" && rowsReadyForAutoSplit(segmented.rows)) {
+            autoCount++;
+            setStatusLine(
+              `Chunk ${c.chunkIndex}: all matches high-confidence — splitting, cropping and assessing automatically…`
+            );
+            await handleSplitChunk(segmented);
+          } else if (segmented.status === "segmented") {
+            reviewCount++;
+          }
         }
-        setStatusLine(`All ${initialChunks.length} chunks segmented. Review each one below before splitting.`);
+        setStatusLine(
+          `All ${initialChunks.length} chunk(s) segmented. ${autoCount} running automatically end-to-end.` +
+            (reviewCount > 0
+              ? ` ${reviewCount} chunk(s) have a not-quite-high-confidence match and need a quick look below before continuing.`
+              : "")
+        );
       } else {
         const segments: ProposedSegment[] = data.segments ?? [];
+        const newRows = segmentsToRows(segments);
         setBatchId(data.batchId);
         setPageCount(data.pageCount);
         setUnassignedPages(data.unassignedPages ?? []);
-        setRows(segmentsToRows(segments));
+        setRows(newRows);
         const poolNote =
           data.rosterIsTrack && version.rosterSourceCourseNames.length
             ? ` (pooled from ${version.rosterSourceCourseNames.join(", ")})`
             : "";
-        setStatusLine(
-          `Stage 1 done. Found ${segments.length} student(s) across ${data.pageCount} pages, roster size ${data.rosterSize}${poolNote}. Review before splitting.`
-        );
         syncUrl(data.batchId);
         void fetchRecentBatches(version.id);
+
+        if (rowsReadyForAutoSplit(newRows)) {
+          setStatusLine(
+            `Stage 1 done. Found ${segments.length} student(s), all high-confidence matches — splitting, cropping and assessing automatically…`
+          );
+          await splitBatch(data.batchId, newRows);
+        } else {
+          setStatusLine(
+            `Stage 1 done. Found ${segments.length} student(s) across ${data.pageCount} pages, roster size ${data.rosterSize}${poolNote}. Some matches aren't high-confidence — review below, then Confirm & split to continue automatically.`
+          );
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload or segmentation failed.");
@@ -861,17 +1012,28 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     new Set(rows.map((r) => r.invitedId)).size === rows.length &&
     !rawStage2;
 
-  const handleSplit = async () => {
-    if (!batchId || !canSplit) return;
+  /** Does the actual stage-2 network call and state updates for the
+   *  non-chunked path. Takes targetBatchId/targetRows explicitly rather
+   *  than reading batchId/rows off component state, so handleUpload's
+   *  auto-split path can call this the instant stage 1 returns -- using
+   *  freshly computed local values, before setBatchId/setRows have even
+   *  committed -- without waiting on a state update that hasn't happened
+   *  yet. handleSplit (the button's onClick) just forwards current state
+   *  into this. Returns the split results so the caller can decide what to
+   *  do next; the actual "kick off stage 4/5 automatically" step happens
+   *  in the useEffect watching splitResults, not here, so it behaves
+   *  identically whether the split was triggered automatically or by
+   *  clicking "Confirm & split". */
+  const splitBatch = async (targetBatchId: string, targetRows: ReviewRow[]): Promise<SplitResult[] | null> => {
     setSplitting(true);
     setError(null);
     setStatusLine("Splitting the batch PDF and creating na_packet_scans rows…");
     try {
-      const res = await fetch(`/api/na-review/batch/${batchId}/split`, {
+      const res = await fetch(`/api/na-review/batch/${targetBatchId}/split`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          segments: rows.map((r) => ({ label: r.label, pages: r.pages, invitedId: r.invitedId })),
+          segments: targetRows.map((r) => ({ label: r.label, pages: r.pages, invitedId: r.invitedId })),
         }),
       });
       const data = await res.json();
@@ -889,41 +1051,122 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         )
       );
       setStatusLine(
-        `Stage 2 done. ${data.splitCount} split, ${data.failedCount} failed. Run stage 4 (crop) per student below, or verify na_packet_scans/Storage directly.`
+        `Stage 2 done. ${data.splitCount} split, ${data.failedCount} failed. Cropping and assessing automatically below.`
       );
+      return results;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Split failed.");
+      return null;
     } finally {
       setSplitting(false);
     }
   };
 
-  /** Stage 4 for one already-split student: calls the crop route by packetScanId. */
-  const handleCrop = async (packetScanId: string) => {
+  const handleSplit = async () => {
+    if (!batchId || !canSplit) return;
+    await splitBatch(batchId, rows);
+  };
+
+  const CROP_PAGE_SIZE = 12;
+
+  /** Stage 4 for one already-split student: calls the crop route by
+   *  packetScanId. Two layers of resilience, tried in order of cost --
+   *  "most efficient method first, fall back only on error" per the
+   *  automation design:
+   *
+   *  1. One whole-student request (fewest round trips). fetchJsonWithRetry
+   *     already retries this a couple of times on a transient failure or a
+   *     timeout's non-JSON response, which resolves most of what used to
+   *     surface as "Unexpected token... is not valid JSON".
+   *  2. If that still fails, page through this student's anchors in small
+   *     batches (CROP_PAGE_SIZE at a time) via the crop route's offset/limit
+   *     support -- each request is small enough to comfortably finish
+   *     inside the platform's function-duration cap even when the
+   *     whole-student call doesn't. Resumes from wherever a PRIOR failed
+   *     paged run left off (this crop state's own progress), so retrying
+   *     doesn't redo anchors that already saved. Neither layer costs
+   *     anything beyond normal hosting compute -- crop extraction is
+   *     deterministic image processing, not a Claude call.
+   *
+   *  Returns the final outcome so callers (handleCropAll, the automated
+   *  pipeline) can act on it without reading component state back out of a
+   *  stale closure. */
+  const handleCrop = async (packetScanId: string): Promise<"done" | "failed"> => {
+    const resumeFrom = cropState[packetScanId]?.progress?.done ?? 0;
     setCropState((prev) => ({
       ...prev,
-      [packetScanId]: { status: "cropping", rawResponse: null, error: null },
+      [packetScanId]: { status: "cropping", rawResponse: null, error: null, progress: prev[packetScanId]?.progress ?? null },
     }));
-    try {
-      const res = await fetch(`/api/na-review/packet-scans/${packetScanId}/crop`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Crop extraction failed.");
-      setCropState((prev) => ({
-        ...prev,
-        [packetScanId]: { status: "done", rawResponse: data, error: null },
-      }));
-    } catch (e) {
-      setCropState((prev) => ({
-        ...prev,
-        [packetScanId]: {
-          status: "failed",
-          rawResponse: null,
-          error: e instanceof Error ? e.message : "Crop extraction failed.",
-        },
-      }));
+
+    if (resumeFrom === 0) {
+      try {
+        const full = await fetchJsonWithRetry(`/api/na-review/packet-scans/${packetScanId}/crop`, { method: "POST" });
+        if (full.ok) {
+          setCropState((prev) => ({
+            ...prev,
+            [packetScanId]: { status: "done", rawResponse: full.data, error: null, progress: null },
+          }));
+          return "done";
+        }
+      } catch {
+        /* whole-student attempt exhausted its own retries -- fall through to paging */
+      }
     }
+
+    // Paged fallback: crop this student's anchors a page at a time.
+    let offset = resumeFrom;
+    let lastData: any = null;
+    const maxPages = 50; // safety net against an unexpected infinite loop, not a real limit at ~40 anchors/student
+    for (let page = 0; page < maxPages; page++) {
+      try {
+        const res = await fetchJsonWithRetry(
+          `/api/na-review/packet-scans/${packetScanId}/crop`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ offset, limit: CROP_PAGE_SIZE }),
+          },
+          { retries: 2, backoffMs: 1500 }
+        );
+        if (!res.ok) throw new Error(res.data?.error ?? `Crop failed (HTTP ${res.status}).`);
+        lastData = res.data;
+        const total = res.data?.totalAnchors ?? 0;
+        const done = res.data?.totalSaved ?? 0;
+        setCropState((prev) => ({
+          ...prev,
+          [packetScanId]: { status: "cropping", rawResponse: res.data, error: null, progress: { done, total } },
+        }));
+        if (res.data?.allAnchorsCropped) {
+          setCropState((prev) => ({
+            ...prev,
+            [packetScanId]: { status: "done", rawResponse: res.data, error: null, progress: null },
+          }));
+          return "done";
+        }
+        offset += CROP_PAGE_SIZE;
+      } catch (e) {
+        setCropState((prev) => ({
+          ...prev,
+          [packetScanId]: {
+            status: "failed",
+            rawResponse: lastData,
+            error: e instanceof Error ? e.message : "Crop extraction failed.",
+            progress: prev[packetScanId]?.progress ?? null,
+          },
+        }));
+        return "failed";
+      }
+    }
+    setCropState((prev) => ({
+      ...prev,
+      [packetScanId]: {
+        status: "failed",
+        rawResponse: lastData,
+        error: "Gave up after an unexpectedly large number of anchor pages -- please report this.",
+        progress: prev[packetScanId]?.progress ?? null,
+      },
+    }));
+    return "failed";
   };
 
   /** Runs stage 4 for every not-yet-cropped student in a split batch, one
@@ -934,37 +1177,56 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
    *  screen at once (chunked uploads) track "running" independently and a
    *  second click on a different panel isn't blocked by the first. Skips
    *  students already "done" or currently "cropping" so re-running "Crop
-   *  all" after fixing one failure only retries what's actually needed. */
-  const handleCropAll = async (panelKey: string, results: SplitResult[]) => {
+   *  all" after fixing one failure only retries what's actually needed.
+   *  Returns each targeted student's outcome (built from handleCrop's own
+   *  return values, not by reading cropState back out afterward) so the
+   *  automated pipeline can reliably tell who's ready for stage 5. */
+  const handleCropAll = async (
+    panelKey: string,
+    results: SplitResult[]
+  ): Promise<Record<string, "done" | "failed">> => {
     const targets = results.filter((r) => r.status === "split" && r.packetScanId);
-    if (targets.length === 0) return;
+    const outcomes: Record<string, "done" | "failed"> = {};
+    if (targets.length === 0) return outcomes;
     setCropAllRunning((prev) => ({ ...prev, [panelKey]: true }));
     try {
       for (const r of targets) {
         const scanId = r.packetScanId as string;
         const current = cropState[scanId];
-        if (current?.status === "done" || current?.status === "cropping") continue;
-        await handleCrop(scanId);
+        if (current?.status === "done") {
+          outcomes[scanId] = "done";
+          continue;
+        }
+        if (current?.status === "cropping") continue; // another run already has this student in flight
+        outcomes[scanId] = await handleCrop(scanId);
       }
     } finally {
       setCropAllRunning((prev) => ({ ...prev, [panelKey]: false }));
     }
+    return outcomes;
   };
 
   /** Loads (or reloads) one student's crop list for stage 5, via the
    *  listing GET. Called once when a student's crop panel first opens,
    *  and again after "Assess all" finishes so the panel reflects fresh
    *  alreadyAssessed/verdict/marks values pulled from the database rather
-   *  than only what this session's own requests happened to return. */
-  const loadAssessPanel = async (packetScanId: string) => {
+   *  than only what this session's own requests happened to return.
+   *
+   *  Returns the crop list directly (not just via setAssessPanels) so the
+   *  automated pipeline can act on it in the same tick -- reading
+   *  assessPanels state back out right after calling this would see a
+   *  stale pre-update snapshot, since this component's long-running async
+   *  driver doesn't re-render between steps. Bounded retries here matter
+   *  for the same resume-after-timeout reason as handleCrop, and are
+   *  free -- a GET, not an Anthropic call. */
+  const loadAssessPanel = async (packetScanId: string): Promise<AssessCropListItem[]> => {
     setAssessPanels((prev) => ({
       ...prev,
       [packetScanId]: { status: "loading-list", crops: prev[packetScanId]?.crops ?? [], error: null },
     }));
     try {
-      const res = await fetch(`/api/na-review/packet-scans/${packetScanId}/assess`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Could not load this student's crops.");
+      const { ok, data } = await fetchJsonWithRetry(`/api/na-review/packet-scans/${packetScanId}/assess`, {});
+      if (!ok) throw new Error(data?.error ?? "Could not load this student's crops.");
       const crops: AssessCropListItem[] = data.crops ?? [];
       setAssessPanels((prev) => ({ ...prev, [packetScanId]: { status: "ready", crops, error: null } }));
       // Seed per-crop state from what the list already knows, so a crop
@@ -992,11 +1254,13 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           ])
         ),
       }));
+      return crops;
     } catch (e) {
       setAssessPanels((prev) => ({
         ...prev,
         [packetScanId]: { status: "idle", crops: [], error: e instanceof Error ? e.message : "Failed to load." },
       }));
+      return [];
     }
   };
 
@@ -1005,7 +1269,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
    *  always resolves in a few seconds regardless of how many crops a
    *  student has -- the earlier whole-student design hit
    *  FUNCTION_INVOCATION_TIMEOUT on a real run and is why this is
-   *  one-crop-at-a-time from the client instead. */
+   *  one-crop-at-a-time from the client instead. fetchJsonWithRetry adds a
+   *  couple of bounded retries on top for a genuine transient failure
+   *  (network blip, brief 5xx) -- since this route only ever calls
+   *  Anthropic once it actually starts producing a response, a failed
+   *  attempt never got billed, so retrying here doesn't double-spend. */
   const handleAssessCrop = async (cropId: string) => {
     setAssessCropState((prev) => ({
       ...prev,
@@ -1025,8 +1293,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       },
     }));
     try {
-      const res = await fetch(`/api/na-review/response-crops/${cropId}/assess`, { method: "POST" });
-      const data = await res.json();
+      const { ok, data } = await fetchJsonWithRetry(
+        `/api/na-review/response-crops/${cropId}/assess`,
+        { method: "POST" },
+        { retries: 2, backoffMs: 1200 }
+      );
       const status: AssessCropState["status"] =
         data.status === "assessed" ? "assessed" : data.status === "skipped" ? "skipped" : "failed";
       // The per-crop assess route's response doesn't currently echo back
@@ -1043,7 +1314,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           verdict: data.verdict ?? null,
           marksAwarded: data.marksAwarded ?? null,
           marksAvailable: data.marksAvailable ?? null,
-          reason: data.reason ?? (res.ok ? null : data.error ?? "Assessment failed."),
+          reason: data.reason ?? (ok ? null : data.error ?? "Assessment failed."),
           rawResponse: data,
           transcription: prev[cropId]?.transcription ?? null,
           marginComment: prev[cropId]?.marginComment ?? null,
@@ -1094,6 +1365,48 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     } finally {
       await loadAssessPanel(packetScanId);
     }
+  };
+
+  /** The "press upload and walk away" driver: runs stage 4 (crop, with its
+   *  own retry+paged-chunk fallback) then stage 5 (assess) for every
+   *  already-split student in one batch/chunk, entirely automatically.
+   *  Triggered by the useEffect below -- once after a fresh split, once on
+   *  reloading a batch that was already split -- rather than being called
+   *  inline after performSplit/performChunkSplit, so it always runs against
+   *  a freshly-rendered closure instead of risking a stale read of
+   *  cropState/assessCropState mid-chain (see the effect's own comment).
+   *
+   *  Continues past any one student's failure so the rest of the batch
+   *  still finishes -- one bad crop shouldn't block twenty good ones.
+   *  Filters stage 5 work using each student's crop list straight from
+   *  loadAssessPanel's return value (which reflects the database, i.e.
+   *  alreadyAssessed) rather than assessCropState, specifically so
+   *  resuming a batch that was already partly assessed in an earlier
+   *  session never re-sends an already-graded crop to Claude -- that would
+   *  be a real, avoidable Anthropic cost. */
+  const autoCropAndAssessAll = async (panelKey: string, results: SplitResult[]) => {
+    const targets = results.filter((r) => r.status === "split" && r.packetScanId);
+    if (targets.length === 0) return;
+    setStatusLine(`Automatic run: cropping ${targets.length} student(s)…`);
+    const cropOutcomes = await handleCropAll(panelKey, targets);
+    const readyForAssess = targets.filter((r) => cropOutcomes[r.packetScanId as string] === "done");
+    const failedToCrop = targets.length - readyForAssess.length;
+
+    for (let i = 0; i < readyForAssess.length; i++) {
+      const r = readyForAssess[i];
+      const scanId = r.packetScanId as string;
+      setStatusLine(`Automatic run: assessing ${r.label} (${i + 1}/${readyForAssess.length})…`);
+      const crops = await loadAssessPanel(scanId);
+      const stillNeeded = crops.filter((c) => !c.alreadyAssessed);
+      if (stillNeeded.length === 0) continue;
+      await handleAssessAll(scanId, stillNeeded);
+    }
+
+    setStatusLine(
+      failedToCrop > 0
+        ? `Automatic run finished: ${readyForAssess.length} student(s) fully assessed. ${failedToCrop} student(s) failed to crop even after retries -- see their panel below and click "Crop this student" to try again.`
+        : `Automatic run finished: all ${readyForAssess.length} student(s) cropped and assessed. See Results by class above for marks.`
+    );
   };
 
   // -- Chunk row editing --------------------------------------------------------
@@ -1304,13 +1617,21 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                       className="rounded-lg border border-da-accent/40 bg-da-accent/10 px-3 py-1.5 text-xs font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
                     >
                       {state.status === "cropping"
-                        ? "Cropping…"
+                        ? state.progress
+                          ? `Cropping… (${state.progress.done}/${state.progress.total})`
+                          : "Cropping…"
                         : state.status === "done"
                           ? "Re-crop"
                           : "Crop this student"}
                     </button>
                   </div>
                 </div>
+                {state.status === "cropping" && state.progress && (
+                  <p className="mt-2 text-xs text-da-muted">
+                    Whole-batch crop timed out — automatically retrying in smaller pages to stay under the platform's
+                    request limit. No extra cost; this is the same crop work, just split into more requests.
+                  </p>
+                )}
                 {state.error && <p className="mt-2 text-xs text-red-600">{state.error}</p>}
                 {state.status === "done" && state.rawResponse != null && (() => {
                   const d = state.rawResponse as {
