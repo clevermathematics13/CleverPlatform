@@ -367,7 +367,23 @@ positively identify "more of the student's own handwriting resumes" (e.g.
 detecting a template discontinuity - a colored background, a new box border -
 and refusing to cross it) rather than "any ink resumes," or should stay scoped
 to per-anchor `expand_max_*_pt` data patches (like the Q1 fix above) instead of
-a general geometric heuristic. The Q3 truncation itself is still open.
+a general geometric heuristic.
+
+**The Q3 truncation itself was then fixed the safe, scoped way**, same session:
+measured the actual printed box border directly against the source scan (it
+closes at ~708pt, not the anchor's authored `y1_pt` of 682.43 - a ~24pt
+under-measurement from whenever this anchor was originally extracted, not a
+pipeline bug at all) and widened `y1_pt` to 708.0 on the Q3 anchor. Re-cropped
+all 7 students at this anchor with the currently-deployed (safe, PR#23-only)
+code: all 7 crops grew, none came back `possibly_truncated`, and Ines
+Palomino's crop now shows her complete sentence with the printed box border
+closing cleanly right after it - confirmed visually. Re-ran stage 5 on all 7;
+no marks changed numerically, but every teacherNote now reasons from the
+complete transcription with no truncation caveat (Ines's previously ended with
+"a teacher may want to look at this" - now a clean, confident partial-credit
+call). This is the general lesson from the reverted fix applied in practice:
+prefer a targeted, verified per-anchor geometry patch over a general heuristic
+whenever the two are both technically applicable.
 
 ---
 
@@ -476,11 +492,6 @@ committed so the tree stays clean.
    one student's actual handwriting even at full expansion - the same fix already
    applied to the Q1 anchor (raising the cap, then re-cropping and re-grading)
    should resolve most of these. Not done this session.
-6. **A.1 Q3, Ines Palomino is still genuinely cut off** ("...it wouldn't produce
-   the same answer." missing from her crop). The fix attempted for this class of
-   bug (a blank ruled-paper gap between lines) was reverted the same session for
-   being unsafe in general - see §5. Fixing this one specific case (e.g. widening
-   just the Q3 anchor's own geometry, the way Q1 was widened) is still open.
 
 **Low**
 
