@@ -633,6 +633,50 @@ committed so the tree stays clean.
 **Medium**
 
 4. Grade 9 Standard NA packets - none seeded.
+4b. **4 crops flagged by the teacherNote backtracking detector, awaiting manual
+   verification** (found 28 Aug 2026 while investigating the Q1/Q1(e) issue below;
+   these are unrelated judgment calls, not the same bug). Each has `ai_teacher_note`
+   containing "changing its mind mid-explanation" - the model's own reasoning
+   reached one number in prose but submitted a different `marksAwarded`:
+   - A.1 Q1, Gian luca Del corral (`5e18cf75`) - noted 3/3, submitted 2/3. Should
+     resolve cleanly on re-run now that Q1/Q1(e) below is fixed.
+   - A.1 Q15, Davi Verma (`fb4b6967`) - genuine partial-credit judgment call
+     (unconventional but valid algebra), submitted 3/4.
+   - A.1 Q6, Kaito Fujii (`3797e2c9`) - genuine partial-credit judgment call
+     (coefficient/variable-list interpretation), submitted 4/5.
+   - A.1 Q8, Freya Delisle (`511127b9`) - genuine partial-credit judgment call
+     (unit-price vs. total-price wording), submitted 3/5.
+   Query: `ai_teacher_note ilike '%changing its mind mid-explanation%'` joined
+   through `na_response_crops`/`na_anchors`. None have been corrected yet - a
+   teacher needs to read each crop against its own reasoning and decide the real
+   mark; these are exactly what the detector exists to surface, not something to
+   silently re-run and trust.
+4c. **A.1 Q1 / Q1(e) shared a single un-scoped rubric text, fixed 28 Aug 2026.**
+   Both anchors are separate boxes on the page (Q1 = parts a-d work space, 3
+   marks; Q1(e) = the "write down one thing you notice" answer line, 1 mark) but
+   `na_anchors.question_text`/`question_answer`/`answer_sketch` were byte-identical
+   on both rows, copied verbatim from `nuanced_analyses.parts` (which never split
+   the question - it's one pedagogical item there, `marks: 4`, one combined
+   prompt/answer covering a-e). Stage 5's existing SCOPE-hint logic
+   (`buildRubricBlock` in `na-assessment.ts`) already told the model to ignore
+   parts not in its crop, but the model still had to read and consciously discard
+   (e)'s prompt/answer every time it graded Q1, and vice versa - exactly the setup
+   that produced the Gian luca Del corral backtrack above (Kaito Fujii hit the
+   identical failure mode on this same anchor previously, see `validateAssessment`'s
+   own code comment). Fixed at the data layer, not the prompt layer: edited both
+   `na_anchors` rows directly so Q1's fields now cover only (a)-(d) and Q1(e)'s
+   cover only (c)-(e) (keeping (c)/(d) as context since the observation task
+   directly references them) - the model now never sees the other box's content
+   at all, so there's nothing left to reason about ignoring. `nuanced_analyses.parts`
+   was deliberately left untouched (correct at that layer - it's the single
+   authored pedagogical question, not per-crop rubric data); only `na_anchors`,
+   which stage 5 actually reads per crop, needed splitting. Only this packet
+   version's anchors were touched - a future packet version authored fresh from
+   the same `nuanced_analyses` row would need the same split applied again if its
+   anchor extraction also copies `parts` verbatim onto multiple sub-part anchors.
+   13 students already have Q1/Q1(e) assessed under the old un-scoped text; only
+   Gian luca Del corral's shows the backtrack flag, but re-running the rest was
+   left for the teacher to decide given the (small but real) added Claude cost.
 5. ~~Widen the 46 anchors still flagged `possibly_truncated=true`~~ **Closed, 27
    Aug 2026.** The full anchor-geometry audit (§5) plus the follow-up "relies on
    expansion" sweep found and fixed every genuine case: Q1, Q3, Q6, Q26(b),
