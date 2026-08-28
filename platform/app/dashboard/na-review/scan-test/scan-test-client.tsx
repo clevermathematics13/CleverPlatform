@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -545,6 +545,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   // collapsed so it doesn't fire a request the moment this page loads.
   const [resultsOpen, setResultsOpen] = useState(false);
   const [resultsPanel, setResultsPanel] = useState<ResultsPanelState>({ status: "idle", data: null, error: null });
+  // Which student row in the results-by-class table has its Stage 5 detail
+  // expanded inline -- keyed by packetScanId, independent of which batch
+  // (if any) is currently loaded on the rest of this page, since results-
+  // by-class already spans every batch that's ever split a scan for this
+  // packet version.
+  const [expandedResultScanId, setExpandedResultScanId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1677,28 +1683,14 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     );
   };
 
-  /** Stage 5 panel: one card per successfully-cropped student. Unlike
-   *  stage 4 (which only needs a packetScanId to act), stage 5 needs the
-   *  student's actual crop list before it can show anything useful, so
-   *  each student starts collapsed with an "Open" button that calls
-   *  loadAssessPanel on first click -- avoids firing N list-fetches the
-   *  moment this section renders for a whole class. */
-  const renderAssessPanel = (results: SplitResult[]) => {
-    const splitOnly = results.filter((r) => r.status === "split" && r.packetScanId);
-    if (splitOnly.length === 0) return null;
-    return (
-      <section className="rounded-xl border border-da-border bg-da-surface">
-        <div className="border-b border-da-border px-5 py-3">
-          <h2 className="text-lg font-bold text-da-text">Stage 5 — AI assessment</h2>
-          <p className="text-xs text-da-muted">
-            One Sonnet call per question, marked against this packet&apos;s real rubric from{" "}
-            <code>na_anchors</code>. Produces a proposal only — nothing here is a released grade.
-          </p>
-        </div>
-        <div className="divide-y divide-da-border/60">
-          {splitOnly.map((r) => {
-            const scanId = r.packetScanId as string;
-            const panel = assessPanels[scanId];
+  /** Renders one student's Stage 5 card: header (name, mark totals, Open /
+   *  Assess-all controls) plus the crop-by-crop detail list. Pulled out of
+   *  renderAssessPanel so the same card can be reused by the results-by-
+   *  class table below -- clicking a student's name there opens this same
+   *  view inline, for any student regardless of which batch (if any) is
+   *  currently loaded, since it only needs a packetScanId. */
+  const renderAssessCard = (scanId: string, label: string) => {
+    const panel = assessPanels[scanId];
             const totalAwarded = (panel?.crops ?? []).reduce((sum, c) => {
               const s = assessCropState[c.cropId];
               return sum + (s?.status === "assessed" ? s.marksAwarded ?? 0 : 0);
@@ -1716,7 +1708,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
               <div key={scanId} className="px-5 py-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-medium text-da-text">{r.label}</p>
+                    <p className="text-sm font-medium text-da-text">{label}</p>
                     <p className="text-xs text-da-muted">packet_scan_id {scanId.slice(0, 8)}…</p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1917,8 +1909,29 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                   </div>
                 )}
               </div>
-            );
-          })}
+    );
+  };
+
+  /** Stage 5 panel: one card per successfully-cropped student. Unlike
+   *  stage 4 (which only needs a packetScanId to act), stage 5 needs the
+   *  student's actual crop list before it can show anything useful, so
+   *  each student starts collapsed with an "Open" button that calls
+   *  loadAssessPanel on first click -- avoids firing N list-fetches the
+   *  moment this section renders for a whole class. */
+  const renderAssessPanel = (results: SplitResult[]) => {
+    const splitOnly = results.filter((r) => r.status === "split" && r.packetScanId);
+    if (splitOnly.length === 0) return null;
+    return (
+      <section className="rounded-xl border border-da-border bg-da-surface">
+        <div className="border-b border-da-border px-5 py-3">
+          <h2 className="text-lg font-bold text-da-text">Stage 5 — AI assessment</h2>
+          <p className="text-xs text-da-muted">
+            One Sonnet call per question, marked against this packet&apos;s real rubric from{" "}
+            <code>na_anchors</code>. Produces a proposal only — nothing here is a released grade.
+          </p>
+        </div>
+        <div className="divide-y divide-da-border/60">
+          {splitOnly.map((r) => renderAssessCard(r.packetScanId as string, r.label))}
         </div>
       </section>
     );
@@ -2064,17 +2077,38 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                           <tbody>
                             {course.students.map((s) => {
                               const done = s.assessedCount === s.totalGradable && s.totalGradable > 0;
+                              const expanded = expandedResultScanId === s.packetScanId;
                               return (
-                                <tr key={s.packetScanId} className="border-b border-da-border/40 last:border-0">
-                                  <td className="px-3 py-2 text-da-text">{s.studentName}</td>
-                                  <td className="px-3 py-2 text-da-muted">
-                                    {s.assessedCount} / {s.totalGradable}
-                                    {done && <span className="ml-1.5 text-green-500">✓</span>}
-                                  </td>
-                                  <td className="px-3 py-2 text-da-muted">
-                                    {s.marksAwarded} / {s.marksAvailable}
-                                  </td>
-                                </tr>
+                                <Fragment key={s.packetScanId}>
+                                  <tr className="border-b border-da-border/40 last:border-0">
+                                    <td className="px-3 py-2 text-da-text">
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setExpandedResultScanId(expanded ? null : s.packetScanId);
+                                          if (!assessPanels[s.packetScanId]) void loadAssessPanel(s.packetScanId);
+                                        }}
+                                        className="text-left hover:text-da-accent hover:underline"
+                                      >
+                                        {s.studentName}
+                                      </button>
+                                    </td>
+                                    <td className="px-3 py-2 text-da-muted">
+                                      {s.assessedCount} / {s.totalGradable}
+                                      {done && <span className="ml-1.5 text-green-500">✓</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-da-muted">
+                                      {s.marksAwarded} / {s.marksAvailable}
+                                    </td>
+                                  </tr>
+                                  {expanded && (
+                                    <tr className="border-b border-da-border/40 last:border-0">
+                                      <td colSpan={3} className="bg-da-hover/20 p-0">
+                                        {renderAssessCard(s.packetScanId, s.studentName)}
+                                      </td>
+                                    </tr>
+                                  )}
+                                </Fragment>
                               );
                             })}
                           </tbody>
