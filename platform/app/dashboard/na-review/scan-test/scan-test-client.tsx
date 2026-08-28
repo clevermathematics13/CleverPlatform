@@ -89,6 +89,11 @@ interface AssessCropListItem {
   isBlank: boolean;
   possiblyTruncated: boolean;
   imageUrl: string | null;
+  /** A crop of the printed question prompt itself, as it appears on the
+   *  page -- distinct from questionText (plain text). Null for most
+   *  sub-parts of a multi-part question, whose own prompt is just a few
+   *  points of blank space above their box, not a separate printed block. */
+  promptImageUrl: string | null;
   alreadyAssessed: boolean;
   verdict: string | null;
   marksAwarded: number | null;
@@ -1785,6 +1790,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                         !!s.teacherNote ||
                         !!c.imageUrl ||
                         !!c.questionText ||
+                        !!c.promptImageUrl ||
                         c.possiblyTruncated;
                       return (
                         <div key={c.cropId} className="px-3 py-2">
@@ -1852,6 +1858,17 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                   <div>
                                     <p className="font-semibold text-da-text">Question</p>
                                     <p className="mt-0.5 whitespace-pre-wrap text-da-muted">{c.questionText}</p>
+                                  </div>
+                                )}
+                                {c.promptImageUrl && (
+                                  <div>
+                                    <p className="font-semibold text-da-text">Question, as printed</p>
+                                    {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, not a static asset Next's image optimizer can handle */}
+                                    <img
+                                      src={c.promptImageUrl}
+                                      alt={`${c.qid} question prompt`}
+                                      className="mt-1 max-h-96 w-auto rounded border border-da-border bg-white"
+                                    />
                                   </div>
                                 )}
                                 {c.imageUrl && (

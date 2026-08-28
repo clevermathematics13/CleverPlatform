@@ -692,6 +692,43 @@ committed so the tree stays clean.
    Aurelio Gamio's Q1(e) both 0/1 unclear; Yunseo Oh's Q1 0/3 unclear; Galo
    Masias's Q1 1/3) - these are the model's honest read of what it could see,
    not errors, and worth a normal teacher glance like any `unclear` verdict.
+4d. **Question-prompt image crops, added 28 Aug 2026.** Teacher request: the
+   "why this mark" panel showed `question_text` (plain text, extracted once at
+   anchor-authoring time) but not what was actually printed on the page, and
+   the student's own answer crop doesn't reliably include it either -- some
+   anchor boxes happen to start right where the prompt is (e.g. Q1(e)),
+   others start well below it (e.g. Q7), with no visual confirmation of which
+   case applies. Added `na_anchors.prompt_crop_storage_path` (migration
+   `20260828190337`) holding a ONE-TIME crop of each anchor's printed prompt
+   -- per anchor, not per student, since the printed content is identical for
+   everyone. Backfilled for this packet version (`1462a2f2`) via a one-off
+   script (same "not committed, mirrors real app logic" pattern as the 4c
+   re-assessment), using one representative student's already-split PDF as
+   the crop source (no blank master template exists for this packet -
+   `master_pdf_storage_path` is null). Bounding box: same x-range as the
+   page's standard content column, y-range from the previous anchor's own
+   `y1_pt` on the same page (or the page top if first-on-page) down to this
+   anchor's own `y0_pt` -- **no cap on how far back that goes**. A capped
+   version (260pt) was tried first and looked right on Q1, but landed
+   mid-paragraph in an unrelated worked-example block on Q30 (a page with a
+   long scaffolding block before the question) - actively misleading, not
+   just untidy. Removed the cap entirely rather than tune a magic number:
+   matches this codebase's own established principle (see the "ruled-paper-
+   gap" revert above) that a too-generous crop is a tidiness problem a
+   teacher can see past, but a wrong one is invisible and worse. Anchors
+   whose gap is under 25pt are skipped (null path) rather than given a
+   near-empty sliver - verified visually that these are sub-parts like
+   Q1(e)/Q7(b)/Q13(b) whose own prompt text sits inside their own box, not in
+   the gap before it. Verified by rendering and eyeballing 8 of the 40
+   anchors across different layouts (first-on-page with/without a "Part N"
+   section banner, small/large gaps after a previous anchor, a 436pt gap on
+   Q30) before trusting the heuristic for the rest; 31 of 40 anchors got a
+   real crop, 9 were skipped as inside-the-box cases. Wired into the assess-
+   list API route (batch-signed alongside the per-student answer crops, same
+   bucket) and the scan-test client's "why this mark" panel as a new
+   "Question, as printed" image, shown right after the plain-text Question
+   and before the student's own answer Crop. A future packet version
+   authored fresh would need this backfill re-run for its own anchors.
 5. ~~Widen the 46 anchors still flagged `possibly_truncated=true`~~ **Closed, 27
    Aug 2026.** The full anchor-geometry audit (§5) plus the follow-up "relies on
    expansion" sweep found and fixed every genuine case: Q1, Q3, Q6, Q26(b),

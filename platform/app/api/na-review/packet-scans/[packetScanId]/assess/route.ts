@@ -48,25 +48,11 @@ export async function GET(
   const { data: cropRows, error: cropsErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, storage_path, is_blank, possibly_truncated, anchor_id, na_anchors(qid, sort_order, question_text), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags)"
+      "id, storage_path, is_blank, possibly_truncated, anchor_id, na_anchors(qid, sort_order, question_text, prompt_crop_storage_path), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags)"
     )
     .eq("packet_scan_id", packetScanId);
 
   if (cropsErr) return NextResponse.json({ error: cropsErr.message }, { status: 500 });
-
-  // Batch-sign every crop's image in one call rather than one round trip
-  // per crop -- a student can have 40 crops, and this route already learned
-  // the hard way (see the module docstring) that per-crop work here adds up.
-  const cropPaths = (cropRows ?? []).map((r) => r.storage_path).filter((p): p is string => !!p);
-  const signedUrlByPath = new Map<string, string>();
-  if (cropPaths.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from(NA_SCAN_BUCKET)
-      .createSignedUrls(cropPaths, SIGNED_URL_TTL_SECONDS);
-    for (const s of signed ?? []) {
-      if (s.signedUrl && s.path) signedUrlByPath.set(s.path, s.signedUrl);
-    }
-  }
 
   type Feedback = {
     ai_attempted: boolean | null;
@@ -82,21 +68,48 @@ export async function GET(
     ai_misconception_tags: string[] | null;
   };
 
+  type Anchor = {
+    qid: string;
+    sort_order: number | null;
+    question_text: string | null;
+    prompt_crop_storage_path: string | null;
+  };
+
   type Row = {
     id: string;
     storage_path: string | null;
     is_blank: boolean | null;
     possibly_truncated: boolean | null;
     anchor_id: string;
-    na_anchors:
-      | { qid: string; sort_order: number | null; question_text: string | null }
-      | { qid: string; sort_order: number | null; question_text: string | null }[]
-      | null;
+    na_anchors: Anchor | Anchor[] | null;
     na_feedback: Feedback | Feedback[] | null;
   };
 
-  const crops = ((cropRows ?? []) as Row[]).map((r) => {
-    const anchor = Array.isArray(r.na_anchors) ? r.na_anchors[0] : r.na_anchors;
+  const rows = (cropRows ?? []) as Row[];
+  const anchorOf = (r: Row) => (Array.isArray(r.na_anchors) ? r.na_anchors[0] : r.na_anchors);
+
+  // Batch-sign every crop's image in one call rather than one round trip
+  // per crop -- a student can have 40 crops, and this route already learned
+  // the hard way (see the module docstring) that per-crop work here adds up.
+  // Includes each anchor's prompt-crop path alongside the per-student answer
+  // crops -- same bucket, so one batch call covers both. Anchors repeat
+  // across crops (many students, same anchor) but createSignedUrls only
+  // needs each distinct path once; duplicates just map to the same result.
+  const cropPaths = rows.map((r) => r.storage_path).filter((p): p is string => !!p);
+  const promptPaths = rows.map((r) => anchorOf(r)?.prompt_crop_storage_path).filter((p): p is string => !!p);
+  const allPaths = [...new Set([...cropPaths, ...promptPaths])];
+  const signedUrlByPath = new Map<string, string>();
+  if (allPaths.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from(NA_SCAN_BUCKET)
+      .createSignedUrls(allPaths, SIGNED_URL_TTL_SECONDS);
+    for (const s of signed ?? []) {
+      if (s.signedUrl && s.path) signedUrlByPath.set(s.path, s.signedUrl);
+    }
+  }
+
+  const crops = rows.map((r) => {
+    const anchor = anchorOf(r);
     const feedback = Array.isArray(r.na_feedback) ? r.na_feedback[0] : r.na_feedback;
     return {
       cropId: r.id,
@@ -106,6 +119,14 @@ export async function GET(
       isBlank: r.is_blank ?? false,
       possiblyTruncated: r.possibly_truncated ?? false,
       imageUrl: r.storage_path ? (signedUrlByPath.get(r.storage_path) ?? null) : null,
+      // A crop of the printed question prompt itself, as it appears on the
+      // page -- distinct from questionText (plain text). Null for most
+      // sub-parts of a multi-part question (b), (c)... whose own prompt is
+      // only a few points of blank space above their box, not a separate
+      // printed block; see na_anchors.prompt_crop_storage_path's comment.
+      promptImageUrl: anchor?.prompt_crop_storage_path
+        ? (signedUrlByPath.get(anchor.prompt_crop_storage_path) ?? null)
+        : null,
       // "assessed" here means na_feedback exists AND is a real, complete
       // verdict -- not merely attempted-but-invalid. A row with
       // ai_validation_error set still needs a retry, so it's reported as
