@@ -385,6 +385,35 @@ call). This is the general lesson from the reverted fix applied in practice:
 prefer a targeted, verified per-anchor geometry patch over a general heuristic
 whenever the two are both technically applicable.
 
+**Also added: the actual question text now shows in the scan-test "why this
+mark" panel** (`na_anchors.question_text`, already used for grading, just
+wasn't surfaced in the UI) - a teacher no longer has to infer what was asked.
+
+**A.1 Q6 fixed the same way, same session, after a teacher spotted it live**:
+part (e) ("r, h") was visibly cut off. Q6's `expand_max_y1_pt` (606.15) was
+actually *smaller* than the anchor's own printed box border (~616pt measured
+directly against the scan) - `y1_pt` itself (593.9) was even further short.
+Root cause: `Q6(f)`'s authored `y0_pt` (610.15) undershoots where that box
+visually starts (~637pt) by ~27pt, so whatever formula set Q6's
+`expand_max_y1_pt` from "next anchor's y0 minus a buffer" inherited that
+error. Widened Q6 to `y1_pt=618.0`, `expand_max_y1_pt=633.0` (leaving a real
+margin before Q6(f)'s true visual start, not its under-measured authored
+one). Re-cropped all 7 students, re-ran stage 5: **Kaito Fujii's mark went
+3 -> 4/5** once part (e) - previously missing entirely - became visible. The
+model's own teacherNote backtracking detector (see the 27 Aug quality pass
+above) flagged this response for a self-contradiction; checked it directly
+against the crop and the 4/5 is correct (parts a-d right, (e) missing "x" as
+a variable) - the detector did its job, the number just happened to be right.
+
+**Systemic takeaway, worth checking across other anchors:** this specific
+bug pattern - an anchor's `expand_max_*_pt` computed from a NEIGHBORING
+anchor's authored coordinate rather than that neighbor's true visual
+position - could recur wherever original anchor extraction measured a box's
+start a bit early. `possibly_truncated=false` does NOT rule this out, since
+the cap itself can be wrong independent of whether ink was detected against
+it. No systematic re-check of every anchor pair's authored-vs-visual gap has
+been done.
+
 ---
 
 ## 6. What an agent session can and cannot reach
