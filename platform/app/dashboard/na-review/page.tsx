@@ -26,7 +26,7 @@ export default async function NaReviewPage({
     marks_available: number | null;
     command_term: string | null;
     sort_order: number;
-    progress: { total: number; reviewed: number; blank: number };
+    progress: { total: number; reviewed: number; blank: number; possiblyTruncated: number };
   }[] = [];
 
   if (activeVersionId) {
@@ -40,29 +40,48 @@ export default async function NaReviewPage({
       const anchorIds = anchors.map((a) => a.id);
       const { data: crops } = await supabase
         .from("na_response_crops")
-        .select("id, anchor_id, is_blank, na_feedback(approved_at)")
+        .select("id, anchor_id, is_blank, possibly_truncated, na_feedback(approved_at)")
         .in("anchor_id", anchorIds);
 
-      const byAnchor = new Map<string, { total: number; reviewed: number; blank: number }>();
-      for (const a of anchors) byAnchor.set(a.id, { total: 0, reviewed: 0, blank: 0 });
+      const byAnchor = new Map<
+        string,
+        { total: number; reviewed: number; blank: number; possiblyTruncated: number }
+      >();
+      for (const a of anchors) byAnchor.set(a.id, { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0 });
       for (const crop of crops ?? []) {
         const bucket = byAnchor.get(crop.anchor_id);
         if (!bucket) continue;
         bucket.total += 1;
         if (crop.is_blank) bucket.blank += 1;
+        if (crop.possibly_truncated) bucket.possiblyTruncated += 1;
         const fb = Array.isArray(crop.na_feedback) ? crop.na_feedback[0] : crop.na_feedback;
         if (fb?.approved_at) bucket.reviewed += 1;
       }
 
       questions = anchors.map((a) => ({
         ...a,
-        progress: byAnchor.get(a.id) ?? { total: 0, reviewed: 0, blank: 0 },
+        progress: byAnchor.get(a.id) ?? { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0 },
       }));
     }
   }
 
   const totalCrops = questions.reduce((sum, q) => sum + q.progress.total, 0);
   const totalReviewed = questions.reduce((sum, q) => sum + q.progress.reviewed, 0);
+
+  // Anchors where stage 4's adaptive expansion is genuinely running out of
+  // room, not just "may be worth a glance" -- ranked so the worst
+  // offenders (most students affected) surface first. This is read-only
+  // reporting over data stage 4 already recorded; it changes nothing about
+  // grading or crop geometry by itself. The fix, when one's needed, is a
+  // manual widen of that anchor's expand_max_x1_pt/expand_max_y1_pt (see
+  // HANDOFF.md's Q3/Q6/Q19(c)/Q11 fixes for the pattern) followed by a
+  // re-crop + re-grade of the affected students -- deliberately NOT
+  // automated here, since a past attempt at automatically loosening this
+  // cap (see HANDOFF.md, "bridge ruled-paper gaps") let one anchor's crop
+  // swallow the next question's printed answer key and had to be reverted.
+  const truncationHotspots = questions
+    .filter((q) => q.progress.possiblyTruncated > 0)
+    .sort((a, b) => b.progress.possiblyTruncated - a.progress.possiblyTruncated);
 
   return (
     <div className="space-y-6">
@@ -118,6 +137,38 @@ export default async function NaReviewPage({
             </div>
           </div>
 
+          {truncationHotspots.length > 0 && (
+            <div className="rounded-xl border border-amber-300/60 bg-amber-50/5 p-4">
+              <p className="text-sm font-medium text-amber-500">
+                {truncationHotspots.length} anchor{truncationHotspots.length === 1 ? "" : "s"} may be cropping some
+                students&apos; work too tight
+              </p>
+              <p className="mt-1 text-xs text-da-muted">
+                Stage 4&apos;s crop expansion hit its configured limit while ink was still touching the edge -- these
+                crops may be missing content. This is a read-only report over data already collected (no new AI
+                calls); nothing here re-crops or re-grades automatically. Worth a look, worst first -- if a box is
+                genuinely too tight, the fix is widening that anchor&apos;s expand_max_x1_pt/expand_max_y1_pt in
+                na_anchors, then re-cropping and re-grading just that anchor&apos;s affected students.
+              </p>
+              <ul className="mt-3 divide-y divide-da-border/40">
+                {truncationHotspots.map((q) => (
+                  <li key={q.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                    <Link
+                      href={`/dashboard/na-review/${q.id}`}
+                      className="text-da-text hover:text-da-accent hover:underline"
+                    >
+                      {q.qid}
+                    </Link>
+                    <span className="text-xs text-amber-600">
+                      {q.progress.possiblyTruncated} / {q.progress.total} crop
+                      {q.progress.possiblyTruncated === 1 ? "" : "s"} may be cut off
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {questions.map((q) => {
               const pct = q.progress.total > 0 ? Math.round((q.progress.reviewed / q.progress.total) * 100) : 0;
@@ -154,6 +205,11 @@ export default async function NaReviewPage({
                   </div>
                   {q.progress.blank > 0 && (
                     <p className="mt-1.5 text-[11px] text-da-muted">{q.progress.blank} blank</p>
+                  )}
+                  {q.progress.possiblyTruncated > 0 && (
+                    <p className="mt-1.5 text-[11px] text-amber-500">
+                      ⚠ {q.progress.possiblyTruncated} may be cut off
+                    </p>
                   )}
                 </Link>
               );
