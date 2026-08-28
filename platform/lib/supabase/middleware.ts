@@ -6,6 +6,30 @@ export async function updateSession(request: NextRequest) {
     request,
   });
 
+  // The OAuth callback must reach its route handler with cookies untouched.
+  //
+  // Attempting session recovery here is actively destructive on this exact
+  // request: getUser() finds whatever stale sb-<ref>-auth-token cookie is
+  // lying around, fails to refresh it, and auth-js responds by calling
+  // _removeSession() -- which deletes the session cookie AND
+  // `<storageKey>-code-verifier`, the PKCE verifier the callback is about to
+  // need. setAll then writes that deletion onto `request` itself, so the
+  // handler sees an empty verifier and exchangeCodeForSession fails with
+  // "PKCE code verifier not found in storage" -> auth_callback_failed.
+  //
+  // That produced a reliable "sign in twice, every time" for the teacher:
+  // attempt 1 purged the stale token as a side effect, so attempt 2 found no
+  // session to recover, never called _removeSession, and succeeded. Two
+  // earlier fixes missed it by looking for a race -- the tell was a single
+  // /auth/callback request in the logs with no duplicate. There was never a
+  // second request; the request killed its own verifier.
+  //
+  // There is nothing to refresh here by definition: the session this request
+  // establishes does not exist yet.
+  if (request.nextUrl.pathname.startsWith("/auth/callback")) {
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -73,9 +97,17 @@ export async function updateSession(request: NextRequest) {
 
   // Helper: copy Supabase session cookies onto any redirect response so
   // token refreshes are never silently dropped mid-flow (prevents redirect loops).
+  //
+  // The whole cookie is copied, options included. Copying only name and value
+  // used to strip `maxAge`, and @supabase/ssr expresses a DELETION as
+  // `{ value: "", maxAge: 0 }` -- so a cookie Supabase asked to delete was
+  // instead re-set as an empty session cookie that outlived the redirect.
+  // Stale auth cookies surviving a sign-out is what feeds the callback bug
+  // documented at the top of this file.
   const withCookies = (response: ReturnType<typeof NextResponse.redirect>) => {
     supabaseResponse.cookies.getAll().forEach((cookie) => {
-      response.cookies.set(cookie.name, cookie.value);
+      const { name, value, ...options } = cookie;
+      response.cookies.set(name, value, options);
     });
     return response;
   };
