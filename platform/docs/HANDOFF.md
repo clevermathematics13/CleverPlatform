@@ -471,6 +471,67 @@ where the true border sits between `y1_pt` and `expand_max_y1_pt`) were
 expansion actually firing, which the segment-max fix (PR#23) should handle
 for genuine handwriting. Not independently verified per-anchor.
 
+### Closing the "relies on expansion" gap, and a NEW bug class found doing it, 27 Aug 2026 (still later same day)
+
+Closed the gap above: re-cropped all 18 "relies on expansion" anchors x7
+students (126 crops) against the deployed CV service. **Zero geometry
+changes needed** - every one of those caps was already wide enough for the
+handwriting actually present.
+
+That mechanical sweep left 8 crops still individually flagged
+`possibly_truncated=true` with unchanged byte size (a pre-existing flag,
+not a new trigger). Checked each by hand against the source scan:
+
+- **False positives (5), no action** - Ines's Q29, Q8, Q13(c), Q15;
+  Santiago's Q8, Q15. All end in a complete, grammatically-finished
+  sentence with the box border visible; the flag is the same benign
+  footer/edge-ink false-positive already documented above.
+- **Q19(c) - genuine truncation.** Ines's answer cut off mid-sentence
+  ("...but it wasn't added/multiplied directly", no closing punctuation,
+  no border shown). `y1_pt` (636.82) undershot the box's true printed
+  border (~663pt) by the same ~27pt margin as the Q6 bug - i.e. this is
+  the same authoring-time "next.y0_pt minus 4pt" undershoot, just on a
+  different anchor. Fixed: `y1_pt` -> 665.0, `expand_max_y1_pt` -> 685.0
+  (a printed "END OF THE COMPULSORY CORE FOR PART 4" banner sits at
+  ~695pt, so the cap was set to stop well short of it rather than reusing
+  the generic 811.89 default). Re-cropped all 7: Freya Delisle's overflow
+  note ("as the beg... equation.") turned out to be squeezed into the
+  page's physical right margin at x=594.7pt, past the anchor's
+  `expand_max_x1_pt` (580.28) - widened that to 594.0 (the literal page
+  edge, zero risk since there is nothing beyond it to swallow). Re-graded
+  all 7; no override touched.
+
+- **Q11 - a different, new bug class: not truncation, but swallowing a
+  printed reference box.** Q11 is the only anchor on its page, so it had
+  no next-anchor to constrain `expand_max_y1_pt` and got the generic
+  811.89 default. Ines's own answer was already complete (ends in a full
+  sentence right around the box's true border, ~294-310pt) but the crop
+  ALSO captured the entire printed "GEOMETRIC READING" reference box
+  (bold heading + 3 lines of instructional text) immediately below it,
+  because ordinary ink-density-based adaptive expansion cannot tell
+  printed reference text from a student's own handwriting, and nothing
+  was stopping it before this next print block. Same root cause as the
+  Q30/Q7(b) "no next anchor" pattern, opposite symptom: there it under-
+  reached; here it over-reached. Not the reverted lookahead mechanism
+  (PR#25/#26) - this is the current, otherwise-safe PR#23-only code.
+  Fixed by *tightening* rather than widening: `y1_pt` -> 296.0,
+  `expand_max_y1_pt` -> 310.0 (measured via the same left-accent-bar
+  border detector, landing ~0.7pt before the reference box's own bar
+  starts at ~310.7pt). Re-cropped all 7 - **all 7 shrank** (Roberto's and
+  Santiago's crops had also been silently swallowing the same reference
+  box, dropping from ~1.9MB/1.4MB to ~1.1MB each), confirming this wasn't
+  Ines-specific. Re-graded all 7; no override touched, no prior mark
+  numbers recorded to diff against since this anchor had never been
+  individually audited before.
+
+Net: the "relies on expansion" caps were sound everywhere except the two
+anchors with no next-anchor constraint that hadn't already been caught
+(Q19(c), Q11) - both share their root cause with Q30/Q7(b) above, just
+manifesting as under- and over-reach respectively. **This closes the
+full-packet audit gap**: every anchor in the packet has now been either
+mechanically re-cropped with zero changes, or individually visually
+verified, or fixed and re-verified.
+
 ---
 
 ## 6. What an agent session can and cannot reach
@@ -572,12 +633,17 @@ committed so the tree stays clean.
 **Medium**
 
 4. Grade 9 Standard NA packets - none seeded.
-5. **Widen the 46 anchors still flagged `possibly_truncated=true`** after the 27
-   Aug crop-expansion fix and full-packet audit (§5). Their `expand_max_x1_pt`/
-   `expand_max_y1_pt` caps sit too close to the printed answer box for at least
-   one student's actual handwriting even at full expansion - the same fix already
-   applied to the Q1 anchor (raising the cap, then re-cropping and re-grading)
-   should resolve most of these. Not done this session.
+5. ~~Widen the 46 anchors still flagged `possibly_truncated=true`~~ **Closed, 27
+   Aug 2026.** The full anchor-geometry audit (§5) plus the follow-up "relies on
+   expansion" sweep found and fixed every genuine case: Q1, Q3, Q6, Q26(b),
+   Q13(b), Q30, Q19(c) were real truncations (widened); Q7(b) and Q11 had the
+   opposite problem, a cap too generous rather than too tight (Q11 was actively
+   swallowing a printed reference box - tightened instead of widened). Every
+   other flagged anchor was individually visually verified as a false positive
+   (content complete, flag triggered by benign edge ink - page footer, scan
+   border, or proximity to a printed box). Every anchor in the packet has now
+   been either mechanically re-cropped with zero changes, or individually
+   verified, or fixed and re-verified - nothing left unaudited.
 
 **Low**
 
