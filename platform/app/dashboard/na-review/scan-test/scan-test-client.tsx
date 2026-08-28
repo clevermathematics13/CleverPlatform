@@ -1662,6 +1662,25 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         )}
       </section>
 
+      {!anyBatchLoaded && (
+        <section className="rounded-xl border border-da-border bg-da-surface p-5">
+          <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
+          <p className="mt-1 text-sm text-da-muted">
+            One PDF covering multiple students of this packet, each starting with a page showing
+            their name. A scan larger than Anthropic&apos;s 100-page limit is split automatically
+            into whole-packet chunks — no need to cut it up yourself.
+          </p>
+          <button
+            type="button"
+            disabled={uploading || !version}
+            onClick={() => fileInputRef.current?.click()}
+            className="mt-4 rounded-lg border border-da-accent/40 bg-da-accent/10 px-4 py-2 text-sm font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
+          >
+            {uploading ? uploadProgress ?? "Working…" : "Upload batch scan"}
+          </button>
+        </section>
+      )}
+
       {/* Results by class -- every identified scan for this packet version,
           grouped by the student's real course, independent of which upload
           batch produced the scan (a student's assessed work can end up
@@ -1802,25 +1821,6 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             ))}
           </ul>
         </div>
-      )}
-
-      {!anyBatchLoaded && (
-        <section className="rounded-xl border border-da-border bg-da-surface p-5">
-          <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
-          <p className="mt-1 text-sm text-da-muted">
-            One PDF covering multiple students of this packet, each starting with a page showing
-            their name. A scan larger than Anthropic&apos;s 100-page limit is split automatically
-            into whole-packet chunks — no need to cut it up yourself.
-          </p>
-          <button
-            type="button"
-            disabled={uploading || !version}
-            onClick={() => fileInputRef.current?.click()}
-            className="mt-4 rounded-lg border border-da-accent/40 bg-da-accent/10 px-4 py-2 text-sm font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
-          >
-            {uploading ? uploadProgress ?? "Working…" : "Upload batch scan"}
-          </button>
-        </section>
       )}
 
       {/* Non-chunked review table (unchanged from before) */}
