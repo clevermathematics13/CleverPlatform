@@ -2,7 +2,18 @@
 
 import { createClient } from "@/lib/supabase/client";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+
+// The PKCE code verifier lives in a cookie shared by every tab on this
+// origin. Starting a sign-in in a second tab overwrites the verifier an
+// already-in-flight tab needs, so that first tab's redirect back from
+// Google fails with "PKCE code verifier not found in storage" even though
+// nothing was double-clicked. We can't reliably block this across tabs
+// without real cross-tab messaging, so this just warns: a recent-enough
+// localStorage timestamp (shared across tabs on this origin) means
+// another tab may still be mid-flow.
+const OAUTH_PENDING_KEY = "cleverplatform_oauth_pending_since";
+const OAUTH_PENDING_WINDOW_MS = 2 * 60 * 1000;
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -11,6 +22,18 @@ function LoginForm() {
   const invitedEmail = searchParams.get("invitedEmail");
   const [staySignedIn, setStaySignedIn] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
+  const [multiTabWarning, setMultiTabWarning] = useState(false);
+
+  useEffect(() => {
+    try {
+      const pendingSince = Number(localStorage.getItem(OAUTH_PENDING_KEY) ?? 0);
+      if (pendingSince > 0 && Date.now() - pendingSince < OAUTH_PENDING_WINDOW_MS) {
+        setMultiTabWarning(true);
+      }
+    } catch {
+      // localStorage unavailable (private browsing, etc.) -- skip the warning.
+    }
+  }, []);
 
   const handleGoogleLogin = async () => {
     // Guard against a second click firing before the redirect happens --
@@ -19,6 +42,11 @@ function LoginForm() {
     // real cause of "PKCE code verifier not found in storage" failures.
     if (signingIn) return;
     setSigningIn(true);
+    try {
+      localStorage.setItem(OAUTH_PENDING_KEY, String(Date.now()));
+    } catch {
+      // Not fatal -- the multi-tab warning just won't fire for this attempt.
+    }
     const supabase = createClient();
     const callbackParams = new URLSearchParams({
       next: redirectTo,
@@ -73,6 +101,14 @@ function LoginForm() {
         {error && (
           <div className="rounded-md border border-red-500/40 bg-red-900/35 p-4 text-sm text-red-100">
             {getErrorMessage(error)}
+          </div>
+        )}
+
+        {!error && multiTabWarning && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-900/30 p-4 text-sm text-amber-100">
+            It looks like a sign-in may already be in progress in another tab. Signing in from
+            two tabs at once can make one of them fail — finish there if you can, or continue
+            here to start fresh.
           </div>
         )}
 
