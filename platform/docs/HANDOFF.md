@@ -330,6 +330,45 @@ answer box). Widening those specific anchors' caps in `na_anchors` (the way Q1
 was widened above) and re-cropping again would likely resolve most of them - not
 done this session, left as the next open item.
 
+### A follow-up fix was shipped, then reverted the same day -- read before touching expansion again
+
+Immediately after the above, a second real crop truncation was found (A.1 Q3,
+Ines Palomino - a 3-line ruled answer box where the concluding sentence sat just
+past a blank gap after line 2, wider than one `EXPAND_STEP_PT`). A "lookahead"
+fix was written, tested against that one case, merged, and deployed: before
+giving up growing an edge, probe further ahead and bridge the gap if content
+resumes.
+
+**This was reverted the same session.** A follow-up full-packet re-audit (the
+right instinct - always re-check broadly after a pipeline change) caught the
+real problem before it spread further: on A.1 Q4, the gap between a student's
+own answer box and an unrelated **printed reference/answer-key box** ("OPEN
+THIS ONLY AFTER YOU HAVE WRITTEN ALL FIVE...") is only ~18pt - almost identical
+in size to the gap the fix needed to bridge for Q3. There is no lookahead
+distance that reliably bridges one without also bridging into the other. One
+crop (Davi Verma's Q4) was actually corrupted by this before it was caught: the
+stored crop image had the full printed answer-key text appended after the
+student's own handwriting, which would have handed the grading model the
+answer key alongside the student's attempt. Caught before any stage 5 re-grade
+ran against it (the full-packet audit script crashed on a transient network
+error partway through student #2, which is what surfaced this during manual
+review rather than silently completing) - no marks were ever affected. The
+corrupted crop and 5 others touched by the same run (whose content turned out
+unchanged or benign) were all regenerated from the reverted code and verified
+consistent with it.
+
+**Takeaway for next time:** this class of bug (grow-until-density-drops
+adaptive expansion) is inherently asymmetric-risk. A crop that's still
+occasionally too tight is a missed positive a teacher can catch once flagged
+(see `possibly_truncated` above). A crop that silently gained unrelated printed
+content is actively wrong evidence with no visible signal anything is off - far
+worse. Any future fix to `_adaptive_crop_bounds` needs either a way to
+positively identify "more of the student's own handwriting resumes" (e.g.
+detecting a template discontinuity - a colored background, a new box border -
+and refusing to cross it) rather than "any ink resumes," or should stay scoped
+to per-anchor `expand_max_*_pt` data patches (like the Q1 fix above) instead of
+a general geometric heuristic. The Q3 truncation itself is still open.
+
 ---
 
 ## 6. What an agent session can and cannot reach
@@ -437,6 +476,11 @@ committed so the tree stays clean.
    one student's actual handwriting even at full expansion - the same fix already
    applied to the Q1 anchor (raising the cap, then re-cropping and re-grading)
    should resolve most of these. Not done this session.
+6. **A.1 Q3, Ines Palomino is still genuinely cut off** ("...it wouldn't produce
+   the same answer." missing from her crop). The fix attempted for this class of
+   bug (a blank ruled-paper gap between lines) was reverted the same session for
+   being unsafe in general - see §5. Fixing this one specific case (e.g. widening
+   just the Q3 anchor's own geometry, the way Q1 was widened) is still open.
 
 **Low**
 
