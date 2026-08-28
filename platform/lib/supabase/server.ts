@@ -21,9 +21,17 @@ export async function createClient(options?: { persistent?: boolean }) {
         setAll(cookiesToSet) {
           try {
             cookiesToSet.forEach(({ name, value, options: cookieOptions }) => {
-              const finalOptions = persistent
-                ? cookieOptions
-                : { ...cookieOptions, maxAge: undefined, expires: undefined };
+              // A DELETION must stay a deletion. @supabase/ssr expresses one as
+              // `{ value: "", maxAge: 0 }`, so blanket-stripping maxAge for
+              // non-persistent sessions quietly turned every cookie Supabase
+              // asked to clear into an empty session cookie that stuck around
+              // instead. Those stale auth cookies are what make the next
+              // sign-in's callback fail (see lib/supabase/middleware.ts).
+              const isDeletion = cookieOptions?.maxAge === 0 || value === "";
+              const finalOptions =
+                persistent || isDeletion
+                  ? cookieOptions
+                  : { ...cookieOptions, maxAge: undefined, expires: undefined };
               cookieStore.set(name, value, finalOptions);
             });
           } catch {
