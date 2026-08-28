@@ -81,6 +81,7 @@ interface AssessCropListItem {
   cropId: string;
   qid: string;
   sortOrder: number;
+  questionText: string | null;
   isBlank: boolean;
   possiblyTruncated: boolean;
   imageUrl: string | null;
@@ -1470,6 +1471,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                         !!s.nextStep ||
                         !!s.teacherNote ||
                         !!c.imageUrl ||
+                        !!c.questionText ||
                         c.possiblyTruncated;
                       return (
                         <div key={c.cropId} className="px-3 py-2">
@@ -1533,6 +1535,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                 Why this mark — transcription, comment &amp; notes
                               </summary>
                               <div className="mt-2 space-y-2 rounded-lg bg-da-hover/50 p-3 text-xs">
+                                {c.questionText && (
+                                  <div>
+                                    <p className="font-semibold text-da-text">Question</p>
+                                    <p className="mt-0.5 whitespace-pre-wrap text-da-muted">{c.questionText}</p>
+                                  </div>
+                                )}
                                 {c.imageUrl && (
                                   <div>
                                     <p className="font-semibold text-da-text">Crop</p>
