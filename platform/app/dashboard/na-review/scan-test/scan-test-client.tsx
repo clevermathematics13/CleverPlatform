@@ -198,6 +198,13 @@ interface AutoRunInfo {
   studentLabel: string;
   currentScanId: string | null;
   stage: "cropping" | "assessing";
+  /** Ordered packetScanIds for whichever stage is currently running --
+   *  the cropping cohort while stage is "cropping", replaced with the
+   *  (possibly smaller, since a crop failure drops a student) assessing
+   *  cohort once assessment starts. Drives the chunked per-student
+   *  progress bar so a teacher can see how far in the batch actually is,
+   *  not just which single student is active right now. */
+  scanIds: string[];
 }
 
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
@@ -1438,6 +1445,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         studentLabel: "",
         currentScanId: null,
         stage: "cropping",
+        scanIds: targets.map((r) => r.packetScanId as string),
       },
     }));
 
@@ -1446,6 +1454,15 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       const cropOutcomes = await handleCropAll(panelKey, targets);
       const readyForAssess = targets.filter((r) => cropOutcomes[r.packetScanId as string] === "done");
       const failedToCrop = targets.length - readyForAssess.length;
+
+      setAutoRuns((prev) => ({
+        ...prev,
+        [panelKey]: {
+          ...prev[panelKey],
+          totalStudents: readyForAssess.length,
+          scanIds: readyForAssess.map((r) => r.packetScanId as string),
+        },
+      }));
 
       for (let i = 0; i < readyForAssess.length; i++) {
         const r = readyForAssess[i];
@@ -2046,24 +2063,71 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                     return { done, total: panelCrops.length };
                   })()
                 : null;
+
+            // One segment per student in whichever cohort is currently
+            // running (see AutoRunInfo.scanIds), so the bar reads as a
+            // chunked "how far in are we" view rather than one blob that
+            // barely moves across a 40-student batch. Each segment fills
+            // 0..1 -- fully for a finished student, partially for the one
+            // in flight (using its own sub-progress: paged crop count
+            // during cropping, assessed-question count during assessing),
+            // empty for one not yet started.
+            const segments = info.scanIds.map((scanId, i) => {
+              if (info.stage === "cropping") {
+                const cs = cropState[scanId];
+                if (cs?.status === "done") return { fill: 1, failed: false };
+                if (cs?.status === "failed") return { fill: 1, failed: true };
+                if (cs?.status === "cropping") {
+                  const p = cs.progress;
+                  return { fill: p && p.total > 0 ? p.done / p.total : 0.15, failed: false };
+                }
+                return { fill: 0, failed: false };
+              }
+              if (i < info.studentIndex) return { fill: 1, failed: false };
+              if (i === info.studentIndex) {
+                return { fill: cropProgress && cropProgress.total > 0 ? cropProgress.done / cropProgress.total : 0.08, failed: false };
+              }
+              return { fill: 0, failed: false };
+            });
+            const segmentsDone = segments.filter((s) => s.fill >= 1 && !s.failed).length;
+            const segmentsFailed = segments.filter((s) => s.failed).length;
+
             return (
               <div
                 key={panelKey}
-                className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-da-accent/60 bg-da-accent/15 px-5 py-3 shadow-lg shadow-black/30 backdrop-blur"
+                className="flex flex-col gap-2 rounded-xl border border-da-accent/60 bg-da-accent/15 px-5 py-3 shadow-lg shadow-black/30 backdrop-blur"
               >
-                <span className="relative flex h-3 w-3 shrink-0">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-da-accent opacity-75" />
-                  <span className="relative inline-flex h-3 w-3 rounded-full bg-da-accent" />
-                </span>
-                <span className="text-sm font-bold text-da-text">Automatic run in progress</span>
-                <span className="font-mono text-sm text-da-text">{elapsed} elapsed</span>
-                <span className="text-sm text-da-muted">
-                  {info.stage === "cropping"
-                    ? `Cropping ${info.totalStudents} student(s)…`
-                    : `Student ${info.studentIndex + 1} of ${info.totalStudents} — ${info.studentLabel}${
-                        cropProgress ? ` — question ${cropProgress.done}/${cropProgress.total}` : ""
-                      }`}
-                </span>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="relative flex h-3 w-3 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-da-accent opacity-75" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-da-accent" />
+                  </span>
+                  <span className="text-sm font-bold text-da-text">Automatic run in progress</span>
+                  <span className="font-mono text-sm text-da-text">{elapsed} elapsed</span>
+                  <span className="text-sm text-da-muted">
+                    {info.stage === "cropping"
+                      ? `Cropping ${info.totalStudents} student(s)…`
+                      : `Student ${info.studentIndex + 1} of ${info.totalStudents} — ${info.studentLabel}${
+                          cropProgress ? ` — question ${cropProgress.done}/${cropProgress.total}` : ""
+                        }`}
+                  </span>
+                  <span className="ml-auto font-mono text-xs text-da-muted">
+                    {info.stage === "cropping" ? "cropping" : "assessing"}: {segmentsDone}/{info.scanIds.length} done
+                    {segmentsFailed > 0 ? ` — ${segmentsFailed} failed` : ""}
+                  </span>
+                </div>
+                {segments.length > 0 && (
+                  <div className="flex w-full gap-0.5" aria-hidden>
+                    {segments.map((seg, i) => (
+                      <div key={i} className="h-2 min-w-[2px] flex-1 overflow-hidden rounded-sm bg-da-border/40">
+                        <div
+                          className={`h-full transition-all ${seg.failed ? "bg-da-danger" : "bg-da-accent"}`}
+                          style={{ width: `${Math.max(0, Math.min(100, Math.round(seg.fill * 100)))}%` }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
