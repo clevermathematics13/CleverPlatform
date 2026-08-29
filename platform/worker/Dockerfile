@@ -10,14 +10,17 @@ FROM node:24-slim
 
 WORKDIR /app
 
-# Cache-bust marker: a prior Railway build reused a stale cached layer here
-# that belonged to an unrelated project (its npm ci error listed @nestjs/*,
-# @swc/cli, and binary-downloader packages -- none of which appear anywhere
-# in this repo's package.json). `npm ci` against the real committed
-# package.json/package-lock.json installs cleanly (verified locally). This
-# comment exists purely to change this layer's cache key so a bad cached
-# COPY can't be reused again; safe to remove once confirmed fixed.
-COPY package.json package-lock.json ./
+# .npmrc matters here: it sets legacy-peer-deps=true, which is what lets
+# `npm ci` succeed at all. @workflow/nest (a transitive optional adapter
+# pulled in by the `workflow` dependency) declares NON-optional peer
+# dependencies on @nestjs/common, @nestjs/core, @swc/cli, @swc/core that
+# this project doesn't actually install -- without legacy-peer-deps, npm's
+# strict peer-dependency validation fails `npm ci` outright over this
+# (real failure hit here: Railway built without .npmrc in the image at all,
+# since only package.json/package-lock.json were copied, and got exactly
+# that EUSAGE error even though the identical files install cleanly
+# anywhere .npmrc is present alongside them).
+COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 
 COPY lib ./lib
