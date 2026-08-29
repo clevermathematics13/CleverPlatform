@@ -2235,11 +2235,32 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             const segmentsDone = segments.filter((s) => s.fill >= 1 && !s.failed).length;
             const segmentsFailed = segments.filter((s) => s.failed).length;
 
+            // Whole-process percentage, not just the current stage's -- the
+            // per-student segment bar below already shows fine-grained
+            // progress within cropping or assessing, but a teacher glancing
+            // at the very top of the page wants one number for "how far
+            // into this batch am I", spanning both stages. Approximated as
+            // two equal halves (crop, then assess) since there's no
+            // meaningful way to know in advance how much of the total time
+            // each stage will take -- explicitly "approximate", per its label.
+            const stageFrac =
+              segments.length > 0 ? segments.reduce((sum, s) => sum + Math.min(1, s.fill), 0) / segments.length : 0;
+            const overallPct = Math.round((info.stage === "cropping" ? stageFrac * 50 : 50 + stageFrac * 50));
+
             return (
               <div
                 key={panelKey}
                 className="flex flex-col gap-2 rounded-xl border border-da-accent/60 bg-da-accent/15 px-5 py-3 shadow-lg shadow-black/30 backdrop-blur"
               >
+                <div className="flex items-center gap-3">
+                  <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-da-border/40">
+                    <div
+                      className="h-full rounded-full bg-da-accent transition-all"
+                      style={{ width: `${overallPct}%` }}
+                    />
+                  </div>
+                  <span className="font-mono text-sm font-bold text-da-text">{overallPct}%</span>
+                </div>
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                   <span className="relative flex h-3 w-3 shrink-0">
                     <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-da-accent opacity-75" />
