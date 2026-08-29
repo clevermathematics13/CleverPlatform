@@ -220,6 +220,24 @@ const VERDICT_STYLE: Record<string, string> = {
   unclear: "bg-gray-100 text-gray-700 border-gray-300",
 };
 
+/** Status badge colors for na_scan_batches.status, including the
+ *  worker-owned stages a bulk upload moves through
+ *  (queued -> segmenting -> split -> cropping -> cropped -> assessing ->
+ *  assessed) alongside the pre-existing manual-upload statuses. A status
+ *  with no entry here (e.g. legacy 'uploaded'/'chunked') falls back to a
+ *  plain neutral badge rather than being hidden. */
+const BATCH_STATUS_STYLE: Record<string, string> = {
+  queued: "bg-gray-100 text-gray-700 border-gray-300",
+  segmenting: "bg-blue-100 text-blue-800 border-blue-300",
+  segmented: "bg-amber-100 text-amber-800 border-amber-300",
+  split: "bg-blue-100 text-blue-800 border-blue-300",
+  cropping: "bg-blue-100 text-blue-800 border-blue-300",
+  cropped: "bg-blue-100 text-blue-800 border-blue-300",
+  assessing: "bg-blue-100 text-blue-800 border-blue-300",
+  assessed: "bg-green-100 text-green-800 border-green-300",
+  failed: "bg-red-100 text-red-800 border-red-300",
+};
+
 const SELECT_CLASS =
   "block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent";
 const INPUT_CLASS =
@@ -527,6 +545,16 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [loadingBatch, setLoadingBatch] = useState(false);
+
+  // Bulk upload: several single-student PDFs queued at once for the
+  // background worker (platform/worker/) to process unattended, instead of
+  // the single-file path's client-driven segment/split/crop/assess loop.
+  // Separate state from the single-file path since a bulk upload never
+  // loads into the interactive review harness below (rows/batchId/etc) --
+  // its only UI is the queued-count confirmation and "Recent batches".
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkUploadProgress, setBulkUploadProgress] = useState<string | null>(null);
+  const [bulkUploadResult, setBulkUploadResult] = useState<string | null>(null);
 
   // Non-chunked path: a single batch, same shape as before.
   const [batchId, setBatchId] = useState<string | null>(null);
@@ -1036,10 +1064,87 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     }
   };
 
+  // Phase-1 pilot cap on how many files one bulk upload can queue at once --
+  // deliberately low while this feature is new (see platform/worker/README.md's
+  // rollout notes), raise once the worker has run clean against real data.
+  // The bulk-create API (POST /api/na-review/batch/bulk) caps at 50
+  // regardless, as defense in depth beyond this client-side check.
+  const MAX_BULK_UPLOAD_FILES = 3;
+
+  /** Queues several single-student packet PDFs at once for the bulk-upload
+   *  worker to process unattended -- no per-batch segment/split/crop/assess
+   *  loop runs in this tab at all, unlike handleUpload. Each file uploads
+   *  straight to Storage (same na-batches/ convention as the single-file
+   *  path) and one na_scan_batches row is created per file, status
+   *  'queued'; POST /api/na-review/batch/bulk does no PDF reading and no
+   *  Anthropic call, so this returns fast regardless of file count. */
+  const handleBulkUpload = async (files: File[]) => {
+    if (!version) {
+      setError("Pick a packet version first.");
+      return;
+    }
+    if (files.length > MAX_BULK_UPLOAD_FILES) {
+      setError(
+        `Bulk upload is limited to ${MAX_BULK_UPLOAD_FILES} files at once while this feature is being piloted — got ${files.length}. Upload in smaller groups for now.`
+      );
+      return;
+    }
+    setBulkUploading(true);
+    setError(null);
+    setBulkUploadResult(null);
+    reset();
+    syncUrl(null);
+
+    try {
+      const supaModule = await import("@/lib/supabase/client");
+      const supabase = supaModule.createClient();
+
+      // Sequential, not pooled -- fine at today's 3-file pilot cap. Worth
+      // switching to a small concurrent pool (see the plan this shipped
+      // under) if/when MAX_BULK_UPLOAD_FILES is raised toward 50.
+      const uploads: { storagePath: string; fileName: string }[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setBulkUploadProgress(`Uploading ${i + 1} of ${files.length}: ${file.name}…`);
+        const safeName = file.name.replace(/[^\w.\-]/g, "_");
+        const storagePath = `na-batches/${crypto.randomUUID()}/${safeName}`;
+        const { error: uploadErr } = await supabase.storage
+          .from("exam-scans")
+          .upload(storagePath, file, { contentType: "application/pdf", upsert: false });
+        if (uploadErr) throw new Error(`Uploading "${file.name}" failed: ${uploadErr.message}`);
+        uploads.push({ storagePath, fileName: file.name });
+      }
+
+      setBulkUploadProgress("Queuing for background processing…");
+      const res = await fetch("/api/na-review/batch/bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packetVersionId: version.id, uploads }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not queue the bulk upload.");
+
+      setBulkUploadResult(
+        `${data.queuedCount} packet(s) queued for background processing. They'll appear in "Recent batches" below as they progress — no need to keep this tab open.`
+      );
+      void fetchRecentBatches(version.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Bulk upload failed.");
+    } finally {
+      setBulkUploading(false);
+      setBulkUploadProgress(null);
+    }
+  };
+
   const handleFilePicked = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (file) await handleUpload(file);
+    if (files.length === 0) return;
+    if (files.length === 1) {
+      await handleUpload(files[0]);
+    } else {
+      await handleBulkUpload(files);
+    }
   };
 
   // -- Non-chunked row editing (unchanged) -------------------------------------
@@ -2036,7 +2141,14 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
 
   return (
     <div className="space-y-6">
-      <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFilePicked} className="hidden" />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        multiple
+        onChange={handleFilePicked}
+        className="hidden"
+      />
 
       {/* "Is this still running?" banner -- sticky so it stays visible while
           scrolling through results, since a full batch (dozens of crops per
@@ -2194,14 +2306,28 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             their name. A scan larger than Anthropic&apos;s 100-page limit is split automatically
             into whole-packet chunks — no need to cut it up yourself.
           </p>
+          <p className="mt-1 text-sm text-da-muted">
+            Or select up to {MAX_BULK_UPLOAD_FILES} single-student PDFs at once (one packet per
+            file) to queue them for background processing — they run unattended, so you don&apos;t
+            need to keep this tab open.
+          </p>
           <button
             type="button"
-            disabled={uploading || !version}
+            disabled={uploading || bulkUploading || !version}
             onClick={() => fileInputRef.current?.click()}
             className="mt-4 rounded-lg border border-da-accent/40 bg-da-accent/10 px-4 py-2 text-sm font-medium text-da-accent hover:bg-da-accent/20 disabled:opacity-50"
           >
-            {uploading ? uploadProgress ?? "Working…" : "Upload batch scan"}
+            {uploading
+              ? uploadProgress ?? "Working…"
+              : bulkUploading
+                ? bulkUploadProgress ?? "Queuing…"
+                : "Upload batch scan(s)"}
           </button>
+          {bulkUploadResult && (
+            <p className="mt-3 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+              {bulkUploadResult}
+            </p>
+          )}
         </section>
       )}
 
@@ -2332,8 +2458,15 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                       <p className="text-sm text-da-text">
                         {b.source_filename ?? "batch-scan.pdf"} — {b.page_count ?? "?"} pages
                       </p>
-                      <p className="text-xs text-da-muted">
-                        {new Date(b.created_at).toLocaleString()} — status: {b.status}
+                      <p className="mt-0.5 flex items-center gap-2 text-xs text-da-muted">
+                        {new Date(b.created_at).toLocaleString()}
+                        <span
+                          className={`rounded border px-1.5 py-0.5 text-xs font-medium ${
+                            BATCH_STATUS_STYLE[b.status] ?? "bg-gray-100 text-gray-700 border-gray-300"
+                          }`}
+                        >
+                          {b.status}
+                        </span>
                       </p>
                     </div>
                     <button

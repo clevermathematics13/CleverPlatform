@@ -1,0 +1,218 @@
+import type Anthropic from "@anthropic-ai/sdk";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { NA_SCAN_BUCKET } from "../lib/na-scanning";
+import {
+  ASSESSMENT_MODEL,
+  ASSESSMENT_SYSTEM_PROMPT,
+  buildAssessmentUserPrompt,
+  buildRubricBlock,
+  isUngradedAnchor,
+  type AnchorContext,
+} from "../lib/na-assessment";
+
+// Deliberately a standalone copy of the skip/upsert logic in
+// app/api/na-review/response-crops/[cropId]/assess/route.ts, not a shared
+// extraction -- see crop.ts's header comment for why. What's genuinely new
+// here (not mirrored from that route) is the fan-out: instead of one
+// synchronous Anthropic call per crop, every not-yet-assessed crop for a
+// student is submitted as ONE Anthropic Message Batch, at half the token
+// cost and with results picked up later by assess-poll.ts.
+
+interface CropRow {
+  id: string;
+  storage_path: string;
+  is_blank: boolean;
+  boundary_expanded: boolean | null;
+  possibly_truncated: boolean | null;
+  pending_assessment_batch_id: string | null;
+  na_anchors:
+    | {
+        qid: string;
+        base_qid: string | null;
+        marks_available: number | null;
+        command_term: string | null;
+        answer_sketch: string | null;
+        open_rubric: string | null;
+        misconception_context: string | null;
+        question_text: string | null;
+        question_answer: string | null;
+        question_marks: number | null;
+      }
+    | Array<{
+        qid: string;
+        base_qid: string | null;
+        marks_available: number | null;
+        command_term: string | null;
+        answer_sketch: string | null;
+        open_rubric: string | null;
+        misconception_context: string | null;
+        question_text: string | null;
+        question_answer: string | null;
+        question_marks: number | null;
+      }>
+    | null;
+}
+
+export type AssessSubmitResult =
+  | { outcome: "submitted"; anthropicBatchId: string; requestCount: number }
+  | { outcome: "nothing-to-assess" }
+  | { outcome: "failed"; message: string };
+
+export async function submitAssessmentBatch(
+  supabase: SupabaseClient,
+  anthropic: Anthropic,
+  packetScanId: string
+): Promise<AssessSubmitResult> {
+  const fail = async (message: string): Promise<AssessSubmitResult> => {
+    const { data: scan } = await supabase.from("na_packet_scans").select("batch_id").eq("id", packetScanId).maybeSingle();
+    if (scan?.batch_id) {
+      await supabase.from("na_scan_batches").update({ status: "failed", error_message: message }).eq("id", scan.batch_id);
+    }
+    return { outcome: "failed", message };
+  };
+
+  const { data: cropRows, error: cropErr } = await supabase
+    .from("na_response_crops")
+    .select(
+      "id, storage_path, is_blank, boundary_expanded, possibly_truncated, pending_assessment_batch_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks)"
+    )
+    .eq("packet_scan_id", packetScanId);
+  if (cropErr) return fail(cropErr.message);
+  const crops = (cropRows ?? []) as CropRow[];
+  if (crops.length === 0) return fail("No crops found for this packet scan -- run stage 4 (crop) first.");
+
+  const cropIds = crops.map((c) => c.id);
+  const { data: existingFeedback, error: fbErr } = await supabase
+    .from("na_feedback")
+    .select("crop_id, ai_attempted, ai_validation_error")
+    .in("crop_id", cropIds);
+  if (fbErr) return fail(fbErr.message);
+  const feedbackByCrop = new Map((existingFeedback ?? []).map((f) => [f.crop_id as string, f]));
+
+  const upsertFeedback = async (cropId: string, fields: Record<string, unknown>) => {
+    const { data: existing } = await supabase.from("na_feedback").select("id").eq("crop_id", cropId).maybeSingle();
+    if (existing?.id) {
+      await supabase.from("na_feedback").update({ ...fields, updated_at: new Date().toISOString() }).eq("id", existing.id);
+    } else {
+      await supabase.from("na_feedback").insert({ crop_id: cropId, ...fields });
+    }
+  };
+
+  const requests: Anthropic.Messages.Batches.BatchCreateParams.Request[] = [];
+  const includedCropIds: string[] = [];
+
+  for (const crop of crops) {
+    if (crop.pending_assessment_batch_id) continue; // already in flight in another batch
+
+    const anchor = Array.isArray(crop.na_anchors) ? crop.na_anchors[0] : crop.na_anchors;
+    if (!anchor) continue;
+
+    const ctx: AnchorContext = {
+      qid: anchor.qid,
+      baseQid: anchor.base_qid ?? anchor.qid,
+      marksAvailable: anchor.marks_available,
+      commandTerm: anchor.command_term,
+      answerSketch: anchor.answer_sketch,
+      openRubric: anchor.open_rubric,
+      misconceptionContext: anchor.misconception_context,
+      questionText: anchor.question_text,
+      questionAnswer: anchor.question_answer,
+      questionMarks: anchor.question_marks,
+      boundaryExpanded: crop.boundary_expanded ?? undefined,
+      possiblyTruncated: crop.possibly_truncated ?? undefined,
+    };
+
+    if (isUngradedAnchor(ctx)) {
+      await upsertFeedback(crop.id, {
+        ai_attempted: false,
+        ai_teacher_note: "Not marked: this box is an ungraded thinking space (no marks, no answer key, no rubric).",
+      });
+      continue;
+    }
+    if (crop.is_blank) {
+      await upsertFeedback(crop.id, {
+        ai_attempted: false,
+        ai_marks_available: ctx.marksAvailable,
+        ai_teacher_note: "Not marked: crop detected as blank in stage 4 (no ink found in the answer box).",
+      });
+      continue;
+    }
+
+    const existing = feedbackByCrop.get(crop.id);
+    if (existing?.ai_attempted && !existing.ai_validation_error) continue; // already assessed cleanly
+
+    let imageBase64: string;
+    try {
+      const { data: file, error: dlErr } = await supabase.storage.from(NA_SCAN_BUCKET).download(crop.storage_path);
+      if (dlErr || !file) throw new Error(dlErr?.message ?? "crop image not found in storage");
+      imageBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+    } catch (e) {
+      // One unreadable crop shouldn't abort the whole student's batch --
+      // record it the same way a synchronous failure would and move on.
+      await upsertFeedback(crop.id, {
+        ai_attempted: true,
+        ai_marks_available: ctx.marksAvailable,
+        ai_validation_error: `Could not read crop image: ${e instanceof Error ? e.message : String(e)}`,
+      });
+      continue;
+    }
+
+    requests.push({
+      custom_id: crop.id, // na_response_crops.id doubles as the Batch API mapping key -- no separate table needed
+      params: {
+        model: ASSESSMENT_MODEL,
+        max_tokens: 2048,
+        system: ASSESSMENT_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/png", data: imageBase64 } },
+              // No cache_control here, unlike the synchronous assess route:
+              // the 5-minute ephemeral prompt-cache TTL isn't reliably hit
+              // across requests Anthropic may schedule non-adjacently
+              // within a Batch, so a cache breakpoint would mostly just add
+              // cache-write overhead for reads that never land. The 50%
+              // Batch discount applies to every token regardless and should
+              // still net out cheaper than synchronous+cache for this shape
+              // of workload.
+              { type: "text", text: buildRubricBlock(ctx) },
+              { type: "text", text: buildAssessmentUserPrompt() },
+            ],
+          },
+        ],
+      },
+    });
+    includedCropIds.push(crop.id);
+  }
+
+  if (requests.length === 0) return { outcome: "nothing-to-assess" };
+
+  let batch: Anthropic.Messages.Batches.MessageBatch;
+  try {
+    batch = await anthropic.messages.batches.create({ requests });
+  } catch (e) {
+    return fail(`Could not submit assessment batch: ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  const { data: batchRow, error: insertErr } = await supabase
+    .from("na_assessment_batches")
+    .insert({
+      anthropic_batch_id: batch.id,
+      packet_scan_id: packetScanId,
+      status: "submitted",
+      request_count: requests.length,
+    })
+    .select("id")
+    .single();
+  if (insertErr || !batchRow) return fail(`Could not record assessment batch: ${insertErr?.message ?? "unknown error"}`);
+
+  await supabase.from("na_response_crops").update({ pending_assessment_batch_id: batchRow.id }).in("id", includedCropIds);
+
+  const { data: scan } = await supabase.from("na_packet_scans").select("batch_id").eq("id", packetScanId).maybeSingle();
+  if (scan?.batch_id) {
+    await supabase.from("na_scan_batches").update({ status: "assessing" }).eq("id", scan.batch_id);
+  }
+
+  return { outcome: "submitted", anthropicBatchId: batch.id, requestCount: requests.length };
+}
