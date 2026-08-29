@@ -77,6 +77,7 @@ function getNavigation(role: string) {
       { href: "/dashboard/reflection", label: "Exam Reflection", icon: "🪞" },
       { href: "/dashboard/mastery", label: "Mastery", icon: "🎯" },
       { href: "/dashboard/seating", label: "Seating Chart", icon: "🪑" },
+      { href: "/dashboard/na-review/scan-test", label: "Scan Pipeline", icon: "🖨️" },
       { href: "/dashboard/na-review/batch-runs", label: "Active Batch Runs", icon: "🗂️" },
       { href: "/dashboard/gradebook", label: "Gradebook", icon: "�" },
       { href: "/dashboard/classroom", label: "Google Classroom", icon: "🎓" },
