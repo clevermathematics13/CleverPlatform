@@ -99,6 +99,13 @@ export async function POST(request: NextRequest) {
         status: "queued",
         source_filename: u.fileName,
         source_storage_path: u.storagePath,
+        // Required: the worker's claim RPC only ever claims rows with this
+        // set true, specifically so it can never touch a batch created by
+        // the normal single-upload flow (which also reaches status
+        // 'split'/'cropped', just via a completely different path with a
+        // different shape -- see na_scan_batches migration
+        // 20260829192600 for the incident this guards against).
+        is_bulk_upload: true,
       }))
     )
     .select("id");
