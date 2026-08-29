@@ -15,8 +15,21 @@ import {
 // extraction -- see crop.ts's header comment for why. What's genuinely new
 // here (not mirrored from that route) is the fan-out: instead of one
 // synchronous Anthropic call per crop, every not-yet-assessed crop for a
-// student is submitted as ONE Anthropic Message Batch, at half the token
-// cost and with results picked up later by assess-poll.ts.
+// student is submitted as one or more Anthropic Message Batches, at half
+// the token cost and with results picked up later by assess-poll.ts.
+//
+// Submitted in chunks of CHUNK_SIZE crops per Batch, not all of a
+// student's ~40 in one call: the desirable-comfort Railway service was
+// OOM-killed shortly after this worker's first real run (29 Aug 2026,
+// see platform/docs/HANDOFF.md) once base64-encoded images for every crop
+// were held in memory simultaneously before submission. Chunking bounds
+// peak memory to one chunk's worth of images at a time regardless of how
+// many anchors a packet has. assess-poll.ts's "mark this student assessed"
+// check was updated to match -- it can no longer assume one batch means
+// one student, so it waits for every chunk's crops to clear
+// pending_assessment_batch_id, not just the first chunk that finishes.
+
+const CHUNK_SIZE = 10;
 
 interface CropRow {
   id: string;
@@ -54,7 +67,7 @@ interface CropRow {
 }
 
 export type AssessSubmitResult =
-  | { outcome: "submitted"; anthropicBatchId: string; requestCount: number }
+  | { outcome: "submitted"; batchCount: number; requestCount: number }
   | { outcome: "nothing-to-assess" }
   | { outcome: "failed"; message: string };
 
@@ -98,9 +111,12 @@ export async function submitAssessmentBatch(
     }
   };
 
-  const requests: Anthropic.Messages.Batches.BatchCreateParams.Request[] = [];
-  const includedCropIds: string[] = [];
-
+  // First pass: decide which crops actually need an Anthropic call, writing
+  // feedback directly (no API call) for anything skippable. Deliberately
+  // does NOT touch crop images yet -- that happens per-chunk below, so at
+  // most CHUNK_SIZE images are ever held in memory at once instead of every
+  // crop in the packet.
+  const pending: { crop: CropRow; ctx: AnchorContext }[] = [];
   for (const crop of crops) {
     if (crop.pending_assessment_batch_id) continue; // already in flight in another batch
 
@@ -141,78 +157,103 @@ export async function submitAssessmentBatch(
     const existing = feedbackByCrop.get(crop.id);
     if (existing?.ai_attempted && !existing.ai_validation_error) continue; // already assessed cleanly
 
-    let imageBase64: string;
-    try {
-      const { data: file, error: dlErr } = await supabase.storage.from(NA_SCAN_BUCKET).download(crop.storage_path);
-      if (dlErr || !file) throw new Error(dlErr?.message ?? "crop image not found in storage");
-      imageBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-    } catch (e) {
-      // One unreadable crop shouldn't abort the whole student's batch --
-      // record it the same way a synchronous failure would and move on.
-      await upsertFeedback(crop.id, {
-        ai_attempted: true,
-        ai_marks_available: ctx.marksAvailable,
-        ai_validation_error: `Could not read crop image: ${e instanceof Error ? e.message : String(e)}`,
+    pending.push({ crop, ctx });
+  }
+
+  if (pending.length === 0) return { outcome: "nothing-to-assess" };
+
+  // Second pass: submit CHUNK_SIZE crops at a time, each chunk its own
+  // Anthropic Batch and its own na_assessment_batches row -- see this
+  // file's header comment for why (the 29 Aug 2026 OOM incident).
+  let totalSubmitted = 0;
+  let batchesCreated = 0;
+
+  for (let start = 0; start < pending.length; start += CHUNK_SIZE) {
+    const chunk = pending.slice(start, start + CHUNK_SIZE);
+    const requests: Anthropic.Messages.Batches.BatchCreateParams.Request[] = [];
+    const includedCropIds: string[] = [];
+
+    for (const { crop, ctx } of chunk) {
+      let imageBase64: string;
+      try {
+        const { data: file, error: dlErr } = await supabase.storage.from(NA_SCAN_BUCKET).download(crop.storage_path);
+        if (dlErr || !file) throw new Error(dlErr?.message ?? "crop image not found in storage");
+        imageBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+      } catch (e) {
+        // One unreadable crop shouldn't abort the whole chunk -- record it
+        // the same way a synchronous failure would and move on.
+        await upsertFeedback(crop.id, {
+          ai_attempted: true,
+          ai_marks_available: ctx.marksAvailable,
+          ai_validation_error: `Could not read crop image: ${e instanceof Error ? e.message : String(e)}`,
+        });
+        continue;
+      }
+
+      requests.push({
+        custom_id: crop.id, // na_response_crops.id doubles as the Batch API mapping key -- no separate table needed
+        params: {
+          model: ASSESSMENT_MODEL,
+          max_tokens: 2048,
+          system: ASSESSMENT_SYSTEM_PROMPT,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "image", source: { type: "base64", media_type: "image/png", data: imageBase64 } },
+                // No cache_control here, unlike the synchronous assess route:
+                // the 5-minute ephemeral prompt-cache TTL isn't reliably hit
+                // across requests Anthropic may schedule non-adjacently
+                // within a Batch, so a cache breakpoint would mostly just add
+                // cache-write overhead for reads that never land. The 50%
+                // Batch discount applies to every token regardless and should
+                // still net out cheaper than synchronous+cache for this shape
+                // of workload.
+                { type: "text", text: buildRubricBlock(ctx) },
+                { type: "text", text: buildAssessmentUserPrompt() },
+              ],
+            },
+          ],
+        },
       });
-      continue;
+      includedCropIds.push(crop.id);
     }
 
-    requests.push({
-      custom_id: crop.id, // na_response_crops.id doubles as the Batch API mapping key -- no separate table needed
-      params: {
-        model: ASSESSMENT_MODEL,
-        max_tokens: 2048,
-        system: ASSESSMENT_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "image", source: { type: "base64", media_type: "image/png", data: imageBase64 } },
-              // No cache_control here, unlike the synchronous assess route:
-              // the 5-minute ephemeral prompt-cache TTL isn't reliably hit
-              // across requests Anthropic may schedule non-adjacently
-              // within a Batch, so a cache breakpoint would mostly just add
-              // cache-write overhead for reads that never land. The 50%
-              // Batch discount applies to every token regardless and should
-              // still net out cheaper than synchronous+cache for this shape
-              // of workload.
-              { type: "text", text: buildRubricBlock(ctx) },
-              { type: "text", text: buildAssessmentUserPrompt() },
-            ],
-          },
-        ],
-      },
-    });
-    includedCropIds.push(crop.id);
+    if (requests.length === 0) continue; // every image in this chunk failed to read
+
+    let batch: Anthropic.Messages.Batches.MessageBatch;
+    try {
+      batch = await anthropic.messages.batches.create({ requests });
+    } catch (e) {
+      return fail(
+        `Could not submit assessment batch (crops ${start + 1}-${start + chunk.length} of ${pending.length}): ${e instanceof Error ? e.message : String(e)}`
+      );
+    }
+
+    const { data: batchRow, error: insertErr } = await supabase
+      .from("na_assessment_batches")
+      .insert({
+        anthropic_batch_id: batch.id,
+        packet_scan_id: packetScanId,
+        status: "submitted",
+        request_count: requests.length,
+      })
+      .select("id")
+      .single();
+    if (insertErr || !batchRow) return fail(`Could not record assessment batch: ${insertErr?.message ?? "unknown error"}`);
+
+    await supabase.from("na_response_crops").update({ pending_assessment_batch_id: batchRow.id }).in("id", includedCropIds);
+
+    totalSubmitted += requests.length;
+    batchesCreated++;
   }
 
-  if (requests.length === 0) return { outcome: "nothing-to-assess" };
-
-  let batch: Anthropic.Messages.Batches.MessageBatch;
-  try {
-    batch = await anthropic.messages.batches.create({ requests });
-  } catch (e) {
-    return fail(`Could not submit assessment batch: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  const { data: batchRow, error: insertErr } = await supabase
-    .from("na_assessment_batches")
-    .insert({
-      anthropic_batch_id: batch.id,
-      packet_scan_id: packetScanId,
-      status: "submitted",
-      request_count: requests.length,
-    })
-    .select("id")
-    .single();
-  if (insertErr || !batchRow) return fail(`Could not record assessment batch: ${insertErr?.message ?? "unknown error"}`);
-
-  await supabase.from("na_response_crops").update({ pending_assessment_batch_id: batchRow.id }).in("id", includedCropIds);
+  if (totalSubmitted === 0) return { outcome: "nothing-to-assess" }; // every crop's image failed to read
 
   const { data: scan } = await supabase.from("na_packet_scans").select("batch_id").eq("id", packetScanId).maybeSingle();
   if (scan?.batch_id) {
     await supabase.from("na_scan_batches").update({ status: "assessing" }).eq("id", scan.batch_id);
   }
 
-  return { outcome: "submitted", anthropicBatchId: batch.id, requestCount: requests.length };
+  return { outcome: "submitted", batchCount: batchesCreated, requestCount: totalSubmitted };
 }

@@ -60,13 +60,27 @@ export async function pollAssessmentBatches(supabase: SupabaseClient, anthropic:
         .eq("id", row.id);
       summary.resultsWritten++;
 
-      const { data: scan } = await supabase
-        .from("na_packet_scans")
-        .select("batch_id")
-        .eq("id", row.packet_scan_id)
-        .maybeSingle();
-      if (scan?.batch_id) {
-        await supabase.from("na_scan_batches").update({ status: "assessed" }).eq("id", scan.batch_id);
+      // A student's crops can now be split across several chunked Batches
+      // (see assess-submit.ts's CHUNK_SIZE) -- only mark the student
+      // 'assessed' once every chunk has cleared, not just this one. A crop
+      // still has pending_assessment_batch_id set for as long as ANY of
+      // its chunk's results haven't been written yet, regardless of which
+      // batch row that check runs against.
+      const { count: stillPending } = await supabase
+        .from("na_response_crops")
+        .select("id", { count: "exact", head: true })
+        .eq("packet_scan_id", row.packet_scan_id)
+        .not("pending_assessment_batch_id", "is", null);
+
+      if (!stillPending) {
+        const { data: scan } = await supabase
+          .from("na_packet_scans")
+          .select("batch_id")
+          .eq("id", row.packet_scan_id)
+          .maybeSingle();
+        if (scan?.batch_id) {
+          await supabase.from("na_scan_batches").update({ status: "assessed" }).eq("id", scan.batch_id);
+        }
       }
     } catch (e) {
       summary.failed++;
