@@ -561,6 +561,17 @@ the Vercel deployment too, or stage 5 will 500 there even though it worked from 
 session). None of this is available by default - re-verify reachability each
 session rather than trusting this table, which has already been wrong twice.
 
+**This exact confusion recurred concretely on 29 Aug 2026** while wiring up the
+bulk-upload worker's Railway service (`platform/worker/`, see its README): a
+variable got created there literally named `GRADING_ANTHROPIC_API_KEY` (copying
+this section's variable name rather than renaming it), which silently does
+nothing - `platform/worker/anthropic-client.ts` reads `process.env.ANTHROPIC_API_KEY`
+specifically, so a differently-named variable leaves the worker unable to start
+regardless of whether the value itself is a valid key. Any service that needs
+Anthropic access must have a variable literally named `ANTHROPIC_API_KEY`; treat
+`GRADING_ANTHROPIC_API_KEY` as this repo's own internal label for "a grading-scoped
+key used in one past agent session," never as an env var name to reuse elsewhere.
+
 ---
 
 ## 7. Security status
@@ -609,6 +620,48 @@ deployment - it is not deploy-silent, but it is not production either.
 
 `next build` appends `/.swc` to `platform/.gitignore` on every run; that entry is
 committed so the tree stays clean.
+
+### Incident, 29 Aug 2026: the bulk-upload worker briefly corrupted 10 real batch statuses
+
+Minutes after first deploying `platform/worker/` (the bulk-upload background
+worker, see its README) to Railway, it claimed and set `status = 'failed'` on
+**10 real, pre-existing `na_scan_batches` rows** — including `db4d3a05`, the
+live A.1 batch with 7 real students' actual grades that §5 of this doc
+documents in detail. Root cause: the worker's claim query matched on status
+alone (`split`/`cropped`), and those statuses have been used by the normal
+single-upload flow for months — nothing distinguished "a batch the worker
+created and owns" from "any batch anywhere in the system currently sitting at
+that status." Its `findPacketScanId` also assumed exactly one
+`na_packet_scans` row per batch (true only for its own bulk single-student
+uploads), so against a real multi-student batch it failed with "No packet
+scan found," which the pipeline treated as a hard failure and wrote back as
+the batch's new status.
+
+**No crop, feedback, or grading data was touched or lost** — the failure
+happened before any of that was reached, so this was a `na_scan_batches`
+status/metadata corruption only. Caught within minutes (the worker's own
+per-pass summary logs made it visible), fixed in two steps: the 10 rows were
+reverted to their correct prior status directly via `execute_sql`, and
+migration `20260829192600_na_scan_batches_scope_worker_claims` added
+`na_scan_batches.is_bulk_upload` (default `false`) and rewrote
+`claim_next_na_scan_batch` to require it — closing the hole at the DB level,
+which took effect on the worker's very next poll with no redeploy needed
+(the app-level fix, having `POST /api/na-review/batch/bulk` actually set the
+new column, followed after). The revert had to be applied twice: the
+worker's ~15s poll loop re-claimed and re-failed the same 10 rows once
+before the DB-level guard was in place.
+
+**Lesson for any future worker/background-job code in this repo, given no
+staging environment exists**: a claim/ownership query must positively
+identify "rows this job is allowed to touch," never merely "rows in a state
+this job knows how to advance" — an existing status value is not a safe
+proxy for ownership if anything else in the system can produce that same
+status through a different path. This should have been caught in the
+original plan (it wasn't) and is exactly the class of risk Phase 0 of that
+plan's rollout was meant to catch by testing against manually-inserted rows
+before real use — worth remembering that Phase 0 testing needs to include
+"does the claim query accidentally match real existing data," not just "does
+the happy path work."
 
 ---
 
