@@ -560,6 +560,17 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     return () => clearInterval(id);
   }, [Object.keys(autoRuns).length > 0]);
 
+  // Server-side ledger row for the currently-running (or resumed)
+  // automatic pipeline, keyed by the same panelKey as autoRuns -- a
+  // top-level batchId or a chunk's own batchId. This is what makes the run
+  // survive a closed tab: the browser's own JS loop is still what drives
+  // each crop/assess call (nothing runs server-side without it), but every
+  // step's progress lands in na_batch_runs too, so a teacher who comes back
+  // sees an accurate "still going" / "finished" state even before the
+  // client-side resume (loadBatch + the splitResults effect below) has had
+  // a chance to re-derive it from na_packet_scans.
+  const [batchRunIds, setBatchRunIds] = useState<Record<string, string>>({});
+
   // Stage 5: one AssessPanelState per packetScanId (the whole student's
   // crop list + its loading state) and one AssessCropState per cropId
   // (each individual question's live assessment status). Kept separate
@@ -620,6 +631,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setCropAllRunning({});
     setAssessPanels({});
     setAssessCropState({});
+    setBatchRunIds({});
     setParentBatchId(null);
     setChunks([]);
     setPresplitWarnings([]);
@@ -824,6 +836,38 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     if (urlBatchId && urlBatchId !== batchId && chunks.every((c) => c.batchId !== urlBatchId) && !loadingBatch) {
       void loadBatch(urlBatchId);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Checks the server-side ledger for a run already in progress on this
+  // batch as soon as its id is in the URL -- lets the pipeline below reuse
+  // that same na_batch_runs row (via ensureBatchRun) instead of starting a
+  // fresh one, and surfaces a "resuming" status line right away, before
+  // loadBatch's own splitResults reconstruction (which is what actually
+  // re-derives per-student progress from na_packet_scans) has finished.
+  useEffect(() => {
+    const urlBatchId = searchParams.get("batchId");
+    if (!urlBatchId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/na-review/batch-runs?batchId=${encodeURIComponent(urlBatchId)}`);
+        const data = await res.json();
+        if (!res.ok) return;
+        const active = (data.runs ?? []).find(
+          (r: { status: string }) => r.status === "active" || r.status === "paused"
+        );
+        if (active) {
+          setBatchRunIds((prev) => (prev[urlBatchId] ? prev : { ...prev, [urlBatchId]: active.id }));
+          setStatusLine(
+            `Resuming a batch run already in progress on the server (${active.studentsDone}/${active.totalStudents} students done, stage: ${active.stage})…`
+          );
+        }
+      } catch {
+        // Non-critical -- if this fails, autoCropAndAssessAll's own POST
+        // (idempotent against any existing run) still finds and reuses the
+        // same row once it starts.
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -1415,6 +1459,64 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     }
   };
 
+  /** Creates (or reuses) the server-side na_batch_runs row for this
+   *  automatic pipeline call -- see batchRunIds' own comment for why this
+   *  exists. Idempotent: the route itself finds and returns any existing
+   *  active/paused run for this batchId, so calling this at the top of
+   *  every autoCropAndAssessAll invocation (a fresh start, or a resume
+   *  triggered by reloading an in-progress batch) always lands on the same
+   *  row instead of forking the ledger. Failure here is non-critical --
+   *  returns null and the actual crop/assess work below proceeds exactly
+   *  as it always has, just without server-side progress tracking for this
+   *  one run. */
+  const ensureBatchRun = async (panelKey: string, studentIds: string[]): Promise<string | null> => {
+    const existing = batchRunIds[panelKey];
+    if (existing) return existing;
+    try {
+      const res = await fetch("/api/na-review/batch-runs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ batchId: panelKey, studentIds }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.runId) return null;
+      setBatchRunIds((prev) => ({ ...prev, [panelKey]: data.runId }));
+      return data.runId as string;
+    } catch {
+      return null;
+    }
+  };
+
+  /** Best-effort progress update to na_batch_runs -- swallows its own
+   *  failures so a flaky network blip on the tracking call never
+   *  interrupts the actual pipeline, which is the thing that matters.
+   *  Returns the row's status after the update (null on failure) so the
+   *  caller can notice a Pause/Cancel issued from the Active Batch Runs
+   *  page -- see the loop in autoCropAndAssessAll that checks this. */
+  const patchBatchRun = async (
+    runId: string | null,
+    patch: {
+      stage?: "cropping" | "assessing";
+      studentsDone?: number;
+      studentIdsPending?: string[];
+      status?: "active" | "paused" | "completed" | "failed";
+    }
+  ): Promise<string | null> => {
+    if (!runId) return null;
+    try {
+      const res = await fetch(`/api/na-review/batch-runs/${runId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = await res.json();
+      return res.ok ? (data.updatedRun?.status ?? null) : null;
+    } catch {
+      // Non-critical -- see this function's own comment.
+      return null;
+    }
+  };
+
   /** The "press upload and walk away" driver: runs stage 4 (crop, with its
    *  own retry+paged-chunk fallback) then stage 5 (assess) for every
    *  already-split student in one batch/chunk, entirely automatically.
@@ -1449,6 +1551,14 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       },
     }));
 
+    const runId = await ensureBatchRun(panelKey, targets.map((r) => r.invitedId));
+    // A tab actually driving work always means the run is "active" -- this
+    // is what turns a "paused" (or resumed-after-"stale") row back to live
+    // the moment processing resumes, whether that's this same page
+    // continuing or a teacher clicking Resume from Active Batch Runs.
+    await patchBatchRun(runId, { status: "active" });
+    let stoppedByRemoteAction = false;
+
     try {
       setStatusLine(`Automatic run: cropping ${targets.length} student(s)…`);
       const cropOutcomes = await handleCropAll(panelKey, targets);
@@ -1463,6 +1573,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           scanIds: readyForAssess.map((r) => r.packetScanId as string),
         },
       }));
+      await patchBatchRun(runId, {
+        stage: "assessing",
+        studentsDone: 0,
+        studentIdsPending: readyForAssess.map((r) => r.invitedId),
+      });
 
       for (let i = 0; i < readyForAssess.length; i++) {
         const r = readyForAssess[i];
@@ -1474,20 +1589,48 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         setStatusLine(`Automatic run: assessing ${r.label} (${i + 1}/${readyForAssess.length})…`);
         const crops = await loadAssessPanel(scanId);
         const stillNeeded = crops.filter((c) => !c.alreadyAssessed);
-        if (stillNeeded.length === 0) continue;
-        await handleAssessAll(scanId, stillNeeded);
+        if (stillNeeded.length > 0) await handleAssessAll(scanId, stillNeeded);
+        // Progress checkpoint after every student, not just at the end --
+        // this is what lets a teacher who closed the tab mid-run see how
+        // far it actually got, rather than only "started" vs. "finished".
+        // Its returned status also doubles as the pause/cancel signal from
+        // the Active Batch Runs page: this is the only place a currently-
+        // running tab ever hears about a Pause/Cancel click made from
+        // elsewhere, so check it on every checkpoint, not just at the end.
+        const statusAfterCheckpoint = await patchBatchRun(runId, {
+          studentsDone: i + 1,
+          studentIdsPending: readyForAssess.slice(i + 1).map((sr) => sr.invitedId),
+        });
+        if (statusAfterCheckpoint === "paused" || statusAfterCheckpoint === "failed") {
+          stoppedByRemoteAction = true;
+          setStatusLine(
+            `Automatic run ${statusAfterCheckpoint === "paused" ? "paused" : "cancelled"} from Active Batch Runs after ${i + 1}/${readyForAssess.length} student(s). Reload this batch or use Resume there to continue.`
+          );
+          break;
+        }
       }
 
-      setStatusLine(
-        failedToCrop > 0
-          ? `Automatic run finished: ${readyForAssess.length} student(s) fully assessed. ${failedToCrop} student(s) failed to crop even after retries -- see their panel below and click "Crop this student" to try again.`
-          : `Automatic run finished: all ${readyForAssess.length} student(s) cropped and assessed. See Results by class above for marks.`
-      );
+      if (!stoppedByRemoteAction) {
+        setStatusLine(
+          failedToCrop > 0
+            ? `Automatic run finished: ${readyForAssess.length} student(s) fully assessed. ${failedToCrop} student(s) failed to crop even after retries -- see their panel below and click "Crop this student" to try again.`
+            : `Automatic run finished: all ${readyForAssess.length} student(s) cropped and assessed. See Results by class above for marks.`
+        );
+        await patchBatchRun(runId, { status: "completed" });
+      }
+    } catch (e) {
+      if (!stoppedByRemoteAction) await patchBatchRun(runId, { status: "failed" });
+      throw e;
     } finally {
       // Cleared whether the run finished normally or an unexpected error
       // escaped the try block -- the banner's job is "is this still
       // running", and it must never keep claiming so after it's stopped.
       setAutoRuns((prev) => {
+        const next = { ...prev };
+        delete next[panelKey];
+        return next;
+      });
+      setBatchRunIds((prev) => {
         const next = { ...prev };
         delete next[panelKey];
         return next;
