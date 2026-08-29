@@ -561,6 +561,17 @@ the Vercel deployment too, or stage 5 will 500 there even though it worked from 
 session). None of this is available by default - re-verify reachability each
 session rather than trusting this table, which has already been wrong twice.
 
+**This exact confusion recurred concretely on 29 Aug 2026** while wiring up the
+bulk-upload worker's Railway service (`platform/worker/`, see its README): a
+variable got created there literally named `GRADING_ANTHROPIC_API_KEY` (copying
+this section's variable name rather than renaming it), which silently does
+nothing - `platform/worker/anthropic-client.ts` reads `process.env.ANTHROPIC_API_KEY`
+specifically, so a differently-named variable leaves the worker unable to start
+regardless of whether the value itself is a valid key. Any service that needs
+Anthropic access must have a variable literally named `ANTHROPIC_API_KEY`; treat
+`GRADING_ANTHROPIC_API_KEY` as this repo's own internal label for "a grading-scoped
+key used in one past agent session," never as an env var name to reuse elsewhere.
+
 ---
 
 ## 7. Security status
