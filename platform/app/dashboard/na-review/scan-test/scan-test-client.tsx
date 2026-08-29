@@ -282,6 +282,166 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Learned per-unit timings for the top-of-page pipeline progress bar --
+ *  how long segmentation takes per page, split per student, crop per
+ *  anchor, assess per crop -- seeded with a rough initial guess and then
+ *  refined (via updateRate's EMA) from this browser's own completed runs,
+ *  persisted in localStorage so the estimate gets better the more this
+ *  device is used, not just within one session. Never fetched from a
+ *  server -- purely a client-side "how long has this usually taken"
+ *  memory, so a stale or missing value just means a rougher guess, never
+ *  a broken pipeline. */
+interface StageTimingHistory {
+  segmentMsPerPage: number;
+  segmentBaseMs: number;
+  splitMsPerStudent: number;
+  splitBaseMs: number;
+  cropMsPerAnchor: number;
+  cropBaseMs: number;
+  assessMsPerCrop: number;
+  assessBaseMs: number;
+  /** How many crops/questions a typical student has -- used to project
+   *  total crop/assess work before a batch has actually been split. */
+  anchorsPerStudent: number;
+  /** How many full runs have contributed to these numbers, so early
+   *  observations can swing the estimate a lot and later ones settle it. */
+  runsCompleted: number;
+}
+
+const STAGE_TIMING_STORAGE_KEY = "na-scan-test:pipeline-timing-v1";
+
+const DEFAULT_STAGE_TIMING: StageTimingHistory = {
+  segmentMsPerPage: 800,
+  segmentBaseMs: 2500,
+  splitMsPerStudent: 300,
+  splitBaseMs: 1200,
+  cropMsPerAnchor: 150,
+  cropBaseMs: 800,
+  assessMsPerCrop: 3500,
+  assessBaseMs: 1500,
+  anchorsPerStudent: 35,
+  runsCompleted: 0,
+};
+
+function loadStageTiming(): StageTimingHistory {
+  if (typeof window === "undefined") return DEFAULT_STAGE_TIMING;
+  try {
+    const raw = window.localStorage.getItem(STAGE_TIMING_STORAGE_KEY);
+    if (!raw) return DEFAULT_STAGE_TIMING;
+    return { ...DEFAULT_STAGE_TIMING, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_STAGE_TIMING;
+  }
+}
+
+function saveStageTiming(t: StageTimingHistory) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STAGE_TIMING_STORAGE_KEY, JSON.stringify(t));
+  } catch {
+    /* private browsing / storage full -- the estimate just stays session-only */
+  }
+}
+
+/** Blends one freshly observed rate into a running estimate. Weighted
+ *  heavily toward the new observation while few runs have been seen (so a
+ *  wildly-wrong seed guess corrects fast), then settles toward a slower,
+ *  steadier update once there's real history to protect. */
+function updateRate(prevRate: number, observedRate: number, samples: number): number {
+  if (!Number.isFinite(observedRate) || observedRate <= 0) return prevRate;
+  const alpha = Math.max(0.15, 1 / (samples + 2));
+  return prevRate + alpha * (observedRate - prevRate);
+}
+
+/** Splits a batch's total estimated duration across the four pipeline
+ *  stages (from learned per-unit rates x this batch's own page/student/
+ *  anchor counts) into weights that sum to 1 -- the progress bar fills
+ *  through segment -> split -> crop -> assess proportionally to how long
+ *  each stage is actually expected to take, not by even quarters. */
+function computeStageWeights(timing: StageTimingHistory, pages: number, students: number) {
+  const anchors = Math.max(1, students) * timing.anchorsPerStudent;
+  const segMs = timing.segmentMsPerPage * Math.max(1, pages) + timing.segmentBaseMs;
+  const splitMs = timing.splitMsPerStudent * Math.max(1, students) + timing.splitBaseMs;
+  const cropMs = timing.cropMsPerAnchor * anchors + timing.cropBaseMs;
+  const assessMs = timing.assessMsPerCrop * anchors + timing.assessBaseMs;
+  const totalMs = segMs + splitMs + cropMs + assessMs;
+  return {
+    segW: segMs / totalMs,
+    splitW: splitMs / totalMs,
+    cropW: cropMs / totalMs,
+    assessW: assessMs / totalMs,
+    segMs,
+    splitMs,
+    cropMs,
+    assessMs,
+  };
+}
+
+/** Same idea as the main-batch progress calculation below, but for one
+ *  chunk of a chunked (oversized-scan) upload -- chunks don't track a
+ *  batchStatus of their own beyond "split" (see ChunkState), so a
+ *  finished chunk with no active auto-run is approximated as fully done
+ *  rather than precisely re-deriving it from per-crop state that may
+ *  never have been loaded this session. */
+function computeChunkPipelinePercent(
+  chunk: ChunkState,
+  timing: StageTimingHistory,
+  autoRuns: Record<string, AutoRunInfo>,
+  cropState: Record<string, CropState>,
+  assessPanels: Record<string, AssessPanelState>,
+  assessCropState: Record<string, AssessCropState>
+): { percent: number; label: string } {
+  const pages = Math.max(1, chunk.endPage - chunk.startPage + 1);
+  const students = Math.max(1, chunk.rows.length || 1);
+  const w = computeStageWeights(timing, pages, students);
+  const tag = `Chunk ${chunk.chunkIndex}`;
+
+  if (chunk.status === "pending") return { percent: 0, label: `${tag}: queued` };
+  if (chunk.status === "failed") return { percent: 0, label: `${tag}: failed` };
+  if (chunk.status === "segmenting") return { percent: w.segW * 40, label: `${tag}: segmenting…` };
+  if (chunk.status === "segmented") return { percent: w.segW * 100, label: `${tag}: awaiting review` };
+  if (chunk.status === "split-pending") return { percent: w.segW * 100, label: `${tag}: splitting…` };
+
+  const results = (chunk.rawSplitResponse as { results?: SplitResult[] } | null)?.results ?? [];
+  const targets = results.filter((r) => r.status === "split" && r.packetScanId);
+  if (targets.length === 0) return { percent: (w.segW + w.splitW) * 100, label: `${tag}: split` };
+
+  const autoRun = autoRuns[chunk.batchId];
+  if (!autoRun) return { percent: 100, label: `${tag}: done` };
+
+  if (autoRun.stage === "cropping") {
+    const done = targets.filter((r) => {
+      const s = cropState[r.packetScanId as string]?.status;
+      return s === "done" || s === "failed";
+    }).length;
+    const inFlight = targets.find((r) => cropState[r.packetScanId as string]?.status === "cropping");
+    let frac = done / targets.length;
+    if (inFlight) {
+      const p = cropState[inFlight.packetScanId as string]?.progress;
+      frac += (p && p.total > 0 ? p.done / p.total : 0.1) / targets.length;
+    }
+    return { percent: (w.segW + w.splitW + frac * w.cropW) * 100, label: `${tag}: cropping ${done}/${targets.length}` };
+  }
+
+  const idx = autoRun.studentIndex;
+  const total = autoRun.totalStudents;
+  let frac = total > 0 ? idx / total : 0;
+  if (autoRun.currentScanId) {
+    const crops = assessPanels[autoRun.currentScanId]?.crops ?? [];
+    if (crops.length > 0) {
+      const done = crops.filter((c) => {
+        const s = assessCropState[c.cropId]?.status;
+        return s === "assessed" || s === "skipped";
+      }).length;
+      frac += done / crops.length / Math.max(1, total);
+    }
+  }
+  return {
+    percent: (w.segW + w.splitW + w.cropW + frac * w.assessW) * 100,
+    label: `${tag}: assessing ${idx + 1}/${total}`,
+  };
+}
+
 /** fetch + res.json() with bounded retries, used by every stage-4/5 call in
  *  the automated pipeline below. Retries on a network error, a non-2xx
  *  response, AND a non-JSON body -- that last case is exactly what a
@@ -558,6 +718,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
 
   // Non-chunked path: a single batch, same shape as before.
   const [batchId, setBatchId] = useState<string | null>(null);
+  // Mirrors na_scan_batches.status for the main (non-chunked) batch, kept
+  // in sync as this page's own actions drive it forward (segmenting ->
+  // segmented -> split -> cropping -> cropped -> assessing -> assessed) or
+  // set directly from the server on reload -- the top-of-page progress bar
+  // uses this as its authoritative "what stage are we resting at" signal.
+  const [batchStatus, setBatchStatus] = useState<string | null>(null);
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [unassignedPages, setUnassignedPages] = useState<number[]>([]);
@@ -577,16 +743,28 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [cropAllRunning, setCropAllRunning] = useState<Record<string, boolean>>({});
 
   // Live progress for the automated pipeline -- see AutoRunInfo's comment.
-  // A live-ticking clock (updated every second while anything is running,
-  // otherwise left alone) drives the elapsed-time display without needing
-  // every autoRuns update to itself carry a fresh timestamp.
   const [autoRuns, setAutoRuns] = useState<Record<string, AutoRunInfo>>({});
-  const [autoRunClockTick, setAutoRunClockTick] = useState(0);
-  useEffect(() => {
-    if (Object.keys(autoRuns).length === 0) return;
-    const id = setInterval(() => setAutoRunClockTick((t) => t + 1), 1000);
-    return () => clearInterval(id);
-  }, [Object.keys(autoRuns).length > 0]);
+
+  // Learned pipeline timings (see StageTimingHistory) driving the
+  // top-of-page progress bar's percentage estimate, loaded once from
+  // localStorage and refined as real stages complete below.
+  const [stageTiming, setStageTiming] = useState<StageTimingHistory>(() => loadStageTiming());
+  // Wall-clock timestamps for whichever stage the main (non-chunked)
+  // batch is currently timing itself against, keyed "main" so the same
+  // shape could in principle track more than one concurrent unit. Refs,
+  // not state -- they're read from Date.now() math at render time, never
+  // rendered themselves, so they don't need to trigger a re-render.
+  const segmentStartRef = useRef<Record<string, number>>({});
+  const splitStartRef = useRef<Record<string, number>>({});
+  // Anchor counts as soon as a crop call learns them, written directly
+  // (not via setState) so autoCropAndAssessAll can read a just-finished
+  // student's true anchor count after awaiting handleCropAll without
+  // risking the stale-closure read its own comment warns about --
+  // ordinary state read back out of that closure would still show
+  // whatever cropState looked like when the effect fired, not what it is
+  // now; a ref sidesteps that because it's mutated synchronously and read
+  // fresh, no re-render involved.
+  const cropAnchorTotalsRef = useRef<Record<string, number>>({});
 
   // Stage 5: one AssessPanelState per packetScanId (the whole student's
   // crop list + its loading state) and one AssessCropState per cropId
@@ -603,6 +781,24 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [parentBatchId, setParentBatchId] = useState<string | null>(null);
   const [chunks, setChunks] = useState<ChunkState[]>([]);
   const [presplitWarnings, setPresplitWarnings] = useState<string[]>([]);
+
+  // A live-ticking clock, running whenever any phase of the pipeline is
+  // actively in flight (uploading, splitting, a chunk mid-segment/split,
+  // or an auto crop/assess run) -- drives both the elapsed-time display in
+  // the per-run banner and the time-based fraction the top progress bar
+  // uses for phases (segment, split) that don't have a countable unit of
+  // "N of M done" to fall back on.
+  const [pipelineClockTick, setPipelineClockTick] = useState(0);
+  const pipelineClockActive =
+    uploading ||
+    splitting ||
+    chunks.some((c) => c.status === "segmenting" || c.status === "split-pending") ||
+    Object.keys(autoRuns).length > 0;
+  useEffect(() => {
+    if (!pipelineClockActive) return;
+    const id = setInterval(() => setPipelineClockTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, [pipelineClockActive]);
 
   // Recent batches for this packet version, so a teacher can pick their way
   // back into an in-progress batch instead of needing to know its UUID.
@@ -638,6 +834,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
 
   const reset = () => {
     setBatchId(null);
+    setBatchStatus(null);
     setPageCount(null);
     setRows([]);
     setUnassignedPages([]);
@@ -817,6 +1014,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         }
 
         setBatchId(b.id);
+        setBatchStatus(b.status);
         setPageCount(b.page_count);
         setUnassignedPages(b.unassigned_pages ?? []);
 
@@ -950,6 +1148,8 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setError(null);
     reset();
     syncUrl(null);
+    segmentStartRef.current["main"] = Date.now();
+    setBatchStatus("segmenting");
 
     try {
       setUploadProgress("Uploading scan to storage…");
@@ -1035,9 +1235,24 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         const segments: ProposedSegment[] = data.segments ?? [];
         const newRows = segmentsToRows(segments);
         setBatchId(data.batchId);
+        setBatchStatus("segmented");
         setPageCount(data.pageCount);
         setUnassignedPages(data.unassignedPages ?? []);
         setRows(newRows);
+
+        // Learn this run's actual segment-stage rate (upload + cover-page
+        // reading, per page) so the progress bar's future estimates track
+        // this device's real experience instead of only the seed guess.
+        const segElapsedMs = Date.now() - (segmentStartRef.current["main"] ?? Date.now());
+        if (typeof data.pageCount === "number" && data.pageCount > 0) {
+          setStageTiming((prev) => {
+            const observedRate = (segElapsedMs - prev.segmentBaseMs) / data.pageCount;
+            const next = { ...prev, segmentMsPerPage: updateRate(prev.segmentMsPerPage, observedRate, prev.runsCompleted) };
+            saveStageTiming(next);
+            return next;
+          });
+        }
+
         const poolNote =
           data.rosterIsTrack && version.rosterSourceCourseNames.length
             ? ` (pooled from ${version.rosterSourceCourseNames.join(", ")})`
@@ -1058,6 +1273,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload or segmentation failed.");
+      setBatchStatus("failed");
     } finally {
       setUploading(false);
       setUploadProgress(null);
@@ -1181,6 +1397,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setSplitting(true);
     setError(null);
     setStatusLine("Splitting the batch PDF and creating na_packet_scans rows…");
+    splitStartRef.current["main"] = Date.now();
     try {
       const res = await fetch(`/api/na-review/batch/${targetBatchId}/split`, {
         method: "POST",
@@ -1194,6 +1411,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       if (!res.ok) throw new Error(data.error ?? "Split failed.");
       const results: SplitResult[] = data.results ?? [];
       setSplitResults(results);
+      setBatchStatus("split");
       // Seed crop state for every successfully split student so the stage
       // 4 panel can render "Crop" buttons immediately.
       setCropState(
@@ -1206,9 +1424,22 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       setStatusLine(
         `Stage 2 done. ${data.splitCount} split, ${data.failedCount} failed. Cropping and assessing automatically below.`
       );
+
+      // Learn this run's actual split-stage rate (per student).
+      const splitElapsedMs = Date.now() - (splitStartRef.current["main"] ?? Date.now());
+      if (targetRows.length > 0) {
+        setStageTiming((prev) => {
+          const observedRate = (splitElapsedMs - prev.splitBaseMs) / targetRows.length;
+          const next = { ...prev, splitMsPerStudent: updateRate(prev.splitMsPerStudent, observedRate, prev.runsCompleted) };
+          saveStageTiming(next);
+          return next;
+        });
+      }
+
       return results;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Split failed.");
+      setBatchStatus("failed");
       return null;
     } finally {
       setSplitting(false);
@@ -1255,6 +1486,9 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       try {
         const full = await fetchJsonWithRetry(`/api/na-review/packet-scans/${packetScanId}/crop`, { method: "POST" });
         if (full.ok) {
+          if (typeof full.data?.totalAnchors === "number") {
+            cropAnchorTotalsRef.current[packetScanId] = full.data.totalAnchors;
+          }
           setCropState((prev) => ({
             ...prev,
             [packetScanId]: { status: "done", rawResponse: full.data, error: null, progress: null },
@@ -1285,6 +1519,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         lastData = res.data;
         const total = res.data?.totalAnchors ?? 0;
         const done = res.data?.totalSaved ?? 0;
+        if (total > 0) cropAnchorTotalsRef.current[packetScanId] = total;
         setCropState((prev) => ({
           ...prev,
           [packetScanId]: { status: "cropping", rawResponse: res.data, error: null, progress: { done, total } },
@@ -1554,11 +1789,43 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
       },
     }));
 
+    const isMainBatch = panelKey === batchId;
+    if (isMainBatch) setBatchStatus("cropping");
+
     try {
       setStatusLine(`Automatic run: cropping ${targets.length} student(s)…`);
+      const cropPhaseStartedAt = Date.now();
       const cropOutcomes = await handleCropAll(panelKey, targets);
       const readyForAssess = targets.filter((r) => cropOutcomes[r.packetScanId as string] === "done");
       const failedToCrop = targets.length - readyForAssess.length;
+
+      // Learn this run's actual crop-stage rate (per anchor) and how many
+      // anchors a typical student actually has -- both read from
+      // cropAnchorTotalsRef, written synchronously by handleCrop itself, so
+      // this sees each student's true count even though cropState (regular
+      // React state) would still show a stale pre-run snapshot here.
+      const cropElapsedMs = Date.now() - cropPhaseStartedAt;
+      const totalAnchorsThisRun = readyForAssess.reduce(
+        (sum, r) => sum + (cropAnchorTotalsRef.current[r.packetScanId as string] ?? 0),
+        0
+      );
+      if (totalAnchorsThisRun > 0) {
+        setStageTiming((prev) => {
+          const observedRate = (cropElapsedMs - prev.cropBaseMs) / totalAnchorsThisRun;
+          const next = {
+            ...prev,
+            cropMsPerAnchor: updateRate(prev.cropMsPerAnchor, observedRate, prev.runsCompleted),
+            anchorsPerStudent: updateRate(
+              prev.anchorsPerStudent,
+              totalAnchorsThisRun / readyForAssess.length,
+              prev.runsCompleted
+            ),
+          };
+          saveStageTiming(next);
+          return next;
+        });
+      }
+      if (isMainBatch) setBatchStatus("cropped");
 
       setAutoRuns((prev) => ({
         ...prev,
@@ -1569,6 +1836,9 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         },
       }));
 
+      if (isMainBatch && readyForAssess.length > 0) setBatchStatus("assessing");
+      const assessPhaseStartedAt = Date.now();
+      let assessedCropCountThisRun = 0;
       for (let i = 0; i < readyForAssess.length; i++) {
         const r = readyForAssess[i];
         const scanId = r.packetScanId as string;
@@ -1580,8 +1850,27 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         const crops = await loadAssessPanel(scanId);
         const stillNeeded = crops.filter((c) => !c.alreadyAssessed);
         if (stillNeeded.length === 0) continue;
+        assessedCropCountThisRun += stillNeeded.length;
         await handleAssessAll(scanId, stillNeeded);
       }
+
+      // Learn this run's actual assess-stage rate (per crop) -- crops.length
+      // and stillNeeded.length above are ordinary awaited return values, not
+      // reads of stale closed-over state, so no ref juggling needed here.
+      const assessElapsedMs = Date.now() - assessPhaseStartedAt;
+      if (assessedCropCountThisRun > 0) {
+        setStageTiming((prev) => {
+          const observedRate = (assessElapsedMs - prev.assessBaseMs) / assessedCropCountThisRun;
+          const next = {
+            ...prev,
+            assessMsPerCrop: updateRate(prev.assessMsPerCrop, observedRate, prev.runsCompleted),
+            runsCompleted: prev.runsCompleted + 1,
+          };
+          saveStageTiming(next);
+          return next;
+        });
+      }
+      if (isMainBatch) setBatchStatus(failedToCrop > 0 && readyForAssess.length === 0 ? "failed" : "assessed");
 
       setStatusLine(
         failedToCrop > 0
@@ -2137,7 +2426,119 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const anyChunked = chunks.length > 0;
   const anyBatchLoaded = !!batchId || anyChunked;
   const runningAutoRuns = Object.entries(autoRuns);
-  void autoRunClockTick; // referenced so the ticking interval's re-render actually recomputes elapsed time below
+  void pipelineClockTick; // referenced so the ticking interval's re-render actually recomputes elapsed/estimated time below
+
+  /** Overall pipeline progress for the sticky bar at the very top of the
+   *  page -- one number spanning ALL four stages (segment -> split -> crop
+   *  -> assess), not just whichever one happens to be running right now.
+   *  Recomputed every render (including every pipelineClockTick tick), so
+   *  it's always as fresh as the state it reads. Returns null when there's
+   *  nothing to report (no version picked, nothing uploaded or loaded).
+   *
+   *  The percentage blends two kinds of evidence: for segment/split, which
+   *  are single requests with no countable sub-progress, it's a time-based
+   *  fraction (elapsed / this device's learned typical duration for a
+   *  batch this size). For crop/assess, which run one call per student (or
+   *  per question), it's the real "N of M done" fraction -- much more
+   *  accurate once available. Either way, each stage only ever contributes
+   *  its own learned share (see computeStageWeights) of the total 100%. */
+  let pipelineStatus: { percent: number; statusText: string; failed: boolean } | null = null;
+  if (version && (uploading || anyBatchLoaded)) {
+    if (anyChunked) {
+      const chunkResults = chunks.map((c) =>
+        computeChunkPipelinePercent(c, stageTiming, autoRuns, cropState, assessPanels, assessCropState)
+      );
+      const avgPercent = chunkResults.reduce((sum, c) => sum + c.percent, 0) / Math.max(1, chunkResults.length);
+      const doneCount = chunkResults.filter((c) => c.percent >= 99.5).length;
+      const active = chunkResults.find((c) => c.percent < 99.5) ?? chunkResults[chunkResults.length - 1];
+      pipelineStatus = {
+        percent: avgPercent,
+        statusText: `${doneCount}/${chunks.length} chunk(s) fully processed.${active ? ` ${active.label}` : ""}`,
+        failed: chunks.some((c) => c.status === "failed"),
+      };
+    } else {
+      const pages = pageCount ?? (rows.length ? rows.length * 3 : 20);
+      const students = Math.max(1, rows.length || splitResults.length || 1);
+      const w = computeStageWeights(stageTiming, pages, students);
+      const targets = splitResults.filter((r) => r.status === "split" && r.packetScanId);
+      const autoRun = batchId ? autoRuns[batchId] : undefined;
+
+      if (uploading) {
+        const elapsed = Date.now() - (segmentStartRef.current["main"] ?? Date.now());
+        const frac = w.segMs > 0 ? Math.min(0.95, elapsed / w.segMs) : 0;
+        pipelineStatus = { percent: frac * w.segW * 100, statusText: uploadProgress ?? "Uploading & segmenting…", failed: false };
+      } else if (batchId && splitting) {
+        const elapsed = Date.now() - (splitStartRef.current["main"] ?? Date.now());
+        const frac = w.splitMs > 0 ? Math.min(0.95, elapsed / w.splitMs) : 0;
+        pipelineStatus = {
+          percent: (w.segW + frac * w.splitW) * 100,
+          statusText: "Splitting the batch PDF and creating per-student scans…",
+          failed: false,
+        };
+      } else if (batchId && targets.length === 0) {
+        pipelineStatus = {
+          percent: w.segW * 100,
+          statusText:
+            batchStatus === "failed"
+              ? "Segmentation failed — see the error below."
+              : "Segmented — review the matches below, then Confirm & split.",
+          failed: batchStatus === "failed",
+        };
+      } else if (batchId && autoRun?.stage === "cropping") {
+        const done = targets.filter((r) => {
+          const s = cropState[r.packetScanId as string]?.status;
+          return s === "done" || s === "failed";
+        }).length;
+        const inFlight = targets.find((r) => cropState[r.packetScanId as string]?.status === "cropping");
+        let frac = targets.length > 0 ? done / targets.length : 0;
+        if (inFlight) {
+          const p = cropState[inFlight.packetScanId as string]?.progress;
+          frac += (p && p.total > 0 ? p.done / p.total : 0.1) / targets.length;
+        }
+        pipelineStatus = {
+          percent: (w.segW + w.splitW + frac * w.cropW) * 100,
+          statusText: `Cropping ${done}/${targets.length} student(s)…`,
+          failed: false,
+        };
+      } else if (batchId && autoRun?.stage === "assessing") {
+        const idx = autoRun.studentIndex;
+        const total = autoRun.totalStudents;
+        let frac = total > 0 ? idx / total : 0;
+        if (autoRun.currentScanId) {
+          const crops = assessPanels[autoRun.currentScanId]?.crops ?? [];
+          if (crops.length > 0) {
+            const done = crops.filter((c) => {
+              const s = assessCropState[c.cropId]?.status;
+              return s === "assessed" || s === "skipped";
+            }).length;
+            frac += done / crops.length / Math.max(1, total);
+          }
+        }
+        pipelineStatus = {
+          percent: (w.segW + w.splitW + w.cropW + frac * w.assessW) * 100,
+          statusText: `Assessing ${idx + 1}/${total} — ${autoRun.studentLabel}…`,
+          failed: false,
+        };
+      } else if (batchId && batchStatus === "assessed") {
+        pipelineStatus = { percent: 100, statusText: "Done — all students cropped and assessed.", failed: false };
+      } else if (batchId && batchStatus === "failed") {
+        pipelineStatus = { percent: w.segW * 100, statusText: "Failed — see the error below.", failed: true };
+      } else if (batchId) {
+        // Split (and possibly cropped/assessed) with no auto-run currently
+        // active -- either this session's run already finished, or this is
+        // a batch reloaded from a previous session without per-crop detail
+        // loaded yet. Approximated as fully done past split; exact assess
+        // completion for a silently-reloaded batch isn't knowable without
+        // opening each student's panel, so this errs toward "done" rather
+        // than showing a falsely-stalled bar.
+        pipelineStatus = {
+          percent: (w.segW + w.splitW + w.cropW + w.assessW) * 100,
+          statusText: "Split, cropped and assessed — see Results by class above for marks.",
+          failed: false,
+        };
+      }
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -2149,6 +2550,42 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         onChange={handleFilePicked}
         className="hidden"
       />
+
+      {/* Overall pipeline progress -- sticky at the very top of the screen so
+          it's visible the whole time this page is in use, not just while
+          scrolled to the top. One bar spans the entire upload -> segment ->
+          split -> crop -> assess pipeline, with a best-estimate percentage
+          computed from this device's own learned per-stage timings (see
+          pipelineStatus above and StageTimingHistory) -- rougher on a
+          browser's first-ever run here, refining automatically afterward. */}
+      {pipelineStatus && (
+        <div
+          className={`sticky top-0 z-30 rounded-xl border px-5 py-3 shadow-lg shadow-black/30 backdrop-blur ${
+            pipelineStatus.failed ? "border-da-danger/60 bg-da-danger/10" : "border-da-accent/60 bg-da-surface/95"
+          }`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+            <span className="text-sm font-bold text-da-text">{pipelineStatus.statusText}</span>
+            <span className={`font-mono text-sm font-bold ${pipelineStatus.failed ? "text-da-danger" : "text-da-accent"}`}>
+              {Math.round(Math.max(0, Math.min(100, pipelineStatus.percent)))}%
+            </span>
+          </div>
+          <div className="mt-2 h-3 w-full overflow-hidden rounded-full bg-da-border/40">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${
+                pipelineStatus.failed ? "bg-da-danger" : "bg-da-accent"
+              }`}
+              style={{ width: `${Math.max(0, Math.min(100, pipelineStatus.percent))}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[11px] text-da-muted">
+            Best estimate across upload, segment, split, crop and assess --{" "}
+            {stageTiming.runsCompleted > 0
+              ? `refined from ${stageTiming.runsCompleted} completed run(s) on this device.`
+              : "based on typical timings; refines automatically once a run finishes here."}
+          </p>
+        </div>
+      )}
 
       {/* "Is this still running?" banner -- sticky so it stays visible while
           scrolling through results, since a full batch (dozens of crops per
