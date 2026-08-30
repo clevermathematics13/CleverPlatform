@@ -833,14 +833,34 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                         )}
                                         <div className="mt-1 space-y-2">
                                           {evidenceImageShown.has(r.id) && r.evidence_image_url && (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                              src={r.evidence_image_url}
-                                              alt="Cropped scan region the model read this part's work from"
-                                              title="Click to enlarge"
-                                              onClick={() => setLightboxUrl(r.evidence_image_url)}
-                                              className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
-                                            />
+                                            <div className="relative inline-block">
+                                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                                              <img
+                                                src={r.evidence_image_url}
+                                                alt="Cropped scan region the model read this part's work from"
+                                                title="Click to enlarge"
+                                                onClick={() => setLightboxUrl(r.evidence_image_url)}
+                                                className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
+                                              />
+                                              {editingEvidenceId !== r.id && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => startEditEvidence(r)}
+                                                  title="Fix transcription"
+                                                  aria-label="Fix transcription"
+                                                  className="absolute right-1.5 top-1.5 rounded-full border border-gray-300 bg-white/90 p-1.5 text-gray-600 shadow hover:bg-white hover:text-blue-600"
+                                                >
+                                                  <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    viewBox="0 0 20 20"
+                                                    fill="currentColor"
+                                                    className="h-3.5 w-3.5"
+                                                  >
+                                                    <path d="M13.586 3.586a2 2 0 1 1 2.828 2.828l-.793.793-2.828-2.828.793-.793ZM11.379 5.793 3 14.172V17h2.828l8.38-8.379-2.83-2.828Z" />
+                                                  </svg>
+                                                </button>
+                                              )}
+                                            </div>
                                           )}
                                           {editingEvidenceId === r.id ? (
                                             <div className="space-y-2">
@@ -879,13 +899,18 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                               ) : (
                                                 <p className="text-xs text-gray-400">No transcription on file.</p>
                                               )}
-                                              <button
-                                                type="button"
-                                                onClick={() => startEditEvidence(r)}
-                                                className="mt-2 text-xs text-blue-600 hover:underline"
-                                              >
-                                                Fix transcription
-                                              </button>
+                                              {/* The pencil lives on the image itself -- if there's no image, or
+                                                  it's currently minimized, fall back to a text link so the
+                                                  transcription is always editable from somewhere. */}
+                                              {(!r.evidence_image_url || !evidenceImageShown.has(r.id)) && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => startEditEvidence(r)}
+                                                  className="mt-2 text-xs text-blue-600 hover:underline"
+                                                >
+                                                  Fix transcription
+                                                </button>
+                                              )}
                                             </div>
                                           )}
                                         </div>
