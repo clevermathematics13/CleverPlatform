@@ -238,6 +238,21 @@ const BATCH_STATUS_STYLE: Record<string, string> = {
   failed: "bg-red-100 text-red-800 border-red-300",
 };
 
+/** Worker-owned statuses that still have further automatic progress ahead of
+ *  them -- used to decide whether the recent-batches picker needs to keep
+ *  polling. 'segmented' is deliberately excluded even though it isn't
+ *  terminal: the worker never touches a segmented row again (it's waiting on
+ *  a teacher, not on background work), so polling for it to change would
+ *  just spin forever. */
+const BULK_WORKER_IN_PROGRESS_STATUSES = new Set([
+  "queued",
+  "segmenting",
+  "split",
+  "cropping",
+  "cropped",
+  "assessing",
+]);
+
 const SELECT_CLASS =
   "block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent";
 const INPUT_CLASS =
@@ -687,6 +702,24 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   useEffect(() => {
     if (version) void fetchRecentBatches(version.id);
   }, [version, fetchRecentBatches]);
+
+  // Auto-refresh the picker while a bulk-uploaded batch is still moving
+  // through the worker's stages -- otherwise a teacher watching this list
+  // after "upload and walk away" would need to manually refresh the page to
+  // see queued/segmenting/cropping/assessing ever turn into assessed/failed.
+  // Only runs while the picker itself is on screen (mirrors its own render
+  // condition) and only while something in it could actually still change;
+  // 20s roughly matches the worker's own pipeline poll cadence, so this
+  // rarely refetches for nothing.
+  useEffect(() => {
+    if (batchId || chunks.length > 0 || !version) return; // mirrors anyBatchLoaded, declared later in this component
+    const hasInProgressBatch = recentBatches.some(
+      (b) => !b.parent_batch_id && BULK_WORKER_IN_PROGRESS_STATUSES.has(b.status)
+    );
+    if (!hasInProgressBatch) return;
+    const interval = setInterval(() => void fetchRecentBatches(version.id), 20_000);
+    return () => clearInterval(interval);
+  }, [batchId, chunks, version, recentBatches, fetchRecentBatches]);
 
   const fetchResults = useCallback(async (packetVersionId: string) => {
     setResultsPanel((prev) => ({ ...prev, status: "loading" }));
