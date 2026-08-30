@@ -612,6 +612,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   // panel on screen (mirrors cropAllRunning's per-panelKey approach).
   const [assessPanels, setAssessPanels] = useState<Record<string, AssessPanelState>>({});
   const [assessCropState, setAssessCropState] = useState<Record<string, AssessCropState>>({});
+  // Per-student "Collapse all" override for the <details> blocks below --
+  // keyed by packetScanId so toggling one student's Stage 5 card doesn't
+  // affect any other student's. Overrides (rather than replaces) each
+  // crop's own open-by-default logic (lostSomeMarks / possiblyTruncated),
+  // so re-expanding just goes back to that same sensible default.
+  const [assessDetailsCollapsed, setAssessDetailsCollapsed] = useState<Record<string, boolean>>({});
 
   // Chunked path: an oversized upload split into several chunks, each
   // going through its own segment -> review -> split lifecycle.
@@ -663,6 +669,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setCropAllRunning({});
     setAssessPanels({});
     setAssessCropState({});
+    setAssessDetailsCollapsed({});
     setParentBatchId(null);
     setChunks([]);
     setPresplitWarnings([]);
@@ -1938,6 +1945,17 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                         {totalAwarded}/{totalAvailable} marks
                       </span>
                     )}
+                    {panel && panel.crops.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAssessDetailsCollapsed((prev) => ({ ...prev, [scanId]: !prev[scanId] }))
+                        }
+                        className="rounded-lg border border-da-border px-3 py-1.5 text-xs font-medium text-da-muted hover:bg-da-hover"
+                      >
+                        {assessDetailsCollapsed[scanId] ? "Expand all" : "Collapse all"}
+                      </button>
+                    )}
                     {!panel && (
                       <button
                         type="button"
@@ -2065,7 +2083,10 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                             </button>
                           </div>
                           {hasDetail && (
-                            <details className="mt-1" open={lostSomeMarks || c.possiblyTruncated}>
+                            <details
+                              className="mt-1"
+                              open={!assessDetailsCollapsed[scanId] && (lostSomeMarks || c.possiblyTruncated)}
+                            >
                               <summary className="cursor-pointer text-xs text-da-accent hover:underline">
                                 Why this mark — transcription, comment &amp; notes
                               </summary>
