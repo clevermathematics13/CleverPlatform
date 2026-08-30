@@ -14,6 +14,12 @@ import { isUngradedAnchor, type AnchorContext } from "@/lib/na-assessment";
  * (matches isUngradedAnchor in na-assessment.ts -- e.g. A.1's Desmos
  * "noticings from the sandbox" thinking space), so the denominator here
  * matches what stage 5 actually attempts rather than raw crop count.
+ *
+ * Each course bucket also carries totalRegistered (the course's full
+ * invited_students roster size) and missingStudentNames (roster students
+ * with no identified scan at all for this packet version yet) -- lets the
+ * UI show "12/15 identified" next to a course heading and name exactly
+ * who hasn't been uploaded/matched, not just how many are missing.
  */
 export async function GET(
   request: NextRequest,
@@ -63,13 +69,14 @@ export async function GET(
   type ScanRow = {
     id: string;
     status: string;
+    invited_student_id: string;
     invited_students: InvitedStudentRow | InvitedStudentRow[] | null;
     na_scan_batches: BatchRow;
   };
 
   const { data: scanRows, error: scanErr } = await supabase
     .from("na_packet_scans")
-    .select("id, status, invited_students(full_name, nickname, courses(id, name)), na_scan_batches(source_filename)")
+    .select("id, status, invited_student_id, invited_students(full_name, nickname, courses(id, name)), na_scan_batches(source_filename)")
     .eq("packet_version_id", packetVersionId)
     .not("invited_student_id", "is", null);
   if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
@@ -135,6 +142,7 @@ export async function GET(
 
     return {
       packetScanId: s.id,
+      invitedStudentId: s.invited_student_id,
       sourceFilename: batch?.source_filename ?? null,
       studentName: student?.full_name ?? student?.nickname ?? "(unnamed)",
       courseId: course?.id ?? null,
@@ -158,7 +166,48 @@ export async function GET(
   for (const bucket of byCourse.values()) {
     bucket.students.sort((a, b) => a.studentName.localeCompare(b.studentName));
   }
-  const courses = [...byCourse.values()].sort((a, b) => a.courseName.localeCompare(b.courseName));
+
+  // Roster totals + who's missing, per course: a student in the course's
+  // invited_students roster whose id never shows up among this packet
+  // version's identified scans hasn't been uploaded/matched at all yet --
+  // distinct from a low-progress row, which at least has a scan started.
+  // Diffed by invited_student_id, not name, since names can collide or
+  // vary (nickname vs full_name) in ways a string compare would miss.
+  const courseIds = [...byCourse.values()].map((b) => b.courseId).filter((id): id is string => !!id);
+  const rosterByCourse = new Map<string, { total: number; missingNames: string[] }>();
+  if (courseIds.length > 0) {
+    const { data: rosterRows, error: rosterErr } = await supabase
+      .from("invited_students")
+      .select("id, full_name, nickname, course_id")
+      .in("course_id", courseIds);
+    if (rosterErr) return NextResponse.json({ error: rosterErr.message }, { status: 500 });
+
+    const presentIdsByCourse = new Map<string, Set<string>>();
+    for (const bucket of byCourse.values()) {
+      if (!bucket.courseId) continue;
+      presentIdsByCourse.set(bucket.courseId, new Set(bucket.students.map((s) => s.invitedStudentId)));
+    }
+    for (const r of rosterRows ?? []) {
+      const entry = rosterByCourse.get(r.course_id) ?? { total: 0, missingNames: [] };
+      entry.total += 1;
+      if (!presentIdsByCourse.get(r.course_id)?.has(r.id)) {
+        entry.missingNames.push(r.full_name ?? r.nickname ?? "(unnamed)");
+      }
+      rosterByCourse.set(r.course_id, entry);
+    }
+    for (const entry of rosterByCourse.values()) entry.missingNames.sort((a, b) => a.localeCompare(b));
+  }
+
+  const courses = [...byCourse.values()]
+    .map((bucket) => {
+      const roster = bucket.courseId ? rosterByCourse.get(bucket.courseId) : undefined;
+      return {
+        ...bucket,
+        totalRegistered: roster?.total ?? bucket.students.length,
+        missingStudentNames: roster?.missingNames ?? [],
+      };
+    })
+    .sort((a, b) => a.courseName.localeCompare(b.courseName));
 
   return NextResponse.json({
     packetVersionId,
