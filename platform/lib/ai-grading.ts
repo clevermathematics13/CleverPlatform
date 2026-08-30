@@ -177,6 +177,16 @@ export interface ValidationOutcome {
 }
 
 /**
+ * Whether a graded part belongs in a run's `needsReview` list. Anything short
+ * of "high" confidence -- "medium" included, not just "low" -- surfaces here,
+ * since a teacher shouldn't have to open every part to notice one the model
+ * itself wasn't fully sure about.
+ */
+export function gradeNeedsReview(g: Pick<ValidatedGrade, "confidence"> & { item: Pick<AiGradeItem, "workFound"> }): boolean {
+  return g.confidence !== "high" || !g.item.workFound;
+}
+
+/**
  * Validate a raw model response against the units that were actually sent.
  *
  * Guarantees on success:
@@ -597,6 +607,7 @@ MARKING RULES
 9. If handwriting is ambiguous, mark the most plausible reading in the student's favour and lower your confidence.
 10. Do not deduct marks for poor presentation, notation slips, or missing units unless the mark scheme requires them.
 11. For an R mark that asks the student to interpret a value "in context" (e.g. what a regression coefficient represents), judge the student's own wording on whether it conveys the same meaning as the mark scheme's model answer, not on whether it uses the same words. In particular, "for every increase of 1 in X, Y increases/decreases by k" is an equivalent way of stating "Y represents the (average) increase/decrease in ... per unit increase in X" — award it even though it doesn't use the word "average" or the mark scheme's exact phrasing. Withhold the mark only when the explanation is wrong or incomplete in substance: wrong direction, wrong variable, missing context the mark scheme specifically requires, or vague enough that it could describe an unrelated relationship. A different sentence structure that says the same thing is not a reason to withhold the mark. This rule governs wording of a correct interpretation only — it does not relax rule 6's exactness requirement for the numerical value the interpretation refers to.
+12. Before concluding that a transcribed numerical value is wrong under rule 6, consider whether you may have misread the handwriting rather than the student having made an error. A transcribed value that differs from the mark scheme's value by what looks like a single confused digit (common confusions: 4/9, 1/7, 5/6, 0/6, 3/8, or a missing/extra decimal place) is exactly the pattern of a transcription misread, not necessarily a wrong answer. In that situation, look again at the actual handwriting before finalizing your reading. If you cannot become confident which digit is actually written, transcribe your best reading in the evidence field but do not report "high" confidence for that item — this is exactly the kind of uncertainty confidence exists to flag for teacher review, and it does not change how rule 6 is applied to whichever value you finally transcribe.
 
 WORKING ORDER — follow these steps in sequence for each part, because the later
 fields in OUTPUT below are DERIVED from the earlier ones, not independent
@@ -659,6 +670,30 @@ Return exactly one entry for every part you were given, in the order given.`;
  * cache_control breakpoint to it — on a batch upload, every student after the
  * first hits a cache read instead of re-sending the whole mark scheme.
  */
+/** Build one unit's mark-scheme block: question/context text shared by the batch and single-item prompts. */
+function buildUnitBlock(u: GradingUnit): string {
+  const lines = [
+    `=== ${unitLabel(u)} ===`,
+    `testItemId: ${u.testItemId}`,
+    `Source question: ${u.questionCode}`,
+    `Maximum marks: ${u.maxMarks}`,
+  ];
+  if (u.commandTerms.length > 0) lines.push(`Command term(s): ${u.commandTerms.join(", ")}`);
+  if (u.markschemeSource === "whole_question") {
+    lines.push(
+      `NOTE: the mark scheme below covers the WHOLE question, not just this part. Use only the portion relevant to this part.`
+    );
+  }
+  if (u.markschemeSource === "draft") {
+    lines.push(
+      `NOTE: the mark scheme below is an unsplit draft covering several parts. Locate the section for this part before marking.`
+    );
+  }
+  if (u.questionLatex) lines.push(`\n--- Question ---\n${u.questionLatex}`);
+  lines.push(`\n--- Mark scheme (the authority) ---\n${u.markscheme}`);
+  return lines.join("\n");
+}
+
 export function buildGradingUserPrompt(
   units: GradingUnit[],
   opts: { testName?: string } = {}
@@ -671,28 +706,7 @@ export function buildGradingUserPrompt(
     .filter(Boolean)
     .join("\n");
 
-  const blocks = units.map((u) => {
-    const lines = [
-      `=== ${unitLabel(u)} ===`,
-      `testItemId: ${u.testItemId}`,
-      `Source question: ${u.questionCode}`,
-      `Maximum marks: ${u.maxMarks}`,
-    ];
-    if (u.commandTerms.length > 0) lines.push(`Command term(s): ${u.commandTerms.join(", ")}`);
-    if (u.markschemeSource === "whole_question") {
-      lines.push(
-        `NOTE: the mark scheme below covers the WHOLE question, not just this part. Use only the portion relevant to this part.`
-      );
-    }
-    if (u.markschemeSource === "draft") {
-      lines.push(
-        `NOTE: the mark scheme below is an unsplit draft covering several parts. Locate the section for this part before marking.`
-      );
-    }
-    if (u.questionLatex) lines.push(`\n--- Question ---\n${u.questionLatex}`);
-    lines.push(`\n--- Mark scheme (the authority) ---\n${u.markscheme}`);
-    return lines.join("\n");
-  });
+  const blocks = units.map(buildUnitBlock);
 
   return `${header}
 
@@ -701,6 +715,26 @@ Each attached PDF is a scan of one student's handwritten work for the whole asse
 The scan may be out of order, may include rough working, and may span multiple pages per question. Search the whole document before concluding a part is missing.
 
 ${blocks.join("\n\n")}`;
+}
+
+/**
+ * Build the prompt for re-marking a single part from a teacher-supplied
+ * transcription, rather than the model reading a scan itself. Used when a
+ * teacher corrects a misread `evidence` field in the review UI: there is no
+ * PDF or image here, just the corrected text and the part's mark scheme, so
+ * evidenceBox is meaningless and workFound is already known to be true (a
+ * teacher wouldn't be correcting the transcription of work that doesn't
+ * exist).
+ */
+export function buildRegradeItemPrompt(unit: GradingUnit, correctedEvidence: string): string {
+  return `A teacher has reviewed the scan directly and corrected the transcription of the student's work for this part, because the original automated transcription was wrong (e.g. a misread digit). Mark this corrected transcription against the mark scheme below -- there is no scan attached this time, so base your marking only on the text given.
+
+${buildUnitBlock(unit)}
+
+--- Teacher-corrected transcription of the student's work for this part ---
+${correctedEvidence}
+
+Return the JSON object now, for this one part only. Set workFound to true and evidenceBox to null (there is no scan region to locate here). Set the "evidence" field to the corrected transcription given above.`;
 }
 
 /**

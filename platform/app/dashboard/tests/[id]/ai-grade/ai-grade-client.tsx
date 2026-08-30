@@ -129,6 +129,11 @@ export function AiGradeClient({ testId }: { testId: string }) {
     {}
   );
 
+  // -- Manually correcting a misread transcription (evidence) and re-grading it --
+  const [editingEvidenceId, setEditingEvidenceId] = useState<string | null>(null);
+  const [evidenceDraft, setEvidenceDraft] = useState<Record<string, string>>({});
+  const [regradingId, setRegradingId] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingUploadStudent = useRef<string | null>(null);
 
@@ -367,6 +372,46 @@ export function AiGradeClient({ testId }: { testId: string }) {
       setError(e instanceof Error ? e.message : "Could not accept this mark.");
     } finally {
       setAcceptingRowId(null);
+    }
+  };
+
+  // -- Manually correct a misread transcription, then re-grade just this part --
+  const startEditEvidence = (r: ResultRow) => {
+    setEvidenceDraft((prev) => ({ ...prev, [r.id]: r.evidence ?? "" }));
+    setEditingEvidenceId(r.id);
+  };
+
+  const cancelEditEvidence = () => setEditingEvidenceId(null);
+
+  const saveEvidence = async (r: ResultRow) => {
+    const corrected = (evidenceDraft[r.id] ?? "").trim();
+    if (corrected === (r.evidence ?? "").trim()) {
+      // Nothing actually changed -- just close the editor, no need to re-grade.
+      setEditingEvidenceId(null);
+      return;
+    }
+    setRegradingId(r.id);
+    setError(null);
+    try {
+      const { ok, data } = await fetchJson(
+        `/api/tests/${testId}/ai-grade/results/${r.id}/regrade`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ evidence: corrected }),
+        }
+      );
+      if (!ok) {
+        setError((data.error as string) ?? "Could not re-grade this part.");
+        return;
+      }
+      setStatusLine("Transcription corrected and this part re-graded.");
+      setEditingEvidenceId(null);
+      if (focusStudent) await loadResultsFor(focusStudent);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not re-grade this part.");
+    } finally {
+      setRegradingId(null);
     }
   };
 
@@ -733,7 +778,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                       </div>
                                     )}
 
-                                    {(r.evidence || r.evidence_image_url) && (
+                                    {(r.evidence || r.evidence_image_url || editingEvidenceId === r.id) && (
                                       <div>
                                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                                           Student&apos;s work
@@ -749,9 +794,50 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                               className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
                                             />
                                           )}
-                                          {r.evidence && (
+                                          {editingEvidenceId === r.id ? (
+                                            <div className="space-y-2">
+                                              <textarea
+                                                value={evidenceDraft[r.id] ?? ""}
+                                                onChange={(e) =>
+                                                  setEvidenceDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
+                                                }
+                                                rows={3}
+                                                placeholder="Correct the transcription of the student's work for this part -- checked against the scan above -- then save to re-grade it."
+                                                className="w-full rounded border border-gray-300 p-2 font-mono text-xs focus:ring-2 focus:ring-blue-400"
+                                              />
+                                              <div className="flex gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => saveEvidence(r)}
+                                                  disabled={regradingId === r.id}
+                                                  className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                                >
+                                                  {regradingId === r.id ? "Re-grading…" : "Save & re-grade"}
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={cancelEditEvidence}
+                                                  disabled={regradingId === r.id}
+                                                  className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                                                >
+                                                  Cancel
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ) : (
                                             <div className="rounded border border-gray-200 bg-white p-3">
-                                              <LatexRenderer latex={r.evidence} />
+                                              {r.evidence ? (
+                                                <LatexRenderer latex={r.evidence} />
+                                              ) : (
+                                                <p className="text-xs text-gray-400">No transcription on file.</p>
+                                              )}
+                                              <button
+                                                type="button"
+                                                onClick={() => startEditEvidence(r)}
+                                                className="mt-2 text-xs text-blue-600 hover:underline"
+                                              >
+                                                Fix transcription
+                                              </button>
                                             </div>
                                           )}
                                         </div>

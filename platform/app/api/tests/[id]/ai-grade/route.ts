@@ -12,6 +12,7 @@ import {
   assembleQuestionImages,
   buildGradingStudentPrompt,
   buildGradingUserPrompt,
+  gradeNeedsReview,
   unitLabel,
   validateGradeResponse,
 } from "@/lib/ai-grading";
@@ -518,9 +519,7 @@ export async function POST(
   // a mark scheme.
   const maxTotal = gradeable.reduce((s, u) => s + u.maxMarks, 0);
   const testTotalMarks = units.reduce((s, u) => s + u.maxMarks, 0);
-  const needsReview = grades
-    .filter((g) => g.confidence === "low" || !g.item.workFound)
-    .map((g) => unitLabel(g.unit));
+  const needsReview = grades.filter(gradeNeedsReview).map((g) => unitLabel(g.unit));
 
   const coverage = {
     partsInAssessment: units.length,
