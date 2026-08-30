@@ -700,6 +700,19 @@ judgement calls made in parallel:
    evidenceBox to null rather than guessing — a missing crop is fine, a
    wrong one (including one that shows only printed text with no
    handwriting) is not. Omit entirely (null) when workFound is false.
+   When a student writes several sub-part answers together as a stacked,
+   explicitly lettered list (e.g. "a) ...", "b) ...", "c) ..." one after
+   another, separate from where the sub-parts were printed), find THIS
+   part's own lettered line by its label, not by proximity to that part's
+   printed question stem — the printed stems for several sub-parts are
+   often grouped together above the list, so the nearest handwriting to a
+   given stem is frequently a different, adjacent letter's answer, not
+   this one. Read the label the student actually wrote ("b)", "(b)", "ii)",
+   etc.) and box that specific line and whatever working continues from
+   it, not the line before or after it. A box that stops right where the
+   correct letter's line begins is exactly as wrong as one that never
+   reaches it — verify the label inside your box matches the part you are
+   grading before finalising evidenceBox.
 3. MARK BREAKDOWN: itemise every mark scheme token (M1, A1, R1, AG, ...) for
    this part and decide, one token at a time, whether the transcribed
    evidence earns it.
