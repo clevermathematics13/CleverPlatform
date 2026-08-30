@@ -25,6 +25,19 @@ interface CvCropResult {
   imageBase64: string;
 }
 
+export interface EvidenceBox {
+  page: number;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+interface EvidenceCrop {
+  buffer: Buffer;
+  box: EvidenceBox;
+}
+
 /**
  * Best-effort: renders one cropped PNG per graded part from the model's
  * reported evidenceBox, via the same Railway CV service the NA scan
@@ -42,8 +55,8 @@ interface CvCropResult {
 async function fetchEvidenceCrops(
   scanBase64: string,
   grades: ValidatedGrade[]
-): Promise<Map<string, Buffer>> {
-  const byTestItemId = new Map<string, Buffer>();
+): Promise<Map<string, EvidenceCrop>> {
+  const byTestItemId = new Map<string, EvidenceCrop>();
 
   const serviceUrl = process.env.GRAPH_LAB_CV_SERVICE_URL;
   if (!serviceUrl) return byTestItemId;
@@ -95,11 +108,14 @@ async function fetchEvidenceCrops(
         y0Pt: y0 * height,
         x1Pt: x1 * width,
         y1Pt: y1 * height,
+        box: { page: box.page, x0, y0, x1, y1 } satisfies EvidenceBox,
       };
     })
     .filter((a): a is NonNullable<typeof a> => a !== null);
 
   if (anchors.length === 0) return byTestItemId;
+
+  const boxByQid = new Map(anchors.map((a) => [a.qid, a.box]));
 
   const serviceBase = serviceUrl.trim().replace(/\/$/, "");
   const target = `${/^https?:\/\//i.test(serviceBase) ? serviceBase : `https://${serviceBase}`}/crop`;
@@ -119,14 +135,17 @@ async function fetchEvidenceCrops(
         studentPdfBase64: scanBase64,
         expectedPageCount: pageCount,
         rotationHint: 0,
-        anchors,
+        anchors: anchors.map(({ box, ...anchor }) => { void box; return anchor; }),
       }),
       signal: controller.signal,
     });
     if (!upstream.ok) return byTestItemId;
     const data = (await upstream.json()) as { crops?: CvCropResult[] };
     for (const crop of data.crops ?? []) {
-      if (crop.imageBase64) byTestItemId.set(crop.qid, Buffer.from(crop.imageBase64, "base64"));
+      const box = boxByQid.get(crop.qid);
+      if (crop.imageBase64 && box) {
+        byTestItemId.set(crop.qid, { buffer: Buffer.from(crop.imageBase64, "base64"), box });
+      }
     }
   } catch {
     // Network/timeout failure -- crops stay empty, grading still succeeds.
@@ -491,11 +510,11 @@ export async function POST(
   // -- Evidence crops (best-effort; never blocks or fails the run) -----------
   const crops = await fetchEvidenceCrops(scanBase64, grades);
   const evidenceImagePathByTestItemId = new Map<string, string>();
-  for (const [testItemId, imageBytes] of crops) {
+  for (const [testItemId, crop] of crops) {
     const storagePath = `${testId}/${studentId}/evidence/${run.id}/${testItemId}.png`;
     const { error: cropUploadErr } = await supabase.storage
       .from(SCAN_BUCKET)
-      .upload(storagePath, imageBytes, { contentType: "image/png", upsert: true });
+      .upload(storagePath, crop.buffer, { contentType: "image/png", upsert: true });
     if (!cropUploadErr) evidenceImagePathByTestItemId.set(testItemId, storagePath);
   }
 
@@ -511,6 +530,9 @@ export async function POST(
     reasoning: g.item.reasoning,
     evidence: g.item.evidence,
     evidence_image_path: evidenceImagePathByTestItemId.get(g.unit.testItemId) ?? null,
+    evidence_box: evidenceImagePathByTestItemId.has(g.unit.testItemId)
+      ? crops.get(g.unit.testItemId)?.box ?? null
+      : null,
     mark_breakdown: g.item.markBreakdown,
   }));
 
