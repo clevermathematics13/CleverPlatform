@@ -121,6 +121,10 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   /** Which rows have their question image un-minimized — collapsed by default, keyed by result.id. */
   const [questionImageShown, setQuestionImageShown] = useState<Set<string>>(new Set());
+  /** Same, for the student's-work scan crop. */
+  const [evidenceImageShown, setEvidenceImageShown] = useState<Set<string>>(new Set());
+  /** Same, for the mark scheme source image(s). */
+  const [markschemeImageShown, setMarkschemeImageShown] = useState<Set<string>>(new Set());
 
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
@@ -427,6 +431,22 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const toggleQuestionImage = (resultId: string) =>
     setQuestionImageShown((prev) => {
+      const next = new Set(prev);
+      if (next.has(resultId)) next.delete(resultId);
+      else next.add(resultId);
+      return next;
+    });
+
+  const toggleEvidenceImage = (resultId: string) =>
+    setEvidenceImageShown((prev) => {
+      const next = new Set(prev);
+      if (next.has(resultId)) next.delete(resultId);
+      else next.add(resultId);
+      return next;
+    });
+
+  const toggleMarkschemeImage = (resultId: string) =>
+    setMarkschemeImageShown((prev) => {
       const next = new Set(prev);
       if (next.has(resultId)) next.delete(resultId);
       else next.add(resultId);
@@ -797,11 +817,22 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
                                     {(r.evidence || r.evidence_image_url || editingEvidenceId === r.id) && (
                                       <div>
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-                                          Student&apos;s work
-                                        </p>
+                                        {r.evidence_image_url ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleEvidenceImage(r.id)}
+                                            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                                          >
+                                            <span>{evidenceImageShown.has(r.id) ? "▾" : "▸"}</span>
+                                            Student&apos;s work
+                                          </button>
+                                        ) : (
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                            Student&apos;s work
+                                          </p>
+                                        )}
                                         <div className="mt-1 space-y-2">
-                                          {r.evidence_image_url && (
+                                          {evidenceImageShown.has(r.id) && r.evidence_image_url && (
                                             // eslint-disable-next-line @next/next/no-img-element
                                             <img
                                               src={r.evidence_image_url}
@@ -863,22 +894,29 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
                                     {r.markscheme_image_urls.length > 0 && (
                                       <div>
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleMarkschemeImage(r.id)}
+                                          className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                                        >
+                                          <span>{markschemeImageShown.has(r.id) ? "▾" : "▸"}</span>
                                           Mark scheme
-                                        </p>
-                                        <div className="mt-1 flex flex-wrap gap-2">
-                                          {r.markscheme_image_urls.map((url, i) => (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                              key={i}
-                                              src={url}
-                                              alt="Mark scheme source image"
-                                              title="Click to enlarge"
-                                              onClick={() => setLightboxUrl(url)}
-                                              className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
-                                            />
-                                          ))}
-                                        </div>
+                                        </button>
+                                        {markschemeImageShown.has(r.id) && (
+                                          <div className="mt-1 flex flex-wrap gap-2">
+                                            {r.markscheme_image_urls.map((url, i) => (
+                                              // eslint-disable-next-line @next/next/no-img-element
+                                              <img
+                                                key={i}
+                                                src={url}
+                                                alt="Mark scheme source image"
+                                                title="Click to enlarge"
+                                                onClick={() => setLightboxUrl(url)}
+                                                className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
+                                              />
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
 
