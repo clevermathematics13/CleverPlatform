@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { isUngradedAnchor, type AnchorContext } from "@/lib/na-assessment";
+import { fetchAllRows } from "@/lib/na-scanning";
 
 /**
  * GET /api/na-review/packet-version/[packetVersionId]/results
@@ -109,14 +110,21 @@ export async function GET(
 
   const cropsByScan = new Map<string, CropRow[]>();
   if (scanIds.length > 0) {
-    const { data: cropRows, error: cropErr } = await supabase
-      .from("na_response_crops")
-      .select(
-        "id, anchor_id, packet_scan_id, na_feedback(ai_attempted, ai_marks_awarded, ai_marks_available, ai_validation_error, final_marks_awarded, approved_at, released_at)"
-      )
-      .in("packet_scan_id", scanIds);
-    if (cropErr) return NextResponse.json({ error: cropErr.message }, { status: 500 });
-    for (const c of (cropRows ?? []) as CropRow[]) {
+    let cropRows: CropRow[];
+    try {
+      cropRows = await fetchAllRows<CropRow>((from, to) =>
+        supabase
+          .from("na_response_crops")
+          .select(
+            "id, anchor_id, packet_scan_id, na_feedback(ai_attempted, ai_marks_awarded, ai_marks_available, ai_validation_error, final_marks_awarded, approved_at, released_at)"
+          )
+          .in("packet_scan_id", scanIds)
+          .range(from, to)
+      );
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to load crops" }, { status: 500 });
+    }
+    for (const c of cropRows) {
       const bucket = cropsByScan.get(c.packet_scan_id) ?? [];
       bucket.push(c);
       cropsByScan.set(c.packet_scan_id, bucket);

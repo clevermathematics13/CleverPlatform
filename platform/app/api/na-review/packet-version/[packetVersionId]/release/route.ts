@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { isUngradedAnchor, type AnchorContext } from "@/lib/na-assessment";
+import { fetchAllRows } from "@/lib/na-scanning";
 
 /**
  * POST /api/na-review/packet-version/[packetVersionId]/release
@@ -77,14 +78,26 @@ export async function POST(
     na_feedback: { id: string; approved_at: string | null } | { id: string; approved_at: string | null }[] | null;
   };
 
-  const { data: cropRows, error: cropErr } = await supabase
-    .from("na_response_crops")
-    .select("id, anchor_id, packet_scan_id, na_feedback(id, approved_at)")
-    .in("packet_scan_id", scanIds);
-  if (cropErr) return NextResponse.json({ error: cropErr.message }, { status: 500 });
+  // A packet version's total crop count can (and in production, does) run
+  // well past PostgREST's default 1000-row cap -- fetchAllRows pages
+  // through .range() so this never silently drops a scan's crops, which
+  // would otherwise make an incompletely-approved scan look fully
+  // approved (missing crops just aren't checked) and get released.
+  let cropRows: CropRow[];
+  try {
+    cropRows = await fetchAllRows<CropRow>((from, to) =>
+      supabase
+        .from("na_response_crops")
+        .select("id, anchor_id, packet_scan_id, na_feedback(id, approved_at)")
+        .in("packet_scan_id", scanIds)
+        .range(from, to)
+    );
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to load crops" }, { status: 500 });
+  }
 
   const cropsByScan = new Map<string, CropRow[]>();
-  for (const c of (cropRows ?? []) as CropRow[]) {
+  for (const c of cropRows) {
     const bucket = cropsByScan.get(c.packet_scan_id) ?? [];
     bucket.push(c);
     cropsByScan.set(c.packet_scan_id, bucket);

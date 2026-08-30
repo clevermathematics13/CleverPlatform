@@ -37,6 +37,38 @@ import {
 /** Same bucket the Tests AI-grading pipeline uses for uploaded scans. */
 export const NA_SCAN_BUCKET = "exam-scans";
 
+/**
+ * PostgREST caps a single request at 1000 rows by default. A packet
+ * version's na_response_crops easily exceeds that once enough students
+ * have been scanned (confirmed in production: one packet version alone
+ * has 1515 crop rows) -- a plain `.select().in("packet_scan_id", ...)`
+ * across every scan in a packet version silently returns only 1000 of
+ * them, with no error, and Postgres gives no ordering guarantee for
+ * which 1000. Whichever students' crops land outside that window read as
+ * having done no work at all (0 assessed, 0 marks) in the teacher's
+ * results table, even though their feedback is complete and correct --
+ * discovered when a teacher asked why a fully-assessed student's row
+ * showed 0/39. Any query that can return more than ~1000 rows for a
+ * whole packet version (not a single scan, which stays well under the
+ * cap) must page through `.range()` with this helper instead of trusting
+ * a single request to return everything.
+ */
+export async function fetchAllRows<T>(
+  queryPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  pageSize = 1000
+): Promise<T[]> {
+  const rows: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await queryPage(from, from + pageSize - 1);
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+    if (!data || data.length < pageSize) break;
+    from += pageSize;
+  }
+  return rows;
+}
+
 // -----------------------------------------------------------------------------
 // Roster matching against invited_students
 // -----------------------------------------------------------------------------
