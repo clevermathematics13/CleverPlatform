@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { isUngradedAnchor, type AnchorContext } from "@/lib/na-assessment";
+import { fetchAllRows } from "@/lib/na-scanning";
 
 /**
  * GET /api/na-review/packet-version/[packetVersionId]/results
@@ -20,6 +21,12 @@ import { isUngradedAnchor, type AnchorContext } from "@/lib/na-assessment";
  * with no identified scan at all for this packet version yet) -- lets the
  * UI show "12/15 identified" next to a course heading and name exactly
  * who hasn't been uploaded/matched, not just how many are missing.
+ *
+ * Each student row also carries approvedCount (gradable crops with
+ * approved_at set -- distinct from assessedCount, which only means the AI
+ * drafted something) and releasedAt (set once a teacher has released this
+ * scan's feedback to the student; see the release routes) -- lets the UI
+ * gate the Release button on full approval and show a released badge.
  */
 export async function GET(
   request: NextRequest,
@@ -90,6 +97,8 @@ export async function GET(
     ai_marks_available: number | null;
     ai_validation_error: string | null;
     final_marks_awarded: number | null;
+    approved_at: string | null;
+    released_at: string | null;
   };
 
   type CropRow = {
@@ -101,12 +110,21 @@ export async function GET(
 
   const cropsByScan = new Map<string, CropRow[]>();
   if (scanIds.length > 0) {
-    const { data: cropRows, error: cropErr } = await supabase
-      .from("na_response_crops")
-      .select("id, anchor_id, packet_scan_id, na_feedback(ai_attempted, ai_marks_awarded, ai_marks_available, ai_validation_error, final_marks_awarded)")
-      .in("packet_scan_id", scanIds);
-    if (cropErr) return NextResponse.json({ error: cropErr.message }, { status: 500 });
-    for (const c of (cropRows ?? []) as CropRow[]) {
+    let cropRows: CropRow[];
+    try {
+      cropRows = await fetchAllRows<CropRow>((from, to) =>
+        supabase
+          .from("na_response_crops")
+          .select(
+            "id, anchor_id, packet_scan_id, na_feedback(ai_attempted, ai_marks_awarded, ai_marks_available, ai_validation_error, final_marks_awarded, approved_at, released_at)"
+          )
+          .in("packet_scan_id", scanIds)
+          .range(from, to)
+      );
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to load crops" }, { status: 500 });
+    }
+    for (const c of cropRows) {
       const bucket = cropsByScan.get(c.packet_scan_id) ?? [];
       bucket.push(c);
       cropsByScan.set(c.packet_scan_id, bucket);
@@ -124,8 +142,13 @@ export async function GET(
 
     const crops = cropsByScan.get(s.id) ?? [];
     let assessedCount = 0;
+    let approvedCount = 0;
     let marksAwarded = 0;
     let marksAvailable = 0;
+    // Release happens atomically for the whole scan (see the release route),
+    // so every gradable crop's released_at is either all-set or all-null --
+    // taking the first non-null one found is enough to represent the scan.
+    let releasedAt: string | null = null;
     for (const c of crops) {
       if (!gradableAnchorIds.has(c.anchor_id)) continue;
       const fb = Array.isArray(c.na_feedback) ? c.na_feedback[0] : c.na_feedback;
@@ -138,6 +161,8 @@ export async function GET(
         marksAwarded += fb.final_marks_awarded ?? fb.ai_marks_awarded ?? 0;
         marksAvailable += fb.ai_marks_available ?? 0;
       }
+      if (fb?.approved_at) approvedCount += 1;
+      if (fb?.released_at && !releasedAt) releasedAt = fb.released_at;
     }
 
     return {
@@ -150,9 +175,11 @@ export async function GET(
       status: s.status,
       totalCrops: crops.length,
       assessedCount,
+      approvedCount,
       totalGradable,
       marksAwarded,
       marksAvailable,
+      releasedAt,
     };
   });
 

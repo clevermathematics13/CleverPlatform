@@ -160,9 +160,11 @@ interface ResultsStudentRow {
   status: string;
   totalCrops: number;
   assessedCount: number;
+  approvedCount: number;
   totalGradable: number;
   marksAwarded: number;
   marksAvailable: number;
+  releasedAt: string | null;
 }
 
 interface ResultsCourse {
@@ -756,6 +758,55 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setResultsOpen(false);
     setResultsPanel({ status: "idle", data: null, error: null });
   }, [versionId]);
+
+  // Which release call (a single packetScanId, or a courseName for a
+  // bulk course release) is currently in flight -- disables the
+  // triggering button and lets the UI show "Releasing..." without a
+  // separate boolean per row.
+  const [releasingKey, setReleasingKey] = useState<string | null>(null);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
+
+  const releaseOneScan = useCallback(
+    async (packetScanId: string) => {
+      if (!version) return;
+      setReleasingKey(packetScanId);
+      setReleaseError(null);
+      try {
+        const res = await fetch(`/api/na-review/packet-scans/${packetScanId}/release`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not release feedback.");
+        await fetchResults(version.id);
+      } catch (e) {
+        setReleaseError(e instanceof Error ? e.message : "Could not release feedback.");
+      } finally {
+        setReleasingKey(null);
+      }
+    },
+    [version, fetchResults]
+  );
+
+  const releaseCourse = useCallback(
+    async (courseName: string, courseId: string | null) => {
+      if (!version) return;
+      setReleasingKey(courseName);
+      setReleaseError(null);
+      try {
+        const res = await fetch(`/api/na-review/packet-version/${version.id}/release`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(courseId ? { courseId } : {}),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not release feedback.");
+        await fetchResults(version.id);
+      } catch (e) {
+        setReleaseError(e instanceof Error ? e.message : "Could not release feedback.");
+      } finally {
+        setReleasingKey(null);
+      }
+    },
+    [version, fetchResults]
+  );
 
   /** Seeds crop state from a packetScansByInvitedId map (as returned by
    *  GET .../batch/[batchId]) for every row that already has a
@@ -2475,29 +2526,51 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                       Refresh
                     </button>
                   </div>
+                  {releaseError && <p className="text-sm text-red-600">{releaseError}</p>}
                   {resultsPanel.data.courses.length === 0 && (
                     <p className="text-sm text-da-muted">No identified scans yet for this packet version.</p>
                   )}
-                  {resultsPanel.data.courses.map((course) => (
+                  {resultsPanel.data.courses.map((course) => {
+                    const releasableCount = course.students.filter(
+                      (s) => !s.releasedAt && s.approvedCount === s.totalGradable && s.totalGradable > 0
+                    ).length;
+                    return (
                     <div key={course.courseName}>
-                      <h3 className="text-sm font-semibold text-da-text">
-                        {course.courseName}{" "}
-                        <span className="font-normal text-da-muted">
-                          ({course.students.length} / {course.totalRegistered})
-                        </span>
-                      </h3>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-da-text">
+                          {course.courseName}{" "}
+                          <span className="font-normal text-da-muted">
+                            ({course.students.length} / {course.totalRegistered})
+                          </span>
+                        </h3>
+                        {releasableCount > 0 && (
+                          <button
+                            type="button"
+                            disabled={releasingKey === course.courseName}
+                            onClick={() => void releaseCourse(course.courseName, course.courseId)}
+                            className="rounded border border-da-accent px-2 py-1 text-xs font-medium text-da-accent hover:bg-da-accent/10 disabled:opacity-50"
+                          >
+                            {releasingKey === course.courseName
+                              ? "Releasing…"
+                              : `Release all fully-approved (${releasableCount})`}
+                          </button>
+                        )}
+                      </div>
                       <div className="mt-2 overflow-x-auto rounded-lg border border-da-border/60">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
                               <th className="px-3 py-2 font-semibold">Student</th>
                               <th className="px-3 py-2 font-semibold">Assessed</th>
+                              <th className="px-3 py-2 font-semibold">Approved</th>
                               <th className="px-3 py-2 font-semibold">Clev&apos;s Marks</th>
+                              <th className="px-3 py-2 font-semibold">Release</th>
                             </tr>
                           </thead>
                           <tbody>
                             {course.students.map((s) => {
                               const done = s.assessedCount === s.totalGradable && s.totalGradable > 0;
+                              const fullyApproved = s.approvedCount === s.totalGradable && s.totalGradable > 0;
                               const expanded = expandedResultScanId === s.packetScanId;
                               return (
                                 <Fragment key={s.packetScanId}>
@@ -2519,12 +2592,33 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                       {done && <span className="ml-1.5 text-green-500">✓</span>}
                                     </td>
                                     <td className="px-3 py-2 text-da-muted">
+                                      {s.approvedCount} / {s.totalGradable}
+                                      {fullyApproved && <span className="ml-1.5 text-green-500">✓</span>}
+                                    </td>
+                                    <td className="px-3 py-2 text-da-muted">
                                       {s.marksAwarded} / {s.marksAvailable}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                      {s.releasedAt ? (
+                                        <span className="rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs text-green-700">
+                                          Released {new Date(s.releasedAt).toLocaleDateString()}
+                                        </span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          disabled={!fullyApproved || releasingKey === s.packetScanId}
+                                          onClick={() => void releaseOneScan(s.packetScanId)}
+                                          title={fullyApproved ? undefined : "Every gradable question must be approved first"}
+                                          className="rounded border border-da-border px-2 py-1 text-xs font-medium text-da-text hover:bg-da-hover disabled:cursor-not-allowed disabled:opacity-40"
+                                        >
+                                          {releasingKey === s.packetScanId ? "Releasing…" : "Release"}
+                                        </button>
+                                      )}
                                     </td>
                                   </tr>
                                   {expanded && (
                                     <tr className="border-b border-da-border/40 last:border-0">
-                                      <td colSpan={3} className="bg-da-hover/20 p-0">
+                                      <td colSpan={5} className="bg-da-hover/20 p-0">
                                         {renderAssessCard(s.packetScanId, s.studentName, s.sourceFilename)}
                                       </td>
                                     </tr>
@@ -2541,7 +2635,8 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                         </p>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>

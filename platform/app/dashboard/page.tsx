@@ -113,6 +113,12 @@ async function StudentDashboard({ supabase, profileId }: { supabase: Awaited<Ret
         description="Grade your own exams and review feedback"
         href="/dashboard/reflection"
       />
+      <DashboardCard
+        title="My Feedback"
+        value="→"
+        description="See Clev's Marks feedback on your work"
+        href="/dashboard/na-feedback"
+      />
     </>
   );
 }
