@@ -3,8 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { getApiTeacher } from "@/lib/auth";
 import {
   GRADING_MODEL,
-  GRADING_SYSTEM_PROMPT,
   assembleMarkScheme,
+  buildGradingSystemPrompt,
   buildRegradeItemPrompt,
   gradeNeedsReview,
   unitLabel,
@@ -122,7 +122,7 @@ export async function POST(
       const message = await anthropic.messages.create({
         model: GRADING_MODEL,
         max_tokens: 4096,
-        system: GRADING_SYSTEM_PROMPT,
+        system: buildGradingSystemPrompt([unit]),
         messages: [
           { role: "user", content: buildRegradeItemPrompt(unit, correctedEvidence) },
         ],

@@ -1,5 +1,8 @@
 import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import fs from "fs";
+import path from "path";
+import { matchesRequiredPrecision } from "./numerical-accuracy";
 
 /**
  * AI-assisted grading of scanned student work against the PPQ mark scheme.
@@ -60,6 +63,22 @@ export interface GradingUnit {
   markschemeSource: MarkschemeSource;
   commandTerms: string[];
   subtopicCodes: string[];
+  /** From the source ib_question: e.g. ["AA"], ["AI"] — which IB course(s) this question is filed under. */
+  curriculum: string[];
+  /** From the source ib_question: e.g. "AHL", "SL" — IB's own level label, not necessarily human-friendly. */
+  level: string | null;
+  /** From the source ib_question: 1, 2, or 3. */
+  paper: number | null;
+}
+
+/**
+ * Whether a unit is IBDP Mathematics: Analysis and Approaches HL Paper 2 —
+ * the scope of grading_policies/ibdp_math_aa_hl_paper_2_numerical_accuracy.md.
+ * "AHL" is the PPQ bank's own level label for AA HL questions (see
+ * ib_questions.level); it is not a typo for "SL".
+ */
+export function isAaHlPaper2(u: Pick<GradingUnit, "curriculum" | "level" | "paper">): boolean {
+  return u.curriculum.includes("AA") && u.level === "AHL" && u.paper === 2;
 }
 
 /** Human-readable label, e.g. "3(b)(ii)" or "5". */
@@ -79,11 +98,29 @@ export function unitLabel(u: Pick<GradingUnit, "questionNumber" | "partLabel">):
 // Validation layer
 // -----------------------------------------------------------------------------
 
+/**
+ * For a markBreakdown token that is a final numeric Answer/Accuracy mark,
+ * the model's own report of what it read, what's correct, and at what
+ * precision -- see grading_policies/ibdp_math_aa_hl_paper_2_numerical_accuracy.md
+ * section 12. Checked deterministically in validateGradeResponse via
+ * lib/numerical-accuracy.ts rather than trusted outright: this is what lets
+ * the grader catch the model's own rounding judgement being wrong, not just
+ * ask it not to be.
+ */
+export const NumericCheckSchema = z.object({
+  reportedValue: z.string().min(1),
+  referenceValue: z.string().min(1),
+  precisionType: z.enum(["exact", "sf", "dp"]),
+  precisionDigits: z.number().int().min(0).optional(),
+});
+
 /** A single mark scheme token and whether the student earned it. */
 export const MarkBreakdownEntrySchema = z.object({
   token: z.string().min(1),
   awarded: z.boolean(),
   note: z.string().default(""),
+  /** Only present for a final numeric accuracy mark; see NumericCheckSchema. */
+  numericCheck: NumericCheckSchema.nullable().optional(),
 });
 
 /**
@@ -245,6 +282,31 @@ export function validateGradeResponse(
       confidence = "low";
     }
 
+    // Deterministically re-check any final numeric accuracy mark the model
+    // itself flagged for verification (NumericCheckSchema; see the AA HL
+    // Paper 2 numerical-accuracy policy). This is a real correction, not a
+    // second opinion: production evidence showed the model repeatedly
+    // rationalizing a genuine precision mismatch as "acceptable rounding"
+    // even when explicitly instructed not to (the same test, graded five
+    // separate times, always awarding a=0.81 against a required a=0.805).
+    // A prompt instruction alone was not sufficient enforcement, so an
+    // award the model reports as correct is corrected here whenever the
+    // deterministic check disagrees. This only ever removes an award the
+    // model gave itself -- never grants one it withheld -- since the
+    // checker can only disprove a claimed precision match, not evaluate
+    // every other reason a mark might legitimately be withheld.
+    for (const entry of item.markBreakdown) {
+      if (!entry.numericCheck) continue;
+      const result = matchesRequiredPrecision(entry.numericCheck);
+      if (entry.awarded && !result.ok) {
+        entry.awarded = false;
+        entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
+        warnings.push(
+          `${unitLabel(unit)}: ${entry.token} withheld on deterministic accuracy re-check — ${result.reason}`
+        );
+      }
+    }
+
     // The model is instructed that awarded mark_breakdown tokens must sum to
     // suggestedMarks (every token here is a single mark — M1/A1/R1/AG, never
     // M2/A2), but it doesn't always follow its own arithmetic. When it
@@ -313,6 +375,9 @@ interface QuestionRow {
   stem_latex: string | null;
   stem_markscheme_latex: string | null;
   parts_draft_markscheme_latex: string | null;
+  curriculum: string[] | null;
+  level: string | null;
+  paper: number | null;
 }
 
 interface PartRow {
@@ -365,7 +430,7 @@ export async function assembleMarkScheme(
 
   const { data: questionRows, error: qError } = await supabase
     .from("ib_questions")
-    .select("id, code, stem_latex, stem_markscheme_latex, parts_draft_markscheme_latex")
+    .select("id, code, stem_latex, stem_markscheme_latex, parts_draft_markscheme_latex, curriculum, level, paper")
     .in("code", codes);
 
   if (qError) throw new Error(`Failed to load questions: ${qError.message}`);
@@ -459,6 +524,9 @@ export async function assembleMarkScheme(
       markschemeSource,
       commandTerms,
       subtopicCodes: item.subtopic_codes ?? [],
+      curriculum: question?.curriculum ?? [],
+      level: question?.level ?? null,
+      paper: question?.paper ?? null,
     };
   });
 
@@ -663,6 +731,54 @@ generate the JSON in this order too, since suggestedMarks depends on markBreakdo
 }
 
 Return exactly one entry for every part you were given, in the order given.`;
+
+/**
+ * Loaded once at module init, not per-request: the file is small and static,
+ * and every grading call for an AA HL Paper 2 test needs it. Read failures
+ * are fatal at load time rather than silently downgrading to no policy --
+ * a numerical-accuracy policy that can silently vanish because of a moved
+ * file is worse than one that fails loudly.
+ */
+const AA_HL_PAPER_2_POLICY_PATH = path.join(
+  process.cwd(),
+  "grading_policies",
+  "ibdp_math_aa_hl_paper_2_numerical_accuracy.md"
+);
+
+function loadAaHlPaper2Policy(): string {
+  try {
+    return fs.readFileSync(AA_HL_PAPER_2_POLICY_PATH, "utf8");
+  } catch (e) {
+    throw new Error(
+      `Could not load the AA HL Paper 2 numerical-accuracy policy from ${AA_HL_PAPER_2_POLICY_PATH}: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  }
+}
+
+export const AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY = loadAaHlPaper2Policy();
+
+/**
+ * The system prompt for a specific grading call: the universal marking
+ * rules, plus grading_policies/ibdp_math_aa_hl_paper_2_numerical_accuracy.md
+ * appended whenever at least one unit being graded is IBDP Mathematics: AA
+ * HL Paper 2 (see isAaHlPaper2). Every route that calls the grading model
+ * builds its system prompt through this function rather than using
+ * GRADING_SYSTEM_PROMPT directly, so the policy can't be wired into one
+ * grading path and silently missed by another.
+ */
+export function buildGradingSystemPrompt(units: GradingUnit[]): string {
+  if (!units.some(isAaHlPaper2)) return GRADING_SYSTEM_PROMPT;
+  return `${GRADING_SYSTEM_PROMPT}
+
+===============================================================================
+ADDITIONAL POLICY -- IBDP Mathematics: Analysis and Approaches HL Paper 2
+Numerical Accuracy (applies to this assessment)
+===============================================================================
+
+${AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY}`;
+}
 
 /**
  * Build the mark-scheme block: everything about a test's parts and how to mark
