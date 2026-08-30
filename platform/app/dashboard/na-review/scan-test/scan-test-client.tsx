@@ -1071,9 +1071,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   // regardless, as defense in depth beyond this client-side check.
   const MAX_BULK_UPLOAD_FILES = 3;
 
-  /** Queues several single-student packet PDFs at once for the bulk-upload
-   *  worker to process unattended -- no per-batch segment/split/crop/assess
-   *  loop runs in this tab at all, unlike handleUpload. Each file uploads
+  /** Queues several scans at once for the bulk-upload worker to process
+   *  unattended -- no per-batch segment/split/crop/assess loop runs in this
+   *  tab at all, unlike handleUpload. Each file can cover any number of
+   *  students, same as a normal single upload; the worker auto-splits
+   *  every confidently-matched student and only stops for manual review if
+   *  a scan's segmentation isn't fully clean. Each file uploads
    *  straight to Storage (same na-batches/ convention as the single-file
    *  path) and one na_scan_batches row is created per file, status
    *  'queued'; POST /api/na-review/batch/bulk does no PDF reading and no
@@ -2307,9 +2310,9 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
             into whole-packet chunks — no need to cut it up yourself.
           </p>
           <p className="mt-1 text-sm text-da-muted">
-            Or select up to {MAX_BULK_UPLOAD_FILES} single-student PDFs at once (one packet per
-            file) to queue them for background processing — they run unattended, so you don&apos;t
-            need to keep this tab open.
+            Or select up to {MAX_BULK_UPLOAD_FILES} scans at once — each can cover any number of
+            students, just like a single upload — to queue them for background processing. They
+            run unattended, so you don&apos;t need to keep this tab open.
           </p>
           <button
             type="button"
