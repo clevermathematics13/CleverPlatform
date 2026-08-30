@@ -169,6 +169,8 @@ interface ResultsCourse {
   courseId: string | null;
   courseName: string;
   students: ResultsStudentRow[];
+  totalRegistered: number;
+  missingStudentNames: string[];
 }
 
 interface ResultsData {
@@ -2478,7 +2480,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                   )}
                   {resultsPanel.data.courses.map((course) => (
                     <div key={course.courseName}>
-                      <h3 className="text-sm font-semibold text-da-text">{course.courseName}</h3>
+                      <h3 className="text-sm font-semibold text-da-text">
+                        {course.courseName}{" "}
+                        <span className="font-normal text-da-muted">
+                          ({course.students.length} / {course.totalRegistered})
+                        </span>
+                      </h3>
                       <div className="mt-2 overflow-x-auto rounded-lg border border-da-border/60">
                         <table className="w-full text-sm">
                           <thead>
@@ -2528,6 +2535,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                           </tbody>
                         </table>
                       </div>
+                      {course.missingStudentNames.length > 0 && (
+                        <p className="mt-2 text-xs text-red-300">
+                          Missing: {course.missingStudentNames.join(", ")}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
