@@ -54,9 +54,12 @@ async function reclaimStaleRows(supabase: SupabaseClient): Promise<void> {
     .lt("claimed_at", staleBefore);
 }
 
-async function findPacketScanId(supabase: SupabaseClient, batchId: string): Promise<string | null> {
-  const { data } = await supabase.from("na_packet_scans").select("id").eq("batch_id", batchId).maybeSingle();
-  return (data?.id as string | undefined) ?? null;
+/** A na_scan_batches row can hold any number of students (the worker splits
+ *  one PDF per confidently-matched segment, not one per batch) -- crop and
+ *  assess stages loop over every packet scan under a batch, not just one. */
+async function findPacketScanIds(supabase: SupabaseClient, batchId: string): Promise<string[]> {
+  const { data } = await supabase.from("na_packet_scans").select("id").eq("batch_id", batchId);
+  return (data ?? []).map((r) => r.id as string);
 }
 
 async function processOneQueuedBatch(
@@ -87,20 +90,41 @@ async function processOneSplitBatch(
 ): Promise<void> {
   const row = await claimNext(supabase, workerId, "split", "cropping");
   if (!row) return;
-  const packetScanId = await findPacketScanId(supabase, row.id);
-  if (!packetScanId) {
+  const packetScanIds = await findPacketScanIds(supabase, row.id);
+  if (packetScanIds.length === 0) {
     await supabase
       .from("na_scan_batches")
-      .update({ status: "failed", error_message: "No packet scan found for a split batch -- inconsistent state." })
+      .update({ status: "failed", error_message: "No packet scans found for a split batch -- inconsistent state." })
       .eq("id", row.id);
     summary.failed++;
     return;
   }
-  const result = await runCrop(supabase, packetScanId);
-  if (result.outcome === "cropped") {
+
+  // Crop every student in this batch. Best-effort: one student's crop
+  // failing doesn't stop the others from being attempted, since each has
+  // its own independent split PDF and locked anchors -- there's no reason
+  // a CV-service hiccup on one packet should block the rest of the batch.
+  const failures: string[] = [];
+  for (const packetScanId of packetScanIds) {
+    const result = await runCrop(supabase, packetScanId);
+    if (result.outcome === "failed") failures.push(result.message);
+  }
+
+  if (failures.length === 0) {
     await supabase.from("na_scan_batches").update({ status: "cropped" }).eq("id", row.id);
     summary.cropped++;
   } else {
+    // runCrop's own failure path already flips na_scan_batches to 'failed'
+    // for a single-student batch; this overwrite gives a fuller message
+    // when several students in the same batch failed, so the teacher sees
+    // the whole picture rather than just the first failure.
+    await supabase
+      .from("na_scan_batches")
+      .update({
+        status: "failed",
+        error_message: `Crop failed for ${failures.length} of ${packetScanIds.length} student(s): ${failures.join("; ")}`,
+      })
+      .eq("id", row.id);
     summary.failed++;
   }
 }
@@ -113,24 +137,43 @@ async function processOneCroppedBatch(
 ): Promise<void> {
   const row = await claimNext(supabase, workerId, "cropped", "assessing");
   if (!row) return;
-  const packetScanId = await findPacketScanId(supabase, row.id);
-  if (!packetScanId) {
+  const packetScanIds = await findPacketScanIds(supabase, row.id);
+  if (packetScanIds.length === 0) {
     await supabase
       .from("na_scan_batches")
-      .update({ status: "failed", error_message: "No packet scan found for a cropped batch -- inconsistent state." })
+      .update({ status: "failed", error_message: "No packet scans found for a cropped batch -- inconsistent state." })
       .eq("id", row.id);
     summary.failed++;
     return;
   }
-  const result = await submitAssessmentBatch(supabase, anthropic, packetScanId);
-  if (result.outcome === "submitted") {
-    summary.assessSubmitted++;
-  } else if (result.outcome === "nothing-to-assess") {
-    // Every crop was skipped (blank/ungraded) with no real API call needed
-    // -- nothing to poll for later, so this student is already done.
-    await supabase.from("na_scan_batches").update({ status: "assessed" }).eq("id", row.id);
-  } else {
+
+  // Submit an assessment batch for every student. assess-poll.ts is the
+  // one that eventually marks the whole na_scan_batches row 'assessed',
+  // once every student's crops have cleared -- see its own comment.
+  const failures: string[] = [];
+  let anySubmitted = false;
+  for (const packetScanId of packetScanIds) {
+    const result = await submitAssessmentBatch(supabase, anthropic, packetScanId);
+    if (result.outcome === "submitted") anySubmitted = true;
+    else if (result.outcome === "failed") failures.push(result.message);
+  }
+
+  if (failures.length > 0) {
+    await supabase
+      .from("na_scan_batches")
+      .update({
+        status: "failed",
+        error_message: `Assessment submission failed for ${failures.length} of ${packetScanIds.length} student(s): ${failures.join("; ")}`,
+      })
+      .eq("id", row.id);
     summary.failed++;
+  } else if (anySubmitted) {
+    summary.assessSubmitted++; // status stays 'assessing' (set by the claim); assess-poll.ts advances it once every student's crops clear
+  } else {
+    // Every student's crops were already fully resolved (blank/ungraded/
+    // already-assessed) with no real API call needed -- nothing to poll
+    // for later, so the whole batch is already done.
+    await supabase.from("na_scan_batches").update({ status: "assessed" }).eq("id", row.id);
   }
 }
 

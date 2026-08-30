@@ -60,25 +60,34 @@ export async function pollAssessmentBatches(supabase: SupabaseClient, anthropic:
         .eq("id", row.id);
       summary.resultsWritten++;
 
-      // A student's crops can now be split across several chunked Batches
-      // (see assess-submit.ts's CHUNK_SIZE) -- only mark the student
-      // 'assessed' once every chunk has cleared, not just this one. A crop
-      // still has pending_assessment_batch_id set for as long as ANY of
-      // its chunk's results haven't been written yet, regardless of which
-      // batch row that check runs against.
-      const { count: stillPending } = await supabase
-        .from("na_response_crops")
-        .select("id", { count: "exact", head: true })
-        .eq("packet_scan_id", row.packet_scan_id)
-        .not("pending_assessment_batch_id", "is", null);
+      // A na_scan_batches row can hold several students (any number of
+      // clean segments auto-splits, not just one -- see segment-and-split.ts),
+      // and each student's own crops can be split across several chunked
+      // Batches (see assess-submit.ts's CHUNK_SIZE). So "is the batch done"
+      // means checking every OTHER student under the same batch_id too, not
+      // just this one Anthropic Batch's own packet scan -- a crop still has
+      // pending_assessment_batch_id set for as long as ANY chunk for ANY
+      // student in the batch hasn't had its results written yet.
+      const { data: scan } = await supabase
+        .from("na_packet_scans")
+        .select("batch_id")
+        .eq("id", row.packet_scan_id)
+        .maybeSingle();
 
-      if (!stillPending) {
-        const { data: scan } = await supabase
+      if (scan?.batch_id) {
+        const { data: siblingScans } = await supabase
           .from("na_packet_scans")
-          .select("batch_id")
-          .eq("id", row.packet_scan_id)
-          .maybeSingle();
-        if (scan?.batch_id) {
+          .select("id")
+          .eq("batch_id", scan.batch_id);
+        const siblingIds = (siblingScans ?? []).map((s) => s.id as string);
+
+        const { count: stillPending } = await supabase
+          .from("na_response_crops")
+          .select("id", { count: "exact", head: true })
+          .in("packet_scan_id", siblingIds)
+          .not("pending_assessment_batch_id", "is", null);
+
+        if (!stillPending) {
           await supabase.from("na_scan_batches").update({ status: "assessed" }).eq("id", scan.batch_id);
         }
       }

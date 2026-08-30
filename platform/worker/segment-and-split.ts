@@ -23,24 +23,28 @@ export interface QueuedBatchRow {
 }
 
 export type SegmentAndSplitResult =
-  | { outcome: "split"; packetScanId: string }
+  | { outcome: "split"; packetScanIds: string[] }
   | { outcome: "needs-review" }
   | { outcome: "failed"; message: string };
 
 /**
  * Stages 1-2 of the NA scan pipeline, run for one bulk-queued batch. Mirrors
- * app/api/na-review/batch/route.ts's segmentation logic exactly (same
- * cover-page-only scan, same roster grounding) but against a service-role
- * client instead of a request-scoped one, and with a materially different
- * ending: a bulk upload is one PDF per student by construction, so when
- * segmentation finds exactly one confident, roster-matched, full-document
- * segment, this goes straight to "split" without the teacher-confirmation
- * step the multi-student flow requires -- there's nothing to confirm when
- * the whole document is already unambiguously one student's own packet.
- * Anything less clean (more than one segment, or low confidence) is left at
- * status 'segmented', the exact same state the manual single-upload flow
- * produces, so the teacher resolves it through the existing review UI
- * unmodified -- the worker never touches a 'segmented' row again.
+ * app/api/na-review/batch/route.ts's segmentation logic (same cover-page-
+ * only scan, same roster grounding) and .../batch/[batchId]/split/route.ts's
+ * splitting logic, but against a service-role client and fully automatic --
+ * a bulk-uploaded PDF can hold any number of students, exactly like the
+ * manual upload flow (this is NOT limited to one student per file). It
+ * auto-continues straight to split whenever EVERY detected segment is a
+ * confident, unique, roster-matched hit -- the same "ready for auto-split"
+ * bar the client UI's own fast path already uses (see
+ * rowsReadyForAutoSplit in scan-test-client.tsx): one low-confidence,
+ * unmatched, or duplicate-student segment among several stops the WHOLE
+ * batch for manual review rather than auto-splitting some students and
+ * leaving others pending, which would leave a teacher juggling a batch
+ * half in each state. Anything less than fully clean is left at status
+ * 'segmented', the exact state the manual single-upload flow produces, so
+ * the teacher resolves it through the existing review UI unmodified -- the
+ * worker never touches a 'segmented' row again.
  */
 export async function runSegmentAndSplit(
   supabase: SupabaseClient,
@@ -176,13 +180,17 @@ export async function runSegmentAndSplit(
 
   const now = new Date().toISOString();
 
-  // The clean bulk case: exactly one segment, a confident roster match, and
-  // (by construction of scanCoverPages when segments.length === 1) it
-  // already covers the whole document -- there is nothing left to confirm.
-  const only = proposedSegments.length === 1 ? proposedSegments[0] : null;
-  const isCleanSingleStudent = Boolean(only && only.matchedInvitedId && only.confidence === "high");
+  // Auto-continue only when EVERY segment is a confident, unique, matched
+  // roster hit -- same bar the client UI's own fast path uses
+  // (rowsReadyForAutoSplit): every row matched, no duplicates, all
+  // high-confidence.
+  const matchedIds = proposedSegments.map((s) => s.matchedInvitedId).filter((id): id is string => !!id);
+  const allClean =
+    proposedSegments.length > 0 &&
+    proposedSegments.every((s) => s.matchedInvitedId && s.confidence === "high") &&
+    new Set(matchedIds).size === proposedSegments.length; // no two segments claiming the same student
 
-  if (!isCleanSingleStudent || !only) {
+  if (!allClean) {
     const { error: updateErr } = await supabase
       .from("na_scan_batches")
       .update({
@@ -196,49 +204,80 @@ export async function runSegmentAndSplit(
     return { outcome: "needs-review" };
   }
 
-  // Split is near-free here: the uploaded PDF already IS the one student's
-  // whole packet (a bulk upload is one PDF per student by construction), so
-  // split_storage_path can just point at the same source file instead of
-  // copying/re-uploading an identical byte range under a new path -- there
-  // is nothing for pdf-lib to actually cut.
-  const { data: existingScan } = await supabase
-    .from("na_packet_scans")
-    .select("id")
-    .eq("batch_id", batch.id)
-    .eq("invited_student_id", only.matchedInvitedId as string)
-    .maybeSingle();
+  // Split every segment into its own per-student PDF -- same approach as
+  // app/api/na-review/batch/[batchId]/split/route.ts, just running here
+  // automatically instead of waiting for a teacher click, since every
+  // segment already cleared the auto-continue bar above.
+  const packetScanIds: string[] = [];
+  let seq = 1;
+  for (const seg of proposedSegments) {
+    const invitedId = seg.matchedInvitedId as string;
+    try {
+      const splitDoc = await PDFDocument.create();
+      const copiedPages = await splitDoc.copyPages(
+        sourceDoc,
+        seg.pages.map((p) => p - 1)
+      );
+      for (const page of copiedPages) splitDoc.addPage(page);
+      const splitBytes = Buffer.from(await splitDoc.save());
 
-  let packetScanId = existingScan?.id as string | undefined;
-  if (packetScanId) {
-    const { error: updateErr } = await supabase
-      .from("na_packet_scans")
-      .update({ split_storage_path: batch.source_storage_path, status: "split", updated_at: now })
-      .eq("id", packetScanId);
-    if (updateErr) return fail(`Could not update existing packet scan: ${updateErr.message}`);
-  } else {
-    const { data: newScan, error: insertErr } = await supabase
-      .from("na_packet_scans")
-      .insert({
-        batch_id: batch.id,
-        packet_version_id: batch.packet_version_id,
-        packet_seq: 1,
-        invited_student_id: only.matchedInvitedId,
-        split_storage_path: batch.source_storage_path,
-        id_status: "confirmed",
-        status: "split",
-      })
-      .select("id")
-      .single();
-    if (insertErr || !newScan) return fail(`Could not create packet scan: ${insertErr?.message ?? "unknown error"}`);
-    packetScanId = newScan.id as string;
+      const splitPath = `na-scans/${batch.packet_version_id}/${invitedId}/${Date.now()}-batch-${batch.id}.pdf`;
+      const { error: uploadErr } = await supabase.storage
+        .from(NA_SCAN_BUCKET)
+        .upload(splitPath, splitBytes, { contentType: "application/pdf", upsert: true });
+      if (uploadErr) throw new Error(`Could not store split scan: ${uploadErr.message}`);
+
+      // Find-or-create per (batch, student), same as the manual split route.
+      const { data: existingScan } = await supabase
+        .from("na_packet_scans")
+        .select("id")
+        .eq("batch_id", batch.id)
+        .eq("invited_student_id", invitedId)
+        .maybeSingle();
+
+      let packetScanId = existingScan?.id as string | undefined;
+      if (packetScanId) {
+        const { error: updateErr } = await supabase
+          .from("na_packet_scans")
+          .update({ split_storage_path: splitPath, status: "split", updated_at: now })
+          .eq("id", packetScanId);
+        if (updateErr) throw new Error(`Could not update existing packet scan: ${updateErr.message}`);
+      } else {
+        const { data: newScan, error: insertErr } = await supabase
+          .from("na_packet_scans")
+          .insert({
+            batch_id: batch.id,
+            packet_version_id: batch.packet_version_id,
+            packet_seq: seq,
+            invited_student_id: invitedId,
+            split_storage_path: splitPath,
+            id_status: "confirmed",
+            status: "split",
+          })
+          .select("id")
+          .single();
+        if (insertErr || !newScan) throw new Error(`Could not create packet scan: ${insertErr?.message ?? "unknown error"}`);
+        packetScanId = newScan.id as string;
+      }
+      packetScanIds.push(packetScanId as string);
+      seq++;
+    } catch (e) {
+      return fail(`Could not split "${seg.label}"'s pages: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
+
+  const confirmedSegments = proposedSegments.map((s) => ({
+    label: s.label,
+    pages: s.pages,
+    invitedId: s.matchedInvitedId as string,
+  }));
 
   const { error: batchUpdateErr } = await supabase
     .from("na_scan_batches")
     .update({
       status: "split",
       proposed_segments: proposedSegments,
-      confirmed_segments: [{ label: only.label, pages: only.pages, invitedId: only.matchedInvitedId }],
+      confirmed_segments: confirmedSegments,
       unassigned_pages: [],
       segmented_at: now,
       split_at: now,
@@ -246,5 +285,5 @@ export async function runSegmentAndSplit(
     .eq("id", batch.id);
   if (batchUpdateErr) return fail(`Could not finalize split: ${batchUpdateErr.message}`);
 
-  return { outcome: "split", packetScanId: packetScanId as string };
+  return { outcome: "split", packetScanIds };
 }
