@@ -110,6 +110,8 @@ export function unitLabel(u: Pick<GradingUnit, "questionNumber" | "partLabel">):
 export const NumericCheckSchema = z.object({
   reportedValue: z.string().min(1),
   referenceValue: z.string().min(1),
+  /** Other mark-scheme-accepted final values from different valid rounding paths -- see NumericCheck in lib/numerical-accuracy.ts. */
+  alternativeReferenceValues: z.array(z.string().min(1)).optional(),
   precisionType: z.enum(["exact", "sf", "dp"]),
   precisionDigits: z.number().int().min(0).optional(),
 });

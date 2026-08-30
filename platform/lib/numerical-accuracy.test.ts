@@ -236,4 +236,44 @@ describe("matchesRequiredPrecision", () => {
     });
     expect(result.ok).toBe(true);
   });
+
+  // The Luciana Q4(b)/Q4(c) regression: a mark scheme accepts two different
+  // final values from two valid rounding paths (e.g. "y = 261, (y = 260
+  // from 3sf)"). Asking the model to report only whichever single value
+  // matches the student's own path proved unreliable in production -- it
+  // repeatedly reported the OTHER path's value as referenceValue, which
+  // made a genuinely accepted answer fail. alternativeReferenceValues lets
+  // the model list every accepted value instead of picking one.
+  it("accepts a reported value that matches an alternative reference value, not just the primary one", () => {
+    const result = matchesRequiredPrecision({
+      reportedValue: "260",
+      referenceValue: "261.083",
+      alternativeReferenceValues: ["260.409"],
+      precisionType: "sf",
+      precisionDigits: 3,
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("still rejects a reported value that matches none of the accepted alternatives", () => {
+    const result = matchesRequiredPrecision({
+      reportedValue: "999",
+      referenceValue: "261.083",
+      alternativeReferenceValues: ["260.409"],
+      precisionType: "sf",
+      precisionDigits: 3,
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("matches the primary referenceValue without needing to fall back to an alternative", () => {
+    const result = matchesRequiredPrecision({
+      reportedValue: "261",
+      referenceValue: "261.083",
+      alternativeReferenceValues: ["260.409"],
+      precisionType: "sf",
+      precisionDigits: 3,
+    });
+    expect(result.ok).toBe(true);
+  });
 });

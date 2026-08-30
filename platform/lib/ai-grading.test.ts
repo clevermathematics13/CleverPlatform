@@ -292,6 +292,50 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
     expect(result.outcome.grades[0].confidence).toBe("high");
   });
+
+  // The Luciana Q4(b) regression: the mark scheme accepted two different
+  // final values from two valid rounding paths ("y = 261, (y = 260 from
+  // 3sf)"). The student's reported "260" matched one of them, but the
+  // model reported only the OTHER path's value as referenceValue, which
+  // made a genuinely correct answer fail the deterministic re-check and
+  // get silently withheld. alternativeReferenceValues fixes this by
+  // letting the model list every accepted value.
+  it("leaves an awarded numeric accuracy token alone when it matches an alternative reference value", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: true,
+              note: "y = 260 is accepted per mark scheme (260 from 3sf values)",
+              numericCheck: {
+                reportedValue: "260",
+                referenceValue: "261.083",
+                alternativeReferenceValues: ["260.409"],
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.grades[0].confidence).toBe("high");
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
 });
 
 describe("isAaHlPaper2", () => {

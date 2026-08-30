@@ -29,6 +29,19 @@ export interface NumericCheck {
   reportedValue: string;
   /** The correct value at full precision, as plain text. */
   referenceValue: string;
+  /**
+   * Other full-precision values the mark scheme also accepts as correct,
+   * as plain text, when it states more than one final answer because
+   * different equally-valid rounding paths reach different results (e.g.
+   * "y = 261, (y = 260 from 3sf)" is two accepted values, not one value
+   * rounded two ways). `reportedValue` earns the mark if it matches
+   * `referenceValue` OR any of these. See ai-grading.ts's numeric-accuracy
+   * policy section 12 for why this exists: asking the model to guess which
+   * single path the student followed and report only that one value was
+   * unreliable in production -- it repeatedly picked the wrong path's
+   * value, which made a genuinely correct answer fail this check.
+   */
+  alternativeReferenceValues?: string[];
   /** "exact" (no decimal approximation allowed), "sf" (significant figures), or "dp" (decimal places). */
   precisionType: PrecisionType;
   /** Required significant figures or decimal places. Omitted/ignored for "exact". */
@@ -183,23 +196,19 @@ export function roundToDecimalPlaces(rawValue: string, dp: number): string {
   return negative ? `-${result}` : result;
 }
 
-/**
- * Deterministically checks whether `check.reportedValue` earns its accuracy
- * mark against `check.referenceValue` at the required precision. Returns
- * `ok: true` (never blocks) when either value can't be parsed as a plain
- * number -- symbolic exact forms (fractions written with words, radicals,
- * "pi/4", etc.) are outside what this function can verify, so those defer
- * to the model's own judgement rather than being incorrectly failed.
- */
-export function matchesRequiredPrecision(
-  check: NumericCheck,
-  options: MatchOptions = {}
+/** Checks `reportedValue` against a single reference value. See `matchesRequiredPrecision`, which tries this against every accepted alternative. */
+function matchesSingleReference(
+  reportedValue: string,
+  reportedNum: number,
+  referenceValue: string,
+  precisionType: PrecisionType,
+  precisionDigits: number | undefined,
+  options: MatchOptions
 ): NumericCheckResult {
   const { allowExcessPrecision = true } = options;
-  const reportedNum = parseNumericValue(check.reportedValue);
-  const referenceNum = parseNumericValue(check.referenceValue);
+  const referenceNum = parseNumericValue(referenceValue);
 
-  if (reportedNum === null || referenceNum === null) {
+  if (referenceNum === null) {
     return {
       ok: true,
       reason:
@@ -207,53 +216,93 @@ export function matchesRequiredPrecision(
     };
   }
 
-  if (check.precisionType === "exact") {
+  if (precisionType === "exact") {
     const tolerance = Math.max(1e-9, Math.abs(referenceNum) * 1e-9);
     const matches = Math.abs(reportedNum - referenceNum) <= tolerance;
     return matches
       ? { ok: true, reason: "matches the required exact value" }
       : {
           ok: false,
-          reason: `"${check.reportedValue}" does not match the required exact value ${check.referenceValue}`,
+          reason: `"${reportedValue}" does not match the required exact value ${referenceValue}`,
         };
   }
 
-  const digits = check.precisionDigits ?? 3;
-  const isSf = check.precisionType === "sf";
+  const digits = precisionDigits ?? 3;
+  const isSf = precisionType === "sf";
   const roundFn = isSf ? roundToSignificantFigures : roundToDecimalPlaces;
-  const requiredRounded = roundFn(check.referenceValue, digits);
+  const requiredRounded = roundFn(referenceValue, digits);
   const unit = isSf ? "significant figure(s)" : "decimal place(s)";
 
   // A bare integer numerically equal to the correct rounded value is never
   // wrong just because its trailing zeros look ambiguous (policy section 6).
-  if (!check.reportedValue.includes(".") && Number(check.reportedValue) === Number(requiredRounded)) {
+  if (!reportedValue.includes(".") && Number(reportedValue) === Number(requiredRounded)) {
     return { ok: true, reason: "matches the required rounded value (trailing zeros in a whole number are not penalized)" };
   }
 
-  const reportedRounded = roundFn(check.reportedValue, digits);
+  const reportedRounded = roundFn(reportedValue, digits);
   if (reportedRounded !== requiredRounded) {
     return {
       ok: false,
-      reason: `"${check.reportedValue}" rounds to ${reportedRounded} at ${digits} ${unit}, not the required ${requiredRounded}`,
+      reason: `"${reportedValue}" rounds to ${reportedRounded} at ${digits} ${unit}, not the required ${requiredRounded}`,
     };
   }
 
   const reportedPrecisionCount = isSf
-    ? countSignificantFigures(check.reportedValue)
-    : countDecimalPlaces(check.reportedValue);
+    ? countSignificantFigures(reportedValue)
+    : countDecimalPlaces(reportedValue);
 
   if (reportedPrecisionCount < digits) {
     return {
       ok: false,
-      reason: `"${check.reportedValue}" has only ${reportedPrecisionCount} ${unit}; ${digits} are required`,
+      reason: `"${reportedValue}" has only ${reportedPrecisionCount} ${unit}; ${digits} are required`,
     };
   }
   if (!allowExcessPrecision && reportedPrecisionCount > digits) {
     return {
       ok: false,
-      reason: `"${check.reportedValue}" has ${reportedPrecisionCount} ${unit}; exactly ${digits} were required and excess precision is not accepted under the strict default`,
+      reason: `"${reportedValue}" has ${reportedPrecisionCount} ${unit}; exactly ${digits} were required and excess precision is not accepted under the strict default`,
     };
   }
 
   return { ok: true, reason: `matches the required value at ${digits} ${unit}` };
+}
+
+/**
+ * Deterministically checks whether `check.reportedValue` earns its accuracy
+ * mark against `check.referenceValue` (and any `alternativeReferenceValues`)
+ * at the required precision. Returns `ok: true` (never blocks) when the
+ * reported value can't be parsed as a plain number -- symbolic exact forms
+ * (fractions written with words, radicals, "pi/4", etc.) are outside what
+ * this function can verify, so those defer to the model's own judgement
+ * rather than being incorrectly failed. A reference value that can't be
+ * parsed is skipped the same way, one candidate at a time.
+ */
+export function matchesRequiredPrecision(
+  check: NumericCheck,
+  options: MatchOptions = {}
+): NumericCheckResult {
+  const reportedNum = parseNumericValue(check.reportedValue);
+  if (reportedNum === null) {
+    return {
+      ok: true,
+      reason:
+        "could not parse a plain numeric value to verify deterministically -- deferring to the model's own judgement",
+    };
+  }
+
+  const candidates = [check.referenceValue, ...(check.alternativeReferenceValues ?? [])];
+  let lastResult: NumericCheckResult | null = null;
+  for (const referenceValue of candidates) {
+    const result = matchesSingleReference(
+      check.reportedValue,
+      reportedNum,
+      referenceValue,
+      check.precisionType,
+      check.precisionDigits,
+      options
+    );
+    if (result.ok) return result;
+    lastResult = result;
+  }
+  return lastResult as NumericCheckResult;
 }
