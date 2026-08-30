@@ -165,23 +165,26 @@ export function NaFeedbackClient({
                     </div>
                   )}
 
-                  {canFlag && (
+                  {item.studentFlaggedMisread ? (
+                    <div className="mt-2 flex items-center gap-2 text-xs">
+                      <span className="text-amber-500">
+                        Flagged as possibly misread{item.studentFlagNote ? `: "${item.studentFlagNote}"` : "."}
+                      </span>
+                      {canFlag && (
+                        <button
+                          type="button"
+                          disabled={flagSaving === item.cropId}
+                          onClick={() => void submitFlag(item.cropId, false, null)}
+                          className="text-da-muted hover:underline disabled:opacity-50"
+                        >
+                          Undo
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    canFlag && (
                     <div className="mt-2">
-                      {item.studentFlaggedMisread ? (
-                        <div className="flex items-center gap-2 text-xs">
-                          <span className="text-amber-500">
-                            Flagged as possibly misread{item.studentFlagNote ? `: "${item.studentFlagNote}"` : "."}
-                          </span>
-                          <button
-                            type="button"
-                            disabled={flagSaving === item.cropId}
-                            onClick={() => void submitFlag(item.cropId, false, null)}
-                            className="text-da-muted hover:underline disabled:opacity-50"
-                          >
-                            Undo
-                          </button>
-                        </div>
-                      ) : draftOpen ? (
+                      {draftOpen ? (
                         <div className="flex items-center gap-2">
                           <input
                             type="text"
@@ -217,6 +220,7 @@ export function NaFeedbackClient({
                         </button>
                       )}
                     </div>
+                    )
                   )}
                 </div>
               );
