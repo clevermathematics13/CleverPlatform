@@ -22,6 +22,7 @@ from cv_crop_extract import (  # type: ignore  # noqa: E402
     Anchor,
     crop_page_count_mismatch,
     extract_crops,
+    render_page_image,
 )
 from inspect_fillrects import inspect_fillrects  # type: ignore  # noqa: E402
 
@@ -54,7 +55,21 @@ class InspectFillrectsRequest(BaseModel):
     pageIndex: int
 
 
-app = FastAPI(title="Graph Lab CV Service", version="1.3.0")
+class HighlightBoxIn(BaseModel):
+    x0Pt: float
+    y0Pt: float
+    x1Pt: float
+    y1Pt: float
+
+
+class PageImageRequest(BaseModel):
+    studentPdfBase64: str
+    pageIndex: int
+    rotationHint: int = 0
+    highlightBox: HighlightBoxIn | None = None
+
+
+app = FastAPI(title="Graph Lab CV Service", version="1.4.0")
 
 
 def _check_secret(request: Request) -> JSONResponse | None:
@@ -226,6 +241,56 @@ async def crop(request: Request, req: CropRequest) -> JSONResponse:
                 for r in results
             ],
         },
+        status_code=200,
+    )
+
+
+@app.post("/page-image")
+async def page_image(request: Request, req: PageImageRequest) -> JSONResponse:
+    """
+    Renders one full page of a student's split PDF, optionally with one
+    box outlined in red -- the assess route's second pass, used only when
+    a first pass (on the normal tight crop) reports a crossed-out answer
+    with an arrow leaving the box. That crop by definition cannot show
+    where the arrow points, so the model needs the whole page instead;
+    see cv_crop_extract.render_page_image's docstring and
+    na-assessment.ts's WIDE_CONTEXT_SYSTEM_PROMPT for the full reasoning.
+
+    Not part of the normal stage 1-5 pipeline -- called on demand, per
+    crop, only for the rare case that needs it.
+    """
+    auth_err = _check_secret(request)
+    if auth_err:
+        return auth_err
+    if not req.studentPdfBase64:
+        return JSONResponse({"error": "studentPdfBase64 is required"}, status_code=400)
+
+    import base64 as _base64
+
+    try:
+        pdf_bytes = _base64.b64decode(req.studentPdfBase64)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"studentPdfBase64 could not be decoded: {exc}"}, status_code=400
+        )
+
+    highlight = (
+        (req.highlightBox.x0Pt, req.highlightBox.y0Pt, req.highlightBox.x1Pt, req.highlightBox.y1Pt)
+        if req.highlightBox is not None
+        else None
+    )
+
+    try:
+        png_bytes = render_page_image(
+            pdf_bytes, req.pageIndex, rotation_hint=req.rotationHint, highlight_box=highlight
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=422)
+    except Exception as exc:  # pragma: no cover - defensive runtime guard
+        return JSONResponse({"error": f"Page render failed: {exc}"}, status_code=500)
+
+    return JSONResponse(
+        {"imageBase64": _base64.b64encode(png_bytes).decode("ascii")},
         status_code=200,
     )
 

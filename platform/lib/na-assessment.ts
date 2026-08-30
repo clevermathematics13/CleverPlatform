@@ -60,6 +60,18 @@ export const AssessmentSchema = z.object({
    *  like a different question's work". Empty string when there's
    *  nothing. */
   teacherNote: z.string().default(""),
+  /** True when the work actually inside this crop is crossed out AND an
+   *  arrow leaves the crop toward a replacement answer written elsewhere
+   *  on the page (a margin, blank space, even a different box) -- a real
+   *  case found on Giulia Bernal's Q3: the crop alone showed only the
+   *  crossed-out original, with an arrow entering from outside the crop
+   *  boundary, so the model had no way to see what it pointed to. When
+   *  true, the caller re-assesses this crop with the full page in view
+   *  (see the assess route's second pass) and that result supersedes this
+   *  one -- so it's fine to answer this call's verdict/marksAwarded from
+   *  only the crossed-out content, as a fallback in case the second pass
+   *  can't resolve it either. */
+  redirectedElsewhere: z.boolean().default(false),
 });
 
 export type Assessment = z.infer<typeof AssessmentSchema>;
@@ -162,6 +174,8 @@ nextStep is one concrete action in one short sentence, not a platitude. "Re-read
 
 teacherNote is for the teacher only and never shown to the student. Use it for anything that affects trust in this mark: a crop that looks cut off, work that seems to belong to a different question, an answer that's right by a method the key didn't anticipate, or your reason for an "unclear" verdict. Leave it as an empty string when there is genuinely nothing to flag. Keep it as brief as the reasoning allows -- one or two short sentences, not a paragraph.
 
+redirectedElsewhere: set this true ONLY when the work actually inside this crop is crossed out (an X, a scribble-out, a strike-through covering it) AND an arrow enters or leaves the crop boundary, pointing toward where a replacement answer must be written -- outside what you can see. This crop alone cannot show you that replacement work; you're only being asked to notice the pattern, not find the answer. Do NOT set this for a crossed-out answer with no arrow (that's just an abandoned attempt -- mark whatever legible content remains, or award 0 if none does) or for ordinary crossed-out scratch work alongside a clean final answer still visible in the same crop (mark the clean answer normally). When you do set this true, still fill in your best-effort verdict/marksAwarded/transcription from the crossed-out content as a fallback, exactly as you would for any other crop.
+
 teacherNote must state your reasoning ONCE, not narrate you changing your mind. Never write "wait", "actually, reconsidering", "on second thought", or any similar mid-explanation reversal -- if you catch yourself about to write one, that means you have not actually finished reasoning yet. Resolve the uncertainty first, THEN write teacherNote as a single, final account of why you landed on the verdict and marksAwarded you are about to submit. A teacherNote whose own stated conclusion doesn't match marksAwarded is a real error -- worse than an honest "unclear" -- because it looks confident while being wrong, and a teacher skimming past the number would never catch it. If you genuinely remain torn between two readings after reasoning it through, that is what "unclear" is for, not a hedged teacherNote paired with a picked-at-random number.
 
 Do your reasoning silently. Do NOT write out your analysis, working, or reasoning as prose before the JSON -- go straight to the JSON object with no preamble. Every part of your reasoning that matters belongs INSIDE the JSON fields themselves (transcription, teacherNote, marginComment, nextStep), not before them. A response that reasons in prose first risks being cut off before the JSON ever appears, which throws away the entire assessment -- so the JSON object must always come first and immediately, not last.
@@ -176,8 +190,50 @@ Return ONLY the JSON object below. No markdown fences, no commentary, no analysi
   "marginComment": "...",
   "nextStep": "...",
   "confidence": 0.0,
-  "teacherNote": ""
+  "teacherNote": "",
+  "redirectedElsewhere": false
 }`;
+
+/**
+ * Second-pass system prompt, used only when a first pass (against the
+ * tight crop, ASSESSMENT_SYSTEM_PROMPT above) set redirectedElsewhere --
+ * the crop showed crossed-out work with an arrow leaving the box. This
+ * pass is shown the FULL page instead, with that question's own box
+ * highlighted in red (drawn by the CV service's /page-image endpoint from
+ * the anchor's own authored coordinates, not the expanded crop bounds),
+ * so the model can actually follow the arrow to wherever the replacement
+ * work was written and grade that instead.
+ *
+ * Reuses AssessmentSchema/buildRubricBlock/validateAssessment unchanged --
+ * same output contract as the first pass, just a different image and a
+ * narrower job (this call already knows there's a redirect; it isn't
+ * re-deciding whether one exists).
+ */
+export const WIDE_CONTEXT_SYSTEM_PROMPT = `You are marking one handwritten answer from a Grade 9 IB MYP mathematics packet, against the teacher's own answer key -- the same task as always, but this time you're shown the FULL scanned page instead of a single cropped box, because a first pass already found that this question's answer box contains crossed-out work with an arrow leaving the box.
+
+The question's own answer box is outlined in RED on the page image. That red outline is the ORIGINAL box location -- ignore whatever is crossed out inside it. Your job is to find where the arrow actually points: look right at the edge of the red box for where a line leaves it, then follow that line across the page to wherever it leads (a margin, blank space nearby, even inside a different printed box) and read the work written there. That is the student's real answer to THIS question -- mark it, not the crossed-out original.
+
+If you genuinely cannot find any arrow or any replacement work after looking carefully at the whole page, fall back to marking the crossed-out content inside the red box as it stands (partial credit if it's legible and gets partway there, 0 if there's truly nothing gradable), and say plainly in teacherNote that no redirect could be located so a teacher should check the original page.
+
+Every other marking rule is unchanged from a normal crop: mark against the teacher's key and this specific question's own marks share, partial credit is normal, "unclear" is a real verdict, and every text field (marginComment especially) stays exactly as short as it would for a single-crop assessment. redirectedElsewhere in your response should be false here regardless of what you find -- this pass IS the resolution, not another signal to chase further.
+
+Do your reasoning silently and return ONLY the same JSON object shape as a normal assessment, immediately, with no preamble:
+
+{
+  "transcription": "what the student actually wrote in the replacement location, as best you can read it",
+  "verdict": "correct" | "partial" | "incorrect" | "unclear",
+  "marksAwarded": 0,
+  "misconceptionTags": [],
+  "marginComment": "...",
+  "nextStep": "...",
+  "confidence": 0.0,
+  "teacherNote": "",
+  "redirectedElsewhere": false
+}`;
+
+export function buildWideContextUserPrompt(): string {
+  return "The red-outlined box's own answer was crossed out with an arrow leaving it. Find the replacement work elsewhere on this page by following the arrow, and mark that. Return the JSON object now -- go straight to the JSON, no reasoning or analysis beforehand.";
+}
 
 /**
  * Builds the per-question rubric block: the question that was asked, the
