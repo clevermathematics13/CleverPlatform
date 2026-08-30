@@ -689,9 +689,16 @@ judgement calls made in parallel:
    for THIS part, e.g. {"page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1":
    0.61}. This is used to show the teacher the exact scan region your
    evidence came from, so it must actually contain the work, not just be
-   somewhere on the right page. If you cannot localise it confidently, set
+   somewhere on the right page. The box must bound the student's
+   HANDWRITING, never the printed question text: when the printed question
+   and the student's handwritten answer share the same page (a common
+   layout), do not stop the box at the bottom of the printed text — extend
+   y1 down far enough to include the handwritten working and final answer
+   that follows it, even if that pushes the box well below where the
+   printed question ends. If you cannot localise it confidently, set
    evidenceBox to null rather than guessing — a missing crop is fine, a
-   wrong one is not. Omit entirely (null) when workFound is false.
+   wrong one (including one that shows only printed text with no
+   handwriting) is not. Omit entirely (null) when workFound is false.
 3. MARK BREAKDOWN: itemise every mark scheme token (M1, A1, R1, AG, ...) for
    this part and decide, one token at a time, whether the transcribed
    evidence earns it.
