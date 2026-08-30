@@ -4,13 +4,13 @@ import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import {
   GRADING_MODEL,
-  GRADING_SYSTEM_PROMPT,
   MAX_SCAN_BYTES,
   SCAN_BUCKET,
   assembleMarkScheme,
   assembleMarkschemeImages,
   assembleQuestionImages,
   buildGradingStudentPrompt,
+  buildGradingSystemPrompt,
   buildGradingUserPrompt,
   gradeNeedsReview,
   unitLabel,
@@ -443,8 +443,13 @@ export async function POST(
     const message = await anthropic.messages.create({
       model: GRADING_MODEL,
       max_tokens: 16384,
-      // Identical for every grading call in the app, so it's always worth caching.
-      system: [{ type: "text", text: GRADING_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      // Identical for every student sitting this same test (it only varies by
+      // which policies this test's questions require, not by student), so
+      // it's still worth caching on a batch upload even though it's no
+      // longer identical across every test in the app.
+      system: [
+        { type: "text", text: buildGradingSystemPrompt(gradeable), cache_control: { type: "ephemeral" } },
+      ],
       messages: [
         {
           role: "user",

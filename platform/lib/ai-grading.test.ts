@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { matchSegmentsToRoster, validateGradeResponse, type GradingUnit, type RosterEntry } from "./ai-grading";
+import {
+  AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY,
+  GRADING_SYSTEM_PROMPT,
+  buildGradingSystemPrompt,
+  isAaHlPaper2,
+  matchSegmentsToRoster,
+  validateGradeResponse,
+  type GradingUnit,
+  type RosterEntry,
+} from "./ai-grading";
 
 function unit(overrides: Partial<GradingUnit> = {}): GradingUnit {
   return {
@@ -13,6 +22,9 @@ function unit(overrides: Partial<GradingUnit> = {}): GradingUnit {
     markschemeSource: "part_latex",
     commandTerms: [],
     subtopicCodes: [],
+    curriculum: [],
+    level: null,
+    paper: null,
     ...overrides,
   };
 }
@@ -195,5 +207,121 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.grades[0].clampedMarks).toBe(2);
     expect(result.outcome.grades[0].confidence).toBe("high");
     expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  // Case 13: a question-specific accepted alternative overrides the general
+  // rule -- validateGradeResponse never re-derives the mark scheme's own
+  // required precision itself, only checks the model's own numericCheck
+  // report against it, so a mark scheme that accepts a different value is
+  // reflected by the model reporting a different (correct) referenceValue,
+  // not by anything in this function needing special-case logic.
+  it("corrects an awarded numeric accuracy token when the deterministic check disagrees", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 3,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "M1", awarded: true, note: "" },
+            {
+              token: "A1",
+              awarded: true,
+              note: "a = 0.81 (acceptable rounding of 0.805)",
+              numericCheck: {
+                reportedValue: "0.81",
+                referenceValue: "0.805084",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+            { token: "A1", awarded: true, note: "" },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 3 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // The Pedro Costa regression: a=0.81 (2 s.f.) against a required a=0.805
+    // (3 s.f.) is a real precision error the model called "acceptable
+    // rounding" across five separate production grading runs even after
+    // being told not to invent that tolerance -- this is the backstop that
+    // catches it regardless of what the model's own note claims.
+    expect(result.outcome.grades[0].clampedMarks).toBe(2);
+    expect(result.outcome.grades[0].confidence).toBe("low");
+    expect(result.outcome.warnings.some((w) => w.includes("deterministic accuracy re-check"))).toBe(true);
+  });
+
+  it("leaves an awarded numeric accuracy token alone when the deterministic check agrees", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: true,
+              note: "",
+              numericCheck: {
+                reportedValue: "8.52",
+                referenceValue: "8.51693",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.grades[0].confidence).toBe("high");
+  });
+});
+
+describe("isAaHlPaper2", () => {
+  it("matches only the AA / AHL / paper 2 combination", () => {
+    expect(isAaHlPaper2({ curriculum: ["AA"], level: "AHL", paper: 2 })).toBe(true);
+    expect(isAaHlPaper2({ curriculum: ["AA"], level: "AHL", paper: 1 })).toBe(false);
+    expect(isAaHlPaper2({ curriculum: ["AA"], level: "SL", paper: 2 })).toBe(false);
+    expect(isAaHlPaper2({ curriculum: ["AI"], level: "AHL", paper: 2 })).toBe(false);
+    expect(isAaHlPaper2({ curriculum: [], level: null, paper: null })).toBe(false);
+  });
+});
+
+describe("buildGradingSystemPrompt", () => {
+  it("returns the base prompt unchanged when no unit is AA HL Paper 2", () => {
+    const prompt = buildGradingSystemPrompt([unit({ curriculum: ["AA"], level: "SL", paper: 2 })]);
+    expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
+  });
+
+  it("appends the numerical-accuracy policy when any unit is AA HL Paper 2", () => {
+    const prompt = buildGradingSystemPrompt([
+      unit({ testItemId: "item-1", curriculum: ["AA"], level: "SL", paper: 2 }),
+      unit({ testItemId: "item-2", curriculum: ["AA"], level: "AHL", paper: 2 }),
+    ]);
+    expect(prompt.startsWith(GRADING_SYSTEM_PROMPT)).toBe(true);
+    expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
+    expect(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY.length).toBeGreaterThan(0);
+  });
+
+  it("policy content is actually loaded from grading_policies/, not empty", () => {
+    expect(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY).toContain("three significant figures");
+    expect(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY).toContain("numericCheck");
   });
 });
