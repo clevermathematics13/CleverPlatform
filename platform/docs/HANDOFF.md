@@ -532,6 +532,62 @@ full-packet audit gap**: every anchor in the packet has now been either
 mechanically re-cropped with zero changes, or individually visually
 verified, or fixed and re-verified.
 
+### Q1(e) truncation found again, 30 Aug 2026 - the audit above missed a case class, now a reusable script
+
+A teacher spotted Davi Verma's A.1 Q1(e) crop cut off mid-sentence ("...but",
+no second line) three days after the "closing the gap" audit above supposedly
+covered every anchor. Root cause was the exact ink-density-gap limitation
+already documented for Q3/Q30 (`_adaptive_crop_bounds`'s per-step density
+check landing at 0.0462, just under the 0.05 threshold, in the blank paper
+between this question's two ruled lines - confirmed by literally re-running
+the deployed algorithm step-by-step against the real page) - except this time
+`expand_max_y1_pt` (811.89) was already generous, so the anchor never got
+flagged by the possibly_truncated detector (which only fires when expansion
+hits its CAP with ink still touching the edge - it structurally cannot see
+"expansion never even started because the first check came in just under
+threshold"). Same failure mode as Q30, different anchor, and the earlier
+audits' "possibly_truncated=true" sweep was never going to catch it because
+nothing was ever flagged.
+
+**Fixed the same established way**: widened Q1(e)'s own `y1_pt` (535.68 ->
+564.9) directly to its true printed border, measured off the same left-
+accent-bar signal the 27 Aug audit used by hand - bypassing reliance on
+runtime expansion for this box entirely, same as the Q30 fix. `expand_max_y1_pt`
+was untouched (already correct; the box's own base height was the problem,
+not the cap). Re-cropped and re-assessed Q1(e) for every identified student
+in the packet (not just Davi) - the crop grew for nearly everyone (most
+students' answers spilled onto the second line), several marks changed as
+previously-invisible content became visible, matching the same pattern as
+every prior fix in this section.
+
+**The one-off "measure the true border by hand" process from the 27 Aug audit
+is now a committed, reusable script**: `platform/scripts/audit_anchor_geometry.py`.
+It re-implements the same left-accent-bar detection, generalized to run
+against any packet version's anchors (`--pdf <any split/master PDF>
+--anchors <na_anchors rows as JSON>`), and reports candidate undershoot
+anchors (base `y1_pt` short of the box's own true printed border) for a
+human to verify against the actual rendered page before touching anything -
+same trust-but-verify posture as every fix in this file, not an auto-apply
+tool. Its overshoot/swallow-risk heuristic (comparing `expand_max_y1_pt`
+against the true border by raw distance) was tried and abandoned during
+this same session: it flagged 30+ of 40 anchors as "risky" purely because
+they have ordinary blank whitespace before the next question, which isn't
+the actual danger signal (the real Q11-class risk is PRINTED content in that
+gap, which distance alone can't distinguish) - don't resurrect it without
+solving that distinction first.
+
+**Required for every future packet, not just A.1**: run this script against
+a new packet version's anchors before its first real scan, verify any
+flagged undershoot by eye against the rendered page (a false positive costs
+a few seconds; a missed real one costs a wrong mark with no visible signal,
+same asymmetry documented throughout this section), and widen `y1_pt`
+directly for any confirmed case rather than only widening `expand_max_y1_pt`
+and hoping runtime expansion reaches it - that hope is exactly what failed
+twice now (Q30, Q1(e)). This closes the actual gap in the 27 Aug audit: that
+one only checked anchors where a student's ink had already tried and failed
+to cross the box; a bounded, "true border by direct measurement" check like
+this script's doesn't need to wait for a student to hit it first.
+
 ---
 
 ## 6. What an agent session can and cannot reach
