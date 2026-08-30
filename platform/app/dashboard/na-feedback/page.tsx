@@ -43,6 +43,7 @@ export default async function NaFeedbackPage({
 
   return (
     <NaFeedbackClient
+      key={selectedScanId ?? "none"}
       isTeacher={isTeacher}
       viewStudentId={viewStudentId}
       viewStudentName={viewStudentName}
