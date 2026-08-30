@@ -250,6 +250,18 @@ mark tied to a specific numerical value, in addition to the normal
 - `referenceValue`: the correct value at full precision (the exact
   mathematical value, or the mark scheme's own unrounded value), as plain
   text. Give as much precision as you have — the grader rounds it itself.
+  Some mark schemes give more than one accepted final value because two
+  equally valid computation paths lead to different results — most often
+  one path that carries an earlier rounded intermediate value (e.g. a
+  student's own 3sf answer from an earlier part) and one that carries the
+  full-precision value through instead (for example a mark scheme note
+  reading "y = 261, (y = 260 from 3sf)" is stating two separate accepted
+  values, not one value rounded two ways). When this happens, set
+  `referenceValue` to whichever of those alternates corresponds to the
+  intermediate values the student actually carried through their own
+  working, not the other path's value — using the other path's value as
+  `referenceValue` makes a genuinely accepted answer fail the deterministic
+  recheck below even though it is correct.
 - `precisionType`: `"exact"` when this mark requires an exact value (a
   decimal approximation never satisfies it), `"sf"` for a significant-figure
   requirement, or `"dp"` for a decimal-place requirement.
