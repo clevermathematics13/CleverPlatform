@@ -618,6 +618,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   // crop's own open-by-default logic (lostSomeMarks / possiblyTruncated),
   // so re-expanding just goes back to that same sensible default.
   const [assessDetailsCollapsed, setAssessDetailsCollapsed] = useState<Record<string, boolean>>({});
+  // Whole-card minimize, independent of assessDetailsCollapsed above --
+  // that one still shows every question row with its verdict badge just
+  // without the "why this mark" detail expanded; this one hides the crop
+  // list entirely, down to just the name/marks/controls header, for
+  // scanning a whole class's totals without scrolling past every student.
+  const [assessCardMinimized, setAssessCardMinimized] = useState<Record<string, boolean>>({});
 
   // Chunked path: an oversized upload split into several chunks, each
   // going through its own segment -> review -> split lifecycle.
@@ -670,6 +676,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     setAssessPanels({});
     setAssessCropState({});
     setAssessDetailsCollapsed({});
+    setAssessCardMinimized({});
     setParentBatchId(null);
     setChunks([]);
     setPresplitWarnings([]);
@@ -1948,6 +1955,15 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                     {panel && panel.crops.length > 0 && (
                       <button
                         type="button"
+                        onClick={() => setAssessCardMinimized((prev) => ({ ...prev, [scanId]: !prev[scanId] }))}
+                        className="rounded-lg border border-da-border px-3 py-1.5 text-xs font-medium text-da-muted hover:bg-da-hover"
+                      >
+                        {assessCardMinimized[scanId] ? "Restore" : "Minimize"}
+                      </button>
+                    )}
+                    {panel && panel.crops.length > 0 && !assessCardMinimized[scanId] && (
+                      <button
+                        type="button"
                         onClick={() =>
                           setAssessDetailsCollapsed((prev) => ({ ...prev, [scanId]: !prev[scanId] }))
                         }
@@ -1985,9 +2001,11 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                   </div>
                 </div>
 
-                {panel?.error && <p className="mt-2 text-xs text-red-600">{panel.error}</p>}
+                {!assessCardMinimized[scanId] && panel?.error && (
+                  <p className="mt-2 text-xs text-red-600">{panel.error}</p>
+                )}
 
-                {panel && panel.crops.length > 0 && (
+                {!assessCardMinimized[scanId] && panel && panel.crops.length > 0 && (
                   <div className="mt-3 divide-y divide-da-border/40 rounded-lg border border-da-border/60">
                     {panel.crops.map((c) => {
                       const s = assessCropState[c.cropId] ?? {
@@ -2175,14 +2193,31 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const renderAssessPanel = (results: SplitResult[]) => {
     const splitOnly = results.filter((r) => r.status === "split" && r.packetScanId);
     if (splitOnly.length === 0) return null;
+    const scanIds = splitOnly.map((r) => r.packetScanId as string);
+    const allMinimized = scanIds.every((id) => assessCardMinimized[id]);
     return (
       <section className="rounded-xl border border-da-border bg-da-surface">
-        <div className="border-b border-da-border px-5 py-3">
-          <h2 className="text-lg font-bold text-da-text">Stage 5 — AI assessment</h2>
-          <p className="text-xs text-da-muted">
-            One Sonnet call per question, marked against this packet&apos;s real rubric from{" "}
-            <code>na_anchors</code>. Produces a proposal only — nothing here is a released grade.
-          </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
+          <div>
+            <h2 className="text-lg font-bold text-da-text">Stage 5 — AI assessment</h2>
+            <p className="text-xs text-da-muted">
+              One Sonnet call per question, marked against this packet&apos;s real rubric from{" "}
+              <code>na_anchors</code>. Produces a proposal only — nothing here is a released grade.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() =>
+              setAssessCardMinimized((prev) => {
+                const next = { ...prev };
+                for (const id of scanIds) next[id] = !allMinimized;
+                return next;
+              })
+            }
+            className="shrink-0 rounded-lg border border-da-border px-3 py-1.5 text-xs font-medium text-da-muted hover:bg-da-hover"
+          >
+            {allMinimized ? "Restore all" : "Minimize all"}
+          </button>
         </div>
         <div className="divide-y divide-da-border/60">
           {splitOnly.map((r) => renderAssessCard(r.packetScanId as string, r.label))}
