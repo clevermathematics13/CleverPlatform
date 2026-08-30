@@ -119,6 +119,8 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  /** Which rows have their question image un-minimized — collapsed by default, keyed by result.id. */
+  const [questionImageShown, setQuestionImageShown] = useState<Set<string>>(new Set());
 
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
@@ -417,6 +419,14 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const toggle = (resultId: string) =>
     setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(resultId)) next.delete(resultId);
+      else next.add(resultId);
+      return next;
+    });
+
+  const toggleQuestionImage = (resultId: string) =>
+    setQuestionImageShown((prev) => {
       const next = new Set(prev);
       if (next.has(resultId)) next.delete(resultId);
       else next.add(resultId);
@@ -759,22 +769,29 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
                                     {r.question_image_urls.length > 0 && (
                                       <div>
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleQuestionImage(r.id)}
+                                          className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                                        >
+                                          <span>{questionImageShown.has(r.id) ? "▾" : "▸"}</span>
                                           Question
-                                        </p>
-                                        <div className="mt-1 flex flex-wrap gap-2">
-                                          {r.question_image_urls.map((url, i) => (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                              key={i}
-                                              src={url}
-                                              alt="Question source image"
-                                              title="Click to enlarge"
-                                              onClick={() => setLightboxUrl(url)}
-                                              className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
-                                            />
-                                          ))}
-                                        </div>
+                                        </button>
+                                        {questionImageShown.has(r.id) && (
+                                          <div className="mt-1 flex flex-wrap gap-2">
+                                            {r.question_image_urls.map((url, i) => (
+                                              // eslint-disable-next-line @next/next/no-img-element
+                                              <img
+                                                key={i}
+                                                src={url}
+                                                alt="Question source image"
+                                                title="Click to enlarge"
+                                                onClick={() => setLightboxUrl(url)}
+                                                className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
+                                              />
+                                            ))}
+                                          </div>
+                                        )}
                                       </div>
                                     )}
 
