@@ -893,23 +893,25 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                               </div>
                                             </div>
                                           ) : (
-                                            <div className="rounded border border-gray-200 bg-white p-3">
+                                            <div
+                                              role="button"
+                                              tabIndex={0}
+                                              onClick={() => startEditEvidence(r)}
+                                              onKeyDown={(e) => {
+                                                if (e.key === "Enter" || e.key === " ") {
+                                                  e.preventDefault();
+                                                  startEditEvidence(r);
+                                                }
+                                              }}
+                                              title="Click to fix transcription"
+                                              className="cursor-text rounded border border-gray-200 bg-white p-3 hover:border-blue-400 hover:bg-blue-50/30"
+                                            >
                                               {r.evidence ? (
                                                 <LatexRenderer latex={r.evidence} />
                                               ) : (
-                                                <p className="text-xs text-gray-400">No transcription on file.</p>
-                                              )}
-                                              {/* The pencil lives on the image itself -- if there's no image, or
-                                                  it's currently minimized, fall back to a text link so the
-                                                  transcription is always editable from somewhere. */}
-                                              {(!r.evidence_image_url || !evidenceImageShown.has(r.id)) && (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => startEditEvidence(r)}
-                                                  className="mt-2 text-xs text-blue-600 hover:underline"
-                                                >
-                                                  Fix transcription
-                                                </button>
+                                                <p className="text-xs text-gray-400">
+                                                  No transcription on file -- click to add one.
+                                                </p>
                                               )}
                                             </div>
                                           )}
