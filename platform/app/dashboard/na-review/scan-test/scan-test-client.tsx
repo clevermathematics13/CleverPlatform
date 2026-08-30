@@ -153,6 +153,7 @@ interface RecentBatch {
  *  batch history), and each scan's own progress is what matters here. */
 interface ResultsStudentRow {
   packetScanId: string;
+  sourceFilename: string | null;
   studentName: string;
   courseId: string | null;
   courseName: string;
@@ -1918,13 +1919,17 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     );
   };
 
-  /** Renders one student's Stage 5 card: header (name, mark totals, Open /
-   *  Assess-all controls) plus the crop-by-crop detail list. Pulled out of
-   *  renderAssessPanel so the same card can be reused by the results-by-
-   *  class table below -- clicking a student's name there opens this same
-   *  view inline, for any student regardless of which batch (if any) is
-   *  currently loaded, since it only needs a packetScanId. */
-  const renderAssessCard = (scanId: string, label: string) => {
+  /** Renders one student's Stage 5 card: header (name, source PDF, mark
+   *  totals, Open / Assess-all controls) plus the crop-by-crop detail list.
+   *  Pulled out of renderAssessPanel so the same card can be reused by the
+   *  results-by-class table below -- clicking a student's name there opens
+   *  this same view inline, for any student regardless of which batch (if
+   *  any) is currently loaded, since it only needs a packetScanId.
+   *  sourceFilename is optional because the single-loaded-batch caller
+   *  (renderAssessPanel) doesn't currently track it -- a teacher looking at
+   *  a batch they just uploaded already knows which file it was, unlike the
+   *  results-by-class table which can span scans from many old uploads. */
+  const renderAssessCard = (scanId: string, label: string, sourceFilename?: string | null) => {
     const panel = assessPanels[scanId];
             const totalAwarded = (panel?.crops ?? []).reduce((sum, c) => {
               const s = assessCropState[c.cropId];
@@ -1944,6 +1949,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-da-text">{label}</p>
+                    {sourceFilename && <p className="text-xs text-da-muted">from {sourceFilename}</p>}
                     <p className="text-xs text-da-muted">packet_scan_id {scanId.slice(0, 8)}…</p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -2512,7 +2518,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                   {expanded && (
                                     <tr className="border-b border-da-border/40 last:border-0">
                                       <td colSpan={3} className="bg-da-hover/20 p-0">
-                                        {renderAssessCard(s.packetScanId, s.studentName)}
+                                        {renderAssessCard(s.packetScanId, s.studentName, s.sourceFilename)}
                                       </td>
                                     </tr>
                                   )}

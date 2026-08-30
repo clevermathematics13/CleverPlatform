@@ -58,15 +58,18 @@ export async function GET(
     courses: { id: string; name: string } | { id: string; name: string }[] | null;
   };
 
+  type BatchRow = { source_filename: string | null } | { source_filename: string | null }[] | null;
+
   type ScanRow = {
     id: string;
     status: string;
     invited_students: InvitedStudentRow | InvitedStudentRow[] | null;
+    na_scan_batches: BatchRow;
   };
 
   const { data: scanRows, error: scanErr } = await supabase
     .from("na_packet_scans")
-    .select("id, status, invited_students(full_name, nickname, courses(id, name))")
+    .select("id, status, invited_students(full_name, nickname, courses(id, name)), na_scan_batches(source_filename)")
     .eq("packet_version_id", packetVersionId)
     .not("invited_student_id", "is", null);
   if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
@@ -110,6 +113,7 @@ export async function GET(
         ? student.courses[0]
         : student.courses
       : null;
+    const batch = Array.isArray(s.na_scan_batches) ? s.na_scan_batches[0] : s.na_scan_batches;
 
     const crops = cropsByScan.get(s.id) ?? [];
     let assessedCount = 0;
@@ -131,6 +135,7 @@ export async function GET(
 
     return {
       packetScanId: s.id,
+      sourceFilename: batch?.source_filename ?? null,
       studentName: student?.full_name ?? student?.nickname ?? "(unnamed)",
       courseId: course?.id ?? null,
       courseName: course?.name ?? "Unassigned",
