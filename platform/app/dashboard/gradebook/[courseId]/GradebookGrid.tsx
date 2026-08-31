@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import { PowerSchoolExportModal } from "./PowerSchoolExportModal";
 
 // --- Types --------------------------------------------------------------------
 
@@ -249,6 +250,7 @@ interface Props {
 export function GradebookGrid({ tests, students, initialMarks }: Props) {
   const [expandedOverall, setExpandedOverall] = useState(false);
   const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
+  const [exportingTest, setExportingTest] = useState<Test | null>(null);
 
   // Build mutable marks state from server-provided initial data
   const [marks, setMarks] = useState<MarksState>(() => {
@@ -612,6 +614,17 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                       <SetBadge name={test.boundary_set_name} />
                       <span className="text-[10px] text-da-accent">▸</span>
                     </span>
+                    <span
+                      role="button"
+                      title="Export scores to PowerSchool"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExportingTest(test);
+                      }}
+                      className="mt-1 block text-[9px] font-mono text-da-muted/70 hover:text-da-accent hover:underline"
+                    >
+                      → PowerSchool
+                    </span>
                   </th>
                 );
               })}
@@ -829,6 +842,14 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
         <span className="text-da-border">|</span>
         <span>Expand a test, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
       </div>
+
+      {exportingTest && (
+        <PowerSchoolExportModal
+          testId={exportingTest.id}
+          testName={exportingTest.name}
+          onClose={() => setExportingTest(null)}
+        />
+      )}
     </div>
   );
 }

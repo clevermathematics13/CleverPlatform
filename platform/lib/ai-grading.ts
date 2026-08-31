@@ -1292,7 +1292,7 @@ export interface RosterEntry {
  * extra whitespace, drop generational suffixes. Deliberately permissive —
  * this only produces a *proposed* match; the teacher confirms it.
  */
-function normaliseName(name: string): string {
+export function normaliseName(name: string): string {
   return name
     .toLowerCase()
     .normalize("NFD")
@@ -1328,7 +1328,7 @@ function levenshteinDistance(a: string, b: string): number {
  * or "Kelloh" for "Fellah", "Seungjin" for "Seungjun") without conflating
  * genuinely different short names (kept exact-only below 4 characters).
  */
-function tokensMatch(a: string, b: string): boolean {
+export function tokensMatch(a: string, b: string): boolean {
   if (a === b) return true;
   if (a.length < 4 || b.length < 4) return false;
   const dist = levenshteinDistance(a, b);
