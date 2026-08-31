@@ -1639,7 +1639,19 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
    *  the mark itself changes here. */
   const saveMarkOverride = async (cropId: string, marksAwarded: number) => {
     const current = assessCropState[cropId];
-    const verdict = (current?.verdict ?? "unclear") as "correct" | "partial" | "incorrect" | "unclear";
+    // Re-derive the verdict from the teacher's new mark rather than keeping
+    // whatever the AI originally assigned -- otherwise editing a "partial"
+    // mark up to full marks (or down to zero) leaves a stale, contradictory
+    // label like "partial -- 5/5" next to the corrected number.
+    const marksAvailable = current?.marksAvailable ?? null;
+    const verdict: "correct" | "partial" | "incorrect" | "unclear" =
+      marksAvailable == null
+        ? ((current?.verdict ?? "unclear") as "correct" | "partial" | "incorrect" | "unclear")
+        : marksAwarded <= 0
+          ? "incorrect"
+          : marksAwarded >= marksAvailable
+            ? "correct"
+            : "partial";
     setMarkSaveError(null);
     try {
       const res = await fetch("/api/na-review/save", {
