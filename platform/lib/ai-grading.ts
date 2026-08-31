@@ -133,6 +133,20 @@ export const MarkBreakdownEntrySchema = z.object({
    * different purpose (was this under-precise, not was it correct).
    */
   impliedMethodEvidence: NumericCheckSchema.nullable().optional(),
+  /**
+   * Only present on an INTERMEDIATE accuracy mark whose mark scheme value
+   * is a reference (calculator) figure rather than an explicit precision
+   * requirement (see rule 15 in GRADING_SYSTEM_PROMPT) -- e.g. the mark
+   * scheme prints "2.65708" for an (A1) but never says the student must
+   * reproduce 5 decimal places. Same shape as NumericCheckSchema: the
+   * reported value earns the mark when it's an exact rounding of the
+   * reference at the reported value's own digit count, not merely close to
+   * it. Distinct from numericCheck (a real precision requirement, checked
+   * strictly) and from impliedMethodEvidence (a Method mark, not an
+   * Accuracy mark) -- these are three different grading mechanisms and
+   * are not interchangeable.
+   */
+  intermediateValueCheck: NumericCheckSchema.nullable().optional(),
 });
 
 /**
@@ -338,6 +352,27 @@ export function validateGradeResponse(
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
         warnings.push(
           `${unitLabel(unit)}: ${entry.token} withheld — claimed implied-method evidence does not hold: ${result.reason}`
+        );
+      }
+    }
+
+    // Same idea again, for an intermediate accuracy mark whose value the
+    // model treated as a reference figure rather than a required precision
+    // (see rule 15 and intermediateValueCheck on the schema). Unlike the
+    // final-answer numericCheck above, an intermediate value earns its mark
+    // for ANY exact rounding of the reference -- correct_at_required_precision
+    // and correct_but_under_precise both stand; only numerically_incorrect
+    // withdraws it. This never decides WHICH written number belongs to this
+    // token (that transcription judgement stays with the model) -- it only
+    // re-checks the numeric claim once the model has made it.
+    for (const entry of item.markBreakdown) {
+      if (!entry.intermediateValueCheck) continue;
+      const result = classifyUnderPrecision(entry.intermediateValueCheck);
+      if (entry.awarded && result.classification === "numerically_incorrect") {
+        entry.awarded = false;
+        entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
+        warnings.push(
+          `${unitLabel(unit)}: ${entry.token} withheld — claimed intermediate value is not a valid rounding of the reference: ${result.reason}`
         );
       }
     }
@@ -704,7 +739,7 @@ MARKING RULES
 3. Follow through (FT): if a student carries an incorrect value from an earlier part into a later part but the method in the later part is correct, award the method marks in the later part.
 4. Accept any valid alternative method that reaches the required result. Mark scheme methods are indicative, not exhaustive.
 5. Accept equivalent forms of a correct answer (unsimplified, decimal vs exact, algebraically equivalent) unless the mark scheme or the command term demands a particular form.
-6. For an A mark tied to a specific numerical value, the student's value must match the mark scheme's value exactly, to the precision the mark scheme states. A value that differs — even slightly — is wrong and does not earn the mark, unless the mark scheme itself gives an explicit tolerance or alternative (e.g. "accept 0.946 to 0.948", "465 (or 464 from 3sf)", "or equivalent"). Do not invent your own tolerance for "rounding," "calculator precision," "acceptable rounding," or "close enough" that the mark scheme doesn't state — if the mark scheme is silent on tolerance, there is none. This is separate from rule 5: rule 5 is about the *form* of a correct value (0.5 vs 1/2), this rule is about whether the value itself is the *correct* one.
+6. For an A mark tied to a specific numerical value where the mark scheme or question states a precision requirement — a final answer, or any step the mark scheme explicitly says must be "correct to N significant figures / decimal places", "given to...", or similar — the student's value must match that required precision exactly. A value that differs — even slightly — is wrong and does not earn the mark, unless the mark scheme itself gives an explicit tolerance or alternative (e.g. "accept 0.946 to 0.948", "465 (or 464 from 3sf)", "or equivalent"). Do not invent your own tolerance for "rounding," "calculator precision," "acceptable rounding," or "close enough" that the mark scheme doesn't state — if the mark scheme is silent on tolerance, there is none. This is separate from rule 5: rule 5 is about the *form* of a correct value (0.5 vs 1/2), this rule is about whether the value itself is the *correct* one. This rule governs a mark with an actual (explicit or default-final-answer) precision requirement; for an INTERMEDIATE working value that the mark scheme merely displays as a reference figure with no such requirement, see rule 15 — do not apply this rule's exactness to every number a mark scheme happens to print.
    Reporting a value to FEWER significant figures than the mark scheme states is never a match, even when the mark scheme's value would itself round to the student's coarser value at that coarser precision — fewer digits means you cannot tell whether the underlying value was actually correct. Concretely: if the mark scheme states "a = 0.805" (3 s.f.) and the student writes "a = 0.81" (2 s.f.), that is wrong and does not earn the A mark. "0.81 is what 0.805 rounds to at 2 s.f." is exactly the kind of self-invented tolerance this rule forbids, not a reason to award it. Reporting a value to MORE decimal places than the mark scheme's stated answer is different and is fine, PROVIDED it rounds to exactly the mark scheme's value at the mark scheme's own precision (e.g. mark scheme wants a final answer of "8.52"; a student's more-precise "8.515" rounds to 8.52 and earns the mark) — extra genuine precision that still resolves to the correct answer is not the same failure as insufficient precision that hides whether it does. If the extra-precision value does NOT round to the mark scheme's value, it is wrong, and being the result of an otherwise-correct method does not change that: a correct method carried into a later part earns that part's method marks per rule 3, but its accuracy marks still require the mark scheme's own value, not a "close" or "explicable" one.
 7. Ignore subsequent working that does not contradict a correct answer already given. If later working contradicts and replaces a correct answer, mark the final answer.
 8. If a part is blank, crossed out with nothing to replace it, or absent from the scan, set workFound to false and suggestedMarks to 0.
@@ -723,6 +758,14 @@ MARKING RULES
     When you award a mark this way, attach impliedMethodEvidence to that mark's own markBreakdown entry (same shape as numericCheck: reportedValue, referenceValue, optionally alternativeReferenceValues, precisionType, precisionDigits) so the reported-vs-reference rounding relationship you're relying on is auditable, e.g.:
     { "token": "(M1)", "awarded": true, "note": "0.95 is 0.946591... to 2 s.f.: sufficient evidence of the correct method; insufficient precision for the A mark", "impliedMethodEvidence": { "reportedValue": "0.95", "referenceValue": "0.946591", "precisionType": "sf", "precisionDigits": 3 } }
     Omit impliedMethodEvidence entirely for a method mark awarded the ordinary way (explicit working shown) — it exists only to record this specific numeric inference, not as a general-purpose field on every M mark.
+15. A mark scheme's own numerical value is not always a required text string. Distinguish two different things a mark scheme number can be:
+    - a stated precision REQUIREMENT — the value IS the final answer, or the mark scheme/question explicitly says this specific value must be "correct to N significant figures / decimal places", "given to...", "accept...", or similar. Rule 6 applies: match it exactly at that precision.
+    - a reference VALUE for an intermediate step, with no such explicit language — the number shown (e.g. "2.65708" next to an intermediate (A1) or A1) is the calculator/full-precision figure supplied to examiners, not a instruction that the student must reproduce all of its displayed digits. A student's own appropriately rounded representation of that same value earns the mark. Do NOT reason "the student's 2.657 does not equal the mark scheme's 2.65708, so A0" — that misreads what the mark scheme number means. Instead: is 2.657 an exact rounding of 2.65708...? Yes (round 2.65708 to 3 d.p. is 2.657) — award it.
+    The default is the second case: only apply rule 6's exactness to an intermediate value when the mark scheme or question uses actual precision language for THAT step. The mere number of digits a mark scheme happens to print is never by itself a precision requirement.
+    An intermediate value earns its mark when it is an exact rounding of the reference value at the digit count the student actually wrote (same rounding relationship as rule 14 — "close" or "nearby" is never sufficient, only an exact rounding counts) and nothing in the student's own subsequent working contradicts the method that produced it. This is independent of whether the FINAL answer later in the same part meets ITS required precision — grade the intermediate mark and the final mark on their own criteria; a final-answer precision miss does not retroactively erase an already-earned intermediate mark, and an accepted intermediate value never excuses a final answer that is itself wrong or under-precise.
+    When you award an intermediate mark this way, attach intermediateValueCheck to that mark's own markBreakdown entry (same shape as numericCheck), using the value actually written for THIS step, not a later final-answer figure, e.g.:
+    { "token": "(A1)", "awarded": true, "note": "2.657 is 2.65708... to 3 d.p.: an acceptable intermediate value, not a required digit-for-digit match", "intermediateValueCheck": { "reportedValue": "2.657", "referenceValue": "2.65708", "precisionType": "dp", "precisionDigits": 5 } }
+    Omit intermediateValueCheck for a final-answer mark (use numericCheck there) and for an intermediate mark whose value you did not need to round-check (e.g. an exact or symbolic intermediate result).
 
 WORKING ORDER — follow these steps in sequence for each part, because the later
 fields in OUTPUT below are DERIVED from the earlier ones, not independent
@@ -762,7 +805,11 @@ judgement calls made in parallel:
    this part and decide, one token at a time, whether the transcribed
    evidence earns it. Decide each M and A token on its own criterion (see
    rule 14) — a wrong or under-precise final answer does not by itself
-   decide the M mark tied to it.
+   decide the M mark tied to it. An intermediate A mark's own value is
+   usually a reference figure, not a required digit-for-digit match (see
+   rule 15) — decide it on its own rounding relationship to that
+   reference, separately from whether the final answer later in the same
+   part meets its own precision requirement.
 4. REASONING: briefly explain the itemisation above.
 5. SUGGESTED MARKS: suggestedMarks is NOT a separate judgement call — it is
    the count of tokens you just marked awarded in step 3 (every token here

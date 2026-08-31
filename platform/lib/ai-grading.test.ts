@@ -452,6 +452,172 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
     expect(result.outcome.warnings).toHaveLength(0);
   });
+
+  // The regression-prediction case: mark scheme shows an intermediate
+  // "2.65708 (A1)" then a final "y = 2.7 A1" requiring 1 d.p. A student who
+  // writes "2.657" for the intermediate step and "2.7" for the final answer
+  // should get both A marks -- the mark scheme's displayed 2.65708 is a
+  // reference value, not a required digit-for-digit match (rule 15).
+  it("awards an intermediate accuracy mark whose value is a correct rounding of the reference, not an exact string match", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 3,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "M1", awarded: true, note: "substituted x = 3.7 into the regression equation" },
+            {
+              token: "(A1)",
+              awarded: true,
+              note: "2.657 is 2.65708... to 3 d.p.: an acceptable intermediate value",
+              intermediateValueCheck: {
+                reportedValue: "2.657",
+                referenceValue: "2.65708",
+                precisionType: "dp",
+                precisionDigits: 5,
+              },
+            },
+            {
+              token: "A1",
+              awarded: true,
+              note: "2.7 matches the required final answer to 1 d.p.",
+              numericCheck: {
+                reportedValue: "2.7",
+                referenceValue: "2.65708",
+                precisionType: "dp",
+                precisionDigits: 1,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 3 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(3);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  it("withdraws an intermediate accuracy mark whose claimed value is not a valid rounding of the reference", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              // 2.65708 rounds to 2.66 at 2 d.p., not 2.65 -- "2.65" is a
+              // truncation, not a rounding, so this claim doesn't hold.
+              token: "(A1)",
+              awarded: true,
+              note: "2.65 is close enough to the reference value",
+              intermediateValueCheck: {
+                reportedValue: "2.65",
+                referenceValue: "2.65708",
+                precisionType: "dp",
+                precisionDigits: 5,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(
+      result.outcome.warnings.some((w) => w.includes("intermediate value is not a valid rounding"))
+    ).toBe(true);
+  });
+
+  // A failing final-answer precision must not retroactively erase an
+  // already-earned intermediate mark (rule 15) -- these are graded on
+  // separate criteria, mirroring rule 14's M/A independence.
+  it("does not let a failing final-answer accuracy mark erase an already-earned intermediate accuracy mark", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "(A1)",
+              awarded: true,
+              note: "2.657 is an acceptable intermediate value",
+              intermediateValueCheck: {
+                reportedValue: "2.657",
+                referenceValue: "2.65708",
+                precisionType: "dp",
+                precisionDigits: 5,
+              },
+            },
+            {
+              // Final answer given as "2.657" instead of the required 1 d.p.
+              // "2.7" -- fails the final-answer numericCheck, but that
+              // failure is this token's own, not the intermediate mark's.
+              token: "A1",
+              awarded: false,
+              note: "2.657 does not satisfy the required 1 d.p. final answer",
+              numericCheck: {
+                reportedValue: "2.657",
+                referenceValue: "2.65708",
+                precisionType: "dp",
+                precisionDigits: 1,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  it("does not touch an ordinary intermediate accuracy mark with no intermediateValueCheck attached", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "(A1)", awarded: true, note: "exact intermediate value shown" }],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
 });
 
 describe("isAaHlPaper2", () => {

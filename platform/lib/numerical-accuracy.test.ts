@@ -367,3 +367,71 @@ describe("classifyUnderPrecision", () => {
     );
   });
 });
+
+// classifyUnderPrecision doubles as the deterministic check for the
+// "intermediate value doesn't have to match the mark scheme's displayed
+// digits" rule (see GRADING_SYSTEM_PROMPT rule 15) -- same function, used
+// with precisionType "dp" here since IB intermediate values are usually
+// shown to a number of decimal places rather than significant figures.
+// A mark scheme printing "2.65708" for an intermediate (A1) is a reference
+// (calculator) value, not an instruction that the student must write all
+// five decimal places.
+describe("classifyUnderPrecision (intermediate-value scenarios)", () => {
+  // reference intermediate = 2.65708..., as an IB mark scheme would display it
+  const r = { referenceValue: "2.65708", precisionType: "dp" as const, precisionDigits: 5 };
+
+  it("classifies the mark scheme's own displayed value as correct_at_required_precision", () => {
+    expect(classifyUnderPrecision({ ...r, reportedValue: "2.65708" }).classification).toBe(
+      "correct_at_required_precision"
+    );
+  });
+
+  it("classifies a 3 d.p. rounding as correct_but_under_precise, not a mismatch", () => {
+    const result = classifyUnderPrecision({ ...r, reportedValue: "2.657" });
+    expect(result.classification).toBe("correct_but_under_precise");
+  });
+
+  it("classifies a 4 d.p. rounding as correct_but_under_precise", () => {
+    expect(classifyUnderPrecision({ ...r, reportedValue: "2.6571" }).classification).toBe(
+      "correct_but_under_precise"
+    );
+  });
+
+  // Deliberately ambiguous case (not hardcoded to a fixed tolerance): 2.65708
+  // rounds to 2.66 at 2 d.p., not 2.65 -- "2.65" is a truncation, not a
+  // rounding, so it genuinely fails the exact-rounding test on its own
+  // arithmetic merits, not because of an arbitrary sig-fig cutoff.
+  it("does not accept a value that is a truncation rather than a genuine rounding", () => {
+    expect(classifyUnderPrecision({ ...r, reportedValue: "2.65" }).classification).toBe(
+      "numerically_incorrect"
+    );
+  });
+
+  // Known, deliberate limitation: this function only verifies the numeric
+  // relationship of whatever value the model attributes to this token -- it
+  // cannot know that "2.7" was actually the FINAL answer, not this
+  // intermediate step's own value. That transcription judgement (which
+  // written number belongs to which mark scheme token) stays with the
+  // grading model; see GRADING_SYSTEM_PROMPT rule 15's instruction to
+  // attach intermediateValueCheck only to the value actually written for
+  // that step. Documented here so the boundary is explicit, not a silent gap.
+  it("cannot by itself detect a final-answer figure misattributed to an intermediate token", () => {
+    const result = classifyUnderPrecision({ ...r, reportedValue: "2.7" });
+    expect(result.classification).toBe("correct_but_under_precise");
+  });
+
+  // The generalized example from the spec: a completely different value,
+  // proving this isn't hardcoded around 2.65708/2.657.
+  it("generalizes to an unrelated intermediate value (14.826391.../14.826)", () => {
+    const generalized = { referenceValue: "14.8264", precisionType: "dp" as const, precisionDigits: 4 };
+    expect(classifyUnderPrecision({ ...generalized, reportedValue: "14.826" }).classification).toBe(
+      "correct_but_under_precise"
+    );
+    expect(classifyUnderPrecision({ ...generalized, reportedValue: "14.8264" }).classification).toBe(
+      "correct_at_required_precision"
+    );
+    expect(classifyUnderPrecision({ ...generalized, reportedValue: "14.9" }).classification).toBe(
+      "numerically_incorrect"
+    );
+  });
+});
