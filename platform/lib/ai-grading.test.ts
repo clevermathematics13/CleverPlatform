@@ -336,6 +336,122 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.grades[0].confidence).toBe("high");
     expect(result.outcome.warnings).toHaveLength(0);
   });
+
+  // The correlation-coefficient case: r = 0.946591... is required as 0.947
+  // (3 s.f.). A student who writes "0.95" (2 s.f.) has under-precise
+  // evidence for the A mark, but that value is itself exact evidence the
+  // correct method was used (see GRADING_SYSTEM_PROMPT rule 14). M1 A0.
+  it("keeps a Method mark awarded via impliedMethodEvidence when the value is a correct-but-under-precise rounding", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "medium",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "(M1)",
+              awarded: true,
+              note: "0.95 is 0.946591... to 2 s.f.: sufficient evidence of the correct method",
+              impliedMethodEvidence: {
+                reportedValue: "0.95",
+                referenceValue: "0.946591",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+            {
+              token: "A1",
+              awarded: false,
+              note: "0.95 has only 2 s.f.; 3 are required",
+              numericCheck: {
+                reportedValue: "0.95",
+                referenceValue: "0.946591",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // M1 stays awarded (implied-method evidence holds), A1 stays withheld
+    // (the model's own, correct, decision) -> 1/2, not 0/2.
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  it("withdraws a Method mark whose claimed implied-method evidence doesn't actually hold", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              // "0.96" is merely close to 0.946591..., not a rounding of it
+              // at any precision -- this is the over-generalization the
+              // deterministic check exists to catch (model wrongly treated
+              // a nearby-but-different value as if it were proof of method).
+              token: "(M1)",
+              awarded: true,
+              note: "0.96 is close to the correct value",
+              impliedMethodEvidence: {
+                reportedValue: "0.96",
+                referenceValue: "0.946591",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(
+      result.outcome.warnings.some((w) => w.includes("implied-method evidence does not hold"))
+    ).toBe(true);
+  });
+
+  it("does not touch an ordinary Method mark with no impliedMethodEvidence attached", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "M1", awarded: true, note: "explicit correct method shown" }],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
 });
 
 describe("isAaHlPaper2", () => {

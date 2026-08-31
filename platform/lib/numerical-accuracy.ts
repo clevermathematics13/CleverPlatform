@@ -306,3 +306,111 @@ export function matchesRequiredPrecision(
   }
   return lastResult as NumericCheckResult;
 }
+
+/**
+ * IB Mathematics distinguishes Method marks (M -- evidence of a correct
+ * procedure) from Answer/Accuracy marks (A -- the correct result to the
+ * required precision). These are independent criteria: a student can
+ * legitimately earn M1 A0 when the correct method is evidenced but the
+ * final answer isn't precise enough. A final numeric answer can itself be
+ * evidence of the correct method -- IB mark schemes say this explicitly in
+ * notes like "If no working shown, award (M1)A0 for 5.7 (2sf)" -- PROVIDED
+ * the reported value is genuinely the reference value rounded to fewer
+ * digits, not merely a different, coincidentally-nearby number.
+ *
+ * `correct_but_under_precise` requires an EXACT rounding match at the
+ * reported value's own digit count, e.g. round(0.946591, 2sf) === "0.95".
+ * A value that is merely close (0.96) is `numerically_incorrect` --
+ * closeness is never sufficient evidence of method, only an exact
+ * rounding relationship is. This is intentionally a narrow, verifiable
+ * classification: it says nothing about whether a given M mark is
+ * ALLOWED to be inferred this way (that depends on what the mark
+ * scheme's M mark actually represents, and on whether the student's own
+ * working already shows or contradicts a method -- both are for the
+ * grading model to judge from context, not something a pure numeric
+ * comparison can decide). See GRADING_SYSTEM_PROMPT's rule on implied
+ * method evidence in ai-grading.ts for how this plugs into grading.
+ */
+export type UnderPrecisionClassification =
+  | "correct_at_required_precision"
+  | "correct_but_under_precise"
+  | "numerically_incorrect"
+  | "cannot_determine";
+
+export interface UnderPrecisionCheckResult {
+  classification: UnderPrecisionClassification;
+  reason: string;
+}
+
+/**
+ * Classifies `check.reportedValue` against `check.referenceValue` (and any
+ * `alternativeReferenceValues`) for the "implied method from an
+ * under-precise correct answer" pattern. Never returns
+ * `contradicted_by_working` -- whether the student's shown working
+ * contradicts an inferred method is contextual judgement outside what a
+ * numeric-string comparison can determine, and stays with the grading
+ * model.
+ */
+export function classifyUnderPrecision(check: NumericCheck): UnderPrecisionCheckResult {
+  const reportedNum = parseNumericValue(check.reportedValue);
+  if (reportedNum === null) {
+    return {
+      classification: "cannot_determine",
+      reason: "could not parse the reported value deterministically -- deferring to the model's own judgement",
+    };
+  }
+
+  if (check.precisionType === "exact") {
+    return {
+      classification: "cannot_determine",
+      reason: "an exact-value requirement has no under-precise variant -- deferring to the model's own judgement",
+    };
+  }
+
+  const isSf = check.precisionType === "sf";
+  const roundFn = isSf ? roundToSignificantFigures : roundToDecimalPlaces;
+  const unit = isSf ? "significant figure(s)" : "decimal place(s)";
+  const requiredDigits = check.precisionDigits ?? 3;
+  const studentDigits = isSf ? countSignificantFigures(check.reportedValue) : countDecimalPlaces(check.reportedValue);
+
+  const candidates = [check.referenceValue, ...(check.alternativeReferenceValues ?? [])].filter(
+    (c) => parseNumericValue(c) !== null
+  );
+  if (candidates.length === 0) {
+    return {
+      classification: "cannot_determine",
+      reason: "could not parse a reference value deterministically -- deferring to the model's own judgement",
+    };
+  }
+
+  for (const candidate of candidates) {
+    const requiredRounded = roundFn(candidate, requiredDigits);
+    // A bare integer numerically equal to the correct rounded value is never
+    // treated as under-precise just because its trailing zeros are
+    // typographically ambiguous (same convention as matchesRequiredPrecision).
+    const isAmbiguousWholeNumberMatch =
+      !check.reportedValue.includes(".") && Number(check.reportedValue) === Number(requiredRounded);
+    if ((roundFn(check.reportedValue, requiredDigits) === requiredRounded && studentDigits >= requiredDigits) || isAmbiguousWholeNumberMatch) {
+      return {
+        classification: "correct_at_required_precision",
+        reason: `matches the required value at ${requiredDigits} ${unit}`,
+      };
+    }
+  }
+
+  if (studentDigits < requiredDigits) {
+    for (const candidate of candidates) {
+      if (roundFn(check.reportedValue, studentDigits) === roundFn(candidate, studentDigits)) {
+        return {
+          classification: "correct_but_under_precise",
+          reason: `"${check.reportedValue}" is the correct value rounded to ${studentDigits} ${unit}, fewer than the required ${requiredDigits}`,
+        };
+      }
+    }
+  }
+
+  return {
+    classification: "numerically_incorrect",
+    reason: `"${check.reportedValue}" does not match the required value (or any accepted alternative) at any consistent rounding`,
+  };
+}
