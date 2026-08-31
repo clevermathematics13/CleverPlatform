@@ -4,6 +4,7 @@ import {
   GRADING_SYSTEM_PROMPT,
   buildGradingSystemPrompt,
   isAaHlPaper2,
+  isImpliedToken,
   matchSegmentsToRoster,
   validateGradeResponse,
   type GradingUnit,
@@ -505,7 +506,7 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.warnings).toHaveLength(0);
   });
 
-  it("withdraws an intermediate accuracy mark whose claimed value is not a valid rounding of the reference", () => {
+  it("withdraws an UNBRACKETED intermediate accuracy mark whose claimed value is not a valid rounding of the reference", () => {
     const raw = JSON.stringify({
       items: [
         {
@@ -516,8 +517,10 @@ describe("validateGradeResponse", () => {
           markBreakdown: [
             {
               // 2.65708 rounds to 2.66 at 2 d.p., not 2.65 -- "2.65" is a
-              // truncation, not a rounding, so this claim doesn't hold.
-              token: "(A1)",
+              // truncation, not a rounding, so this claim doesn't hold. An
+              // unbracketed "A1" has no rule-13 implied-mark leniency, so
+              // this deterministic check applies in full.
+              token: "A1",
               awarded: true,
               note: "2.65 is close enough to the reference value",
               intermediateValueCheck: {
@@ -544,14 +547,68 @@ describe("validateGradeResponse", () => {
     ).toBe(true);
   });
 
-  // A teacher reported this exact production case: the model's own summary
-  // `reasoning` said "full marks for part (b)", but one of part (b)'s own
-  // tokens ((A1) for the intermediate value "2.6857") was withdrawn by the
-  // deterministic re-check above -- yet nothing updated the reasoning
-  // paragraph, so the teacher-facing text stayed misleading even though the
-  // per-token note and mark_breakdown chip were correct. Any override that
-  // withdraws an award must also leave a visible trace in `reasoning`, not
-  // just in the per-token note and the separate run-level warnings array.
+  // The Q3(b) production case: the mark scheme's intermediate accuracy mark
+  // was BRACKETED ("(A1)"), so rule 13's implied-mark leniency applies on
+  // top of rule 15 -- a correct final result is enough to imply it even
+  // when the student's own intermediate figure (crossed-out working, or an
+  // approximate value) isn't itself a clean rounding of the reference. The
+  // deterministic intermediateValueCheck re-check must not veto that: it is
+  // scoped to unbracketed tokens only.
+  it("does not withdraw a BRACKETED intermediate accuracy mark even when its own value fails the rounding check", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 3,
+          confidence: "medium",
+          workFound: true,
+          markBreakdown: [
+            { token: "(M1)", awarded: true, note: "Substitution into their equation evidenced by the final answer." },
+            {
+              // "2.6857" is not an exact rounding of "2.65708" at any
+              // precision -- would fail the same check an unbracketed
+              // token is held to -- but this token is bracketed, so rule
+              // 13's broader implied-by-final-result leniency governs.
+              token: "(A1)",
+              awarded: true,
+              note: "2.6857 is the student's intermediate working; the correct final answer 2.7 implies the substitution step was done.",
+              intermediateValueCheck: {
+                reportedValue: "2.6857",
+                referenceValue: "2.65708",
+                precisionType: "dp",
+                precisionDigits: 4,
+              },
+            },
+            {
+              token: "A1",
+              awarded: true,
+              note: "2.7 is correct to the required 1 decimal place.",
+              numericCheck: { reportedValue: "2.7", referenceValue: "2.65708", precisionType: "dp", precisionDigits: 1 },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 3 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(3);
+    expect(result.outcome.grades[0].item.markBreakdown[1].awarded).toBe(true);
+    expect(
+      result.outcome.warnings.some((w) => w.includes("intermediate value is not a valid rounding"))
+    ).toBe(false);
+  });
+
+  // Confirms an override's correction is visible in the item's summary
+  // `reasoning`, not just the per-token note and the separate run-level
+  // warnings array -- using an UNBRACKETED intermediate token so the
+  // deterministic re-check actually fires (a bracketed "(A1)" here would
+  // be exempt, per rule 13's implied-mark leniency -- see the dedicated
+  // bracketed-token test above).
   it("appends a correction to the item's reasoning when any deterministic override withdraws a mark, so it never contradicts the awards", () => {
     const raw = JSON.stringify({
       items: [
@@ -561,12 +618,13 @@ describe("validateGradeResponse", () => {
           confidence: "low",
           workFound: true,
           markBreakdown: [
-            { token: "(M1)", awarded: true, note: "Substitution evidenced." },
+            { token: "M1", awarded: true, note: "Substitution shown explicitly." },
             {
               // 2.6857 is not an exact rounding of 2.65708 at any precision
               // -- the model's own note admits it's only "close", exactly
               // the kind of claim the deterministic check exists to catch.
-              token: "(A1)",
+              // Unbracketed, so no rule-13 implied-mark leniency applies.
+              token: "A1",
               awarded: true,
               note: "2.6857 shown as intermediate working, close to 2.65708 using their rounded values",
               intermediateValueCheck: {
@@ -596,7 +654,7 @@ describe("validateGradeResponse", () => {
     // marks without qualification -- it still contains the model's original
     // text (nothing is deleted) plus a visible correction.
     expect(grade.item.reasoning).toContain("full marks for part (b)");
-    expect(grade.item.reasoning).toContain("(A1) was withdrawn");
+    expect(grade.item.reasoning).toContain("A1 was withdrawn");
     expect(grade.item.reasoning).toMatch(/not a valid rounding/);
   });
 
@@ -624,14 +682,15 @@ describe("validateGradeResponse", () => {
               },
             },
             {
-              // Final answer given as "2.657" instead of the required 1 d.p.
-              // "2.7" -- fails the final-answer numericCheck, but that
-              // failure is this token's own, not the intermediate mark's.
+              // Final answer given as "2.5" instead of the required 1 d.p.
+              // "2.7" -- genuinely fails the final-answer numericCheck (not
+              // merely under-precise), and that failure is this token's
+              // own, not the intermediate mark's.
               token: "A1",
               awarded: false,
-              note: "2.657 does not satisfy the required 1 d.p. final answer",
+              note: "2.5 does not satisfy the required 1 d.p. final answer",
               numericCheck: {
-                reportedValue: "2.657",
+                reportedValue: "2.5",
                 referenceValue: "2.65708",
                 precisionType: "dp",
                 precisionDigits: 1,
@@ -650,6 +709,126 @@ describe("validateGradeResponse", () => {
 
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
     expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  // A teacher reported this exact production case: the model's own note
+  // admitted "8.515 rounds to 8.52, but ... Value is incorrect" and withheld
+  // the A mark anyway. The model's own numericCheck, independently
+  // verified, actually supports the award. This never grants the mark
+  // automatically (a withheld mark can have a real reason this function
+  // can't see) -- it flags the inconsistency for a teacher to check.
+  it("flags (but does not grant) a mark withheld despite its own numericCheck actually passing", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "medium",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "8.515 does not round to 8.52 at 3sf, but using student's a=0.81: 0.81x7+2.88=8.55, not 8.515. Value is incorrect.",
+              numericCheck: {
+                reportedValue: "8.515",
+                referenceValue: "8.51693",
+                alternativeReferenceValues: ["8.55"],
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "8.515 is inconsistent with either coefficient path, so A0.",
+          evidence: "8.515",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    // Never silently grants the mark -- clampedMarks stays whatever the
+    // model's own breakdown reports (0 here), not upgraded to 1.
+    expect(grade.clampedMarks).toBe(0);
+    expect(grade.item.markBreakdown[0].awarded).toBe(false);
+    expect(grade.confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("flagged for teacher review"))
+    ).toBe(true);
+    expect(grade.item.reasoning).toContain("Flagged for review");
+    expect(grade.item.reasoning).toContain("but it was withheld");
+  });
+
+  it("does not flag a withheld mark whose own numericCheck genuinely fails", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "0.81 has only 2 s.f.; 0.805 to 3 s.f. is required.",
+              numericCheck: { reportedValue: "0.81", referenceValue: "0.805084", precisionType: "sf", precisionDigits: 3 },
+            },
+          ],
+          reasoning: "0.81 is insufficiently precise, so A0.",
+          evidence: "0.81",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].confidence).toBe("high");
+    expect(result.outcome.warnings).toHaveLength(0);
+    expect(result.outcome.grades[0].item.reasoning).toBe("0.81 is insufficiently precise, so A0.");
+  });
+
+  it("flags a withheld Method mark whose own impliedMethodEvidence actually supports it", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "(M1)",
+              awarded: false,
+              note: "0.95 might not be sufficient evidence",
+              impliedMethodEvidence: {
+                reportedValue: "0.95",
+                referenceValue: "0.946591",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(result.outcome.grades[0].confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("flagged for teacher review"))
+    ).toBe(true);
   });
 
   it("does not touch an ordinary intermediate accuracy mark with no intermediateValueCheck attached", () => {
@@ -970,6 +1149,23 @@ describe("isAaHlPaper2", () => {
     expect(isAaHlPaper2({ curriculum: ["AA"], level: "SL", paper: 2 })).toBe(false);
     expect(isAaHlPaper2({ curriculum: ["AI"], level: "AHL", paper: 2 })).toBe(false);
     expect(isAaHlPaper2({ curriculum: [], level: null, paper: null })).toBe(false);
+  });
+});
+
+describe("isImpliedToken", () => {
+  it("recognizes a parenthesized token as implied", () => {
+    expect(isImpliedToken("(M1)")).toBe(true);
+    expect(isImpliedToken("(A1)")).toBe(true);
+  });
+
+  it("does not treat a plain token as implied", () => {
+    expect(isImpliedToken("M1")).toBe(false);
+    expect(isImpliedToken("A1")).toBe(false);
+    expect(isImpliedToken("R1")).toBe(false);
+  });
+
+  it("tolerates leading whitespace", () => {
+    expect(isImpliedToken("  (A1)")).toBe(true);
   });
 });
 

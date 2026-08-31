@@ -95,6 +95,19 @@ export function unitLabel(u: Pick<GradingUnit, "questionNumber" | "partLabel">):
   return `${u.questionNumber}(${p})`;
 }
 
+/**
+ * Whether a mark scheme token is written in parentheses, e.g. "(M1)" or
+ * "(A1)" -- IB notation for an IMPLIED mark (see rule 13): awardable from a
+ * correct later result even without its own explicit line in the working.
+ * Used to scope the intermediateValueCheck deterministic re-check (rule 15)
+ * to unbracketed tokens only -- a bracketed intermediate mark's broader
+ * implied-by-final-result leniency isn't something a rounding check alone
+ * can safely veto.
+ */
+export function isImpliedToken(token: string): boolean {
+  return token.trim().startsWith("(");
+}
+
 // -----------------------------------------------------------------------------
 // Validation layer
 // -----------------------------------------------------------------------------
@@ -388,8 +401,17 @@ export function validateGradeResponse(
     // withdraws it. This never decides WHICH written number belongs to this
     // token (that transcription judgement stays with the model) -- it only
     // re-checks the numeric claim once the model has made it.
+    //
+    // Scoped to UNBRACKETED tokens only: a bracketed "(A1)" carries rule
+    // 13's broader implied-mark leniency -- awardable from a correct final
+    // result alone, even when the specific intermediate figure the student
+    // wrote isn't itself a clean rounding of the reference (e.g. crossed-out
+    // or approximate working that still reaches the right final answer).
+    // A rounding check on the intermediate figure alone can't see the final
+    // result, so it must not veto that broader leniency for a bracketed
+    // token -- only an unbracketed "A1" is held to this rounding relationship.
     for (const entry of item.markBreakdown) {
-      if (!entry.intermediateValueCheck) continue;
+      if (!entry.intermediateValueCheck || isImpliedToken(entry.token)) continue;
       const result = classifyUnderPrecision(entry.intermediateValueCheck);
       if (entry.awarded && result.classification === "numerically_incorrect") {
         entry.awarded = false;
@@ -401,9 +423,46 @@ export function validateGradeResponse(
       }
     }
 
-    if (reasoningCorrections.length > 0) {
-      const addendum = reasoningCorrections.join(" ");
-      item.reasoning = item.reasoning ? `${item.reasoning} (Correction: ${addendum})` : `Correction: ${addendum}`;
+    // Mirror image of the three loops above: a mark the model WITHHELD
+    // despite its own reported check indicating the value actually
+    // satisfies it. Production evidence: a real result's own note read
+    // "8.515 rounds to 8.52, but ... Value is incorrect" -- admitting the
+    // match and then withholding the mark anyway. This never grants the
+    // mark automatically -- a withheld mark can have a real reason this
+    // function can't see (contradicted by working, wrong method) even when
+    // the number itself checks out -- it only flags the inconsistency, the
+    // same way any other reason for uncertainty here does, so a teacher
+    // knows to look closer rather than trust a "withheld" that may be a
+    // mistake.
+    const reasoningFlags: string[] = [];
+    for (const entry of item.markBreakdown) {
+      if (entry.awarded) continue;
+      let flag: string | null = null;
+      if (entry.numericCheck) {
+        const result = matchesRequiredPrecision(entry.numericCheck);
+        if (result.ok) flag = `${entry.token}'s own reported numericCheck indicates the value satisfies the required precision (${result.reason})`;
+      } else if (entry.impliedMethodEvidence) {
+        const result = classifyUnderPrecision(entry.impliedMethodEvidence);
+        if (result.classification !== "numerically_incorrect") {
+          flag = `${entry.token}'s own reported impliedMethodEvidence indicates the value does support the implied method (${result.reason})`;
+        }
+      } else if (entry.intermediateValueCheck) {
+        const result = classifyUnderPrecision(entry.intermediateValueCheck);
+        if (result.classification !== "numerically_incorrect") {
+          flag = `${entry.token}'s own reported intermediateValueCheck indicates the value is a valid rounding of the reference (${result.reason})`;
+        }
+      }
+      if (flag) {
+        reasoningFlags.push(`${flag}, but it was withheld — verify before accepting.`);
+        warnings.push(`${unitLabel(unit)}: ${flag}, but it was withheld — flagged for teacher review`);
+      }
+    }
+    if (reasoningFlags.length > 0) confidence = "low";
+
+    if (reasoningCorrections.length > 0 || reasoningFlags.length > 0) {
+      const label = reasoningCorrections.length > 0 ? "Correction" : "Flagged for review";
+      const addendum = [...reasoningCorrections, ...reasoningFlags].join(" ");
+      item.reasoning = item.reasoning ? `${item.reasoning} (${label}: ${addendum})` : `${label}: ${addendum}`;
     }
 
     // The model is instructed that awarded mark_breakdown tokens must sum to
@@ -813,10 +872,12 @@ MARKING RULES
     - a stated precision REQUIREMENT — the value IS the final answer, or the mark scheme/question explicitly says this specific value must be "correct to N significant figures / decimal places", "given to...", "accept...", or similar. Rule 6 applies: match it exactly at that precision.
     - a reference VALUE for an intermediate step, with no such explicit language — the number shown (e.g. "2.65708" next to an intermediate (A1) or A1) is the calculator/full-precision figure supplied to examiners, not a instruction that the student must reproduce all of its displayed digits. A student's own appropriately rounded representation of that same value earns the mark. Do NOT reason "the student's 2.657 does not equal the mark scheme's 2.65708, so A0" — that misreads what the mark scheme number means. Instead: is 2.657 an exact rounding of 2.65708...? Yes (round 2.65708 to 3 d.p. is 2.657) — award it.
     The default is the second case: only apply rule 6's exactness to an intermediate value when the mark scheme or question uses actual precision language for THAT step. The mere number of digits a mark scheme happens to print is never by itself a precision requirement.
-    An intermediate value earns its mark when it is an exact rounding of the reference value at the digit count the student actually wrote (same rounding relationship as rule 14 — "close" or "nearby" is never sufficient, only an exact rounding counts) and nothing in the student's own subsequent working contradicts the method that produced it. This is independent of whether the FINAL answer later in the same part meets ITS required precision — grade the intermediate mark and the final mark on their own criteria; a final-answer precision miss does not retroactively erase an already-earned intermediate mark, and an accepted intermediate value never excuses a final answer that is itself wrong or under-precise.
-    When you award an intermediate mark this way, attach intermediateValueCheck to that mark's own markBreakdown entry (same shape as numericCheck), using the value actually written for THIS step, not a later final-answer figure, e.g.:
+    For an UNBRACKETED intermediate token (plain "A1"), the value earns its mark when it is an exact rounding of the reference value at the digit count the student actually wrote (same rounding relationship as rule 14 — "close" or "nearby" is never sufficient, only an exact rounding counts) and nothing in the student's own subsequent working contradicts the method that produced it.
+    For a BRACKETED intermediate token ("(A1)"), rule 13's implied-mark leniency also applies, and it is broader than this rule's rounding check: a correct (or correctly under-precise, per rule 14) FINAL result later in the same part is by itself enough to imply the bracketed intermediate mark, even when the specific intermediate figure the student wrote is messy, crossed out, illegible, or not itself a clean rounding of the reference — a bracketed mark does not require its own line to be exactly right, only for the final result to show that step was effectively done. Do not withhold a bracketed intermediate mark solely because its own written value fails the exact-rounding check when the final answer is correct; that check is a reason to award it, not a veto over rule 13 when it doesn't. Only withhold a bracketed intermediate mark when the final result is ALSO wrong (or under-precise for a reason that isn't merely reduced precision) or the student's working explicitly contradicts the method.
+    This is independent of whether the FINAL answer later in the same part meets ITS required precision — grade the intermediate mark and the final mark on their own criteria; a final-answer precision miss does not retroactively erase an already-earned intermediate mark, and an accepted intermediate value never excuses a final answer that is itself wrong or under-precise.
+    When you award an intermediate mark by its own rounding relationship to the reference, attach intermediateValueCheck to that mark's own markBreakdown entry (same shape as numericCheck), using the value actually written for THIS step, not a later final-answer figure, e.g.:
     { "token": "(A1)", "awarded": true, "note": "2.657 is 2.65708... to 3 d.p.: an acceptable intermediate value, not a required digit-for-digit match", "intermediateValueCheck": { "reportedValue": "2.657", "referenceValue": "2.65708", "precisionType": "dp", "precisionDigits": 5 } }
-    Omit intermediateValueCheck for a final-answer mark (use numericCheck there) and for an intermediate mark whose value you did not need to round-check (e.g. an exact or symbolic intermediate result).
+    Omit intermediateValueCheck for a final-answer mark (use numericCheck there), for an intermediate mark whose value you did not need to round-check (e.g. an exact or symbolic intermediate result), and for a bracketed intermediate mark you are awarding on rule 13's broader implied-by-final-result basis rather than its own rounding relationship — attaching intermediateValueCheck asserts specifically that the written value itself is a valid rounding, which is a stronger and different claim.
 16. A student may use a value they correctly derived or that the mark scheme accepts — even one only correct to a reduced (e.g. 3 s.f.) precision — in later working without penalty, including within the SAME part. Mark scheme wording like "substitute into THEIR equation" or "using THEIR value of a" means the candidate's own correct value, not only the pristine unrounded calculator figure. When checking whether a later numeric result is consistent with the required working, check it against the value(s) the student's own correct or accepted-rounded earlier work would actually produce, not only against the full-precision reference.
     Concretely: if an earlier accepted answer is "a = 0.805, b = 2.88" (3 s.f.), and a later step's mark scheme reads "substitute x = 7 into their equation (M1)", then a later result of "8.515" is a match for that method — it is exactly 0.805(7) + 2.88 — even though the pristine full-precision calculation (using unrounded a, b) would give a different-looking intermediate (8.51693...). Do not require the later working to reproduce the unrounded calculation; check it against what the accepted rounded values actually produce.
     This is separate from whether an EARLIER token's own display was penalised. A student who wrote "a = 0.81" (losing that token's A mark for insufficient precision, rule 6) but whose later work is consistent with the correctly-rounded "a = 0.805" has still demonstrated correct use of the accepted value — do not require the later step to be consistent with "0.81" instead, and do not reason "the student's earlier value was 0.81, so this later result is unexplained." Judge the later step from what its own value actually shows, per rule 17.
