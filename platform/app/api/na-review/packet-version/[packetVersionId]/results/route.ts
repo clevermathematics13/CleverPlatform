@@ -77,13 +77,16 @@ export async function GET(
     id: string;
     status: string;
     invited_student_id: string;
+    student_profile_id: string | null;
     invited_students: InvitedStudentRow | InvitedStudentRow[] | null;
     na_scan_batches: BatchRow;
   };
 
   const { data: scanRows, error: scanErr } = await supabase
     .from("na_packet_scans")
-    .select("id, status, invited_student_id, invited_students(full_name, nickname, courses(id, name)), na_scan_batches(source_filename)")
+    .select(
+      "id, status, invited_student_id, student_profile_id, invited_students(full_name, nickname, courses(id, name)), na_scan_batches(source_filename)"
+    )
     .eq("packet_version_id", packetVersionId)
     .not("invited_student_id", "is", null);
   if (scanErr) return NextResponse.json({ error: scanErr.message }, { status: 500 });
@@ -168,6 +171,12 @@ export async function GET(
     return {
       packetScanId: s.id,
       invitedStudentId: s.invited_student_id,
+      // Null until the student's first sign-in links their roster row (see
+      // auto_enroll_from_invitations) -- the "view feedback as this student"
+      // link in the UI is only meaningful once this is set, since
+      // na-feedback's ?viewStudent= param takes a profiles.id, not an
+      // invited_students.id.
+      studentProfileId: s.student_profile_id,
       sourceFilename: batch?.source_filename ?? null,
       studentName: student?.full_name ?? student?.nickname ?? "(unnamed)",
       courseId: course?.id ?? null,

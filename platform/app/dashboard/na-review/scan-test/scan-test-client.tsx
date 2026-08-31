@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 type Confidence = "high" | "medium" | "low";
 
@@ -159,6 +160,7 @@ interface RecentBatch {
  *  batch history), and each scan's own progress is what matters here. */
 interface ResultsStudentRow {
   packetScanId: string;
+  studentProfileId: string | null;
   sourceFilename: string | null;
   studentName: string;
   courseId: string | null;
@@ -2753,6 +2755,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                               <th className="px-3 py-2 font-semibold">Clev&apos;s Marks</th>
                               <th className="px-3 py-2 font-semibold">Re-crop</th>
                               <th className="px-3 py-2 font-semibold">Release</th>
+                              <th className="px-3 py-2 font-semibold">Feedback</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2840,10 +2843,31 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                         </button>
                                       )}
                                     </td>
+                                    <td className="px-3 py-2">
+                                      {s.releasedAt && s.studentProfileId ? (
+                                        <Link
+                                          href={`/dashboard/na-feedback?viewStudent=${s.studentProfileId}&scanId=${s.packetScanId}`}
+                                          className="text-xs text-da-accent hover:underline"
+                                        >
+                                          View feedback
+                                        </Link>
+                                      ) : (
+                                        <span
+                                          className="text-xs text-da-muted"
+                                          title={
+                                            !s.releasedAt
+                                              ? "Release this student's feedback first"
+                                              : "This student hasn't signed in yet, so their account isn't linked to this scan"
+                                          }
+                                        >
+                                          —
+                                        </span>
+                                      )}
+                                    </td>
                                   </tr>
                                   {expanded && (
                                     <tr className="border-b border-da-border/40 last:border-0">
-                                      <td colSpan={6} className="bg-da-hover/20 p-0">
+                                      <td colSpan={7} className="bg-da-hover/20 p-0">
                                         {renderAssessCard(s.packetScanId, s.studentName, s.sourceFilename)}
                                       </td>
                                     </tr>
