@@ -184,6 +184,7 @@ Marking rules:
 - "unclear" is a real verdict, not a failure. If the handwriting is genuinely illegible, or the box is empty, or what's written doesn't appear to answer this question at all, return "unclear" with marksAwarded 0 and explain why in teacherNote. NEVER guess at a verdict you cannot support from what you can actually see -- a wrong confident mark on a real student's work is worse than an honest "a teacher needs to look at this".
 - studentAttempted is a separate question from the verdict: it asks only whether this student put anything of their own in this answer box. Set it false ONLY for a box that is genuinely untouched -- no writing, no working, no crossings-out, no partial start, nothing but the printed template. Anything the student actually wrote makes it true, however wrong, brief, faint or illegible, and even if you cannot read a single character of it. An answer written in the wrong place, or one an arrow points away from, is also true: they attempted it. When you are not sure whether a faint mark is the student's or a printing artefact, set it true -- telling a student who did try that they left it blank is a worse error than the reverse, and a teacher can spot the reverse from the mark.
 - When studentAttempted is false, the verdict is "unclear" and marksAwarded is 0 -- an untouched box is not a wrong answer, and calling it "incorrect" reads as a judgement of work the student never did.
+- When studentAttempted is false, leave transcription as an empty string too. Do NOT write a placeholder describing the emptiness ("[empty box - no student writing visible]") -- studentAttempted already carries that, and a placeholder reads as though it were something the student wrote.
 - When studentAttempted is false, leave BOTH marginComment and nextStep as empty strings. There is nothing useful to say in the margin of a box a student never wrote in, and a packet's worth of near-identical "you left this blank, give it a go!" notes buries the real feedback on the questions they did attempt. The blank itself is the message; the teacher sees the count.
 - Mathematical correctness is judged on the mathematics, not on handwriting neatness, spelling, or whether the student showed more working than required.
 - Before concluding that content is cut off or missing at a crop's edge, look carefully: small, faint, or compressed handwriting near an edge is NOT the same as content that was actually truncated. Only report something as "cut off" if you can see the crop boundary genuinely intersecting a character mid-stroke, or a printed box/line that is visibly incomplete. If the crop notes say the boundary was NOT automatically expanded, that means an automated check already looked for ink touching the edge and found none -- treat that as evidence AGAINST truncation, and look again at what's actually there before assuming something is missing. A confident "cut off, marks withheld" on content that is actually fully present and legible is a real error, not a safe default.
@@ -438,11 +439,27 @@ export function validateAssessment(
   // itself; trust the evidence of marks/transcription over the flag,
   // because the failure direction that matters is telling a student who
   // did work that they did not.
-  if (!a.studentAttempted && (a.marksAwarded > 0 || a.transcription.trim() !== "")) {
+  if (!a.studentAttempted && a.marksAwarded > 0) {
     warnings.push(
-      `Model reported the answer box as untouched but ${a.marksAwarded > 0 ? `awarded ${a.marksAwarded} marks` : "transcribed content from it"} -- treating it as attempted.`
+      `Model reported the answer box as untouched but awarded ${a.marksAwarded} marks -- treating it as attempted.`
     );
     a.studentAttempted = true;
+  }
+
+  // A non-empty transcription on an untouched box is only WARNED about,
+  // never used to override. It looks like a contradiction and was
+  // originally treated as one, but on real crops it is usually the model
+  // describing the emptiness rather than quoting the student -- 6 of
+  // Roberto Aurelio Gamio's 26 blanks came back correctly flagged
+  // studentAttempted=false alongside a transcription of
+  // "[empty box - no student writing visible]", and overriding on that
+  // put the blank straight back into the student's feedback as a normal
+  // unanswered question. Marks are the unambiguous contradiction and are
+  // still enforced above; this one goes to the teacher note instead.
+  if (!a.studentAttempted && a.transcription.trim() !== "") {
+    warnings.push(
+      `Model reported the answer box as untouched but still filled in a transcription ("${a.transcription.trim().slice(0, 80)}") -- confirm the box really is empty before releasing this.`
+    );
   }
 
   // An untouched box is not a wrong answer. Observed on real crops: the

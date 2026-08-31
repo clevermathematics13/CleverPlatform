@@ -109,23 +109,25 @@ describe("validateAssessment -- studentAttempted", () => {
     }
   });
 
-  it("overrides studentAttempted=false when the model also transcribed content, and warns", () => {
+  it("keeps studentAttempted=false when the transcription is a placeholder describing the emptiness, but warns", () => {
     const result = validateAssessment(
       assessmentJson({
         studentAttempted: false,
-        verdict: "incorrect",
+        verdict: "unclear",
         marksAwarded: 0,
-        transcription: "adults = 1",
-        marginComment: "Check row 4.",
+        transcription: "[empty box - no student writing visible]",
+        marginComment: "",
+        nextStep: "",
       }),
       3
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.assessment.studentAttempted).toBe(true);
-      // the student-facing text survives, because they did write something
-      expect(result.assessment.marginComment).toBe("Check row 4.");
-      expect(result.warnings.join(" ")).toMatch(/transcribed content/i);
+      // must NOT flip: this is the model describing a blank box, not
+      // quoting the student, and flipping it puts the blank back into the
+      // student's feedback as an ordinary unanswered question.
+      expect(result.assessment.studentAttempted).toBe(false);
+      expect(result.warnings.join(" ")).toMatch(/still filled in a transcription/i);
     }
   });
 
