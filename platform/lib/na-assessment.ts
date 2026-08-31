@@ -175,7 +175,10 @@ nextStep is one concrete action in one short sentence, not a platitude. "Re-read
 
 teacherNote is for the teacher only and never shown to the student. Use it for anything that affects trust in this mark: a crop that looks cut off, work that seems to belong to a different question, an answer that's right by a method the key didn't anticipate, or your reason for an "unclear" verdict. Leave it as an empty string when there is genuinely nothing to flag. Keep it as brief as the reasoning allows -- one or two short sentences, not a paragraph.
 
-redirectedElsewhere: set this true ONLY when the work actually inside this crop is crossed out (an X, a scribble-out, a strike-through covering it) AND an arrow enters or leaves the crop boundary, pointing toward where a replacement answer must be written -- outside what you can see. This crop alone cannot show you that replacement work; you're only being asked to notice the pattern, not find the answer. Do NOT set this for a crossed-out answer with no arrow (that's just an abandoned attempt -- mark whatever legible content remains, or award 0 if none does) or for ordinary crossed-out scratch work alongside a clean final answer still visible in the same crop (mark the clean answer normally). When you do set this true, still fill in your best-effort verdict/marksAwarded/transcription from the crossed-out content as a fallback, exactly as you would for any other crop.
+redirectedElsewhere: set this true whenever an arrow crosses this crop's boundary -- in EITHER direction -- and the answer visible inside the box is not itself a complete answer to the question. The arrow means the student's real work for this question lives somewhere else on the page, outside what you can see. Two patterns both count:
+- An arrow LEAVING the box, next to work that is crossed out (an X, a scribble-out, a strike-through): the student rejected what's in the box and pointed to a replacement written elsewhere.
+- An arrow ENTERING the box, pointing in from outside: the student ran out of room, or answered in the margin, and drew the arrow to connect that work back to this box. Nothing here needs to be crossed out for this to apply. In this case what's inside the box is often not an answer at all -- an apology ("Sorry"), a note ("see below", "over"), a doodle, a placeholder, or almost nothing. Content like that, sitting next to an arrow pointing in, is exactly the signal to set this true: the real answer is at the other end of that arrow.
+This crop alone cannot show you the work at the other end; you're only being asked to notice the pattern, not find the answer. Do NOT set this for a crossed-out answer with no arrow (that's just an abandoned attempt -- mark whatever legible content remains, or award 0 if none does), for ordinary crossed-out scratch work alongside a clean final answer still visible in the same crop (mark the clean answer normally), or for a complete answer that happens to have an arrow used INSIDE it as ordinary mathematical notation (a mapping, a "therefore", a labelled diagram). When you do set this true, still fill in your best-effort verdict/marksAwarded/transcription from whatever IS visible in the box as a fallback, exactly as you would for any other crop.
 
 teacherNote must state your reasoning ONCE, not narrate you changing your mind. Never write "wait", "actually, reconsidering", "on second thought", or any similar mid-explanation reversal -- if you catch yourself about to write one, that means you have not actually finished reasoning yet. Resolve the uncertainty first, THEN write teacherNote as a single, final account of why you landed on the verdict and marksAwarded you are about to submit. A teacherNote whose own stated conclusion doesn't match marksAwarded is a real error -- worse than an honest "unclear" -- because it looks confident while being wrong, and a teacher skimming past the number would never catch it. If you genuinely remain torn between two readings after reasoning it through, that is what "unclear" is for, not a hedged teacherNote paired with a picked-at-random number.
 
@@ -198,23 +201,30 @@ Return ONLY the JSON object below. No markdown fences, no commentary, no analysi
 /**
  * Second-pass system prompt, used only when a first pass (against the
  * tight crop, ASSESSMENT_SYSTEM_PROMPT above) set redirectedElsewhere --
- * the crop showed crossed-out work with an arrow leaving the box. This
- * pass is shown the FULL page instead, with that question's own box
- * highlighted in red (drawn by the CV service's /page-image endpoint from
- * the anchor's own authored coordinates, not the expanded crop bounds),
- * so the model can actually follow the arrow to wherever the replacement
- * work was written and grade that instead.
+ * an arrow crossed the crop boundary in either direction: leaving the box
+ * beside crossed-out work, or pointing INTO the box from work the student
+ * wrote outside it (found on Giulia Bernal's Q6(f), where the box held
+ * only "Sorry" and a crying face while an arrow pointed in from the real
+ * answer written elsewhere). This pass is shown the FULL page instead,
+ * with that question's own box highlighted in red (drawn by the CV
+ * service's /page-image endpoint from the anchor's own authored
+ * coordinates, not the expanded crop bounds), so the model can actually
+ * follow the arrow to whichever end holds the student's real work and
+ * grade that instead.
  *
  * Reuses AssessmentSchema/buildRubricBlock/validateAssessment unchanged --
  * same output contract as the first pass, just a different image and a
  * narrower job (this call already knows there's a redirect; it isn't
  * re-deciding whether one exists).
  */
-export const WIDE_CONTEXT_SYSTEM_PROMPT = `You are marking one handwritten answer from a Grade 9 IB MYP mathematics packet, against the teacher's own answer key -- the same task as always, but this time you're shown the FULL scanned page instead of a single cropped box, because a first pass already found that this question's answer box contains crossed-out work with an arrow leaving the box.
+export const WIDE_CONTEXT_SYSTEM_PROMPT = `You are marking one handwritten answer from a Grade 9 IB MYP mathematics packet, against the teacher's own answer key -- the same task as always, but this time you're shown the FULL scanned page instead of a single cropped box, because a first pass already found an arrow crossing this question's answer box, meaning the student's real work for it is written somewhere else on the page.
 
-The question's own answer box is outlined in RED on the page image. That red outline is the ORIGINAL box location -- ignore whatever is crossed out inside it. Your job is to find where the arrow actually points: look right at the edge of the red box for where a line leaves it, then follow that line across the page to wherever it leads (a margin, blank space nearby, even inside a different printed box) and read the work written there. That is the student's real answer to THIS question -- mark it, not the crossed-out original.
+The question's own answer box is outlined in RED on the page image. That red outline is the ORIGINAL box location -- whatever is inside it is not the answer you are marking (it is crossed out, or it is only a note, apology or doodle standing in for work written elsewhere). Your job is to follow the arrow to the student's actual work. Find where a line meets the red box's edge, then trace that line to its OTHER end, in whichever direction it runs:
+- If the arrow LEAVES the box (its tail is at the box, its head points away), follow it forwards to where it points.
+- If the arrow ENTERS the box (its head is at the box, pointing in), follow it BACKWARDS along its tail, away from the box, to where the line starts. The student wrote their answer at that starting end and drew the arrow to connect it back to this question.
+The work may be in a margin, in blank space anywhere on the page, above or below the box, or even inside a different printed box. Read whatever is written at the far end of the arrow -- that is the student's real answer to THIS question, and it is what you mark.
 
-If you genuinely cannot find any arrow or any replacement work after looking carefully at the whole page, fall back to marking the crossed-out content inside the red box as it stands (partial credit if it's legible and gets partway there, 0 if there's truly nothing gradable), and say plainly in teacherNote that no redirect could be located so a teacher should check the original page.
+If you genuinely cannot find any arrow or any work at either end of one after looking carefully at the whole page, fall back to marking the content inside the red box as it stands (partial credit if it's legible and gets partway there, 0 if there's truly nothing gradable), and say plainly in teacherNote that no redirect could be located so a teacher should check the original page.
 
 Every other marking rule is unchanged from a normal crop: mark against the teacher's key and this specific question's own marks share, partial credit is normal, "unclear" is a real verdict, and every text field (marginComment especially) stays exactly as short as it would for a single-crop assessment. redirectedElsewhere in your response should be false here regardless of what you find -- this pass IS the resolution, not another signal to chase further.
 
