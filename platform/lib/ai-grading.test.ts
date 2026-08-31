@@ -1190,3 +1190,26 @@ describe("buildGradingSystemPrompt", () => {
     expect(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY).toContain("numericCheck");
   });
 });
+
+// These two rules have no deterministic backstop (they're pure grading
+// judgement -- reading a mark scheme's own wording, and reasoning-text
+// quality -- not something a numeric-string comparison can verify), so
+// the only thing to regression-test is that the prompt guidance itself
+// hasn't silently regressed or been deleted.
+describe("GRADING_SYSTEM_PROMPT content", () => {
+  it("forbids citing excess significant figures/decimal places alone as a reason to withhold a mark", () => {
+    // A teacher reported the model withholding an A mark by reasoning
+    // "the student gave 4 s.f. rather than the required 3sf" for a value
+    // it had ITSELF just confirmed rounds correctly -- excess precision
+    // that rounds correctly was already meant to be accepted (the 8.515
+    // example), but the model kept re-inventing this exact rationalization.
+    expect(GRADING_SYSTEM_PROMPT).toMatch(/greater than M/i);
+    expect(GRADING_SYSTEM_PROMPT).toContain("contradiction");
+  });
+
+  it("distinguishes a constant term from the coefficients of variable terms", () => {
+    expect(GRADING_SYSTEM_PROMPT).toContain("CONSTANT TERM");
+    expect(GRADING_SYSTEM_PROMPT).toContain("3x^2 - 5x + 7");
+    expect(GRADING_SYSTEM_PROMPT).toMatch(/coefficient of x\^0/);
+  });
+});
