@@ -425,44 +425,49 @@ export function validateGradeResponse(
 
     // Mirror image of the three loops above: a mark the model WITHHELD
     // despite its own reported check indicating the value actually
-    // satisfies it. Production evidence: a real result's own note read
-    // "8.515 rounds to 8.52, but ... Value is incorrect" -- admitting the
-    // match and then withholding the mark anyway. This never grants the
-    // mark automatically -- a withheld mark can have a real reason this
-    // function can't see (contradicted by working, wrong method) even when
-    // the number itself checks out -- it only flags the inconsistency, the
-    // same way any other reason for uncertainty here does, so a teacher
-    // knows to look closer rather than trust a "withheld" that may be a
-    // mistake.
-    const reasoningFlags: string[] = [];
+    // satisfies it is now GRANTED here, not merely flagged. Production
+    // evidence: a real result's own note read "8.515 rounds to 8.52, but
+    // ... Value is incorrect" -- admitting the match and then withholding
+    // the mark anyway -- and this happened repeatedly, with the model
+    // inventing a new rationalization each time (wrong s.f. count, a
+    // mismatched alternative value, ...) even after flag-only warnings and
+    // two rounds of prompt tightening. Flagging alone left the wrong total
+    // standing until a teacher happened to notice, so this now corrects it
+    // directly, the same way the three withdrawal loops above correct in
+    // the opposite direction. This only re-verifies a numeric CLAIM the
+    // model itself already made in its own
+    // numericCheck/impliedMethodEvidence/intermediateValueCheck field -- it
+    // never invents a check the model didn't report, so a mark withheld for
+    // a real, non-numeric reason (contradicted by working, wrong method)
+    // is untouched, since those entries carry no such field to re-verify.
     for (const entry of item.markBreakdown) {
       if (entry.awarded) continue;
-      let flag: string | null = null;
+      let grant: string | null = null;
       if (entry.numericCheck) {
         const result = matchesRequiredPrecision(entry.numericCheck);
-        if (result.ok) flag = `${entry.token}'s own reported numericCheck indicates the value satisfies the required precision (${result.reason})`;
+        if (result.ok) grant = `${entry.token}'s own reported numericCheck indicates the value satisfies the required precision (${result.reason})`;
       } else if (entry.impliedMethodEvidence) {
         const result = classifyUnderPrecision(entry.impliedMethodEvidence);
         if (result.classification !== "numerically_incorrect") {
-          flag = `${entry.token}'s own reported impliedMethodEvidence indicates the value does support the implied method (${result.reason})`;
+          grant = `${entry.token}'s own reported impliedMethodEvidence indicates the value does support the implied method (${result.reason})`;
         }
       } else if (entry.intermediateValueCheck) {
         const result = classifyUnderPrecision(entry.intermediateValueCheck);
         if (result.classification !== "numerically_incorrect") {
-          flag = `${entry.token}'s own reported intermediateValueCheck indicates the value is a valid rounding of the reference (${result.reason})`;
+          grant = `${entry.token}'s own reported intermediateValueCheck indicates the value is a valid rounding of the reference (${result.reason})`;
         }
       }
-      if (flag) {
-        reasoningFlags.push(`${flag}, but it was withheld — verify before accepting.`);
-        warnings.push(`${unitLabel(unit)}: ${flag}, but it was withheld — flagged for teacher review`);
+      if (grant) {
+        entry.awarded = true;
+        entry.note = entry.note ? `${entry.note} (corrected: ${grant})` : `Corrected: ${grant}`;
+        reasoningCorrections.push(`${entry.token} was granted on deterministic re-check — ${grant}.`);
+        warnings.push(`${unitLabel(unit)}: ${grant} — granted on deterministic re-check`);
       }
     }
-    if (reasoningFlags.length > 0) confidence = "low";
 
-    if (reasoningCorrections.length > 0 || reasoningFlags.length > 0) {
-      const label = reasoningCorrections.length > 0 ? "Correction" : "Flagged for review";
-      const addendum = [...reasoningCorrections, ...reasoningFlags].join(" ");
-      item.reasoning = item.reasoning ? `${item.reasoning} (${label}: ${addendum})` : `${label}: ${addendum}`;
+    if (reasoningCorrections.length > 0) {
+      const addendum = reasoningCorrections.join(" ");
+      item.reasoning = item.reasoning ? `${item.reasoning} (Correction: ${addendum})` : `Correction: ${addendum}`;
     }
 
     // The model is instructed that awarded mark_breakdown tokens must sum to
