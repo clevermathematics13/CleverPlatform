@@ -14,8 +14,8 @@ import {
   type AnchorContext,
 } from "@/lib/na-assessment";
 
-// ONE Sonnet call, ever, per request -- except the rare crossed-out-with-
-// an-arrow case (see maybeResolveRedirect below), which adds one more
+// ONE Sonnet call, ever, per request -- except the rare arrow-across-the-
+// box-boundary case (see resolveRedirect below), which adds one more
 // call plus a CV service round trip for that single crop only. The
 // original design ran all ~37 gradable crops for a student sequentially
 // inside a single request (see the assess/route.ts this replaces) and hit
@@ -180,10 +180,12 @@ export async function POST(
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   /** Second pass for a crop whose first-pass result set redirectedElsewhere
-   *  (crossed-out work, an arrow leaving the box): renders the FULL page
-   *  via the CV service with this anchor's own box outlined in red, then
-   *  re-assesses from that wider image so the model can actually follow
-   *  the arrow to wherever the replacement answer was written. Returns
+   *  (an arrow crossing the box boundary in either direction -- leaving it
+   *  beside crossed-out work, or pointing into it from work written
+   *  outside): renders the FULL page via the CV service with this anchor's
+   *  own box outlined in red, then re-assesses from that wider image so the
+   *  model can follow the arrow to whichever end holds the student's real
+   *  work and grade that instead. Returns
    *  null on any failure (CV service unconfigured, page render failed,
    *  second pass didn't validate) so the caller can fall back to the
    *  first pass's own result rather than losing the assessment. */
@@ -308,10 +310,10 @@ export async function POST(
     let warnings = validated.warnings;
     let usedWiderContext = false;
 
-    // The crop showed crossed-out work with an arrow leaving the box --
-    // that arrow's destination is by definition outside what this crop
-    // can show, so re-assess with the full page in view instead of
-    // trusting a mark against content the student themselves rejected.
+    // An arrow crossed this crop's boundary -- the work at its other end
+    // is by definition outside what this crop can show, so re-assess with
+    // the full page in view instead of trusting a mark against content the
+    // student either rejected or never meant as their answer.
     // Best-effort: any failure here (CV service unconfigured, page
     // render failed, second pass didn't validate) falls back to the
     // first pass's own result rather than losing the assessment
@@ -324,7 +326,7 @@ export async function POST(
         warnings = resolved.warnings;
         usedWiderContext = true;
       } else {
-        warnings = [...warnings, "Crossed-out work with an arrow leaving the box was detected, but the wider-page re-check could not resolve it -- a teacher should check the original page for where the student's replacement answer was written."];
+        warnings = [...warnings, "An arrow crossing this answer box was detected, meaning the student's real work for this question is elsewhere on the page, but the wider-page re-check could not resolve it -- a teacher should check the original page for where that work was written."];
       }
     }
 
