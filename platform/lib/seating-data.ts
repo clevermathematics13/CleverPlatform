@@ -8,15 +8,77 @@ import type { Student, Seat, Rule, Assignment, Setting, SeatingLayout } from '@/
 
 // --- Reads --------------------------------------------------------------------
 
+/**
+ * Students for the seating generator, derived live from the real roster
+ * (courses / students / invited_students) rather than the frozen
+ * `seating_students` snapshot table, which was seeded once and never
+ * updated when a class gets archived — so archived classes' students used
+ * to keep showing up here forever. class_group is the course name; a
+ * student is included only if their course is not archived.
+ */
 export async function getStudents(): Promise<Student[]> {
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from('seating_students')
-    .select('*')
-    .order('class_group')
-    .order('name');
-  if (error) throw new Error(error.message);
-  return data ?? [];
+
+  const { data: courses, error: coursesError } = await supabase
+    .from('courses')
+    .select('id, name')
+    .eq('archived', false);
+  if (coursesError) throw new Error(coursesError.message);
+
+  const classGroupByCourse = new Map((courses ?? []).map((c) => [c.id as string, c.name as string]));
+  const courseIds = [...classGroupByCourse.keys()];
+  if (courseIds.length === 0) return [];
+
+  const [{ data: enrolled, error: enrolledError }, { data: invited, error: invitedError }] = await Promise.all([
+    supabase
+      .from('students')
+      .select('course_id, hidden, profiles:profile_id ( email, display_name, nickname )')
+      .in('course_id', courseIds),
+    supabase
+      .from('invited_students')
+      .select('course_id, email, full_name, nickname, hidden')
+      .in('course_id', courseIds)
+      .is('profile_id', null),
+  ]);
+  if (enrolledError) throw new Error(enrolledError.message);
+  if (invitedError) throw new Error(invitedError.message);
+
+  const seen = new Set<string>();
+  const students: Student[] = [];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (enrolled ?? []) as any[]) {
+    const profile = row.profiles as { email: string; display_name: string; nickname: string | null } | null;
+    const studentId = profile?.email;
+    const classGroup = classGroupByCourse.get(row.course_id);
+    if (!studentId || !classGroup || seen.has(studentId)) continue;
+    seen.add(studentId);
+    students.push({
+      student_id: studentId,
+      name: profile?.nickname || profile?.display_name || studentId,
+      class_group: classGroup,
+      active: !row.hidden,
+      notes: '',
+    });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (invited ?? []) as any[]) {
+    const classGroup = classGroupByCourse.get(row.course_id);
+    if (!row.email || !classGroup || seen.has(row.email)) continue;
+    seen.add(row.email);
+    students.push({
+      student_id: row.email,
+      name: row.nickname || row.full_name || row.email,
+      class_group: classGroup,
+      active: !row.hidden,
+      notes: '',
+    });
+  }
+
+  return students.sort(
+    (a, b) => a.class_group.localeCompare(b.class_group) || a.name.localeCompare(b.name),
+  );
 }
 
 export async function getSeats(): Promise<Seat[]> {
@@ -72,15 +134,15 @@ export async function getSettings(): Promise<Setting[]> {
   return data ?? [];
 }
 
-/** Returns sorted unique class groups derived from seating_students. */
+/** Returns sorted unique class groups, i.e. non-archived course names. */
 export async function getClassGroups(): Promise<string[]> {
   const supabase = createClient();
   const { data, error } = await supabase
-    .from('seating_students')
-    .select('class_group')
-    .eq('active', true);
+    .from('courses')
+    .select('name')
+    .eq('archived', false);
   if (error) throw new Error(error.message);
-  const groups = [...new Set((data ?? []).map((r) => r.class_group as string))];
+  const groups = [...new Set((data ?? []).map((r) => r.name as string))];
   return groups.sort();
 }
 
