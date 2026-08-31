@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifyUnderPrecision,
   countDecimalPlaces,
   countSignificantFigures,
   matchesRequiredPrecision,
@@ -275,5 +276,94 @@ describe("matchesRequiredPrecision", () => {
       precisionDigits: 3,
     });
     expect(result.ok).toBe(true);
+  });
+});
+
+// The correlation-coefficient case that exposed the M/A conflation: a student
+// who writes the correct r = 0.946591... rounded to 2 s.f. as "0.95" has
+// given insufficient-precision evidence for the A mark, but that same value
+// is exact proof the correct calculator procedure was carried out -- IB mark
+// schemes say so explicitly ("If no working shown, award (M1)A0 for X (2sf)").
+// classifyUnderPrecision is the deterministic backstop for that specific
+// numeric claim; see ai-grading.ts's implied-method-evidence rule (14) for
+// how the grading model is instructed to use it.
+describe("classifyUnderPrecision", () => {
+  const r = { referenceValue: "0.946591", precisionType: "sf" as const, precisionDigits: 3 };
+
+  it("classifies the exact required-precision answer as correct_at_required_precision", () => {
+    const result = classifyUnderPrecision({ ...r, reportedValue: "0.947" });
+    expect(result.classification).toBe("correct_at_required_precision");
+  });
+
+  it("classifies the full-precision value itself as correct_at_required_precision, not a wrong method", () => {
+    const result = classifyUnderPrecision({ ...r, reportedValue: "0.946591" });
+    expect(result.classification).toBe("correct_at_required_precision");
+  });
+
+  it("classifies a correct rounding to fewer significant figures as correct_but_under_precise", () => {
+    const result = classifyUnderPrecision({ ...r, reportedValue: "0.95" });
+    expect(result.classification).toBe("correct_but_under_precise");
+    expect(result.reason).toMatch(/2 significant figure/i);
+  });
+
+  it("does not treat a merely-nearby value as under-precise -- exact rounding only", () => {
+    // 0.96 is close to 0.946591... but is NOT what it rounds to at any
+    // precision (round to 2 s.f. is 0.95, not 0.96) -- proximity is not
+    // evidence of method, only an exact rounding relationship is.
+    const result = classifyUnderPrecision({ ...r, reportedValue: "0.96" });
+    expect(result.classification).toBe("numerically_incorrect");
+  });
+
+  it("does not infer method from a value with the wrong sign", () => {
+    const result = classifyUnderPrecision({ ...r, reportedValue: "-0.95" });
+    expect(result.classification).toBe("numerically_incorrect");
+  });
+
+  it("does not infer method from an unrelated wrong value", () => {
+    const result = classifyUnderPrecision({ ...r, reportedValue: "0.85" });
+    expect(result.classification).toBe("numerically_incorrect");
+  });
+
+  it("defers (cannot_determine) rather than fails when a value can't be parsed deterministically", () => {
+    const result = classifyUnderPrecision({ ...r, reportedValue: "pi/4" });
+    expect(result.classification).toBe("cannot_determine");
+  });
+
+  it("defers (cannot_determine) for an exact-value requirement -- no under-precise variant applies", () => {
+    const result = classifyUnderPrecision({
+      reportedValue: "0.6666667",
+      referenceValue: "0.66666666666667",
+      precisionType: "exact",
+    });
+    expect(result.classification).toBe("cannot_determine");
+  });
+
+  it("respects alternativeReferenceValues the same way matchesRequiredPrecision does", () => {
+    const result = classifyUnderPrecision({
+      reportedValue: "26.0",
+      referenceValue: "26.1083",
+      alternativeReferenceValues: ["26.0409"],
+      precisionType: "sf",
+      precisionDigits: 3,
+    });
+    // "26.0" doesn't match the primary referenceValue's rounding (26.1) but
+    // does match the alternative's (26.0) -- correct at the required
+    // precision via the alternative, not merely under-precise.
+    expect(result.classification).toBe("correct_at_required_precision");
+  });
+
+  // A second, unrelated worked example so this is proven to be a reusable
+  // marking feature, not something hardcoded around 0.946591/0.95/0.947.
+  it("generalizes to a different value entirely (the 5.7/5.74 case)", () => {
+    const generalized = { referenceValue: "5.73553", precisionType: "sf" as const, precisionDigits: 3 };
+    expect(classifyUnderPrecision({ ...generalized, reportedValue: "5.74" }).classification).toBe(
+      "correct_at_required_precision"
+    );
+    expect(classifyUnderPrecision({ ...generalized, reportedValue: "5.7" }).classification).toBe(
+      "correct_but_under_precise"
+    );
+    expect(classifyUnderPrecision({ ...generalized, reportedValue: "5.8" }).classification).toBe(
+      "numerically_incorrect"
+    );
   });
 });

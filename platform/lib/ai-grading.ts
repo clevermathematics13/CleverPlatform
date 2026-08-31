@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import fs from "fs";
 import path from "path";
-import { matchesRequiredPrecision } from "./numerical-accuracy";
+import { classifyUnderPrecision, matchesRequiredPrecision } from "./numerical-accuracy";
 
 /**
  * AI-assisted grading of scanned student work against the PPQ mark scheme.
@@ -123,6 +123,16 @@ export const MarkBreakdownEntrySchema = z.object({
   note: z.string().default(""),
   /** Only present for a final numeric accuracy mark; see NumericCheckSchema. */
   numericCheck: NumericCheckSchema.nullable().optional(),
+  /**
+   * Only present on a Method mark awarded because the student's final
+   * numeric answer -- though not precise enough to earn its own accuracy
+   * mark -- is itself evidence the correct method was used (see the
+   * "implied method evidence" rule in GRADING_SYSTEM_PROMPT). Same shape as
+   * NumericCheckSchema, reused for the same reason: it's the same
+   * reported-value-vs-reference-value comparison, just checked for a
+   * different purpose (was this under-precise, not was it correct).
+   */
+  impliedMethodEvidence: NumericCheckSchema.nullable().optional(),
 });
 
 /**
@@ -305,6 +315,29 @@ export function validateGradeResponse(
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
         warnings.push(
           `${unitLabel(unit)}: ${entry.token} withheld on deterministic accuracy re-check — ${result.reason}`
+        );
+      }
+    }
+
+    // Same idea, for a Method mark the model claims is evidenced by an
+    // under-precise-but-correct final answer (see GRADING_SYSTEM_PROMPT's
+    // implied-method-evidence rule and impliedMethodEvidence on the schema).
+    // The model decides WHETHER this kind of inference applies to a given
+    // mark (that depends on the mark scheme's own wording, which this
+    // function never re-reads) -- this only re-checks the numeric CLAIM
+    // once the model has made it: is the reported value actually an exact
+    // rounding of the reference value, or merely a different, coincidentally
+    // nearby number? Only a definite "numerically_incorrect" result
+    // withdraws the mark; "cannot_determine" defers to the model, same as
+    // the accuracy check above.
+    for (const entry of item.markBreakdown) {
+      if (!entry.impliedMethodEvidence) continue;
+      const result = classifyUnderPrecision(entry.impliedMethodEvidence);
+      if (entry.awarded && result.classification === "numerically_incorrect") {
+        entry.awarded = false;
+        entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
+        warnings.push(
+          `${unitLabel(unit)}: ${entry.token} withheld — claimed implied-method evidence does not hold: ${result.reason}`
         );
       }
     }
@@ -660,7 +693,7 @@ export const GRADING_SYSTEM_PROMPT = `You are an experienced IB Diploma Programm
 You mark to the mark scheme. You do not mark to your own preferred method or your own arithmetic. The mark scheme is the authority.
 
 MARK TYPES
-- M (method): awarded for a correct method, even if the subsequent arithmetic is wrong. Award M marks when the intended method is clearly visible.
+- M (method): awarded for a correct method, even if the subsequent arithmetic is wrong. Award M marks when the intended method is clearly visible. "Visible" includes a final numeric answer that is itself only explainable by the correct method — see rule 14 for when an under-precise final answer still evidences the method that produced it.
 - A (accuracy): awarded for a correct result. An A mark depends on its associated M mark — never award an A without the M that earns it.
 - R (reasoning): awarded for correct justification or explanation, not merely a correct answer.
 - AG (answer given): the answer is printed in the question. Award only if the working genuinely derives it. Do NOT award if the student worked backwards from the printed answer or simply restated it.
@@ -680,6 +713,16 @@ MARKING RULES
 11. For an R mark that asks the student to interpret a value "in context" (e.g. what a regression coefficient represents), judge the student's own wording on whether it conveys the same meaning as the mark scheme's model answer, not on whether it uses the same words. In particular, "for every increase of 1 in X, Y increases/decreases by k" is an equivalent way of stating "Y represents the (average) increase/decrease in ... per unit increase in X" — award it even though it doesn't use the word "average" or the mark scheme's exact phrasing. Withhold the mark only when the explanation is wrong or incomplete in substance: wrong direction, wrong variable, missing context the mark scheme specifically requires, or vague enough that it could describe an unrelated relationship. A different sentence structure that says the same thing is not a reason to withhold the mark. This rule governs wording of a correct interpretation only — it does not relax rule 6's exactness requirement for the numerical value the interpretation refers to.
 12. Before concluding that a transcribed numerical value is wrong under rule 6, consider whether you may have misread the handwriting rather than the student having made an error. A transcribed value that differs from the mark scheme's value by what looks like a single confused digit (common confusions: 4/9, 1/7, 5/6, 0/6, 3/8, or a missing/extra decimal place) is exactly the pattern of a transcription misread, not necessarily a wrong answer. In that situation, look again at the actual handwriting before finalizing your reading. If you cannot become confident which digit is actually written, transcribe your best reading in the evidence field but do not report "high" confidence for that item — this is exactly the kind of uncertainty confidence exists to flag for teacher review, and it does not change how rule 6 is applied to whichever value you finally transcribe.
 13. A mark scheme token written in parentheses, e.g. "(M1)" or "(A1)", is an IMPLIED mark: award it whenever a correct later result or final answer makes it clear that step must have been performed, even if the student never wrote that specific step down explicitly. Do not withhold a bracketed mark merely because its own intermediate line is missing from the working — that is exactly what the parentheses signal is acceptable. A token written WITHOUT parentheses, e.g. "M1" or "A1", is the ordinary case and still requires that step's own evidence to be visibly present in the working (or, per rule 3, validly implied by follow-through from an earlier part) — do not extend the "no explicit line needed" leniency of a bracketed mark to an unbracketed one. When you itemise markBreakdown, echo the token exactly as it appears in the mark scheme, parentheses included, so this distinction stays visible in the record.
+14. METHOD and ACCURACY are independent criteria — grade them separately, never as one all-or-nothing correctness test. A final numeric answer failing rule 6's precision requirement is an ACCURACY failure; it is not automatically a METHOD failure too. Some real IB mark schemes say this outright, e.g. "If no working shown, award (M1)A0 for 5.7 (2sf)" — a final answer alone, at reduced precision, is treated as sufficient evidence of the method for that mark.
+    Apply this specifically when the student's reported value is the correct underlying result rounded to FEWER significant figures or decimal places than required — not merely a nearby or plausible-looking number. "0.95" is the correct 0.946591... rounded to 2 s.f., so it is exact evidence of that method; "0.96" is not a rounding of 0.946591... at any precision, so it is not evidence of anything and must not be treated as if it were. Being "close" is never sufficient — only an exact rounding relationship counts. Use this decision order for a method mark tied to a numeric result:
+    a. The reported value is correct at the precision the mark scheme requires -> award the method mark and the accuracy mark (ordinary case).
+    b. The reported value is that same correct result rounded to fewer digits, with nothing in the student's own working that contradicts the correct method -> award the method mark, withhold the accuracy mark (insufficient precision, not a wrong method). Say so in your reasoning using "insufficient precision" or "fewer significant figures than required" — never "incorrectly rounded" for a value that is itself a correct rounding, and never "rounding error" or "close enough".
+    c. The reported value does not match the correct result at any rounding (a genuinely different number, e.g. an arithmetic slip) -> judge the method mark from whatever working is actually shown, the same as any other method mark; do not award it from the wrong final number alone.
+    d. The student's own working explicitly shows an incorrect procedure -> grade the method mark from that working. A final answer that happens to look right, or right-but-under-precise, never overrides explicit incorrect working — do not infer a correct method the student's own steps contradict.
+    Whether a given M mark is even the kind of thing that CAN be inferred from a final answer this way is your judgement to make from the mark scheme's own wording for that specific mark (a mark for "recognizes conditional probability" or for an algebraic derivation usually is not — that kind of reasoning generally needs to be shown, not inferred from a number). Do not turn this into a blanket rule that any 2-significant-figure or any nearby answer earns M1 regardless of what the mark scheme's method mark actually represents.
+    When you award a mark this way, attach impliedMethodEvidence to that mark's own markBreakdown entry (same shape as numericCheck: reportedValue, referenceValue, optionally alternativeReferenceValues, precisionType, precisionDigits) so the reported-vs-reference rounding relationship you're relying on is auditable, e.g.:
+    { "token": "(M1)", "awarded": true, "note": "0.95 is 0.946591... to 2 s.f.: sufficient evidence of the correct method; insufficient precision for the A mark", "impliedMethodEvidence": { "reportedValue": "0.95", "referenceValue": "0.946591", "precisionType": "sf", "precisionDigits": 3 } }
+    Omit impliedMethodEvidence entirely for a method mark awarded the ordinary way (explicit working shown) — it exists only to record this specific numeric inference, not as a general-purpose field on every M mark.
 
 WORKING ORDER — follow these steps in sequence for each part, because the later
 fields in OUTPUT below are DERIVED from the earlier ones, not independent
@@ -717,7 +760,9 @@ judgement calls made in parallel:
    grading before finalising evidenceBox.
 3. MARK BREAKDOWN: itemise every mark scheme token (M1, A1, R1, AG, ...) for
    this part and decide, one token at a time, whether the transcribed
-   evidence earns it.
+   evidence earns it. Decide each M and A token on its own criterion (see
+   rule 14) — a wrong or under-precise final answer does not by itself
+   decide the M mark tied to it.
 4. REASONING: briefly explain the itemisation above.
 5. SUGGESTED MARKS: suggestedMarks is NOT a separate judgement call — it is
    the count of tokens you just marked awarded in step 3 (every token here
