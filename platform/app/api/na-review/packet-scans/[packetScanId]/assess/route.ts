@@ -48,7 +48,7 @@ export async function GET(
   const { data: cropRows, error: cropsErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, storage_path, is_blank, possibly_truncated, anchor_id, na_anchors(qid, sort_order, question_text, prompt_crop_storage_path), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags)"
+      "id, storage_path, is_blank, possibly_truncated, anchor_id, na_anchors(qid, sort_order, question_text, prompt_crop_storage_path), na_feedback(ai_attempted, ai_verdict, ai_marks_awarded, ai_marks_available, ai_validation_error, ai_transcription, ai_margin_comment, ai_next_step, ai_teacher_note, ai_confidence, ai_misconception_tags, final_verdict, final_marks_awarded, approved_at)"
     )
     .eq("packet_scan_id", packetScanId);
 
@@ -66,6 +66,9 @@ export async function GET(
     ai_teacher_note: string | null;
     ai_confidence: number | null;
     ai_misconception_tags: string[] | null;
+    final_verdict: string | null;
+    final_marks_awarded: number | null;
+    approved_at: string | null;
   };
 
   type Anchor = {
@@ -132,9 +135,14 @@ export async function GET(
       // ai_validation_error set still needs a retry, so it's reported as
       // not yet assessed rather than silently counted as done.
       alreadyAssessed: !!feedback && feedback.ai_attempted !== null && !feedback.ai_validation_error,
-      verdict: feedback?.ai_verdict ?? null,
-      marksAwarded: feedback?.ai_marks_awarded ?? null,
+      // The teacher's own final_* value, once one exists, is the real
+      // current mark -- showing the stale ai_* draft after a teacher has
+      // already overridden it would silently hide their own correction
+      // the next time this list reloads (e.g. after a re-crop).
+      verdict: feedback?.final_verdict ?? feedback?.ai_verdict ?? null,
+      marksAwarded: feedback?.final_marks_awarded ?? feedback?.ai_marks_awarded ?? null,
       marksAvailable: feedback?.ai_marks_available ?? null,
+      approved: !!feedback?.approved_at,
       transcription: feedback?.ai_transcription ?? null,
       marginComment: feedback?.ai_margin_comment ?? null,
       nextStep: feedback?.ai_next_step ?? null,

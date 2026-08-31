@@ -104,6 +104,11 @@ interface AssessCropListItem {
   teacherNote: string | null;
   confidence: number | null;
   misconceptionTags: string[];
+  /** True once a teacher has approved this crop (na_feedback.approved_at
+   *  set) -- verdict/marksAwarded above already prefer final_* over ai_*
+   *  once that's happened, this just lets the UI show that a mark is the
+   *  teacher's own decision, not still only an AI draft. */
+  approved: boolean;
 }
 
 /** Stage 5's per-crop assessment lifecycle, keyed by cropId. Carries the
@@ -125,6 +130,7 @@ interface AssessCropState {
   teacherNote: string | null;
   confidence: number | null;
   misconceptionTags: string[];
+  approved: boolean;
 }
 
 /** Stage 5's lifecycle for one already-cropped student, as a whole panel. */
@@ -627,6 +633,12 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [reCropRuns, setReCropRuns] = useState<
     Record<string, { status: "cropping" | "assessing" | "done" | "failed"; assessedCount: number; totalToAssess: number; error: string | null }>
   >({});
+  // Which crop's mark badge is currently showing an editable input, in the
+  // per-student assess card -- a single cropId (not per-panel) since only
+  // one badge can realistically be mid-edit at once, matching the same
+  // click-to-edit pattern already used on the per-anchor review page.
+  const [editingMarksCropId, setEditingMarksCropId] = useState<string | null>(null);
+  const [markSaveError, setMarkSaveError] = useState<{ cropId: string; message: string } | null>(null);
   // Per-student "Collapse all" override for the <details> blocks below --
   // keyed by packetScanId so toggling one student's Stage 5 card doesn't
   // affect any other student's. Overrides (rather than replaces) each
@@ -1517,6 +1529,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
               teacherNote: c.teacherNote,
               confidence: c.confidence,
               misconceptionTags: c.misconceptionTags,
+              approved: c.approved,
             } as AssessCropState,
           ])
         ),
@@ -1557,6 +1570,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         teacherNote: prev[cropId]?.teacherNote ?? null,
         confidence: prev[cropId]?.confidence ?? null,
         misconceptionTags: prev[cropId]?.misconceptionTags ?? [],
+        approved: prev[cropId]?.approved ?? false,
       },
     }));
     try {
@@ -1589,6 +1603,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           teacherNote: prev[cropId]?.teacherNote ?? null,
           confidence: prev[cropId]?.confidence ?? null,
           misconceptionTags: prev[cropId]?.misconceptionTags ?? [],
+          approved: prev[cropId]?.approved ?? false,
         },
       }));
     } catch (e) {
@@ -1607,8 +1622,46 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           teacherNote: null,
           confidence: null,
           misconceptionTags: [],
+          approved: false,
         },
       }));
+    }
+  };
+
+  /** Teacher override for one crop's mark, triggered by clicking the
+   *  verdict/marks badge in the per-student assess card. Reuses
+   *  POST /api/na-review/save (the same route the per-anchor review page's
+   *  own click-to-edit marks input already calls) -- writes final_verdict/
+   *  final_marks_awarded/approved_at, never ai_*, so this is a genuine
+   *  teacher decision, not another AI draft. Verdict and margin comment/
+   *  next step are carried over unchanged from whatever's currently
+   *  displayed (final_* if already approved, else the ai_* draft) -- only
+   *  the mark itself changes here. */
+  const saveMarkOverride = async (cropId: string, marksAwarded: number) => {
+    const current = assessCropState[cropId];
+    const verdict = (current?.verdict ?? "unclear") as "correct" | "partial" | "incorrect" | "unclear";
+    setMarkSaveError(null);
+    try {
+      const res = await fetch("/api/na-review/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cropId,
+          verdict,
+          marksAwarded,
+          marginComment: current?.marginComment ?? "",
+          nextStep: current?.nextStep ?? "",
+          edited: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? "Could not save this mark.");
+      setAssessCropState((prev) => ({
+        ...prev,
+        [cropId]: { ...prev[cropId], marksAwarded, verdict, approved: true } as AssessCropState,
+      }));
+    } catch (e) {
+      setMarkSaveError({ cropId, message: e instanceof Error ? e.message : "Could not save this mark." });
     }
   };
 
@@ -2161,6 +2214,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                         teacherNote: null,
                         confidence: null,
                         misconceptionTags: [],
+                        approved: false,
                       };
                       // Only a partial mark (marksAwarded < marksAvailable)
                       // genuinely NEEDS an explanation open by default --
@@ -2197,12 +2251,52 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                   may be cut off
                                 </span>
                               )}
-                              {s.status === "assessed" && s.verdict && (
-                                <span
-                                  className={`rounded border px-2 py-0.5 text-xs font-medium ${VERDICT_STYLE[s.verdict] ?? ""}`}
-                                >
-                                  {s.verdict}
-                                  {s.marksAvailable != null ? ` — ${s.marksAwarded ?? 0}/${s.marksAvailable}` : ""}
+                              {s.status === "assessed" &&
+                                s.verdict &&
+                                (editingMarksCropId === c.cropId ? (
+                                  <span
+                                    className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs font-medium ${VERDICT_STYLE[s.verdict] ?? ""}`}
+                                  >
+                                    {s.verdict} —
+                                    <input
+                                      type="number"
+                                      autoFocus
+                                      min={0}
+                                      max={s.marksAvailable ?? undefined}
+                                      step={0.5}
+                                      defaultValue={s.marksAwarded ?? 0}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onBlur={(e) => {
+                                        const val = Number(e.target.value);
+                                        setEditingMarksCropId(null);
+                                        if (!Number.isNaN(val)) void saveMarkOverride(c.cropId, val);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                        if (e.key === "Escape") setEditingMarksCropId(null);
+                                      }}
+                                      className="w-12 rounded border border-da-accent bg-da-surface px-1 py-0 text-xs text-da-text"
+                                    />
+                                    /{s.marksAvailable}
+                                  </span>
+                                ) : (
+                                  <span
+                                    onClick={() => setEditingMarksCropId(c.cropId)}
+                                    title="Click to edit this mark"
+                                    className={`cursor-text rounded border px-2 py-0.5 text-xs font-medium hover:ring-1 hover:ring-da-accent ${VERDICT_STYLE[s.verdict] ?? ""}`}
+                                  >
+                                    {s.verdict}
+                                    {s.marksAvailable != null ? ` — ${s.marksAwarded ?? 0}/${s.marksAvailable}` : ""}
+                                    {s.approved && (
+                                      <span className="ml-1 text-green-600" title="Approved by teacher">
+                                        ✓
+                                      </span>
+                                    )}
+                                  </span>
+                                ))}
+                              {markSaveError?.cropId === c.cropId && (
+                                <span className="text-xs text-red-500" title={markSaveError.message}>
+                                  couldn&apos;t save
                                 </span>
                               )}
                               {s.status === "assessed" && s.confidence != null && s.confidence < 0.6 && (
