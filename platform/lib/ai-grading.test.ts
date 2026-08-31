@@ -713,11 +713,13 @@ describe("validateGradeResponse", () => {
 
   // A teacher reported this exact production case: the model's own note
   // admitted "8.515 rounds to 8.52, but ... Value is incorrect" and withheld
-  // the A mark anyway. The model's own numericCheck, independently
-  // verified, actually supports the award. This never grants the mark
-  // automatically (a withheld mark can have a real reason this function
-  // can't see) -- it flags the inconsistency for a teacher to check.
-  it("flags (but does not grant) a mark withheld despite its own numericCheck actually passing", () => {
+  // the A mark anyway. Flag-only warnings did not fix the mark for the
+  // student -- the wrong total stood until a teacher manually re-graded,
+  // and the model kept inventing new rationalizations for the same withheld
+  // mark on repeated re-runs even after prompt tightening. The model's own
+  // numericCheck, independently re-verified, actually supports the award,
+  // so this now grants it directly rather than only flagging it.
+  it("grants a mark withheld despite its own numericCheck actually passing", () => {
     const raw = JSON.stringify({
       items: [
         {
@@ -750,19 +752,21 @@ describe("validateGradeResponse", () => {
     if (!result.ok) return;
 
     const grade = result.outcome.grades[0];
-    // Never silently grants the mark -- clampedMarks stays whatever the
-    // model's own breakdown reports (0 here), not upgraded to 1.
-    expect(grade.clampedMarks).toBe(0);
-    expect(grade.item.markBreakdown[0].awarded).toBe(false);
+    // Deterministically re-verified as satisfying its own reported check,
+    // so the mark is granted -- clampedMarks moves from the model's
+    // reported 0 up to 1, and the breakdown entry itself is flipped to
+    // awarded.
+    expect(grade.clampedMarks).toBe(1);
+    expect(grade.item.markBreakdown[0].awarded).toBe(true);
     expect(grade.confidence).toBe("low");
     expect(
-      result.outcome.warnings.some((w) => w.includes("flagged for teacher review"))
+      result.outcome.warnings.some((w) => w.includes("granted on deterministic re-check"))
     ).toBe(true);
-    expect(grade.item.reasoning).toContain("Flagged for review");
-    expect(grade.item.reasoning).toContain("but it was withheld");
+    expect(grade.item.reasoning).toContain("Correction");
+    expect(grade.item.reasoning).toContain("was granted on deterministic re-check");
   });
 
-  it("does not flag a withheld mark whose own numericCheck genuinely fails", () => {
+  it("does not grant a withheld mark whose own numericCheck genuinely fails", () => {
     const raw = JSON.stringify({
       items: [
         {
@@ -793,7 +797,7 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.grades[0].item.reasoning).toBe("0.81 is insufficiently precise, so A0.");
   });
 
-  it("flags a withheld Method mark whose own impliedMethodEvidence actually supports it", () => {
+  it("grants a withheld Method mark whose own impliedMethodEvidence actually supports it", () => {
     const raw = JSON.stringify({
       items: [
         {
@@ -824,10 +828,11 @@ describe("validateGradeResponse", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
 
-    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.grades[0].item.markBreakdown[0].awarded).toBe(true);
     expect(result.outcome.grades[0].confidence).toBe("low");
     expect(
-      result.outcome.warnings.some((w) => w.includes("flagged for teacher review"))
+      result.outcome.warnings.some((w) => w.includes("granted on deterministic re-check"))
     ).toBe(true);
   });
 
