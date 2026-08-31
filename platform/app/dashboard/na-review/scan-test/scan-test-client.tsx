@@ -617,6 +617,16 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   // panel on screen (mirrors cropAllRunning's per-panelKey approach).
   const [assessPanels, setAssessPanels] = useState<Record<string, AssessPanelState>>({});
   const [assessCropState, setAssessCropState] = useState<Record<string, AssessCropState>>({});
+  // "Re-crop" from the Results-by-class table -- keyed by packetScanId,
+  // separate from cropState/assessPanels above since this drives a single
+  // button's own crop-then-reassess run rather than either of those
+  // panels' own UI. Not reused with cropAllRunning/assessPanels' "assessing-
+  // all" status because this run must reassess every crop unconditionally
+  // (see reCropAndReassessStudent's comment) rather than skipping ones
+  // already marked assessed, which is exactly what those other paths do.
+  const [reCropRuns, setReCropRuns] = useState<
+    Record<string, { status: "cropping" | "assessing" | "done" | "failed"; assessedCount: number; totalToAssess: number; error: string | null }>
+  >({});
   // Per-student "Collapse all" override for the <details> blocks below --
   // keyed by packetScanId so toggling one student's Stage 5 card doesn't
   // affect any other student's. Overrides (rather than replaces) each
@@ -1624,6 +1634,77 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     }
   };
 
+  /** "Re-crop" from the Results-by-class table: re-runs stage 4 for this
+   *  one student, then unconditionally re-runs stage 5 for every one of
+   *  their crops -- not just the ones handleAssessAll would consider
+   *  "not yet assessed". That distinction matters: stage 4 upserts each
+   *  na_response_crops row IN PLACE (same id, storage_path overwritten),
+   *  so a crop this session already marked "assessed" still reads that
+   *  way in assessCropState even though the image behind it just changed
+   *  -- handleAssessAll would skip it and silently leave stale marks/
+   *  comments attached to a picture that's no longer what they describe.
+   *  This is exactly the fix a real student (Giulia Bernal, whose crossed-
+   *  out-and-redirected Q3 answer needed a fresh crop) needed by hand
+   *  before this button existed. */
+  const reCropAndReassessStudent = async (packetScanId: string) => {
+    setReCropRuns((prev) => ({ ...prev, [packetScanId]: { status: "cropping", assessedCount: 0, totalToAssess: 0, error: null } }));
+
+    const cropOutcome = await handleCrop(packetScanId);
+    if (cropOutcome === "failed") {
+      setReCropRuns((prev) => ({
+        ...prev,
+        [packetScanId]: {
+          status: "failed",
+          assessedCount: 0,
+          totalToAssess: 0,
+          error: cropState[packetScanId]?.error ?? "Crop extraction failed.",
+        },
+      }));
+      if (version) await fetchResults(version.id);
+      return;
+    }
+
+    try {
+      const crops = await loadAssessPanel(packetScanId);
+      setReCropRuns((prev) => ({ ...prev, [packetScanId]: { status: "assessing", assessedCount: 0, totalToAssess: crops.length, error: null } }));
+
+      for (const c of crops) {
+        await handleAssessCrop(c.cropId);
+        setReCropRuns((prev) => ({
+          ...prev,
+          [packetScanId]: { ...prev[packetScanId], assessedCount: prev[packetScanId].assessedCount + 1 },
+        }));
+      }
+
+      const refreshed = await loadAssessPanel(packetScanId);
+      const stillFailed = refreshed.filter((c) => !c.alreadyAssessed).length;
+      setReCropRuns((prev) => ({
+        ...prev,
+        [packetScanId]: {
+          status: stillFailed > 0 ? "failed" : "done",
+          assessedCount: prev[packetScanId].assessedCount,
+          totalToAssess: prev[packetScanId].totalToAssess,
+          error:
+            stillFailed > 0
+              ? `${stillFailed} question(s) failed to assess -- expand this student below and use "Assess all" to retry just those.`
+              : null,
+        },
+      }));
+    } catch (e) {
+      setReCropRuns((prev) => ({
+        ...prev,
+        [packetScanId]: {
+          status: "failed",
+          assessedCount: prev[packetScanId]?.assessedCount ?? 0,
+          totalToAssess: prev[packetScanId]?.totalToAssess ?? 0,
+          error: e instanceof Error ? e.message : "Re-assessment failed.",
+        },
+      }));
+    } finally {
+      if (version) await fetchResults(version.id);
+    }
+  };
+
   /** The "press upload and walk away" driver: runs stage 4 (crop, with its
    *  own retry+paged-chunk fallback) then stage 5 (assess) for every
    *  already-split student in one batch/chunk, entirely automatically.
@@ -2564,6 +2645,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                               <th className="px-3 py-2 font-semibold">Assessed</th>
                               <th className="px-3 py-2 font-semibold">Approved</th>
                               <th className="px-3 py-2 font-semibold">Clev&apos;s Marks</th>
+                              <th className="px-3 py-2 font-semibold">Re-crop</th>
                               <th className="px-3 py-2 font-semibold">Release</th>
                             </tr>
                           </thead>
@@ -2572,6 +2654,13 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                               const done = s.assessedCount === s.totalGradable && s.totalGradable > 0;
                               const fullyApproved = s.approvedCount === s.totalGradable && s.totalGradable > 0;
                               const expanded = expandedResultScanId === s.packetScanId;
+                              const reCrop = reCropRuns[s.packetScanId];
+                              const reCropBusy = reCrop?.status === "cropping" || reCrop?.status === "assessing";
+                              const reCropDisabled =
+                                s.status === "pending" ||
+                                reCropBusy ||
+                                cropState[s.packetScanId]?.status === "cropping" ||
+                                assessPanels[s.packetScanId]?.status === "assessing-all";
                               return (
                                 <Fragment key={s.packetScanId}>
                                   <tr className="border-b border-da-border/40 last:border-0">
@@ -2599,6 +2688,36 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                       {s.marksAwarded} / {s.marksAvailable}
                                     </td>
                                     <td className="px-3 py-2">
+                                      <button
+                                        type="button"
+                                        disabled={reCropDisabled}
+                                        title={s.status === "pending" ? "Not split yet -- process this batch first" : undefined}
+                                        onClick={() => {
+                                          if (
+                                            s.releasedAt &&
+                                            !window.confirm(
+                                              `${s.studentName}'s feedback has already been released. Re-cropping updates the AI draft, but the released feedback the student can see will NOT change until you re-approve and re-release it. Continue?`
+                                            )
+                                          ) {
+                                            return;
+                                          }
+                                          void reCropAndReassessStudent(s.packetScanId);
+                                        }}
+                                        className="rounded border border-da-border px-2 py-1 text-xs font-medium text-da-text hover:bg-da-hover disabled:cursor-not-allowed disabled:opacity-40"
+                                      >
+                                        {reCrop?.status === "cropping"
+                                          ? "Cropping…"
+                                          : reCrop?.status === "assessing"
+                                            ? `Assessing… (${reCrop.assessedCount}/${reCrop.totalToAssess})`
+                                            : s.totalCrops === 0
+                                              ? "Crop"
+                                              : "Re-crop"}
+                                      </button>
+                                      {reCrop?.status === "failed" && reCrop.error && (
+                                        <p className="mt-1 max-w-[16rem] text-xs text-red-400">{reCrop.error}</p>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-2">
                                       {s.releasedAt ? (
                                         <span className="rounded border border-green-300 bg-green-50 px-2 py-0.5 text-xs text-green-700">
                                           Released {new Date(s.releasedAt).toLocaleDateString()}
@@ -2618,7 +2737,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                   </tr>
                                   {expanded && (
                                     <tr className="border-b border-da-border/40 last:border-0">
-                                      <td colSpan={5} className="bg-da-hover/20 p-0">
+                                      <td colSpan={6} className="bg-da-hover/20 p-0">
                                         {renderAssessCard(s.packetScanId, s.studentName, s.sourceFilename)}
                                       </td>
                                     </tr>
