@@ -252,6 +252,63 @@ def _render_page_upright(doc: fitz.Document, page_index: int, rotation_hint: int
     return img
 
 
+def render_page_image(
+    student_pdf_bytes: bytes,
+    page_index: int,
+    rotation_hint: int = 0,
+    highlight_box: tuple[float, float, float, float] | None = None,
+) -> bytes:
+    """Renders one page of a student's split PDF at CROP_DPI, same as
+    extract_crops does internally, but as a standalone PNG rather than a
+    per-anchor crop -- for the assess route's second pass (see
+    na-assessment.ts's WIDE_CONTEXT_SYSTEM_PROMPT): when a first pass
+    finds a crop's work crossed out with an arrow leaving the box, the
+    model needs to see the WHOLE page to follow that arrow to wherever the
+    replacement answer actually was written, which by definition is
+    outside what any single crop can show.
+
+    highlight_box, when given, is (x0_pt, y0_pt, x1_pt, y1_pt) -- the
+    anchor's own AUTHORED box (na_anchors.x0_pt..y1_pt, not the expanded
+    crop bounds extract_crops actually used), drawn as a red outline so
+    the model can immediately locate which box's arrow it's meant to
+    follow rather than guessing from position alone. Red is deliberate:
+    student ink in this pipeline is always black/blue pen or graphite
+    pencil, never red, so the outline can't be confused with anything the
+    student wrote.
+
+    Raises if page_index is out of range -- unlike extract_crops, there's
+    no multi-anchor loop here to report a partial failure through, and the
+    caller (the assess route) already knows the page count is valid by
+    the time it reaches this second pass.
+    """
+    doc = fitz.open(stream=student_pdf_bytes, filetype="pdf")
+    try:
+        if page_index < 0 or page_index >= doc.page_count:
+            raise ValueError(
+                f"page_index {page_index} is out of range for this "
+                f"{doc.page_count}-page packet"
+            )
+        page_img = _render_page_upright(doc, page_index, rotation_hint)
+    finally:
+        doc.close()
+
+    if highlight_box is not None:
+        x0_pt, y0_pt, x1_pt, y1_pt = highlight_box
+        h, w = page_img.shape[:2]
+        hx0 = max(0, min(w - 1, int(x0_pt * PT_TO_PX)))
+        hy0 = max(0, min(h - 1, int(y0_pt * PT_TO_PX)))
+        hx1 = max(0, min(w - 1, int(x1_pt * PT_TO_PX)))
+        hy1 = max(0, min(h - 1, int(y1_pt * PT_TO_PX)))
+        # BGR (opencv convention): pure red, thick enough to read clearly
+        # even after the model's own image downscaling.
+        cv2.rectangle(page_img, (hx0, hy0), (hx1, hy1), (0, 0, 255), thickness=4)
+
+    ok, buf = cv2.imencode(".png", page_img)
+    if not ok:
+        raise RuntimeError("PNG encoding failed for rendered page")
+    return buf.tobytes()
+
+
 def extract_crops(
     student_pdf_bytes: bytes,
     anchors: list[Anchor],

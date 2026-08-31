@@ -5,16 +5,20 @@ import { NA_SCAN_BUCKET } from "@/lib/na-scanning";
 import {
   ASSESSMENT_MODEL,
   ASSESSMENT_SYSTEM_PROMPT,
+  WIDE_CONTEXT_SYSTEM_PROMPT,
   buildAssessmentUserPrompt,
+  buildWideContextUserPrompt,
   buildRubricBlock,
   isUngradedAnchor,
   validateAssessment,
   type AnchorContext,
 } from "@/lib/na-assessment";
 
-// ONE Sonnet call, ever, per request. The original design ran all ~37
-// gradable crops for a student sequentially inside a single request
-// (see the assess/route.ts this replaces) and hit
+// ONE Sonnet call, ever, per request -- except the rare crossed-out-with-
+// an-arrow case (see maybeResolveRedirect below), which adds one more
+// call plus a CV service round trip for that single crop only. The
+// original design ran all ~37 gradable crops for a student sequentially
+// inside a single request (see the assess/route.ts this replaces) and hit
 // FUNCTION_INVOCATION_TIMEOUT on Vercel before finishing a real student
 // -- confirmed directly: 24 of 37 crops completed and saved correctly
 // before the 300s ceiling killed the request. Moving to one crop per
@@ -23,7 +27,7 @@ import {
 // uses successfully: the CLIENT loops over crops with its own sequential
 // calls, each individually bounded and individually retryable, instead of
 // one server-side loop racing an invocation limit.
-export const maxDuration = 60;
+export const maxDuration = 90;
 
 /**
  * POST /api/na-review/response-crops/[cropId]/assess
@@ -73,7 +77,7 @@ export async function POST(
   const { data: crop, error: cropErr } = await supabase
     .from("na_response_crops")
     .select(
-      "id, storage_path, is_blank, boundary_expanded, possibly_truncated, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks)"
+      "id, storage_path, is_blank, boundary_expanded, possibly_truncated, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks, page_index, x0_pt, y0_pt, x1_pt, y1_pt)"
     )
     .eq("id", cropId)
     .maybeSingle();
@@ -174,6 +178,84 @@ export async function POST(
 
   // -- Assess --------------------------------------------------------------------
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  /** Second pass for a crop whose first-pass result set redirectedElsewhere
+   *  (crossed-out work, an arrow leaving the box): renders the FULL page
+   *  via the CV service with this anchor's own box outlined in red, then
+   *  re-assesses from that wider image so the model can actually follow
+   *  the arrow to wherever the replacement answer was written. Returns
+   *  null on any failure (CV service unconfigured, page render failed,
+   *  second pass didn't validate) so the caller can fall back to the
+   *  first pass's own result rather than losing the assessment. */
+  const resolveRedirect = async () => {
+    if (!process.env.GRAPH_LAB_CV_SERVICE_URL) return null;
+    if (anchor.page_index == null || anchor.x0_pt == null || anchor.y0_pt == null || anchor.x1_pt == null || anchor.y1_pt == null) {
+      return null;
+    }
+
+    const { data: scan } = await supabase
+      .from("na_packet_scans")
+      .select("split_storage_path")
+      .eq("id", crop.packet_scan_id)
+      .maybeSingle();
+    if (!scan?.split_storage_path) return null;
+
+    const { data: pdfFile, error: dlErr } = await supabase.storage
+      .from(NA_SCAN_BUCKET)
+      .download(scan.split_storage_path);
+    if (dlErr || !pdfFile) return null;
+    const pdfBase64 = Buffer.from(await pdfFile.arrayBuffer()).toString("base64");
+
+    const serviceBase = process.env.GRAPH_LAB_CV_SERVICE_URL.trim().replace(/\/$/, "");
+    const target = `${/^https?:\/\//i.test(serviceBase) ? serviceBase : `https://${serviceBase}`}/page-image`;
+    const cvSecret = process.env.CV_SERVICE_SECRET ?? "";
+
+    let pageImageBase64: string;
+    try {
+      const res = await fetch(target, {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json", ...(cvSecret ? { "X-CV-Secret": cvSecret } : {}) },
+        body: JSON.stringify({
+          studentPdfBase64: pdfBase64,
+          pageIndex: anchor.page_index,
+          rotationHint: 0,
+          highlightBox: { x0Pt: anchor.x0_pt, y0Pt: anchor.y0_pt, x1Pt: anchor.x1_pt, y1Pt: anchor.y1_pt },
+        }),
+      });
+      if (!res.ok) return null;
+      const body = (await res.json()) as { imageBase64?: string };
+      if (!body.imageBase64) return null;
+      pageImageBase64 = body.imageBase64;
+    } catch {
+      return null;
+    }
+
+    try {
+      const message = await anthropic.messages.create({
+        model: ASSESSMENT_MODEL,
+        max_tokens: 2048,
+        system: WIDE_CONTEXT_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", source: { type: "base64", media_type: "image/png", data: pageImageBase64 } },
+              { type: "text", text: buildRubricBlock(ctx), cache_control: { type: "ephemeral" } },
+              { type: "text", text: buildWideContextUserPrompt() },
+            ],
+          },
+        ],
+      });
+      const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+      const validated = validateAssessment(text, ctx.marksAvailable);
+      if (!validated.ok) return null;
+      return validated;
+    } catch {
+      return null;
+    }
+  };
+
   try {
     const message = await anthropic.messages.create({
       model: ASSESSMENT_MODEL,
@@ -222,7 +304,30 @@ export async function POST(
       );
     }
 
-    const a = validated.assessment;
+    let a = validated.assessment;
+    let warnings = validated.warnings;
+    let usedWiderContext = false;
+
+    // The crop showed crossed-out work with an arrow leaving the box --
+    // that arrow's destination is by definition outside what this crop
+    // can show, so re-assess with the full page in view instead of
+    // trusting a mark against content the student themselves rejected.
+    // Best-effort: any failure here (CV service unconfigured, page
+    // render failed, second pass didn't validate) falls back to the
+    // first pass's own result rather than losing the assessment
+    // entirely -- a human reviewing this crop will still see the
+    // redirect flagged in teacherNote either way.
+    if (a.redirectedElsewhere) {
+      const resolved = await resolveRedirect();
+      if (resolved) {
+        a = resolved.assessment;
+        warnings = resolved.warnings;
+        usedWiderContext = true;
+      } else {
+        warnings = [...warnings, "Crossed-out work with an arrow leaving the box was detected, but the wider-page re-check could not resolve it -- a teacher should check the original page for where the student's replacement answer was written."];
+      }
+    }
+
     await upsertFeedback({
       ai_attempted: true,
       ai_transcription: a.transcription,
@@ -236,7 +341,7 @@ export async function POST(
       // Validation warnings (clamped marks, an "unclear" verdict that
       // carried marks) are appended rather than dropped -- exactly the
       // cases worth a second look.
-      ai_teacher_note: [a.teacherNote, ...validated.warnings].filter(Boolean).join(" | "),
+      ai_teacher_note: [a.teacherNote, ...warnings].filter(Boolean).join(" | "),
       ai_validation_error: null,
       ai_raw_response: a as unknown as Record<string, unknown>,
     });
@@ -248,7 +353,8 @@ export async function POST(
       verdict: a.verdict,
       marksAwarded: a.marksAwarded,
       marksAvailable: ctx.marksAvailable,
-      warnings: validated.warnings.length ? validated.warnings : undefined,
+      usedWiderContext: usedWiderContext || undefined,
+      warnings: warnings.length ? warnings : undefined,
     });
   } catch (e) {
     return NextResponse.json(
