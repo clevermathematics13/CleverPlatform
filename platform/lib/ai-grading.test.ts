@@ -544,6 +544,62 @@ describe("validateGradeResponse", () => {
     ).toBe(true);
   });
 
+  // A teacher reported this exact production case: the model's own summary
+  // `reasoning` said "full marks for part (b)", but one of part (b)'s own
+  // tokens ((A1) for the intermediate value "2.6857") was withdrawn by the
+  // deterministic re-check above -- yet nothing updated the reasoning
+  // paragraph, so the teacher-facing text stayed misleading even though the
+  // per-token note and mark_breakdown chip were correct. Any override that
+  // withdraws an award must also leave a visible trace in `reasoning`, not
+  // just in the per-token note and the separate run-level warnings array.
+  it("appends a correction to the item's reasoning when any deterministic override withdraws a mark, so it never contradicts the awards", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 3,
+          confidence: "low",
+          workFound: true,
+          markBreakdown: [
+            { token: "(M1)", awarded: true, note: "Substitution evidenced." },
+            {
+              // 2.6857 is not an exact rounding of 2.65708 at any precision
+              // -- the model's own note admits it's only "close", exactly
+              // the kind of claim the deterministic check exists to catch.
+              token: "(A1)",
+              awarded: true,
+              note: "2.6857 shown as intermediate working, close to 2.65708 using their rounded values",
+              intermediateValueCheck: {
+                reportedValue: "2.6857",
+                referenceValue: "2.65708",
+                precisionType: "dp",
+                precisionDigits: 4,
+              },
+            },
+            { token: "A1", awarded: true, note: "Final answer 2.7 is correct to 1 decimal place." },
+          ],
+          reasoning:
+            "Method shown, intermediate value calculated (using their values), and final answer 2.7 is correct to 1dp as required - full marks for part (b).",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 3 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    // The mark itself is correctly withdrawn...
+    expect(grade.clampedMarks).toBe(2);
+    // ...and the reasoning a teacher actually reads no longer claims full
+    // marks without qualification -- it still contains the model's original
+    // text (nothing is deleted) plus a visible correction.
+    expect(grade.item.reasoning).toContain("full marks for part (b)");
+    expect(grade.item.reasoning).toContain("(A1) was withdrawn");
+    expect(grade.item.reasoning).toMatch(/not a valid rounding/);
+  });
+
   // A failing final-answer precision must not retroactively erase an
   // already-earned intermediate mark (rule 15) -- these are graded on
   // separate criteria, mirroring rule 14's M/A independence.
@@ -617,6 +673,38 @@ describe("validateGradeResponse", () => {
 
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
     expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  // A teacher asked for marks in the review UI to be clearly associated
+  // with the sub-part they belong to when one graded unit's own mark
+  // scheme spans several (e.g. "a)(i)", "a)(ii)", "b)"). Confirms the
+  // optional `part` label on a markBreakdown entry round-trips through
+  // validateGradeResponse untouched for the UI to group by.
+  it("preserves the optional part label on each markBreakdown entry", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 2,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "A1", awarded: true, note: "a is correct", part: "a)(i)" },
+            { token: "A1", awarded: true, note: "b is correct", part: "a)(i)" },
+            { token: "A1", awarded: false, note: "r is insufficiently precise", part: "a)(ii)" },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 3 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const parts = result.outcome.grades[0].item.markBreakdown.map((b) => b.part);
+    expect(parts).toEqual(["a)(i)", "a)(i)", "a)(ii)"]);
   });
 
   // Rule 18 / findExposedDeliberation integration: examiner reasoning must

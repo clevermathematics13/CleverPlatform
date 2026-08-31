@@ -148,6 +148,15 @@ export const MarkBreakdownEntrySchema = z.object({
    * are not interchangeable.
    */
   intermediateValueCheck: NumericCheckSchema.nullable().optional(),
+  /**
+   * Which of this unit's own labeled sub-parts this token belongs to, e.g.
+   * "a)(i)", "a)(ii)", "b)" -- only when a single graded unit's mark scheme
+   * itself covers more than one lettered/numbered sub-part (see
+   * GRADING_SYSTEM_PROMPT's MARK BREAKDOWN step). Lets the review UI show
+   * which marks belong to which sub-part instead of one undifferentiated
+   * row of tokens. Omit for a unit with no internal sub-part structure.
+   */
+  part: z.string().min(1).optional(),
 });
 
 /**
@@ -322,12 +331,24 @@ export function validateGradeResponse(
     // model gave itself -- never grants one it withheld -- since the
     // checker can only disprove a claimed precision match, not evaluate
     // every other reason a mark might legitimately be withheld.
+    // Any of the three override loops below can flip an `awarded: true` the
+    // model wrote in its markBreakdown to false -- but the model's own
+    // top-level `reasoning` paragraph was written to justify the ORIGINAL
+    // (pre-correction) award, and nothing else here touches that paragraph.
+    // Left alone, a teacher reads a reasoning field that still claims "full
+    // marks" for a mark this function just withdrew. reasoningCorrections
+    // collects one short addendum per override so the visible reasoning
+    // stays truthful, without rewriting the model's own prose (which risks
+    // leaving a broken or misleading sentence behind).
+    const reasoningCorrections: string[] = [];
+
     for (const entry of item.markBreakdown) {
       if (!entry.numericCheck) continue;
       const result = matchesRequiredPrecision(entry.numericCheck);
       if (entry.awarded && !result.ok) {
         entry.awarded = false;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
+        reasoningCorrections.push(`${entry.token} was withdrawn on deterministic accuracy re-check — ${result.reason}.`);
         warnings.push(
           `${unitLabel(unit)}: ${entry.token} withheld on deterministic accuracy re-check — ${result.reason}`
         );
@@ -351,6 +372,7 @@ export function validateGradeResponse(
       if (entry.awarded && result.classification === "numerically_incorrect") {
         entry.awarded = false;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
+        reasoningCorrections.push(`${entry.token} was withdrawn — the claimed implied-method evidence does not hold: ${result.reason}.`);
         warnings.push(
           `${unitLabel(unit)}: ${entry.token} withheld — claimed implied-method evidence does not hold: ${result.reason}`
         );
@@ -372,10 +394,16 @@ export function validateGradeResponse(
       if (entry.awarded && result.classification === "numerically_incorrect") {
         entry.awarded = false;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
+        reasoningCorrections.push(`${entry.token} was withdrawn — the claimed intermediate value is not a valid rounding of the reference: ${result.reason}.`);
         warnings.push(
           `${unitLabel(unit)}: ${entry.token} withheld — claimed intermediate value is not a valid rounding of the reference: ${result.reason}`
         );
       }
+    }
+
+    if (reasoningCorrections.length > 0) {
+      const addendum = reasoningCorrections.join(" ");
+      item.reasoning = item.reasoning ? `${item.reasoning} (Correction: ${addendum})` : `Correction: ${addendum}`;
     }
 
     // The model is instructed that awarded mark_breakdown tokens must sum to
@@ -848,6 +876,15 @@ judgement calls made in parallel:
    rule 15) — decide it on its own rounding relationship to that
    reference, separately from whether the final answer later in the same
    part meets its own precision requirement.
+   If the mark scheme you were given for this one unit itself covers more
+   than one lettered/numbered sub-part — e.g. it contains its own "(a)(i)",
+   "(a)(ii)", "(b)" structure, common when a whole multi-part question is
+   graded as a single unit — label every token's markBreakdown entry with
+   which sub-part it belongs to via the "part" field (e.g. "a)(i)",
+   "a)(ii)", "b)"), so a teacher reviewing the marks can tell which tokens
+   go with which sub-part. Use the sub-part labels exactly as the mark
+   scheme itself writes them. Omit "part" entirely for a unit that is
+   already a single, undivided part with no such internal structure.
 4. REASONING: briefly explain the itemisation above, in the settled, deliberation-free professional style rule 18 requires — not a record of how you arrived at it.
 5. SUGGESTED MARKS: suggestedMarks is NOT a separate judgement call — it is
    the count of tokens you just marked awarded in step 3 (every token here
@@ -875,7 +912,7 @@ generate the JSON in this order too, since suggestedMarks depends on markBreakdo
       "workFound": <boolean>,
       "evidence": "<what the student actually wrote, briefly>",
       "evidenceBox": { "page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61 } | null,
-      "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }],
+      "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }] | [{ "token": "A1", "awarded": true, "note": "<brief>", "part": "a)(i)" }, ...] (add "part" only when this unit's own mark scheme covers multiple sub-parts),
       "reasoning": "<one or two sentences citing the tokens satisfied or missed>",
       "suggestedMarks": <the count of markBreakdown entries above with awarded: true>,
       "confidence": "high" | "medium" | "low"

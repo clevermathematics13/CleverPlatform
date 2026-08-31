@@ -56,6 +56,32 @@ interface MarkBreakdownEntry {
   token: string;
   awarded: boolean;
   note: string;
+  /** Which of this unit's own labeled sub-parts this token belongs to, e.g. "a)(i)" -- only present when a single graded unit covers more than one. */
+  part?: string;
+}
+
+/**
+ * Clusters consecutive markBreakdown entries sharing the same `part` label
+ * (e.g. "a)(i)", "a)(ii)", "b)") so the review UI can show which marks
+ * belong to which sub-part instead of one undifferentiated row of chips.
+ * Entries with no `part` (the common case: a unit with no internal
+ * sub-part structure) all land in one unlabeled group, so older graded
+ * results without this field render exactly as before.
+ */
+function groupMarkBreakdownByPart(
+  entries: MarkBreakdownEntry[]
+): { part: string | null; entries: MarkBreakdownEntry[] }[] {
+  const groups: { part: string | null; entries: MarkBreakdownEntry[] }[] = [];
+  for (const entry of entries) {
+    const part = entry.part ?? null;
+    const last = groups[groups.length - 1];
+    if (last && last.part === part) {
+      last.entries.push(entry);
+    } else {
+      groups.push({ part, entries: [entry] });
+    }
+  }
+  return groups;
 }
 
 interface ResultRow {
@@ -770,19 +796,26 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                 <td colSpan={8} className="px-6 py-4">
                                   <div className="space-y-3">
                                     {r.mark_breakdown.length > 0 && (
-                                      <div className="flex flex-wrap gap-2">
-                                        {r.mark_breakdown.map((b, i) => (
-                                          <span
-                                            key={i}
-                                            className={`rounded border px-2 py-0.5 text-xs ${
-                                              b.awarded
-                                                ? "border-green-300 bg-green-50 text-green-800"
-                                                : "border-gray-300 bg-white text-gray-500 line-through"
-                                            }`}
-                                            title={b.note}
-                                          >
-                                            {b.token}
-                                          </span>
+                                      <div className="space-y-1.5">
+                                        {groupMarkBreakdownByPart(r.mark_breakdown).map((group, gi) => (
+                                          <div key={gi} className="flex flex-wrap items-center gap-2">
+                                            {group.part && (
+                                              <span className="text-xs font-semibold text-gray-500">{group.part}</span>
+                                            )}
+                                            {group.entries.map((b, i) => (
+                                              <span
+                                                key={i}
+                                                className={`rounded border px-2 py-0.5 text-xs ${
+                                                  b.awarded
+                                                    ? "border-green-300 bg-green-50 text-green-800"
+                                                    : "border-gray-300 bg-white text-gray-500 line-through"
+                                                }`}
+                                                title={b.note}
+                                              >
+                                                {b.token}
+                                              </span>
+                                            ))}
+                                          </div>
                                         ))}
                                       </div>
                                     )}
