@@ -201,6 +201,19 @@ describe("matchesRequiredPrecision", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("does not reject a final answer merely for showing more than 3 s.f. (8.5169 vs required 8.52)", () => {
+    // "Correct to 3 s.f." is not the same as "written with exactly 3 s.f." --
+    // more digits are fine provided they are mathematically consistent with
+    // the required rounded answer.
+    const result = matchesRequiredPrecision({
+      reportedValue: "8.5169",
+      referenceValue: "8.51693",
+      precisionType: "sf",
+      precisionDigits: 3,
+    });
+    expect(result.ok).toBe(true);
+  });
+
   it("does not penalize an ambiguous bare-integer trailing zero that is numerically correct", () => {
     const result = matchesRequiredPrecision({
       reportedValue: "120",
