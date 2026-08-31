@@ -618,6 +618,261 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
     expect(result.outcome.warnings).toHaveLength(0);
   });
+
+  // Rule 18 / findExposedDeliberation integration: examiner reasoning must
+  // never leak the model's own live deliberation. This is the real,
+  // verbatim production failure that motivated the rule -- the model's
+  // `reasoning` field literally read as a transcript of it changing its
+  // mind, even though the final mark it settled on was correct.
+  it("downgrades confidence and warns when reasoning exposes internal deliberation, without changing the awarded marks", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "A1", awarded: true, note: "" }],
+          reasoning:
+            "8.515 appears to use correct full precision value giving 8.51693..., student reports 8.515 which rounds to 8.52 - however reconsidering, 8.515 rounds to 8.52 at 3sf so this should earn the mark. Let me reconsider: 8.515 to 3sf is 8.52, which matches mark scheme.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // The mark itself was correct -- exposing deliberation is a reasoning
+    // QUALITY problem, not a reason to change the score.
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.grades[0].confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("exposes internal deliberation"))
+    ).toBe(true);
+  });
+
+  it("downgrades confidence when a markBreakdown note (not just reasoning) exposes deliberation", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "A1", awarded: true, note: "Let me reconsider -- this is correct." }],
+          reasoning: "A1 awarded.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("exposes internal deliberation"))
+    ).toBe(true);
+  });
+
+  it("does not flag clean, settled professional reasoning", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "A1", awarded: true, note: "Correct to 3 significant figures." }],
+          reasoning: "The value matches the required accuracy. A1 awarded.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].confidence).toBe("high");
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  // Full regression scenario from the report: a teacher's example where a
+  // student gets 4/6 for correctly-identified IB reasons, not by coincidence.
+  // Grading units mirror the app's real architecture -- each part is its
+  // own testItemId/unit, graded together in one validateGradeResponse call
+  // the way a real batch grading run would.
+  describe("regression: insufficient final precision vs. an accepted rounded intermediate", () => {
+    const units: GradingUnit[] = [
+      unit({ testItemId: "a-i", questionNumber: 3, partLabel: "ai", maxMarks: 2, markscheme: "a = 0.805, b = 2.88  A1 A1" }),
+      unit({ testItemId: "a-ii", questionNumber: 3, partLabel: "aii", maxMarks: 1, markscheme: "r = 0.978  A1" }),
+      unit({ testItemId: "b", questionNumber: 3, partLabel: "b", maxMarks: 1, markscheme: "interpretation of gradient in context  R1" }),
+      unit({
+        testItemId: "c",
+        questionNumber: 3,
+        partLabel: "c",
+        maxMarks: 2,
+        markscheme: "attempt to substitute x = 7 into their equation (M1); 8.52  A1",
+      }),
+    ];
+
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "a-i",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "a = 0.81 is given to only 2 significant figures; a = 0.805 to 3 significant figures is required, so A1 is not awarded.",
+              numericCheck: { reportedValue: "0.81", referenceValue: "0.805084", precisionType: "sf", precisionDigits: 3 },
+            },
+            {
+              token: "A1",
+              awarded: true,
+              note: "b = 2.88 is correct to 3 significant figures.",
+              numericCheck: { reportedValue: "2.88", referenceValue: "2.88135", precisionType: "sf", precisionDigits: 3 },
+            },
+          ],
+          reasoning:
+            "a = 0.81 is given to only 2 significant figures; a = 0.805 to 3 significant figures is required, so A1 is not awarded. b = 2.88 is correct to 3 significant figures, so A1 is awarded.",
+          evidence: "a = 0.81, b = 2.88",
+        },
+        {
+          testItemId: "a-ii",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          // Only one token: the mark scheme has no paired M mark for this
+          // criterion, so none is invented here (rule 17).
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "r = 0.98 is given to only 2 significant figures; r = 0.978 to 3 significant figures is required, so A1 is not awarded.",
+              numericCheck: { reportedValue: "0.98", referenceValue: "0.97777", precisionType: "sf", precisionDigits: 3 },
+            },
+          ],
+          reasoning: "r = 0.98 is given to only 2 significant figures; r = 0.978 to 3 significant figures is required, so A1 is not awarded.",
+          evidence: "r = 0.98",
+        },
+        {
+          testItemId: "b",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "R1",
+              awarded: true,
+              note: "Correct interpretation of the gradient as the increase in waiting time per additional customer.",
+            },
+          ],
+          reasoning:
+            "The student correctly interprets the gradient as the increase in waiting time per additional customer, so R1 is awarded.",
+          evidence: "For every one customer added, the waiting time increases by 0.81.",
+        },
+        {
+          testItemId: "c",
+          suggestedMarks: 2,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "(M1)",
+              awarded: true,
+              note: "8.515 is consistent with substituting x = 7 into the accepted equation y = 0.805x + 2.88, so the implied method mark is awarded.",
+              // Rule 16: check against what the accepted rounded coefficients
+              // (0.805, 2.88) actually produce, not only the pristine
+              // unrounded calculation -- both are given here.
+              impliedMethodEvidence: {
+                reportedValue: "8.515",
+                referenceValue: "8.51693",
+                alternativeReferenceValues: ["8.515"],
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+            {
+              token: "A1",
+              awarded: true,
+              note: "8.515 is consistent with the required answer 8.52 to 3 significant figures, so A1 is awarded.",
+              numericCheck: { reportedValue: "8.515", referenceValue: "8.51693", precisionType: "sf", precisionDigits: 3 },
+            },
+          ],
+          reasoning:
+            "8.515 is consistent with substituting x = 7 into the accepted equation y = 0.805x + 2.88, so the implied method mark is awarded. This is consistent with the required answer 8.52 to 3 significant figures, so A1 is awarded.",
+          evidence: "8.515",
+        },
+      ],
+    });
+
+    it("awards 4/6 for the correct IB reasons, one part at a time", () => {
+      const result = validateGradeResponse(raw, units);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const byId = new Map(result.outcome.grades.map((g) => [g.unit.testItemId, g]));
+      expect(byId.get("a-i")?.clampedMarks).toBe(1); // A0 (a) + A1 (b)
+      expect(byId.get("a-ii")?.clampedMarks).toBe(0); // A0
+      expect(byId.get("b")?.clampedMarks).toBe(1); // R1, independent of (a)(i)'s A0
+      expect(byId.get("c")?.clampedMarks).toBe(2); // (M1) + A1
+
+      const total = result.outcome.grades.reduce((s, g) => s + g.clampedMarks, 0);
+      const maxTotal = units.reduce((s, u) => s + u.maxMarks, 0);
+      expect(total).toBe(4);
+      expect(maxTotal).toBe(6);
+    });
+
+    it("identifies the correct IB reason in each part's reasoning, not just the right score", () => {
+      const result = validateGradeResponse(raw, units);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const byId = new Map(result.outcome.grades.map((g) => [g.unit.testItemId, g]));
+      expect(byId.get("a-i")?.item.reasoning).toMatch(/significant figures/i);
+      expect(byId.get("a-ii")?.item.reasoning).toMatch(/significant figures/i);
+      expect(byId.get("b")?.item.reasoning).toMatch(/interpret/i);
+      expect(byId.get("c")?.item.reasoning).toMatch(/substitut/i);
+      expect(byId.get("c")?.item.reasoning).toMatch(/8\.52/);
+    });
+
+    it("contains no exposed chain-of-thought or hedging language anywhere in the response, and no confidence downgrade for it", () => {
+      const result = validateGradeResponse(raw, units);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const banned = [/reconsider/i, /\blet me\b/i, /appears to/i, /on second thought/i, /\bi think\b/i, /probably/i, /doesn'?t match/i];
+      for (const grade of result.outcome.grades) {
+        for (const phrase of banned) {
+          expect(grade.item.reasoning).not.toMatch(phrase);
+          for (const entry of grade.item.markBreakdown) {
+            expect(entry.note).not.toMatch(phrase);
+          }
+        }
+      }
+      expect(
+        result.outcome.warnings.some((w) => w.includes("exposes internal deliberation"))
+      ).toBe(false);
+    });
+
+    it("does not invent a method mark for the (a)(ii) criterion, which the mark scheme allocates only an A mark", () => {
+      const result = validateGradeResponse(raw, units);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const aii = result.outcome.grades.find((g) => g.unit.testItemId === "a-ii");
+      expect(aii?.item.markBreakdown).toHaveLength(1);
+      expect(aii?.item.markBreakdown[0].token).toBe("A1");
+    });
+  });
 });
 
 describe("isAaHlPaper2", () => {

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import fs from "fs";
 import path from "path";
+import { findExposedDeliberation } from "./examiner-reasoning";
 import { classifyUnderPrecision, matchesRequiredPrecision } from "./numerical-accuracy";
 
 /**
@@ -401,6 +402,28 @@ export function validateGradeResponse(
       if (confidence === "high") confidence = "medium";
     }
 
+    // Examiner reasoning must read as a settled judgement, never as the
+    // model's own live deliberation (see GRADING_SYSTEM_PROMPT rule 18).
+    // Production evidence showed the prompt instruction alone did not
+    // reliably prevent this (a real reasoning field read "...however
+    // reconsidering, 8.515 rounds to 8.52... Let me reconsider..."). This
+    // never rewrites the text -- editing out a banned phrase risks leaving
+    // a broken sentence -- it only flags it for teacher review, the same
+    // way any other reason for uncertainty here does.
+    const deliberationHits = new Set<string>();
+    for (const hit of findExposedDeliberation(item.reasoning)) deliberationHits.add(hit);
+    for (const entry of item.markBreakdown) {
+      for (const hit of findExposedDeliberation(entry.note)) deliberationHits.add(hit);
+    }
+    if (deliberationHits.size > 0) {
+      confidence = "low";
+      warnings.push(
+        `${unitLabel(unit)}: examiner reasoning exposes internal deliberation (${[...deliberationHits]
+          .map((h) => `"${h}"`)
+          .join(", ")}) — flagged for teacher review`
+      );
+    }
+
     grades.push({ item, unit, clampedMarks, confidence });
   }
 
@@ -766,6 +789,21 @@ MARKING RULES
     When you award an intermediate mark this way, attach intermediateValueCheck to that mark's own markBreakdown entry (same shape as numericCheck), using the value actually written for THIS step, not a later final-answer figure, e.g.:
     { "token": "(A1)", "awarded": true, "note": "2.657 is 2.65708... to 3 d.p.: an acceptable intermediate value, not a required digit-for-digit match", "intermediateValueCheck": { "reportedValue": "2.657", "referenceValue": "2.65708", "precisionType": "dp", "precisionDigits": 5 } }
     Omit intermediateValueCheck for a final-answer mark (use numericCheck there) and for an intermediate mark whose value you did not need to round-check (e.g. an exact or symbolic intermediate result).
+16. A student may use a value they correctly derived or that the mark scheme accepts — even one only correct to a reduced (e.g. 3 s.f.) precision — in later working without penalty, including within the SAME part. Mark scheme wording like "substitute into THEIR equation" or "using THEIR value of a" means the candidate's own correct value, not only the pristine unrounded calculator figure. When checking whether a later numeric result is consistent with the required working, check it against the value(s) the student's own correct or accepted-rounded earlier work would actually produce, not only against the full-precision reference.
+    Concretely: if an earlier accepted answer is "a = 0.805, b = 2.88" (3 s.f.), and a later step's mark scheme reads "substitute x = 7 into their equation (M1)", then a later result of "8.515" is a match for that method — it is exactly 0.805(7) + 2.88 — even though the pristine full-precision calculation (using unrounded a, b) would give a different-looking intermediate (8.51693...). Do not require the later working to reproduce the unrounded calculation; check it against what the accepted rounded values actually produce.
+    This is separate from whether an EARLIER token's own display was penalised. A student who wrote "a = 0.81" (losing that token's A mark for insufficient precision, rule 6) but whose later work is consistent with the correctly-rounded "a = 0.805" has still demonstrated correct use of the accepted value — do not require the later step to be consistent with "0.81" instead, and do not reason "the student's earlier value was 0.81, so this later result is unexplained." Judge the later step from what its own value actually shows, per rule 17.
+17. Grade every mark — M, A, or R, in this part or a later one — on its own stated criterion. An error or lost mark elsewhere never by itself withdraws a different mark unless the mark scheme's own dependency notes say so (a stated "FT", "dependent on...", "provided...", or similar). In particular:
+    - Losing an A mark for insufficient accuracy (rule 6) does not by itself cost the M mark tied to it (rule 14), a differently-typed mark in the same part (e.g. an R mark for interpreting that same value), or any mark in a later part — evaluate each against its own criterion and the evidence actually present for it.
+    - An R mark for interpreting a value in context (rule 11) is assessed on whether the interpretation is correct, independent of whether the underlying numerical value itself lost its own accuracy mark for insufficient precision.
+    - Never invent a mark scheme token that is not actually present in the mark scheme text you were given — e.g. do not award or even mention an M mark for a criterion that has only a plain A mark and no paired method mark, merely because a numeric answer suggests a calculator procedure was followed. Itemise only the tokens the mark scheme actually allocates.
+    Do not use "the answer is wrong, so nothing in this part is right" or "an earlier mark was lost, so later marks are lost too" as a substitute for checking each token's own criterion.
+18. Write examiner reasoning and every markBreakdown note as a settled professional judgement — the record of a decision already made, never the process of making it. This applies to every user-facing text field: reasoning and note.
+    Never include your own deliberation, hedging, or self-correction — phrases like "let me reconsider", "however, reconsidering", "on second thought", "I think", "I believe", "actually,", "wait,", "appears to... however", "I need to check", or "at first this looks... but" must never appear. If you reconsider a judgement while working through a part, that is fine — but reason it through before writing the field, and write down only the conclusion, the IB rule that applies, and the evidence for it. A field that reads like a transcript of you changing your mind is wrong regardless of whether the final mark it reports is correct.
+    State the specific IB reason, not a vague impression. Prefer concrete terms: "given to only N significant figures", "correct to N significant figures", "insufficient accuracy" (not "rounding error", when the value itself is genuinely a correct rounding — insufficient PRECISION and incorrect ROUNDING are different errors, per rule 6), "valid substitution", "consistent with...", "correct interpretation", "accepted rounded value", "implied method mark", "A1 awarded" / "A1 not awarded". Avoid vague hedges: "close enough", "basically correct", "almost correct", "seems okay", "probably", "doesn't match" (state what precision or value is actually required instead).
+    Example of the required style, for a final answer given to insufficient precision:
+    "a = 0.81 is given to only 2 significant figures; a = 0.805 to 3 significant figures is required, so A1 is not awarded."
+    Example combining implied method and an accepted rounded value (rules 13, 16):
+    "8.515 is consistent with substituting x = 7 into the accepted equation y = 0.805x + 2.88, so the implied method mark is awarded. This is consistent with the required answer 8.52 to 3 significant figures, so A1 is awarded."
 
 WORKING ORDER — follow these steps in sequence for each part, because the later
 fields in OUTPUT below are DERIVED from the earlier ones, not independent
@@ -810,7 +848,7 @@ judgement calls made in parallel:
    rule 15) — decide it on its own rounding relationship to that
    reference, separately from whether the final answer later in the same
    part meets its own precision requirement.
-4. REASONING: briefly explain the itemisation above.
+4. REASONING: briefly explain the itemisation above, in the settled, deliberation-free professional style rule 18 requires — not a record of how you arrived at it.
 5. SUGGESTED MARKS: suggestedMarks is NOT a separate judgement call — it is
    the count of tokens you just marked awarded in step 3 (every token here
    is worth exactly one mark; there is no M2 or A2). Compute it by counting,
