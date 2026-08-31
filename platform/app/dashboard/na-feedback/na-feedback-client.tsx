@@ -71,11 +71,11 @@ export function NaFeedbackClient({
       <div className="max-w-3xl">
         <h1 className="text-2xl font-extrabold mb-2 text-da-text">My Feedback</h1>
         <p className="text-sm text-da-muted">
-          Open a student&apos;s row from{" "}
+          Click &quot;View feedback&quot; next to a released student in{" "}
           <Link href="/dashboard/na-review/scan-test" className="text-da-accent hover:underline">
             Results by class
           </Link>{" "}
-          and add <code>?viewStudent=&lt;profileId&gt;</code> to preview what they see.
+          to preview what they see.
         </p>
       </div>
     );
