@@ -28,6 +28,7 @@ export function NaFeedbackClient({
   const [items, setItems] = useState<NaFeedbackItem[]>(initialItems);
   const [flagDraft, setFlagDraft] = useState<{ cropId: string; note: string } | null>(null);
   const [flagSaving, setFlagSaving] = useState<string | null>(null);
+  const [expandedGaps, setExpandedGaps] = useState<Set<string>>(new Set());
   // Keyed on the resolved name, not on viewStudentId: a teacher can
   // preview by ?scanId= alone (a class where nobody has signed in yet has
   // no profile id to pass), and that path still resolves a name from the
@@ -69,6 +70,127 @@ export function NaFeedbackClient({
   const selectedScan = scans.find((s) => s.packetScanId === selectedScanId) ?? null;
   const totalMarksAwarded = items.reduce((sum, i) => sum + (i.marksAwarded ?? 0), 0);
   const totalMarksAvailable = items.reduce((sum, i) => sum + (i.marksAvailable ?? 0), 0);
+
+  /** Consecutive questions the student never wrote in collapse into one
+   *  summary row instead of one card each. Roberto Aurelio Gamio's A.1
+   *  packet is why: he stopped after Q12, so 24 of 39 questions were
+   *  untouched, and one card apiece buries the feedback on the 15 he did
+   *  attempt under a wall of near-identical notes. Runs are grouped
+   *  rather than all blanks pooled together, so the summary keeps the
+   *  packet's real shape ("Q13 to Q30") instead of implying he skipped
+   *  questions at random. Expandable, because a student who believes
+   *  they DID answer one needs to see the scan and flag it. */
+  type Group =
+    | { kind: "item"; key: string; item: NaFeedbackItem }
+    | { kind: "unattempted"; key: string; items: NaFeedbackItem[] };
+  const groups: Group[] = [];
+  for (const item of items) {
+    if (item.attempted) {
+      groups.push({ kind: "item", key: item.cropId, item });
+      continue;
+    }
+    const last = groups[groups.length - 1];
+    if (last?.kind === "unattempted") last.items.push(item);
+    else groups.push({ kind: "unattempted", key: `gap-${item.cropId}`, items: [item] });
+  }
+
+  const labelOf = (i: NaFeedbackItem) => `${i.qid}${i.partLabel ? ` (${i.partLabel})` : ""}`;
+
+  const renderItem = (item: NaFeedbackItem) => {
+    const draftOpen = flagDraft?.cropId === item.cropId;
+    return (
+      <div key={item.cropId} className="rounded-lg border border-da-border bg-da-surface px-4 py-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-da-text">
+                  {item.qid}
+                  {item.partLabel ? ` (${item.partLabel})` : ""}
+                </span>
+                {item.fullMarks ? (
+                  <span className="text-green-500 text-lg" title="Full marks">
+                    ✓
+                  </span>
+                ) : (
+                  <span className="text-xs text-da-muted">
+                    {item.marksAwarded ?? 0} / {item.marksAvailable ?? "?"}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpenPanel(item)}
+                className="shrink-0 rounded border border-da-border px-2 py-1 text-xs text-da-muted hover:bg-da-hover"
+              >
+                See my work
+              </button>
+            </div>
+            {!item.fullMarks && (item.marginComment || item.nextStep) && (
+              <div className="mt-2 space-y-1 text-sm">
+                {item.marginComment && <p className="text-da-text">{item.marginComment}</p>}
+                {item.nextStep && <p className="text-da-muted">Next step: {item.nextStep}</p>}
+              </div>
+            )}
+
+            {item.studentFlaggedMisread ? (
+              <div className="mt-2 flex items-center gap-2 text-xs">
+                <span className="text-amber-500">
+                  Flagged as possibly misread{item.studentFlagNote ? `: "${item.studentFlagNote}"` : "."}
+                </span>
+                {canFlag && (
+                  <button
+                    type="button"
+                    disabled={flagSaving === item.cropId}
+                    onClick={() => void submitFlag(item.cropId, false, null)}
+                    className="text-da-muted hover:underline disabled:opacity-50"
+                  >
+                    Undo
+                  </button>
+                )}
+              </div>
+            ) : (
+              canFlag && (
+              <div className="mt-2">
+                {draftOpen ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={flagDraft?.note ?? ""}
+                      onChange={(e) => setFlagDraft({ cropId: item.cropId, note: e.target.value })}
+                      placeholder="What do you think was misread? (optional)"
+                      className="flex-1 rounded border border-da-border bg-da-surface px-2 py-1 text-xs text-da-text focus:ring-1 focus:ring-da-accent"
+                    />
+                    <button
+                      type="button"
+                      disabled={flagSaving === item.cropId}
+                      onClick={() => void submitFlag(item.cropId, true, flagDraft?.note.trim() || null)}
+                      className="shrink-0 rounded border border-da-border px-2 py-1 text-xs text-da-text hover:bg-da-hover disabled:opacity-50"
+                    >
+                      {flagSaving === item.cropId ? "Saving…" : "Submit"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFlagDraft(null)}
+                      className="shrink-0 text-xs text-da-muted hover:underline"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setFlagDraft({ cropId: item.cropId, note: "" })}
+                    className="text-xs text-da-muted hover:underline"
+                  >
+                    🚩 Flag this mark as possibly misread
+                  </button>
+                )}
+              </div>
+              )
+            )}
+      </div>
+    );
+  };
 
   if (isTeacher && !isViewingStudent) {
     return (
@@ -131,103 +253,37 @@ export function NaFeedbackClient({
           )}
 
           <div className="space-y-2">
-            {items.map((item) => {
-              const draftOpen = flagDraft?.cropId === item.cropId;
-              return (
-                <div
-                  key={item.cropId}
-                  className="rounded-lg border border-da-border bg-da-surface px-4 py-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-da-text">
-                        {item.qid}
-                        {item.partLabel ? ` (${item.partLabel})` : ""}
-                      </span>
-                      {item.fullMarks ? (
-                        <span className="text-green-500 text-lg" title="Full marks">
-                          ✓
-                        </span>
-                      ) : (
-                        <span className="text-xs text-da-muted">
-                          {item.marksAwarded ?? 0} / {item.marksAvailable ?? "?"}
-                        </span>
-                      )}
-                    </div>
+            {groups.map((group) => {
+              if (group.kind === "unattempted") {
+                const open = expandedGaps.has(group.key);
+                const gapMarks = group.items.reduce((sum, i) => sum + (i.marksAvailable ?? 0), 0);
+                return (
+                  <div key={group.key} className="space-y-2">
                     <button
                       type="button"
-                      onClick={() => setOpenPanel(item)}
-                      className="shrink-0 rounded border border-da-border px-2 py-1 text-xs text-da-muted hover:bg-da-hover"
+                      onClick={() =>
+                        setExpandedGaps((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(group.key)) next.delete(group.key);
+                          else next.add(group.key);
+                          return next;
+                        })
+                      }
+                      className="w-full rounded-lg border border-dashed border-da-border bg-da-surface/50 px-4 py-3 text-left hover:bg-da-hover"
                     >
-                      See my work
-                    </button>
-                  </div>
-                  {!item.fullMarks && (item.marginComment || item.nextStep) && (
-                    <div className="mt-2 space-y-1 text-sm">
-                      {item.marginComment && <p className="text-da-text">{item.marginComment}</p>}
-                      {item.nextStep && <p className="text-da-muted">Next step: {item.nextStep}</p>}
-                    </div>
-                  )}
-
-                  {item.studentFlaggedMisread ? (
-                    <div className="mt-2 flex items-center gap-2 text-xs">
-                      <span className="text-amber-500">
-                        Flagged as possibly misread{item.studentFlagNote ? `: "${item.studentFlagNote}"` : "."}
+                      <span className="text-sm text-da-muted">
+                        {group.items.length === 1
+                          ? `${labelOf(group.items[0])} — not attempted`
+                          : `${labelOf(group.items[0])} to ${labelOf(group.items[group.items.length - 1])} — ${group.items.length} questions not attempted`}
+                        {gapMarks > 0 ? ` (${gapMarks} Clev's Marks)` : ""}
                       </span>
-                      {canFlag && (
-                        <button
-                          type="button"
-                          disabled={flagSaving === item.cropId}
-                          onClick={() => void submitFlag(item.cropId, false, null)}
-                          className="text-da-muted hover:underline disabled:opacity-50"
-                        >
-                          Undo
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    canFlag && (
-                    <div className="mt-2">
-                      {draftOpen ? (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            autoFocus
-                            value={flagDraft?.note ?? ""}
-                            onChange={(e) => setFlagDraft({ cropId: item.cropId, note: e.target.value })}
-                            placeholder="What do you think was misread? (optional)"
-                            className="flex-1 rounded border border-da-border bg-da-surface px-2 py-1 text-xs text-da-text focus:ring-1 focus:ring-da-accent"
-                          />
-                          <button
-                            type="button"
-                            disabled={flagSaving === item.cropId}
-                            onClick={() => void submitFlag(item.cropId, true, flagDraft?.note.trim() || null)}
-                            className="shrink-0 rounded border border-da-border px-2 py-1 text-xs text-da-text hover:bg-da-hover disabled:opacity-50"
-                          >
-                            {flagSaving === item.cropId ? "Saving…" : "Submit"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setFlagDraft(null)}
-                            className="shrink-0 text-xs text-da-muted hover:underline"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setFlagDraft({ cropId: item.cropId, note: "" })}
-                          className="text-xs text-da-muted hover:underline"
-                        >
-                          🚩 Flag this mark as possibly misread
-                        </button>
-                      )}
-                    </div>
-                    )
-                  )}
-                </div>
-              );
+                      <span className="ml-2 text-xs text-da-accent">{open ? "Hide" : "Show these"}</span>
+                    </button>
+                    {open && <div className="space-y-2 pl-3">{group.items.map(renderItem)}</div>}
+                  </div>
+                );
+              }
+              return renderItem(group.item);
             })}
           </div>
         </>

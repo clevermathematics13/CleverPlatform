@@ -240,14 +240,34 @@ export async function POST(
     try {
       const imageBytes = Buffer.from(crop.imageBase64, "base64");
 
-      // Cheap blank-page heuristic: a crop under ~1.5KB of PNG data at
-      // 200dpi is almost certainly a blank white box (PNG compresses
-      // uniform regions extremely well) rather than real handwriting.
-      // Not used to auto-skip anything -- na_response_crops.is_blank is
-      // informational, surfaced to the teacher review UI, exactly as
-      // planned in the pilot ("nothing auto-skipped... the point is to
-      // LOOK at the crops, not decide policy before seeing real output").
-      const isBlank = imageBytes.length < 1536;
+      // This was a byte-size blank heuristic (`imageBytes.length < 1536`),
+      // written when crops were 200dpi renders of a bare white answer box.
+      // It has not been able to fire for a long time and was silently
+      // dead: crops are now 300dpi AND include the printed template
+      // (ruled lines, question text, coloured bars), so across all 1,994
+      // crops in production the SMALLEST is 167KB -- 109x the threshold,
+      // with zero rows under it. Removed rather than retuned, because
+      // there is no byte-size threshold that works: crop size is driven
+      // by how much printed template the anchor covers (167KB to 1.3MB),
+      // not by whether the student wrote anything.
+      //
+      // Measured alternatives, both rejected on the same real data (the
+      // six A.1 scans in batch db4d3a05, where Roberto Aurelio Gamio left
+      // 24 of 39 boxes untouched and so provides ground truth): ink
+      // density after morphological removal of ruled lines separates
+      // blank from attempted only within a single anchor, not globally
+      // (his blank Q22 measures 0.0153 while his attempted Q6(f)
+      // measures 0.0029); and subtracting a per-anchor printed template
+      // built from the cohort still overlaps badly (blank max 0.033 vs
+      // attempted min 0.0087), because these are photocopies and the
+      // printed content does not cancel between differently-skewed scans.
+      //
+      // Blankness is now determined by the assessment model instead
+      // (AssessmentSchema.studentAttempted), which gets it right at high
+      // confidence and, unlike a CV threshold, cannot silently zero a
+      // student who did write something. Do not reintroduce a size or
+      // density cutoff here without data showing clean separation.
+      const isBlank = false;
 
       const storagePath = `na-crops/${scan.packet_version_id}/${packetScanId}/${anchor.id}.png`;
       const { error: uploadErr } = await supabase.storage

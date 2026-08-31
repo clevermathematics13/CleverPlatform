@@ -332,6 +332,7 @@ export async function POST(
 
     await upsertFeedback({
       ai_attempted: true,
+      ai_student_attempted: a.studentAttempted,
       ai_transcription: a.transcription,
       ai_verdict: a.verdict,
       ai_marks_awarded: a.marksAwarded,

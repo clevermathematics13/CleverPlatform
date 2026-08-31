@@ -18,10 +18,17 @@ import { z } from "zod";
  * harder to notice than a simply-wrong verdict and lands real marks on the
  * wrong child. Batching also invites implicit norm-referencing (grading an
  * answer relative to the other 19 in the request) when IB marking is
- * criterion-referenced. Cost is instead reduced two safer ways: blank
- * crops are skipped without an API call at all, and the rubric block is
- * marked for prompt caching since it repeats identically across every
+ * criterion-referenced. Cost is instead reduced by marking the rubric
+ * block for prompt caching, since it repeats identically across every
  * student for a given question.
+ *
+ * This comment used to also claim "blank crops are skipped without an API
+ * call at all". That was never true in practice: the stage 4 heuristic
+ * meant to detect them could not fire (see the crop route for the
+ * measurement), so every untouched answer box has always cost a full
+ * assessment call. Blankness is now reported by the model itself, via
+ * studentAttempted below -- which costs the call but is reliable, and
+ * cannot wrongly zero a student who did write something.
  */
 
 /** Sonnet, not Haiku. Unlike the cover-page name read (simple extraction,
@@ -36,6 +43,18 @@ export const AssessmentSchema = z.object({
    *  transcription is exactly what a teacher needs to see to decide
    *  whether the AI misread or the student genuinely wrote that. */
   transcription: z.string(),
+  /** False only when the answer box contains no student writing at all --
+   *  a genuinely untouched question, not one answered badly, illegibly,
+   *  or in the wrong place. Distinct from the "unclear" verdict, which
+   *  covers three different situations at once (blank, illegible, and
+   *  off-task) and so can't be used to tell a student "you didn't attempt
+   *  this" without sometimes telling that to a student who did.
+   *
+   *  Defaults true: an older stored assessment, or a model response that
+   *  omits the field, must never be read as "left blank" -- that claim is
+   *  visible to the student and wrong in the direction that accuses them
+   *  of not trying. */
+  studentAttempted: z.boolean().default(true),
   verdict: z.enum(["correct", "partial", "incorrect", "unclear"]),
   /** Marks for THIS crop only, never the whole question when the crop is
    *  one sub-part. Validated against the anchor's own marks_available by
@@ -163,6 +182,9 @@ Marking rules:
 - You can only see ONE part of this question. Other parts have their OWN separate crops and their OWN separate marks, assessed independently. NEVER withhold or reduce marks because a part you cannot see appears missing or unanswered -- that part is not yours to judge, and penalising it here would double-penalise the student. If the answer key mentions parts that aren't visible in your crop, ignore those parts entirely.
 - Partial credit is normal and expected. A student who sets up correctly but arithmetic-slips has earned most of the marks; say so.
 - "unclear" is a real verdict, not a failure. If the handwriting is genuinely illegible, or the box is empty, or what's written doesn't appear to answer this question at all, return "unclear" with marksAwarded 0 and explain why in teacherNote. NEVER guess at a verdict you cannot support from what you can actually see -- a wrong confident mark on a real student's work is worse than an honest "a teacher needs to look at this".
+- studentAttempted is a separate question from the verdict: it asks only whether this student put anything of their own in this answer box. Set it false ONLY for a box that is genuinely untouched -- no writing, no working, no crossings-out, no partial start, nothing but the printed template. Anything the student actually wrote makes it true, however wrong, brief, faint or illegible, and even if you cannot read a single character of it. An answer written in the wrong place, or one an arrow points away from, is also true: they attempted it. When you are not sure whether a faint mark is the student's or a printing artefact, set it true -- telling a student who did try that they left it blank is a worse error than the reverse, and a teacher can spot the reverse from the mark.
+- When studentAttempted is false, the verdict is "unclear" and marksAwarded is 0 -- an untouched box is not a wrong answer, and calling it "incorrect" reads as a judgement of work the student never did.
+- When studentAttempted is false, leave BOTH marginComment and nextStep as empty strings. There is nothing useful to say in the margin of a box a student never wrote in, and a packet's worth of near-identical "you left this blank, give it a go!" notes buries the real feedback on the questions they did attempt. The blank itself is the message; the teacher sees the count.
 - Mathematical correctness is judged on the mathematics, not on handwriting neatness, spelling, or whether the student showed more working than required.
 - Before concluding that content is cut off or missing at a crop's edge, look carefully: small, faint, or compressed handwriting near an edge is NOT the same as content that was actually truncated. Only report something as "cut off" if you can see the crop boundary genuinely intersecting a character mid-stroke, or a printed box/line that is visibly incomplete. If the crop notes say the boundary was NOT automatically expanded, that means an automated check already looked for ink touching the edge and found none -- treat that as evidence AGAINST truncation, and look again at what's actually there before assuming something is missing. A confident "cut off, marks withheld" on content that is actually fully present and legible is a real error, not a safe default.
 - Treat a constant term as separate from the coefficients of variable terms. In 3x^2 - 5x + 7, the coefficients are 3 and -5; the constant term is 7. A constant can technically be described as "the coefficient of x^0", but do NOT mark a student wrong for keeping it separate unless the question itself explicitly defines coefficients that way. When a question asks for "the coefficients and the constant term", expect the constant listed on its own, not folded into the coefficient list.
@@ -188,6 +210,7 @@ Return ONLY the JSON object below. No markdown fences, no commentary, no analysi
 
 {
   "transcription": "what the student actually wrote, as best you can read it",
+  "studentAttempted": true,
   "verdict": "correct" | "partial" | "incorrect" | "unclear",
   "marksAwarded": 0,
   "misconceptionTags": [],
@@ -232,6 +255,7 @@ Do your reasoning silently and return ONLY the same JSON object shape as a norma
 
 {
   "transcription": "what the student actually wrote in the replacement location, as best you can read it",
+  "studentAttempted": true,
   "verdict": "correct" | "partial" | "incorrect" | "unclear",
   "marksAwarded": 0,
   "misconceptionTags": [],
@@ -405,6 +429,42 @@ export function validateAssessment(
       `Verdict was "unclear" but ${a.marksAwarded} marks were awarded -- marks zeroed pending teacher review.`
     );
     a.marksAwarded = 0;
+  }
+
+  // studentAttempted=false is a claim shown to the student ("you left this
+  // blank"), so it is only honoured when the rest of the response agrees
+  // with it. A model that says the box was untouched while also awarding
+  // marks, or while transcribing something out of it, has contradicted
+  // itself; trust the evidence of marks/transcription over the flag,
+  // because the failure direction that matters is telling a student who
+  // did work that they did not.
+  if (!a.studentAttempted && (a.marksAwarded > 0 || a.transcription.trim() !== "")) {
+    warnings.push(
+      `Model reported the answer box as untouched but ${a.marksAwarded > 0 ? `awarded ${a.marksAwarded} marks` : "transcribed content from it"} -- treating it as attempted.`
+    );
+    a.studentAttempted = true;
+  }
+
+  // An untouched box is not a wrong answer. Observed on real crops: the
+  // model reliably reports studentAttempted=false for a genuinely empty
+  // box but tends to pair it with verdict "incorrect", which is the
+  // wrong label for work that was never done and reads badly in the
+  // teacher review UI next to the 1,900 existing rows that use
+  // "unclear" for exactly this case. Normalised here rather than left to
+  // the model's discretion, so the stored verdict for a blank is
+  // deterministic.
+  if (!a.studentAttempted && a.verdict !== "unclear") {
+    a.verdict = "unclear";
+    a.marksAwarded = 0;
+  }
+
+  // The prompt asks for empty student-facing text on an untouched box.
+  // Enforced rather than trusted: the whole point is that a blank
+  // question contributes no boilerplate to the student's feedback, and
+  // one stray "give it a go!" per blank is exactly what this replaces.
+  if (!a.studentAttempted) {
+    a.marginComment = "";
+    a.nextStep = "";
   }
 
   // Real failure mode found in production: on A.1 Q1 for Kaito Fujii, the

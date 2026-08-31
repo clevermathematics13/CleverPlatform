@@ -145,6 +145,11 @@ export interface NaFeedbackItem {
   promptCropImageUrl: string | null;
   studentFlaggedMisread: boolean;
   studentFlagNote: string | null;
+  /** False only when the assessment recorded that the student left this
+   *  answer box untouched. NULL in the database (every row assessed
+   *  before ai_student_attempted existed) reads as true here, so a
+   *  legacy row is never presented to a student as "not attempted". */
+  attempted: boolean;
 }
 
 /** The released, student-facing feedback for one packet scan -- ordered
@@ -202,6 +207,7 @@ export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<
     released_at: string | null;
     student_flagged_misread: boolean | null;
     student_flag_note: string | null;
+    ai_student_attempted: boolean | null;
   };
   type Row = {
     id: string;
@@ -215,7 +221,7 @@ export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<
     .select(
       `id, storage_path,
        na_anchors(qid, part_label, sort_order, prompt_crop_storage_path),
-       na_feedback(final_marks_awarded, ai_marks_available, final_margin_comment, final_next_step, released_at, student_flagged_misread, student_flag_note)`
+       na_feedback(final_marks_awarded, ai_marks_available, final_margin_comment, final_next_step, released_at, student_flagged_misread, student_flag_note, ai_student_attempted)`
     )
     .eq("packet_scan_id", packetScanId);
   if (error) throw error;
@@ -243,6 +249,7 @@ export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<
         cropStoragePath: row.storage_path,
         studentFlaggedMisread: fb.student_flagged_misread ?? false,
         studentFlagNote: fb.student_flag_note,
+        attempted: fb.ai_student_attempted ?? true,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
@@ -270,6 +277,7 @@ export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<
         promptCropImageUrl: promptSigned?.data?.signedUrl ?? null,
         studentFlaggedMisread: r.studentFlaggedMisread,
         studentFlagNote: r.studentFlagNote,
+        attempted: r.attempted,
       };
     })
   );

@@ -81,3 +81,85 @@ describe("validateAssessment", () => {
     expect(result.ok).toBe(false);
   });
 });
+
+describe("validateAssessment -- studentAttempted", () => {
+  it("defaults to attempted when the field is absent, so a legacy or terse response never accuses a student of skipping", () => {
+    const result = validateAssessment(assessmentJson(), 3);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.assessment.studentAttempted).toBe(true);
+  });
+
+  it("clears marginComment and nextStep on a genuinely untouched box", () => {
+    const result = validateAssessment(
+      assessmentJson({
+        studentAttempted: false,
+        verdict: "unclear",
+        marksAwarded: 0,
+        transcription: "",
+        marginComment: "This box was left blank -- give it a go!",
+        nextStep: "Attempt every question.",
+      }),
+      3
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.assessment.studentAttempted).toBe(false);
+      expect(result.assessment.marginComment).toBe("");
+      expect(result.assessment.nextStep).toBe("");
+    }
+  });
+
+  it("overrides studentAttempted=false when the model also transcribed content, and warns", () => {
+    const result = validateAssessment(
+      assessmentJson({
+        studentAttempted: false,
+        verdict: "incorrect",
+        marksAwarded: 0,
+        transcription: "adults = 1",
+        marginComment: "Check row 4.",
+      }),
+      3
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.assessment.studentAttempted).toBe(true);
+      // the student-facing text survives, because they did write something
+      expect(result.assessment.marginComment).toBe("Check row 4.");
+      expect(result.warnings.join(" ")).toMatch(/transcribed content/i);
+    }
+  });
+
+  it("overrides studentAttempted=false when marks were awarded, and warns", () => {
+    const result = validateAssessment(
+      assessmentJson({ studentAttempted: false, verdict: "partial", marksAwarded: 2, transcription: "" }),
+      3
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.assessment.studentAttempted).toBe(true);
+      expect(result.warnings.join(" ")).toMatch(/awarded 2 marks/i);
+    }
+  });
+});
+
+describe("validateAssessment -- an untouched box is not a wrong answer", () => {
+  it("normalises verdict to unclear when the model pairs studentAttempted=false with 'incorrect'", () => {
+    const result = validateAssessment(
+      assessmentJson({
+        studentAttempted: false,
+        verdict: "incorrect",
+        marksAwarded: 0,
+        transcription: "",
+        marginComment: "",
+        nextStep: "",
+      }),
+      3
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.assessment.verdict).toBe("unclear");
+      expect(result.assessment.marksAwarded).toBe(0);
+      expect(result.assessment.studentAttempted).toBe(false);
+    }
+  });
+});
