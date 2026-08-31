@@ -2263,7 +2263,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                       autoFocus
                                       min={0}
                                       max={s.marksAvailable ?? undefined}
-                                      step={0.5}
+                                      step={1}
                                       defaultValue={s.marksAwarded ?? 0}
                                       onClick={(e) => e.stopPropagation()}
                                       onBlur={(e) => {
