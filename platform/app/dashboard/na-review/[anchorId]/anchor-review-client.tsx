@@ -399,7 +399,7 @@ export default function AnchorReviewClient({
                         autoFocus
                         min={0}
                         max={maxMarks}
-                        step={0.5}
+                        step={1}
                         defaultValue={displayedMarks}
                         onClick={(e) => e.stopPropagation()}
                         onBlur={(e) => {
