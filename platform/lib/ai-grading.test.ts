@@ -624,14 +624,15 @@ describe("validateGradeResponse", () => {
               },
             },
             {
-              // Final answer given as "2.657" instead of the required 1 d.p.
-              // "2.7" -- fails the final-answer numericCheck, but that
-              // failure is this token's own, not the intermediate mark's.
+              // Final answer given as "2.5" instead of the required 1 d.p.
+              // "2.7" -- genuinely fails the final-answer numericCheck (not
+              // merely under-precise), and that failure is this token's
+              // own, not the intermediate mark's.
               token: "A1",
               awarded: false,
-              note: "2.657 does not satisfy the required 1 d.p. final answer",
+              note: "2.5 does not satisfy the required 1 d.p. final answer",
               numericCheck: {
-                reportedValue: "2.657",
+                reportedValue: "2.5",
                 referenceValue: "2.65708",
                 precisionType: "dp",
                 precisionDigits: 1,
@@ -650,6 +651,126 @@ describe("validateGradeResponse", () => {
 
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
     expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  // A teacher reported this exact production case: the model's own note
+  // admitted "8.515 rounds to 8.52, but ... Value is incorrect" and withheld
+  // the A mark anyway. The model's own numericCheck, independently
+  // verified, actually supports the award. This never grants the mark
+  // automatically (a withheld mark can have a real reason this function
+  // can't see) -- it flags the inconsistency for a teacher to check.
+  it("flags (but does not grant) a mark withheld despite its own numericCheck actually passing", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "medium",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "8.515 does not round to 8.52 at 3sf, but using student's a=0.81: 0.81x7+2.88=8.55, not 8.515. Value is incorrect.",
+              numericCheck: {
+                reportedValue: "8.515",
+                referenceValue: "8.51693",
+                alternativeReferenceValues: ["8.55"],
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "8.515 is inconsistent with either coefficient path, so A0.",
+          evidence: "8.515",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    // Never silently grants the mark -- clampedMarks stays whatever the
+    // model's own breakdown reports (0 here), not upgraded to 1.
+    expect(grade.clampedMarks).toBe(0);
+    expect(grade.item.markBreakdown[0].awarded).toBe(false);
+    expect(grade.confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("flagged for teacher review"))
+    ).toBe(true);
+    expect(grade.item.reasoning).toContain("Flagged for review");
+    expect(grade.item.reasoning).toContain("but it was withheld");
+  });
+
+  it("does not flag a withheld mark whose own numericCheck genuinely fails", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "0.81 has only 2 s.f.; 0.805 to 3 s.f. is required.",
+              numericCheck: { reportedValue: "0.81", referenceValue: "0.805084", precisionType: "sf", precisionDigits: 3 },
+            },
+          ],
+          reasoning: "0.81 is insufficiently precise, so A0.",
+          evidence: "0.81",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].confidence).toBe("high");
+    expect(result.outcome.warnings).toHaveLength(0);
+    expect(result.outcome.grades[0].item.reasoning).toBe("0.81 is insufficiently precise, so A0.");
+  });
+
+  it("flags a withheld Method mark whose own impliedMethodEvidence actually supports it", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "(M1)",
+              awarded: false,
+              note: "0.95 might not be sufficient evidence",
+              impliedMethodEvidence: {
+                reportedValue: "0.95",
+                referenceValue: "0.946591",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(result.outcome.grades[0].confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("flagged for teacher review"))
+    ).toBe(true);
   });
 
   it("does not touch an ordinary intermediate accuracy mark with no intermediateValueCheck attached", () => {
