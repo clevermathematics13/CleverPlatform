@@ -790,6 +790,48 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
   const [releasingKey, setReleasingKey] = useState<string | null>(null);
   const [releaseError, setReleaseError] = useState<string | null>(null);
 
+  // "Approve all" runs per student and reports what it deliberately would
+  // not touch, so a scan that stays un-releasable says why rather than
+  // just leaving the Release button greyed out.
+  const [approvingKey, setApprovingKey] = useState<string | null>(null);
+  const [approveNotice, setApproveNotice] = useState<string | null>(null);
+
+  const approveAllForScan = useCallback(
+    async (packetScanId: string, studentName: string, remaining: number) => {
+      if (!version) return;
+      if (
+        !window.confirm(
+          `Accept the AI draft as your final mark for ${remaining} remaining question${remaining === 1 ? "" : "s"} on ${studentName}'s packet?\n\nQuestions you have already approved by hand keep your version. This is what the student will see once you release it.`
+        )
+      ) {
+        return;
+      }
+      setApprovingKey(packetScanId);
+      setApproveNotice(null);
+      try {
+        const res = await fetch(`/api/na-review/packet-scans/${packetScanId}/approve-all`, {
+          method: "POST",
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not approve this packet.");
+        const notAssessed = data.skipped?.notAssessed ?? 0;
+        const validationErrors = data.skipped?.validationErrors ?? 0;
+        const stuck = notAssessed + validationErrors;
+        setApproveNotice(
+          stuck > 0
+            ? `${studentName}: approved ${data.approved}. ${stuck} still need you by hand (${notAssessed} not assessed, ${validationErrors} failed validation) -- this packet can't be released until those are resolved.`
+            : `${studentName}: approved ${data.approved}. Ready to release.`
+        );
+        await fetchResults(version.id);
+      } catch (e) {
+        setApproveNotice(e instanceof Error ? e.message : "Could not approve this packet.");
+      } finally {
+        setApprovingKey(null);
+      }
+    },
+    [version, fetchResults]
+  );
+
   const releaseOneScan = useCallback(
     async (packetScanId: string) => {
       if (!version) return;
@@ -2716,6 +2758,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                     </button>
                   </div>
                   {releaseError && <p className="text-sm text-red-600">{releaseError}</p>}
+                  {approveNotice && <p className="text-sm text-da-muted">{approveNotice}</p>}
                   {resultsPanel.data.courses.length === 0 && (
                     <p className="text-sm text-da-muted">No identified scans yet for this packet version.</p>
                   )}
@@ -2790,8 +2833,29 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                       {done && <span className="ml-1.5 text-green-500">✓</span>}
                                     </td>
                                     <td className="px-3 py-2 text-da-muted">
-                                      {s.approvedCount} / {s.totalGradable}
-                                      {fullyApproved && <span className="ml-1.5 text-green-500">✓</span>}
+                                      <div className="flex items-center gap-2">
+                                        <span>
+                                          {s.approvedCount} / {s.totalGradable}
+                                          {fullyApproved && <span className="ml-1.5 text-green-500">✓</span>}
+                                        </span>
+                                        {!fullyApproved && s.assessedCount > 0 && (
+                                          <button
+                                            type="button"
+                                            disabled={approvingKey === s.packetScanId}
+                                            onClick={() =>
+                                              void approveAllForScan(
+                                                s.packetScanId,
+                                                s.studentName,
+                                                s.totalGradable - s.approvedCount
+                                              )
+                                            }
+                                            title="Accept the AI draft as final for every question you haven't approved yet"
+                                            className="shrink-0 rounded border border-da-border px-2 py-0.5 text-xs font-medium text-da-text hover:bg-da-hover disabled:cursor-not-allowed disabled:opacity-40"
+                                          >
+                                            {approvingKey === s.packetScanId ? "Approving…" : "Approve all"}
+                                          </button>
+                                        )}
+                                      </div>
                                     </td>
                                     <td className="px-3 py-2 text-da-muted">
                                       {s.marksAwarded} / {s.marksAvailable}
@@ -2844,9 +2908,17 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                       )}
                                     </td>
                                     <td className="px-3 py-2">
-                                      {s.releasedAt && s.studentProfileId ? (
+                                      {s.releasedAt ? (
                                         <Link
-                                          href={`/dashboard/na-feedback?viewStudent=${s.studentProfileId}&scanId=${s.packetScanId}`}
+                                          // scanId alone is enough for the teacher preview, and is the
+                                          // only thing that works before the student's first sign-in
+                                          // links their account. viewStudent is added when we have it
+                                          // so the preview keeps using the profile path where it can.
+                                          href={
+                                            s.studentProfileId
+                                              ? `/dashboard/na-feedback?viewStudent=${s.studentProfileId}&scanId=${s.packetScanId}`
+                                              : `/dashboard/na-feedback?scanId=${s.packetScanId}`
+                                          }
                                           className="text-xs text-da-accent hover:underline"
                                         >
                                           View feedback
@@ -2854,11 +2926,7 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
                                       ) : (
                                         <span
                                           className="text-xs text-da-muted"
-                                          title={
-                                            !s.releasedAt
-                                              ? "Release this student's feedback first"
-                                              : "This student hasn't signed in yet, so their account isn't linked to this scan"
-                                          }
+                                          title="Release this student's feedback first"
                                         >
                                           —
                                         </span>

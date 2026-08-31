@@ -67,6 +67,71 @@ export async function getReleasedPacketScansForStudent(
   });
 }
 
+/** One released packet scan looked up by its own id, for a teacher
+ *  previewing what a student sees. Deliberately does NOT go through
+ *  student_profile_id: that column stays NULL until the student's first
+ *  sign-in (auto_enroll_from_invitations backfills it), so a
+ *  profile-keyed lookup shows a teacher nothing at all for a class where
+ *  nobody has logged in yet -- which is every scanned class today. The
+ *  student's name therefore comes from the roster row (invited_students),
+ *  which exists whether or not they have ever signed in.
+ *
+ *  Teacher-only: callers must have already established the role. Every
+ *  read here relies on the teacher's own full-access RLS, not on any
+ *  student-scoped policy. */
+export async function getReleasedPacketScanForTeacher(
+  packetScanId: string
+): Promise<{ scan: ReleasedPacketScan; studentName: string } | null> {
+  const supabase = await createClient();
+
+  type Row = {
+    id: string;
+    packet_version_id: string;
+    updated_at: string;
+    status: string;
+    student_profile_id: string | null;
+    invited_students: { full_name: string | null; nickname: string | null } | { full_name: string | null; nickname: string | null }[] | null;
+    na_packet_versions:
+      | { version_label: string | null; nuanced_analyses: { title: string } | { title: string }[] | null }
+      | { version_label: string | null; nuanced_analyses: { title: string } | { title: string }[] | null }[]
+      | null;
+  };
+
+  const { data, error } = await supabase
+    .from("na_packet_scans")
+    .select(
+      `id, packet_version_id, updated_at, status, student_profile_id,
+       invited_students(full_name, nickname),
+       na_packet_versions(version_label, nuanced_analyses(title))`
+    )
+    .eq("id", packetScanId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  const row = data as unknown as Row;
+  if (row.status !== "released") return null;
+
+  const version = Array.isArray(row.na_packet_versions) ? row.na_packet_versions[0] : row.na_packet_versions;
+  const analysis = version
+    ? Array.isArray(version.nuanced_analyses)
+      ? version.nuanced_analyses[0]
+      : version.nuanced_analyses
+    : null;
+  const student = Array.isArray(row.invited_students) ? row.invited_students[0] : row.invited_students;
+
+  return {
+    scan: {
+      packetScanId: row.id,
+      packetVersionId: row.packet_version_id,
+      title: analysis?.title ?? "Untitled packet",
+      versionLabel: version?.version_label ?? null,
+      releasedAt: row.updated_at,
+    },
+    studentName: student?.full_name ?? student?.nickname ?? "Student",
+  };
+}
+
 export interface NaFeedbackItem {
   cropId: string;
   qid: string;
@@ -107,6 +172,21 @@ export async function getNaFeedbackForStudent(
     .eq("id", packetScanId)
     .single();
   if (scanErr || !scan || scan.student_profile_id !== studentProfileId) return [];
+
+  return getNaFeedbackForPacketScan(packetScanId);
+}
+
+/** The same released feedback, keyed only by packet scan -- no ownership
+ *  check. Used directly by the teacher preview path, where ownership is
+ *  established by the teacher role rather than by student_profile_id
+ *  (which is NULL until the student first signs in). Never call this on
+ *  behalf of a student: getNaFeedbackForStudent is the checked wrapper.
+ *
+ *  The released_at IS NOT NULL filter below still applies here, so a
+ *  teacher preview shows exactly the released rows a student would see
+ *  and never an unreleased AI draft. */
+export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<NaFeedbackItem[]> {
+  const supabase = await createClient();
 
   type AnchorShape = {
     qid: string;

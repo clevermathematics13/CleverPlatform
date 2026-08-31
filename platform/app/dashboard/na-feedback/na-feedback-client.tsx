@@ -28,7 +28,11 @@ export function NaFeedbackClient({
   const [items, setItems] = useState<NaFeedbackItem[]>(initialItems);
   const [flagDraft, setFlagDraft] = useState<{ cropId: string; note: string } | null>(null);
   const [flagSaving, setFlagSaving] = useState<string | null>(null);
-  const isViewingStudent = isTeacher && !!viewStudentId;
+  // Keyed on the resolved name, not on viewStudentId: a teacher can
+  // preview by ?scanId= alone (a class where nobody has signed in yet has
+  // no profile id to pass), and that path still resolves a name from the
+  // roster row.
+  const isViewingStudent = isTeacher && !!viewStudentName;
   // A teacher previewing a student's view can look, but flagging is the
   // student's own act -- never let a teacher submit it on their behalf.
   const canFlag = !isTeacher;
@@ -66,7 +70,7 @@ export function NaFeedbackClient({
   const totalMarksAwarded = items.reduce((sum, i) => sum + (i.marksAwarded ?? 0), 0);
   const totalMarksAvailable = items.reduce((sum, i) => sum + (i.marksAvailable ?? 0), 0);
 
-  if (isTeacher && !viewStudentId) {
+  if (isTeacher && !isViewingStudent) {
     return (
       <div className="max-w-3xl">
         <h1 className="text-2xl font-extrabold mb-2 text-da-text">My Feedback</h1>
