@@ -22,7 +22,7 @@
  *      GRADING_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY.
  */
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import {
@@ -97,7 +97,7 @@ async function uploadPhase() {
       .from("na_packet_scans").select("id, split_storage_path").eq("id", scanId).single();
     if (error || !scan?.split_storage_path) { console.error(`upload SKIP ${scanId}: ${error?.message}`); continue; }
     const normPath = scan.split_storage_path.replace(/\.pdf$/, "") + `-normalized.pdf`;
-    const bytes = readFileSync(join(baseDir, t.normalized_local));
+    const bytes = readFileSync(isAbsolute(t.normalized_local) ? t.normalized_local : join(baseDir, t.normalized_local));
     const { error: upErr } = await supabase.storage.from(BUCKET).upload(normPath, bytes, { contentType: "application/pdf", upsert: true });
     if (upErr) { console.error(`upload FAIL ${scanId}: ${upErr.message}`); continue; }
     // Original stays at its old path untouched; only the pointer moves.
