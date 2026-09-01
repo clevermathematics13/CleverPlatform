@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   getSeats,
   saveSeatLayout,
@@ -10,63 +10,18 @@ import {
   loadSeatingLayout,
   deleteSeatingLayout,
 } from '@/lib/seating-data';
-import type { Seat, SeatingLayout } from '@/lib/seating-types';
-
-type SeatCount = 2 | 3 | 4;
-
-interface PodConfig {
-  pod_id: string;
-  seat_count: SeatCount;
-}
-
-const SEAT_ROLES: Record<SeatCount, string[]> = {
-  2: ['L', 'R'],
-  3: ['L', 'R', 'B'],
-  4: ['L', 'R', 'BL', 'BR'],
-};
-
-function deriveConfigs(seats: Seat[], classGroup: string): PodConfig[] {
-  const podMap = new Map<string, Set<string>>();
-  seats
-    .filter((s) => s.active && (s.class_group === classGroup || s.class_group === '*'))
-    .forEach((s) => {
-      if (!podMap.has(s.pod_id)) podMap.set(s.pod_id, new Set());
-      podMap.get(s.pod_id)!.add(s.seat_role);
-    });
-  return [...podMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([pod_id, roles]) => {
-      const n = roles.size;
-      const seat_count: SeatCount = n >= 4 ? 4 : n === 3 ? 3 : 2;
-      return { pod_id, seat_count };
-    });
-}
-
-function buildSeatId(classGroup: string, podId: string, role: string): string {
-  return `${classGroup || '*'}-${podId}-${role}`;
-}
-
-function seatsForConfig(cfg: PodConfig, classGroup: string): Seat[] {
-  const podId = cfg.pod_id.trim();
-  return SEAT_ROLES[cfg.seat_count].map((role) => ({
-    seat_id: buildSeatId(classGroup, podId, role),
-    class_group: classGroup || '*',
-    pod_id: podId,
-    seat_role: role,
-    x: 0,
-    y: 0,
-    active: true,
-  }));
-}
-
-function nextPodId(configs: PodConfig[]): string {
-  const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  for (const letter of letters) {
-    const id = `Pod ${letter}`;
-    if (!configs.find((c) => c.pod_id === id)) return id;
-  }
-  return `Pod ${Date.now()}`;
-}
+import {
+  SEAT_ROLES,
+  configSignature,
+  deriveConfigs,
+  nextPodId,
+  seatsForConfigs,
+  totalSeats as sumSeats,
+  validateConfigs,
+  type PodConfig,
+  type SeatCount,
+} from '@/lib/seating-layout';
+import type { SeatingLayout } from '@/lib/seating-types';
 
 interface Props {
   classGroup: string;
@@ -93,41 +48,59 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
   // Undo stack for deleted pods
   const [undoStack, setUndoStack] = useState<{ pod: PodConfig; idx: number; expiresAt: number }[]>([]);
 
-  // Load layouts and seats on mount/classGroup change
+  /**
+   * The preset whose pods are exactly the ones currently in use, if any.
+   * Nothing matching means the live layout has been edited away from every
+   * saved preset - the dropdown says so rather than silently showing one.
+   */
+  const matchLayout = useCallback(
+    (candidates: SeatingLayout[], live: PodConfig[], group: string): SeatingLayout | null => {
+      const target = configSignature(live);
+      return (
+        candidates.find(
+          (l) => Array.isArray(l.seats) && configSignature(deriveConfigs(l.seats, group)) === target,
+        ) ?? null
+      );
+    },
+    [],
+  );
+
+  /**
+   * seating_seats is the single source of truth for what the class actually
+   * uses, so the editor always shows THOSE pods - never a preset's. Showing a
+   * preset here while the generator read seating_seats is what let the header
+   * claim 21 seats while generation only saw 18. A preset is merely matched
+   * against the live seats so the dropdown can show which one is in effect.
+   */
   useEffect(() => {
     let ignore = false;
     async function loadAll() {
       setLoading(true);
       setLayoutLoading(true);
       try {
-        const [seats, layouts] = await Promise.all([
+        const [seats, saved] = await Promise.all([
           getSeats(),
-          listSeatingLayouts(classGroup),
+          listSeatingLayouts(classGroup).catch(() => [] as SeatingLayout[]),
         ]);
         if (ignore) return;
-        setLayouts(layouts);
-        // Load last-used layout if exists, else default
-        const last = layouts[0];
-        if (last) {
-          setSelectedLayoutId(last.id);
-          if (last.seats) setConfigs(deriveConfigs(last.seats, classGroup));
-          setLayoutName(last.name);
-        } else {
-          setConfigs(deriveConfigs(seats, classGroup));
-          setSelectedLayoutId(null);
-          setLayoutName('');
-        }
+        const live = deriveConfigs(seats, classGroup);
+        setConfigs(live);
+        setLayouts(saved);
+        const match = matchLayout(saved, live, classGroup);
+        setSelectedLayoutId(match?.id ?? null);
+        setLayoutName(match?.name ?? '');
       } catch (e) {
-        // fallback: just seats
-        getSeats().then((seats) => setConfigs(deriveConfigs(seats, classGroup)));
+        if (!ignore) alert('Failed to load seat layout: ' + (e as Error).message);
       } finally {
-        setLoading(false);
-        setLayoutLoading(false);
+        if (!ignore) {
+          setLoading(false);
+          setLayoutLoading(false);
+        }
       }
     }
     if (classGroup) loadAll();
     return () => { ignore = true; };
-  }, [classGroup]);
+  }, [classGroup, matchLayout]);
 
   const updateId = (idx: number, pod_id: string) =>
     setConfigs((prev) => prev.map((c, i) => (i === idx ? { ...c, pod_id } : c)));
@@ -138,13 +111,17 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
   const add = () =>
     setConfigs((prev) => [...prev, { pod_id: nextPodId(prev), seat_count: 4 }]);
 
-  // Persist whichever storage is active (named layout or raw seats)
-  const autoSaveConfigs = async (updatedConfigs: PodConfig[]) => {
-    const seats = updatedConfigs.flatMap((c) => seatsForConfig(c, classGroup));
-    if (selectedLayoutId && layoutName.trim()) {
-      await saveSeatingLayout(classGroup, layoutName.trim(), seats);
-    } else {
-      await saveSeatLayout(seats, classGroup);
+  /**
+   * Persist a pod set. The live seats are ALWAYS written, because that is what
+   * the generator and the chart read; the named preset is updated too when one
+   * is currently in effect, so the two never drift apart.
+   */
+  const persistConfigs = async (updatedConfigs: PodConfig[]) => {
+    const seats = seatsForConfigs(updatedConfigs, classGroup);
+    await saveSeatLayout(seats, classGroup);
+    const selected = layouts.find((l) => l.id === selectedLayoutId);
+    if (selected && selected.name === layoutName.trim()) {
+      await saveSeatingLayout(classGroup, selected.name, seats);
     }
   };
 
@@ -156,7 +133,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
     const newConfigs = configs.filter((_, i) => i !== idx);
     setConfigs(newConfigs);
     try {
-      await autoSaveConfigs(newConfigs);
+      await persistConfigs(newConfigs);
       onSaved();
     } catch (e) {
       alert('Failed to save deletion: ' + (e as Error).message);
@@ -176,7 +153,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
     setConfigs(newConfigs);
     setUndoStack((prev) => prev.filter((e) => e !== entry));
     try {
-      await autoSaveConfigs(newConfigs);
+      await persistConfigs(newConfigs);
       onSaved();
     } catch (e) {
       alert('Undo failed: ' + (e as Error).message);
@@ -204,26 +181,20 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
     setSaving(true);
     try {
       const normalized = configs.map((c) => ({ ...c, pod_id: c.pod_id.trim() }));
-      if (normalized.some((c) => !c.pod_id)) {
-        alert('Save failed: pod names cannot be empty.');
+      const problem = validateConfigs(normalized);
+      if (problem) {
+        alert('Save failed: ' + problem);
         return;
       }
-      const seen = new Set<string>();
-      for (const cfg of normalized) {
-        const key = cfg.pod_id.toLowerCase();
-        if (seen.has(key)) {
-          alert(`Save failed: duplicate pod name "${cfg.pod_id}".`);
-          return;
-        }
-        seen.add(key);
-      }
-      const seats = normalized.flatMap((c) => seatsForConfig(c, classGroup));
+      const seats = seatsForConfigs(normalized, classGroup);
+      // Save the preset AND apply it, so the generator sees these seats.
       await saveSeatingLayout(classGroup, layoutName.trim(), seats);
+      await saveSeatLayout(seats, classGroup);
       setConfigs(normalized);
       // Reload layouts
-      const layouts = await listSeatingLayouts(classGroup);
-      setLayouts(layouts);
-      const saved = layouts.find((l) => l.name === layoutName.trim());
+      const refreshed = await listSeatingLayouts(classGroup);
+      setLayouts(refreshed);
+      const saved = refreshed.find((l) => l.name === layoutName.trim());
       if (saved) setSelectedLayoutId(saved.id);
       onSaved();
     } catch (e) {
@@ -233,15 +204,21 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
     }
   };
 
-  // Load a layout
+  /**
+   * Apply a saved preset: it becomes the class's live layout, so its seats are
+   * written to seating_seats and the rest of the app is told to refresh.
+   */
   const handleLoadLayout = async (layoutId: string) => {
     setLayoutLoading(true);
     try {
       const layout = await loadSeatingLayout(layoutId);
       if (layout && layout.seats) {
-        setConfigs(deriveConfigs(layout.seats, classGroup));
+        const loaded = deriveConfigs(layout.seats, classGroup);
+        await saveSeatLayout(seatsForConfigs(loaded, classGroup), classGroup);
+        setConfigs(loaded);
         setLayoutName(layout.name);
         setSelectedLayoutId(layout.id);
+        onSaved();
       }
     } catch (e) {
       alert('Failed to load layout: ' + (e as Error).message);
@@ -256,17 +233,13 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
     setDeletingLayoutId(layoutId);
     try {
       await deleteSeatingLayout(layoutId);
-      const layouts = await listSeatingLayouts(classGroup);
-      setLayouts(layouts);
-      if (layouts.length > 0) {
-        setSelectedLayoutId(layouts[0].id);
-        setLayoutName(layouts[0].name);
-        if (layouts[0].seats) setConfigs(deriveConfigs(layouts[0].seats, classGroup));
-      } else {
-        setSelectedLayoutId(null);
-        setLayoutName('');
-        getSeats().then((seats) => setConfigs(deriveConfigs(seats, classGroup)));
-      }
+      // Deleting a preset only forgets a saved name - the class keeps the pods
+      // it is currently using, so `configs` is left alone.
+      const refreshed = await listSeatingLayouts(classGroup);
+      setLayouts(refreshed);
+      const match = matchLayout(refreshed, configs, classGroup);
+      setSelectedLayoutId(match?.id ?? null);
+      setLayoutName(match?.name ?? '');
     } catch (e) {
       alert('Delete failed: ' + (e as Error).message);
     } finally {
@@ -281,7 +254,11 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
     try {
       await copyLayoutFrom(copySource, classGroup);
       const seats = await getSeats();
-      setConfigs(deriveConfigs(seats, classGroup));
+      const copied = deriveConfigs(seats, classGroup);
+      setConfigs(copied);
+      const match = matchLayout(layouts, copied, classGroup);
+      setSelectedLayoutId(match?.id ?? null);
+      setLayoutName(match?.name ?? '');
       onSaved();
     } catch (e) {
       alert('Copy failed: ' + (e as Error).message);
@@ -290,7 +267,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
     }
   };
 
-  const totalSeats = configs.reduce((n, c) => n + c.seat_count, 0);
+  const totalSeats = sumSeats(configs);
 
   if (!classGroup) {
     return <p className="text-gray-500 italic py-4">Select a class group first.</p>;
@@ -322,10 +299,13 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
             className="rounded border border-blue-300 px-2 py-1 text-sm text-blue-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
             disabled={layoutLoading || layouts.length === 0}
           >
+            {layouts.length === 0 && <option value="">(none saved)</option>}
+            {!selectedLayoutId && layouts.length > 0 && (
+              <option value="">(unsaved layout)</option>
+            )}
             {layouts.map((l) => (
               <option key={l.id} value={l.id}>{l.name}</option>
             ))}
-            {layouts.length === 0 && <option value="">(none)</option>}
           </select>
           {/* Delete button for selected layout */}
           {selectedLayoutId && (
@@ -484,7 +464,9 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
       <p className="text-xs text-gray-500">
         Seat roles: <strong>L</strong> = left, <strong>R</strong> = right,{' '}
         <strong>B</strong> = back-center (3-seat), <strong>BL/BR</strong> = back-left/right (4-seat).
-        Seat IDs are auto-generated as <em>PodName-Role</em> (e.g. <em>Pod A-L</em>).
+        Seat IDs are auto-generated as <em>Class-PodName-Role</em> (e.g. <em>9C-Pod A-L</em>).
+        Saving or picking a layout applies it to this class straight away, so the
+        seating generator uses exactly the pods shown here.
       </p>
 
       {/* Undo toast */}
