@@ -168,7 +168,7 @@ export function ArchivedCourseList({ courses }: { courses: CourseRow[] }) {
                       type="button"
                       onClick={() => setDeletingId(course.id)}
                       disabled={isLoading}
-                      className="flex-1 rounded-br-xl px-4 py-2.5 text-center text-xs font-semibold text-red-400 transition-colors hover:bg-red-900/20 hover:text-red-300 disabled:opacity-50"
+                      className="flex-1 rounded-br-xl px-4 py-2.5 text-center text-xs font-semibold text-red-400 transition-colors hover:bg-red-900/20 hover:text-red-200 disabled:opacity-50"
                     >
                       Delete
                     </button>

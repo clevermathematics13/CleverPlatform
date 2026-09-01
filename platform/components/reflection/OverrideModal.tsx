@@ -97,7 +97,7 @@ export function OverrideModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-da-muted hover:text-da-muted"
+            className="text-da-muted hover:text-da-text"
           >
             ✕
           </button>

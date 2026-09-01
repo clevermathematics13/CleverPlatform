@@ -185,7 +185,7 @@ export function ImportFromPpqModal({
                       type="button"
                       onClick={() => runImport(true)}
                       disabled={importing}
-                      className="rounded border border-amber-400 bg-da-surface px-3 py-1 text-xs font-medium text-amber-300 hover:bg-amber-500/15 disabled:opacity-50"
+                      className="rounded border border-amber-400 bg-da-surface px-3 py-1 text-xs font-medium text-amber-300 hover:bg-amber-500/25 disabled:opacity-50"
                     >
                       Import anyway (creates a second test)
                     </button>

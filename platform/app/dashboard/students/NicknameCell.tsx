@@ -77,7 +77,7 @@ export function NicknameCell({ profileId, invitedId, nickname, fullName }: Nickn
       {saved ? (
         <span className="text-sm text-da-text group-hover:underline">{saved}</span>
       ) : (
-        <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-yellow-300 group-hover:bg-yellow-500/15">
+        <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-yellow-300 group-hover:bg-yellow-500/25">
           Not set
         </span>
       )}

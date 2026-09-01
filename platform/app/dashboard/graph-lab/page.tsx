@@ -903,7 +903,7 @@ export default function GraphLabPage() {
             disabled={!specJson || !!parseError}
             className={`shrink-0 px-3 py-2 rounded text-xs font-bold transition-colors ${
               !specJson || !!parseError
-                ? "bg-gray-300 text-da-muted cursor-not-allowed"
+                ? "bg-da-hover text-da-muted cursor-not-allowed"
                 : "bg-green-600 text-white hover:bg-green-700"
             }`}
             suppressHydrationWarning
@@ -925,7 +925,7 @@ export default function GraphLabPage() {
                 ref={dropRef}
                 onDrop={onDrop}
                 onDragOver={(e) => e.preventDefault()}
-                className="border-2 border-dashed border-da-border rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-500/15 transition-colors"
+                className="border-2 border-dashed border-da-border rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-500/25 transition-colors"
                 onClick={() => document.getElementById("graph-lab-file-input")?.click()}
               >
                 <p className="text-sm text-da-muted">
@@ -1021,7 +1021,7 @@ export default function GraphLabPage() {
                 type="button"
                 onClick={() => void runExtract()}
                 disabled={extracting || images.length === 0}
-                className="shrink-0 rounded-lg border border-amber-400/40 bg-da-surface px-3 py-3 text-xs font-bold text-amber-300 hover:bg-amber-500/15"
+                className="shrink-0 rounded-lg border border-amber-400/40 bg-da-surface px-3 py-3 text-xs font-bold text-amber-300 hover:bg-amber-500/25"
                 suppressHydrationWarning
               >
                 {extracting ? "Extracting…" : "Claude LLM (Alt)"}
@@ -1030,7 +1030,7 @@ export default function GraphLabPage() {
                 <button
                   type="button"
                   onClick={copyDebugPacket}
-                  className="shrink-0 rounded-lg border border-indigo-400/40 bg-da-surface px-3 py-2.5 text-xs font-bold text-indigo-300 hover:bg-indigo-500/15"
+                  className="shrink-0 rounded-lg border border-indigo-400/40 bg-da-surface px-3 py-2.5 text-xs font-bold text-indigo-300 hover:bg-indigo-500/25"
                 >
                   {debugCopied ? "✓ Copied" : "Copy Graph Debug Packet"}
                 </button>
@@ -1054,7 +1054,7 @@ export default function GraphLabPage() {
                   type="button"
                   onClick={() => void findQuestionForLinking()}
                   disabled={findingQuestion}
-                  className="rounded border border-blue-400/40 bg-da-surface px-3 py-2 text-xs font-bold text-blue-300 hover:bg-blue-500/15 disabled:opacity-50"
+                  className="rounded border border-blue-400/40 bg-da-surface px-3 py-2 text-xs font-bold text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                 >
                   {findingQuestion ? "Finding…" : "Find Question"}
                 </button>

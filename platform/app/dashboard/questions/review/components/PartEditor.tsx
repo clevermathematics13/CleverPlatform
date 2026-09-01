@@ -140,7 +140,7 @@ export function PartEditor({
               </button>
               <button
                 onClick={() => setEditing(false)}
-                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
               >
                 Cancel
               </button>
@@ -148,7 +148,7 @@ export function PartEditor({
           ) : (
             <button
               onClick={() => setEditing(true)}
-              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
+              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
             >
               Edit LaTeX
             </button>

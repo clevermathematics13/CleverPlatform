@@ -292,7 +292,7 @@ export function SyncDriveDocsButton() {
   const busy = status === "dryrun" || status === "syncing";
 
   return (
-    <div className="border border-blue-400/40 rounded-lg bg-blue-500/15/40 p-3 space-y-2 text-sm">
+    <div className="border border-blue-400/40 rounded-lg bg-blue-500/40 p-3 space-y-2 text-sm">
       <div className="flex items-center gap-2">
         <span className="font-semibold text-blue-300 text-xs">Sync Google Doc IDs from Drive</span>
         <button
@@ -305,7 +305,7 @@ export function SyncDriveDocsButton() {
           <button
             onClick={() => run(true)}
             disabled={busy}
-            className="px-3 py-1 rounded bg-da-surface border border-blue-400/40 text-blue-300 text-xs font-medium hover:bg-blue-500/15 disabled:opacity-40"
+            className="px-3 py-1 rounded bg-da-surface border border-blue-400/40 text-blue-300 text-xs font-medium hover:bg-blue-500/25 disabled:opacity-40"
           >
             {status === "dryrun" ? "Scanning…" : "Dry run"}
           </button>
@@ -338,7 +338,7 @@ export function SyncDriveDocsButton() {
               <button
                 onClick={() => runFixConflictedLinks(true)}
                 disabled={busy || debugBusy || singleSyncBusy || !!fixBusy}
-                className="px-3 py-1 rounded bg-da-surface border border-amber-400/40 text-amber-300 text-xs font-medium hover:bg-amber-500/15 disabled:opacity-40"
+                className="px-3 py-1 rounded bg-da-surface border border-amber-400/40 text-amber-300 text-xs font-medium hover:bg-amber-500/25 disabled:opacity-40"
               >
                 {fixBusy === "dryrun" ? "Scanning…" : "Dry run fix"}
               </button>
@@ -426,7 +426,7 @@ export function SyncDriveDocsButton() {
               <button
                 onClick={runSingleCodeDebug}
                 disabled={debugBusy || singleSyncBusy || !debugCode.trim()}
-                className="px-3 py-1 rounded bg-da-surface border border-blue-400/40 text-blue-300 text-xs font-medium hover:bg-blue-500/15 disabled:opacity-40"
+                className="px-3 py-1 rounded bg-da-surface border border-blue-400/40 text-blue-300 text-xs font-medium hover:bg-blue-500/25 disabled:opacity-40"
               >
                 {debugBusy ? "Debugging…" : "Debug code"}
               </button>

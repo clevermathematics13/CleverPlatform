@@ -93,7 +93,7 @@ export default function ReviewClient({
           </p>
         </div>
         {/* Progress bar */}
-        <div className="flex-1 max-w-xs ml-8 bg-gray-200 rounded-full h-2">
+        <div className="flex-1 max-w-xs ml-8 bg-da-hover rounded-full h-2">
           <div
             className="bg-green-500 h-2 rounded-full transition-all"
             style={{

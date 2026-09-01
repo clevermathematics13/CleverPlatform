@@ -383,7 +383,7 @@ export function BatchGradeTab({
             type="button"
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
-            className="mt-4 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/15 disabled:opacity-50"
+            className="mt-4 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
           >
             {uploading ? uploadProgress ?? "Working…" : "Upload batch scan"}
           </button>
@@ -450,7 +450,7 @@ export function BatchGradeTab({
                     <button
                       type="button"
                       onClick={() => mergeDuplicates(studentId)}
-                      className="rounded border border-red-400/40 bg-da-surface px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-red-500/15"
+                      className="rounded border border-red-400/40 bg-da-surface px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-red-500/25"
                     >
                       Merge into one row
                     </button>
@@ -541,7 +541,7 @@ export function BatchGradeTab({
                             <button
                               type="button"
                               onClick={() => removeRow(r.key)}
-                              className="text-xs text-red-400 hover:text-red-300"
+                              className="text-xs text-red-400 hover:text-red-200"
                             >
                               Remove
                             </button>

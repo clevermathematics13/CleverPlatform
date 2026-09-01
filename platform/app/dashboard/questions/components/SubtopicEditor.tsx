@@ -84,7 +84,7 @@ export function SubtopicEditor({
               <button
                 type="button"
                 onClick={() => removeTopic(c)}
-                className="ml-0.5 text-blue-500 hover:text-red-300 font-bold leading-none"
+                className="ml-0.5 text-blue-500 hover:text-red-200 font-bold leading-none"
                 title="Remove"
               >
                 ×
@@ -95,7 +95,7 @@ export function SubtopicEditor({
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="inline-flex items-center rounded-full border border-dashed border-blue-400/40 px-2 py-0.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/15"
+          className="inline-flex items-center rounded-full border border-dashed border-blue-400/40 px-2 py-0.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/25"
         >
           + Add
         </button>
@@ -129,7 +129,7 @@ export function SubtopicEditor({
                       key={s.code}
                       type="button"
                       onClick={() => addTopic(s.code)}
-                      className="block w-full px-3 py-1 text-left text-xs hover:bg-blue-500/15 rounded"
+                      className="block w-full px-3 py-1 text-left text-xs hover:bg-blue-500/25 rounded"
                     >
                       <span className="font-bold text-blue-300">{s.code}</span>{" "}
                       <span className="text-da-muted">{s.descriptor}</span>

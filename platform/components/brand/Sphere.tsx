@@ -14,9 +14,12 @@
  * on the login page (the platform's only "front door"); it does not loop
  * inside the working dashboard, where motion competes with reading.
  *
- * - `prefers-reduced-motion`: the GIF is never mounted; the static orb is
- *   shown instead. GIFs cannot be paused, so not loading it is the only
- *   honest way to respect the preference.
+ * - `prefers-reduced-motion`: the GIF is never requested. The <picture>
+ *   element's media-queried <source> is the only place the GIF URL appears,
+ *   so a browser with the preference set skips the request entirely and
+ *   the <img> resolves to a transparent pixel over the static orb. This is
+ *   decided by the browser at first paint, not by JavaScript after
+ *   hydration, so server rendering never leaks the GIF to such users.
  * - Missing file (`/public/sphere.gif` not yet added): the same static orb
  *   renders, drawn in CSS to echo the artwork's palette and lattice, so the
  *   layout is never broken by an absent asset.
@@ -24,7 +27,11 @@
  * Drop the artwork at `platform/public/sphere.gif`.
  */
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+
+/** 1x1 transparent GIF: what the <img> shows when no <source> is chosen. */
+const TRANSPARENT_PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
 interface Props {
   size?: number;
@@ -34,18 +41,7 @@ interface Props {
 }
 
 export function Sphere({ size = 320, className, rim = "#c8103f" }: Props) {
-  const [reduced, setReduced] = useState(false);
   const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setReduced(e.matches);
-    mq.addEventListener("change", onChange);
-    return () => mq.removeEventListener("change", onChange);
-  }, []);
-
-  const showGif = !reduced && !failed;
 
   return (
     <div
@@ -90,21 +86,24 @@ export function Sphere({ size = 320, className, rim = "#c8103f" }: Props) {
         />
       </div>
 
-      {showGif && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src="/sphere.gif"
-          alt=""
-          onError={() => setFailed(true)}
-          style={{
-            position: "absolute",
-            inset: 0,
-            width: "100%",
-            height: "100%",
-            objectFit: "cover",
-            transform: "scale(1.06)",
-          }}
-        />
+      {!failed && (
+        <picture>
+          <source media="(prefers-reduced-motion: no-preference)" srcSet="/sphere.gif" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={TRANSPARENT_PIXEL}
+            alt=""
+            onError={() => setFailed(true)}
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              transform: "scale(1.06)",
+            }}
+          />
+        </picture>
       )}
     </div>
   );

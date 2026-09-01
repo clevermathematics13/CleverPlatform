@@ -120,7 +120,7 @@ export default async function ParentsPage() {
                           <input type="hidden" name="link_id" value={link.id} />
                           <button
                             type="submit"
-                            className="text-xs font-medium text-red-300 hover:text-red-300"
+                            className="text-xs font-medium text-red-300 hover:text-red-200"
                           >
                             Remove
                           </button>

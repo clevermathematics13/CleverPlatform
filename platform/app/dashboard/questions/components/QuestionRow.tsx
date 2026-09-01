@@ -319,7 +319,7 @@ export function QuestionRow({
   return (
     <>
       {!hideCollapsedRow && <tr
-        className={`cursor-pointer hover:bg-blue-500/15 transition-colors ${expanded ? "bg-blue-500/15" : ""}`}
+        className={`cursor-pointer hover:bg-blue-500/25 transition-colors ${expanded ? "bg-blue-500/15" : ""}`}
         onClick={() => { if (expanded) onClose(); else onOpen(); }}
       >
         <td className="px-4 py-2">
@@ -329,7 +329,7 @@ export function QuestionRow({
             )}
             {onOpenEditor ? (
               <button type="button" onClick={(e) => { e.stopPropagation(); onOpenEditor(); }} title="Open Question Studio"
-                className={`font-mono text-sm font-semibold hover:underline hover:text-indigo-300 transition-colors ${expanded ? "text-blue-300" : "text-blue-300"}`}>
+                className={`font-mono text-sm font-semibold hover:underline hover:text-indigo-200 transition-colors ${expanded ? "text-blue-300" : "text-blue-300"}`}>
                 {question.code}
               </button>
             ) : (
@@ -356,7 +356,7 @@ export function QuestionRow({
           ) : (
             <span onClick={(e) => { if (inQueue) { e.stopPropagation(); setQueueMarksDraft(String(totalMarks)); setEditingQueueMarks(true); } }}
               title={inQueue ? "Click to override marks for this exam" : undefined}
-              className={inQueue ? "cursor-pointer hover:text-blue-300 underline decoration-dotted" : ""}>
+              className={inQueue ? "cursor-pointer hover:text-blue-200 underline decoration-dotted" : ""}>
               {totalMarks}
             </span>
           )}
@@ -387,9 +387,9 @@ export function QuestionRow({
           {showSection ? (
             <div className="flex items-center justify-center gap-1">
               <button type="button" onClick={() => { onUpdateSection("A"); setShowSectionPrompt(false); }} disabled={savingSection}
-                className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${question.section === "A" ? "bg-blue-600 text-white" : "bg-da-hover text-da-muted hover:bg-blue-500/15"}`}>A</button>
+                className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${question.section === "A" ? "bg-blue-600 text-white" : "bg-da-hover text-da-muted hover:bg-blue-500/25"}`}>A</button>
               <button type="button" onClick={() => { onUpdateSection("B"); setShowSectionPrompt(false); }} disabled={savingSection}
-                className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${question.section === "B" ? "bg-indigo-600 text-white" : "bg-da-hover text-da-muted hover:bg-indigo-500/15"}`}>B</button>
+                className={`rounded px-2 py-0.5 text-xs font-bold transition-colors ${question.section === "B" ? "bg-indigo-600 text-white" : "bg-da-hover text-da-muted hover:bg-indigo-500/25"}`}>B</button>
             </div>
           ) : (<span className="text-xs text-da-muted">—</span>)}
         </td>
@@ -411,7 +411,7 @@ export function QuestionRow({
           <div className="relative inline-block">
             <button type="button" title={question.note ? `Note: ${question.note}` : "Add note"}
               onClick={() => { setNoteDraft(question.note ?? ""); setShowNotePanel((v) => !v); }}
-              className={`rounded-full w-6 h-6 text-xs transition-colors ${question.note ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25" : "bg-da-hover text-da-muted hover:bg-gray-200"}`}>
+              className={`rounded-full w-6 h-6 text-xs transition-colors ${question.note ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25" : "bg-da-hover text-da-muted hover:bg-da-border/50"}`}>
               {question.note ? "💬" : "○"}
             </button>
             {showNotePanel && createPortal(
@@ -440,40 +440,40 @@ export function QuestionRow({
               <div className="flex items-center gap-2 flex-wrap">
                 {!hideCollapsedRow && (
                   <button type="button" onClick={() => setInternalMinimized((v) => !v)}
-                    className="rounded border border-blue-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/15">
+                    className="rounded border border-blue-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/25">
                     {internalMinimized ? "▼ Expand" : "▲ Minimise"}
                   </button>
                 )}
                 {!hideCollapsedRow && (
-                  <button type="button" onClick={onClose} className="rounded border border-blue-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/15">✕ Close</button>
+                  <button type="button" onClick={onClose} className="rounded border border-blue-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/25">✕ Close</button>
                 )}
                 {!editingLinks && (
                   <button type="button" onClick={() => { setLinkDraftQ(question.google_doc_id ?? ""); setLinkDraftMS(question.google_ms_id ?? ""); setEditingLinks(true); }}
-                    className={`rounded border px-2.5 py-1 text-xs font-semibold ${hasDocLinkConflict ? "border-red-400 bg-red-500/15 text-red-300 hover:bg-red-500/15" : "border-blue-400/40 bg-da-surface text-blue-300 hover:bg-blue-500/15"}`}>
+                    className={`rounded border px-2.5 py-1 text-xs font-semibold ${hasDocLinkConflict ? "border-red-400 bg-red-500/15 text-red-300 hover:bg-red-500/25" : "border-blue-400/40 bg-da-surface text-blue-300 hover:bg-blue-500/25"}`}>
                     {hasDocLinkConflict ? "⚠ Fix Links" : "🔗 Edit Doc Links"}
                   </button>
                 )}
                 {question.google_doc_id && (
                   <a href={`https://docs.google.com/document/d/${question.google_doc_id}`} target="_blank" rel="noopener noreferrer"
-                    className="rounded border border-blue-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/15 hover:underline">
+                    className="rounded border border-blue-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/25 hover:underline">
                     📄 Open Q Doc
                   </a>
                 )}
                 {question.google_ms_id && (
                   <a href={`https://docs.google.com/document/d/${question.google_ms_id}`} target="_blank" rel="noopener noreferrer"
-                    className="rounded border border-green-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-green-300 hover:bg-green-500/15 hover:underline">
+                    className="rounded border border-green-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-green-300 hover:bg-green-500/25 hover:underline">
                     📝 Open MS Doc
                   </a>
                 )}
                 <button type="button" onClick={() => classifyQuestion()} disabled={classifying}
-                  className="rounded border border-teal-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-teal-300 hover:bg-teal-500/15 disabled:opacity-50">
+                  className="rounded border border-teal-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-teal-300 hover:bg-teal-500/25 disabled:opacity-50">
                   {classifying ? "Classifying…" : "✦ Auto-classify"}
                 </button>
                 {classifyResult && (
                   <span className={`text-xs font-semibold ${classifyResult.startsWith("Error") ? "text-red-300" : "text-teal-300"}`}>{classifyResult}</span>
                 )}
                 <button type="button" onClick={deleteQuestion} disabled={deletingQuestion}
-                  className="rounded border border-red-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-red-300 hover:bg-red-500/15 disabled:opacity-50">
+                  className="rounded border border-red-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-red-300 hover:bg-red-500/25 disabled:opacity-50">
                   {deletingQuestion ? "Deleting…" : "🗑 Delete"}
                 </button>
               </div>
@@ -562,7 +562,7 @@ export function QuestionRow({
                     </div>
                   ) : (
                     <button type="button" onClick={() => setAddingPart(true)}
-                      className="rounded-lg border-2 border-dashed border-emerald-400/40 bg-da-surface px-4 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/15 w-full">
+                      className="rounded-lg border-2 border-dashed border-emerald-400/40 bg-da-surface px-4 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/25 w-full">
                       + Add Part
                     </button>
                   )}
@@ -679,7 +679,7 @@ function QuestionPartRow({
           </div>
         ) : (
           <button type="button" onClick={() => { setEditingPartId(part.id); setEditingField("label"); setEditDraft(part.part_label ?? ""); }} title="Click to edit part label"
-            className="rounded bg-da-hover px-2 py-0.5 text-xs font-mono font-bold text-da-text hover:bg-blue-500/15 hover:text-blue-300">
+            className="rounded bg-da-hover px-2 py-0.5 text-xs font-mono font-bold text-da-text hover:bg-blue-500/25 hover:text-blue-200">
             {part.part_label ? `(${part.part_label})` : `Part ${partIdx + 1}`}
           </button>
         )}
@@ -693,7 +693,7 @@ function QuestionPartRow({
           </div>
         ) : (
           <button type="button" onClick={() => { setEditingPartId(part.id); setEditingField("marks"); setEditDraft(String(part.marks)); }} title="Click to edit marks"
-            className="rounded bg-blue-500/15 px-2 py-0.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/15">
+            className="rounded bg-blue-500/15 px-2 py-0.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/25">
             {part.marks} {part.marks === 1 ? "mark" : "marks"}
           </button>
         )}
@@ -704,7 +704,7 @@ function QuestionPartRow({
         </div>
         <div className="relative" ref={dropdownRef}>
           <button type="button" onClick={() => setShowTermDropdown((v) => !v)}
-            className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors ${part.command_term ? "bg-teal-500/15 text-teal-300 hover:bg-teal-500/25" : "bg-da-hover text-da-muted hover:bg-gray-200"}`}>
+            className={`rounded px-2 py-0.5 text-xs font-semibold transition-colors ${part.command_term ? "bg-teal-500/15 text-teal-300 hover:bg-teal-500/25" : "bg-da-hover text-da-muted hover:bg-da-border/50"}`}>
             {part.command_term ?? "No term"}
           </button>
           {showTermDropdown && (
@@ -714,7 +714,7 @@ function QuestionPartRow({
               </div>
               {commandTerms.map((term) => (
                 <button key={term} type="button" onClick={() => { onUpdateCommandTerm(part.id, term); setShowTermDropdown(false); }}
-                  className={`w-full text-left px-2 py-1 text-xs hover:bg-blue-500/15 rounded ${part.command_term === term ? "font-bold text-blue-300 bg-blue-500/15" : "text-da-text"}`}>{term}</button>
+                  className={`w-full text-left px-2 py-1 text-xs hover:bg-blue-500/25 rounded ${part.command_term === term ? "font-bold text-blue-300 bg-blue-500/15" : "text-da-text"}`}>{term}</button>
               ))}
               <div className="p-1.5 border-t border-da-border flex gap-1">
                 <input type="text" value={newTerm} onChange={(e) => setNewTerm(e.target.value)} placeholder="Custom term…"
@@ -735,7 +735,7 @@ function QuestionPartRow({
             <button type="button" onClick={() => setConfirmDeletePartId(null)} className="rounded border border-da-border px-2 py-0.5 text-xs text-da-muted hover:bg-da-hover">No</button>
           </div>
         ) : (
-          <button type="button" onClick={() => setConfirmDeletePartId(part.id)} className="ml-auto rounded border border-red-400/40 bg-da-surface px-2 py-0.5 text-xs text-red-500 hover:bg-red-500/15">🗑</button>
+          <button type="button" onClick={() => setConfirmDeletePartId(part.id)} className="ml-auto rounded border border-red-400/40 bg-da-surface px-2 py-0.5 text-xs text-red-500 hover:bg-red-500/25">🗑</button>
         )}
       </div>
 
@@ -758,15 +758,15 @@ function QuestionPartRow({
               }}
               className={`flex items-center gap-0.5 rounded-full border text-[11px] font-semibold px-2 py-0.5 cursor-grab active:cursor-grabbing transition-colors ${dragOverCode === code ? "border-blue-500 bg-blue-500/15" : isPrimary ? "border-emerald-400 bg-emerald-500/15 text-emerald-300" : "border-blue-400/40 bg-blue-500/15 text-blue-300"}`}>
               {isPrimary && <span className="text-emerald-300 text-[9px] mr-0.5">★</span>}
-              <button type="button" title={`Set "${code}" as primary subtopic`} onClick={() => onUpdateSubtopics(part.id, currentCodes, code)} className="hover:text-emerald-300">{code}</button>
+              <button type="button" title={`Set "${code}" as primary subtopic`} onClick={() => onUpdateSubtopics(part.id, currentCodes, code)} className="hover:text-emerald-200">{code}</button>
               {sub && <span className="text-da-muted hidden sm:inline ml-0.5">— {sub.descriptor.slice(0, 25)}{sub.descriptor.length > 25 ? "…" : ""}</span>}
-              <button type="button" onClick={() => handleRemoveSubtopic(code)} className="ml-1 rounded-full hover:bg-red-500/15 hover:text-red-300 text-da-muted w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold">×</button>
+              <button type="button" onClick={() => handleRemoveSubtopic(code)} className="ml-1 rounded-full hover:bg-red-500/25 hover:text-red-200 text-da-muted w-3.5 h-3.5 flex items-center justify-center text-[10px] font-bold">×</button>
             </div>
           );
         })}
         <div className="relative" ref={subtopicDropdownRef}>
           <button type="button" onClick={() => { setShowSubtopicDropdown((v) => !v); setSubtopicSearch(""); }}
-            className="rounded-full border border-dashed border-da-border px-2 py-0.5 text-[11px] text-da-muted hover:border-blue-400 hover:text-blue-300">
+            className="rounded-full border border-dashed border-da-border px-2 py-0.5 text-[11px] text-da-muted hover:border-blue-400 hover:text-blue-200">
             + subtopic
           </button>
           {showSubtopicDropdown && (
@@ -781,7 +781,7 @@ function QuestionPartRow({
                   {subs.map((sub) => (
                     <button key={sub.code} type="button"
                       onClick={() => { const newCodes = [...currentCodes, sub.code]; onUpdateSubtopics(part.id, newCodes); setShowSubtopicDropdown(false); setSubtopicSearch(""); }}
-                      className="w-full text-left px-3 py-1 text-xs hover:bg-blue-500/15 text-da-text">
+                      className="w-full text-left px-3 py-1 text-xs hover:bg-blue-500/25 text-da-text">
                       <span className="font-mono font-semibold text-blue-300">{sub.code}</span>
                       <span className="text-da-muted ml-1">— {sub.descriptor}</span>
                     </button>

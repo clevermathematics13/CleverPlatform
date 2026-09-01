@@ -204,7 +204,7 @@ export function useMarkAttribution(
               <button
                 type="button"
                 onClick={() => setActivePopover(null)}
-                className="text-da-muted hover:text-da-muted text-sm leading-none ml-2 shrink-0"
+                className="text-da-muted hover:text-da-text text-sm leading-none ml-2 shrink-0"
               >
                 ×
               </button>
@@ -218,7 +218,7 @@ export function useMarkAttribution(
                   className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
                     displayCode === code
                       ? "bg-indigo-500/15 border-indigo-400 text-indigo-300"
-                      : "border-da-border text-da-muted hover:border-indigo-400/40 hover:text-indigo-300"
+                      : "border-da-border text-da-muted hover:border-indigo-400/40 hover:text-indigo-200"
                   }`}
                 >
                   {code}
@@ -256,7 +256,7 @@ export function useMarkAttribution(
                 e.stopPropagation();
                 void generateMarkRationale(part, token.id);
               }}
-              className="mt-2 text-[10px] text-indigo-500 hover:text-indigo-300 disabled:opacity-40 flex items-center gap-1"
+              className="mt-2 text-[10px] text-indigo-500 hover:text-indigo-200 disabled:opacity-40 flex items-center gap-1"
             >
               {isLoading
                 ? "Generating…"
@@ -286,8 +286,8 @@ export function useMarkAttribution(
                   : isLoading
                     ? "bg-da-hover text-da-muted animate-pulse"
                     : displayCode
-                      ? "bg-da-hover hover:bg-indigo-500/15 text-da-muted hover:text-indigo-300"
-                      : "bg-da-hover text-da-muted hover:bg-indigo-500/15 hover:text-indigo-500 border border-dashed border-da-border"
+                      ? "bg-da-hover hover:bg-indigo-500/25 text-da-muted hover:text-indigo-200"
+                      : "bg-da-hover text-da-muted hover:bg-indigo-500/25 hover:text-indigo-500 border border-dashed border-da-border"
               }`}
             >
               {isLoading ? "…" : isError ? "err" : (displayCode ?? "?")}

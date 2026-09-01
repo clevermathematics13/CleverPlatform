@@ -119,8 +119,8 @@ export function CourseFilterBar({ courses, activeCourseId, activeCourseName, cla
               onClick={() => setConfirming(true)}
               className={
                 classIsFullyArchived
-                  ? "rounded-lg border border-green-400/40 px-3 py-1.5 text-xs font-semibold text-green-300 hover:bg-green-500/15 transition-colors"
-                  : "rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/15 transition-colors"
+                  ? "rounded-lg border border-green-400/40 px-3 py-1.5 text-xs font-semibold text-green-300 hover:bg-green-500/25 transition-colors"
+                  : "rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/25 transition-colors"
               }
             >
               {classIsFullyArchived ? "Unarchive class" : "Archive class"}

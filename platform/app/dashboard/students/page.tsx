@@ -231,7 +231,7 @@ export default async function StudentsPage({
           {activeCourse && (
             <Link
               href="/dashboard/courses"
-              className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-blue-300 hover:text-blue-300"
+              className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-blue-300 hover:text-blue-200"
             >
               ← Back to Courses
             </Link>

@@ -249,7 +249,7 @@ export function GoogleClassroomImport({
                     <button
                       type="button"
                       onClick={toggleAll}
-                      className="text-xs text-blue-300 hover:text-blue-300"
+                      className="text-xs text-blue-300 hover:text-blue-200"
                     >
                       {selectedEmails.size === gcStudents.length
                         ? "Deselect all"

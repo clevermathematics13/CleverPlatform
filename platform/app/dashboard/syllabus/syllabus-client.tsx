@@ -240,7 +240,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                 className={`rounded-full px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
                   selectedCourseId === c.id
                     ? "bg-indigo-600 border-indigo-600 text-white"
-                    : "border-indigo-400/40 text-indigo-300 bg-da-surface hover:bg-indigo-500/15"
+                    : "border-indigo-400/40 text-indigo-300 bg-da-surface hover:bg-indigo-500/25"
                 }`}
               >
                 {c.name}

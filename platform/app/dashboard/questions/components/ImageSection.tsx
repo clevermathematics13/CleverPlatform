@@ -260,19 +260,19 @@ export function ImageSection({
       label: "Question", type: "question" as const, imgs: questionImages, latex: questionLatex, fileRef: qFileRef,
       accentBorder: "border-indigo-400/40", accentHeader: "bg-indigo-500/15 border-b border-indigo-400/40",
       accentText: "text-indigo-300", convertLabel: "Extract LaTeX from images",
-      tabActive: "bg-indigo-600 text-white", tabInactive: "text-indigo-300 hover:bg-indigo-500/15",
-      emptyBorder: "border-indigo-400/40", emptyBg: "bg-indigo-500/15/60",
+      tabActive: "bg-indigo-600 text-white", tabInactive: "text-indigo-300 hover:bg-indigo-500/25",
+      emptyBorder: "border-indigo-400/40", emptyBg: "bg-indigo-500/60",
       pasteClass: "border-indigo-400 bg-indigo-600 text-white hover:bg-indigo-700",
-      fileClass: "border-indigo-400/40 bg-da-surface text-indigo-300 hover:bg-indigo-500/15",
+      fileClass: "border-indigo-400/40 bg-da-surface text-indigo-300 hover:bg-indigo-500/25",
     },
     {
       label: "Markscheme", type: "markscheme" as const, imgs: msImages, latex: msLatex, fileRef: msFileRef,
       accentBorder: "border-emerald-400/40", accentHeader: "bg-emerald-500/15 border-b border-emerald-400/40",
       accentText: "text-emerald-300", convertLabel: "Extract LaTeX from images",
-      tabActive: "bg-emerald-600 text-white", tabInactive: "text-emerald-300 hover:bg-emerald-500/15",
-      emptyBorder: "border-emerald-400/40", emptyBg: "bg-emerald-500/15/60",
+      tabActive: "bg-emerald-600 text-white", tabInactive: "text-emerald-300 hover:bg-emerald-500/25",
+      emptyBorder: "border-emerald-400/40", emptyBg: "bg-emerald-500/60",
       pasteClass: "border-emerald-400 bg-emerald-600 text-white hover:bg-emerald-700",
-      fileClass: "border-emerald-400/40 bg-da-surface text-emerald-300 hover:bg-emerald-500/15",
+      fileClass: "border-emerald-400/40 bg-da-surface text-emerald-300 hover:bg-emerald-500/25",
     },
   ];
 
@@ -293,7 +293,7 @@ export function ImageSection({
           {driveConnected && (
             <button type="button" onClick={onExtractImages} disabled={extracting}
               title="Pull images from both the Question and Markscheme Google Docs"
-              className="rounded border border-blue-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/15 disabled:opacity-50">
+              className="rounded border border-blue-400/40 bg-da-surface px-2.5 py-1 text-xs font-semibold text-blue-300 hover:bg-blue-500/25 disabled:opacity-50">
               {extracting ? "Extracting from Q + MS docs..." : "↻ Extract images from Q + MS docs"}
             </button>
           )}
@@ -305,7 +305,7 @@ export function ImageSection({
           )}
           {(questionImages.length > 0 || msImages.length > 0) && (
             <button type="button" onClick={onDeleteAllImages}
-              className="rounded border border-red-400/40 bg-da-surface px-2 py-1 text-xs font-semibold text-red-300 hover:bg-red-500/15">
+              className="rounded border border-red-400/40 bg-da-surface px-2 py-1 text-xs font-semibold text-red-300 hover:bg-red-500/25">
               ✕ Delete All
             </button>
           )}
@@ -346,7 +346,7 @@ export function ImageSection({
         <div className="flex items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-semibold text-amber-300">
           <span>⚠</span>
           <span>{clipboardError}</span>
-          <button type="button" onClick={() => setClipboardError(null)} className="ml-auto text-amber-300 hover:text-amber-300 font-bold">✕</button>
+          <button type="button" onClick={() => setClipboardError(null)} className="ml-auto text-amber-300 hover:text-amber-200 font-bold">✕</button>
         </div>
       )}
 
@@ -427,7 +427,7 @@ export function ImageSection({
                 {driveConnected && (
                   <button type="button" disabled={extracting} onClick={onExtractImages}
                     title="Pull images from both the Question and Markscheme Google Docs"
-                    className="w-full rounded-lg border-2 border-blue-400/40 bg-da-surface px-4 py-2.5 text-sm font-semibold text-blue-300 hover:bg-blue-500/15 disabled:opacity-50 transition-colors">
+                    className="w-full rounded-lg border-2 border-blue-400/40 bg-da-surface px-4 py-2.5 text-sm font-semibold text-blue-300 hover:bg-blue-500/25 disabled:opacity-50 transition-colors">
                     {extracting ? "Extracting from Q + MS docs..." : "↻ Extract images from Q + MS docs"}
                   </button>
                 )}
@@ -466,8 +466,8 @@ export function ImageSection({
                 title={latex.length > 0 ? "Re-extract LaTeX from images (erases current)" : "Extract LaTeX from images"}
                 className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-bold border transition-colors disabled:opacity-40 ${
                   type === "question"
-                    ? "border-indigo-400/40 bg-da-surface text-indigo-300 hover:bg-indigo-500/15"
-                    : "border-emerald-400/40 bg-da-surface text-emerald-300 hover:bg-emerald-500/15"
+                    ? "border-indigo-400/40 bg-da-surface text-indigo-300 hover:bg-indigo-500/25"
+                    : "border-emerald-400/40 bg-da-surface text-emerald-300 hover:bg-emerald-500/25"
                 }`}>
                 {convertingLatex === type ? "Running..." : latex.length > 0 ? "Re-extract" : "Extract"}
               </button>
@@ -481,7 +481,7 @@ export function ImageSection({
                   disabled={savingLatex}
                   onClick={() => { setEditingKey(null); setSaveLatexError(null); }}
                   title="Cancel editing"
-                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-da-border bg-da-surface text-da-muted hover:bg-da-hover hover:text-red-300 hover:border-red-400/40 transition-colors disabled:opacity-40"
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-da-border bg-da-surface text-da-muted hover:bg-da-hover hover:text-red-200 hover:border-red-400/40 transition-colors disabled:opacity-40"
                 >
                   ✕ Cancel edit
                 </button>
@@ -506,14 +506,14 @@ export function ImageSection({
                 disabled={checking}
                 onClick={() => runVisualCheck(latex[0].partId, type === "markscheme", latex[0].latex)}
                 title="Render this LaTeX, screenshot it, and compare it against the source images"
-                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-violet-400/40 bg-da-surface text-violet-300 hover:bg-violet-500/15 disabled:opacity-40 transition-colors"
+                className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold border border-violet-400/40 bg-da-surface text-violet-300 hover:bg-violet-500/25 disabled:opacity-40 transition-colors"
               >
                 {checking ? "Checking…" : "◉ Visual check"}
               </button>
             )}
           </div>
           {(checking || checkError || checkResult) && (
-            <div className="border-b border-da-border bg-violet-500/15/40 px-3 py-2.5 space-y-2">
+            <div className="border-b border-da-border bg-violet-500/40 px-3 py-2.5 space-y-2">
               {checking && (
                 <p className="text-[11px] font-semibold text-violet-300">
                   Rendering the LaTeX, screenshotting it, and comparing against the source scans… this takes up to a minute.
@@ -522,7 +522,7 @@ export function ImageSection({
               {checkError && (
                 <div className="flex items-start gap-2">
                   <p className="flex-1 text-[11px] font-semibold text-red-300">{checkError}</p>
-                  <button type="button" onClick={() => setCheckError(null)} className="text-[11px] font-bold text-da-muted hover:text-da-muted">✕</button>
+                  <button type="button" onClick={() => setCheckError(null)} className="text-[11px] font-bold text-da-muted hover:text-da-text">✕</button>
                 </div>
               )}
               {checkResult && (
@@ -533,7 +533,7 @@ export function ImageSection({
                         ? `✓ Matches the source (${checkResult.passes.length} pass${checkResult.passes.length === 1 ? "" : "es"}, ${checkResult.sourceImageCount} image${checkResult.sourceImageCount === 1 ? "" : "s"})`
                         : `${checkResult.remainingDiscrepancies.length} difference${checkResult.remainingDiscrepancies.length === 1 ? "" : "s"} from the source after ${checkResult.passes.length} pass${checkResult.passes.length === 1 ? "" : "es"}`}
                     </p>
-                    <button type="button" onClick={() => setCheckResult(null)} className="text-[11px] font-bold text-da-muted hover:text-da-muted">✕</button>
+                    <button type="button" onClick={() => setCheckResult(null)} className="text-[11px] font-bold text-da-muted hover:text-da-text">✕</button>
                   </div>
 
                   {checkResult.remainingDiscrepancies.length > 0 && (

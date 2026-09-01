@@ -190,7 +190,7 @@ const btnPrimary =
 const btnSecondary =
   "rounded border border-da-border bg-da-surface px-3 py-1.5 text-xs font-semibold text-da-text hover:bg-da-hover transition-colors";
 const btnDanger =
-  "rounded bg-red-500/15 px-2 py-1 text-xs text-red-300 hover:bg-red-500/15 transition-colors";
+  "rounded bg-red-500/15 px-2 py-1 text-xs text-red-300 hover:bg-red-500/25 transition-colors";
 
 // -- Component -----------------------------------------------------------------
 
@@ -470,7 +470,7 @@ export function DPQuestionDesigner() {
           <p className="text-sm text-red-300 font-medium">{error}</p>
           <button
             onClick={() => setError(null)}
-            className="text-red-400 hover:text-red-300 ml-2 flex-shrink-0 font-bold"
+            className="text-red-400 hover:text-red-200 ml-2 flex-shrink-0 font-bold"
           >
             ✕
           </button>
@@ -484,7 +484,7 @@ export function DPQuestionDesigner() {
             <h3 className="text-sm font-bold text-indigo-300">Saved Templates</h3>
             <button
               onClick={() => setShowTemplates(false)}
-              className="text-indigo-400 hover:text-indigo-300 text-xs font-bold"
+              className="text-indigo-400 hover:text-indigo-200 text-xs font-bold"
             >
               ✕
             </button>
@@ -589,7 +589,7 @@ export function DPQuestionDesigner() {
                 key={key}
                 type="button"
                 onClick={() => applyPreset(key)}
-                className="rounded border border-da-border bg-da-surface px-2 py-1 text-xs font-semibold text-da-muted hover:bg-indigo-500/15 hover:border-indigo-400/40"
+                className="rounded border border-da-border bg-da-surface px-2 py-1 text-xs font-semibold text-da-muted hover:bg-indigo-500/25 hover:border-indigo-400/40"
               >
                 {key.replace("_", " ")}
               </button>
@@ -719,7 +719,7 @@ export function DPQuestionDesigner() {
                       stageCount: next.length,
                     });
                   }}
-                  className="text-da-muted hover:text-red-300 font-bold"
+                  className="text-da-muted hover:text-red-200 font-bold"
                 >
                   ✕
                 </button>
@@ -736,7 +736,7 @@ export function DPQuestionDesigner() {
                   stageCount: input.functionFamilies.length + 1,
                 })
               }
-              className="rounded border border-dashed border-da-border px-2 py-1 text-xs text-da-muted hover:text-indigo-300 hover:border-indigo-400"
+              className="rounded border border-dashed border-da-border px-2 py-1 text-xs text-da-muted hover:text-indigo-200 hover:border-indigo-400"
             >
               + Add
             </button>
@@ -902,7 +902,7 @@ function StageCard({
             e.stopPropagation();
             onToggle();
           }}
-          className="flex-shrink-0 text-da-muted hover:text-indigo-300 font-bold text-lg leading-none px-1"
+          className="flex-shrink-0 text-da-muted hover:text-indigo-200 font-bold text-lg leading-none px-1"
         >
           {expanded ? "−" : "+"}
         </button>

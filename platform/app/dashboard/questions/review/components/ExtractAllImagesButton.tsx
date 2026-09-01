@@ -95,7 +95,7 @@ export function ExtractAllImagesButton() {
   const pct = progress && progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
 
   return (
-    <div className="border border-green-400/40 rounded-lg bg-green-500/15/40 p-3 space-y-2 text-sm">
+    <div className="border border-green-400/40 rounded-lg bg-green-500/40 p-3 space-y-2 text-sm">
       <div className="flex items-center gap-2">
         <span className="font-semibold text-green-300 text-xs">Extract images from Google Docs</span>
         <span className="text-xs text-da-muted">(skips questions that already have images)</span>
@@ -120,7 +120,7 @@ export function ExtractAllImagesButton() {
               <button
                 type="button"
                 onClick={() => setShowErrorDetails((v) => !v)}
-                className="text-[11px] text-red-300 underline underline-offset-2 hover:text-red-300"
+                className="text-[11px] text-red-300 underline underline-offset-2 hover:text-red-200"
               >
                 {showErrorDetails ? "Hide details" : `Show details (${errorDetails.length})`}
               </button>

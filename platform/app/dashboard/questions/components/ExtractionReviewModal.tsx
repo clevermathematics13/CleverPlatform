@@ -401,7 +401,7 @@ export function ExtractionReviewModal({
       <button
         type="button"
         onClick={onCancel}
-        className="rounded-lg px-4 py-2 text-sm font-medium text-da-muted hover:text-red-300 hover:bg-red-500/15 transition-colors border border-da-border"
+        className="rounded-lg px-4 py-2 text-sm font-medium text-da-muted hover:text-red-200 hover:bg-red-500/25 transition-colors border border-da-border"
       >
         Cancel extraction
       </button>
@@ -419,7 +419,7 @@ export function ExtractionReviewModal({
           <button
             type="button"
             onClick={handleConfirmAll}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-green-300 hover:bg-green-500/15 transition-colors border border-green-400/40"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-green-300 hover:bg-green-500/25 transition-colors border border-green-400/40"
             title="Accept all remaining steps as-is and save directly"
           >
             Save all →
@@ -443,12 +443,12 @@ export function ExtractionReviewModal({
       <span className="text-xs text-da-muted truncate">{stepTitle}</span>
       <div className="flex gap-1.5 mx-2 shrink-0">
         {steps.map((_, i) => (
-          <span key={i} className={`rounded-full w-2 h-2 transition-colors ${i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-500" : "bg-gray-300"}`} />
+          <span key={i} className={`rounded-full w-2 h-2 transition-colors ${i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-500" : "bg-da-hover"}`} />
         ))}
       </div>
       <div className="ml-auto flex items-center gap-2">
         <button type="button" onClick={() => setMinimized(false)} className="rounded px-3 py-1.5 text-xs font-bold bg-blue-500/15 text-blue-300 hover:bg-blue-500/25 transition-colors">▲ Restore</button>
-        <button type="button" onClick={onCancel} className="rounded w-7 h-7 flex items-center justify-center text-sm font-bold bg-da-hover text-da-text hover:bg-red-500/15 hover:text-red-300 transition-colors">✕</button>
+        <button type="button" onClick={onCancel} className="rounded w-7 h-7 flex items-center justify-center text-sm font-bold bg-da-hover text-da-text hover:bg-red-500/25 hover:text-red-200 transition-colors">✕</button>
       </div>
     </div>
   ) : (
@@ -480,15 +480,15 @@ export function ExtractionReviewModal({
             <button
               type="button"
               onClick={() => setZoom((z) => Math.max(25, z - 25))}
-              className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 text-da-text font-bold text-sm flex items-center justify-center transition-colors"
+              className="w-6 h-6 rounded bg-da-hover hover:bg-da-border/50 text-da-text font-bold text-sm flex items-center justify-center transition-colors"
             >−</button>
             <span className="text-xs font-mono w-12 text-center text-da-text">{zoom}%</span>
             <button
               type="button"
               onClick={() => setZoom((z) => Math.min(400, z + 25))}
-              className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 text-da-text font-bold text-sm flex items-center justify-center transition-colors"
+              className="w-6 h-6 rounded bg-da-hover hover:bg-da-border/50 text-da-text font-bold text-sm flex items-center justify-center transition-colors"
             >+</button>
-            <button type="button" onClick={() => setZoom(100)} className="text-xs text-da-muted hover:text-da-muted ml-2 underline">Reset</button>
+            <button type="button" onClick={() => setZoom(100)} className="text-xs text-da-muted hover:text-da-text ml-2 underline">Reset</button>
             <span className="ml-auto text-xs text-da-muted">{qImages.length}Q · {msImages.length}MS</span>
           </div>
           {/* Scrollable images */}
@@ -526,7 +526,7 @@ export function ExtractionReviewModal({
         <div className="w-1/2 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto px-6 py-4">{stepContent}</div>
           <div className="px-6 pb-3 shrink-0">
-            <button type="button" onClick={() => setShowDebug((v) => !v)} className="text-xs text-da-muted hover:text-da-muted underline">
+            <button type="button" onClick={() => setShowDebug((v) => !v)} className="text-xs text-da-muted hover:text-da-text underline">
               {showDebug ? "Hide" : "Show"} troubleshooting info
             </button>
             {showDebug && (

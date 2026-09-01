@@ -21,7 +21,7 @@ export default async function ClassroomPage() {
           No Classroom courses are visible.{" "}
           <Link
             href="/dashboard/students"
-            className="font-medium underline hover:text-amber-300"
+            className="font-medium underline hover:text-amber-200"
           >
             Connect Google Classroom
           </Link>{" "}

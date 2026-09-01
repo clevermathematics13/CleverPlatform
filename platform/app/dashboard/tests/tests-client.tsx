@@ -164,7 +164,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
           <button
             type="button"
             onClick={() => setShowImport(true)}
-            className="rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/15"
+            className="rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25"
           >
             Import from PPQ Bank
           </button>
@@ -321,7 +321,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                       <button
                         type="button"
                         onClick={() => removeItem(i)}
-                        className="text-red-400 hover:text-red-300 text-lg leading-none"
+                        className="text-red-400 hover:text-red-200 text-lg leading-none"
                         title="Remove row"
                       >
                         ×
@@ -404,13 +404,13 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                 <div className="flex items-center gap-2">
                   <a
                     href={`/dashboard/reflection?testId=${test.id}`}
-                    className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs text-blue-300 hover:bg-blue-500/15"
+                    className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs text-blue-300 hover:bg-blue-500/25"
                   >
                     Enter Marks →
                   </a>
                   <a
                     href={`/dashboard/tests/${test.id}/ai-grade`}
-                    className="rounded border border-purple-400/40 bg-purple-500/15 px-3 py-1 text-xs text-purple-300 hover:bg-purple-500/15"
+                    className="rounded border border-purple-400/40 bg-purple-500/15 px-3 py-1 text-xs text-purple-300 hover:bg-purple-500/25"
                   >
                     Mark Scans →
                   </a>
@@ -427,7 +427,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                     type="button"
                     onClick={() => handleDelete(test.id)}
                     disabled={isDeleting}
-                    className="rounded border border-red-400/40 px-3 py-1 text-xs text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+                    className="rounded border border-red-400/40 px-3 py-1 text-xs text-red-300 hover:bg-red-500/25 disabled:opacity-50"
                   >
                     {isDeleting ? "…" : "Archive"}
                   </button>

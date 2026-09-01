@@ -192,7 +192,7 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                         <button
                           type="button"
                           onClick={() => { setArchivingId(course.id); setEditingId(null); setDeletingId(null); setShowCreate(false); }}
-                          className="rounded p-1 text-da-muted hover:bg-amber-900/25 hover:text-amber-300 transition-colors"
+                          className="rounded p-1 text-da-muted hover:bg-amber-900/25 hover:text-amber-200 transition-colors"
                           title="Archive course"
                         >
                           🗄️
@@ -200,7 +200,7 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                         <button
                           type="button"
                           onClick={() => { setDeletingId(course.id); setEditingId(null); setArchivingId(null); setShowCreate(false); }}
-                          className="rounded p-1 text-da-muted hover:bg-red-900/25 hover:text-red-300 transition-colors"
+                          className="rounded p-1 text-da-muted hover:bg-red-900/25 hover:text-red-200 transition-colors"
                           title="Delete"
                         >
                           🗑️

@@ -96,8 +96,8 @@ export function ImageGroup({
         tabIndex={0}
         className={`rounded-lg border-2 border-dashed p-2 min-h-[60px] transition-colors outline-none focus:ring-2 cursor-pointer ${
           labelColor === "blue"
-            ? "border-blue-400/40 bg-blue-500/15/30 focus:ring-blue-400"
-            : "border-green-400/40 bg-green-500/15/30 focus:ring-green-400"
+            ? "border-blue-400/40 bg-blue-500/30 focus:ring-blue-400"
+            : "border-green-400/40 bg-green-500/30 focus:ring-green-400"
         }`}
         onPaste={handlePaste}
         onClick={handleClick}
@@ -199,7 +199,7 @@ export function ImageGroup({
                       <button
                         type="button"
                         onClick={() => setConfirmingDelete(null)}
-                        className="rounded bg-gray-200 text-da-text text-xs font-bold px-2 py-0.5 hover:bg-gray-300"
+                        className="rounded bg-da-hover text-da-text text-xs font-bold px-2 py-0.5 hover:bg-da-border/50"
                       >
                         No
                       </button>

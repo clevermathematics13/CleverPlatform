@@ -121,7 +121,7 @@ export function StudentsTable({ rows }: Props) {
 
   function thClass(col: SortCol) {
     return (
-      "group cursor-pointer select-none px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-da-muted hover:text-blue-300" +
+      "group cursor-pointer select-none px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-da-muted hover:text-blue-200" +
       (col === sortCol ? " text-blue-300" : "")
     );
   }
@@ -227,7 +227,7 @@ export function StudentsTable({ rows }: Props) {
                       </select>
                       <button
                         type="submit"
-                        className="rounded border border-blue-400/40 px-1.5 py-0.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/15"
+                        className="rounded border border-blue-400/40 px-1.5 py-0.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/25"
                       >
                         Save
                       </button>
@@ -240,7 +240,7 @@ export function StudentsTable({ rows }: Props) {
                   {(row.invitedId ?? row.profileId) && (
                     <Link
                       href={`/dashboard?viewAs=${row.invitedId ?? row.profileId}`}
-                      className="text-xs font-medium text-indigo-300 hover:text-indigo-300"
+                      className="text-xs font-medium text-indigo-300 hover:text-indigo-200"
                     >
                       View as student
                     </Link>
@@ -266,13 +266,13 @@ export function StudentsTable({ rows }: Props) {
                   {row.type === "enrolled" && row.studentId && (
                     <form action={removeStudent}>
                       <input type="hidden" name="student_id" value={row.studentId} />
-                      <button type="submit" className="text-xs text-red-300 hover:text-red-300">Remove</button>
+                      <button type="submit" className="text-xs text-red-300 hover:text-red-200">Remove</button>
                     </form>
                   )}
                   {row.type === "invited" && row.invitedId && (
                     <form action={removeInvitedStudent}>
                       <input type="hidden" name="invited_id" value={row.invitedId} />
-                      <button type="submit" className="text-xs text-red-300 hover:text-red-300">Remove</button>
+                      <button type="submit" className="text-xs text-red-300 hover:text-red-200">Remove</button>
                     </form>
                   )}
                 </div>

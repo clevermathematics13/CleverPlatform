@@ -122,7 +122,7 @@ export const DraftPartsPanel = forwardRef<DraftPartsPanelHandle, {
   void imageLabel;
 
   return (
-    <div className="border border-amber-400/40 rounded-lg overflow-hidden bg-amber-500/15/30">
+    <div className="border border-amber-400/40 rounded-lg overflow-hidden bg-amber-500/30">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-400/40">
         <span className="font-semibold text-sm text-amber-300">
@@ -151,7 +151,7 @@ export const DraftPartsPanel = forwardRef<DraftPartsPanelHandle, {
           <button
             onClick={copyToClipboard}
             disabled={!text}
-            className="px-3 py-1 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200 disabled:opacity-40"
+            className="px-3 py-1 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50 disabled:opacity-40"
           >
             {copied ? "✓ Copied" : "Copy"}
           </button>

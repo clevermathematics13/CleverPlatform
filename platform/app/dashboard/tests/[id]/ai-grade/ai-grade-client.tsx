@@ -633,7 +633,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                           pendingUploadStudent.current = s.profile_id;
                           fileInputRef.current?.click();
                         }}
-                        className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/15 disabled:opacity-50"
+                        className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                       >
                         {busy ? "Working…" : "Upload scan & mark"}
                       </button>
@@ -774,7 +774,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                     type="button"
                                     onClick={() => acceptOne(r.id)}
                                     disabled={acceptingRowId === r.id}
-                                    className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/15 disabled:opacity-50"
+                                    className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                                   >
                                     {acceptingRowId === r.id ? "Accepting…" : "Accept"}
                                   </button>
@@ -917,7 +917,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                                 }
                                               }}
                                               title="Click to fix transcription"
-                                              className="cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/15/30"
+                                              className="cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/30"
                                             >
                                               {r.evidence ? (
                                                 <LatexRenderer latex={r.evidence} />

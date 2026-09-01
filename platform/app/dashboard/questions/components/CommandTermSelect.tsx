@@ -85,7 +85,7 @@ export function CommandTermSelect({
         <button
           type="button"
           onClick={() => { setAdding(false); setNewTerm(""); }}
-          className="rounded bg-gray-200 px-2 py-0.5 text-xs font-bold text-da-text hover:bg-gray-300"
+          className="rounded bg-da-hover px-2 py-0.5 text-xs font-bold text-da-text hover:bg-da-border/50"
         >
           ✕
         </button>
@@ -132,7 +132,7 @@ export function CommandTermSelect({
               <button
                 type="button"
                 onClick={() => handleSelect(null)}
-                className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-500/15"
+                className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-500/25"
               >
                 ✕ Clear
               </button>
@@ -145,7 +145,7 @@ export function CommandTermSelect({
                 key={t}
                 type="button"
                 onClick={() => handleSelect(t)}
-                className={`w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-blue-500/15 ${
+                className={`w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-blue-500/25 ${
                   t === value ? "bg-green-500/15 text-green-300" : "text-da-text"
                 }`}
               >
@@ -156,7 +156,7 @@ export function CommandTermSelect({
             <button
               type="button"
               onClick={() => { setOpen(false); setAdding(true); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-blue-300 hover:bg-blue-500/15 border-t border-da-border"
+              className="w-full text-left px-3 py-1.5 text-xs text-blue-300 hover:bg-blue-500/25 border-t border-da-border"
             >
               + Add custom…
             </button>

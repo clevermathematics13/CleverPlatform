@@ -146,7 +146,7 @@ function WizardStemEditor({
   }
 
   return (
-    <div className="border border-indigo-400/40 rounded-lg overflow-hidden bg-indigo-500/15/30">
+    <div className="border border-indigo-400/40 rounded-lg overflow-hidden bg-indigo-500/30">
       <div className="flex items-center gap-3 px-4 py-2 bg-indigo-500/15 border-b border-indigo-400/40">
         <span className="font-semibold text-sm text-indigo-300">
           Initial question
@@ -184,7 +184,7 @@ function WizardStemEditor({
               </button>
               <button
                 onClick={() => { setDraftQ(stemLatex); setDraftMS(stemMsLatex); setEditing(false); }}
-                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
               >
                 Cancel
               </button>
@@ -192,7 +192,7 @@ function WizardStemEditor({
           ) : (
             <button
               onClick={() => setEditing(true)}
-              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
+              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
             >
               Edit LaTeX
             </button>
@@ -324,7 +324,7 @@ function WizardPartEditor({
         )}
         <button
           onClick={onRemove}
-          className="ml-auto text-xs text-red-500 hover:text-red-300 font-bold px-2 py-0.5 rounded hover:bg-red-500/15"
+          className="ml-auto text-xs text-red-500 hover:text-red-200 font-bold px-2 py-0.5 rounded hover:bg-red-500/25"
         >
           Remove
         </button>
@@ -441,7 +441,7 @@ function WizardPartEditor({
                   setDraftMS(part.markschemeLatex);
                   setEditing(false);
                 }}
-                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
               >
                 Cancel
               </button>
@@ -449,7 +449,7 @@ function WizardPartEditor({
           ) : (
             <button
               onClick={() => setEditing(true)}
-              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
+              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
             >
               Edit LaTeX
             </button>
@@ -1015,7 +1015,7 @@ export function AddQuestionWizard({
                         ? "bg-blue-600"
                         : i < ["images", "processing", "review"].indexOf(step)
                         ? "bg-blue-500/25"
-                        : "bg-gray-200"
+                        : "bg-da-hover"
                     }`}
                   />
                 )
@@ -1123,7 +1123,7 @@ export function AddQuestionWizard({
                           className={`rounded border-2 px-3 py-1.5 text-sm font-bold transition-colors ${
                             curricula.includes(c)
                               ? "bg-blue-600 border-blue-600 text-white"
-                              : "border-blue-400/40 bg-da-surface text-blue-300 hover:bg-blue-500/15"
+                              : "border-blue-400/40 bg-da-surface text-blue-300 hover:bg-blue-500/25"
                           }`}
                         >
                           {c}
@@ -1149,8 +1149,8 @@ export function AddQuestionWizard({
 
                 {(
                   [
-                    ["question", "Question", "border-blue-400/40 bg-blue-500/15/40", "text-blue-300"],
-                    ["markscheme", "Mark Scheme", "border-green-400/40 bg-green-500/15/40", "text-green-300"],
+                    ["question", "Question", "border-blue-400/40 bg-blue-500/40", "text-blue-300"],
+                    ["markscheme", "Mark Scheme", "border-green-400/40 bg-green-500/40", "text-green-300"],
                   ] as const
                 ).map(([imgType, label, borderCls, labelCls]) => {
                   const imgs = pendingImages.filter(
@@ -1316,7 +1316,7 @@ export function AddQuestionWizard({
                   className={`rounded-lg px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
                     activeField === "content_latex"
                       ? "bg-blue-600 border-blue-600 text-white"
-                      : "border-blue-400/40 text-blue-300 bg-da-surface hover:bg-blue-500/15"
+                      : "border-blue-400/40 text-blue-300 bg-da-surface hover:bg-blue-500/25"
                   }`}
                 >
                   Question
@@ -1327,7 +1327,7 @@ export function AddQuestionWizard({
                   className={`rounded-lg px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
                     activeField === "markscheme_latex"
                       ? "bg-green-600 border-green-600 text-white"
-                      : "border-green-400/40 text-green-300 bg-da-surface hover:bg-green-500/15"
+                      : "border-green-400/40 text-green-300 bg-da-surface hover:bg-green-500/25"
                   }`}
                 >
                   Mark Scheme
@@ -1335,7 +1335,7 @@ export function AddQuestionWizard({
               </div>
 
               {/* Extracted draft panel */}
-              <div className="border border-amber-400/40 rounded-lg overflow-hidden bg-amber-500/15/30">
+              <div className="border border-amber-400/40 rounded-lg overflow-hidden bg-amber-500/30">
                 <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-400/40">
                   <span className="font-semibold text-sm text-amber-300">
                     Extracted draft
@@ -1413,7 +1413,7 @@ export function AddQuestionWizard({
                 <button
                   type="button"
                   onClick={addPart}
-                  className="w-full rounded-lg border-2 border-dashed border-da-border py-2 text-sm text-da-muted hover:border-blue-400/40 hover:text-blue-300 transition-colors"
+                  className="w-full rounded-lg border-2 border-dashed border-da-border py-2 text-sm text-da-muted hover:border-blue-400/40 hover:text-blue-200 transition-colors"
                 >
                   + Add Part
                 </button>

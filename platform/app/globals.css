@@ -14,6 +14,35 @@
   --background: #0f0b0d;
   --foreground: #f5eef0;
 
+
+  --da-bg-glow-a: rgba(224, 64, 95, 0.07);
+  --da-bg-glow-b: rgba(242, 122, 144, 0.05);
+  --da-bg-grad-start: #0b0709;
+  --da-bg-grad-mid: #120d10;
+  --da-bg-grad-end: #0a0608;
+}
+
+/* Single theme. The alternate [data-theme] palettes (ocean, slate, forest,
+   midnight) were removed deliberately: with five palettes in play, every new
+   component had to be contrast-checked five ways and in practice never was,
+   which is how unreadable controls kept shipping. One dark palette, tuned
+   once for contrast, is the thing that actually stays readable. */
+
+
+/* The palette, declared once. `@theme static` makes Tailwind emit every
+   variable here on :root AND generate the colour utilities (background,
+   text, border, ring, ...) for it. Adding a colour is a one-line change:
+   add it here and both exist.
+
+   An earlier layout declared these in :root and re-listed them in
+   `@theme inline`; a token added to one list but not the other silently
+   produced no utility, which is how ~1800 da-* classes came to match
+   nothing.
+
+   Do not write a star-slash sequence inside this comment: it ends the
+   comment early and the rest of the text becomes invalid CSS that swallows
+   the at-rule below, taking the whole palette with it. */
+@theme static {
   --color-da-bg: #0f0b0d;
   --color-da-surface: #181215;
   --color-da-hover: #231a1e;
@@ -46,66 +75,14 @@
   --color-module-questions: #e8637c;
   --color-module-seating: #c8103f;
   --color-module-mastery: #d8506e;
-
-  --da-bg-glow-a: rgba(224, 64, 95, 0.07);
-  --da-bg-glow-b: rgba(242, 122, 144, 0.05);
-  --da-bg-grad-start: #0b0709;
-  --da-bg-grad-mid: #120d10;
-  --da-bg-grad-end: #0a0608;
 }
 
-/* Single theme. The alternate [data-theme] palettes (ocean, slate, forest,
-   midnight) were removed deliberately: with five palettes in play, every new
-   component had to be contrast-checked five ways and in practice never was,
-   which is how unreadable controls kept shipping. One dark palette, tuned
-   once for contrast, is the thing that actually stays readable. */
-
-
-/* Every colour a component can name as a utility MUST be listed here.
-   Tailwind v4 only generates `bg-*`/`text-*`/`border-*` utilities for colours
-   declared in @theme -- a --color-* variable that only exists in :root emits
-   the variable but NO utility class. That is not a visible failure: the class
-   silently matches nothing, so `text-da-text` renders in whatever colour it
-   inherits and `bg-da-accent` paints nothing at all. The dark palette above
-   was defined only in :root for a long time, which left ~1800 da-* classes
-   across the app doing nothing -- readable only where inheriting the cream
-   --foreground happened to save them, and unreadable wherever a component
-   paired a da-* background with an explicit dark foreground (the seating
-   "Generate Seating" button being the clearest case: no background, near-black
-   text, on a near-black page).
-
-   So: adding a colour to :root above is only half the job. Add it here too. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-display);
-
-  /* Surfaces and text */
-  --color-da-bg: var(--color-da-bg);
-  --color-da-surface: var(--color-da-surface);
-  --color-da-hover: var(--color-da-hover);
-  --color-da-border: var(--color-da-border);
-  --color-da-text: var(--color-da-text);
-  --color-da-muted: var(--color-da-muted);
-
-  /* Accents */
-  --color-da-accent: var(--color-da-accent);
-  --color-da-amber: var(--color-da-amber);
-  --color-da-on-accent: var(--color-da-on-accent);
-
-  /* Buttons */
-  --color-da-button-bg: var(--color-da-button-bg);
-  --color-da-button-hover: var(--color-da-button-hover);
-  --color-da-button-border: var(--color-da-button-border);
-  --color-da-button-text: var(--color-da-button-text);
-
-  /* Semantic color tokens available to all modules */
-  --color-da-success: var(--color-da-success);
-  --color-da-warning: var(--color-da-warning);
-  --color-da-danger: var(--color-da-danger);
-  --color-da-info: var(--color-da-info);
 }
 
 

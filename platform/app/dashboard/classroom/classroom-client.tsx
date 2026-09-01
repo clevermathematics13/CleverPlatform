@@ -275,7 +275,7 @@ export function ClassroomClient({
                                   href={a.alternateLink}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-blue-300 hover:text-blue-300"
+                                  className="text-blue-300 hover:text-blue-200"
                                 >
                                   {a.title}
                                 </a>
@@ -309,7 +309,7 @@ export function ClassroomClient({
                             disabled={
                               busy[row.id] || row.attachments.length === 0
                             }
-                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-gray-300"
+                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-da-hover"
                           >
                             {busy[row.id]
                               ? "Reading..."
@@ -351,7 +351,7 @@ export function ClassroomClient({
                                     )
                                   }
                                   disabled={busy[row.id]}
-                                  className="rounded-lg border border-blue-600 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/15 disabled:opacity-50"
+                                  className="rounded-lg border border-blue-600 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                                 >
                                   Apply {analysis.suggested_marks} as draft
                                   Clev&apos;s Marks

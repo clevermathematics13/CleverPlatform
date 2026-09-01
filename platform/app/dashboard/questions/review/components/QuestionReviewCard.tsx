@@ -513,14 +513,14 @@ export function QuestionReviewCard({
             type="button"
             title="Click to copy code"
             onClick={copyQuestionCode}
-            className="font-mono font-semibold text-sm text-da-text hover:text-indigo-300 cursor-copy select-all"
+            className="font-mono font-semibold text-sm text-da-text hover:text-indigo-200 cursor-copy select-all"
           >
             {question.code}
           </button>
           <button
             type="button"
             onClick={copyQuestionCode}
-            className="shrink-0 px-2.5 py-0.5 rounded border border-indigo-400/40 bg-indigo-500/15 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/15"
+            className="shrink-0 px-2.5 py-0.5 rounded border border-indigo-400/40 bg-indigo-500/15 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/25"
             title="Copy code"
           >
             {codeCopied ? "Copied" : "Copy code"}
@@ -565,7 +565,7 @@ export function QuestionReviewCard({
           <button
             type="button"
             onClick={copyQuestionCode}
-            className="shrink-0 px-2.5 py-1 rounded border border-indigo-400/40 bg-indigo-500/15 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/15"
+            className="shrink-0 px-2.5 py-1 rounded border border-indigo-400/40 bg-indigo-500/15 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/25"
             title="Copy code"
           >
             {codeCopied ? "Copied" : "Copy code"}
@@ -764,7 +764,7 @@ export function QuestionReviewCard({
                 className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                   verified
                     ? "bg-green-500/15 text-green-300 hover:bg-green-500/25"
-                    : "bg-da-hover text-da-text hover:bg-gray-200"
+                    : "bg-da-hover text-da-text hover:bg-da-border/50"
                 }`}
               >
                 {verified ? "✓ Verified" : "Mark all verified"}
@@ -863,13 +863,13 @@ export function QuestionReviewCard({
                           setInsertAfterPartId(isInsertingAfterThis ? null : part.id);
                         }}
                         disabled={metadataSavingAll || metadataRevertingAll || metadataCreating || insertCreating}
-                        className={`text-xs font-bold rounded w-5 h-5 flex items-center justify-center transition-colors disabled:opacity-30 ${isInsertingAfterThis ? "bg-blue-500/25 text-blue-300" : "text-da-muted hover:text-blue-300 hover:bg-blue-500/15"}`}
+                        className={`text-xs font-bold rounded w-5 h-5 flex items-center justify-center transition-colors disabled:opacity-30 ${isInsertingAfterThis ? "bg-blue-500/25 text-blue-300" : "text-da-muted hover:text-blue-200 hover:bg-blue-500/25"}`}
                         title="Insert a new part after this row"
                       >+</button>
                       </div>
                       {/* Insert-between row */}
                       {isInsertingAfterThis ? (
-                        <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_auto] gap-2 pl-3 border-l-2 border-blue-400 bg-blue-500/15/60 rounded-r py-1.5">
+                        <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_auto] gap-2 pl-3 border-l-2 border-blue-400 bg-blue-500/60 rounded-r py-1.5">
                           <input
                             autoFocus
                             placeholder="Label"
@@ -973,7 +973,7 @@ export function QuestionReviewCard({
                     />
                     <button
                       onClick={() => setAddPartOpen(false)}
-                      className="text-da-muted hover:text-da-muted text-xs px-1"
+                      className="text-da-muted hover:text-da-text text-xs px-1"
                       title="Cancel"
                     >✕</button>
                   </div>
@@ -1011,7 +1011,7 @@ export function QuestionReviewCard({
                       loadMetadataHistoryForQuestion();
                     }}
                     disabled={metadataSavingAll || metadataRevertingAll || metadataCreating || metadataHistoryLoadingAll}
-                    className="px-3 py-1.5 text-xs rounded border border-indigo-400/40 text-indigo-300 hover:bg-indigo-500/15 disabled:opacity-40"
+                    className="px-3 py-1.5 text-xs rounded border border-indigo-400/40 text-indigo-300 hover:bg-indigo-500/25 disabled:opacity-40"
                     title="List previous metadata versions for all parts"
                   >
                     {metadataHistoryLoadingAll ? "Loading" : metadataHistoryOpen ? "Hide history" : "History"}
@@ -1019,7 +1019,7 @@ export function QuestionReviewCard({
                   <button
                     onClick={revertMetadataForQuestion}
                     disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
-                    className="px-3 py-1.5 text-xs rounded border border-amber-400/40 text-amber-300 hover:bg-amber-500/15 disabled:opacity-40"
+                    className="px-3 py-1.5 text-xs rounded border border-amber-400/40 text-amber-300 hover:bg-amber-500/25 disabled:opacity-40"
                     title="Revert each part to its previous metadata snapshot"
                   >
                     {metadataRevertingAll ? "Reverting" : "Revert DB"}
@@ -1035,7 +1035,7 @@ export function QuestionReviewCard({
                 </div>
 
                 {metadataHistoryOpen && (
-                  <div className="border border-indigo-400/40 bg-indigo-500/15/40 rounded p-2 space-y-2">
+                  <div className="border border-indigo-400/40 bg-indigo-500/40 rounded p-2 space-y-2">
                     {parts.map((part) => {
                       const versions = metadataHistoryByPart[part.id] ?? [];
                       return (

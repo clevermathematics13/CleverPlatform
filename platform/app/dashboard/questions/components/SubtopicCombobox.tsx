@@ -219,7 +219,7 @@ export function SubtopicCombobox({
             aria-label="Clear subtopic filter"
             title="Clear subtopic filter"
             onMouseDown={(e) => { e.preventDefault(); commit(null); }}
-            className="pointer-events-auto flex h-5 w-5 items-center justify-center rounded-full text-blue-500 hover:bg-blue-500/15 hover:text-blue-300"
+            className="pointer-events-auto flex h-5 w-5 items-center justify-center rounded-full text-blue-500 hover:bg-blue-500/25 hover:text-blue-200"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -268,7 +268,7 @@ export function SubtopicCombobox({
                 onMouseEnter={() => setHighlight(idx)}
                 onMouseDown={(e) => { e.preventDefault(); commit(row.subtopic); }}
                 className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm font-semibold transition-colors ${
-                  isHighlighted ? "bg-blue-600 text-white" : "text-blue-300 hover:bg-blue-500/15"
+                  isHighlighted ? "bg-blue-600 text-white" : "text-blue-300 hover:bg-blue-500/25"
                 } ${row.subtopic === null ? "border-b border-blue-400/40" : ""}`}
               >
                 <span className={`w-3 shrink-0 text-xs ${isHighlighted ? "text-white" : "text-blue-300"}`}>

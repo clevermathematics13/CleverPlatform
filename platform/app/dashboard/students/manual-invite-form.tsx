@@ -42,7 +42,7 @@ export function ManualInviteForm({
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-lg border border-amber-400 bg-da-surface px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/15"
+          className="rounded-lg border border-amber-400 bg-da-surface px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/25"
         >
           {open ? "Hide manual invite" : "Manual invite"}
         </button>

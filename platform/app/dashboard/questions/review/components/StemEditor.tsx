@@ -87,7 +87,7 @@ export function StemEditor({
   }
 
   return (
-    <div className="border border-indigo-400/40 rounded-lg overflow-hidden bg-indigo-500/15/30">
+    <div className="border border-indigo-400/40 rounded-lg overflow-hidden bg-indigo-500/30">
       {/* Stem header */}
       <div className="flex items-center gap-3 px-4 py-2 bg-indigo-500/15 border-b border-indigo-400/40">
         <span className="font-semibold text-sm text-indigo-300">
@@ -127,7 +127,7 @@ export function StemEditor({
               </button>
               <button
                 onClick={() => setEditing(false)}
-                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
               >
                 Cancel
               </button>
@@ -136,7 +136,7 @@ export function StemEditor({
             <>
               <button
                 onClick={() => setEditing(true)}
-                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
               >
                 Edit LaTeX
               </button>
