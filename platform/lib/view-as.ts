@@ -25,8 +25,8 @@ import { createClient } from "@/lib/supabase/server";
  * exists, and profileId comes along with it when the student does have an
  * account.
  *
- * Nothing here trusts the header. The caller must really be a teacher, and
- * the id must really be one of the teacher's roster students, or this
+ * Nothing here trusts the incoming id. The caller must really be a teacher,
+ * and the id must really be one of the teacher's roster students, or this
  * returns null and the caller renders its ordinary teacher view.
  */
 export interface ViewAsTarget {
