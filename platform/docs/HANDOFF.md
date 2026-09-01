@@ -991,18 +991,26 @@ the happy path work."
    from Storage via the dashboard (its anchor no longer references it;
    Storage deletes stayed permission-blocked in the session).
 
-3c. **Run the scan-normalization migration** (supersedes the earlier
-   "decide on the second print run" item - the §5 correction shows there
-   is no second print run). Everything is staged: normalized PDFs +
-   transforms from `scripts/scan_geometry/normalize.py`, then
-   `npx tsx scripts/normalize-and-reassess.ts --transforms <path>`
-   (resumable; uploads, repoints, re-crops, regenerates prompt crops,
-   re-assesses ai_* only). Until it completes, treat the bulk cohort's
-   ai_* marks as provisional and release nothing from it. Expect ~1,500
-   Sonnet grading calls (~$25). Afterwards: review mark changes,
-   especially Davi Verma's released Q1/Q5/Q9/Q17 (his Q9 "9 9" table row
-   and Q1 inline answers become visible to the grader for the first
-   time).
+3c. ~~Run the scan-normalization migration~~ **DONE, 1 Sep 2026.** All 37
+   out-of-tolerance scans normalized and bar-run VERIFIED (auto-repair
+   pass fixed the handful of pages the first warp missed; sole residual:
+   Yanay Khoury p15 at 3.8pt on a single short box - below crop
+   tolerance). Normalized PDFs uploaded next to the originals
+   (originals kept), split_storage_path repointed, all 40 anchors
+   re-cropped on the 37 + the 5 changed anchors on Davi/Ines, prompt
+   crops for Q1/Q3/Q6/Q10 regenerated, and 1,489 crops re-assessed
+   (ai_* only), zero failures except ONE crop left flagged for human
+   review by design (Vicente Fernandez Concha Q27 - the model reasons in
+   prose over ambiguous handwriting and fails JSON validation on every
+   retry; it sits in the review UI with ai_validation_error set). 8
+   rows carry the backtracking-detector note - the usual quick teacher
+   glance (query: ai_teacher_note ilike '%changing its mind%').
+   TEACHER REVIEW NEEDED: (a) Davi Verma (released) Q9 - fresh draft
+   says 5/5 ("All five rows correct") vs released final 4/5, because his
+   answer in the previously-cropped-out last table row is now visible;
+   every other released mark matches the new drafts. (b) The bulk
+   cohort's drafts are now trustworthy - normal approve-all + release
+   flow per student.
 3d. **Vania De Los Heros + Zaira Miranda hold a 32-page render of A.1**
    (see §5 correction) - stuck at status='split' because their page
    count mismatches the 26-page canonical version. They need their own
