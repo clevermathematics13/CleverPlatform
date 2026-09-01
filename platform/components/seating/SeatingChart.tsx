@@ -150,7 +150,7 @@ export default function SeatingChart({ seats, assignments, classGroup }: Props) 
             if (!canvasRef.current) return;
             try {
               const { toPng } = await import('html-to-image');
-              const dataUrl = await toPng(canvasRef.current, { backgroundColor: '#160904' });
+              const dataUrl = await toPng(canvasRef.current, { backgroundColor: '#0f0b0d' });
               const a = document.createElement('a');
               a.href = dataUrl;
               a.download = `seating-${classGroup || 'chart'}-${new Date().toISOString().slice(0, 10)}.png`;

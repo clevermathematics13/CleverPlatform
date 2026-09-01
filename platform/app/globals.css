@@ -2,39 +2,56 @@
 @import "katex/dist/katex.min.css";
 
 :root {
-  --background: #160904;
-  --foreground: #f6e9d4;
+  /* Obsidian & Coral. The ground is a warm charcoal (a whisper of plum, not
+     neutral grey) and the single accent is the crimson-coral of the lattice
+     sphere on the sign-in page, so the brand's one animated object and its
+     one accent colour are the same hue. Text is a warm off-white, never
+     pure white, and muted text is that off-white pulled toward the accent.
 
-  --color-da-bg: #160904;
-  --color-da-surface: #241007;
-  --color-da-hover: #30180d;
-  --color-da-border: #8a5529;
-  --color-da-text: #fbf3e6;
-  --color-da-muted: #dcb694;
-  --color-da-accent: #e0a02c;
-  --color-da-amber: #f5b545;
+     Contrast rule for this palette: coral is an ACCENT. It sits behind
+     dark text (buttons), colours numbers and links, and tints chips at low
+     alpha. It is never body-text colour on the dark ground. */
+  --background: #0f0b0d;
+  --foreground: #f5eef0;
 
-  --color-da-success: #7fd38f;
-  --color-da-warning: #f2c66d;
-  --color-da-danger: #ef8f7f;
-  --color-da-info: #79bbf7;
+  --color-da-bg: #0f0b0d;
+  --color-da-surface: #181215;
+  --color-da-hover: #231a1e;
+  --color-da-border: #4a3038;
+  --color-da-text: #f5eef0;
+  --color-da-muted: #c9b1b8;
+  --color-da-accent: #e0405f;
+  /* The bright tint of the accent, used for hover and emphasis. The token
+     keeps its historical name (it was an amber) because ~70 call sites use
+     it; its ROLE is "accent, brighter", whatever hue the palette assigns. */
+  --color-da-amber: #f27a90;
+  /* Text placed ON the accent (filled buttons). Dark, so the coral fill
+     carries the contrast rather than the label fighting it. */
+  --color-da-on-accent: #1f0810;
 
-  --color-da-button-bg: #2f180c;
-  --color-da-button-hover: #3d2010;
-  --color-da-button-border: #8a5529;
-  --color-da-button-text: #f6e9d4;
+  /* Semantic hues are kept clearly apart from the coral accent so that
+     "danger" does not read as "primary": danger leans orange, not pink. */
+  --color-da-success: #6fd99a;
+  --color-da-warning: #f5c26b;
+  --color-da-danger: #ff8566;
+  --color-da-info: #7cc4ff;
 
-  --color-module-dashboard: #c88a1a;
-  --color-module-reflection: #d29b2a;
-  --color-module-questions: #dba346;
-  --color-module-seating: #c17334;
-  --color-module-mastery: #b98e4b;
+  --color-da-button-bg: #211519;
+  --color-da-button-hover: #2c1d22;
+  --color-da-button-border: #4a3038;
+  --color-da-button-text: #f5eef0;
 
-  --da-bg-glow-a: rgba(200, 138, 26, 0.08);
-  --da-bg-glow-b: rgba(232, 160, 48, 0.07);
-  --da-bg-grad-start: #120702;
-  --da-bg-grad-mid: #1a0c06;
-  --da-bg-grad-end: #100501;
+  --color-module-dashboard: #e0405f;
+  --color-module-reflection: #f27a90;
+  --color-module-questions: #e8637c;
+  --color-module-seating: #c8103f;
+  --color-module-mastery: #d8506e;
+
+  --da-bg-glow-a: rgba(224, 64, 95, 0.07);
+  --da-bg-glow-b: rgba(242, 122, 144, 0.05);
+  --da-bg-grad-start: #0b0709;
+  --da-bg-grad-mid: #120d10;
+  --da-bg-grad-end: #0a0608;
 }
 
 /* Single theme. The alternate [data-theme] palettes (ocean, slate, forest,
@@ -63,7 +80,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-  --font-serif: var(--font-playfair);
+  --font-serif: var(--font-display);
 
   /* Surfaces and text */
   --color-da-bg: var(--color-da-bg);
@@ -76,6 +93,7 @@
   /* Accents */
   --color-da-accent: var(--color-da-accent);
   --color-da-amber: var(--color-da-amber);
+  --color-da-on-accent: var(--color-da-on-accent);
 
   /* Buttons */
   --color-da-button-bg: var(--color-da-button-bg);
@@ -101,6 +119,15 @@ body {
     radial-gradient(circle at 88% 6%, var(--da-bg-glow-b), transparent 26%),
     linear-gradient(160deg, var(--da-bg-grad-start) 0%, var(--da-bg-grad-mid) 48%, var(--da-bg-grad-end) 100%);
   background-attachment: fixed;
+}
+
+/* The display face (Instrument Serif) has one weight. Headings across the app
+   ask for `font-bold`; without this the browser fakes a bold by smearing the
+   outline, which reads worse than the true regular. Unlayered, so it beats
+   the utility - deliberately, for exactly the reason the form-control block
+   below explains. */
+.font-serif {
+  font-weight: 400;
 }
 
 /* Shared semantic controls so button/link styling can be unified app-wide */
@@ -179,8 +206,8 @@ body {
       185deg,
       transparent,
       transparent 60px,
-      rgba(200, 138, 26, 0.04) 60px,
-      rgba(200, 138, 26, 0.04) 120px
+      rgba(224, 64, 95, 0.04) 60px,
+      rgba(224, 64, 95, 0.04) 120px
     );
 }
 
@@ -207,7 +234,7 @@ body {
 /* ── Whiskey glow on focus ───────────────────────────────────────────────── */
 input:focus, textarea:focus, select:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(200, 138, 26, 0.45);
+  box-shadow: 0 0 0 2px rgba(224, 64, 95, 0.45);
 }
 
 /* ── Form controls ───────────────────────────────────────────────────────────
@@ -227,14 +254,14 @@ input:focus, textarea:focus, select:focus {
    treatment when it genuinely sits on a light card. Nothing here relies on a
    component remembering to add the right class. */
 input, textarea, select {
-  color: #fbf3e6;
-  background-color: #2a1710;      /* readable against both page and card */
-  border-color: #8a5529;
-  caret-color: #f5b545;
+  color: #f5eef0;
+  background-color: #1c1418;      /* readable against both page and card */
+  border-color: #4a3038;
+  caret-color: #f27a90;
 }
 
 input::placeholder, textarea::placeholder {
-  color: #b08b6a;                 /* visible, but clearly secondary to real input */
+  color: #a08a91;                 /* visible, but clearly secondary to real input */
   opacity: 1;                     /* Firefox dims placeholders by default */
 }
 

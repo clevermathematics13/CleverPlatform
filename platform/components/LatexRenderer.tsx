@@ -772,7 +772,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
         <React.Fragment key={key}>
           <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
             <span>{isMarkCode ? null : renderPieces(group.pieces)}</span>
-            <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
+            <span style={{ fontStyle: "italic", color: "var(--color-da-muted)", flexShrink: 0 }}>
               {isMarkCode ? `${soleTextPiece} ${markCode}` : markCode}
             </span>
           </span>

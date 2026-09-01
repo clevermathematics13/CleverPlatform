@@ -100,7 +100,7 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-lg bg-da-accent px-4 py-1.5 text-sm font-semibold text-[#2b1408] hover:bg-da-amber disabled:opacity-50"
+          className="rounded-lg bg-da-accent px-4 py-1.5 text-sm font-semibold text-da-on-accent hover:bg-da-amber disabled:opacity-50"
         >{saving ? 'Saving…' : 'Save Rules'}</button>
         {classGroup && (
           <span className="ml-auto self-center text-xs text-da-muted">

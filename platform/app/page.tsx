@@ -21,7 +21,7 @@ export default async function Home() {
           </span>
           <Link
             href="/login"
-            style={{ backgroundColor: "#c88a1a", color: "#2b1408" }}
+            style={{ backgroundColor: "var(--color-da-accent)", color: "var(--color-da-on-accent)" }}
             className="rounded-lg border border-da-accent/40 px-4 py-2 text-sm font-semibold shadow-sm transition-colors hover:bg-da-amber"
           >
             Sign in
@@ -65,7 +65,7 @@ export default async function Home() {
           <div className="flex flex-wrap gap-4 pt-4">
             <Link
               href="/login"
-              style={{ backgroundColor: "#c88a1a", color: "#2b1408" }}
+              style={{ backgroundColor: "var(--color-da-accent)", color: "var(--color-da-on-accent)" }}
               className="rounded-lg border border-da-accent/40 px-6 py-3 text-sm font-semibold shadow-sm transition-colors hover:bg-da-amber"
             >
               Sign in

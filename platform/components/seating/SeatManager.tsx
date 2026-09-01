@@ -331,7 +331,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
           <button
             onClick={handleSaveLayout}
             disabled={saving || configs.length === 0 || !layoutName.trim()}
-            className="rounded-lg bg-da-accent px-4 py-1.5 text-sm font-semibold text-[#2b1408] hover:bg-da-amber disabled:opacity-50"
+            className="rounded-lg bg-da-accent px-4 py-1.5 text-sm font-semibold text-da-on-accent hover:bg-da-amber disabled:opacity-50"
           >
             {saving ? 'Saving…' : '💾 Save'}
           </button>
@@ -482,7 +482,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
               </span>
               <button
                 onClick={() => handleUndoRemove(entry)}
-                className="rounded bg-da-amber text-[#2b1408] font-bold px-3 py-1 hover:bg-da-accent transition-colors"
+                className="rounded bg-da-amber text-da-on-accent font-bold px-3 py-1 hover:bg-da-accent transition-colors"
               >
                 Undo
               </button>
