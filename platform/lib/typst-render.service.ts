@@ -494,22 +494,61 @@ function getActivityTypstSource(): string {
 // segment and dies on "per". Typst has no try/catch, so the check has to
 // come before eval -- a segment counts as math only when every multi-letter
 // run in it is an identifier Typst math actually defines. Deliberately
-// conservative: words that are both math identifiers and ordinary English
-// ("and", "in", "not", "times", "text", "dot", "min", "max") are left out,
-// because in this content they are overwhelmingly prose.
+// conservative: words that are overwhelmingly ordinary English in this
+// content ("and", "not", "text") are left out. Operator words the generator
+// genuinely emits per its 11b MATH rule ("times", "div", "dot", "min",
+// "max", "in", "macron", ...) ARE included -- excluding them silently
+// degraded real equations like "$a div b := a times 1/b$" to literal text,
+// dollar signs and all, on a printed student packet. Every entry was
+// verified to eval() cleanly in math mode against the shipped compiler
+// (see typst-rich-inline-math.test.ts); an entry that Typst does NOT
+// define belongs in math-aliases below instead, never here alone, or a
+// genuine math segment using it aborts the whole compile.
 #let math-idents = (
   "sin","cos","tan","sec","csc","cot","sinh","cosh","tanh",
-  "arcsin","arccos","arctan","log","ln","exp","sqrt","root","abs",
-  "floor","ceil","sum","product","integral","lim","dif","partial",
-  "infinity","approx","neq","leq","geq","cdot","pm","mp",
+  "arcsin","arccos","arctan","log","ln","lg","exp","sqrt","root","abs",
+  "floor","ceil","sum","product","integral","lim","liminf","limsup",
+  "dif","diff","partial",
+  "infinity","approx","neq","leq","geq","cdot","pm","mp","equiv","prop",
+  "times","div","dot","plus","minus","in","subset","union","sect",
+  "min","max","mod","gcd","lcm","det","deg","dim","arg","ker","inf","sup",
+  "arrow","dots","mapsto","implies","iff","oplus","otimes",
+  "forall","exists","emptyset","nothing","because","therefore",
   "frac","binom","vec","mat","cases","overline","underline","hat","tilde",
-  "quad","gcd","lcm","alpha","beta","gamma","delta","epsilon","zeta","eta",
+  "macron","op","bb","cal","frak","upright",
+  "quad","star","compose","prec","succ",
+  "rr","zz","nn","qq","cc",
+  "alpha","beta","gamma","delta","epsilon","zeta","eta",
   "theta","iota","kappa","lambda","mu","nu","xi","rho","sigma","tau",
   "upsilon","phi","chi","psi","omega","pi",
 )
 
+// Operator names the generator emits out of LaTeX habit that Typst math
+// does NOT define. They pass the identifier check above (so the segment
+// still counts as math) and are rewritten to the real Typst symbol just
+// before eval -- without this, eval() dies on "unknown variable: leq" and
+// takes the entire document with it.
+#let math-aliases = (
+  ("neq", "eq.not"), ("leq", "lt.eq"), ("geq", "gt.eq"),
+  ("cdot", "dot.op"), ("pm", "plus.minus"), ("mp", "minus.plus"),
+  ("implies", "arrow.r.double"), ("iff", "arrow.l.r.double"),
+  ("oplus", "plus.circle"), ("otimes", "times.circle"),
+)
+
+#let normalize-math(seg) = {
+  let out = seg
+  for (name, sym) in math-aliases {
+    out = out.replace(regex("\\\\b" + name + "\\\\b"), sym)
+  }
+  out
+}
+
 #let looks-like-math(seg) = {
-  for m in seg.matches(regex("[A-Za-z]{2,}")) {
+  // Quoted spans are literal text in Typst math -- the 11b MATH rule
+  // requires named operators be written that way ($"Var"(X)$) -- so the
+  // words inside them are always valid and must not fail the check.
+  let unquoted = seg.replace(regex("\\"[^\\"]*\\""), " ")
+  for m in unquoted.matches(regex("[A-Za-z]{2,}")) {
     if not math-idents.contains(lower(m.text)) { return false }
   }
   true
@@ -533,7 +572,7 @@ function getActivityTypstSource(): string {
     if calc.rem(i, 2) == 0 {
       out += [#part]
     } else {
-      out += eval(part, mode: "math")
+      out += eval(normalize-math(part), mode: "math")
     }
   }
   out

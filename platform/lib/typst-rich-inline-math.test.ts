@@ -23,6 +23,12 @@ import { NodeCompiler } from "@myriaddreamin/typst-ts-node-compiler";
 /**
  * Pull the live helper out of the service source rather than duplicating it,
  * so this test keeps exercising whatever actually ships.
+ *
+ * The Typst source lives inside a JS template literal, so the raw file bytes
+ * carry one extra level of backslash escaping (e.g. \\\\b on disk is \\b at
+ * runtime). Decode that level here so the compiler sees the exact string the
+ * service passes it — without this, any regex escape in the prelude tests a
+ * different program than the one that ships.
  */
 function shippedPrelude(): string {
   const src = readFileSync(
@@ -33,7 +39,9 @@ function shippedPrelude(): string {
   const richAt = src.indexOf("#let rich(s) = {");
   expect(start, "math-idents block missing from typst-render.service.ts").toBeGreaterThan(-1);
   expect(richAt, "rich() missing from typst-render.service.ts").toBeGreaterThan(-1);
-  return src.slice(start, src.indexOf("\n}", richAt) + 2);
+  return src
+    .slice(start, src.indexOf("\n}", richAt) + 2)
+    .replace(/\\(.)/g, "$1");
 }
 
 const compiler = NodeCompiler.create();
@@ -72,6 +80,37 @@ describe("rich() inline math", () => {
     expect(compiles(text)).toBe(true);
   });
 
+  // Operator words the generator emits per its 11b MATH rule. These were
+  // once excluded from math-idents as "overwhelmingly prose", which silently
+  // degraded real equations to literal text — dollar signs and all — on a
+  // printed student packet.
+  it.each([
+    [
+      "div and times (the reported packet defect, verbatim)",
+      "Using the definition $a div b := a times 1/b$, calculate $12 div 4$ by rewriting it as a multiplication first.",
+    ],
+    ["dot operator", "Compute $a dot b$ for the vectors given."],
+    ["min and max", "State $max(2, 5) - min(2, 5)$ exactly."],
+    ["set membership and number sets", "Suppose $x in RR$ and $n in NN$ throughout."],
+    ["macron for a sample mean", "Let $macron(x)$ denote the sample mean."],
+    ["quoted named operator", 'Then $"Var"(X) = sigma^2$ by definition.'],
+    ["plus.minus", "So $x = plus.minus sqrt(7)$ are the roots."],
+  ])("typesets operator-word math: %s", (_label, text) => {
+    expect(compiles(text)).toBe(true);
+  });
+
+  // LaTeX-habit names Typst does not define must be rewritten to the real
+  // symbol before eval, not passed through (compile abort) or rejected
+  // (silent degradation to literal text).
+  it.each([
+    ["leq/geq", "Show $0 leq x$ and $x geq -1$ hold."],
+    ["neq", "Assume $a neq 0$ from now on."],
+    ["cdot", "Expand $2 cdot 3 cdot 5$ fully."],
+    ["pm", "Hence $x = 4 pm sqrt(2)$ exactly."],
+  ])("normalises LaTeX-habit operator names: %s", (_label, text) => {
+    expect(compiles(text)).toBe(true);
+  });
+
   // Genuine math must actually typeset, not silently fall back to literal
   // text -- "it compiled" alone would pass even if every segment degraded.
   it("typesets math instead of printing the dollar signs", () => {
@@ -82,9 +121,15 @@ describe("rich() inline math", () => {
       compiler.svg({ mainFileContent: `${prelude}\n#rich(${JSON.stringify(t)})\n` });
 
     const mathSvg = svgOf("The line $2a + c = 19$ ok.");
+    const divTimesSvg = svgOf(
+      "Using the definition $a div b := a times 1/b$, calculate $12 div 4$ first."
+    );
+    const aliasSvg = svgOf("Show $0 leq x$ and $a neq 0$ hold.");
     const proseSvg = svgOf("Pencils cost $2.50 per package and pens cost $3 per package.");
 
     expect(dollarGlyphIds.some((id) => mathSvg.includes(id))).toBe(false);
+    expect(dollarGlyphIds.some((id) => divTimesSvg.includes(id))).toBe(false);
+    expect(dollarGlyphIds.some((id) => aliasSvg.includes(id))).toBe(false);
     expect(dollarGlyphIds.some((id) => proseSvg.includes(id))).toBe(true);
   });
 });
