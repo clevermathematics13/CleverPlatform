@@ -179,7 +179,7 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
     return (
       <button
         onClick={() => setOpen(true)}
-        className="rounded-lg border border-purple-400 bg-purple-100 px-3 py-1.5 text-sm font-semibold text-purple-900 hover:bg-purple-200"
+        className="rounded-lg border border-purple-400/40 bg-purple-500/15 px-3 py-1.5 text-sm font-semibold text-purple-200 hover:bg-purple-500/25"
       >
         ✦ AI Rule Generator
       </button>
@@ -187,12 +187,12 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
   }
 
   return (
-    <div className="rounded-xl border border-purple-300 bg-purple-100 p-4 space-y-3">
+    <div className="rounded-xl border border-purple-400/40 bg-purple-500/10 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-purple-950">✦ AI Rule Generator</span>
+        <span className="text-sm font-semibold text-purple-200">✦ AI Rule Generator</span>
         <button
           onClick={() => setOpen(false)}
-          className="text-purple-600 hover:text-purple-900 text-lg leading-none"
+          className="text-purple-300 hover:text-purple-100 text-lg leading-none"
         >✕</button>
       </div>
 
@@ -204,7 +204,7 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
               key={i}
               className={`px-3 py-2 rounded-lg ${
                 m.role === 'user'
-                  ? 'bg-white border border-gray-300 text-gray-900 ml-4'
+                  ? 'bg-da-surface border border-da-border text-da-text ml-4'
                   : 'bg-purple-700 text-white mr-4'
               }`}
             >
@@ -216,8 +216,8 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
 
       {/* Suggested rules */}
       {suggested.length > 0 && (
-        <div className="rounded-lg border border-purple-400 bg-white p-3 space-y-2">
-          <p className="text-xs font-semibold text-purple-900 uppercase tracking-wide">
+        <div className="rounded-lg border border-purple-400/40 bg-da-surface p-3 space-y-2">
+          <p className="text-xs font-semibold text-purple-200 uppercase tracking-wide">
             Suggested rules
           </p>
           {suggested.map((rule, i) => {
@@ -234,14 +234,14 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
               <div key={i} className="flex items-start gap-2 text-sm">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
                   rule.rule_type === 'PAIR'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-green-700 text-white'
+                    ? 'bg-da-info/25 text-da-info border border-da-info/40'
+                    : 'bg-da-success/25 text-da-success border border-da-success/40'
                 }`}>{rule.rule_type}</span>
                 <div>
-                  <span className="font-semibold text-gray-900">{label}</span>
-                  <span className="ml-2 text-gray-600 font-medium">weight {sign}{rule.weight}</span>
+                  <span className="font-semibold text-da-text">{label}</span>
+                  <span className="ml-2 text-da-muted font-medium">weight {sign}{rule.weight}</span>
                   {rule.notes && (
-                    <p className="text-xs text-gray-600 mt-0.5">{rule.notes}</p>
+                    <p className="text-xs text-da-muted mt-0.5">{rule.notes}</p>
                   )}
                 </div>
               </div>
@@ -254,14 +254,14 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
             >✓ Accept all</button>
             <button
               onClick={reject}
-              className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+              className="rounded-lg border border-da-border px-3 py-1.5 text-xs font-semibold text-da-muted hover:bg-da-hover"
             >✕ Discard</button>
           </div>
         </div>
       )}
 
       {error && (
-        <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+        <p className="text-xs text-da-danger bg-da-danger/10 border border-da-danger/40 rounded px-3 py-2">
           Error: {error}
         </p>
       )}
@@ -276,7 +276,7 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
           }}
           placeholder={`e.g. "Keep Carlos and Gael apart" or "Put Asha near the window pod"`}
           rows={2}
-          className="flex-1 rounded-lg border border-gray-400 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 resize-none text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-600"
+          className="flex-1 rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm text-da-text placeholder-da-muted resize-none text-da-text focus:outline-none focus:ring-2 focus:ring-da-accent"
         />
         <button
           onClick={send}
@@ -286,7 +286,7 @@ export default function RuleAI({ students, seats, classGroup, onRules }: Props) 
           {pending ? '…' : 'Send'}
         </button>
       </div>
-      <p className="text-xs text-gray-600">
+      <p className="text-xs text-da-muted">
         Describe rules in plain English. Press Enter or Send. Review before accepting.
       </p>
     </div>

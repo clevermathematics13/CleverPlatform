@@ -44,12 +44,44 @@
    once for contrast, is the thing that actually stays readable. */
 
 
+/* Every colour a component can name as a utility MUST be listed here.
+   Tailwind v4 only generates `bg-*`/`text-*`/`border-*` utilities for colours
+   declared in @theme -- a --color-* variable that only exists in :root emits
+   the variable but NO utility class. That is not a visible failure: the class
+   silently matches nothing, so `text-da-text` renders in whatever colour it
+   inherits and `bg-da-accent` paints nothing at all. The dark palette above
+   was defined only in :root for a long time, which left ~1800 da-* classes
+   across the app doing nothing -- readable only where inheriting the cream
+   --foreground happened to save them, and unreadable wherever a component
+   paired a da-* background with an explicit dark foreground (the seating
+   "Generate Seating" button being the clearest case: no background, near-black
+   text, on a near-black page).
+
+   So: adding a colour to :root above is only half the job. Add it here too. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
   --font-serif: var(--font-playfair);
+
+  /* Surfaces and text */
+  --color-da-bg: var(--color-da-bg);
+  --color-da-surface: var(--color-da-surface);
+  --color-da-hover: var(--color-da-hover);
+  --color-da-border: var(--color-da-border);
+  --color-da-text: var(--color-da-text);
+  --color-da-muted: var(--color-da-muted);
+
+  /* Accents */
+  --color-da-accent: var(--color-da-accent);
+  --color-da-amber: var(--color-da-amber);
+
+  /* Buttons */
+  --color-da-button-bg: var(--color-da-button-bg);
+  --color-da-button-hover: var(--color-da-button-hover);
+  --color-da-button-border: var(--color-da-button-border);
+  --color-da-button-text: var(--color-da-button-text);
 
   /* Semantic color tokens available to all modules */
   --color-da-success: var(--color-da-success);

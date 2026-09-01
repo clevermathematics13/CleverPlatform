@@ -98,39 +98,39 @@ Please explain why students are seated the way they are, referencing specific po
       {!open ? (
         <button
           onClick={() => { setOpen(true); explain(); }}
-          className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:bg-indigo-100"
+          className="rounded-lg border border-indigo-400/40 bg-indigo-500/15 px-3 py-1.5 text-xs font-medium text-indigo-200 hover:bg-indigo-500/25"
         >
           ✦ Explain this seating
         </button>
       ) : (
-        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 space-y-2">
+        <div className="rounded-xl border border-indigo-400/40 bg-indigo-500/10 p-4 space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold text-indigo-900">✦ Seating Explanation</span>
+            <span className="text-sm font-semibold text-indigo-200">✦ Seating Explanation</span>
             <div className="flex gap-2">
               <button
                 onClick={explain}
                 disabled={loading}
-                className="text-xs text-indigo-600 hover:text-indigo-900 disabled:opacity-50"
+                className="text-xs text-indigo-300 hover:text-indigo-100 disabled:opacity-50"
               >
                 {loading ? 'Thinking…' : '↺ Regenerate'}
               </button>
               <button
                 onClick={() => setOpen(false)}
-                className="text-indigo-400 hover:text-indigo-700 text-lg leading-none"
+                className="text-indigo-300 hover:text-indigo-100 text-lg leading-none"
               >✕</button>
             </div>
           </div>
 
           {loading && (
-            <p className="text-sm text-indigo-700 animate-pulse">Analysing seating…</p>
+            <p className="text-sm text-indigo-200 animate-pulse">Analysing seating…</p>
           )}
           {error && (
-            <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+            <p className="text-xs text-da-danger bg-da-danger/10 border border-da-danger/40 rounded px-3 py-2">
               Error: {error}
             </p>
           )}
           {explanation && (
-            <p className="text-sm text-indigo-900 leading-relaxed whitespace-pre-wrap">
+            <p className="text-sm text-indigo-50 leading-relaxed whitespace-pre-wrap">
               {explanation}
             </p>
           )}

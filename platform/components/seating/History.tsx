@@ -21,23 +21,23 @@ export default function History({ assignments, classGroup }: Props) {
   const sortedRuns = [...runs.entries()].slice(0, 20);
 
   if (!sortedRuns.length) {
-    return <p className="text-gray-500 italic py-4">No seating history for {classGroup || 'this class'}.</p>;
+    return <p className="text-da-muted italic py-4">No seating history for {classGroup || 'this class'}.</p>;
   }
 
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-gray-800 mb-3">Recent Runs ({sortedRuns.length})</h3>
+      <h3 className="text-sm font-semibold text-da-text mb-3">Recent Runs ({sortedRuns.length})</h3>
       {sortedRuns.map(([runId, runAssignments]) => (
-        <details key={runId} className="rounded-lg border border-gray-300 bg-white shadow-sm">
-          <summary className="cursor-pointer px-4 py-3 text-sm hover:bg-gray-50">
-            <span className="font-mono text-xs text-gray-800">{runId}</span>
-            <span className="text-gray-600"> — {runAssignments[0]?.date} — Score: {runAssignments[0]?.candidate_score?.toFixed(2)}</span>
+        <details key={runId} className="rounded-lg border border-da-border bg-da-surface shadow-sm">
+          <summary className="cursor-pointer px-4 py-3 text-sm hover:bg-da-hover">
+            <span className="font-mono text-xs text-da-text">{runId}</span>
+            <span className="text-da-muted"> — {runAssignments[0]?.date} — Score: {runAssignments[0]?.candidate_score?.toFixed(2)}</span>
           </summary>
-          <table className="w-full text-sm border-t border-gray-200">
+          <table className="w-full text-sm border-t border-da-border">
             <thead>
-              <tr className="bg-gray-100">
+              <tr className="bg-da-hover">
                 {['Pod', 'Seat', 'Student'].map((h) => (
-                  <th key={h} className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-700">{h}</th>
+                  <th key={h} className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-da-text">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -45,10 +45,10 @@ export default function History({ assignments, classGroup }: Props) {
               {runAssignments
                 .sort((a, b) => a.pod_id.localeCompare(b.pod_id) || a.seat_role.localeCompare(b.seat_role))
                 .map((a, i) => (
-                  <tr key={i} className="border-t border-gray-200 hover:bg-gray-50">
-                    <td className="px-4 py-2 text-gray-800">{a.pod_id}</td>
-                    <td className="px-4 py-2 font-mono text-xs text-gray-700">{a.seat_id} ({a.seat_role})</td>
-                    <td className="px-4 py-2 font-medium text-gray-900">{a.name}</td>
+                  <tr key={i} className="border-t border-da-border hover:bg-da-hover">
+                    <td className="px-4 py-2 text-da-text">{a.pod_id}</td>
+                    <td className="px-4 py-2 font-mono text-xs text-da-text">{a.seat_id} ({a.seat_role})</td>
+                    <td className="px-4 py-2 font-medium text-da-text">{a.name}</td>
                   </tr>
                 ))}
             </tbody>

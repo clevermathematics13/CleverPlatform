@@ -139,7 +139,7 @@ export default function SeatingChart({ seats, assignments, classGroup }: Props) 
 
   // Early return AFTER all hooks
   if (!activeSeats.length) {
-    return <p className="text-gray-500 italic py-8 text-center">No seats configured for {classGroup || 'this class'}.</p>;
+    return <p className="text-da-muted italic py-8 text-center">No seats configured for {classGroup || 'this class'}.</p>;
   }
 
   return (
@@ -150,7 +150,7 @@ export default function SeatingChart({ seats, assignments, classGroup }: Props) 
             if (!canvasRef.current) return;
             try {
               const { toPng } = await import('html-to-image');
-              const dataUrl = await toPng(canvasRef.current, { backgroundColor: '#eff6ff' });
+              const dataUrl = await toPng(canvasRef.current, { backgroundColor: '#160904' });
               const a = document.createElement('a');
               a.href = dataUrl;
               a.download = `seating-${classGroup || 'chart'}-${new Date().toISOString().slice(0, 10)}.png`;
@@ -159,14 +159,14 @@ export default function SeatingChart({ seats, assignments, classGroup }: Props) 
               alert('Export failed: ' + (e as Error).message);
             }
           }}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          className="rounded-lg border border-da-border px-3 py-1.5 text-xs font-medium text-da-text hover:bg-da-hover"
         >
           ↓ Export image
         </button>
       </div>
       <div
         ref={canvasRef}
-        className="relative border border-dashed border-gray-400 rounded-lg bg-blue-50/50"
+        className="relative border border-dashed border-da-border rounded-lg bg-da-bg/40"
         style={{ minHeight: canvasHeight }}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -180,11 +180,11 @@ export default function SeatingChart({ seats, assignments, classGroup }: Props) 
           return (
             <div
               key={podId}
-              className="absolute bg-white border border-gray-300 rounded-lg p-3 shadow-md w-52 cursor-grab active:cursor-grabbing active:shadow-lg active:z-10 select-none touch-none"
+              className="absolute bg-da-surface border border-da-border rounded-lg p-3 shadow-md w-52 cursor-grab active:cursor-grabbing active:shadow-lg active:z-10 select-none touch-none"
               style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
               onPointerDown={(e) => onPointerDown(e, podId)}
             >
-              <div className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2 pointer-events-none">
+              <div className="text-xs font-bold text-da-accent uppercase tracking-wide mb-2 pointer-events-none">
                 {podId}
               </div>
               <div className="flex gap-1.5 pointer-events-none">
@@ -195,7 +195,7 @@ export default function SeatingChart({ seats, assignments, classGroup }: Props) 
                       key={seat.seat_id}
                       title={seat.seat_id}
                       className={`flex-1 rounded p-2 text-center text-xs font-semibold min-w-0 ${
-                        a ? 'bg-blue-100 border border-blue-200 text-blue-900' : 'bg-gray-100 border border-dashed border-gray-300 text-gray-400'
+                        a ? 'bg-da-accent/20 border border-da-accent/40 text-da-text' : 'bg-da-hover border border-dashed border-da-border text-da-muted'
                       }`}
                     >
                       <span className="block truncate">{a?.name || '—'}</span>
@@ -212,7 +212,7 @@ export default function SeatingChart({ seats, assignments, classGroup }: Props) 
                         key={seat.seat_id}
                         title={seat.seat_id}
                         className={`w-20 rounded p-2 text-center text-xs font-semibold ${
-                          a ? 'bg-blue-100 border border-blue-300 text-blue-900' : 'bg-gray-100 border border-dashed border-gray-400 text-gray-400'
+                          a ? 'bg-da-accent/20 border border-da-accent/40 text-da-text' : 'bg-da-hover border border-dashed border-da-border text-da-muted'
                         }`}
                       >
                         <span className="block truncate">{a?.name || '—'}</span>
@@ -226,7 +226,7 @@ export default function SeatingChart({ seats, assignments, classGroup }: Props) 
         })}
       </div>
       {assignments.length > 0 && (
-        <p className="mt-3 text-xs text-gray-600">
+        <p className="mt-3 text-xs text-da-muted">
           Score: {assignments[0]?.candidate_score?.toFixed(2)} — Run: {assignments[0]?.run_id}
         </p>
       )}

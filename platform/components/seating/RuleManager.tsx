@@ -87,23 +87,23 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => setLocalRules([...localRules, newRule('PAIR')])}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+          className="rounded-lg border border-da-border px-3 py-1.5 text-sm hover:bg-da-hover"
         >+ Pair Rule</button>
         <button
           onClick={() => setLocalRules([...localRules, newRule('POD')])}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50"
+          className="rounded-lg border border-da-border px-3 py-1.5 text-sm hover:bg-da-hover"
         >+ Pod Rule</button>
         <button
           onClick={() => setLocalRules([...localRules, newRule('SEAT')])}
-          className="rounded-lg border border-orange-300 bg-orange-50 px-3 py-1.5 text-sm text-orange-800 hover:bg-orange-100"
+          className="rounded-lg border border-da-warning/40 bg-da-warning/15 px-3 py-1.5 text-sm text-da-warning hover:bg-da-warning/25"
         >📌 Pin to Seat</button>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+          className="rounded-lg bg-da-accent px-4 py-1.5 text-sm font-semibold text-[#2b1408] hover:bg-da-amber disabled:opacity-50"
         >{saving ? 'Saving…' : 'Save Rules'}</button>
         {classGroup && (
-          <span className="ml-auto self-center text-xs text-gray-500">
+          <span className="ml-auto self-center text-xs text-da-muted">
             Showing rules for <strong>{classGroup}</strong> + global
           </span>
         )}
@@ -119,17 +119,17 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
 
       {/* Feedback summary */}
       {feedback && feedback.length > 0 && (
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-          <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+        <div className="rounded-lg border border-da-border bg-da-hover p-3">
+          <p className="text-xs font-semibold text-da-muted uppercase tracking-wide mb-2">
             Last generate — rule outcomes
           </p>
           <div className="space-y-1">
             {feedback.map((fb, i) => (
               <div key={i} className="flex items-start gap-2 text-xs">
-                <span className={fb.satisfied ? 'text-green-600' : 'text-red-600'}>
+                <span className={fb.satisfied ? 'text-da-success' : 'text-da-danger'}>
                   {fb.satisfied ? '✓' : '✗'}
                 </span>
-                <span className={fb.satisfied ? 'text-gray-700' : 'text-red-700'}>
+                <span className={fb.satisfied ? 'text-da-text' : 'text-da-danger'}>
                   {fb.detail}
                 </span>
               </div>
@@ -139,7 +139,7 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
       )}
 
       {localRules.length === 0 && (
-        <p className="text-gray-500 italic py-4">No rules yet. Add one above.</p>
+        <p className="text-da-muted italic py-4">No rules yet. Add one above.</p>
       )}
 
       <div className="space-y-3">
@@ -150,48 +150,48 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
               key={idx}
               className={`rounded-lg border p-4 shadow-sm ${
                 !rule.active
-                  ? 'opacity-50 border-gray-300 bg-white'
+                  ? 'opacity-50 border-da-border bg-da-surface'
                   : fb
                   ? fb.satisfied
-                    ? 'border-green-300 bg-green-50'
-                    : 'border-red-300 bg-red-50'
-                  : 'border-gray-300 bg-white'
+                    ? 'border-da-success/40 bg-da-success/10'
+                    : 'border-da-danger/40 bg-da-danger/10'
+                  : 'border-da-border bg-da-surface'
               }`}
             >
               <div className="flex items-center gap-2 mb-3">
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold uppercase ${
                   rule.rule_type === 'PAIR'
-                    ? 'bg-blue-100 text-blue-900 border border-blue-300'
+                    ? 'bg-da-info/20 text-da-info border border-da-info/40'
                     : rule.rule_type === 'SEAT'
-                    ? 'bg-orange-100 text-orange-900 border border-orange-300'
-                    : 'bg-green-100 text-green-900 border border-green-300'
+                    ? 'bg-da-warning/20 text-da-warning border border-da-warning/40'
+                    : 'bg-da-success/20 text-da-success border border-da-success/40'
                 }`}>{rule.rule_type}</span>
                 <button
                   onClick={() => update(idx, 'active', !rule.active)}
                   className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
-                    rule.active ? 'bg-green-100 text-green-900 border border-green-300' : 'bg-red-100 text-red-900 border border-red-300'
+                    rule.active ? 'bg-da-success/20 text-da-success border border-da-success/40' : 'bg-da-danger/20 text-da-danger border border-da-danger/40'
                   }`}
                 >{rule.active ? '● ON' : '○ OFF'}</button>
                 {fb && (
-                  <span className={`text-xs font-semibold ${fb.satisfied ? 'text-green-700' : 'text-red-700'}`}>
+                  <span className={`text-xs font-semibold ${fb.satisfied ? 'text-da-success' : 'text-da-danger'}`}>
                     {fb.satisfied ? '✓ satisfied' : '✗ violated'}
                   </span>
                 )}
-                <button onClick={() => remove(idx)} className="ml-auto text-red-500 hover:text-red-700 text-lg leading-none">✕</button>
+                <button onClick={() => remove(idx)} className="ml-auto text-da-danger hover:opacity-80 text-lg leading-none">✕</button>
               </div>
 
               <div className="flex flex-wrap gap-2 items-center">
                 {rule.rule_type === 'PAIR' ? (
                   <>
                     <select value={rule.student_a} onChange={(e) => update(idx, 'student_a', e.target.value)}
-                      className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800">
+                      className="rounded border border-da-border px-2 py-1 text-sm text-da-text">
                       <option value="">Student A</option>
                       {filteredStudents.map((s) => (
                         <option key={s.student_id} value={s.student_id}>{s.name}</option>
                       ))}
                     </select>
                     <select value={rule.student_b} onChange={(e) => update(idx, 'student_b', e.target.value)}
-                      className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800">
+                      className="rounded border border-da-border px-2 py-1 text-sm text-da-text">
                       <option value="">Student B</option>
                       {filteredStudents.map((s) => (
                         <option key={s.student_id} value={s.student_id}>{s.name}</option>
@@ -201,15 +201,15 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
                 ) : rule.rule_type === 'SEAT' ? (
                   <>
                     <select value={rule.student_id} onChange={(e) => update(idx, 'student_id', e.target.value)}
-                      className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800">
+                      className="rounded border border-da-border px-2 py-1 text-sm text-da-text">
                       <option value="">Student</option>
                       {filteredStudents.map((s) => (
                         <option key={s.student_id} value={s.student_id}>{s.name}</option>
                       ))}
                     </select>
-                    <span className="text-sm text-gray-500">📌 pinned to</span>
+                    <span className="text-sm text-da-muted">📌 pinned to</span>
                     <select value={rule.seat_id} onChange={(e) => update(idx, 'seat_id', e.target.value)}
-                      className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800">
+                      className="rounded border border-da-border px-2 py-1 text-sm text-da-text">
                       <option value="">Seat</option>
                       {allSeats.map((s) => (
                         <option key={s.seat_id} value={s.seat_id}>{s.seat_id} ({s.pod_id} · {s.seat_role})</option>
@@ -219,33 +219,33 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
                 ) : rule.pod_id === '' && rule.student_id ? (
                   <>
                     <select value={rule.student_id} onChange={(e) => update(idx, 'student_id', e.target.value)}
-                      className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800">
+                      className="rounded border border-da-border px-2 py-1 text-sm text-da-text">
                       <option value="">Student</option>
                       {filteredStudents.map((s) => (
                         <option key={s.student_id} value={s.student_id}>{s.name}</option>
                       ))}
                     </select>
-                    <span className="text-sm text-gray-600">min</span>
+                    <span className="text-sm text-da-muted">min</span>
                     <input
                       type="number" min="2" max="8" step="1"
                       value={Math.min(Math.max(rule.weight, 2), 8)}
                       onChange={(e) => update(idx, 'weight', Math.min(Math.max(Number(e.target.value), 2), 8))}
-                      className="w-14 rounded border border-orange-300 bg-orange-50 px-2 py-1 text-sm font-semibold text-orange-800 text-center"
+                      className="w-14 rounded border border-da-warning/40 bg-da-warning/15 px-2 py-1 text-sm font-semibold text-da-warning text-center"
                     />
-                    <span className="text-sm text-gray-600">people in pod</span>
-                    <span className="rounded border border-orange-300 bg-orange-50 px-2 py-1 text-xs font-semibold text-orange-700">🔒 Always Hard</span>
+                    <span className="text-sm text-da-muted">people in pod</span>
+                    <span className="rounded border border-da-warning/40 bg-da-warning/15 px-2 py-1 text-xs font-semibold text-da-warning">🔒 Always Hard</span>
                   </>
                 ) : (
                   <>
                     <select value={rule.student_id} onChange={(e) => update(idx, 'student_id', e.target.value)}
-                      className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800">
+                      className="rounded border border-da-border px-2 py-1 text-sm text-da-text">
                       <option value="">Student</option>
                       {filteredStudents.map((s) => (
                         <option key={s.student_id} value={s.student_id}>{s.name}</option>
                       ))}
                     </select>
                     <select value={rule.pod_id} onChange={(e) => update(idx, 'pod_id', e.target.value)}
-                      className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800">
+                      className="rounded border border-da-border px-2 py-1 text-sm text-da-text">
                       <option value="">Pod</option>
                       {pods.map((p) => <option key={p} value={p}>{p}</option>)}
                     </select>
@@ -254,14 +254,14 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
 
                 {rule.rule_type !== 'SEAT' && !(rule.rule_type === 'POD' && !rule.pod_id && rule.student_id) && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium text-gray-700">Weight</span>
+                    <span className="text-xs font-medium text-da-text">Weight</span>
                     <input
                       type="range" min="-15" max="15" step="1" value={rule.weight}
                       onChange={(e) => update(idx, 'weight', Number(e.target.value))}
                       className="w-28"
                     />
                     <span className={`text-sm font-bold w-20 text-center ${
-                      rule.weight > 0 ? 'text-teal-700' : rule.weight < 0 ? 'text-orange-600' : 'text-gray-500'
+                      rule.weight > 0 ? 'text-da-success' : rule.weight < 0 ? 'text-da-warning' : 'text-da-muted'
                     }`}>
                       {Math.abs(rule.weight) >= 15
                         ? (rule.weight > 0
@@ -275,7 +275,7 @@ export default function RuleManager({ rules, students, seats, classGroup, onSave
                 <input
                   type="text" placeholder="Notes (optional)" value={rule.notes}
                   onChange={(e) => update(idx, 'notes', e.target.value)}
-                  className="flex-1 min-w-24 rounded border border-gray-400 px-2 py-1 text-sm text-gray-800"
+                  className="flex-1 min-w-24 rounded border border-da-border px-2 py-1 text-sm text-da-text"
                 />
               </div>
             </div>
