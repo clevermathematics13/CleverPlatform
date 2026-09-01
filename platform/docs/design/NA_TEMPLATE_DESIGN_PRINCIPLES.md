@@ -111,6 +111,40 @@ The same input content and same template settings should produce the same output
 
 Do not rely on unpredictable browser rendering, user machine fonts, or manual post-processing.
 
+## Anchor-safe layout (scan pipeline contract)
+
+Every A.1 grading incident in HANDOFF.md §5 came from crop geometry that
+did not match where students actually wrote. These rules exist so no
+future packet can repeat them:
+
+1. Everything a student might write on belongs inside ONE question block:
+   prompt, enumerated sub-items, tables to complete, and the answer box.
+   Students annotate printed items inline (A.1 Q1, Q2, Q15) and complete
+   printed table rows (Q9, Q16-Q17) wherever they appear; if such an
+   element sits outside the block, its crop structurally cannot see the
+   writing (there is no upward crop expansion).
+2. The scan anchor spans the whole question block, not just the drawn
+   box. The Typst template emits a `<na-anchor>` metadata marker pair
+   around each question block; `TypstRenderService.render()` queries them
+   and returns exact per-question geometry (`anchor_source =
+   'typst_metadata'`). Never measure anchors off printed paper for a
+   Typst-generated packet, and never hand-derive `expand_max_*` from a
+   neighbour's authored coordinate.
+3. Question blocks stay unbreakable. Anchor emission fails loudly if a
+   marker pair lands on two pages.
+4. Persist at generation time. Rendering with `persist` stores the master
+   PDF and creates the packet version + anchors in one step; a packet
+   whose master was never stored (A.1) can only be re-measured from
+   student scans afterwards.
+5. Every page carries the version label in its footer. Scanned paper must
+   be able to say which render it came from -- the 1 Sep 2026 geometry
+   incident (scanner auto-crop and photocopier scaling silently
+   misaligning a whole cohort) burned hours because paper had no identity.
+6. Scans are registered before cropping. Scanner auto-crop, copier
+   reduction and duplex offsets are per-page affine distortions; the
+   normalization tooling (platform/scripts/scan_geometry/) must be run on
+   any batch whose pages do not verify against the master geometry.
+
 ## Non-negotiables
 
 1. Do not store raw HTML, CSS, or LaTeX strings in the database as template configuration.

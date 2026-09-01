@@ -683,9 +683,13 @@ differences between batches swamp the handwriting signal.
   sliver. Q4, Q7, Q8, Q9, Q11, Q12, Q16, Q18, Q26(a), Q27, Q28, Q29,
   ACTIVITY bands: clean or trivial marks only.
 
-**Finding 2 - THE BIG ONE: the bulk-uploaded cohort was scanned from a
-REVISED print run whose layout does not match na_anchors.** Confirmed
-three independent ways:
+**Finding 2 - THE BIG ONE (SUPERSEDED - see the 1 Sep correction below):
+the bulk-uploaded cohort's pages do not match na_anchors geometry.** The
+original diagnosis below blamed a revised print run; the correction that
+follows this section shows the print content is IDENTICAL and the
+misalignment is per-scan-page affine distortion. The evidence rows are
+kept because the measurements were right even though the first
+interpretation of them was not:
 - The band montages show textual differences: the newer packets' Q5
   prompt has an added "(e) every variable" item; Q10, Q13, Q17, Q19(c),
   Q20, Q22, Q25, Q28 prompts carry extra/changed lines ("Label the width
@@ -725,6 +729,95 @@ variant; (b) per-page template registration in the CV service; (c)
 re-print + re-scan the affected students on the canonical version. The
 already-applied Q2 y0=210.0 fix is safe for both variants (the new
 print's Q2 items sit ~26pt higher, still below 210) and stays.
+
+### CORRECTION, 1 Sep 2026 (same day, deeper analysis): there is NO second
+### print run - the distortion is per-scan-page affine, and it is fixable
+
+Rendering matched regions of the "two prints" side by side (Q5's items,
+Q20's and Q17's prompts) shows the printed content is BYTE-IDENTICAL -
+the "extra prompt lines" that anchored the revised-print theory were an
+artifact of comparing fixed page-coordinate windows on pages the bulk
+scanner had shifted ~26pt. What actually varies, measured by fitting
+y_scan = s*y + dy per scan-page against printed accent-bar positions
+(consensus reference from the three cleanest 22 Aug scans):
+
+- Per-page scanner auto-crop: dy varies PER PAGE within one scan (0 on
+  some pages, -26pt on others; Evelyn Xiao has 10 shifted pages and 12
+  straight ones). This also explains "Joaquin's mixed booklet" - not
+  mixed printing, mixed per-page crops.
+- Reduced photocopies: a 14-student cluster sits at s~0.915, INCLUDING
+  Ruifeng Wu from the original 22 Aug batch - his crops have been ~8.5%
+  off since day one (shrunken content lands inside generous crops, which
+  is why nobody noticed).
+- Duplex copier asymmetry: odd and even pages of one booklet can carry
+  DIFFERENT transforms (Maia Belmont: fronts s=0.914/dx=+9, backs
+  s=0.87/dx=+23; Raul Siucho: dx alternating +8.5/-6.5). Every fallback
+  statistic in the tooling pools per page parity because of this.
+- Two scans are a genuinely different artifact: Vania De Los Heros and
+  Zaira Miranda hold a 32-PAGE render of A.1 (their pages carry a
+  "Page N of 32" footer; the canonical render is 26 pages, no footer).
+  This is why their scans are stuck at status='split'. They need their
+  own packet version + anchors (or a re-scan on the canonical print) -
+  excluded from the normalization below.
+
+**The fix implemented** (replacing the superseded second-version plan):
+normalize the scans themselves, once, and leave the pipeline/anchors
+untouched. Committed tooling in `platform/scripts/scan_geometry/`
+(bars.py detection, register.py fitting, normalize.py orchestration +
+verification, build_reference.py, a1_reference.json): fits (s, dy, dx)
+per scan-page (bar-run least squares primary; single-box pages solved
+exactly from one run; banner-weighted dark-profile correlation fallback;
+parity-pooled inheritance last), warps out-of-tolerance scans back to
+canonical A4 space as JPEG-based PDFs, and VERIFIES every warped page
+re-registers at |dy|<=3pt via print-only bar runs (a handwriting-based
+verifier was tried and rejected - other students' pen strokes drowned
+it). 37 of 39 26-page scans needed normalization; only Davi Verma and
+Ines Palomino were within tolerance throughout.
+
+`scripts/normalize-and-reassess.ts` (committed, resumable, phased)
+uploads the normalized PDFs next to the originals (originals untouched),
+repoints split_storage_path, re-runs stage 4 for all 40 anchors on
+normalized scans (changed-geometry anchors only on aligned ones),
+regenerates the prompt crops whose bands moved (Q1/Q3/Q6/Q10), and
+re-runs stage 5 (ai_* only) on every regenerated crop.
+
+### Packet generation hardened, 1 Sep 2026: anchors are now EMITTED at
+### render time, never detected from paper
+
+The root cause behind every §5 incident is that anchor geometry was
+always measured FROM the printed artifact after the fact (auto_fillrect
+on a PDF for v1 - and the original extractor was never even committed).
+The Typst path now closes that loop (`anchor_source = 'typst_metadata'`,
+the schema value that existed since 21 Aug with no implementation):
+
+- The Typst template (embedded copy in `lib/typst-render.service.ts`,
+  synced markers in `typst/activity.typ`) plants a zero-size
+  `#metadata(...) <na-anchor>` marker pair around EVERY question block.
+  `TypstRenderService.render()` queries them post-compile and returns
+  exact per-question rectangles (`lib/na-anchor-emit.ts`). Markers are
+  proven layout-neutral: the test suite compiles the template with and
+  without them and asserts byte-identical PDFs
+  (`lib/na-anchor-emit.test.ts`).
+- Anchors span the WHOLE question block - prompt, sub-items, answer box -
+  so inline annotations (the Q1/Q2/Q15 loss mode) structurally cannot
+  fall outside a crop, and separate prompt crops become unnecessary for
+  new packets. Expansion caps derive from the NEXT block's measured
+  position, killing the neighbour's-authored-coordinate bug class (Q6).
+- `POST /api/typst-render` accepts `persist: { nuancedAnalysisId,
+  versionLabel }`: one call renders, stores the master PDF
+  (`na-masters/...` - A.1's was never stored, which blocked re-derivation
+  for weeks), creates the na_packet_versions row, and inserts all
+  anchors. Refuses to persist if anchor emission failed.
+- Every page footer now stamps title + versionLabel + page number, so
+  scanned paper can prove which render it came from - the missing
+  identity that cost this incident hours (and would have identified
+  Vania/Zaira's 32-page render instantly).
+- Layout rules codified in
+  `docs/design/NA_TEMPLATE_DESIGN_PRINCIPLES.md` §"Anchor-safe layout".
+- New scan batches should run `scripts/scan_geometry/normalize.py`
+  against the version's reference before cropping (for typst_metadata
+  packets, build the reference from the stored master via
+  build_reference.py - strictly better than any scan).
 
 ---
 
@@ -898,21 +991,31 @@ the happy path work."
    from Storage via the dashboard (its anchor no longer references it;
    Storage deletes stayed permission-blocked in the session).
 
-3c. **Decide how to handle the second print run (1 Sep 2026, see §5
-   "Full-packet band sweep")** - the ~30 bulk-cohort scans were graded
-   against anchors measured on the old print; their crops are misaligned
-   by ~25-35pt on many pages (first lines clipped, next question's
-   prompt swallowed), and at least one booklet mixes both prints
-   page-by-page. Until decided, treat the bulk cohort's ai_* marks as
-   provisional and release nothing from it. Options in §5. The extended
-   Q2 re-run (`scripts/recrop-assess-q2.ts`, Open Items 3b's follow-up)
-   is still worth doing for both prints - Q2's fixed band covers both -
-   but was permission-blocked in the discovering session.
-3d. **Old-print Q2-class geometry still to fix once 3c is decided**:
-   Q1 top-edge (inline "=420..." answers above y0=309.61 - confirmed for
-   4+ students), Q2 y1 undershoot (box truly ends ~495-500, authored
-   444.59), the between-anchor filled table rows (Q9->Q10, Q16->Q17),
-   and the smaller inline-annotation anchors listed in §5 Finding 1.
+3c. **Run the scan-normalization migration** (supersedes the earlier
+   "decide on the second print run" item - the §5 correction shows there
+   is no second print run). Everything is staged: normalized PDFs +
+   transforms from `scripts/scan_geometry/normalize.py`, then
+   `npx tsx scripts/normalize-and-reassess.ts --transforms <path>`
+   (resumable; uploads, repoints, re-crops, regenerates prompt crops,
+   re-assesses ai_* only). Until it completes, treat the bulk cohort's
+   ai_* marks as provisional and release nothing from it. Expect ~1,500
+   Sonnet grading calls (~$25). Afterwards: review mark changes,
+   especially Davi Verma's released Q1/Q5/Q9/Q17 (his Q9 "9 9" table row
+   and Q1 inline answers become visible to the grader for the first
+   time).
+3d. **Vania De Los Heros + Zaira Miranda hold a 32-page render of A.1**
+   (see §5 correction) - stuck at status='split' because their page
+   count mismatches the 26-page canonical version. They need their own
+   na_packet_versions row with anchors measured from their booklets
+   (scan_geometry tooling generalizes; their footers carry "Page N of
+   32"), or a re-scan after the teacher locates/regenerates that render's
+   master. Their current Q2 crops carry ai marks of 0 from misapplied
+   26-page anchors - ignore those.
+3e. **The 1 Sep anchor-geometry fixes** (Q1 y0 241, Q2 y1 464, Q5 y1
+   298, Q9 y1 308, Q17 y0 419.5 + prompt-crop clears for Q2/Q17) are
+   LIVE in na_anchors; crops regenerate via 3c. Smaller
+   inline-annotation spots (Q13/Q14/Q15/Q19/Q20/Q22/Q24/Q25, §5 Finding
+   1) were deliberately left: minor working notes, main answers in-box.
 
 **Medium**
 

@@ -30,6 +30,7 @@
 
 import { validateTemplateAst } from "./template-ast.schema";
 import type { TemplateAst } from "./template-ast.schema";
+import { pairAnchorMarkers, mmToPt, type EmittedAnchor, type AnchorMarkerRow } from "./na-anchor-emit";
 
 // -- Activity content AST ------------------------------------------------------
 
@@ -173,13 +174,28 @@ export interface ActivityPayload {
     generatedAt?: string;
     generatedBy?: string;
     platformVersion?: string;
+    /** Printed in every page footer -- lets a physical sheet identify which
+     *  packet version it was printed from (the 1 Sep 2026 scan-geometry
+     *  incident was undiagnosable for hours because paper carried no
+     *  version identity). */
+    versionLabel?: string;
   };
 }
 
 // -- TypstRenderService result -------------------------------------------------
 
 export type TypstRenderResult =
-  | { success: true; pdfBuffer: Buffer; pageCount?: number }
+  | {
+      success: true;
+      pdfBuffer: Buffer;
+      pageCount?: number;
+      /** Exact per-question crop geometry emitted by the compiler itself --
+       *  the anchor_source='typst_metadata' path. Present when the template's
+       *  <na-anchor> markers compiled and queried cleanly; absent (with a
+       *  server-side warning) when they did not, so rendering never fails
+       *  just because anchor emission did. */
+      anchors?: EmittedAnchor[];
+    }
   | { success: false; error: string; detail?: string };
 
 // -- Lazy Typst compiler initialisation ---------------------------------------
@@ -196,6 +212,10 @@ interface NodeCompilerLike {
   pdf(
     opts: { mainFileContent: string; inputs?: Record<string, string> }
   ): Buffer;
+  query(
+    opts: { mainFileContent: string; inputs?: Record<string, string> },
+    args: { selector: string }
+  ): unknown[];
 }
 
 /**
@@ -332,7 +352,35 @@ export const TypstRenderService = {
         };
       }
 
-      return { success: true, pdfBuffer };
+      // Anchor emission -- query the <na-anchor> markers the template plants
+      // around every question block. Best-effort by design: a marker/query
+      // problem must never take down rendering itself, but it IS logged
+      // loudly, because silently missing anchors would push a future packet
+      // back onto the detect-from-paper path this exists to retire.
+      let anchors: EmittedAnchor[] | undefined;
+      let pageCount: number | undefined;
+      try {
+        const rows = compiler.query(
+          { mainFileContent: typstSource, inputs: { payload: payloadJson } },
+          { selector: "<na-anchor>" }
+        ) as AnchorMarkerRow[];
+        const doc = payload.template.document;
+        const paired = pairAnchorMarkers(rows, {
+          contentX0Pt: mmToPt(doc.marginLeftMm),
+          contentX1Pt: (doc.pageSize === "a4" ? 595 : 612) - mmToPt(doc.marginRightMm),
+          pageHeightPt: doc.pageSize === "a4" ? 842 : 792,
+          pageWidthPt: doc.pageSize === "a4" ? 595 : 612,
+        });
+        anchors = paired.anchors;
+        pageCount = paired.pageCount ?? undefined;
+      } catch (err) {
+        console.error(
+          "[typst-render.service] anchor emission failed (PDF itself rendered fine):",
+          describeCompileError(err)
+        );
+      }
+
+      return { success: true, pdfBuffer, anchors, pageCount };
     } catch (err) {
       // WHY THIS IS WIDER THAN `err instanceof Error ? err.message : String(err)`
       // (2026-08-18): production logged "render failed: Typst compilation
@@ -425,8 +473,10 @@ function describeCompileError(err: unknown): string {
  * Returns the full Typst template source as a string.
  * Embedded here so the API route has zero file I/O at runtime.
  * The canonical source lives in platform/typst/activity.typ.
+ * Exported for the anchor-emission tests, which need to compile the real
+ * template (and marker-stripped variants of it) directly.
  */
-function getActivityTypstSource(): string {
+export function getActivityTypstSource(): string {
   return `
 // -- CleverPlatform Nuanced Analysis — Typst template ------------------------
 #let raw = sys.inputs.at("payload", default: "{}")
@@ -436,6 +486,12 @@ function getActivityTypstSource(): string {
 #let opts = data.at("renderOptions", default: (:))
 
 #let page-size = if tmpl.document.pageSize == "a4" { "a4" } else { "us-letter" }
+// Footer stamp: title, version label and page number on every sheet. This is
+// the printed identity that lets a scanned page prove WHICH render it came
+// from -- scans without one cost a full afternoon of print-run forensics on
+// 1 Sep 2026 (see HANDOFF). Lives in the bottom margin, so it never moves
+// content or anchors.
+#let version-label = data.at("metadata", default: (:)).at("versionLabel", default: "")
 #set page(
   paper: page-size,
   margin: (
@@ -444,6 +500,14 @@ function getActivityTypstSource(): string {
     bottom: (tmpl.document.marginBottomMm) * 1mm,
     left: (tmpl.document.marginLeftMm) * 1mm,
   ),
+  footer: context [
+    #text(size: 6.5pt, fill: rgb("#9ca3af"))[
+      #content.title
+      #if version-label != "" [ · #version-label ]
+      #h(1fr)
+      #counter(page).display("1 / 1", both: true)
+    ]
+  ],
 )
 #set text(font: tmpl.typography.bodyFont, size: (tmpl.typography.bodySizePt) * 1pt)
 #set par(leading: 0.65em)
@@ -621,7 +685,15 @@ function getActivityTypstSource(): string {
     #v(4pt)
   ]
   #for q in section.questions [
+    // The whole question block -- prompt, sub-items AND answer box -- sits
+    // between a start/end <na-anchor> marker pair. The scan pipeline crops
+    // this full span, so a student annotating a printed item above the box
+    // (the A.1 Q1/Q2 incident class) can never fall outside the crop.
+    // metadata() is zero-size and invisible; the markers must stay INSIDE
+    // the unbreakable block so both report the page the block actually
+    // landed on.
     #block(breakable:false)[
+      #context [#metadata((qid: "Q" + str(q.globalNumber), kind: "start", pos: here().position())) <na-anchor>]
       #grid(columns:(24pt,1fr,36pt),gutter:6pt)[
         #text(weight:"bold")[#str(q.globalNumber).] #tier-badge(q.tier)
       ][
@@ -633,6 +705,7 @@ function getActivityTypstSource(): string {
       ]
       #v(3pt)
       #answer-box(q.answerBox.heightMm)
+      #context [#metadata((qid: "Q" + str(q.globalNumber), kind: "end", pos: here().position())) <na-anchor>]
     ]
     #v(4pt)
   ]
@@ -662,5 +735,8 @@ function getActivityTypstSource(): string {
   #v(2pt)
   #callout-box(text(size:9pt)[*For the instructor only.* Remove before distributing.],fill-color:rgb("#faf5ff"),border-color:col-accent)
 ]
+
+// Page-count marker: its queried position reports the document's final page.
+#context [#metadata((qid: "", kind: "doc-end", pos: here().position())) <na-anchor>]
 `;
 }

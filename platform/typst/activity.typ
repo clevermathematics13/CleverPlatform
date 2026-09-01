@@ -338,8 +338,15 @@
   ]
 
   // Questions
+  // Each question block is bracketed by zero-size <na-anchor> metadata
+  // markers (queried at compile time by TypstRenderService) so the scan
+  // pipeline gets exact crop geometry for the WHOLE block -- prompt,
+  // sub-items and answer box together. Keep the markers INSIDE the
+  // unbreakable block, and keep this in sync with the embedded template in
+  // lib/typst-render.service.ts (that copy is what production renders).
   #for q in section.questions [
     #block(breakable: false)[
+      #context [#metadata((qid: "Q" + str(q.globalNumber), kind: "start", pos: here().position())) <na-anchor>]
       #grid(
         columns: (28pt, 1fr, 48pt),
         gutter: 6pt,
@@ -369,6 +376,7 @@
         q.answerBox.heightMm,
         continuation: if q.answerBox.continuation.enabled { q.answerBox.continuation.label } else { none },
       )
+      #context [#metadata((qid: "Q" + str(q.globalNumber), kind: "end", pos: here().position())) <na-anchor>]
     ]
     #v(str(tmpl.spacing.questionGapMm) + "mm")
   ]
@@ -432,3 +440,6 @@
     ]
   ]
 ]
+
+// Page-count marker: its queried position reports the document's final page.
+#context [#metadata((qid: "", kind: "doc-end", pos: here().position())) <na-anchor>]
