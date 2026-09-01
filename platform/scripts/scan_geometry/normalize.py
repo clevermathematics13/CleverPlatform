@@ -251,6 +251,22 @@ def main():
             outp = os.path.join(args.outdir, f"{entry['id']}.pdf")
             normalize_pdf(entry["local"], fit, outp)
             failures, unverifiable = verify_pdf(outp, ref)
+            # Repair pass: verification measures the residual (s_r, dy_r)
+            # directly, so a flagged page's transform can be corrected by
+            # composition -- y = (y_in - dy*k)/s then (y' - dy_r)/s_r
+            # collapses to s'' = s*s_r, dy'' = dy + s*dy_r. One iteration
+            # is enough in practice (the residual is measured, not
+            # guessed); whatever still fails after it is reported.
+            if failures:
+                for f in failures:
+                    v = fit["pages"].get(str(f["page"]))
+                    if v is None or "s" not in v:
+                        continue
+                    v["dy"] = v["dy"] + v["s"] * f["dy"]
+                    v["s"] = v["s"] * f["s"]
+                    v["repaired"] = True
+                normalize_pdf(entry["local"], fit, outp)
+                failures, unverifiable = verify_pdf(outp, ref)
             results[entry["id"]]["normalized_local"] = outp
             results[entry["id"]]["verify_failures"] = failures
             results[entry["id"]]["unverifiable_pages"] = unverifiable
