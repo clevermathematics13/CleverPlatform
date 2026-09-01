@@ -588,6 +588,64 @@ one only checked anchors where a student's ink had already tried and failed
 to cross the box; a bounded, "true border by direct measurement" check like
 this script's doesn't need to wait for a student to hit it first.
 
+### Q2 top-edge bug, 1 Sep 2026 - a NEW bug class: y0_pt excludes inline answers ABOVE the box
+
+The teacher spotted it live in Davi Verma's released feedback ("the work being
+shown here is not all Davi's work"): Q2's "See my work" panel showed only part
+(e) and the ruled box, while Davi had answered ALL FIVE parts (a)-(e) inline,
+correctly, next to the printed items - and the AI had graded him 2/5 against
+the incomplete crop (its own margin comment even told him to "double-check
+your other answers are in the right place"). Verified directly against his
+split PDF, page_index 4: the printed (a)-(e) items sit at ~248-290pt and Q2's
+anchor started at y0=276.48 (auto_fillrect only ever saw the ruled box below),
+slicing through the (c)/(d) row. The cut-off tails of his handwriting are
+literally visible at the old crop's top edge.
+
+Every prior truncation fix in this file was about the BOTTOM/RIGHT edges
+(y1_pt / expand_max_*); this is the top edge, where NO expansion mechanism
+exists at all, so `possibly_truncated` structurally cannot flag it. Worse,
+the 28 Aug prompt-crop backfill actively masked it: Q2's "Question, as
+printed" image covered exactly the excluded band, cut from a representative
+student who happened to write inside the box, so the panel showed pristine
+unanswered (a)-(d) items above a crop missing the real answers - everything
+LOOKED coherent. The other 6 students wrote their answers inside the box
+(their transcriptions cover all five parts; three scored 5/5), which is why
+only Davi's marks were visibly wrong.
+
+**Fixed the established way, data not heuristics** (1 Sep, via MCP SQL):
+Q2 anchor `da2cc841`, `y0_pt` 276.48 -> 210.0 (just below the ACTIVITY box's
+printed border at ~203-207pt, measured off the page; includes the printed
+header + all five items), and `prompt_crop_storage_path` cleared - the gap
+above the new y0 is ~3pt, an "inside-the-box" case like Q1(e), and the old
+prompt image would have duplicated content now inside the student's own crop.
+Verified end-to-end for Davi: the CV service /crop call with the new geometry
+returns a complete image (header, five inline answers, box; expanded=true,
+possibly_truncated=false).
+
+**NOT completed from that session - the agent environment's permission layer
+allowed reads, MCP SQL, and CV-service calls but blocked production Storage
+writes and the grading API call**, so the regenerated crops and re-assessment
+are pending. Everything is staged in `platform/scripts/recrop-assess-q2.ts`
+(committed, unlike the deleted 28 Aug one-off, precisely because the fix
+couldn't be executed in-session): re-crops Q2 for the 7 live scans and
+re-runs stage 5, ai_* only, idempotent, safe to re-run. Until it runs, Q2
+crops still show the old truncated image and Q2 has no prompt image.
+
+After it runs, **Davi's released Q2 needs teacher review**: his na_feedback
+row has `final_marks_awarded=2` (not teacher_edited) from approve-all against
+the truncated evidence; the re-assessment writes a new ai_* proposal (all
+five inline answers are correct and the box names a valid feature) but, by
+the stage-5 contract, never touches final_*.
+
+**Systemic follow-up worth doing**: any anchor whose printed sub-items sit
+ABOVE its detected box can hit this, and neither the truncation detector nor
+`audit_anchor_geometry.py` (which measures bottom borders) can see it. A
+cheap sweep: for each anchor, compare `question_text`'s enumerated parts
+against where students actually write - or simply eyeball each anchor's
+printed layout once per packet version for "items above the box" questions
+like Q2. The prompt-crop images are the wrong place to look for this: they
+can show the excluded band looking clean (see above).
+
 ---
 
 ## 6. What an agent session can and cannot reach
@@ -738,6 +796,20 @@ the happy path work."
    weight in the review UI, and at least one grading discrepancy found against
    the live assessment (§5) means the pilot data shouldn't be trusted alongside
    it. Not deleted yet - teacher chose to document only, for now.
+
+**High (added 1 Sep 2026)**
+
+3b. **Run `platform/scripts/recrop-assess-q2.ts`, then review Davi Verma's Q2.**
+   The Q2 anchor geometry fix (§5, "Q2 top-edge bug") is applied in the DB but
+   the re-crop + re-assessment couldn't be executed from the agent session
+   (production Storage writes and the grading API were permission-blocked).
+   Until the script runs, all 7 students' Q2 crops still show the truncated
+   image and Q2 has no prompt image; afterwards, Davi's RELEASED Q2
+   (`final_marks_awarded=2`, evidence now shows 5 correct parts) needs a
+   teacher's re-approval through the normal review flow. Also delete the
+   orphaned old prompt image
+   `na-crops/1462a2f2-fc2a-4bab-8135-ed3aefeb0aff/prompts/da2cc841-379f-4496-a449-d5dc6dd4dbef.png`
+   from Storage (its anchor no longer references it; same permission block).
 
 **Medium**
 
