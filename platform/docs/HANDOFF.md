@@ -648,6 +648,84 @@ printed layout once per packet version for "items above the box" questions
 like Q2. The prompt-crop images are the wrong place to look for this: they
 can show the excluded band looking clean (see above).
 
+### Full-packet band sweep, 1 Sep 2026 - and a SECOND PRINT RUN invalidating anchor geometry for the bulk cohort
+
+After the Q2 fix, a systematic sweep looked for the same problem
+everywhere: for every anchor, the band between the previous anchor's y1
+and this anchor's y0 was rendered for 15 distinct students (7 old-batch +
+8 bulk-cohort) and visually compared as per-band montages. A mechanical
+ink-vs-baseline detector was tried first and abandoned - scan-exposure
+differences between batches swamp the handwriting signal.
+
+**Finding 1 - more Q2-class content outside the boxes (old print run).**
+- **Q1 is a confirmed second top-edge case**: its printed "(a) 60x7 ...
+  (d) 30x(2x7+11)" items sit above the box (y0=309.61) and at least
+  Davi Verma, Roberto Aurelio Gamio, Matteo Zanatti and Irene Cardona
+  wrote "=420 / =330 / ..." answers inline next to them. NOT yet fixed -
+  see Finding 2 for why every further geometry patch is deferred.
+- **Q2's authored y1 (444.59) also undershoots the old print's box
+  bottom (~495-500pt)**: at least 8 of 15 students wrote their (e)
+  answer + reasoning on the box's last ruled lines (Matteo "e) 3n-7 ->
+  Exp.", Maia, Benjamin, Irene, Santiago, Ines, Kaito, Freya), where
+  capture depends on adaptive expansion firing across a blank-gap - the
+  documented Q30/Q1(e) stall mode. Likely explains several of the bulk
+  cohort's 3-4/5 Q2 marks.
+- **Filled table rows sit between anchors** (old print): the Q9 table's
+  last row (a=0 -> c=9, total 270) lands between Q9.y1 (275.1) and
+  Q10.y0 (366.73) and most students completed it there; same for the
+  12/5/720+150=870 row between Q16 and Q17.
+- **Inline working/annotations above y0** on Q13 (Santiago), Q14 (Davi,
+  Freya, Kaito, Ines - working on the printed given line), Q15
+  (Ruifeng annotated "(b) 6(n+15)" with "6n+90"), Q19 (Davi's (a)
+  calculation), Q20 (Santiago "k=30", Evelyn), Q22 (Freya), Q24 (Davi,
+  Irene "30(2a+c)"), Q25 (Santiago, Ines). Q5(e) answers ("e) x") below
+  Q5.y1 for ~5 students. Q7(b): Maia's factor pairs in the 292-308
+  sliver. Q4, Q7, Q8, Q9, Q11, Q12, Q16, Q18, Q26(a), Q27, Q28, Q29,
+  ACTIVITY bands: clean or trivial marks only.
+
+**Finding 2 - THE BIG ONE: the bulk-uploaded cohort was scanned from a
+REVISED print run whose layout does not match na_anchors.** Confirmed
+three independent ways:
+- The band montages show textual differences: the newer packets' Q5
+  prompt has an added "(e) every variable" item; Q10, Q13, Q17, Q19(c),
+  Q20, Q22, Q25, Q28 prompts carry extra/changed lines ("Label the width
+  and height...", "Begin it with 'For every...'", "complete - that is,
+  explain why no other k can work.", "Bullet points are accepted...").
+- `audit_anchor_geometry.py` run per student: true box borders on the
+  new print sit ~25-35pt HIGHER than authored y1 on many pages (Q3
+  709->683, Q13 407->384, Q13(b) 520->491, Q17 577->551, Q19 373->350,
+  Q19(b) 517->494, Q19(c) 660->637, Q22 413->386, Q26(b) 659->632,
+  Q26(c) 798->771; Q16's block reflowed entirely, 418->296).
+- A rendered overlay of the authored Q22/Q23 boxes on Evelyn Xiao's
+  page 19 vs Davi Verma's: on the old print the boxes frame the printed
+  template exactly; on the new print every crop starts ~30pt below the
+  printed box top - CLIPPING THE FIRST LINE of the student's writing
+  (no upward expansion exists) - and swallows the NEXT question's
+  printed prompt at the bottom.
+- **Booklets are MIXED**: Joaquin Portocarrero's scan has old-print
+  pages (4, 15) and new-print pages (13, 17, 19, 21) in one packet, so
+  even a per-scan "which version" flag is not enough - it varies per
+  page within one student.
+
+Consequence: every AI assessment for the ~30 bulk-cohort students ran on
+misaligned crops for the affected pages, and their 2-4/5 marks are
+suspect wherever the shift clipped a first line or a printed next-prompt
+leaked in. The old-batch 7 (db4d3a05 + Ines's re-upload) are unaffected
+by Finding 2; Davi Verma (the only released scan) is old-print.
+
+**Why nothing further was patched**: a single na_anchors row cannot be
+right for both print layouts at once, so per-anchor y0/y1 tweaks (the
+established fix pattern) now make things worse for whichever variant
+they don't match. The pipeline's core assumption - "geometry is solved
+once from the master PDF, not per scan" (ss5 architecture decisions) -
+does not survive mixed print runs. Options needing a teacher decision:
+(a) a second na_packet_versions row + freshly measured anchors for the
+revised print, with each scan (or page - see Joaquin) assigned to its
+variant; (b) per-page template registration in the CV service; (c)
+re-print + re-scan the affected students on the canonical version. The
+already-applied Q2 y0=210.0 fix is safe for both variants (the new
+print's Q2 items sit ~26pt higher, still below 210) and stays.
+
 ---
 
 ## 6. What an agent session can and cannot reach
@@ -819,6 +897,22 @@ the happy path work."
    `na-crops/1462a2f2-fc2a-4bab-8135-ed3aefeb0aff/prompts/da2cc841-379f-4496-a449-d5dc6dd4dbef.png`
    from Storage via the dashboard (its anchor no longer references it;
    Storage deletes stayed permission-blocked in the session).
+
+3c. **Decide how to handle the second print run (1 Sep 2026, see §5
+   "Full-packet band sweep")** - the ~30 bulk-cohort scans were graded
+   against anchors measured on the old print; their crops are misaligned
+   by ~25-35pt on many pages (first lines clipped, next question's
+   prompt swallowed), and at least one booklet mixes both prints
+   page-by-page. Until decided, treat the bulk cohort's ai_* marks as
+   provisional and release nothing from it. Options in §5. The extended
+   Q2 re-run (`scripts/recrop-assess-q2.ts`, Open Items 3b's follow-up)
+   is still worth doing for both prints - Q2's fixed band covers both -
+   but was permission-blocked in the discovering session.
+3d. **Old-print Q2-class geometry still to fix once 3c is decided**:
+   Q1 top-edge (inline "=420..." answers above y0=309.61 - confirmed for
+   4+ students), Q2 y1 undershoot (box truly ends ~495-500, authored
+   444.59), the between-anchor filled table rows (Q9->Q10, Q16->Q17),
+   and the smaller inline-annotation anchors listed in §5 Finding 1.
 
 **Medium**
 

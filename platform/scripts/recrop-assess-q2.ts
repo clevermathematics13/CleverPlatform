@@ -48,18 +48,34 @@ const BUCKET = "exam-scans";
 
 const PACKET_VERSION_ID = "1462a2f2-fc2a-4bab-8135-ed3aefeb0aff";
 const Q2_ANCHOR_ID = "da2cc841-379f-4496-a449-d5dc6dd4dbef";
-// The 7 live, identified A.1 scans (6 in batch db4d3a05 + Ines Palomino's
-// re-uploaded scan in batch 40284a18). The 3 orphaned pilot scans are
-// deliberately excluded, same as the 28 Aug Q1 re-run (Open Items #3).
-const SCAN_IDS = [
-  "fb4b6967-2280-4cf6-ac8b-ba7961727c41", // Davi Verma (RELEASED -- final_* needs teacher review after this runs)
+// Scans that already went through this script's first run (1 Sep 2026) --
+// skipped so a re-run only processes what's still pending. The full-cohort
+// bulk upload (~48 scans with splits, discovered 1 Sep) is why the scan
+// list became a query: the original hardcoded 7 covered only the students
+// the 27 Aug handoff knew about. Scans still mid-pipeline (status 'split',
+// stage 4 incomplete -- mostly duplicate re-uploads pending a teacher
+// decision) and the 3 orphaned pilot scans (no split PDF) are excluded.
+const ALREADY_DONE = new Set([
+  "fb4b6967-2280-4cf6-ac8b-ba7961727c41", // Davi Verma (released; final_* re-approved 1 Sep)
   "511127b9-1b8b-4eef-911c-9f830a0c8ab1", // Freya Delisle
   "3797e2c9-5b14-4e74-bcda-39719cbdbec0", // Kaito Fujii
   "93b74b8f-3322-4f5b-abad-1bbe1a1510fc", // Roberto Aurelio Gamio
   "812210f8-f6e5-4fb6-b083-d5147deea1d8", // Ruifeng Wu
   "69862b2f-6f2f-41ca-bcc6-3277fa5401b8", // Santiago Caipo
   "68867cf5-48e3-435c-bcf9-80810d050f39", // Ines Palomino
-];
+]);
+
+async function eligibleScanIds(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from("na_packet_scans")
+    .select("id, status, split_storage_path")
+    .eq("packet_version_id", PACKET_VERSION_ID)
+    .in("status", ["cropped", "assessed", "released"])
+    .not("split_storage_path", "is", null)
+    .order("created_at");
+  if (error) throw new Error(`scan list: ${error.message}`);
+  return (data ?? []).map((r) => r.id as string).filter((id) => !ALREADY_DONE.has(id));
+}
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_KEY });
@@ -83,7 +99,10 @@ async function main() {
   const expectedPageCount = pv?.page_count;
   if (!expectedPageCount) throw new Error("no page_count on packet version");
 
-  for (const scanId of SCAN_IDS) {
+  const scanIds = await eligibleScanIds();
+  console.log(`${scanIds.length} scans to process`);
+
+  for (const scanId of scanIds) {
     const { data: scan, error: sErr } = await supabase
       .from("na_packet_scans")
       .select("id, split_storage_path, invited_students(full_name)")
