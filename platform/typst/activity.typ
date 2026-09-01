@@ -43,7 +43,7 @@
       ]
     ][
       #if tmpl.header.rightTextMode == "pageNumber" [
-        #counter(page).display()
+        #context counter(page).display()
       ]
     ]
     #line(length: 100%, stroke: 0.3pt + rgb(tmpl.colors.border))
@@ -55,7 +55,7 @@
       CleverPlatform Mathematics
     ][
       #if tmpl.footer.showPageNumber [
-        Page #counter(page).display() of #counter(page).final().first()
+        Page #context counter(page).display() of #context counter(page).final().first()
       ]
     ]
   ],
