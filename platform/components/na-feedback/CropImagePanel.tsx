@@ -7,15 +7,20 @@ interface CropImagePanelProps {
   promptImageUrl: string | null;
   cropImageUrl: string | null;
   onClose: () => void;
+  /** Which section to show. "work" (the default) is the student's own
+   *  cropped response; "question" is just the printed question, for the
+   *  separate "See question" trigger. Kept as one panel component rather
+   *  than two so the slide-in chrome (backdrop, Escape handling, close
+   *  button) isn't duplicated. */
+  mode?: "work" | "question";
 }
 
-/** Slide-in right-side panel showing "my work" for one question: the
- *  printed question (if a prompt crop exists for this anchor) stacked
- *  above the student's own cropped response. Structurally modeled on
- *  components/reflection/DocPanel.tsx's slide-in pattern, but renders
- *  images directly rather than an iframe -- there's no Drive/Docs URL
- *  here, just Storage-hosted crop images. */
-export function CropImagePanel({ title, promptImageUrl, cropImageUrl, onClose }: CropImagePanelProps) {
+/** Slide-in right-side panel showing either the printed question or the
+ *  student's own cropped response for one question, depending on `mode`.
+ *  Structurally modeled on components/reflection/DocPanel.tsx's slide-in
+ *  pattern, but renders images directly rather than an iframe -- there's
+ *  no Drive/Docs URL here, just Storage-hosted crop images. */
+export function CropImagePanel({ title, promptImageUrl, cropImageUrl, onClose, mode = "work" }: CropImagePanelProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -43,22 +48,27 @@ export function CropImagePanel({ title, promptImageUrl, cropImageUrl, onClose }:
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {promptImageUrl && (
+          {mode === "question" ? (
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-da-muted">Question</p>
-              {/* eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, expires hourly, not a static asset */}
-              <img src={promptImageUrl} alt="Printed question" className="w-full rounded-lg border border-da-border" />
+              {promptImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, expires hourly, not a static asset
+                <img src={promptImageUrl} alt="Printed question" className="w-full rounded-lg border border-da-border" />
+              ) : (
+                <p className="text-sm text-da-muted">No question image available.</p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-da-muted">My work</p>
+              {cropImageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, expires hourly, not a static asset
+                <img src={cropImageUrl} alt="My work" className="w-full rounded-lg border border-da-border" />
+              ) : (
+                <p className="text-sm text-da-muted">No image available.</p>
+              )}
             </div>
           )}
-          <div>
-            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-da-muted">My work</p>
-            {cropImageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element -- signed Storage URL, expires hourly, not a static asset
-              <img src={cropImageUrl} alt="My work" className="w-full rounded-lg border border-da-border" />
-            ) : (
-              <p className="text-sm text-da-muted">No image available.</p>
-            )}
-          </div>
         </div>
       </div>
     </>

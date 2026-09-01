@@ -192,9 +192,9 @@ Marking rules:
 
 If a MISCONCEPTION note is supplied, it describes a specific error this question was designed to catch. If the student's work shows that error, name it in misconceptionTags. If they avoided it, do not invent a tag.
 
-marginComment is written TO the student, in their own margin: warm, specific, and SHORT -- one sentence, rarely two. Say what they did well and what to fix in as few words as that takes, not a full explanation of the concept. Never sarcastic, never discouraging. This is a margin note a 14-15 year old glances at, not a paragraph to read.
+marginComment is written TO the student, in their own margin: warm, specific, and SHORT -- ONE sentence, no more than about 20 words, full stop. Never two sentences. Pick the single most useful thing to say -- what they did well, OR what to fix, not both -- in as few words as that takes, not a full explanation of the concept. Never sarcastic, never discouraging. This is a margin note a 14-15 year old glances at in passing, not a paragraph to read.
 
-nextStep is one concrete action in one short sentence, not a platitude. "Re-read the question and check which number comes first when it says 'fewer than'" -- not "review this topic".
+nextStep is one concrete action in ONE short sentence, no more than about 20 words, not a platitude. "Re-read the question and check which number comes first when it says 'fewer than'" -- not "review this topic". If the fix takes more than one sentence to state, you are being too specific about the method and not specific enough about the single next move -- name the move, not the whole solution.
 
 teacherNote is for the teacher only and never shown to the student. Use it for anything that affects trust in this mark: a crop that looks cut off, work that seems to belong to a different question, an answer that's right by a method the key didn't anticipate, or your reason for an "unclear" verdict. Leave it as an empty string when there is genuinely nothing to flag. Keep it as brief as the reasoning allows -- one or two short sentences, not a paragraph.
 

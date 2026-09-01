@@ -24,7 +24,7 @@ export function NaFeedbackClient({
   initialItems,
 }: NaFeedbackClientProps) {
   const router = useRouter();
-  const [openPanel, setOpenPanel] = useState<NaFeedbackItem | null>(null);
+  const [openPanel, setOpenPanel] = useState<{ item: NaFeedbackItem; mode: "work" | "question" } | null>(null);
   const [items, setItems] = useState<NaFeedbackItem[]>(initialItems);
   const [flagDraft, setFlagDraft] = useState<{ cropId: string; note: string } | null>(null);
   const [flagSaving, setFlagSaving] = useState<string | null>(null);
@@ -116,13 +116,24 @@ export function NaFeedbackClient({
                   </span>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => setOpenPanel(item)}
-                className="shrink-0 rounded border border-da-border px-2 py-1 text-xs text-da-muted hover:bg-da-hover"
-              >
-                See my work
-              </button>
+              <div className="flex shrink-0 gap-2">
+                {item.promptCropImageUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setOpenPanel({ item, mode: "question" })}
+                    className="rounded border border-da-border px-2 py-1 text-xs text-da-muted hover:bg-da-hover"
+                  >
+                    See question
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setOpenPanel({ item, mode: "work" })}
+                  className="rounded border border-da-border px-2 py-1 text-xs text-da-muted hover:bg-da-hover"
+                >
+                  See my work
+                </button>
+              </div>
             </div>
             {!item.fullMarks && (item.marginComment || item.nextStep) && (
               <div className="mt-2 space-y-1 text-sm">
@@ -291,9 +302,10 @@ export function NaFeedbackClient({
 
       {openPanel && (
         <CropImagePanel
-          title={`${openPanel.qid}${openPanel.partLabel ? ` (${openPanel.partLabel})` : ""}`}
-          promptImageUrl={openPanel.promptCropImageUrl}
-          cropImageUrl={openPanel.cropImageUrl}
+          title={`${openPanel.item.qid}${openPanel.item.partLabel ? ` (${openPanel.item.partLabel})` : ""}`}
+          promptImageUrl={openPanel.item.promptCropImageUrl}
+          cropImageUrl={openPanel.item.cropImageUrl}
+          mode={openPanel.mode}
           onClose={() => setOpenPanel(null)}
         />
       )}
