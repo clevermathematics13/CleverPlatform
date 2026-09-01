@@ -1,19 +1,22 @@
-import { headers } from "next/headers";
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { VIEW_AS_HEADER } from "@/lib/supabase/middleware";
 
 /**
  * Per-tab "view as this student" for the teacher.
  *
- * Scoping: the target comes from the ?viewAs= query param (forwarded onto
- * the request by middleware -- see VIEW_AS_HEADER for why a header rather
- * than searchParams). That makes it per-TAB by construction: the URL is
- * the only per-tab state a plain navigation carries to the server, so two
- * tabs on the same origin can sit in different views at the same time, and
- * one can stay in the teacher view while another impersonates. This
- * replaces the impersonate-role/impersonate-profile-id cookies, which were
- * shared by every tab and so could not do that.
+ * Scoping: the target is the ?viewAs= query param, which each PAGE reads
+ * from its own searchParams and passes in here. That makes it per-TAB by
+ * construction -- the URL is the only per-tab state a plain navigation
+ * carries to the server -- so two tabs on the same origin can sit in
+ * different views at once. It replaces the impersonate-role cookie, which
+ * was shared by every tab and so could not do that.
+ *
+ * The id is passed in rather than read from a request header, because this
+ * app has NO working middleware to set such a header: src/proxy.ts is never
+ * loaded (app/ lives at the project root while proxy.ts sits alone in src/,
+ * and Next only looks in src/ when the app directory is there too). An
+ * earlier version of this feature depended on a middleware-injected header
+ * and silently did nothing as a result.
  *
  * Keyed on invited_students.id, not profiles.id, deliberately. Most of the
  * roster has never signed in (profiles rows only appear on first login), so
@@ -42,8 +45,7 @@ export interface ViewAsTarget {
   hasAccount: boolean;
 }
 
-export async function getViewAsTarget(): Promise<ViewAsTarget | null> {
-  const requested = (await headers()).get(VIEW_AS_HEADER);
+export async function resolveViewAs(requested: string | null | undefined): Promise<ViewAsTarget | null> {
   if (!requested) return null;
 
   // Teacher-only. A student who hand-types ?viewAs=<someone else> gets

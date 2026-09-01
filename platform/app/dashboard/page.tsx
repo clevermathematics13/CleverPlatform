@@ -1,12 +1,17 @@
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { getViewAsTarget } from "@/lib/view-as";
+import { resolveViewAs } from "@/lib/view-as";
 import { DeployCard } from "./deploy-card";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ viewAs?: string }>;
+}) {
+  const { viewAs: viewAsParam } = await searchParams;
   const profile = await getProfile();
   const supabase = await createClient();
-  const viewAs = await getViewAsTarget();
+  const viewAs = await resolveViewAs(viewAsParam);
   const viewRole = viewAs ? "student" : profile.role;
 
   return (

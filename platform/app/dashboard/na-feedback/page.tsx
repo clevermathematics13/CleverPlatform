@@ -6,7 +6,7 @@ import {
   getNaFeedbackForStudent,
   getNaFeedbackForPacketScan,
 } from "@/lib/na-feedback-service";
-import { getViewAsTarget } from "@/lib/view-as";
+import { resolveViewAs } from "@/lib/view-as";
 import { NaFeedbackClient } from "./na-feedback-client";
 
 export default async function NaFeedbackPage({
@@ -24,7 +24,7 @@ export default async function NaFeedbackPage({
   // it works for a student who has never signed in, by finding their
   // released scan directly rather than going through a profiles.id that
   // does not exist yet.
-  const viewAs = await getViewAsTarget();
+  const viewAs = await resolveViewAs(params.viewAs);
   if (viewAs) {
     const supabase = await createClient();
     const { data: scan } = await supabase

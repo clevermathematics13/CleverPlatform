@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ImpersonateMenu } from "./impersonate-menu";
 import type { ViewAsOption } from "@/lib/view-as";
+import { useSearchParams } from "next/navigation";
+import { deriveDashboardView } from "@/lib/dashboard-nav";
 import { MandelbrotBg } from "@/components/MandelbrotBg";
 
 interface NavigationItem {
@@ -22,25 +24,31 @@ interface DashboardShellProps {
     display_name: string;
     avatar_url: string | null;
   };
-  viewAsId: string | null;
-  viewAsName: string | null;
-  viewAsCourse: string | null;
-  viewAsHasAccount: boolean;
   viewAsOptions: ViewAsOption[];
 }
 
 export function DashboardShell({
   children,
-  navigation,
-  settingsNavigation,
   gradebookCourses,
   profile,
-  viewAsId,
-  viewAsName,
-  viewAsCourse,
-  viewAsHasAccount,
+  navigation: teacherNavigation,
+  settingsNavigation: teacherSettingsNavigation,
   viewAsOptions,
 }: DashboardShellProps) {
+  // The viewed student is resolved HERE, on the client, from the URL --
+  // not in the layout. A Next layout is not re-rendered when only search
+  // params change, so a server-resolved view stayed stale on switch; a
+  // client component reading useSearchParams re-renders every time.
+  const params = useSearchParams();
+  const viewAsId = params.get("viewAs");
+  // Swap the whole menu to the student's own while viewing as them, so the
+  // preview shows the nav they actually get rather than the teacher's.
+  const { viewing, navigation, settingsNavigation } = deriveDashboardView({
+    viewAsId,
+    options: viewAsOptions,
+    teacherNavigation,
+    teacherSettingsNavigation,
+  });
   // Every sidebar link carries ?viewAs= while impersonating. The view lives
   // in the URL (that is what makes it per-tab), so a link that dropped the
   // param would silently drop the teacher back into their own view
@@ -226,9 +234,9 @@ export function DashboardShell({
               <div className="pt-2 border-t border-da-border mt-1">
                 <ImpersonateMenu
                   currentRole={profile.role}
-                  viewingName={viewAsName}
-                  viewingCourse={viewAsCourse}
-                  viewingHasAccount={viewAsHasAccount}
+                  viewingName={viewing?.name ?? null}
+                  viewingCourse={viewing?.courseName ?? null}
+                  viewingHasAccount={viewing?.hasAccount ?? false}
                   options={viewAsOptions}
                 />
                 <div className="flex items-center gap-3 px-3 py-2">
@@ -242,8 +250,8 @@ export function DashboardShell({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-da-text">{profile.display_name}</p>
                     <p className="truncate text-xs text-da-muted capitalize">
-                      {viewAsName
-                        ? `Teacher (viewing: ${viewAsName})`
+                      {viewing
+                        ? `Teacher (viewing: ${viewing.name})`
                         : viewAsId
                         ? `Teacher (viewing a student)`
                         : profile.role}
