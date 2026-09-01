@@ -88,11 +88,20 @@ export function Sphere({ size = 320, className, rim = "#c8103f" }: Props) {
 
       {!failed && (
         <picture>
-          <source media="(prefers-reduced-motion: no-preference)" srcSet="/sphere.gif" />
+          {/* The GIF is 13 MB. It is worth it as the desktop sign-in hero and
+              not worth it on a phone, where the static orb carries the same
+              idea at zero cost - so the source is gated on width as well as
+              on motion preference. fetchPriority=low keeps it from competing
+              with the form's own assets. */}
+          <source
+            media="(prefers-reduced-motion: no-preference) and (min-width: 1024px)"
+            srcSet="/sphere.gif"
+          />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={TRANSPARENT_PIXEL}
             alt=""
+            fetchPriority="low"
             onError={() => setFailed(true)}
             style={{
               position: "absolute",
