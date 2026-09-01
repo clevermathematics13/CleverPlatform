@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ImpersonateMenu } from "./impersonate-menu";
+import type { ViewAsOption } from "@/lib/view-as";
 import { MandelbrotBg } from "@/components/MandelbrotBg";
 
 interface NavigationItem {
@@ -21,8 +22,11 @@ interface DashboardShellProps {
     display_name: string;
     avatar_url: string | null;
   };
-  impersonating: string | null;
-  impersonatedStudentName?: string | null;
+  viewAsId: string | null;
+  viewAsName: string | null;
+  viewAsCourse: string | null;
+  viewAsHasAccount: boolean;
+  viewAsOptions: ViewAsOption[];
 }
 
 export function DashboardShell({
@@ -31,9 +35,18 @@ export function DashboardShell({
   settingsNavigation,
   gradebookCourses,
   profile,
-  impersonating,
-  impersonatedStudentName,
+  viewAsId,
+  viewAsName,
+  viewAsCourse,
+  viewAsHasAccount,
+  viewAsOptions,
 }: DashboardShellProps) {
+  // Every sidebar link carries ?viewAs= while impersonating. The view lives
+  // in the URL (that is what makes it per-tab), so a link that dropped the
+  // param would silently drop the teacher back into their own view
+  // mid-navigation.
+  const withViewAs = (href: string) =>
+    viewAsId ? `${href}${href.includes("?") ? "&" : "?"}viewAs=${viewAsId}` : href;
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsHover, setSettingsHover] = useState(false);
@@ -117,7 +130,7 @@ export function DashboardShell({
                 <div key={item.href}>
                   <div className="flex items-center rounded-lg text-sm font-medium text-da-text/80 transition-colors hover:bg-da-hover hover:text-da-accent">
                     <Link
-                      href={item.href}
+                      href={withViewAs(item.href)}
                       className="flex flex-1 items-center gap-3 px-3 py-2"
                     >
                       <span>{item.icon}</span>
@@ -141,7 +154,7 @@ export function DashboardShell({
                       {gradebookCourses!.map((course) => (
                         <Link
                           key={course.id}
-                          href={`/dashboard/gradebook/${course.id}`}
+                          href={withViewAs(`/dashboard/gradebook/${course.id}`)}
                           className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs font-medium text-da-text/70 transition-colors hover:bg-da-hover hover:text-da-accent"
                         >
                           <span className="text-[10px] text-da-muted">📋</span>
@@ -157,7 +170,7 @@ export function DashboardShell({
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={withViewAs(item.href)}
                 className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-da-text/80 transition-colors hover:bg-da-hover hover:text-da-accent"
               >
                 <span>{item.icon}</span>
@@ -202,7 +215,7 @@ export function DashboardShell({
               {settingsNavigation.map((item) => (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={withViewAs(item.href)}
                   className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-da-text/80 transition-colors hover:bg-da-hover hover:text-da-accent"
                 >
                   <span>{item.icon}</span>
@@ -213,8 +226,10 @@ export function DashboardShell({
               <div className="pt-2 border-t border-da-border mt-1">
                 <ImpersonateMenu
                   currentRole={profile.role}
-                  impersonating={impersonating}
-                  impersonatedStudentName={impersonatedStudentName ?? null}
+                  viewingName={viewAsName}
+                  viewingCourse={viewAsCourse}
+                  viewingHasAccount={viewAsHasAccount}
+                  options={viewAsOptions}
                 />
                 <div className="flex items-center gap-3 px-3 py-2">
                   {profile.avatar_url ? (
@@ -227,10 +242,10 @@ export function DashboardShell({
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-da-text">{profile.display_name}</p>
                     <p className="truncate text-xs text-da-muted capitalize">
-                      {impersonating && impersonatedStudentName
-                        ? `Teacher (viewing: ${impersonatedStudentName})`
-                        : impersonating
-                        ? `Teacher (as ${impersonating})`
+                      {viewAsName
+                        ? `Teacher (viewing: ${viewAsName})`
+                        : viewAsId
+                        ? `Teacher (viewing a student)`
                         : profile.role}
                     </p>
                   </div>

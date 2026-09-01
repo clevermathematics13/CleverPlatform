@@ -1,15 +1,13 @@
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { getImpersonatedRole } from "./impersonate-actions";
+import { getViewAsTarget } from "@/lib/view-as";
 import { DeployCard } from "./deploy-card";
 
 export default async function DashboardPage() {
   const profile = await getProfile();
   const supabase = await createClient();
-  const impersonating = profile.role === "teacher"
-    ? await getImpersonatedRole()
-    : null;
-  const viewRole = impersonating ?? profile.role;
+  const viewAs = await getViewAsTarget();
+  const viewRole = viewAs ? "student" : profile.role;
 
   return (
     <div>
@@ -23,7 +21,9 @@ export default async function DashboardPage() {
       {/* Quick Stats / Cards */}
       <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {viewRole === "teacher" && <TeacherDashboard supabase={supabase} />}
-        {viewRole === "student" && <StudentDashboard supabase={supabase} profileId={profile.id} />}
+        {viewRole === "student" && (
+          <StudentDashboard viewAsId={viewAs?.invitedStudentId ?? null} />
+        )}
         {viewRole === "parent" && <ParentDashboard supabase={supabase} profileId={profile.id} />}
         {viewRole === "teacher" && <DeployCard />}
       </div>
@@ -95,9 +95,12 @@ async function TeacherDashboard({ supabase }: { supabase: Awaited<ReturnType<typ
   );
 }
 
-async function StudentDashboard({ supabase, profileId }: { supabase: Awaited<ReturnType<typeof createClient>>; profileId: string }) {
-  void supabase;
-  void profileId;
+/** The student's own landing tiles. viewAsId is set only when a teacher is
+ *  previewing this student in this tab; it rides along on each link so the
+ *  destination page knows whose data to show and the view survives the
+ *  navigation. A real student sees the same tiles with no param. */
+async function StudentDashboard({ viewAsId }: { viewAsId: string | null }) {
+  const q = viewAsId ? `?viewAs=${viewAsId}` : "";
 
   return (
     <>
@@ -105,19 +108,19 @@ async function StudentDashboard({ supabase, profileId }: { supabase: Awaited<Ret
         title="Interactive Activity"
         value="→"
         description="Open your assigned activity"
-        href="/dashboard/student-start"
+        href={`/dashboard/student-start${q}`}
       />
       <DashboardCard
         title="Self-Assess"
         value="→"
         description="Grade your own exams and review feedback"
-        href="/dashboard/reflection"
+        href={`/dashboard/reflection${q}`}
       />
       <DashboardCard
         title="My Feedback"
         value="→"
         description="See Clev's Marks feedback on your work"
-        href="/dashboard/na-feedback"
+        href={`/dashboard/na-feedback${q}`}
       />
     </>
   );

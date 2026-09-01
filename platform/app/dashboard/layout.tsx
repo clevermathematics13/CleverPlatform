@@ -1,5 +1,5 @@
 import { getProfile } from "@/lib/auth";
-import { getImpersonatedRole, getImpersonatedProfileId } from "./impersonate-actions";
+import { getViewAsTarget, getViewAsOptions } from "@/lib/view-as";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardShell } from "./dashboard-shell";
 
@@ -9,25 +9,12 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const profile = await getProfile();
-  const impersonating = profile.role === "teacher"
-    ? await getImpersonatedRole()
-    : null;
-  const viewRole = impersonating ?? profile.role;
-
-  let impersonatedStudentName: string | null = null;
   const supabase = await createClient();
 
-  if (impersonating === "student") {
-    const impersonatedProfileId = await getImpersonatedProfileId();
-    if (impersonatedProfileId) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("display_name, nickname")
-        .eq("id", impersonatedProfileId)
-        .single();
-      impersonatedStudentName = data?.nickname ?? data?.display_name ?? null;
-    }
-  }
+  // Per-tab, driven by ?viewAs= in this tab's URL -- see lib/view-as.ts.
+  const viewAs = await getViewAsTarget();
+  const viewRole = viewAs ? "student" : profile.role;
+  const viewAsOptions = profile.role === "teacher" && !viewAs ? await getViewAsOptions() : [];
 
   // Courses list for the Gradebook submenu (teacher only)
   let gradebookCourses: { id: string; name: string }[] = [];
@@ -53,8 +40,11 @@ export default async function DashboardLayout({
         display_name: profile.display_name,
         avatar_url: profile.avatar_url,
       }}
-      impersonating={impersonating}
-      impersonatedStudentName={impersonatedStudentName}
+      viewAsId={viewAs?.invitedStudentId ?? null}
+      viewAsName={viewAs?.name ?? null}
+      viewAsCourse={viewAs?.courseName ?? null}
+      viewAsHasAccount={viewAs?.hasAccount ?? false}
+      viewAsOptions={viewAsOptions}
     >
       {children}
     </DashboardShell>

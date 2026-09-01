@@ -1,9 +1,39 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
+/** Request header carrying the per-tab "view as" target from the URL.
+ *
+ *  Per-tab impersonation can only be driven by the URL. A cookie is shared
+ *  by every tab on the origin (which is exactly what the old
+ *  impersonate-role cookie got wrong), and sessionStorage -- the one
+ *  genuinely per-tab store -- is invisible to server rendering. The query
+ *  param is
+ *  the only piece of per-tab state that reaches the server on a plain
+ *  navigation.
+ *
+ *  It is forwarded as a request header because a Next App Router LAYOUT
+ *  cannot read searchParams (only pages can), and the sidebar that renders
+ *  the impersonation banner lives in the dashboard layout. Middleware sees
+ *  the full URL, so it copies the param onto the request for every server
+ *  component to read via headers().
+ *
+ *  This is an UNVALIDATED passthrough of a user-supplied value. Nothing may
+ *  trust it: lib/view-as.ts re-checks that the caller is really a teacher
+ *  and that the target is really one of their roster students before it
+ *  means anything. */
+export const VIEW_AS_HEADER = "x-view-as";
+
 export async function updateSession(request: NextRequest) {
+  // Strip any inbound x-view-as before setting our own, so the header can
+  // only ever originate from this middleware reading the URL -- never from
+  // a client that simply sent the header itself.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(VIEW_AS_HEADER);
+  const viewAsParam = request.nextUrl.searchParams.get("viewAs");
+  if (viewAsParam) requestHeaders.set(VIEW_AS_HEADER, viewAsParam);
+
   let supabaseResponse = NextResponse.next({
-    request,
+    request: { headers: requestHeaders },
   });
 
   // The OAuth callback must reach its route handler with cookies untouched.
@@ -43,7 +73,7 @@ export async function updateSession(request: NextRequest) {
             request.cookies.set(name, value)
           );
           supabaseResponse = NextResponse.next({
-            request,
+            request: { headers: requestHeaders },
           });
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)

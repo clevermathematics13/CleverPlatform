@@ -1,7 +1,6 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { removeStudent, setInvitedStudentExtraTime, setInvitedStudentHidden, setStudentExtraTime, setStudentHidden } from "./actions";
-import { startStudentImpersonation } from "../impersonate-actions";
 import { GoogleClassroomImport } from "./google-classroom-import";
 import { GoogleClassroomLinks } from "./google-classroom-links";
 import { isGoogleConnected, fetchClassroomLinks } from "./google-classroom-actions";

@@ -6,17 +6,49 @@ import {
   getNaFeedbackForStudent,
   getNaFeedbackForPacketScan,
 } from "@/lib/na-feedback-service";
+import { getViewAsTarget } from "@/lib/view-as";
 import { NaFeedbackClient } from "./na-feedback-client";
 
 export default async function NaFeedbackPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scanId?: string; viewStudent?: string }>;
+  searchParams: Promise<{ scanId?: string; viewStudent?: string; viewAs?: string }>;
 }) {
   await requireRole("student", "teacher");
   const profile = await getProfile();
   const params = await searchParams;
   const isTeacher = profile.role === "teacher";
+
+  // Per-tab "view as this student" (?viewAs=<invitedStudentId>). Resolved
+  // first: it is the sidebar picker's mechanism, and unlike ?viewStudent=
+  // it works for a student who has never signed in, by finding their
+  // released scan directly rather than going through a profiles.id that
+  // does not exist yet.
+  const viewAs = await getViewAsTarget();
+  if (viewAs) {
+    const supabase = await createClient();
+    const { data: scan } = await supabase
+      .from("na_packet_scans")
+      .select("id")
+      .eq("invited_student_id", viewAs.invitedStudentId)
+      .eq("status", "released")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const items = scan ? await getNaFeedbackForPacketScan(scan.id) : [];
+    const preview = scan ? await getReleasedPacketScanForTeacher(scan.id) : null;
+    return (
+      <NaFeedbackClient
+        key={scan?.id ?? "none"}
+        isTeacher
+        viewStudentId={null}
+        viewStudentName={viewAs.name}
+        scans={preview ? [preview.scan] : []}
+        selectedScanId={scan?.id ?? null}
+        initialItems={items}
+      />
+    );
+  }
 
   // Teacher previewing a specific student's feedback -- same convention as
   // /dashboard/reflection's own ?viewStudent= param.

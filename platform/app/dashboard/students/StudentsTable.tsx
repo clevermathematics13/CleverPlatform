@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useState } from "react";
 import { NameCell } from "./NameCell";
 import { NicknameCell } from "./NicknameCell";
@@ -11,7 +13,6 @@ import {
   removeStudent,
   removeInvitedStudent,
 } from "./actions";
-import { startStudentImpersonation } from "../impersonate-actions";
 
 export interface StudentRow {
   key: string;
@@ -233,16 +234,16 @@ export function StudentsTable({ rows }: Props) {
                     </form>
                   )}
 
-                  {row.type === "enrolled" && row.profileId && (
-                    <form action={startStudentImpersonation}>
-                      <input type="hidden" name="profile_id" value={row.profileId} />
-                      <button
-                        type="submit"
-                        className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
-                      >
-                        View as student
-                      </button>
-                    </form>
+                  {/* Same per-tab mechanism as the sidebar picker: the view
+                      is just ?viewAs= on the URL, so opening this in a new
+                      tab (cmd-click) leaves this tab in the teacher view. */}
+                  {(row.invitedId ?? row.profileId) && (
+                    <Link
+                      href={`/dashboard?viewAs=${row.invitedId ?? row.profileId}`}
+                      className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                    >
+                      View as student
+                    </Link>
                   )}
 
                   <form
