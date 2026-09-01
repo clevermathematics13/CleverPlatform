@@ -37,6 +37,10 @@ Every Nuanced Analysis must contain these sections, in this order:
 ### 2.2 Command Terms Glossary Table
 - Always present at the top of every activity.
 - Always printed on a **tear-off strip** (horizontal rule above and below) so students can keep it beside them while working.
+- The printed strip header text must read exactly **"Command Terms Glossary"** —
+  never "Tear Off and Keep Beside You" or any variant of that phrasing. The
+  tear-off/keep-beside-you framing describes the physical strip design only, it
+  is not header copy to print.
 - Include a **demand-scale visual** alongside the table: a horizontal spectrum from *write down* (low output demand) to *prove* (high output demand), with each command term placed on it.
 - Include a **Command-Term Spotlight** callout box highlighting the most commonly confused pair of terms in this particular activity.
 

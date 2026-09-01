@@ -199,7 +199,7 @@ function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
       <div className="border-t-2 border-dashed border-teal-500 my-1" />
       <div className="bg-teal-700 px-3 py-1.5">
         <span className="text-[8.5pt] font-bold text-white uppercase tracking-wide">
-          Command Terms — Tear Off and Keep Beside You While Working
+          Command Terms Glossary
         </span>
       </div>
       <div className="bg-teal-50 px-3 pb-2 pt-1.5 border border-t-0 border-teal-200">

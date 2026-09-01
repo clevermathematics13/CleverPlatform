@@ -697,7 +697,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
   const commandTermsHtml = Array.isArray(nd.commandTerms) && nd.commandTerms.length > 0
     ? `<div class="ct-wrap">
         <div class="ct-dashed-top"></div>
-        <div class="ct-header">Command Terms — Tear Off and Keep Beside You While Working</div>
+        <div class="ct-header">Command Terms Glossary</div>
         <div class="ct-body">
           <table class="ct-table">
             <tbody>

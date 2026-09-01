@@ -567,7 +567,7 @@ function getActivityTypstSource(): string {
 #if "commandTerms" in content and content.commandTerms.len() > 0 [
   #line(length:100%,stroke:(dash:"dashed",thickness:0.5pt,paint:col-strip))
   #block(fill:col-strip.lighten(90%),width:100%,inset:(x:8pt,y:6pt))[
-    #block(fill:col-strip,inset:(x:6pt,y:3pt))[#text(size:8pt,weight:"bold",fill:white)[#upper("Command Terms — tear off and keep beside you")]]
+    #block(fill:col-strip,inset:(x:6pt,y:3pt))[#text(size:8pt,weight:"bold",fill:white)[#upper("Command Terms Glossary")]]
     #v(3pt)
     #table(columns:(80pt,1fr),stroke:0.3pt+col-border,
       ..for ct in content.commandTerms { (text(weight:"bold",size:9pt)[#rich(ct.term)],text(size:9pt)[#rich(ct.definition)]) }
