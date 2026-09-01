@@ -1,5 +1,6 @@
 import { getProfile } from "@/lib/auth";
 import { getViewAsTarget, getViewAsOptions } from "@/lib/view-as";
+import { isGrade9Course } from "@/lib/course-level";
 import { createClient } from "@/lib/supabase/server";
 import { DashboardShell } from "./dashboard-shell";
 
@@ -16,6 +17,27 @@ export default async function DashboardLayout({
   const viewRole = viewAs ? "student" : profile.role;
   const viewAsOptions = profile.role === "teacher" && !viewAs ? await getViewAsOptions() : [];
 
+  // Which course the viewer is in, so a Grade 9 student gets the Grade 9
+  // menu. Resolved for the impersonated student when previewing, and for
+  // the signed-in student otherwise -- the nav a teacher previews has to be
+  // the nav the student actually gets, or the preview is worthless.
+  let viewerCourseNames: string[] = [];
+  if (viewAs) {
+    viewerCourseNames = viewAs.courseName ? [viewAs.courseName] : [];
+  } else if (profile.role === "student") {
+    const { data } = await supabase
+      .from("students")
+      .select("courses(name)")
+      .eq("profile_id", profile.id);
+    viewerCourseNames = (data ?? [])
+      .map((r) => {
+        const c = Array.isArray(r.courses) ? r.courses[0] : r.courses;
+        return (c as { name: string } | null)?.name ?? "";
+      })
+      .filter(Boolean);
+  }
+  const isGrade9 = viewerCourseNames.some(isGrade9Course);
+
   // Courses list for the Gradebook submenu (teacher only)
   let gradebookCourses: { id: string; name: string }[] = [];
   if (profile.role === "teacher") {
@@ -27,7 +49,7 @@ export default async function DashboardLayout({
     gradebookCourses = data ?? [];
   }
 
-  const navigation = getNavigation(viewRole);
+  const navigation = getNavigation(viewRole, isGrade9);
   const settingsNavigation = getSettingsNavigation(viewRole);
 
   return (
@@ -51,7 +73,7 @@ export default async function DashboardLayout({
   );
 }
 
-function getNavigation(role: string) {
+function getNavigation(role: string, isGrade9 = false) {
   const shared = [
     { href: "/dashboard", label: "Dashboard", icon: "📊" },
   ];
@@ -73,6 +95,12 @@ function getNavigation(role: string) {
   }
 
   if (role === "student") {
+    // A Grade 9 student's whole use of the platform is reading the
+    // feedback on their Nuanced Analysis packets, so that is the only
+    // thing in their menu -- no Dashboard tile maze to get lost in.
+    if (isGrade9) {
+      return [{ href: "/dashboard/na-feedback", label: "Feedback", icon: "\u{1F4DD}" }];
+    }
     return shared;
   }
 

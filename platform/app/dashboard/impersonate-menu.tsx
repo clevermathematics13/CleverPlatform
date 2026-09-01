@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import type { ViewAsOption } from "@/lib/view-as";
 import { foldText } from "@/lib/fold-text";
 
@@ -25,7 +25,6 @@ export function ImpersonateMenu({
   viewingHasAccount: boolean;
   options: ViewAsOption[];
 }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -45,7 +44,15 @@ export function ImpersonateMenu({
     const qs = params.toString();
     setOpen(false);
     setQuery("");
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    // A FULL navigation, not router.push. The sidebar and the banner are
+    // rendered by the dashboard LAYOUT, and Next's App Router does not
+    // re-render a layout when only search params change -- it reuses the
+    // cached one. Since ?viewAs= is exactly a search-param change, a soft
+    // push left the teacher's menus and picker on screen while the page
+    // beneath had already switched to the student. Entering or leaving a
+    // view is a rare, deliberate mode switch, so paying for a real page
+    // load here is the right trade for a layout guaranteed to match.
+    window.location.assign(qs ? `${pathname}?${qs}` : pathname);
   };
 
   if (viewingName) {
