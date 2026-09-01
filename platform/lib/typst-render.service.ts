@@ -444,6 +444,34 @@ function getActivityTypstSource(): string {
     bottom: (tmpl.document.marginBottomMm) * 1mm,
     left: (tmpl.document.marginLeftMm) * 1mm,
   ),
+  header: if tmpl.header.enabled [
+    #set text(size: 8pt, fill: rgb(tmpl.colors.muted))
+    #grid(columns: (1fr, auto))[
+      #if tmpl.header.leftTextMode == "documentTitle" [
+        #content.title
+      ] else if tmpl.header.leftTextMode == "courseName" [
+        #content.at("course", default: "")
+      ] else [
+        #tmpl.header.at("customLeftText", default: "")
+      ]
+    ][
+      #if tmpl.header.rightTextMode == "pageNumber" [
+        #context counter(page).display()
+      ]
+    ]
+    #line(length: 100%, stroke: 0.3pt + rgb(tmpl.colors.border))
+  ],
+  footer: if tmpl.footer.enabled [
+    #line(length: 100%, stroke: 0.3pt + rgb(tmpl.colors.border))
+    #set text(size: 7pt, fill: rgb(tmpl.colors.muted))
+    #grid(columns: (1fr, auto))[
+      CleverPlatform Mathematics
+    ][
+      #if tmpl.footer.showPageNumber [
+        Page #context counter(page).display() of #context counter(page).final().first()
+      ]
+    ]
+  ],
 )
 #set text(font: tmpl.typography.bodyFont, size: (tmpl.typography.bodySizePt) * 1pt)
 #set par(leading: 0.65em)
