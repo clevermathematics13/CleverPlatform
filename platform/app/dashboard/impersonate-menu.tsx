@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import type { ViewAsOption } from "@/lib/view-as";
+import { foldText } from "@/lib/fold-text";
 
 /**
  * Teacher's "View as" picker. Navigating is the whole mechanism: choosing a
@@ -28,6 +29,7 @@ export function ImpersonateMenu({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
 
   if (currentRole !== "teacher") return null;
 
@@ -42,6 +44,7 @@ export function ImpersonateMenu({
     params.delete("viewStudent");
     const qs = params.toString();
     setOpen(false);
+    setQuery("");
     router.push(qs ? `${pathname}?${qs}` : pathname);
   };
 
@@ -69,8 +72,15 @@ export function ImpersonateMenu({
     );
   }
 
+  // Matches on name OR course, so "9c" narrows to a class just as well as
+  // a name does.
+  const needle = foldText(query.trim());
+  const filtered = needle
+    ? options.filter((o) => foldText(o.name).includes(needle) || foldText(o.courseName).includes(needle))
+    : options;
+
   const byCourse = new Map<string, ViewAsOption[]>();
-  for (const o of options) {
+  for (const o of filtered) {
     const list = byCourse.get(o.courseName) ?? [];
     list.push(o);
     byCourse.set(o.courseName, list);
@@ -81,20 +91,50 @@ export function ImpersonateMenu({
       <p className="mb-1 text-xs font-medium text-da-muted">View as:</p>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setOpen((v) => !v);
+          setQuery("");
+        }}
         className="w-full rounded border border-da-border px-2 py-1 text-xs text-da-text transition-colors hover:bg-da-hover"
       >
         Student {open ? "▴" : "▾"}
       </button>
 
       {open && (
-        <div className="mt-1 max-h-64 overflow-y-auto rounded border border-da-border bg-da-surface">
+        <div className="mt-1 rounded border border-da-border bg-da-surface">
+          <input
+            type="text"
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setOpen(false);
+                setQuery("");
+              }
+              // Enter picks the top match, so a teacher can type a few
+              // letters and go without reaching for the mouse.
+              if (e.key === "Enter" && filtered.length > 0) {
+                e.preventDefault();
+                go(filtered[0].invitedStudentId);
+              }
+            }}
+            placeholder="Search students…"
+            aria-label="Search students"
+            className="w-full rounded-t border-b border-da-border bg-transparent px-2 py-1.5 text-xs text-da-text placeholder:text-da-muted focus:outline-none focus:ring-1 focus:ring-da-accent"
+          />
+          <div className="max-h-64 overflow-y-auto">
           {options.length === 0 && (
             <p className="px-2 py-2 text-xs text-da-muted">No students on an active course.</p>
           )}
+          {options.length > 0 && filtered.length === 0 && (
+            <p className="px-2 py-2 text-xs text-da-muted">
+              No student matches &ldquo;{query.trim()}&rdquo;.
+            </p>
+          )}
           {[...byCourse.entries()].map(([course, students]) => (
             <div key={course}>
-              <p className="sticky top-0 bg-da-surface px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
+              <p className="sticky top-0 z-10 bg-da-surface px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
                 {course}
               </p>
               {students.map((s) => (
@@ -117,6 +157,7 @@ export function ImpersonateMenu({
               ))}
             </div>
           ))}
+          </div>
         </div>
       )}
     </div>
