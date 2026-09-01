@@ -622,20 +622,22 @@ Verified end-to-end for Davi: the CV service /crop call with the new geometry
 returns a complete image (header, five inline answers, box; expanded=true,
 possibly_truncated=false).
 
-**NOT completed from that session - the agent environment's permission layer
-allowed reads, MCP SQL, and CV-service calls but blocked production Storage
-writes and the grading API call**, so the regenerated crops and re-assessment
-are pending. Everything is staged in `platform/scripts/recrop-assess-q2.ts`
-(committed, unlike the deleted 28 Aug one-off, precisely because the fix
-couldn't be executed in-session): re-crops Q2 for the 7 live scans and
-re-runs stage 5, ai_* only, idempotent, safe to re-run. Until it runs, Q2
-crops still show the old truncated image and Q2 has no prompt image.
+The re-crop + re-assessment was first permission-blocked in the agent
+session (Storage writes and the grading API), so it was staged as
+`platform/scripts/recrop-assess-q2.ts` (committed, unlike the deleted 28
+Aug one-off, for exactly that reason; ai_* only, idempotent, safe to
+re-run). **The teacher then granted permission and the script ran
+successfully the same day**: all 7 live students re-cropped (every new Q2
+crop complete, possibly_truncated=false) and re-assessed with zero
+warnings. Three marks changed - Davi Verma 2 -> 5/5, Ruifeng Wu 3 -> 5/5
+(his inline part labels had also been cut off), Roberto Aurelio Gamio
+3 -> 4/5 - each verified against its own ai_teacher_note reasoning.
 
-After it runs, **Davi's released Q2 needs teacher review**: his na_feedback
-row has `final_marks_awarded=2` (not teacher_edited) from approve-all against
-the truncated evidence; the re-assessment writes a new ai_* proposal (all
-five inline answers are correct and the box names a valid feature) but, by
-the stage-5 contract, never touches final_*.
+**Davi's released Q2 still needs teacher review** (Open Items 3b): his
+na_feedback row keeps `final_marks_awarded=2` (not teacher_edited) from
+approve-all against the truncated evidence; by the stage-5 contract the
+re-assessment never touches final_*, and approve-all skips
+already-approved rows.
 
 **Systemic follow-up worth doing**: any anchor whose printed sub-items sit
 ABOVE its detected box can hit this, and neither the truncation detector nor
@@ -799,17 +801,24 @@ the happy path work."
 
 **High (added 1 Sep 2026)**
 
-3b. **Run `platform/scripts/recrop-assess-q2.ts`, then review Davi Verma's Q2.**
-   The Q2 anchor geometry fix (§5, "Q2 top-edge bug") is applied in the DB but
-   the re-crop + re-assessment couldn't be executed from the agent session
-   (production Storage writes and the grading API were permission-blocked).
-   Until the script runs, all 7 students' Q2 crops still show the truncated
-   image and Q2 has no prompt image; afterwards, Davi's RELEASED Q2
-   (`final_marks_awarded=2`, evidence now shows 5 correct parts) needs a
-   teacher's re-approval through the normal review flow. Also delete the
-   orphaned old prompt image
+3b. **Review Davi Verma's released Q2** (`final_marks_awarded=2`; the fresh
+   AI draft, graded against the complete crop, is 5/5 "correct" with a
+   specific, verified note). `scripts/recrop-assess-q2.ts` WAS run later the
+   same day (1 Sep, after the teacher granted the session permission):
+   all 7 live students re-cropped and re-assessed cleanly, zero warnings.
+   Mark changes, each verified against its own ai_teacher_note reasoning:
+   Davi Verma 2 -> 5/5 (all five inline answers now visible), Ruifeng Wu
+   3 -> 5/5 (his inline "(a) EX (b) Eq ..." labels were also above the old
+   crop top), Roberto Aurelio Gamio 3 -> 4/5 (all five correct, feature
+   explanation left as an unfinished "I know this because"). The other four
+   stayed 5/5. Note "Approve all" skips already-approved rows, so Davi's
+   released Q2 needs the marks-badge editor or a direct final_* promotion
+   of the draft -- his stale released margin comment still says "only part
+   (e) is visible here" until then. Also still pending: delete the orphaned
+   old prompt image
    `na-crops/1462a2f2-fc2a-4bab-8135-ed3aefeb0aff/prompts/da2cc841-379f-4496-a449-d5dc6dd4dbef.png`
-   from Storage (its anchor no longer references it; same permission block).
+   from Storage via the dashboard (its anchor no longer references it;
+   Storage deletes stayed permission-blocked in the session).
 
 **Medium**
 
