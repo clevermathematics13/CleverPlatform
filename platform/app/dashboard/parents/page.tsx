@@ -50,8 +50,8 @@ export default async function ParentsPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">Parents</h1>
-      <p className="mt-1 text-base font-medium text-blue-700">
+      <h1 className="text-3xl font-extrabold text-blue-300 drop-shadow-sm">Parents</h1>
+      <p className="mt-1 text-base font-medium text-blue-300">
         Link parent accounts to students so they can view progress and Clev&apos;s Marks.
       </p>
 
@@ -60,36 +60,36 @@ export default async function ParentsPage() {
       </div>
 
       <div className="mt-8">
-        <h2 className="text-xl font-bold text-blue-900">
+        <h2 className="text-xl font-bold text-blue-300">
           Linked Parents ({links?.length ?? 0})
         </h2>
 
         {error && (
-          <p className="mt-2 text-sm text-red-600">
+          <p className="mt-2 text-sm text-red-300">
             Error loading parent links: {error.message}
           </p>
         )}
 
         {links && links.length > 0 ? (
-          <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+          <div className="mt-4 overflow-hidden rounded-xl border border-da-border bg-da-surface">
+            <table className="min-w-full divide-y divide-da-border">
+              <thead className="bg-da-hover">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-da-muted">
                     Parent
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-da-muted">
                     Student
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-da-muted">
                     Course
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wider text-da-muted">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-da-border">
                 {links.map((link) => {
                   const parent = link.parent as unknown as {
                     id: string; email: string; display_name: string;
@@ -102,17 +102,17 @@ export default async function ParentsPage() {
 
                   return (
                     <tr key={link.id}>
-                      <td className="whitespace-nowrap px-6 py-3 text-sm text-gray-900">
+                      <td className="whitespace-nowrap px-6 py-3 text-sm text-da-text">
                         <div className="font-medium">{parent?.display_name ?? "Unknown"}</div>
-                        <div className="text-xs text-gray-500">{parent?.email}</div>
+                        <div className="text-xs text-da-muted">{parent?.email}</div>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-3 text-sm text-gray-900">
+                      <td className="whitespace-nowrap px-6 py-3 text-sm text-da-text">
                         <div className="font-medium">
                           {student?.profiles?.display_name ?? student?.profiles?.email ?? "Unknown"}
                         </div>
-                        <div className="text-xs text-gray-500">{student?.profiles?.email}</div>
+                        <div className="text-xs text-da-muted">{student?.profiles?.email}</div>
                       </td>
-                      <td className="whitespace-nowrap px-6 py-3 text-sm text-gray-700">
+                      <td className="whitespace-nowrap px-6 py-3 text-sm text-da-text">
                         {student?.courses?.name ?? "—"}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -120,7 +120,7 @@ export default async function ParentsPage() {
                           <input type="hidden" name="link_id" value={link.id} />
                           <button
                             type="submit"
-                            className="text-xs font-medium text-red-600 hover:text-red-800"
+                            className="text-xs font-medium text-red-300 hover:text-red-300"
                           >
                             Remove
                           </button>
@@ -133,8 +133,8 @@ export default async function ParentsPage() {
             </table>
           </div>
         ) : (
-          <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center">
-            <p className="text-sm text-gray-500">
+          <div className="mt-4 rounded-xl border border-dashed border-da-border bg-da-surface p-12 text-center">
+            <p className="text-sm text-da-muted">
               No parents linked yet. Use the form above to link a parent by email.
             </p>
           </div>

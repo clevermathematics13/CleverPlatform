@@ -292,9 +292,9 @@ export function SyncDriveDocsButton() {
   const busy = status === "dryrun" || status === "syncing";
 
   return (
-    <div className="border border-blue-200 rounded-lg bg-blue-50/40 p-3 space-y-2 text-sm">
+    <div className="border border-blue-400/40 rounded-lg bg-blue-500/15/40 p-3 space-y-2 text-sm">
       <div className="flex items-center gap-2">
-        <span className="font-semibold text-blue-800 text-xs">Sync Google Doc IDs from Drive</span>
+        <span className="font-semibold text-blue-300 text-xs">Sync Google Doc IDs from Drive</span>
         <button
           onClick={() => setShowConfig((v) => !v)}
           className="text-xs text-blue-500 hover:underline"
@@ -305,7 +305,7 @@ export function SyncDriveDocsButton() {
           <button
             onClick={() => run(true)}
             disabled={busy}
-            className="px-3 py-1 rounded bg-white border border-blue-300 text-blue-700 text-xs font-medium hover:bg-blue-50 disabled:opacity-40"
+            className="px-3 py-1 rounded bg-da-surface border border-blue-400/40 text-blue-300 text-xs font-medium hover:bg-blue-500/15 disabled:opacity-40"
           >
             {status === "dryrun" ? "Scanning…" : "Dry run"}
           </button>
@@ -321,7 +321,7 @@ export function SyncDriveDocsButton() {
 
       {showConfig && (
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+          <label className="flex items-center gap-2 text-xs text-da-muted cursor-pointer">
             <input
               name="force-relink"
               type="checkbox"
@@ -332,13 +332,13 @@ export function SyncDriveDocsButton() {
             <span>Force re-link (overwrite existing Doc IDs — use to fix stale/deleted links)</span>
           </label>
 
-          <div className="pt-1 border-t border-blue-100 space-y-1.5">
-            <p className="text-xs text-amber-800 font-medium">Fix existing conflicted links (Q doc = MS doc):</p>
+          <div className="pt-1 border-t border-blue-400/40 space-y-1.5">
+            <p className="text-xs text-amber-300 font-medium">Fix existing conflicted links (Q doc = MS doc):</p>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => runFixConflictedLinks(true)}
                 disabled={busy || debugBusy || singleSyncBusy || !!fixBusy}
-                className="px-3 py-1 rounded bg-white border border-amber-300 text-amber-800 text-xs font-medium hover:bg-amber-50 disabled:opacity-40"
+                className="px-3 py-1 rounded bg-da-surface border border-amber-400/40 text-amber-300 text-xs font-medium hover:bg-amber-500/15 disabled:opacity-40"
               >
                 {fixBusy === "dryrun" ? "Scanning…" : "Dry run fix"}
               </button>
@@ -350,9 +350,9 @@ export function SyncDriveDocsButton() {
                 {fixBusy === "apply" ? "Applying…" : "Apply fix"}
               </button>
             </div>
-            {fixError && <p className="text-xs text-red-600 font-medium">⚠ {fixError}</p>}
+            {fixError && <p className="text-xs text-red-300 font-medium">⚠ {fixError}</p>}
             {fixResult && (
-              <div className="text-xs text-amber-800 bg-white border border-amber-100 rounded p-2 space-y-1">
+              <div className="text-xs text-amber-300 bg-da-surface border border-amber-400/40 rounded p-2 space-y-1">
                 <p>
                   Scanned <strong>{fixResult.scannedRowsWithAnyId}</strong> rows with any Drive ID; found <strong>{fixResult.issuesFound}</strong> issue(s).
                 </p>
@@ -377,9 +377,9 @@ export function SyncDriveDocsButton() {
                   </p>
                 )}
                 {fixResult.sample.length > 0 && (
-                  <div className="max-h-32 overflow-auto border border-amber-100 rounded">
+                  <div className="max-h-32 overflow-auto border border-amber-400/40 rounded">
                     <table className="w-full text-[11px] font-mono">
-                      <thead className="bg-amber-50 text-amber-900 sticky top-0">
+                      <thead className="bg-amber-500/15 text-amber-300 sticky top-0">
                         <tr>
                           <th className="text-left px-2 py-1">Code</th>
                           <th className="text-left px-2 py-1">Action</th>
@@ -388,7 +388,7 @@ export function SyncDriveDocsButton() {
                       </thead>
                       <tbody>
                         {fixResult.sample.map((row) => (
-                          <tr key={row.id} className="border-t border-amber-100">
+                          <tr key={row.id} className="border-t border-amber-400/40">
                             <td className="px-2 py-1 whitespace-nowrap">{row.code}</td>
                             <td className="px-2 py-1 whitespace-nowrap">
                               {row.clearGoogleDocId && row.clearGoogleMsId
@@ -399,7 +399,7 @@ export function SyncDriveDocsButton() {
                                     ? "Clear MS"
                                     : "-"}
                             </td>
-                            <td className="px-2 py-1 text-[10px] text-amber-900/90">
+                            <td className="px-2 py-1 text-[10px] text-amber-300/90">
                               {(row.reasons ?? []).join(", ") || "-"}
                             </td>
                           </tr>
@@ -412,21 +412,21 @@ export function SyncDriveDocsButton() {
             )}
           </div>
 
-          <div className="pt-1 border-t border-blue-100 space-y-1.5">
-            <p className="text-xs text-blue-800 font-medium">Debug one code (no full scan):</p>
+          <div className="pt-1 border-t border-blue-400/40 space-y-1.5">
+            <p className="text-xs text-blue-300 font-medium">Debug one code (no full scan):</p>
             <div className="flex items-center gap-2">
               <input
                 name="debug-code"
                 type="text"
                 value={debugCode}
                 onChange={(e) => setDebugCode(e.target.value)}
-                className="flex-1 px-2 py-1 rounded border border-blue-200 text-xs font-mono bg-white"
+                className="flex-1 px-2 py-1 rounded border border-blue-400/40 text-xs font-mono bg-da-surface"
                 placeholder="e.g. 12M.1.AHL.TZ1.H_5"
               />
               <button
                 onClick={runSingleCodeDebug}
                 disabled={debugBusy || singleSyncBusy || !debugCode.trim()}
-                className="px-3 py-1 rounded bg-white border border-blue-300 text-blue-700 text-xs font-medium hover:bg-blue-50 disabled:opacity-40"
+                className="px-3 py-1 rounded bg-da-surface border border-blue-400/40 text-blue-300 text-xs font-medium hover:bg-blue-500/15 disabled:opacity-40"
               >
                 {debugBusy ? "Debugging…" : "Debug code"}
               </button>
@@ -438,10 +438,10 @@ export function SyncDriveDocsButton() {
                 {singleSyncBusy ? "Syncing…" : "Sync this code"}
               </button>
             </div>
-            {debugError && <p className="text-xs text-red-600 font-medium">⚠ {debugError}</p>}
-            {singleSyncStatus && <p className="text-xs text-blue-700 font-medium">{singleSyncStatus}</p>}
+            {debugError && <p className="text-xs text-red-300 font-medium">⚠ {debugError}</p>}
+            {singleSyncStatus && <p className="text-xs text-blue-300 font-medium">{singleSyncStatus}</p>}
             {debugResult && (
-              <div className="text-xs text-blue-700 bg-white border border-blue-100 rounded p-2 space-y-1.5">
+              <div className="text-xs text-blue-300 bg-da-surface border border-blue-400/40 rounded p-2 space-y-1.5">
                 <p>
                   <span className="font-semibold">Code:</span> <span className="font-mono">{debugResult.code}</span>
                 </p>
@@ -460,18 +460,18 @@ export function SyncDriveDocsButton() {
 
                 {debugResult.questionMatches.length > 0 && (
                   <div>
-                    <p className="font-semibold text-blue-800">Question doc matches:</p>
-                    <ul className="max-h-28 overflow-auto font-mono border border-blue-100 rounded p-1 space-y-0.5">
+                    <p className="font-semibold text-blue-300">Question doc matches:</p>
+                    <ul className="max-h-28 overflow-auto font-mono border border-blue-400/40 rounded p-1 space-y-0.5">
                       {debugResult.questionMatches.map((m) => (
                         <li key={`q-${m.id}`}>
                           {m.webViewLink ? (
-                            <a href={m.webViewLink} target="_blank" rel="noreferrer" className="underline text-blue-600">
+                            <a href={m.webViewLink} target="_blank" rel="noreferrer" className="underline text-blue-300">
                               {m.name}
                             </a>
                           ) : (
                             <span>{m.name}</span>
                           )}
-                          <span className="text-gray-500 ml-2">{m.id}</span>
+                          <span className="text-da-muted ml-2">{m.id}</span>
                         </li>
                       ))}
                     </ul>
@@ -480,18 +480,18 @@ export function SyncDriveDocsButton() {
 
                 {debugResult.markschemeMatches.length > 0 && (
                   <div>
-                    <p className="font-semibold text-purple-800">Mark scheme doc matches:</p>
-                    <ul className="max-h-28 overflow-auto font-mono border border-blue-100 rounded p-1 space-y-0.5">
+                    <p className="font-semibold text-purple-300">Mark scheme doc matches:</p>
+                    <ul className="max-h-28 overflow-auto font-mono border border-blue-400/40 rounded p-1 space-y-0.5">
                       {debugResult.markschemeMatches.map((m) => (
                         <li key={`ms-${m.id}`}>
                           {m.webViewLink ? (
-                            <a href={m.webViewLink} target="_blank" rel="noreferrer" className="underline text-blue-600">
+                            <a href={m.webViewLink} target="_blank" rel="noreferrer" className="underline text-blue-300">
                               {m.name}
                             </a>
                           ) : (
                             <span>{m.name}</span>
                           )}
-                          <span className="text-gray-500 ml-2">{m.id}</span>
+                          <span className="text-da-muted ml-2">{m.id}</span>
                         </li>
                       ))}
                     </ul>
@@ -504,11 +504,11 @@ export function SyncDriveDocsButton() {
       )}
 
       {error && (
-        <p className="text-xs text-red-600 font-medium">⚠ {error}</p>
+        <p className="text-xs text-red-300 font-medium">⚠ {error}</p>
       )}
 
       {result && (
-        <div className="text-xs text-blue-700 space-y-1">
+        <div className="text-xs text-blue-300 space-y-1">
           <p>
             Found <strong>{result.found}</strong> docs to link
             {result.updated > 0 ? `, updated ${result.updated} questions` : result.found > 0 ? " (dry run — no changes written)" : ""}
@@ -520,12 +520,12 @@ export function SyncDriveDocsButton() {
             </button>
           )}
           {showDetails && (
-            <ul className="max-h-40 overflow-auto bg-white border border-blue-100 rounded p-2 space-y-0.5 font-mono">
+            <ul className="max-h-40 overflow-auto bg-da-surface border border-blue-400/40 rounded p-2 space-y-0.5 font-mono">
               {result.updates.map((u) => (
                 <li key={u.code}>
-                  <span className="text-gray-700">{u.code}</span>
-                  {u.google_doc_id && <span className="text-blue-600 ml-2">Q✓</span>}
-                  {u.google_ms_id && <span className="text-purple-600 ml-1">MS✓</span>}
+                  <span className="text-da-text">{u.code}</span>
+                  {u.google_doc_id && <span className="text-blue-300 ml-2">Q✓</span>}
+                  {u.google_ms_id && <span className="text-purple-300 ml-1">MS✓</span>}
                 </li>
               ))}
             </ul>

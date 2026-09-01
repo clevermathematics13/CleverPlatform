@@ -231,7 +231,7 @@ export default async function StudentsPage({
           {activeCourse && (
             <Link
               href="/dashboard/courses"
-              className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-blue-300 hover:text-blue-300"
             >
               ← Back to Courses
             </Link>
@@ -254,11 +254,11 @@ export default async function StudentsPage({
         classIsFullyArchived={classIsFullyArchived}
       />
 
-      <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-6">
-        <h2 className="text-xl font-bold text-blue-900">
+      <div className="mt-6 rounded-xl border border-blue-400/40 bg-blue-500/15 p-6">
+        <h2 className="text-xl font-bold text-blue-300">
           Invite Students from Google Classroom
         </h2>
-        <p className="mt-1 text-base text-blue-700">
+        <p className="mt-1 text-base text-blue-300">
           Connect your Google Classroom account and import your roster to create student invites.
         </p>
       </div>
@@ -279,7 +279,7 @@ export default async function StudentsPage({
         </h2>
 
         {error && (
-          <p className="mt-2 text-sm text-red-600">
+          <p className="mt-2 text-sm text-red-300">
             Error loading students: {error.message}
           </p>
         )}
@@ -287,8 +287,8 @@ export default async function StudentsPage({
         {rows.length > 0 ? (
           <StudentsTable rows={rows} />
         ) : (
-          <div className="mt-4 rounded-xl border border-dashed border-gray-300 bg-white p-12 text-center">
-            <p className="text-sm text-gray-500">
+          <div className="mt-4 rounded-xl border border-dashed border-da-border bg-da-surface p-12 text-center">
+            <p className="text-sm text-da-muted">
               {activeCourse
                 ? "No students in this course yet."
                 : "No students enrolled yet. Import students from Google Classroom below."}

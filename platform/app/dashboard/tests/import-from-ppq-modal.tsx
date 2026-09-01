@@ -95,11 +95,11 @@ export function ImportFromPpqModal({
       aria-modal="true"
       aria-label="Import from PPQ Bank"
     >
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-da-surface shadow-2xl">
+        <div className="flex items-center justify-between border-b border-da-border px-5 py-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Import from PPQ Bank</h2>
-            <p className="mt-0.5 text-xs text-gray-500">
+            <h2 className="text-lg font-bold text-da-text">Import from PPQ Bank</h2>
+            <p className="mt-0.5 text-xs text-da-muted">
               Create a test from a saved ExamBuilder paper. Questions keep their IB code, so the
               new test can be AI-graded straight away.
             </p>
@@ -107,7 +107,7 @@ export function ImportFromPpqModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg border border-gray-200 px-2 py-1 text-xs text-gray-500 hover:bg-gray-50"
+            className="rounded-lg border border-da-border px-2 py-1 text-xs text-da-muted hover:bg-da-hover"
           >
             ✕ Close
           </button>
@@ -115,17 +115,17 @@ export function ImportFromPpqModal({
 
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loadError && (
-            <p className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            <p className="rounded-lg border border-red-400/40 bg-red-500/15 px-3 py-2 text-sm text-red-300">
               {loadError}
             </p>
           )}
 
           {!loadError && savedExams === null && (
-            <p className="text-sm text-gray-500">Loading saved exams…</p>
+            <p className="text-sm text-da-muted">Loading saved exams…</p>
           )}
 
           {savedExams?.length === 0 && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-da-muted">
               No saved exams yet. Build one in the Question Bank&apos;s ExamBuilder first.
             </p>
           )}
@@ -146,12 +146,12 @@ export function ImportFromPpqModal({
                       }}
                       className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
                         isSelected
-                          ? "border-blue-400 bg-blue-50"
-                          : "border-gray-200 bg-white hover:bg-gray-50"
+                          ? "border-blue-400 bg-blue-500/15"
+                          : "border-da-border bg-da-surface hover:bg-da-hover"
                       }`}
                     >
-                      <p className="font-semibold text-gray-900">{e.name}</p>
-                      <p className="mt-0.5 text-xs text-gray-500">
+                      <p className="font-semibold text-da-text">{e.name}</p>
+                      <p className="mt-0.5 text-xs text-da-muted">
                         {e.curriculum} {e.level} Paper {e.paper}
                         {e.course_name && ` · ${e.course_name}`}
                         {e.exam_date && ` · ${e.exam_date}`}
@@ -165,18 +165,18 @@ export function ImportFromPpqModal({
           )}
 
           {selected && (
-            <div className="mt-4 space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="mt-4 space-y-3 rounded-lg border border-blue-400/40 bg-blue-500/15 p-4">
               <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold uppercase text-gray-600">Test name</span>
+                <span className="text-xs font-semibold uppercase text-da-muted">Test name</span>
                 <input
                   value={nameOverride}
                   onChange={(e) => setNameOverride(e.target.value)}
-                  className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+                  className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
                 />
               </label>
 
               {conflict && (
-                <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-sm text-amber-300">
                   <p>
                     A test named &quot;{conflict.name}&quot; already exists for this class.
                   </p>
@@ -185,13 +185,13 @@ export function ImportFromPpqModal({
                       type="button"
                       onClick={() => runImport(true)}
                       disabled={importing}
-                      className="rounded border border-amber-400 bg-white px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                      className="rounded border border-amber-400 bg-da-surface px-3 py-1 text-xs font-medium text-amber-300 hover:bg-amber-500/15 disabled:opacity-50"
                     >
                       Import anyway (creates a second test)
                     </button>
                     <a
                       href={`/dashboard/tests/${conflict.existingTestId}/ai-grade`}
-                      className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                      className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
                     >
                       Go to existing test →
                     </a>
@@ -199,7 +199,7 @@ export function ImportFromPpqModal({
                 </div>
               )}
 
-              {importError && <p className="text-sm text-red-600">{importError}</p>}
+              {importError && <p className="text-sm text-red-300">{importError}</p>}
 
               {!conflict && (
                 <button
@@ -215,11 +215,11 @@ export function ImportFromPpqModal({
           )}
 
           {warnings && warnings.length > 0 && (
-            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-              <p className="text-xs font-semibold uppercase text-amber-800">
+            <div className="mt-4 rounded-lg border border-amber-400/40 bg-amber-500/15 px-3 py-2">
+              <p className="text-xs font-semibold uppercase text-amber-300">
                 Imported with {warnings.length} note{warnings.length === 1 ? "" : "s"}
               </p>
-              <ul className="mt-1 space-y-0.5 text-xs text-amber-800">
+              <ul className="mt-1 space-y-0.5 text-xs text-amber-300">
                 {warnings.map((w, i) => (
                   <li key={i}>⚠ {w}</li>
                 ))}

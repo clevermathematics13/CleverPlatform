@@ -17,11 +17,11 @@ export default async function ClassroomPage() {
       </p>
 
       {courses.length === 0 && (
-        <div className="mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="mt-6 rounded-xl border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300">
           No Classroom courses are visible.{" "}
           <Link
             href="/dashboard/students"
-            className="font-medium underline hover:text-amber-900"
+            className="font-medium underline hover:text-amber-300"
           >
             Connect Google Classroom
           </Link>{" "}

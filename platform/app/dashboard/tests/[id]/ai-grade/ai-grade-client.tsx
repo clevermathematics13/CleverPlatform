@@ -116,9 +116,9 @@ const SOURCE_LABEL: Record<MarkschemeSource, string> = {
 };
 
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
-  high: "bg-green-100 text-green-800 border-green-300",
-  medium: "bg-amber-100 text-amber-800 border-amber-300",
-  low: "bg-red-100 text-red-800 border-red-300",
+  high: "bg-green-500/15 text-green-300 border-green-400/40",
+  medium: "bg-amber-500/15 text-amber-300 border-amber-400/40",
+  low: "bg-red-500/15 text-red-300 border-red-400/40",
 };
 
 function itemLabel(item: TestItem | undefined): string {
@@ -480,12 +480,12 @@ export function AiGradeClient({ testId }: { testId: string }) {
     });
 
   if (loading) {
-    return <p className="text-sm text-gray-500">Loading this assessment…</p>;
+    return <p className="text-sm text-da-muted">Loading this assessment…</p>;
   }
 
   if (!test) {
     return (
-      <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+      <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300">
         {error ?? "This assessment could not be loaded."}
       </div>
     );
@@ -499,12 +499,12 @@ export function AiGradeClient({ testId }: { testId: string }) {
   return (
     <div className="space-y-6">
       {/* -- Tabs ---------------------------------------------------------- */}
-      <div className="flex gap-1 rounded-lg border border-gray-200 bg-gray-50 p-1 w-fit">
+      <div className="flex gap-1 rounded-lg border border-da-border bg-da-hover p-1 w-fit">
         <button
           type="button"
           onClick={() => setTab("individual")}
           className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-            tab === "individual" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            tab === "individual" ? "bg-da-surface text-da-text shadow-sm" : "text-da-muted hover:text-da-text"
           }`}
         >
           Individual
@@ -513,7 +513,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
           type="button"
           onClick={() => setTab("batch")}
           className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
-            tab === "batch" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+            tab === "batch" ? "bg-da-surface text-da-text shadow-sm" : "text-da-muted hover:text-da-text"
           }`}
         >
           Batch upload
@@ -539,21 +539,21 @@ export function AiGradeClient({ testId }: { testId: string }) {
           />
 
           {error && (
-            <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+            <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300">
               {error}
             </div>
           )}
 
           {statusLine && (
-            <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+            <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-3 text-sm text-blue-300">
               {statusLine}
             </div>
           )}
 
           {/* -- Assessment summary ------------------------------------------ */}
-          <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-bold text-gray-900">{test.name}</h2>
-            <p className="mt-1 text-sm text-gray-500">
+          <section className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
+            <h2 className="text-lg font-bold text-da-text">{test.name}</h2>
+            <p className="mt-1 text-sm text-da-muted">
               {totalItems} part{totalItems === 1 ? "" : "s"} · {maxTotal} marks total. Upload a
               scanned PDF per student — the model marks it against the mark scheme stored in the
               PPQ bank. Nothing reaches Clev&apos;s Marks until you review and accept it below.
@@ -561,18 +561,18 @@ export function AiGradeClient({ testId }: { testId: string }) {
           </section>
 
           {/* -- Students ----------------------------------------------------- */}
-          <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="border-b border-gray-100 px-5 py-3">
-              <h2 className="text-lg font-bold text-gray-900">Students</h2>
+          <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
+            <div className="border-b border-da-border px-5 py-3">
+              <h2 className="text-lg font-bold text-da-text">Students</h2>
             </div>
 
             {students.length === 0 && (
-              <p className="px-5 py-4 text-sm text-gray-500">
+              <p className="px-5 py-4 text-sm text-da-muted">
                 No students are enrolled in this assessment&apos;s class.
               </p>
             )}
 
-            <ul className="divide-y divide-gray-100">
+            <ul className="divide-y divide-da-border">
               {students.map((s) => {
                 const busy = busyStudent === s.profile_id;
                 const run = runsByStudent[s.profile_id];
@@ -594,7 +594,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                     className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
                   >
                     <div>
-                      <p className="flex items-center gap-2 font-semibold text-gray-900">
+                      <p className="flex items-center gap-2 font-semibold text-da-text">
                         {dot && (
                           <span
                             className={`h-2 w-2 shrink-0 rounded-full ${dot.color}`}
@@ -605,7 +605,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                         )}
                         {s.display_name}
                       </p>
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-da-muted">
                         {run ? (
                           <>
                             Last run: {run.status}
@@ -633,7 +633,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                           pendingUploadStudent.current = s.profile_id;
                           fileInputRef.current?.click();
                         }}
-                        className="rounded border border-blue-300 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                        className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/15 disabled:opacity-50"
                       >
                         {busy ? "Working…" : "Upload scan & mark"}
                       </button>
@@ -643,7 +643,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                           type="button"
                           disabled={busy}
                           onClick={() => runGrading(s.profile_id, null)}
-                          className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
                         >
                           Re-mark stored scan
                         </button>
@@ -653,7 +653,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                         <button
                           type="button"
                           onClick={() => openReview(s.profile_id)}
-                          className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                          className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
                         >
                           Review →
                         </button>
@@ -667,17 +667,17 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
           {/* -- Review table ---------------------------------------------- */}
           {focusStudent && results.length > 0 && (
-            <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
+            <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">
+                  <h2 className="text-lg font-bold text-da-text">
                     Review — {students.find((s) => s.profile_id === focusStudent)?.display_name}
                   </h2>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-da-muted">
                     Suggested total {suggestedTotal} / {maxTotal}. Edit any value before accepting.
                   </p>
                   {focusRun?.coverage?.warnings && focusRun.coverage.warnings.length > 0 && (
-                    <ul className="mt-2 space-y-0.5 text-xs text-amber-700">
+                    <ul className="mt-2 space-y-0.5 text-xs text-amber-300">
                       {focusRun.coverage.warnings.map((w, i) => (
                         <li key={i}>⚠ {w}</li>
                       ))}
@@ -697,7 +697,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                    <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
                       <th className="px-4 py-2 font-semibold">
                         <span className="sr-only">Accept</span>
                       </th>
@@ -724,7 +724,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                         const isOpen = expanded === r.id;
                         return (
                           <Fragment key={r.id}>
-                            <tr className="border-b border-gray-100">
+                            <tr className="border-b border-da-border">
                               <td className="px-4 py-2">
                                 <input
                                   type="checkbox"
@@ -733,7 +733,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                   aria-label={`Accept ${label}`}
                                 />
                               </td>
-                              <td className="px-2 py-2 font-medium text-gray-900">{label}</td>
+                              <td className="px-2 py-2 font-medium text-da-text">{label}</td>
                               <td className="px-2 py-2">
                                 <input
                                   type="number"
@@ -749,10 +749,10 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                       ),
                                     }))
                                   }
-                                  className="w-16 rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
+                                  className="w-16 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
                                 />
                               </td>
-                              <td className="px-2 py-2 text-gray-500">{r.max_marks}</td>
+                              <td className="px-2 py-2 text-da-muted">{r.max_marks}</td>
                               <td className="px-2 py-2">
                                 <span
                                   className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
@@ -760,21 +760,21 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                   {r.confidence}
                                 </span>
                                 {!r.work_found && (
-                                  <span className="ml-2 text-xs text-gray-500">no attempt found</span>
+                                  <span className="ml-2 text-xs text-da-muted">no attempt found</span>
                                 )}
                               </td>
-                              <td className="px-2 py-2 text-xs text-gray-500">
+                              <td className="px-2 py-2 text-xs text-da-muted">
                                 {SOURCE_LABEL[r.markscheme_source]}
                               </td>
                               <td className="px-2 py-2">
                                 {r.accepted ? (
-                                  <span className="text-xs text-green-700">accepted</span>
+                                  <span className="text-xs text-green-300">accepted</span>
                                 ) : (
                                   <button
                                     type="button"
                                     onClick={() => acceptOne(r.id)}
                                     disabled={acceptingRowId === r.id}
-                                    className="rounded border border-blue-300 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                    className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/15 disabled:opacity-50"
                                   >
                                     {acceptingRowId === r.id ? "Accepting…" : "Accept"}
                                   </button>
@@ -784,7 +784,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                 <button
                                   type="button"
                                   onClick={() => setExpanded(isOpen ? null : r.id)}
-                                  className="text-xs text-blue-600 hover:underline"
+                                  className="text-xs text-blue-300 hover:underline"
                                 >
                                   {isOpen ? "Hide" : "Why?"}
                                 </button>
@@ -792,7 +792,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                             </tr>
 
                             {isOpen && (
-                              <tr className="bg-gray-50">
+                              <tr className="bg-da-hover">
                                 <td colSpan={8} className="px-6 py-4">
                                   <div className="space-y-3">
                                     {r.mark_breakdown.length > 0 && (
@@ -800,15 +800,15 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                         {groupMarkBreakdownByPart(r.mark_breakdown).map((group, gi) => (
                                           <div key={gi} className="flex flex-wrap items-center gap-2">
                                             {group.part && (
-                                              <span className="text-xs font-semibold text-gray-500">{group.part}</span>
+                                              <span className="text-xs font-semibold text-da-muted">{group.part}</span>
                                             )}
                                             {group.entries.map((b, i) => (
                                               <span
                                                 key={i}
                                                 className={`rounded border px-2 py-0.5 text-xs ${
                                                   b.awarded
-                                                    ? "border-green-300 bg-green-50 text-green-800"
-                                                    : "border-gray-300 bg-white text-gray-500 line-through"
+                                                    ? "border-green-400/40 bg-green-500/15 text-green-300"
+                                                    : "border-da-border bg-da-surface text-da-muted line-through"
                                                 }`}
                                                 title={b.note}
                                               >
@@ -825,7 +825,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                         <button
                                           type="button"
                                           onClick={() => toggleQuestionImage(r.id)}
-                                          className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                                          className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
                                         >
                                           <span>{questionImageShown.has(r.id) ? "▾" : "▸"}</span>
                                           Question
@@ -840,7 +840,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                                 alt="Question source image"
                                                 title="Click to enlarge"
                                                 onClick={() => setLightboxUrl(url)}
-                                                className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
+                                                className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
                                               />
                                             ))}
                                           </div>
@@ -854,13 +854,13 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                           <button
                                             type="button"
                                             onClick={() => toggleEvidenceImage(r.id)}
-                                            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                                            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
                                           >
                                             <span>{evidenceImageShown.has(r.id) ? "▾" : "▸"}</span>
                                             Student&apos;s work
                                           </button>
                                         ) : (
-                                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                          <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
                                             Student&apos;s work
                                           </p>
                                         )}
@@ -872,7 +872,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                               alt="Cropped scan region the model read this part's work from"
                                               title="Click to enlarge"
                                               onClick={() => setLightboxUrl(r.evidence_image_url)}
-                                              className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
+                                              className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
                                             />
                                           )}
                                           {editingEvidenceId === r.id ? (
@@ -884,7 +884,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                                 }
                                                 rows={3}
                                                 placeholder="Correct the transcription of the student's work for this part -- checked against the scan above -- then save to re-grade it."
-                                                className="w-full rounded border border-gray-300 p-2 font-mono text-xs focus:ring-2 focus:ring-blue-400"
+                                                className="w-full rounded border border-da-border p-2 font-mono text-xs focus:ring-2 focus:ring-blue-400"
                                               />
                                               <div className="flex gap-2">
                                                 <button
@@ -899,7 +899,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                                   type="button"
                                                   onClick={cancelEditEvidence}
                                                   disabled={regradingId === r.id}
-                                                  className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                                                  className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
                                                 >
                                                   Cancel
                                                 </button>
@@ -917,12 +917,12 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                                 }
                                               }}
                                               title="Click to fix transcription"
-                                              className="cursor-text rounded border border-gray-200 bg-white p-3 hover:border-blue-400 hover:bg-blue-50/30"
+                                              className="cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/15/30"
                                             >
                                               {r.evidence ? (
                                                 <LatexRenderer latex={r.evidence} />
                                               ) : (
-                                                <p className="text-xs text-gray-400">
+                                                <p className="text-xs text-da-muted">
                                                   No transcription on file -- click to add one.
                                                 </p>
                                               )}
@@ -937,7 +937,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                         <button
                                           type="button"
                                           onClick={() => toggleMarkschemeImage(r.id)}
-                                          className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700"
+                                          className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
                                         >
                                           <span>{markschemeImageShown.has(r.id) ? "▾" : "▸"}</span>
                                           Mark scheme
@@ -952,7 +952,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                                 alt="Mark scheme source image"
                                                 title="Click to enlarge"
                                                 onClick={() => setLightboxUrl(url)}
-                                                className="max-h-64 cursor-zoom-in rounded border border-gray-200 hover:border-blue-400"
+                                                className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
                                               />
                                             ))}
                                           </div>
@@ -962,10 +962,10 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
                                     {r.reasoning && (
                                       <div>
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
                                           Examiner reasoning
                                         </p>
-                                        <div className="mt-1 rounded border border-gray-200 bg-white p-3">
+                                        <div className="mt-1 rounded border border-da-border bg-da-surface p-3">
                                           <LatexRenderer latex={r.reasoning} />
                                         </div>
                                       </div>
@@ -999,7 +999,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
           <button
             type="button"
             onClick={() => setLightboxUrl(null)}
-            className="absolute right-6 top-6 rounded-full bg-white/10 px-3 py-1 text-sm text-white hover:bg-white/20"
+            className="absolute right-6 top-6 rounded-full bg-da-surface/10 px-3 py-1 text-sm text-white hover:bg-da-surface/20"
           >
             Close ✕
           </button>

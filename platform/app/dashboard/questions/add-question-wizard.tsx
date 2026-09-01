@@ -146,9 +146,9 @@ function WizardStemEditor({
   }
 
   return (
-    <div className="border border-indigo-200 rounded-lg overflow-hidden bg-indigo-50/30">
-      <div className="flex items-center gap-3 px-4 py-2 bg-indigo-50 border-b border-indigo-200">
-        <span className="font-semibold text-sm text-indigo-800">
+    <div className="border border-indigo-400/40 rounded-lg overflow-hidden bg-indigo-500/15/30">
+      <div className="flex items-center gap-3 px-4 py-2 bg-indigo-500/15 border-b border-indigo-400/40">
+        <span className="font-semibold text-sm text-indigo-300">
           Initial question
           <span className="text-indigo-400 font-normal ml-1 text-xs">
             (stem — shared across all parts)
@@ -159,7 +159,7 @@ function WizardStemEditor({
       <div className="p-4 space-y-3">
         {editing ? (
           <textarea
-            className="w-full border border-indigo-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="w-full border border-indigo-400/40 rounded-md p-2 font-mono text-sm resize-y min-h-32 text-da-text focus:outline-none focus:ring-2 focus:ring-indigo-400"
             value={currentDraft}
             onChange={(e) => setCurrentDraft(e.target.value)}
           />
@@ -168,7 +168,7 @@ function WizardStemEditor({
             {currentDraft ? (
               <LatexRenderer latex={currentDraft} />
             ) : (
-              <span className="text-gray-400 italic">No stem content</span>
+              <span className="text-da-muted italic">No stem content</span>
             )}
           </div>
         )}
@@ -184,7 +184,7 @@ function WizardStemEditor({
               </button>
               <button
                 onClick={() => { setDraftQ(stemLatex); setDraftMS(stemMsLatex); setEditing(false); }}
-                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
               >
                 Cancel
               </button>
@@ -192,21 +192,21 @@ function WizardStemEditor({
           ) : (
             <button
               onClick={() => setEditing(true)}
-              className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
             >
               Edit LaTeX
             </button>
           )}
         </div>
 
-        <div className="flex gap-2 pt-1 border-t border-indigo-100">
+        <div className="flex gap-2 pt-1 border-t border-indigo-400/40">
           <input
             type="text"
             placeholder="Correction for Claude, e.g. 'fix the fraction in line 2'…"
             value={claudeInstruction}
             onChange={(e) => setClaudeInstruction(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runClaude()}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="flex-1 border border-da-border rounded-md px-3 py-1.5 text-xs text-da-text focus:outline-none focus:ring-2 focus:ring-purple-400"
           />
           <button
             onClick={runClaude}
@@ -313,76 +313,76 @@ function WizardPartEditor({
   }, {});
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-da-border rounded-lg overflow-hidden">
       {/* Part header */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200">
-        <span className="font-semibold text-sm text-gray-800">{displayLabel}</span>
+      <div className="flex items-center gap-3 px-4 py-2 bg-da-hover border-b border-da-border">
+        <span className="font-semibold text-sm text-da-text">{displayLabel}</span>
         {marksNum != null && (
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-da-muted">
             [{marksNum} mark{marksNum !== 1 ? "s" : ""}]
           </span>
         )}
         <button
           onClick={onRemove}
-          className="ml-auto text-xs text-red-500 hover:text-red-700 font-bold px-2 py-0.5 rounded hover:bg-red-50"
+          className="ml-auto text-xs text-red-500 hover:text-red-300 font-bold px-2 py-0.5 rounded hover:bg-red-500/15"
         >
           Remove
         </button>
       </div>
 
       {/* Metadata strip */}
-      <div className="px-4 py-3 bg-gray-50/60 border-b border-gray-100 space-y-2">
+      <div className="px-4 py-3 bg-da-hover/60 border-b border-da-border space-y-2">
         <div className="flex flex-wrap gap-3 items-end">
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-0.5">Label</label>
+            <label className="block text-xs font-bold text-da-muted mb-0.5">Label</label>
             <input
               type="text"
               value={part.label}
               onChange={(e) => onMeta(e.target.value, part.marks, part.commandTerm, part.subtopicCodes)}
               placeholder="a, bi…"
-              className="w-20 rounded border border-gray-300 px-2 py-1 text-xs bg-white text-gray-900 focus:ring-1 focus:ring-blue-400"
+              className="w-20 rounded border border-da-border px-2 py-1 text-xs bg-da-surface text-da-text focus:ring-1 focus:ring-blue-400"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-0.5">Marks</label>
+            <label className="block text-xs font-bold text-da-muted mb-0.5">Marks</label>
             <input
               type="number"
               value={part.marks}
               onChange={(e) => onMeta(part.label, e.target.value, part.commandTerm, part.subtopicCodes)}
               min={0}
-              className="w-16 rounded border border-gray-300 px-2 py-1 text-xs bg-white text-gray-900 focus:ring-1 focus:ring-blue-400"
+              className="w-16 rounded border border-da-border px-2 py-1 text-xs bg-da-surface text-da-text focus:ring-1 focus:ring-blue-400"
             />
           </div>
           <div>
-            <label className="block text-xs font-bold text-gray-600 mb-0.5">Command Term</label>
+            <label className="block text-xs font-bold text-da-muted mb-0.5">Command Term</label>
             <input
               type="text"
               value={part.commandTerm}
               onChange={(e) => onMeta(part.label, part.marks, e.target.value, part.subtopicCodes)}
               placeholder="Find, Show…"
-              className="w-32 rounded border border-gray-300 px-2 py-1 text-xs bg-white text-gray-900 focus:ring-1 focus:ring-blue-400"
+              className="w-32 rounded border border-da-border px-2 py-1 text-xs bg-da-surface text-da-text focus:ring-1 focus:ring-blue-400"
             />
           </div>
           <button
             type="button"
             onClick={() => setSubtopicsOpen((o) => !o)}
-            className="text-xs text-blue-600 underline hover:no-underline self-end pb-1"
+            className="text-xs text-blue-300 underline hover:no-underline self-end pb-1"
           >
             {subtopicsOpen ? "Hide subtopics ▲" : `Subtopics${part.subtopicCodes.length > 0 ? ` (${part.subtopicCodes.length})` : ""} ▼`}
           </button>
         </div>
 
         {part.subtopicCodes.length > 0 && !subtopicsOpen && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-da-muted">
             <span className="font-medium">Topics:</span> {part.subtopicCodes.join(", ")}
           </p>
         )}
 
         {subtopicsOpen && (
-          <div className="border border-gray-200 rounded p-2 bg-white max-h-48 overflow-y-auto space-y-2">
+          <div className="border border-da-border rounded p-2 bg-da-surface max-h-48 overflow-y-auto space-y-2">
             {Object.entries(subtopicsBySection).map(([sec, subs]) => (
               <div key={sec}>
-                <p className="text-xs font-semibold text-gray-500 mb-0.5">
+                <p className="text-xs font-semibold text-da-muted mb-0.5">
                   {SECTION_NAMES[Number(sec)] ?? `Topic ${sec}`}
                 </p>
                 <div className="flex flex-wrap gap-1">
@@ -395,7 +395,7 @@ function WizardPartEditor({
                       className={`rounded px-1.5 py-0.5 text-xs border transition-colors ${
                         part.subtopicCodes.includes(sub.code)
                           ? "bg-blue-600 border-blue-600 text-white"
-                          : "bg-white border-gray-300 text-gray-600 hover:bg-gray-50"
+                          : "bg-da-surface border-da-border text-da-muted hover:bg-da-hover"
                       }`}
                     >
                       {sub.code}
@@ -412,7 +412,7 @@ function WizardPartEditor({
       <div className="p-4 space-y-3">
         {editing ? (
           <textarea
-            className="w-full border border-gray-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full border border-da-border rounded-md p-2 font-mono text-sm resize-y min-h-32 text-da-text focus:outline-none focus:ring-2 focus:ring-blue-400"
             value={activeDraft}
             onChange={(e) => setActiveDraft(e.target.value)}
           />
@@ -421,7 +421,7 @@ function WizardPartEditor({
             {activeDraft ? (
               <LatexRenderer latex={activeDraft} />
             ) : (
-              <span className="text-gray-400 italic">No LaTeX content</span>
+              <span className="text-da-muted italic">No LaTeX content</span>
             )}
           </div>
         )}
@@ -441,7 +441,7 @@ function WizardPartEditor({
                   setDraftMS(part.markschemeLatex);
                   setEditing(false);
                 }}
-                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
               >
                 Cancel
               </button>
@@ -449,7 +449,7 @@ function WizardPartEditor({
           ) : (
             <button
               onClick={() => setEditing(true)}
-              className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
             >
               Edit LaTeX
             </button>
@@ -457,14 +457,14 @@ function WizardPartEditor({
         </div>
 
         {/* Claude correction */}
-        <div className="flex gap-2 pt-1 border-t border-gray-100">
+        <div className="flex gap-2 pt-1 border-t border-da-border">
           <input
             type="text"
             placeholder="Correction for Claude, e.g. 'fix the fraction in line 2'…"
             value={claudeInstruction}
             onChange={(e) => setClaudeInstruction(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runClaude()}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="flex-1 border border-da-border rounded-md px-3 py-1.5 text-xs text-da-text focus:outline-none focus:ring-2 focus:ring-purple-400"
           />
           <button
             onClick={runClaude}
@@ -999,11 +999,11 @@ export function AddQuestionWizard({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col">
+      <div className="w-full max-w-4xl bg-da-surface rounded-2xl shadow-2xl flex flex-col">
         {/* Modal header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-blue-100 bg-blue-50 rounded-t-2xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-blue-400/40 bg-blue-500/15 rounded-t-2xl">
           <div className="flex items-center gap-3">
-            <h2 className="text-xl font-extrabold text-blue-900">{stepTitle}</h2>
+            <h2 className="text-xl font-extrabold text-blue-300">{stepTitle}</h2>
             {/* Step indicator */}
             <div className="flex gap-1.5 ml-2">
               {(["images", "processing", "review"] as WizardStep[]).map(
@@ -1014,7 +1014,7 @@ export function AddQuestionWizard({
                       step === s
                         ? "bg-blue-600"
                         : i < ["images", "processing", "review"].indexOf(step)
-                        ? "bg-blue-300"
+                        ? "bg-blue-500/25"
                         : "bg-gray-200"
                     }`}
                   />
@@ -1026,7 +1026,7 @@ export function AddQuestionWizard({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-3 py-1.5 text-sm font-bold text-gray-500 hover:bg-gray-100"
+              className="rounded-lg px-3 py-1.5 text-sm font-bold text-da-muted hover:bg-da-hover"
             >
               ✕ Close
             </button>
@@ -1040,11 +1040,11 @@ export function AddQuestionWizard({
           {step === "images" && (
             <>
               {/* Metadata */}
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-3">
-                <p className="text-sm font-bold text-blue-900">Question Metadata</p>
+              <div className="rounded-xl border border-blue-400/40 bg-blue-500/15 p-4 space-y-3">
+                <p className="text-sm font-bold text-blue-300">Question Metadata</p>
                 <div className="flex flex-wrap gap-3">
                   <div className="flex-1 min-w-[180px]">
-                    <label className="block text-xs font-bold text-blue-800 mb-1">
+                    <label className="block text-xs font-bold text-blue-300 mb-1">
                       Code
                     </label>
                     <input
@@ -1052,11 +1052,11 @@ export function AddQuestionWizard({
                       value={code}
                       onChange={(e) => handleCodeChange(e.target.value)}
                       placeholder="e.g. 25M.2.AHL.TZ1.H_1"
-                      className="w-full rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold bg-white text-blue-900 focus:ring-2 focus:ring-blue-500"
+                      className="w-full rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold bg-da-surface text-blue-300 focus:ring-2 focus:ring-blue-500"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">
+                    <label className="block text-xs font-bold text-blue-300 mb-1">
                       Session
                     </label>
                     <input
@@ -1064,11 +1064,11 @@ export function AddQuestionWizard({
                       value={sessionVal}
                       onChange={(e) => setSessionVal(e.target.value)}
                       placeholder="25M"
-                      className="w-20 rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold bg-white text-blue-900"
+                      className="w-20 rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold bg-da-surface text-blue-300"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">
+                    <label className="block text-xs font-bold text-blue-300 mb-1">
                       Paper
                     </label>
                     <select
@@ -1076,7 +1076,7 @@ export function AddQuestionWizard({
                       onChange={(e) =>
                         setPaper(Number(e.target.value) as 1 | 2 | 3)
                       }
-                      className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold bg-white text-blue-900"
+                      className="rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold bg-da-surface text-blue-300"
                     >
                       <option value={1}>P1</option>
                       <option value={2}>P2</option>
@@ -1084,26 +1084,26 @@ export function AddQuestionWizard({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">
+                    <label className="block text-xs font-bold text-blue-300 mb-1">
                       Level
                     </label>
                     <select
                       value={level}
                       onChange={(e) => setLevel(e.target.value)}
-                      className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold bg-white text-blue-900"
+                      className="rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold bg-da-surface text-blue-300"
                     >
                       <option value="AHL">HL</option>
                       <option value="SL">SL</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">
+                    <label className="block text-xs font-bold text-blue-300 mb-1">
                       Timezone
                     </label>
                     <select
                       value={timezone}
                       onChange={(e) => setTimezone(e.target.value)}
-                      className="rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold bg-white text-blue-900"
+                      className="rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold bg-da-surface text-blue-300"
                     >
                       <option value="TZ0">TZ0</option>
                       <option value="TZ1">TZ1</option>
@@ -1111,7 +1111,7 @@ export function AddQuestionWizard({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">
+                    <label className="block text-xs font-bold text-blue-300 mb-1">
                       Curriculum
                     </label>
                     <div className="flex gap-2">
@@ -1123,7 +1123,7 @@ export function AddQuestionWizard({
                           className={`rounded border-2 px-3 py-1.5 text-sm font-bold transition-colors ${
                             curricula.includes(c)
                               ? "bg-blue-600 border-blue-600 text-white"
-                              : "border-blue-300 bg-white text-blue-700 hover:bg-blue-50"
+                              : "border-blue-400/40 bg-da-surface text-blue-300 hover:bg-blue-500/15"
                           }`}
                         >
                           {c}
@@ -1135,22 +1135,22 @@ export function AddQuestionWizard({
               </div>
 
               {step1Error && (
-                <p className="text-sm text-red-600 font-medium">{step1Error}</p>
+                <p className="text-sm text-red-300 font-medium">{step1Error}</p>
               )}
 
               {/* Image paste zones */}
               <div className="space-y-3">
-                <p className="text-sm font-bold text-gray-700">
+                <p className="text-sm font-bold text-da-text">
                   Paste Images
-                  <span className="text-gray-400 font-normal ml-2 text-xs">
+                  <span className="text-da-muted font-normal ml-2 text-xs">
                     (paste question page + mark scheme page from clipboard)
                   </span>
                 </p>
 
                 {(
                   [
-                    ["question", "Question", "border-blue-300 bg-blue-50/40", "text-blue-700"],
-                    ["markscheme", "Mark Scheme", "border-green-300 bg-green-50/40", "text-green-700"],
+                    ["question", "Question", "border-blue-400/40 bg-blue-500/15/40", "text-blue-300"],
+                    ["markscheme", "Mark Scheme", "border-green-400/40 bg-green-500/15/40", "text-green-300"],
                   ] as const
                 ).map(([imgType, label, borderCls, labelCls]) => {
                   const imgs = pendingImages.filter(
@@ -1173,7 +1173,7 @@ export function AddQuestionWizard({
                         aria-label={`Paste ${label} image from clipboard`}
                       >
                         {imgs.length === 0 ? (
-                          <p className="text-xs text-gray-400 text-center py-1.5">
+                          <p className="text-xs text-da-muted text-center py-1.5">
                             📋 Click or paste to add image from clipboard
                           </p>
                         ) : (
@@ -1184,7 +1184,7 @@ export function AddQuestionWizard({
                                 <img
                                   src={img.objectUrl}
                                   alt="pending"
-                                  className="max-h-32 rounded border border-gray-200 bg-white p-1"
+                                  className="max-h-32 rounded border border-da-border bg-da-surface p-1"
                                 />
                                 <button
                                   type="button"
@@ -1198,7 +1198,7 @@ export function AddQuestionWizard({
                                 </button>
                               </div>
                             ))}
-                            <p className="text-xs text-gray-400 self-end pb-1">
+                            <p className="text-xs text-da-muted self-end pb-1">
                               📋 Click or paste to add more
                             </p>
                           </div>
@@ -1210,11 +1210,11 @@ export function AddQuestionWizard({
               </div>
 
               {/* Actions */}
-              <div className="flex justify-between items-center gap-3 pt-2 border-t border-gray-100">
+              <div className="flex justify-between items-center gap-3 pt-2 border-t border-da-border">
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold text-gray-600 hover:bg-gray-100"
+                  className="px-4 py-2 rounded-lg text-sm font-semibold text-da-muted hover:bg-da-hover"
                 >
                   Cancel
                 </button>
@@ -1237,9 +1237,9 @@ export function AddQuestionWizard({
             <div className="space-y-4 py-4">
               <div className="flex items-center gap-3">
                 {!processingError && (
-                  <span className="inline-block w-5 h-5 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" />
+                  <span className="inline-block w-5 h-5 border-2 border-blue-400/40 border-t-blue-600 rounded-full animate-spin" />
                 )}
-                <span className="text-sm font-semibold text-gray-700">
+                <span className="text-sm font-semibold text-da-text">
                   {processingError ? "Processing failed" : "Processing…"}
                 </span>
               </div>
@@ -1248,7 +1248,7 @@ export function AddQuestionWizard({
                 {processingLog.map((msg, i) => (
                   <li
                     key={i}
-                    className="text-sm text-gray-600 flex items-start gap-2"
+                    className="text-sm text-da-muted flex items-start gap-2"
                   >
                     <span className="text-green-500 mt-0.5 shrink-0">✓</span>
                     {msg}
@@ -1257,18 +1257,18 @@ export function AddQuestionWizard({
               </ul>
 
               {processingError && (
-                <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 space-y-2">
-                  <p className="text-sm font-semibold text-red-700">
+                <div className="rounded-lg bg-red-500/15 border border-red-400/40 px-4 py-3 space-y-2">
+                  <p className="text-sm font-semibold text-red-300">
                     Error: {processingError}
                   </p>
 
                   {isDuplicateKeyError(processingError) && (
-                    <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2.5 space-y-1.5">
-                      <p className="text-xs text-amber-800 font-medium">
+                    <div className="rounded-md bg-amber-500/15 border border-amber-400/40 px-3 py-2.5 space-y-1.5">
+                      <p className="text-xs text-amber-300 font-medium">
                         A content-less stub for <span className="font-mono font-bold">{code.trim()}</span> already exists in the database but is invisible in search. You can delete it and retry.
                       </p>
                       {deleteStubError && (
-                        <p className="text-xs text-red-600 font-medium">{deleteStubError}</p>
+                        <p className="text-xs text-red-300 font-medium">{deleteStubError}</p>
                       )}
                       <button
                         onClick={handleDeleteStub}
@@ -1294,7 +1294,7 @@ export function AddQuestionWizard({
                       setProcessingError(null);
                       setDeleteStubError(null);
                     }}
-                    className="text-xs text-red-600 underline hover:no-underline"
+                    className="text-xs text-red-300 underline hover:no-underline"
                   >
                     ← Go back and try again
                   </button>
@@ -1316,7 +1316,7 @@ export function AddQuestionWizard({
                   className={`rounded-lg px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
                     activeField === "content_latex"
                       ? "bg-blue-600 border-blue-600 text-white"
-                      : "border-blue-300 text-blue-700 bg-white hover:bg-blue-50"
+                      : "border-blue-400/40 text-blue-300 bg-da-surface hover:bg-blue-500/15"
                   }`}
                 >
                   Question
@@ -1327,7 +1327,7 @@ export function AddQuestionWizard({
                   className={`rounded-lg px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
                     activeField === "markscheme_latex"
                       ? "bg-green-600 border-green-600 text-white"
-                      : "border-green-300 text-green-700 bg-white hover:bg-green-50"
+                      : "border-green-400/40 text-green-300 bg-da-surface hover:bg-green-500/15"
                   }`}
                 >
                   Mark Scheme
@@ -1335,9 +1335,9 @@ export function AddQuestionWizard({
               </div>
 
               {/* Extracted draft panel */}
-              <div className="border border-amber-200 rounded-lg overflow-hidden bg-amber-50/30">
-                <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-200">
-                  <span className="font-semibold text-sm text-amber-800">
+              <div className="border border-amber-400/40 rounded-lg overflow-hidden bg-amber-500/15/30">
+                <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-400/40">
+                  <span className="font-semibold text-sm text-amber-300">
                     Extracted draft
                     <span className="text-amber-500 font-normal ml-1 text-xs">
                       (review or edit the raw OCR output, then apply)
@@ -1346,7 +1346,7 @@ export function AddQuestionWizard({
                 </div>
                 <div className="p-3 space-y-2">
                   <textarea
-                    className="w-full border border-amber-200 rounded-md p-2 font-mono text-xs resize-y min-h-24 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                    className="w-full border border-amber-400/40 rounded-md p-2 font-mono text-xs resize-y min-h-24 bg-da-surface text-da-text focus:outline-none focus:ring-2 focus:ring-amber-400"
                     value={
                       activeField === "content_latex" ? draftLatex : draftMsLatex
                     }
@@ -1380,9 +1380,9 @@ export function AddQuestionWizard({
               {/* Part editors */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <p className="text-sm font-bold text-gray-700">Parts</p>
+                  <p className="text-sm font-bold text-da-text">Parts</p>
                   {parts.length > 0 && (
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-da-muted">
                       ({parts.length} part{parts.length !== 1 ? "s" : ""} — Claude-suggested marks &amp; subtopics pre-filled)
                     </span>
                   )}
@@ -1413,19 +1413,19 @@ export function AddQuestionWizard({
                 <button
                   type="button"
                   onClick={addPart}
-                  className="w-full rounded-lg border-2 border-dashed border-gray-300 py-2 text-sm text-gray-500 hover:border-blue-300 hover:text-blue-600 transition-colors"
+                  className="w-full rounded-lg border-2 border-dashed border-da-border py-2 text-sm text-da-muted hover:border-blue-400/40 hover:text-blue-300 transition-colors"
                 >
                   + Add Part
                 </button>
               </div>
 
               {saveError && (
-                <p className="text-sm text-red-600 font-medium">{saveError}</p>
+                <p className="text-sm text-red-300 font-medium">{saveError}</p>
               )}
 
               {/* Bottom action bar */}
-              <div className="flex justify-between items-center gap-3 pt-2 border-t border-gray-100">
-                <p className="text-xs text-gray-400">
+              <div className="flex justify-between items-center gap-3 pt-2 border-t border-da-border">
+                <p className="text-xs text-da-muted">
                   Images are already saved. Closing without saving will leave an empty question record.
                 </p>
                 <button

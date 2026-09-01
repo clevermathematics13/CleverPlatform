@@ -87,10 +87,10 @@ export function StemEditor({
   }
 
   return (
-    <div className="border border-indigo-200 rounded-lg overflow-hidden bg-indigo-50/30">
+    <div className="border border-indigo-400/40 rounded-lg overflow-hidden bg-indigo-500/15/30">
       {/* Stem header */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-indigo-50 border-b border-indigo-200">
-        <span className="font-semibold text-sm text-indigo-800">
+      <div className="flex items-center gap-3 px-4 py-2 bg-indigo-500/15 border-b border-indigo-400/40">
+        <span className="font-semibold text-sm text-indigo-300">
           Initial question
           <span className="text-indigo-400 font-normal ml-1 text-xs">(stem — shared across all parts)</span>
         </span>
@@ -101,7 +101,7 @@ export function StemEditor({
         {editing ? (
           <textarea
             name={stemField}
-            className="w-full border border-indigo-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="w-full border border-indigo-400/40 rounded-md p-2 font-mono text-sm resize-y min-h-32 text-da-text focus:outline-none focus:ring-2 focus:ring-indigo-400"
             value={draft[stemField]}
             onChange={(e) => setDraft((d) => ({ ...d, [stemField]: e.target.value }))}
           />
@@ -110,7 +110,7 @@ export function StemEditor({
             {draft[stemField] ? (
               <LatexRenderer latex={draft[stemField]} graphImageUrl={pageImageUrl} />
             ) : (
-              <span className="text-gray-400 italic">No LaTeX content</span>
+              <span className="text-da-muted italic">No LaTeX content</span>
             )}
           </div>
         )}
@@ -127,7 +127,7 @@ export function StemEditor({
               </button>
               <button
                 onClick={() => setEditing(false)}
-                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
               >
                 Cancel
               </button>
@@ -136,7 +136,7 @@ export function StemEditor({
             <>
               <button
                 onClick={() => setEditing(true)}
-                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200"
               >
                 Edit LaTeX
               </button>
@@ -145,7 +145,7 @@ export function StemEditor({
         </div>
 
         {/* Claude correction row */}
-        <div className="flex gap-2 pt-1 border-t border-indigo-100">
+        <div className="flex gap-2 pt-1 border-t border-indigo-400/40">
           <input
             name={`claude-instruction-${stemField}`}
             type="text"
@@ -153,7 +153,7 @@ export function StemEditor({
             value={claudeInstruction}
             onChange={(e) => setClaudeInstruction(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runClaude()}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="flex-1 border border-da-border rounded-md px-3 py-1.5 text-xs text-da-text focus:outline-none focus:ring-2 focus:ring-purple-400"
           />
           <button
             onClick={runClaude}
@@ -165,7 +165,7 @@ export function StemEditor({
         </div>
 
         {/* OCR note */}
-        <div className="pt-1 border-t border-indigo-100">
+        <div className="pt-1 border-t border-indigo-400/40">
           <p className="text-xs text-indigo-400 italic">
             Stem is auto-populated from the &ldquo;Extracted draft&rdquo; panel below — click &ldquo;Extract &amp; apply&rdquo;.
           </p>

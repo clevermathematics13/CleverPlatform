@@ -102,7 +102,7 @@ export default async function ScanTestPage() {
         <a href="/dashboard/na-review" className="text-sm text-da-accent hover:underline">
           ← Back to Scanned Response Review
         </a>
-        <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-amber-600">
+        <p className="mt-2 text-xs font-semibold uppercase tracking-widest text-amber-300">
           Test harness — not the real upload flow
         </p>
         <h1 className="font-serif text-3xl font-bold text-da-text">Scan pipeline: stage 1, 2 + 4 test</h1>

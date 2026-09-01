@@ -61,7 +61,7 @@ export function NicknameCell({ profileId, invitedId, nickname, fullName }: Nickn
           onBlur={submit}
           disabled={isPending}
           placeholder="Enter nickname"
-          className="w-32 rounded border border-blue-300 px-2 py-0.5 text-sm text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-32 rounded border border-blue-400/40 px-2 py-0.5 text-sm text-da-text focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
     );
@@ -75,14 +75,14 @@ export function NicknameCell({ profileId, invitedId, nickname, fullName }: Nickn
       className="group flex items-center gap-1 text-left"
     >
       {saved ? (
-        <span className="text-sm text-gray-700 group-hover:underline">{saved}</span>
+        <span className="text-sm text-da-text group-hover:underline">{saved}</span>
       ) : (
-        <span className="inline-flex items-center rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-700 group-hover:bg-yellow-100">
+        <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-yellow-300 group-hover:bg-yellow-500/15">
           Not set
         </span>
       )}
       <svg
-        className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="h-3 w-3 text-da-muted opacity-0 group-hover:opacity-100 transition-opacity"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"

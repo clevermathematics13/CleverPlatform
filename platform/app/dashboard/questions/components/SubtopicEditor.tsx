@@ -63,8 +63,8 @@ export function SubtopicEditor({
               key={c}
               className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-semibold ${
                 isPrimary
-                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-400"
-                  : "bg-blue-100 text-blue-800"
+                  ? "bg-amber-500/15 text-amber-300 ring-1 ring-amber-400"
+                  : "bg-blue-500/15 text-blue-300"
               }`}
             >
               {isPrimary && <span title="Primary skill">★</span>}
@@ -74,7 +74,7 @@ export function SubtopicEditor({
                   type="button"
                   onClick={() => onPrimaryChange(isPrimary ? null : c)}
                   className={`ml-0.5 font-bold leading-none ${
-                    isPrimary ? "text-amber-500 hover:text-gray-500" : "text-blue-300 hover:text-amber-500"
+                    isPrimary ? "text-amber-500 hover:text-da-muted" : "text-blue-300 hover:text-amber-500"
                   }`}
                   title={isPrimary ? "Unset as primary skill" : "Set as primary skill"}
                 >
@@ -84,7 +84,7 @@ export function SubtopicEditor({
               <button
                 type="button"
                 onClick={() => removeTopic(c)}
-                className="ml-0.5 text-blue-500 hover:text-red-600 font-bold leading-none"
+                className="ml-0.5 text-blue-500 hover:text-red-300 font-bold leading-none"
                 title="Remove"
               >
                 ×
@@ -95,14 +95,14 @@ export function SubtopicEditor({
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="inline-flex items-center rounded-full border border-dashed border-blue-300 px-2 py-0.5 text-xs font-semibold text-blue-600 hover:bg-blue-50"
+          className="inline-flex items-center rounded-full border border-dashed border-blue-400/40 px-2 py-0.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/15"
         >
           + Add
         </button>
       </div>
 
       {open && (
-        <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-blue-200 bg-white shadow-lg">
+        <div className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-blue-400/40 bg-da-surface shadow-lg">
           <div className="p-2">
             <input
               type="text"
@@ -110,18 +110,18 @@ export function SubtopicEditor({
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search subtopics..."
               autoFocus
-              className="w-full rounded border border-blue-300 px-2 py-1 text-xs font-semibold text-blue-900 focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded border border-blue-400/40 px-2 py-1 text-xs font-semibold text-blue-300 focus:ring-1 focus:ring-blue-500"
             />
           </div>
           <div className="max-h-48 overflow-y-auto px-1 pb-2">
             {Object.entries(grouped).length === 0 && (
-              <p className="px-2 py-1 text-xs text-gray-400">No matches</p>
+              <p className="px-2 py-1 text-xs text-da-muted">No matches</p>
             )}
             {Object.entries(grouped)
               .sort(([a], [b]) => Number(a) - Number(b))
               .map(([sec, subs]) => (
                 <div key={sec}>
-                  <div className="sticky top-0 bg-white px-2 py-0.5 text-xs font-bold text-gray-500">
+                  <div className="sticky top-0 bg-da-surface px-2 py-0.5 text-xs font-bold text-da-muted">
                     {sec}. {SECTION_NAMES[Number(sec)] ?? "Other"}
                   </div>
                   {subs.map((s) => (
@@ -129,20 +129,20 @@ export function SubtopicEditor({
                       key={s.code}
                       type="button"
                       onClick={() => addTopic(s.code)}
-                      className="block w-full px-3 py-1 text-left text-xs hover:bg-blue-50 rounded"
+                      className="block w-full px-3 py-1 text-left text-xs hover:bg-blue-500/15 rounded"
                     >
-                      <span className="font-bold text-blue-800">{s.code}</span>{" "}
-                      <span className="text-gray-600">{s.descriptor}</span>
+                      <span className="font-bold text-blue-300">{s.code}</span>{" "}
+                      <span className="text-da-muted">{s.descriptor}</span>
                     </button>
                   ))}
                 </div>
               ))}
           </div>
-          <div className="border-t border-blue-100 p-1">
+          <div className="border-t border-blue-400/40 p-1">
             <button
               type="button"
               onClick={() => { setOpen(false); setSearch(""); }}
-              className="w-full rounded px-2 py-1 text-xs font-bold text-gray-600 hover:bg-gray-100"
+              className="w-full rounded px-2 py-1 text-xs font-bold text-da-muted hover:bg-da-hover"
             >
               Close
             </button>

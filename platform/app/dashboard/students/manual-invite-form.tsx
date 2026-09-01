@@ -31,18 +31,18 @@ export function ManualInviteForm({
   };
 
   return (
-    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+    <div className="mt-4 rounded-xl border border-amber-400/40 bg-amber-500/15 p-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h3 className="text-sm font-semibold text-amber-900">Manual Invite Exception</h3>
-          <p className="text-xs text-amber-800">
+          <h3 className="text-sm font-semibold text-amber-300">Manual Invite Exception</h3>
+          <p className="text-xs text-amber-300">
             Use only if a student is missing from Google Classroom.
           </p>
         </div>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100"
+          className="rounded-lg border border-amber-400 bg-da-surface px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/15"
         >
           {open ? "Hide manual invite" : "Manual invite"}
         </button>
@@ -51,7 +51,7 @@ export function ManualInviteForm({
       {open && (
         <form action={formAction} className="mt-4 flex flex-wrap items-end gap-3">
           <div>
-            <label htmlFor="exception-email" className="block text-xs font-medium text-amber-900">
+            <label htmlFor="exception-email" className="block text-xs font-medium text-amber-300">
               Student Email
             </label>
             <input
@@ -60,12 +60,12 @@ export function ManualInviteForm({
               type="email"
               required
               placeholder="student@amersol.edu.pe"
-              className="mt-1 block w-64 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm"
+              className="mt-1 block w-64 rounded-lg border border-amber-400/40 bg-da-surface px-3 py-2 text-sm"
             />
           </div>
 
           <div>
-            <label htmlFor="exception-name" className="block text-xs font-medium text-amber-900">
+            <label htmlFor="exception-name" className="block text-xs font-medium text-amber-300">
               Full Name (optional)
             </label>
             <input
@@ -73,12 +73,12 @@ export function ManualInviteForm({
               name="full_name"
               type="text"
               placeholder="Student name"
-              className="mt-1 block w-56 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm"
+              className="mt-1 block w-56 rounded-lg border border-amber-400/40 bg-da-surface px-3 py-2 text-sm"
             />
           </div>
 
           <div>
-            <label htmlFor="exception-course" className="block text-xs font-medium text-amber-900">
+            <label htmlFor="exception-course" className="block text-xs font-medium text-amber-300">
               Course
             </label>
             <select
@@ -86,7 +86,7 @@ export function ManualInviteForm({
               name="course_id"
               required
               defaultValue={defaultCourseId ?? ""}
-              className="mt-1 block w-48 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm"
+              className="mt-1 block w-48 rounded-lg border border-amber-400/40 bg-da-surface px-3 py-2 text-sm"
             >
               <option value="">Select course...</option>
               {courses.map((course) => (
@@ -105,11 +105,11 @@ export function ManualInviteForm({
             {pending ? "Inviting..." : "Create Invite"}
           </button>
 
-          {state?.error && <p className="w-full text-sm text-red-700">{state.error}</p>}
+          {state?.error && <p className="w-full text-sm text-red-300">{state.error}</p>}
           {state?.success && state?.inviteLink && (
-            <div className="w-full rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+            <div className="w-full rounded-lg border border-green-400/40 bg-green-500/15 p-3 text-sm text-green-300">
               <p>Invite created.</p>
-              <p className="mt-1 break-all font-mono text-xs text-green-900">{state.inviteLink}</p>
+              <p className="mt-1 break-all font-mono text-xs text-green-300">{state.inviteLink}</p>
               <button
                 type="button"
                 onClick={handleCopyInviteLink}

@@ -444,7 +444,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                         href={row.pdf_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline text-lg"
+                        className="text-blue-300 hover:underline text-lg"
                         title="View corrected work"
                       >
                         📎

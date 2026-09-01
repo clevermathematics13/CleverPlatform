@@ -301,7 +301,7 @@ function renderWithTermHighlights(
     const isCommand =
       cmdAliasSet.has(tokenNorm) || COMMAND_TERM_SET.has(tokenNorm);
     nodes.push(
-      <span key={`ct-${keyIdx++}`} className={isCommand ? "font-bold text-red-600" : "font-bold text-blue-600"}>
+      <span key={`ct-${keyIdx++}`} className={isCommand ? "font-bold text-red-300" : "font-bold text-blue-300"}>
         {token}
       </span>
     );
@@ -852,10 +852,10 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
             key={`${i}-graph`}
             src={graphImageUrl}
             alt="Graph image"
-            className="block my-2 max-w-full h-auto border border-gray-200 rounded"
+            className="block my-2 max-w-full h-auto border border-da-border rounded"
           />
         ) : (
-          <span key={`${i}-graph-placeholder`} className="text-gray-500 italic">
+          <span key={`${i}-graph-placeholder`} className="text-da-muted italic">
             [Graph image]
           </span>
         )
@@ -884,7 +884,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
   });
 
   return (
-    <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
+    <span className={`text-da-text ${className ?? ""}`} style={IB_TEXT_STYLE}>
       {nodes}
     </span>
   );

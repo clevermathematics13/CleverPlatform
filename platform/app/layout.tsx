@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Playfair_Display } from "next/font/google";
+import { Audiowide, Geist, Geist_Mono, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -16,6 +16,16 @@ const geistMono = Geist_Mono({
 
 const playfair = Playfair_Display({
   variable: "--font-playfair",
+  subsets: ["latin"],
+  preload: false,
+});
+
+// Brand wordmark only (components/brand/Logo.tsx). Its squared, rounded
+// letterforms match the supplied CleverMathematics logotype; it is not a UI
+// face and nothing else should set it.
+const brand = Audiowide({
+  variable: "--font-brand",
+  weight: "400",
   subsets: ["latin"],
   preload: false,
 });
@@ -43,7 +53,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${playfair.variable} ${brand.variable} h-full antialiased`}
     >
       <body suppressHydrationWarning className={`${geistSans.className} min-h-full flex flex-col`}>
         {children}

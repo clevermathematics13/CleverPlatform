@@ -56,7 +56,7 @@ export function ArchivedCourseList({ courses }: { courses: CourseRow[] }) {
   return (
     <div className="mt-6 space-y-6">
       {globalError && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+        <p className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-2 text-sm text-red-300">
           {globalError}
         </p>
       )}
@@ -90,10 +90,10 @@ export function ArchivedCourseList({ courses }: { courses: CourseRow[] }) {
                 </div>
               ) : deletingId === course.id ? (
                 <div className="p-5 flex-1">
-                  <p className="text-sm font-medium text-gray-900 mb-1">
+                  <p className="text-sm font-medium text-da-text mb-1">
                     Permanently delete &ldquo;{course.name}&rdquo;?
                   </p>
-                  <p className="text-xs text-gray-500 mb-4">
+                  <p className="text-xs text-da-muted mb-4">
                     This unenrolls all {course.studentCount} student
                     {course.studentCount !== 1 ? "s" : ""} and cannot be undone. If this course
                     still has tests attached, deletion will be blocked.
@@ -222,7 +222,7 @@ function ArchivedCourseForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          className="mt-1 block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+          className="mt-1 block w-full rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm font-medium text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
           autoFocus
         />
       </div>
@@ -233,7 +233,7 @@ function ArchivedCourseForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Optional"
-          className="mt-1 block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+          className="mt-1 block w-full rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm font-medium text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
         />
       </div>
       <div className="flex gap-2 pt-1">

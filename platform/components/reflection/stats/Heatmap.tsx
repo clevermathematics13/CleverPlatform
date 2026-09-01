@@ -9,9 +9,9 @@ interface HeatmapProps {
 
 function getColor(pct: number): string {
   if (pct >= 80) return "bg-emerald-500 text-white";
-  if (pct >= 60) return "bg-emerald-300 text-emerald-950";
-  if (pct >= 40) return "bg-amber-300 text-amber-950";
-  if (pct >= 20) return "bg-orange-300 text-orange-950";
+  if (pct >= 60) return "bg-emerald-500/25 text-emerald-300";
+  if (pct >= 40) return "bg-amber-500/25 text-amber-300";
+  if (pct >= 20) return "bg-orange-500/25 text-orange-300";
   return "bg-rose-500 text-white";
 }
 
@@ -139,13 +139,13 @@ export function Heatmap({ cells }: HeatmapProps) {
         <span className="rounded-md bg-emerald-500 px-2 py-1 font-semibold text-white">
           80%+
         </span>
-        <span className="rounded-md bg-emerald-300 px-2 py-1 font-semibold text-emerald-950">
+        <span className="rounded-md bg-emerald-500/25 px-2 py-1 font-semibold text-emerald-200">
           60–79%
         </span>
-        <span className="rounded-md bg-amber-300 px-2 py-1 font-semibold text-amber-950">
+        <span className="rounded-md bg-amber-500/25 px-2 py-1 font-semibold text-amber-200">
           40–59%
         </span>
-        <span className="rounded-md bg-orange-300 px-2 py-1 font-semibold text-orange-950">
+        <span className="rounded-md bg-orange-500/25 px-2 py-1 font-semibold text-orange-200">
           20–39%
         </span>
         <span className="rounded-md bg-rose-500 px-2 py-1 font-semibold text-white">

@@ -209,7 +209,7 @@ export function SubtopicCombobox({
         onClick={openList}
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onKeyDown={onKeyDown}
-        className="input-dark w-full rounded border-2 border-blue-300 bg-white py-1.5 pl-3 pr-14 text-sm font-semibold text-blue-900 placeholder:font-medium placeholder:text-blue-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-500"
+        className="input-dark w-full rounded border-2 border-blue-400/40 bg-da-surface py-1.5 pl-3 pr-14 text-sm font-semibold text-blue-300 placeholder:font-medium placeholder:text-blue-400 focus:border-blue-600 focus:ring-2 focus:ring-blue-500"
       />
 
       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center gap-1 pr-2">
@@ -219,7 +219,7 @@ export function SubtopicCombobox({
             aria-label="Clear subtopic filter"
             title="Clear subtopic filter"
             onMouseDown={(e) => { e.preventDefault(); commit(null); }}
-            className="pointer-events-auto flex h-5 w-5 items-center justify-center rounded-full text-blue-500 hover:bg-blue-100 hover:text-blue-800"
+            className="pointer-events-auto flex h-5 w-5 items-center justify-center rounded-full text-blue-500 hover:bg-blue-500/15 hover:text-blue-300"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -237,7 +237,7 @@ export function SubtopicCombobox({
           ref={listRef}
           id="subtopic-combobox-list"
           role="listbox"
-          className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border-2 border-blue-300 bg-white shadow-xl"
+          className="absolute left-0 right-0 z-50 mt-1 max-h-72 overflow-y-auto rounded-lg border-2 border-blue-400/40 bg-da-surface shadow-xl"
         >
           {optionRows.length === 1 && query.trim() !== "" && (
             <p className="px-3 py-3 text-sm font-semibold text-blue-500">
@@ -249,7 +249,7 @@ export function SubtopicCombobox({
               return (
                 <p
                   key={row.key}
-                  className="sticky top-0 z-10 border-b border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-800"
+                  className="sticky top-0 z-10 border-b border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-300"
                 >
                   {row.label}
                 </p>
@@ -268,10 +268,10 @@ export function SubtopicCombobox({
                 onMouseEnter={() => setHighlight(idx)}
                 onMouseDown={(e) => { e.preventDefault(); commit(row.subtopic); }}
                 className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm font-semibold transition-colors ${
-                  isHighlighted ? "bg-blue-600 text-white" : "text-blue-900 hover:bg-blue-50"
-                } ${row.subtopic === null ? "border-b border-blue-100" : ""}`}
+                  isHighlighted ? "bg-blue-600 text-white" : "text-blue-300 hover:bg-blue-500/15"
+                } ${row.subtopic === null ? "border-b border-blue-400/40" : ""}`}
               >
-                <span className={`w-3 shrink-0 text-xs ${isHighlighted ? "text-white" : "text-blue-600"}`}>
+                <span className={`w-3 shrink-0 text-xs ${isHighlighted ? "text-white" : "text-blue-300"}`}>
                   {isSelected ? "\u2713" : ""}
                 </span>
                 <span className="truncate">{row.label}</span>

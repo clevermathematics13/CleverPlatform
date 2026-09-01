@@ -98,7 +98,7 @@ function gradeColor(grade: number | null): string {
   if (grade === 4) return "text-yellow-400";
   if (grade === 3) return "text-orange-400";
   if (grade === 2) return "text-red-400";
-  return "text-red-600";
+  return "text-red-300";
 }
 
 function gradeBg(grade: number | null): string {

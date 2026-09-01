@@ -138,7 +138,7 @@ export default async function NaReviewPage({
           </div>
 
           {truncationHotspots.length > 0 && (
-            <div className="rounded-xl border border-amber-300/60 bg-amber-50/5 p-4">
+            <div className="rounded-xl border border-amber-400/40/60 bg-amber-500/15/5 p-4">
               <p className="text-sm font-medium text-amber-500">
                 {truncationHotspots.length} anchor{truncationHotspots.length === 1 ? "" : "s"} may be cropping some
                 students&apos; work too tight
@@ -159,7 +159,7 @@ export default async function NaReviewPage({
                     >
                       {q.qid}
                     </Link>
-                    <span className="text-xs text-amber-600">
+                    <span className="text-xs text-amber-300">
                       {q.progress.possiblyTruncated} / {q.progress.total} crop
                       {q.progress.possiblyTruncated === 1 ? "" : "s"} may be cut off
                     </span>

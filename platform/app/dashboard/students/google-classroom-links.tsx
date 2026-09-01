@@ -115,7 +115,7 @@ export function GoogleClassroomLinks({
 
       <div className="border-t border-da-border px-6 py-4 space-y-4">
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-3 py-2 text-sm text-red-300">
             {error}
           </div>
         )}
@@ -164,7 +164,7 @@ export function GoogleClassroomLinks({
               <select
                 value={selectedGcCourseId}
                 onChange={(e) => setSelectedGcCourseId(e.target.value)}
-                className="block w-64 rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+                className="block w-64 rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm font-medium text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
               >
                 <option value="">Select a course...</option>
                 {availableGcCourses.map((c) => (
@@ -185,7 +185,7 @@ export function GoogleClassroomLinks({
               <select
                 value={selectedCpCourseId}
                 onChange={(e) => setSelectedCpCourseId(e.target.value)}
-                className="block w-48 rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+                className="block w-48 rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm font-medium text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
               >
                 <option value="">Select a course...</option>
                 {courses.map((c) => (

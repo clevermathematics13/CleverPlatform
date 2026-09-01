@@ -73,7 +73,7 @@ export function CommandTermSelect({
           }}
           placeholder="New term..."
           autoFocus
-          className="w-28 rounded border border-blue-300 px-2 py-0.5 text-xs font-semibold text-blue-900 bg-white focus:ring-1 focus:ring-blue-500"
+          className="w-28 rounded border border-blue-400/40 px-2 py-0.5 text-xs font-semibold text-blue-300 bg-da-surface focus:ring-1 focus:ring-blue-500"
         />
         <button
           type="button"
@@ -85,7 +85,7 @@ export function CommandTermSelect({
         <button
           type="button"
           onClick={() => { setAdding(false); setNewTerm(""); }}
-          className="rounded bg-gray-200 px-2 py-0.5 text-xs font-bold text-gray-700 hover:bg-gray-300"
+          className="rounded bg-gray-200 px-2 py-0.5 text-xs font-bold text-da-text hover:bg-gray-300"
         >
           ✕
         </button>
@@ -102,17 +102,17 @@ export function CommandTermSelect({
         onFocus={handleOpen}
         className={`rounded border px-2 py-0.5 text-xs font-semibold text-left ${
           value
-            ? "border-green-400 bg-green-50 text-green-800"
-            : "border-gray-300 bg-white text-gray-500"
+            ? "border-green-400 bg-green-500/15 text-green-300"
+            : "border-da-border bg-da-surface text-da-muted"
         }`}
       >
         {value ?? "— Select —"} <span className="opacity-50">▾</span>
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-48 rounded border border-gray-200 bg-white shadow-lg">
+        <div className="absolute z-50 mt-1 w-48 rounded border border-da-border bg-da-surface shadow-lg">
           {/* Filter input */}
-          <div className="p-1.5 border-b border-gray-100">
+          <div className="p-1.5 border-b border-da-border">
             <input
               ref={inputRef}
               type="text"
@@ -123,7 +123,7 @@ export function CommandTermSelect({
                 if (e.key === "Enter" && filtered.length === 1) handleSelect(filtered[0]);
               }}
               placeholder="Type to filter…"
-              className="w-full rounded border border-gray-300 px-2 py-1 text-xs text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              className="w-full rounded border border-da-border px-2 py-1 text-xs text-da-text focus:outline-none focus:ring-1 focus:ring-blue-400"
             />
           </div>
           <div className="max-h-48 overflow-y-auto">
@@ -132,21 +132,21 @@ export function CommandTermSelect({
               <button
                 type="button"
                 onClick={() => handleSelect(null)}
-                className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50"
+                className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-500/15"
               >
                 ✕ Clear
               </button>
             )}
             {filtered.length === 0 && (
-              <div className="px-3 py-2 text-xs text-gray-400 italic">No matches</div>
+              <div className="px-3 py-2 text-xs text-da-muted italic">No matches</div>
             )}
             {filtered.map((t) => (
               <button
                 key={t}
                 type="button"
                 onClick={() => handleSelect(t)}
-                className={`w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-blue-50 ${
-                  t === value ? "bg-green-50 text-green-800" : "text-gray-800"
+                className={`w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-blue-500/15 ${
+                  t === value ? "bg-green-500/15 text-green-300" : "text-da-text"
                 }`}
               >
                 {t}
@@ -156,7 +156,7 @@ export function CommandTermSelect({
             <button
               type="button"
               onClick={() => { setOpen(false); setAdding(true); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-blue-600 hover:bg-blue-50 border-t border-gray-100"
+              className="w-full text-left px-3 py-1.5 text-xs text-blue-300 hover:bg-blue-500/15 border-t border-da-border"
             >
               + Add custom…
             </button>

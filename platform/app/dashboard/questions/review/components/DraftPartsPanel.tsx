@@ -122,10 +122,10 @@ export const DraftPartsPanel = forwardRef<DraftPartsPanelHandle, {
   void imageLabel;
 
   return (
-    <div className="border border-amber-200 rounded-lg overflow-hidden bg-amber-50/30">
+    <div className="border border-amber-400/40 rounded-lg overflow-hidden bg-amber-500/15/30">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-amber-50 border-b border-amber-200">
-        <span className="font-semibold text-sm text-amber-800">
+      <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-400/40">
+        <span className="font-semibold text-sm text-amber-300">
           Extracted draft
           <span className="text-amber-500 font-normal ml-1 text-xs">(review or edit below, then apply)</span>
         </span>
@@ -133,7 +133,7 @@ export const DraftPartsPanel = forwardRef<DraftPartsPanelHandle, {
 
       {/* Error banner */}
       {ocrError && (
-        <div className="px-4 py-2 bg-red-50 border-b border-red-200 text-xs text-red-700 font-medium">
+        <div className="px-4 py-2 bg-red-500/15 border-b border-red-400/40 text-xs text-red-300 font-medium">
           ⚠ {ocrError}
         </div>
       )}
@@ -142,7 +142,7 @@ export const DraftPartsPanel = forwardRef<DraftPartsPanelHandle, {
       <div className="p-3 space-y-2">
         <textarea
           name={draftField}
-          className="w-full border border-amber-200 rounded-md p-2 font-mono text-xs resize-y min-h-24 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-400"
+          className="w-full border border-amber-400/40 rounded-md p-2 font-mono text-xs resize-y min-h-24 bg-da-surface text-da-text focus:outline-none focus:ring-2 focus:ring-amber-400"
           placeholder="Click ⟳ Extract & apply above to populate automatically, or paste/type LaTeX here and use Apply below…"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -151,7 +151,7 @@ export const DraftPartsPanel = forwardRef<DraftPartsPanelHandle, {
           <button
             onClick={copyToClipboard}
             disabled={!text}
-            className="px-3 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200 disabled:opacity-40"
+            className="px-3 py-1 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-gray-200 disabled:opacity-40"
           >
             {copied ? "✓ Copied" : "Copy"}
           </button>

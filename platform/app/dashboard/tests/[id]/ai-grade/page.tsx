@@ -23,14 +23,14 @@ export default async function AiGradePage({
   return (
     <div className="max-w-6xl">
       <div className="mb-6">
-        <a href="/dashboard/tests" className="text-sm text-blue-600 hover:underline">
+        <a href="/dashboard/tests" className="text-sm text-blue-300 hover:underline">
           ← Back to tests
         </a>
-        <p className="mt-2 text-xs font-medium uppercase tracking-widest text-gray-500">
+        <p className="mt-2 text-xs font-medium uppercase tracking-widest text-da-muted">
           AI-assisted marking
         </p>
-        <h1 className="font-serif text-3xl font-bold text-gray-900">{test.name}</h1>
-        <p className="mt-1 text-sm text-gray-500">
+        <h1 className="font-serif text-3xl font-bold text-da-text">{test.name}</h1>
+        <p className="mt-1 text-sm text-da-muted">
           Mark scanned student work against the mark scheme held in the PPQ bank.
           Suggestions are staged for your review — nothing enters Clev&apos;s Marks
           until you accept it.

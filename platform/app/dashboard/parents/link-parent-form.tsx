@@ -13,9 +13,9 @@ export function LinkParentForm({ students }: { students: StudentOption[] }) {
   const [state, formAction, pending] = useActionState(linkParent, null);
 
   return (
-    <div className="rounded-xl border border-blue-200 bg-blue-50 p-6">
-      <h2 className="text-xl font-bold text-blue-900">Link a Parent</h2>
-      <p className="mt-1 text-base text-blue-700">
+    <div className="rounded-xl border border-blue-400/40 bg-blue-500/15 p-6">
+      <h2 className="text-xl font-bold text-blue-300">Link a Parent</h2>
+      <p className="mt-1 text-base text-blue-300">
         Enter the parent&apos;s email and pick their student. If the parent has
         already signed in to CleverPlatform, they&apos;re linked immediately.
         If not, they&apos;ll be promoted to the parent role and linked
@@ -25,7 +25,7 @@ export function LinkParentForm({ students }: { students: StudentOption[] }) {
 
       <form action={formAction} className="mt-4 flex flex-wrap items-end gap-3">
         <div>
-          <label htmlFor="parent-email" className="block text-xs font-medium text-blue-900">
+          <label htmlFor="parent-email" className="block text-xs font-medium text-blue-300">
             Parent Email
           </label>
           <input
@@ -34,12 +34,12 @@ export function LinkParentForm({ students }: { students: StudentOption[] }) {
             type="email"
             required
             placeholder="parent@example.com"
-            className="mt-1 block w-64 rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm"
+            className="mt-1 block w-64 rounded-lg border border-blue-400/40 bg-da-surface px-3 py-2 text-sm"
           />
         </div>
 
         <div>
-          <label htmlFor="parent-student" className="block text-xs font-medium text-blue-900">
+          <label htmlFor="parent-student" className="block text-xs font-medium text-blue-300">
             Student
           </label>
           <select
@@ -47,7 +47,7 @@ export function LinkParentForm({ students }: { students: StudentOption[] }) {
             name="student_id"
             required
             defaultValue=""
-            className="mt-1 block w-64 rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm"
+            className="mt-1 block w-64 rounded-lg border border-blue-400/40 bg-da-surface px-3 py-2 text-sm"
           >
             <option value="">Select student...</option>
             {students.map((s) => (
@@ -66,9 +66,9 @@ export function LinkParentForm({ students }: { students: StudentOption[] }) {
           {pending ? "Linking..." : "Link Parent"}
         </button>
 
-        {state?.error && <p className="w-full text-sm text-red-700">{state.error}</p>}
+        {state?.error && <p className="w-full text-sm text-red-300">{state.error}</p>}
         {state?.success && (
-          <p className="w-full text-sm text-green-700">{state.message}</p>
+          <p className="w-full text-sm text-green-300">{state.message}</p>
         )}
       </form>
     </div>

@@ -82,12 +82,12 @@ export function CommandTermCombobox({
         }}
       />
       {open && filtered.length > 0 && (
-        <ul className="absolute z-50 top-full left-0 right-0 max-h-40 overflow-auto bg-white border border-slate-300 rounded shadow-md text-xs">
+        <ul className="absolute z-50 top-full left-0 right-0 max-h-40 overflow-auto bg-da-surface border border-da-border rounded shadow-md text-xs">
           {filtered.map((term, i) => (
             <li
               key={term}
               onMouseDown={(e) => { e.preventDefault(); commit(term); }}
-              className={`px-2 py-1 cursor-pointer ${i === 0 ? "bg-blue-50 text-blue-700 font-medium" : "hover:bg-slate-100"}`}
+              className={`px-2 py-1 cursor-pointer ${i === 0 ? "bg-blue-500/15 text-blue-300 font-medium" : "hover:bg-da-hover"}`}
             >
               {term}
             </li>
