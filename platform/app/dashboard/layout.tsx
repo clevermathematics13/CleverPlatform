@@ -3,6 +3,8 @@ import { getViewAsOptions } from "@/lib/view-as";
 import { isGrade9Course } from "@/lib/course-level";
 import { getNavigation, getSettingsNavigation } from "@/lib/dashboard-nav";
 import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { DEFAULT_NAV_POSITION, NAV_POSITION_COOKIE, isNavPosition } from "@/lib/nav-position";
 import { DashboardShell } from "./dashboard-shell";
 
 export default async function DashboardLayout({
@@ -48,10 +50,17 @@ export default async function DashboardLayout({
   const navigation = getNavigation(profile.role, isGrade9);
   const settingsNavigation = getSettingsNavigation(profile.role);
 
+  // Which edge the navigation docks to. Read here, on the server, so the
+  // first paint already lands on the chosen edge instead of rendering on the
+  // left and jumping once the client reads a preference.
+  const rawNavPosition = (await cookies()).get(NAV_POSITION_COOKIE)?.value;
+  const navPosition = isNavPosition(rawNavPosition) ? rawNavPosition : DEFAULT_NAV_POSITION;
+
   return (
     <DashboardShell
       navigation={navigation}
       settingsNavigation={settingsNavigation}
+      navPosition={navPosition}
       gradebookCourses={gradebookCourses}
       profile={{
         role: profile.role,
