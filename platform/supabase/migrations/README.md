@@ -35,6 +35,37 @@ MCP `apply_migration`, pass the same name so the ledger row and the filename agr
 Never renumber or rename an existing file: the version prefix is the identity the
 CLI matches on, and changing it makes an already-applied migration look pending.
 
+**`apply_migration` assigns its own version, not the one in your filename.** The
+ledger row gets the timestamp of the moment it was applied (e.g. a file written as
+`20260902113129_ai_usage_log.sql` landed as version `20260902113606`). After applying,
+read the version back --
+
+```sql
+select version, name from supabase_migrations.schema_migrations order by version desc limit 1;
+```
+
+-- and rename the file to that version before committing. Passing a name that already
+carries a timestamp prefix (`20260827233723_na_...`) does not help: the ledger stores
+it verbatim as the *name*, and the version is still the apply time.
+
+## Second reconciliation, 2 Sep 2026
+
+Nine days after the first one the directory had drifted again by exactly the mechanism
+above: eight rows applied via MCP between 27 and 30 Aug had files here under the
+timestamp the author *chose* rather than the one the ledger *assigned*, and one
+(`na_batch_runs_tracking`, ledger `20260829031808`) had no file at all. Two of the
+eight also differed in content from the ledger (a comment header the ledger never saw;
+a trailing newline). All nine were renamed or rewritten to the ledger's exact version
+and SQL, verified by md5 against `array_to_string(statements, E'\n')`. 95 files, 95
+rows, byte-identical, as of that date. The check that found it:
+
+```sh
+# ledger versions vs file versions -- both lists should be identical
+ls platform/supabase/migrations/*.sql | sed -E 's#.*/([0-9]+)_.*#\1#' | sort > /tmp/files
+# select version from supabase_migrations.schema_migrations order by version  -> /tmp/ledger
+comm -3 /tmp/ledger /tmp/files
+```
+
 ## migrations-legacy/
 
 Historical record only. These are superseded by the schema currently live, are not
