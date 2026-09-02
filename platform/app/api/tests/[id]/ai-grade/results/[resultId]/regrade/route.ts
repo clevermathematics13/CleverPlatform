@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getApiTeacher } from "@/lib/auth";
+import { recordUsage } from "@/lib/ai-usage";
 import {
   GRADING_MODEL,
   assembleMarkScheme,
@@ -128,6 +129,12 @@ export async function POST(
         ],
       });
       responseText = message.content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
+      await recordUsage(supabase, {
+        pipeline: "ai_regrade",
+        model: GRADING_MODEL,
+        usage: message.usage,
+        ref: { type: "ai_grade_result", id: resultId },
+      });
     } catch (e) {
       return NextResponse.json(
         { error: `Re-grading request failed: ${e instanceof Error ? e.message : String(e)}` },

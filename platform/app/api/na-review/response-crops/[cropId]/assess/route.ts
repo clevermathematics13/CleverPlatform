@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getApiTeacher } from "@/lib/auth";
+import { recordUsage } from "@/lib/ai-usage";
 import { NA_SCAN_BUCKET } from "@/lib/na-scanning";
 import {
   ASSESSMENT_MODEL,
@@ -249,6 +250,12 @@ export async function POST(
           },
         ],
       });
+      await recordUsage(supabase, {
+        pipeline: "na_assess_wide",
+        model: ASSESSMENT_MODEL,
+        usage: message.usage,
+        ref: { type: "na_crop", id: cropId },
+      });
       const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
       const validated = validateAssessment(text, ctx.marksAvailable);
       if (!validated.ok) return null;
@@ -290,6 +297,12 @@ export async function POST(
       ],
     });
 
+    await recordUsage(supabase, {
+      pipeline: "na_assess",
+      model: ASSESSMENT_MODEL,
+      usage: message.usage,
+      ref: { type: "na_crop", id: cropId },
+    });
     const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
     const validated = validateAssessment(text, ctx.marksAvailable);
 

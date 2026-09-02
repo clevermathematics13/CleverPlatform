@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { validateAssessment } from "../lib/na-assessment";
+import { recordUsage } from "../lib/ai-usage";
 
 export interface PollSummary {
   checked: number;
@@ -146,6 +147,13 @@ async function writeResultsForBatch(
     const marksAvailable = marksAvailableByCrop.get(cropId) ?? null;
 
     if (line.result.type === "succeeded") {
+      await recordUsage(supabase, {
+        pipeline: "na_assess_batch",
+        model: line.result.message.model,
+        usage: line.result.message.usage,
+        batch: true,
+        ref: { type: "na_crop", id: cropId },
+      });
       const text = line.result.message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
       const validated = validateAssessment(text, marksAvailable);
       if (!validated.ok) {

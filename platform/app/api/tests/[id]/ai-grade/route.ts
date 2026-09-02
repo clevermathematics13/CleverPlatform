@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
+import { recordUsage } from "@/lib/ai-usage";
 import {
   GRADING_MODEL,
   MAX_SCAN_BYTES,
@@ -496,6 +497,12 @@ export async function POST(
     responseText = message.content
       .map((block) => (block.type === "text" ? block.text : ""))
       .join("\n");
+    await recordUsage(supabase, {
+      pipeline: "ai_grade",
+      model: GRADING_MODEL,
+      usage: message.usage,
+      ref: { type: "ai_grade_run", id: run.id },
+    });
   } catch (e) {
     return failRun(`Grading request failed: ${e instanceof Error ? e.message : String(e)}`);
   }

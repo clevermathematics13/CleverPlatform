@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
+import { recordUsage } from "@/lib/ai-usage";
 import {
   SCAN_BUCKET,
   SEGMENTATION_MODEL,
@@ -194,6 +195,12 @@ export async function POST(
       ],
     });
     responseText = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+    await recordUsage(supabase, {
+      pipeline: "ai_grade_segment",
+      model: SEGMENTATION_MODEL,
+      usage: message.usage,
+      ref: { type: "ai_grade_batch", id: batch.id },
+    });
   } catch (e) {
     return failBatch(`Segmentation request failed: ${e instanceof Error ? e.message : String(e)}`);
   }

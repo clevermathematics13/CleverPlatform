@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
+import { recordUsage } from "@/lib/ai-usage";
 import {
   NA_SCAN_BUCKET,
   loadInvitedRoster,
@@ -263,6 +264,12 @@ export async function POST(request: NextRequest) {
             ],
           },
         ],
+      });
+      await recordUsage(supabase, {
+        pipeline: "na_cover_page",
+        model: COVER_PAGE_CHECK_MODEL,
+        usage: message.usage,
+        ref: { type: "na_scan_batch", id: batch.id },
       });
       const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
       const validated = validateCoverPageCheck(text);
