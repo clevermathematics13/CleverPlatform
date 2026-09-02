@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
 import {
+  AiGradeResponseSchema,
   GRADING_MODEL,
   MAX_SCAN_BYTES,
   SCAN_BUCKET,
@@ -458,9 +460,16 @@ export async function POST(
   // -- Grade -----------------------------------------------------------------
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  let responseText: string;
-  try {
-    const message = await anthropic.messages.create({
+  // The request is built once and may be sent twice: a response that comes
+  // back malformed or schema-invalid gets ONE retry before the run fails.
+  // Structured output (output_config.format, from the same zod schema the
+  // validator uses) makes the JSON itself well-formed, which removes the
+  // failure that killed a whole student's grading on 2 Sep 2026 -- a single
+  // stray character at position 8267 of an otherwise fine response. The
+  // retry covers what structured output cannot: a response cut off at
+  // max_tokens, or one that parses but fails validateGradeResponse's own
+  // checks (unknown testItemId, etc.).
+  const gradingRequest: Anthropic.MessageCreateParamsNonStreaming = {
       model: GRADING_MODEL,
       max_tokens: 16384,
       // Marking should be as repeatable as the model allows. At the default
@@ -498,25 +507,43 @@ export async function POST(
           ],
         },
       ],
-    });
+  };
 
-    responseText = message.content
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .join("\n");
-    await recordUsage(supabase, {
-      pipeline: "ai_grade",
-      model: GRADING_MODEL,
-      usage: message.usage,
-      ref: { type: "ai_grade_run", id: run.id },
-    });
-  } catch (e) {
-    return failRun(`Grading request failed: ${e instanceof Error ? e.message : String(e)}`);
+  let validation: ReturnType<typeof validateGradeResponse> | null = null;
+  let lastError = "Model returned an empty response";
+  for (let attempt = 1; attempt <= 2 && !validation; attempt++) {
+    let responseText: string;
+    try {
+      const message = await anthropic.messages.parse({
+        ...gradingRequest,
+        output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
+      });
+      await recordUsage(supabase, {
+        pipeline: "ai_grade",
+        model: GRADING_MODEL,
+        usage: message.usage,
+        ref: { type: "ai_grade_run", id: run.id },
+      });
+      if (message.stop_reason === "max_tokens") {
+        lastError = "Model response was cut off at max_tokens";
+        continue;
+      }
+      responseText = message.parsed_output
+        ? JSON.stringify(message.parsed_output)
+        : message.content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
+    } catch (e) {
+      return failRun(`Grading request failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    if (!responseText.trim()) {
+      lastError = "Model returned an empty response";
+      continue;
+    }
+    const attemptValidation = validateGradeResponse(responseText, gradeable);
+    if (attemptValidation.ok) validation = attemptValidation;
+    else lastError = attemptValidation.error;
   }
-
-  if (!responseText.trim()) return failRun("Model returned an empty response");
-
-  const validation = validateGradeResponse(responseText, gradeable);
-  if (!validation.ok) return failRun(validation.error, 502);
+  if (!validation || !validation.ok) return failRun(lastError, 502);
 
   const { grades, warnings } = validation.outcome;
 
