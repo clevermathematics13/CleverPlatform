@@ -134,6 +134,8 @@ function itemLabel(item: TestItem | undefined): string {
 
 export function AiGradeClient({ testId }: { testId: string }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
+  /** Result of GET /api/health/anthropic: null until checked; error string when the key cannot complete a call. */
+  const [apiHealthError, setApiHealthError] = useState<string | null>(null);
 
   const [test, setTest] = useState<TestDetail | null>(null);
   const [students, setStudents] = useState<StudentOption[]>([]);
@@ -257,6 +259,23 @@ export function AiGradeClient({ testId }: { testId: string }) {
   useEffect(() => {
     loadOverview().finally(() => setLoading(false));
   }, [loadOverview]);
+
+  // Is the deployed Anthropic key able to complete a call at all? When the
+  // account is out of credit every marking action on this page fails with
+  // the same error, one student at a time -- say so once, up front, instead.
+  useEffect(() => {
+    let cancelled = false;
+    fetchJson("/api/health/anthropic")
+      .then(({ ok, data }) => {
+        if (cancelled) return;
+        if (!ok) return; // the health route itself failing is not a key problem
+        setApiHealthError(data.ok === false ? ((data.error as string) ?? "Anthropic API check failed") : null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // -- Load one student's results for review --
   const loadResultsFor = useCallback(
@@ -576,6 +595,21 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   return (
     <div className="space-y-6">
+      {apiHealthError && (
+        <div
+          role="alert"
+          className="rounded-lg border border-red-400/60 bg-red-500/15 px-4 py-3 text-sm text-red-200"
+        >
+          <p className="font-semibold">AI marking is currently unavailable.</p>
+          <p className="mt-1">
+            The Anthropic API refused a test call from this deployment&apos;s key, so every marking action on
+            this page (and every other AI feature in the app) will fail the same way until it is fixed. The
+            usual cause is the account running out of credit: Anthropic Console → Plans &amp; Billing.
+          </p>
+          <p className="mt-1 break-words font-mono text-xs text-red-300/90">{apiHealthError}</p>
+        </div>
+      )}
+
       {/* -- Tabs ---------------------------------------------------------- */}
       <div className="flex gap-1 rounded-lg border border-da-border bg-da-hover p-1 w-fit">
         <button
