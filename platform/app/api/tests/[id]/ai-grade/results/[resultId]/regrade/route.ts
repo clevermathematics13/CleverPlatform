@@ -123,6 +123,7 @@ export async function POST(
       const message = await anthropic.messages.create({
         model: GRADING_MODEL,
         max_tokens: 4096,
+        temperature: 0, // same reasoning as the main grading route
         system: buildGradingSystemPrompt([unit]),
         messages: [
           { role: "user", content: buildRegradeItemPrompt(unit, correctedEvidence) },

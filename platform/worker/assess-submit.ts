@@ -195,6 +195,7 @@ export async function submitAssessmentBatch(
         params: {
           model: ASSESSMENT_MODEL,
           max_tokens: 2048,
+          temperature: 0, // same as the synchronous assess route: marking, not creative writing
           system: ASSESSMENT_SYSTEM_PROMPT,
           messages: [
             {

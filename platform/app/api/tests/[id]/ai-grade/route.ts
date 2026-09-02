@@ -463,6 +463,12 @@ export async function POST(
     const message = await anthropic.messages.create({
       model: GRADING_MODEL,
       max_tokens: 16384,
+      // Marking should be as repeatable as the model allows. At the default
+      // temperature (1.0) the same scan re-marked minutes apart moved by 1-3
+      // marks on several parts (BiStats, 2 Sep 2026: Q1 5 -> 2 for one
+      // student at "high" confidence). 0 does not make it deterministic, but
+      // it removes the sampling noise that has nothing to do with the work.
+      temperature: 0,
       // Identical for every student sitting this same test (it only varies by
       // which policies this test's questions require, not by student), so
       // it's still worth caching on a batch upload even though it's no
