@@ -95,9 +95,9 @@ function sortRows(rows: StudentRow[], col: SortCol, dir: SortDir): StudentRow[] 
 
 function SortIcon({ col, active, dir }: { col: SortCol; active: SortCol; dir: SortDir }) {
   if (col !== active) {
-    return <span className="ml-1 text-gray-300">↕</span>;
+    return <span className="ml-1 text-da-muted">↕</span>;
   }
-  return <span className="ml-1 text-blue-600">{dir === "asc" ? "↑" : "↓"}</span>;
+  return <span className="ml-1 text-blue-300">{dir === "asc" ? "↑" : "↓"}</span>;
 }
 
 interface Props {
@@ -121,21 +121,21 @@ export function StudentsTable({ rows }: Props) {
 
   function thClass(col: SortCol) {
     return (
-      "group cursor-pointer select-none px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 hover:text-blue-700" +
-      (col === sortCol ? " text-blue-700" : "")
+      "group cursor-pointer select-none px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-da-muted hover:text-blue-200" +
+      (col === sortCol ? " text-blue-300" : "")
     );
   }
 
   return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white">
-      <table className="min-w-full divide-y divide-gray-200">
-        <thead className="bg-gray-50">
+    <div className="mt-4 overflow-hidden rounded-xl border border-da-border bg-da-surface">
+      <table className="min-w-full divide-y divide-da-border">
+        <thead className="bg-da-hover">
           <tr>
             <th className={thClass("name")}>
               <span onClick={() => handleHeader("name")}>
                 Student <SortIcon col="name" active={sortCol} dir={sortDir} />
               </span>
-              <span className="mx-1 text-gray-300 normal-case font-normal">/</span>
+              <span className="mx-1 text-da-muted normal-case font-normal">/</span>
               <span onClick={() => handleHeader("lastName")}>
                 Last name <SortIcon col="lastName" active={sortCol} dir={sortDir} />
               </span>
@@ -146,31 +146,31 @@ export function StudentsTable({ rows }: Props) {
             <th className={thClass("course")} onClick={() => handleHeader("course")}>
               Course <SortIcon col="course" active={sortCol} dir={sortDir} />
             </th>
-            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-da-muted">
               Status
             </th>
-            <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+            <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-da-muted">
               Actions
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200">
+        <tbody className="divide-y divide-da-border">
           {sorted.map((row) => (
             <tr key={row.key}>
               {/* Name */}
               <td className="whitespace-nowrap px-6 py-2">
                 <div className="flex items-center gap-3">
                   <div
-                    className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium bg-blue-100 text-blue-700"
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium bg-blue-500/15 text-blue-300"
                   >
                     {firstWord(row.name)?.[0]?.toUpperCase() ?? "?"}
                   </div>
                   <div>
                     <NameCell profileId={row.profileId} invitedId={row.invitedId} name={row.name} />
                     {row.hidden && (
-                      <span className="ml-1 text-xs font-normal text-gray-400">(hidden)</span>
+                      <span className="ml-1 text-xs font-normal text-da-muted">(hidden)</span>
                     )}
-                    <p className="text-xs text-gray-500">{row.email}</p>
+                    <p className="text-xs text-da-muted">{row.email}</p>
                   </div>
                 </div>
               </td>
@@ -186,18 +186,18 @@ export function StudentsTable({ rows }: Props) {
               </td>
 
               {/* Course */}
-              <td className="whitespace-nowrap px-6 py-2 text-sm text-gray-700">
+              <td className="whitespace-nowrap px-6 py-2 text-sm text-da-text">
                 {row.courseName ?? "Unknown"}
               </td>
 
               {/* Status */}
               <td className="whitespace-nowrap px-6 py-2">
                 {row.signedIn ? (
-                  <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                  <span className="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-300">
                     Signed in
                   </span>
                 ) : (
-                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">
+                  <span className="inline-flex items-center rounded-full bg-da-hover px-2 py-0.5 text-xs font-medium text-da-muted">
                     Not signed in
                   </span>
                 )}
@@ -219,7 +219,7 @@ export function StudentsTable({ rows }: Props) {
                       <select
                         name="extra_time"
                         defaultValue={row.extraTime}
-                        className="rounded border border-blue-300 bg-white px-1 py-0.5 text-xs font-medium text-blue-900"
+                        className="rounded border border-blue-400/40 bg-da-surface px-1 py-0.5 text-xs font-medium text-blue-300"
                       >
                         <option value={0}>No extra time</option>
                         <option value={25}>+25%</option>
@@ -227,7 +227,7 @@ export function StudentsTable({ rows }: Props) {
                       </select>
                       <button
                         type="submit"
-                        className="rounded border border-blue-200 px-1.5 py-0.5 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                        className="rounded border border-blue-400/40 px-1.5 py-0.5 text-xs font-semibold text-blue-300 hover:bg-blue-500/25"
                       >
                         Save
                       </button>
@@ -240,7 +240,7 @@ export function StudentsTable({ rows }: Props) {
                   {(row.invitedId ?? row.profileId) && (
                     <Link
                       href={`/dashboard?viewAs=${row.invitedId ?? row.profileId}`}
-                      className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+                      className="text-xs font-medium text-indigo-300 hover:text-indigo-200"
                     >
                       View as student
                     </Link>
@@ -257,7 +257,7 @@ export function StudentsTable({ rows }: Props) {
                     <input type="hidden" name="hidden" value={row.hidden ? "false" : "true"} />
                     <button
                       type="submit"
-                      className="text-xs text-gray-600 hover:text-gray-900"
+                      className="text-xs text-da-muted hover:text-da-text"
                     >
                       {row.hidden ? "Unhide" : "Hide"}
                     </button>
@@ -266,13 +266,13 @@ export function StudentsTable({ rows }: Props) {
                   {row.type === "enrolled" && row.studentId && (
                     <form action={removeStudent}>
                       <input type="hidden" name="student_id" value={row.studentId} />
-                      <button type="submit" className="text-xs text-red-600 hover:text-red-800">Remove</button>
+                      <button type="submit" className="text-xs text-red-300 hover:text-red-200">Remove</button>
                     </form>
                   )}
                   {row.type === "invited" && row.invitedId && (
                     <form action={removeInvitedStudent}>
                       <input type="hidden" name="invited_id" value={row.invitedId} />
-                      <button type="submit" className="text-xs text-red-600 hover:text-red-800">Remove</button>
+                      <button type="submit" className="text-xs text-red-300 hover:text-red-200">Remove</button>
                     </form>
                   )}
                 </div>

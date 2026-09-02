@@ -307,7 +307,7 @@ export function PlacementClient() {
           <button
             type="submit"
             disabled={uploading}
-            className="w-full rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
+            className="w-full rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-da-on-accent transition-colors hover:bg-da-amber disabled:opacity-50"
           >
             {uploading ? uploadStage ?? "Uploading…" : "Upload"}
           </button>
@@ -490,7 +490,7 @@ function PlacementDetail({
                   type="button"
                   onClick={() => patchTest({ studentName: nameDraft.trim() })}
                   disabled={savingField || !nameDraft.trim()}
-                  className="rounded-md bg-da-accent px-2 py-1 text-xs font-semibold text-[#2b1408] disabled:opacity-50"
+                  className="rounded-md bg-da-accent px-2 py-1 text-xs font-semibold text-da-on-accent disabled:opacity-50"
                 >
                   {savingField ? "Saving…" : "Save"}
                 </button>
@@ -547,7 +547,7 @@ function PlacementDetail({
                     type="button"
                     onClick={() => patchTest({ gradeLevel: Number(gradeDraft) })}
                     disabled={savingField || !gradeDraft.trim()}
-                    className="rounded-md bg-da-accent px-2 py-1 text-xs font-semibold text-[#2b1408] disabled:opacity-50"
+                    className="rounded-md bg-da-accent px-2 py-1 text-xs font-semibold text-da-on-accent disabled:opacity-50"
                   >
                     {savingField ? "Saving…" : "Save"}
                   </button>
@@ -633,7 +633,7 @@ function PlacementDetail({
               type="button"
               onClick={() => runAction("segment")}
               disabled={actionLoading !== null}
-              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
+              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-da-on-accent transition-colors hover:bg-da-amber disabled:opacity-50"
             >
               {actionLoading === "segment"
                 ? "Segmenting…"
@@ -647,7 +647,7 @@ function PlacementDetail({
               type="button"
               onClick={() => runAction("grade")}
               disabled={actionLoading !== null}
-              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
+              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-da-on-accent transition-colors hover:bg-da-amber disabled:opacity-50"
             >
               {actionLoading === "grade" ? "Grading…" : "Grade questions"}
             </button>
@@ -657,7 +657,7 @@ function PlacementDetail({
               type="button"
               onClick={() => runAction("recommend")}
               disabled={actionLoading !== null}
-              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber disabled:opacity-50"
+              className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-da-on-accent transition-colors hover:bg-da-amber disabled:opacity-50"
             >
               {actionLoading === "recommend" ? "Generating…" : "Generate recommendation"}
             </button>

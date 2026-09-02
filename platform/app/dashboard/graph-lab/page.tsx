@@ -886,14 +886,14 @@ export default function GraphLabPage() {
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6" suppressHydrationWarning>
+    <div className="min-h-screen bg-da-hover p-6" suppressHydrationWarning>
       <div className="max-w-7xl mx-auto">
         <div className="mb-6 flex flex-wrap items-start justify-between gap-3" suppressHydrationWarning>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">Graph Lab</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-2xl font-bold text-da-text mb-1">Graph Lab</h1>
+            <p className="text-sm text-da-muted">
               Upload any graph image, run 2-pass Claude extraction, refine the JSON, and copy the{" "}
-              <code className="bg-gray-100 px-1 rounded text-xs">{"[[GRAPH_JSON:...]]"}</code> marker
+              <code className="bg-da-hover px-1 rounded text-xs">{"[[GRAPH_JSON:...]]"}</code> marker
               to paste into any LaTeX content box.
             </p>
           </div>
@@ -903,7 +903,7 @@ export default function GraphLabPage() {
             disabled={!specJson || !!parseError}
             className={`shrink-0 px-3 py-2 rounded text-xs font-bold transition-colors ${
               !specJson || !!parseError
-                ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                ? "bg-da-hover text-da-muted cursor-not-allowed"
                 : "bg-green-600 text-white hover:bg-green-700"
             }`}
             suppressHydrationWarning
@@ -917,21 +917,21 @@ export default function GraphLabPage() {
           <div className="flex flex-col gap-4" suppressHydrationWarning>
 
             {/* Image drop zone */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">
+            <div className="bg-da-surface rounded-xl border border-da-border p-4">
+              <h2 className="text-sm font-bold text-da-text uppercase tracking-wide mb-3">
                 Graph Images
               </h2>
               <div
                 ref={dropRef}
                 onDrop={onDrop}
                 onDragOver={(e) => e.preventDefault()}
-                className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors"
+                className="border-2 border-dashed border-da-border rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-500/25 transition-colors"
                 onClick={() => document.getElementById("graph-lab-file-input")?.click()}
               >
-                <p className="text-sm text-gray-500">
-                  Drop image(s) here or <span className="text-blue-600 underline">click to browse</span>
+                <p className="text-sm text-da-muted">
+                  Drop image(s) here or <span className="text-blue-300 underline">click to browse</span>
                 </p>
-                <p className="text-xs text-gray-400 mt-1">PNG, JPEG — can drop multiple (e.g. both pages)</p>
+                <p className="text-xs text-da-muted mt-1">PNG, JPEG — can drop multiple (e.g. both pages)</p>
               </div>
               <input
                 id="graph-lab-file-input"
@@ -950,7 +950,7 @@ export default function GraphLabPage() {
                       <img
                         src={img.url}
                         alt={`Image ${idx + 1}`}
-                        className="w-32 h-24 object-contain rounded border border-gray-200 bg-white"
+                        className="w-32 h-24 object-contain rounded border border-da-border bg-da-surface"
                       />
                       <button
                         type="button"
@@ -959,7 +959,7 @@ export default function GraphLabPage() {
                       >
                         ×
                       </button>
-                      <p className="text-center text-[10px] text-gray-400 mt-0.5">
+                      <p className="text-center text-[10px] text-da-muted mt-0.5">
                         {img.fileName.slice(0, 18)}
                       </p>
                     </div>
@@ -969,38 +969,38 @@ export default function GraphLabPage() {
             </div>
 
             {/* Optional context */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4">
-              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-3">
-                Optional Context <span className="font-normal normal-case text-gray-400">(improves Pass 2 verification)</span>
+            <div className="bg-da-surface rounded-xl border border-da-border p-4">
+              <h2 className="text-sm font-bold text-da-text uppercase tracking-wide mb-3">
+                Optional Context <span className="font-normal normal-case text-da-muted">(improves Pass 2 verification)</span>
               </h2>
-              <label className="block text-xs font-semibold text-gray-600 mb-1">Question LaTeX</label>
+              <label className="block text-xs font-semibold text-da-muted mb-1">Question LaTeX</label>
               <textarea
                 rows={3}
                 value={questionLatex}
                 onChange={(e) => setQuestionLatex(e.target.value)}
                 placeholder="Paste question LaTeX here…"
-                className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="w-full rounded border border-da-border px-2 py-1.5 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
                 suppressHydrationWarning
               />
-              <label className="block text-xs font-semibold text-gray-600 mt-2 mb-1">Markscheme LaTeX</label>
+              <label className="block text-xs font-semibold text-da-muted mt-2 mb-1">Markscheme LaTeX</label>
               <textarea
                 rows={3}
                 value={msLatex}
                 onChange={(e) => setMsLatex(e.target.value)}
                 placeholder="Paste markscheme LaTeX here…"
-                className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="w-full rounded border border-da-border px-2 py-1.5 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
                 suppressHydrationWarning
               />
             </div>
 
             {/* Extract button */}
             <div className="flex flex-wrap items-center gap-2">
-              <label className="w-full flex items-center gap-2 text-xs text-gray-600">
+              <label className="w-full flex items-center gap-2 text-xs text-da-muted">
                 <input
                   type="checkbox"
                   checked={freshValidationMode}
                   onChange={(e) => setFreshValidationMode(e.target.checked)}
-                  className="rounded border-gray-300"
+                  className="rounded border-da-border"
                 />
                 Fresh validation mode (no image restore, no local caching)
               </label>
@@ -1012,7 +1012,7 @@ export default function GraphLabPage() {
                 suppressHydrationWarning
               >
                 {extracting ? (
-                  <><span className="inline-block w-4 h-4 border-2 border-green-200 border-t-white rounded-full animate-spin" /> Extracting (CV)…</>
+                  <><span className="inline-block w-4 h-4 border-2 border-green-400/40 border-t-white rounded-full animate-spin" /> Extracting (CV)…</>
                 ) : (
                   "🎯 Extract Graph (CV - Deterministic)"
                 )}
@@ -1021,7 +1021,7 @@ export default function GraphLabPage() {
                 type="button"
                 onClick={() => void runExtract()}
                 disabled={extracting || images.length === 0}
-                className="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-3 text-xs font-bold text-amber-700 hover:bg-amber-50"
+                className="shrink-0 rounded-lg border border-amber-400/40 bg-da-surface px-3 py-3 text-xs font-bold text-amber-300 hover:bg-amber-500/25"
                 suppressHydrationWarning
               >
                 {extracting ? "Extracting…" : "Claude LLM (Alt)"}
@@ -1030,60 +1030,60 @@ export default function GraphLabPage() {
                 <button
                   type="button"
                   onClick={copyDebugPacket}
-                  className="shrink-0 rounded-lg border border-indigo-300 bg-white px-3 py-2.5 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
+                  className="shrink-0 rounded-lg border border-indigo-400/40 bg-da-surface px-3 py-2.5 text-xs font-bold text-indigo-300 hover:bg-indigo-500/25"
                 >
                   {debugCopied ? "✓ Copied" : "Copy Graph Debug Packet"}
                 </button>
               )}
             </div>
 
-            <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Link To Question Bank</h2>
+            <div className="bg-da-surface rounded-xl border border-da-border p-4 space-y-3">
+              <h2 className="text-sm font-bold text-da-text uppercase tracking-wide">Link To Question Bank</h2>
               <div className="flex flex-wrap items-end gap-2">
                 <div className="flex-1 min-w-55">
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Question code or id</label>
+                  <label className="block text-xs font-semibold text-da-muted mb-1">Question code or id</label>
                   <input
                     type="text"
                     value={linkQuery}
                     onChange={(e) => setLinkQuery(e.target.value)}
                     placeholder="e.g. 24AAHLP2TZ0Q05 or UUID"
-                    className="w-full rounded border border-gray-200 px-2 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400"
+                    className="w-full rounded border border-da-border px-2 py-2 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => void findQuestionForLinking()}
                   disabled={findingQuestion}
-                  className="rounded border border-blue-300 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                  className="rounded border border-blue-400/40 bg-da-surface px-3 py-2 text-xs font-bold text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                 >
                   {findingQuestion ? "Finding…" : "Find Question"}
                 </button>
               </div>
 
               {linkedQuestion && (
-                <p className="text-xs text-green-700 font-semibold">
+                <p className="text-xs text-green-300 font-semibold">
                   Linked target: {linkedQuestion.code} ({linkedQuestion.id})
                 </p>
               )}
 
               <div className="flex flex-wrap items-center gap-2">
-                <label className="text-xs font-semibold text-gray-600">Attach marker to</label>
+                <label className="text-xs font-semibold text-da-muted">Attach marker to</label>
                 <select
                   value={linkField}
                   onChange={(e) => setLinkField(e.target.value as "stem_latex" | "parts_draft_latex")}
-                  className="rounded border border-gray-200 px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  className="rounded border border-da-border px-2 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400"
                 >
                   <option value="stem_latex">stem_latex</option>
                   <option value="parts_draft_latex">parts_draft_latex</option>
                 </select>
               </div>
 
-              <label className="flex items-center gap-2 text-xs text-gray-600">
+              <label className="flex items-center gap-2 text-xs text-da-muted">
                 <input
                   type="checkbox"
                   checked={linkWithAttachment}
                   onChange={(e) => setLinkWithAttachment(e.target.checked)}
-                  className="rounded border-gray-300"
+                  className="rounded border-da-border"
                 />
                 Also create graph attachment (shows in Question Bank Graph Images)
               </label>
@@ -1097,20 +1097,20 @@ export default function GraphLabPage() {
                 {linkingQuestion ? "Linking…" : "Link Graph To Question"}
               </button>
 
-              {linkError && <p className="text-xs text-red-600">{linkError}</p>}
-              {linkStatus && <p className="text-xs text-green-700">{linkStatus}</p>}
+              {linkError && <p className="text-xs text-red-300">{linkError}</p>}
+              {linkStatus && <p className="text-xs text-green-300">{linkStatus}</p>}
             </div>
 
             {extractError && (
-              <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300">
                 {extractError}
               </div>
             )}
 
             {extractFailure && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 space-y-2">
+              <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs font-bold text-red-800">
+                  <p className="text-xs font-bold text-red-300">
                     {extractFailure.status === 422
                       ? "Continuity gate rejected this extraction"
                       : "Extraction failed"}
@@ -1125,23 +1125,23 @@ export default function GraphLabPage() {
                 </div>
 
                 <details>
-                  <summary className="cursor-pointer text-xs font-bold text-red-800">
+                  <summary className="cursor-pointer text-xs font-bold text-red-300">
                     Click for details
                   </summary>
                 <div className="mt-2 space-y-2">
-                  <p className="text-xs text-red-700">
+                  <p className="text-xs text-red-300">
                     <span className="font-semibold">Status:</span> {extractFailure.status}
                   </p>
-                  <p className="text-xs text-red-700">
+                  <p className="text-xs text-red-300">
                     <span className="font-semibold">Error:</span> {extractFailure.error}
                   </p>
 
                   {extractFailure.warnings.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-red-800">Warnings</p>
+                      <p className="text-xs font-semibold text-red-300">Warnings</p>
                       <ul className="list-disc ml-4 space-y-0.5">
                         {extractFailure.warnings.map((w, i) => (
-                          <li key={i} className="text-xs text-red-700">{w}</li>
+                          <li key={i} className="text-xs text-red-300">{w}</li>
                         ))}
                       </ul>
                     </div>
@@ -1149,10 +1149,10 @@ export default function GraphLabPage() {
 
                   {extractFailure.feedback.length > 0 && (
                     <div>
-                      <p className="text-xs font-semibold text-red-800">Improvement feedback</p>
+                      <p className="text-xs font-semibold text-red-300">Improvement feedback</p>
                       <ul className="list-disc ml-4 space-y-0.5">
                         {extractFailure.feedback.map((tip, i) => (
-                          <li key={i} className="text-xs text-red-700">{tip}</li>
+                          <li key={i} className="text-xs text-red-300">{tip}</li>
                         ))}
                       </ul>
                     </div>
@@ -1160,8 +1160,8 @@ export default function GraphLabPage() {
 
                   {extractFailure.graphSpec && (
                     <details>
-                      <summary className="cursor-pointer text-xs font-semibold text-red-800">Returned graphSpec JSON</summary>
-                      <pre className="mt-1 rounded bg-white border border-red-100 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-56 text-red-900">
+                      <summary className="cursor-pointer text-xs font-semibold text-red-300">Returned graphSpec JSON</summary>
+                      <pre className="mt-1 rounded bg-da-surface border border-red-400/40 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-56 text-red-300">
                         {JSON.stringify(extractFailure.graphSpec, null, 2)}
                       </pre>
                     </details>
@@ -1169,8 +1169,8 @@ export default function GraphLabPage() {
 
                   {extractFailure.graphMeta && (
                     <details>
-                      <summary className="cursor-pointer text-xs font-semibold text-red-800">Returned graphMeta JSON</summary>
-                      <pre className="mt-1 rounded bg-white border border-red-100 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-56 text-red-900">
+                      <summary className="cursor-pointer text-xs font-semibold text-red-300">Returned graphMeta JSON</summary>
+                      <pre className="mt-1 rounded bg-da-surface border border-red-400/40 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-56 text-red-300">
                         {JSON.stringify(extractFailure.graphMeta, null, 2)}
                       </pre>
                     </details>
@@ -1182,19 +1182,19 @@ export default function GraphLabPage() {
 
             {/* Warnings */}
             {result && result.warnings.length > 0 && (
-              <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
-                <p className="text-xs font-bold text-amber-700 mb-1">Verification warnings</p>
+              <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3">
+                <p className="text-xs font-bold text-amber-300 mb-1">Verification warnings</p>
                 <ul className="list-disc ml-4 space-y-0.5">
-                  {result.warnings.map((w, i) => <li key={i} className="text-xs text-amber-700">{w}</li>)}
+                  {result.warnings.map((w, i) => <li key={i} className="text-xs text-amber-300">{w}</li>)}
                 </ul>
               </div>
             )}
 
             {extractSnapshot && extractSnapshot.feedback.length > 0 && (
-              <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3">
-                <p className="text-xs font-bold text-blue-700 mb-1">Suggested improvements (always review)</p>
+              <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-3">
+                <p className="text-xs font-bold text-blue-300 mb-1">Suggested improvements (always review)</p>
                 <ul className="list-disc ml-4 space-y-0.5">
-                  {extractSnapshot.feedback.map((tip, i) => <li key={i} className="text-xs text-blue-700">{tip}</li>)}
+                  {extractSnapshot.feedback.map((tip, i) => <li key={i} className="text-xs text-blue-300">{tip}</li>)}
                 </ul>
               </div>
             )}
@@ -1202,20 +1202,20 @@ export default function GraphLabPage() {
             {/* Raw Claude outputs */}
             {result?.pass1Raw && (
               <details open={showPass1} onToggle={(e) => setShowPass1((e.currentTarget as HTMLDetailsElement).open)}>
-                <summary className="cursor-pointer text-xs font-semibold text-gray-500 hover:text-gray-700">
+                <summary className="cursor-pointer text-xs font-semibold text-da-muted hover:text-da-text">
                   {showPass1 ? "▾" : "▸"} Pass 1 raw output
                 </summary>
-                <pre className="mt-1 rounded bg-gray-50 border border-gray-200 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-60">
+                <pre className="mt-1 rounded bg-da-hover border border-da-border p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-60">
                   {result.pass1Raw}
                 </pre>
               </details>
             )}
             {result?.pass2Raw && (
               <details open={showPass2} onToggle={(e) => setShowPass2((e.currentTarget as HTMLDetailsElement).open)}>
-                <summary className="cursor-pointer text-xs font-semibold text-gray-500 hover:text-gray-700">
+                <summary className="cursor-pointer text-xs font-semibold text-da-muted hover:text-da-text">
                   {showPass2 ? "▾" : "▸"} Pass 2 raw output
                 </summary>
-                <pre className="mt-1 rounded bg-gray-50 border border-gray-200 p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-60">
+                <pre className="mt-1 rounded bg-da-hover border border-da-border p-2 text-[10px] leading-relaxed overflow-x-auto whitespace-pre-wrap max-h-60">
                   {result.pass2Raw}
                 </pre>
               </details>
@@ -1226,9 +1226,9 @@ export default function GraphLabPage() {
           <div className="flex flex-col gap-4" suppressHydrationWarning>
 
             {/* JSON editor */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-2" suppressHydrationWarning>
+            <div className="bg-da-surface rounded-xl border border-da-border p-4 flex flex-col gap-2" suppressHydrationWarning>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">
+                <h2 className="text-sm font-bold text-da-text uppercase tracking-wide">
                   Graph Spec JSON
                 </h2>
                 <button
@@ -1243,7 +1243,7 @@ export default function GraphLabPage() {
               </div>
 
               {parseError && (
-                <p className="text-xs text-red-600 font-mono">{parseError}</p>
+                <p className="text-xs text-red-300 font-mono">{parseError}</p>
               )}
 
               <textarea
@@ -1256,7 +1256,7 @@ export default function GraphLabPage() {
               }}
                 spellCheck={false}
                 placeholder={'{\n  "xRange": [-5, 5],\n  "yRange": [-5, 5],\n  "elements": []\n}'}
-                className="w-full rounded border border-gray-200 px-2 py-1.5 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="w-full rounded border border-da-border px-2 py-1.5 text-xs font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-400"
                 suppressHydrationWarning
               />
 
@@ -1264,9 +1264,9 @@ export default function GraphLabPage() {
               {(result?.graphMeta || extractSnapshot?.graphMeta) && (() => {
                 const m = (result?.graphMeta || extractSnapshot?.graphMeta) as GraphMetaLite;
                 return (
-                  <details className="text-xs text-gray-600">
-                    <summary className="cursor-pointer font-semibold text-gray-500 hover:text-gray-700">Graph metadata (from Claude)</summary>
-                    <div className="mt-2 rounded bg-gray-50 border border-gray-100 p-3 space-y-1">
+                  <details className="text-xs text-da-muted">
+                    <summary className="cursor-pointer font-semibold text-da-muted hover:text-da-text">Graph metadata (from Claude)</summary>
+                    <div className="mt-2 rounded bg-da-hover border border-da-border p-3 space-y-1">
                       {m.description && <p><span className="font-semibold">Description:</span> {m.description}</p>}
                       {m.equations?.length ? <p><span className="font-semibold">Equations:</span> {m.equations.join(", ")}</p> : null}
                       {m.xIntercepts?.length ? <p><span className="font-semibold">x-intercepts:</span> {m.xIntercepts.map((i) => i.x).join(", ")}</p> : null}
@@ -1286,13 +1286,13 @@ export default function GraphLabPage() {
                 );
               })()}
 
-              <div className="rounded border border-gray-200 bg-gray-50 p-3">
+              <div className="rounded border border-da-border bg-da-hover p-3">
                 <div className="mb-1 flex items-center gap-2">
-                  <p className="text-xs font-semibold text-gray-600">Window / Domain / Range QA</p>
+                  <p className="text-xs font-semibold text-da-muted">Window / Domain / Range QA</p>
                   <button
                     type="button"
                     onClick={copyWindowOutput}
-                    className="ml-auto rounded border border-gray-300 bg-white px-2.5 py-1 text-[11px] font-bold text-gray-700 hover:bg-gray-100"
+                    className="ml-auto rounded border border-da-border bg-da-surface px-2.5 py-1 text-[11px] font-bold text-da-text hover:bg-da-hover"
                   >
                     {windowCopied ? "✓ Copied" : "Copy Window Output"}
                   </button>
@@ -1301,18 +1301,18 @@ export default function GraphLabPage() {
                   value={windowReadout}
                   readOnly
                   rows={7}
-                  className="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-xs font-mono resize-y focus:outline-none"
+                  className="w-full rounded border border-da-border bg-da-surface px-2 py-1.5 text-xs font-mono resize-y focus:outline-none"
                   suppressHydrationWarning
                 />
               </div>
             </div>
 
             {/* Live preview + image comparison */}
-            <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col gap-4">
-              <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Preview</h2>
+            <div className="bg-da-surface rounded-xl border border-da-border p-4 flex flex-col gap-4">
+              <h2 className="text-sm font-bold text-da-text uppercase tracking-wide">Preview</h2>
 
               <div>
-                <p className="text-xs font-semibold text-gray-500 mb-1">Rendered graph</p>
+                <p className="text-xs font-semibold text-da-muted mb-1">Rendered graph</p>
                 {spec ? (
                   <div className="flex justify-center">
                     <div style={{ width: "min(100%, 380px)" }}>
@@ -1322,13 +1322,13 @@ export default function GraphLabPage() {
                 ) : specJson ? (
                   <p className="text-xs text-red-500 italic">Fix JSON to see preview</p>
                 ) : (
-                  <p className="text-xs text-gray-400 italic">Extract or type JSON above</p>
+                  <p className="text-xs text-da-muted italic">Extract or type JSON above</p>
                 )}
               </div>
 
               {images.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-gray-500 mb-1">
+                  <p className="text-xs font-semibold text-da-muted mb-1">
                     Source image{images.length > 1 ? "s" : ""} (for comparison)
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -1338,7 +1338,7 @@ export default function GraphLabPage() {
                         key={idx}
                         src={img.url}
                         alt={`Source ${idx + 1}`}
-                        className="max-w-full rounded border border-gray-200 object-contain bg-white"
+                        className="max-w-full rounded border border-da-border object-contain bg-da-surface"
                         style={{ maxHeight: 300 }}
                       />
                     ))}

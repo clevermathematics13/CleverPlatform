@@ -504,41 +504,41 @@ export function QuestionReviewCard({
   }
 
   return (
-    <div ref={cardRef} className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+    <div ref={cardRef} className="border border-da-border rounded-xl overflow-hidden shadow-sm">
       {/* Header — left 2/3 is info/copy area, right 1/3 collapses */}
-      <div className="w-full flex items-center bg-white hover:bg-gray-50 transition-colors text-left divide-x divide-gray-100">
+      <div className="w-full flex items-center bg-da-surface hover:bg-da-hover transition-colors text-left divide-x divide-da-border">
         {/* Left zone: code + badges (copyable, does NOT toggle) */}
         <div className="flex items-center flex-wrap gap-2 px-5 py-3 flex-1 min-w-0">
           <button
             type="button"
             title="Click to copy code"
             onClick={copyQuestionCode}
-            className="font-mono font-semibold text-sm text-gray-800 hover:text-indigo-600 cursor-copy select-all"
+            className="font-mono font-semibold text-sm text-da-text hover:text-indigo-200 cursor-copy select-all"
           >
             {question.code}
           </button>
           <button
             type="button"
             onClick={copyQuestionCode}
-            className="shrink-0 px-2.5 py-0.5 rounded border border-indigo-300 bg-indigo-50 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+            className="shrink-0 px-2.5 py-0.5 rounded border border-indigo-400/40 bg-indigo-500/15 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/25"
             title="Copy code"
           >
             {codeCopied ? "Copied" : "Copy code"}
           </button>
-          <span className="text-xs text-gray-400">
+          <span className="text-xs text-da-muted">
             P{question.paper} · {question.level} · {question.timezone}
           </span>
           {question.has_question_images && (
-            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">🖼 Q</span>
+            <span className="text-xs bg-indigo-500/15 text-indigo-300 px-2 py-0.5 rounded-full font-medium">🖼 Q</span>
           )}
           {question.has_markscheme_images && (
-            <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-medium">🖼 MS</span>
+            <span className="text-xs bg-purple-500/15 text-purple-300 px-2 py-0.5 rounded-full font-medium">🖼 MS</span>
           )}
           <span
             className={`text-xs px-2 py-0.5 rounded-full font-medium ${
               hasContentLatex
-                ? "bg-blue-100 text-blue-700"
-                : "bg-red-100 text-red-500"
+                ? "bg-blue-500/15 text-blue-300"
+                : "bg-red-500/15 text-red-500"
             }`}
             title={hasContentLatex ? "Has question LaTeX" : "Missing question LaTeX"}
           >
@@ -547,15 +547,15 @@ export function QuestionReviewCard({
           <span
             className={`text-xs px-2 py-0.5 rounded-full font-medium ${
               hasMSLatex
-                ? "bg-blue-100 text-blue-700"
-                : "bg-red-100 text-red-500"
+                ? "bg-blue-500/15 text-blue-300"
+                : "bg-red-500/15 text-red-500"
             }`}
             title={hasMSLatex ? "Has markscheme LaTeX" : "Missing markscheme LaTeX"}
           >
             {hasMSLatex ? "TeX MS" : "No TeX MS"}
           </span>
           {allVerified && (
-            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+            <span className="text-xs bg-green-500/15 text-green-300 px-2 py-0.5 rounded-full font-medium">
               ✓ All verified
             </span>
           )}
@@ -565,14 +565,14 @@ export function QuestionReviewCard({
           <button
             type="button"
             onClick={copyQuestionCode}
-            className="shrink-0 px-2.5 py-1 rounded border border-indigo-300 bg-indigo-50 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+            className="shrink-0 px-2.5 py-1 rounded border border-indigo-400/40 bg-indigo-500/15 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/25"
             title="Copy code"
           >
             {codeCopied ? "Copied" : "Copy code"}
           </button>
           <button
             type="button"
-            className="cursor-pointer hover:bg-gray-100 transition-colors text-gray-400 text-xs px-2 py-1 rounded"
+            className="cursor-pointer hover:bg-da-hover transition-colors text-da-muted text-xs px-2 py-1 rounded"
             onClick={() => (expanded ? setExpanded(false) : expand())}
           >
             <span>{expanded ? "collapse ▲" : "expand ▼"}</span>
@@ -581,18 +581,18 @@ export function QuestionReviewCard({
       </div>
 
       {expanded && (
-        <div className="border-t border-gray-200 grid grid-cols-2 gap-0 h-[80vh] min-h-96 overflow-hidden">
+        <div className="border-t border-da-border grid grid-cols-2 gap-0 h-[80vh] min-h-96 overflow-hidden">
           {/* Left: image viewer */}
-          <div className="border-r border-gray-200 flex flex-col bg-gray-50 h-full min-h-0">
+          <div className="border-r border-da-border flex flex-col bg-da-hover h-full min-h-0">
             {/* Google Doc links */}
             {(question.google_doc_id || question.google_ms_id) && (
-              <div className="flex items-center gap-3 px-4 py-1.5 border-b border-gray-200 bg-white text-xs">
+              <div className="flex items-center gap-3 px-4 py-1.5 border-b border-da-border bg-da-surface text-xs">
                 {question.google_doc_id && (
                   <a
                     href={`https://docs.google.com/document/d/${question.google_doc_id}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-blue-600 hover:underline flex items-center gap-1"
+                    className="text-blue-300 hover:underline flex items-center gap-1"
                   >
                     <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
                     Question Doc
@@ -603,7 +603,7 @@ export function QuestionReviewCard({
                     href={`https://docs.google.com/document/d/${question.google_ms_id}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-purple-600 hover:underline flex items-center gap-1"
+                    className="text-purple-300 hover:underline flex items-center gap-1"
                   >
                     <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
                     Mark Scheme Doc
@@ -611,9 +611,9 @@ export function QuestionReviewCard({
                 )}
               </div>
             )}
-            <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 text-xs text-gray-500">
+            <div className="flex items-center gap-2 px-4 py-2 border-b border-da-border text-xs text-da-muted">
               {hasExtractedImages && (
-                <div className="flex rounded overflow-hidden border border-gray-200">
+                <div className="flex rounded overflow-hidden border border-da-border">
                   {(["question", "markscheme"] as const).map((t) => (
                     <button
                       key={t}
@@ -623,7 +623,7 @@ export function QuestionReviewCard({
                         setActiveField(t === "question" ? "content_latex" : "markscheme_latex");
                       }}
                       className={`px-2 py-0.5 capitalize transition-colors ${
-                        imageType === t ? "bg-indigo-600 text-white" : "bg-white text-gray-600 hover:bg-gray-50"
+                        imageType === t ? "bg-indigo-600 text-white" : "bg-da-surface text-da-muted hover:bg-da-hover"
                       }`}
                     >
                       {t === "question" ? "Q" : "MS"}
@@ -635,15 +635,15 @@ export function QuestionReviewCard({
               <div className="ml-2 flex items-center gap-1">
                 <button
                   onClick={() => setImageZoom((z) => Math.max(100, z - 25))}
-                  className="px-2 py-1 rounded bg-white border border-gray-200 hover:bg-gray-50"
+                  className="px-2 py-1 rounded bg-da-surface border border-da-border hover:bg-da-hover"
                   title="Zoom out"
                 >
                   −
                 </button>
-                <span className="min-w-10 text-center text-[11px] text-gray-600">{imageZoom}%</span>
+                <span className="min-w-10 text-center text-[11px] text-da-muted">{imageZoom}%</span>
                 <button
                   onClick={() => setImageZoom((z) => Math.min(500, z + 25))}
-                  className="px-2 py-1 rounded bg-white border border-gray-200 hover:bg-gray-50"
+                  className="px-2 py-1 rounded bg-da-surface border border-da-border hover:bg-da-hover"
                   title="Zoom in"
                 >
                   +
@@ -655,13 +655,13 @@ export function QuestionReviewCard({
                     <button
                       disabled={pageIndex === 0}
                       onClick={() => moveCurrentImage(-1)}
-                      className="px-2 py-1 rounded bg-white border border-gray-200 disabled:opacity-30 hover:bg-gray-50"
+                      className="px-2 py-1 rounded bg-da-surface border border-da-border disabled:opacity-30 hover:bg-da-hover"
                       title="Move this image earlier"
                     >↑</button>
                     <button
                       disabled={pageIndex >= totalPages - 1}
                       onClick={() => moveCurrentImage(1)}
-                      className="px-2 py-1 rounded bg-white border border-gray-200 disabled:opacity-30 hover:bg-gray-50"
+                      className="px-2 py-1 rounded bg-da-surface border border-da-border disabled:opacity-30 hover:bg-da-hover"
                       title="Move this image later"
                     >↓</button>
                   </>
@@ -669,14 +669,14 @@ export function QuestionReviewCard({
                 <button
                   disabled={pageIndex === 0}
                   onClick={() => setPageIndex((i) => i - 1)}
-                  className="px-2 py-1 rounded bg-white border border-gray-200 disabled:opacity-30 hover:bg-gray-50"
+                  className="px-2 py-1 rounded bg-da-surface border border-da-border disabled:opacity-30 hover:bg-da-hover"
                 >
                   ‹
                 </button>
                 <button
                   disabled={pageIndex >= (totalPages - 1)}
                   onClick={() => setPageIndex((i) => i + 1)}
-                  className="px-2 py-1 rounded bg-white border border-gray-200 disabled:opacity-30 hover:bg-gray-50"
+                  className="px-2 py-1 rounded bg-da-surface border border-da-border disabled:opacity-30 hover:bg-da-hover"
                 >
                   ›
                 </button>
@@ -684,14 +684,14 @@ export function QuestionReviewCard({
             </div>
             <div className="flex-1 flex items-start justify-center p-4 overflow-auto">
               {loadingUrls ? (
-                <span className="text-gray-400 text-sm">Loading…</span>
+                <span className="text-da-muted text-sm">Loading…</span>
               ) : currentPageUrl ? (
                 <div className="relative group max-w-full">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={currentPageUrl}
                     alt={`Page ${pageIndex + 1}`}
-                    className="shadow-sm border border-gray-200 rounded"
+                    className="shadow-sm border border-da-border rounded"
                     style={{ width: `${imageZoom}%`, maxWidth: "none" }}
                   />
                   {hasExtractedImages && (
@@ -705,7 +705,7 @@ export function QuestionReviewCard({
                   )}
                 </div>
               ) : (
-                <span className="text-gray-400 text-sm italic">
+                <span className="text-da-muted text-sm italic">
                   No page images available
                 </span>
               )}
@@ -714,20 +714,20 @@ export function QuestionReviewCard({
 
           {/* Right: per-part LaTeX editors */}
           <div className="flex flex-col min-h-0 h-full">
-            <div className="flex items-center gap-3 px-4 py-2 border-b border-gray-200 bg-white">
-              <span className="text-xs font-medium text-gray-600">
+            <div className="flex items-center gap-3 px-4 py-2 border-b border-da-border bg-da-surface">
+              <span className="text-xs font-medium text-da-muted">
                 {visibleParts.length} part{visibleParts.length !== 1 ? "s" : ""}
               </span>
               <button
                 onClick={() => setMetadataOpen((v) => !v)}
-                className="px-2 py-1 text-xs rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="px-2 py-1 text-xs rounded border border-da-border text-da-text hover:bg-da-hover"
                 title="Edit part metadata for this question"
               >
                 {metadataOpen ? "Hide metadata" : "Edit metadata"}
               </button>
               {/* Q/MS is controlled by the image toggle on the left — no duplicate tab here */}
               {!hasExtractedImages && (
-                <div className="flex rounded overflow-hidden border border-gray-200 ml-2">
+                <div className="flex rounded overflow-hidden border border-da-border ml-2">
                   {(["content_latex", "markscheme_latex"] as const).map((f) => (
                     <button
                       key={f}
@@ -735,7 +735,7 @@ export function QuestionReviewCard({
                       className={`px-3 py-1 text-xs font-medium transition-colors ${
                         activeField === f
                           ? "bg-blue-600 text-white"
-                          : "bg-white text-gray-600 hover:bg-gray-50"
+                          : "bg-da-surface text-da-muted hover:bg-da-hover"
                       }`}
                     >
                       {f === "content_latex" ? "Question" : "Mark Scheme"}
@@ -754,7 +754,7 @@ export function QuestionReviewCard({
               <button
                 onClick={() => clearAllLatexForCurrentField(activeField)}
                 disabled={!canClearCurrentSideLatex}
-                className="px-3 py-1.5 rounded text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 disabled:opacity-40"
+                className="px-3 py-1.5 rounded text-xs font-medium bg-red-500/15 text-red-300 hover:bg-red-500/25 disabled:opacity-40"
                 title="Clear LaTeX for the current side (stem and all parts)"
               >
                 Clear LaTeX
@@ -763,16 +763,16 @@ export function QuestionReviewCard({
                 onClick={toggleVerified}
                 className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                   verified
-                    ? "bg-green-100 text-green-700 hover:bg-green-200"
-                    : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    ? "bg-green-500/15 text-green-300 hover:bg-green-500/25"
+                    : "bg-da-hover text-da-text hover:bg-da-border/50"
                 }`}
               >
                 {verified ? "✓ Verified" : "Mark all verified"}
               </button>
             </div>
             {metadataOpen && (
-              <div className="border-b border-gray-200 bg-slate-50 p-3 space-y-2 max-w-xl">
-                <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_20px] gap-2 text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+              <div className="border-b border-da-border bg-da-hover p-3 space-y-2 max-w-xl">
+                <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_20px] gap-2 text-[11px] font-semibold text-da-muted uppercase tracking-wide">
                   <span>Part</span>
                   <span>Marks</span>
                   <span>Command term</span>
@@ -801,7 +801,7 @@ export function QuestionReviewCard({
                             }
                           }
                         }}
-                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                        className="border border-da-border rounded px-2 py-1 text-xs bg-da-surface"
                       />
                       <input
                         name={`part-marks-${part.id}`}
@@ -822,7 +822,7 @@ export function QuestionReviewCard({
                             }
                           }
                         }}
-                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        className="border border-da-border rounded px-2 py-1 text-xs bg-da-surface [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
                       <CommandTermCombobox
                         value={draft.commandTerm ?? ""}
@@ -837,7 +837,7 @@ export function QuestionReviewCard({
                             (document.querySelector(`[data-part-id="${parts[idx+1].id}"][data-field="commandTerm"]`) as HTMLElement)?.focus();
                           }
                         }}
-                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                        className="border border-da-border rounded px-2 py-1 text-xs bg-da-surface w-full"
                       />
                       <input
                         name={`part-subtopics-${part.id}`}
@@ -855,7 +855,7 @@ export function QuestionReviewCard({
                             }
                           }
                         }}
-                        className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                        className="border border-da-border rounded px-2 py-1 text-xs bg-da-surface"
                       />
                       <button
                         onClick={() => {
@@ -863,20 +863,20 @@ export function QuestionReviewCard({
                           setInsertAfterPartId(isInsertingAfterThis ? null : part.id);
                         }}
                         disabled={metadataSavingAll || metadataRevertingAll || metadataCreating || insertCreating}
-                        className={`text-xs font-bold rounded w-5 h-5 flex items-center justify-center transition-colors disabled:opacity-30 ${isInsertingAfterThis ? "bg-blue-200 text-blue-700" : "text-slate-400 hover:text-blue-600 hover:bg-blue-50"}`}
+                        className={`text-xs font-bold rounded w-5 h-5 flex items-center justify-center transition-colors disabled:opacity-30 ${isInsertingAfterThis ? "bg-blue-500/25 text-blue-300" : "text-da-muted hover:text-blue-200 hover:bg-blue-500/25"}`}
                         title="Insert a new part after this row"
                       >+</button>
                       </div>
                       {/* Insert-between row */}
                       {isInsertingAfterThis ? (
-                        <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_auto] gap-2 pl-3 border-l-2 border-blue-400 bg-blue-50/60 rounded-r py-1.5">
+                        <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_auto] gap-2 pl-3 border-l-2 border-blue-400 bg-blue-500/60 rounded-r py-1.5">
                           <input
                             autoFocus
                             placeholder="Label"
                             value={insertDraft.partLabel}
                             onChange={(e) => setInsertDraft((d) => ({ ...d, partLabel: e.target.value }))}
                             disabled={insertCreating}
-                            className="border border-blue-300 rounded px-2 py-1 text-xs bg-white"
+                            className="border border-blue-400/40 rounded px-2 py-1 text-xs bg-da-surface"
                           />
                           <input
                             placeholder="Marks"
@@ -886,14 +886,14 @@ export function QuestionReviewCard({
                             onChange={(e) => setInsertDraft((d) => ({ ...d, marks: e.target.value }))}
                             disabled={insertCreating}
                             onFocus={(e) => e.target.select()}
-                            className="border border-blue-300 rounded px-2 py-1 text-xs bg-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                            className="border border-blue-400/40 rounded px-2 py-1 text-xs bg-da-surface [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                           />
                           <CommandTermCombobox
                             value={insertDraft.commandTerm}
                             onChange={(v) => setInsertDraft((d) => ({ ...d, commandTerm: v }))}
                             disabled={insertCreating}
                             options={commandTermOptions}
-                            className="border border-blue-300 rounded px-2 py-1 text-xs bg-white w-full"
+                            className="border border-blue-400/40 rounded px-2 py-1 text-xs bg-da-surface w-full"
                           />
                           <input
                             placeholder="Subtopics"
@@ -904,7 +904,7 @@ export function QuestionReviewCard({
                               if (e.key === "Enter") { e.preventDefault(); insertPartAfter(); }
                               if (e.key === "Escape") { setInsertAfterPartId(null); }
                             }}
-                            className="border border-blue-300 rounded px-2 py-1 text-xs bg-white"
+                            className="border border-blue-400/40 rounded px-2 py-1 text-xs bg-da-surface"
                           />
                           <div className="flex gap-1 items-center">
                             <button
@@ -917,7 +917,7 @@ export function QuestionReviewCard({
                             <button
                               onClick={() => setInsertAfterPartId(null)}
                               disabled={insertCreating}
-                              className="px-2 py-1 text-xs rounded bg-slate-200 text-slate-600 hover:bg-slate-300 disabled:opacity-40"
+                              className="px-2 py-1 text-xs rounded bg-slate-200 text-da-muted hover:bg-slate-300 disabled:opacity-40"
                             >
                               ✕
                             </button>
@@ -929,7 +929,7 @@ export function QuestionReviewCard({
                 })}
 
                 {addPartOpen && (
-                  <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_auto] gap-2 pt-1 border-t border-slate-200 items-center">
+                  <div className="grid grid-cols-[60px_48px_minmax(100px,1fr)_90px_auto] gap-2 pt-1 border-t border-da-border items-center">
                     <input
                       autoFocus
                       data-field="new-part-label"
@@ -939,7 +939,7 @@ export function QuestionReviewCard({
                       onChange={(e) => setNewMetadataDraft((d) => ({ ...d, partLabel: e.target.value }))}
                       disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
                       onKeyDown={(e) => { if (e.key === "Escape") setAddPartOpen(false); }}
-                      className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                      className="border border-da-border rounded px-2 py-1 text-xs bg-da-surface"
                     />
                     <input
                       name="new-part-marks"
@@ -950,14 +950,14 @@ export function QuestionReviewCard({
                       onChange={(e) => setNewMetadataDraft((d) => ({ ...d, marks: e.target.value }))}
                       disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
                       onFocus={(e) => e.target.select()}
-                      className="border border-slate-300 rounded px-2 py-1 text-xs bg-white [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      className="border border-da-border rounded px-2 py-1 text-xs bg-da-surface [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
                     <CommandTermCombobox
                       value={newMetadataDraft.commandTerm}
                       onChange={(v) => setNewMetadataDraft((d) => ({ ...d, commandTerm: v }))}
                       disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
                       options={commandTermOptions}
-                      className="border border-slate-300 rounded px-2 py-1 text-xs bg-white w-full"
+                      className="border border-da-border rounded px-2 py-1 text-xs bg-da-surface w-full"
                     />
                     <input
                       name="new-part-subtopics"
@@ -969,17 +969,17 @@ export function QuestionReviewCard({
                         if (e.key === "Enter") { e.preventDefault(); createMetadataPart(); }
                         if (e.key === "Escape") setAddPartOpen(false);
                       }}
-                      className="border border-slate-300 rounded px-2 py-1 text-xs bg-white"
+                      className="border border-da-border rounded px-2 py-1 text-xs bg-da-surface"
                     />
                     <button
                       onClick={() => setAddPartOpen(false)}
-                      className="text-slate-400 hover:text-slate-600 text-xs px-1"
+                      className="text-da-muted hover:text-da-text text-xs px-1"
                       title="Cancel"
                     >✕</button>
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-2 pt-1 border-t border-slate-200">
+                <div className="flex flex-wrap gap-2 pt-1 border-t border-da-border">
                   <button
                     onClick={() => {
                       if (addPartOpen) {
@@ -1011,7 +1011,7 @@ export function QuestionReviewCard({
                       loadMetadataHistoryForQuestion();
                     }}
                     disabled={metadataSavingAll || metadataRevertingAll || metadataCreating || metadataHistoryLoadingAll}
-                    className="px-3 py-1.5 text-xs rounded border border-indigo-300 text-indigo-700 hover:bg-indigo-50 disabled:opacity-40"
+                    className="px-3 py-1.5 text-xs rounded border border-indigo-400/40 text-indigo-300 hover:bg-indigo-500/25 disabled:opacity-40"
                     title="List previous metadata versions for all parts"
                   >
                     {metadataHistoryLoadingAll ? "Loading" : metadataHistoryOpen ? "Hide history" : "History"}
@@ -1019,7 +1019,7 @@ export function QuestionReviewCard({
                   <button
                     onClick={revertMetadataForQuestion}
                     disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
-                    className="px-3 py-1.5 text-xs rounded border border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-40"
+                    className="px-3 py-1.5 text-xs rounded border border-amber-400/40 text-amber-300 hover:bg-amber-500/25 disabled:opacity-40"
                     title="Revert each part to its previous metadata snapshot"
                   >
                     {metadataRevertingAll ? "Reverting" : "Revert DB"}
@@ -1027,7 +1027,7 @@ export function QuestionReviewCard({
                   <button
                     onClick={clearMetadataDrafts}
                     disabled={metadataSavingAll || metadataRevertingAll || metadataCreating}
-                    className="px-3 py-1.5 text-xs rounded border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                    className="px-3 py-1.5 text-xs rounded border border-da-border text-da-text hover:bg-da-hover disabled:opacity-40"
                     title="Clear entered metadata in the editor"
                   >
                     Clear metadata
@@ -1035,23 +1035,23 @@ export function QuestionReviewCard({
                 </div>
 
                 {metadataHistoryOpen && (
-                  <div className="border border-indigo-200 bg-indigo-50/40 rounded p-2 space-y-2">
+                  <div className="border border-indigo-400/40 bg-indigo-500/40 rounded p-2 space-y-2">
                     {parts.map((part) => {
                       const versions = metadataHistoryByPart[part.id] ?? [];
                       return (
                         <div key={`history-${part.id}`} className="space-y-1">
-                          <div className="text-xs font-semibold text-indigo-900">
+                          <div className="text-xs font-semibold text-indigo-300">
                             Part {(part.part_label ?? "(empty label)").toUpperCase()}
                           </div>
                           {versions.length === 0 ? (
-                            <div className="text-xs text-slate-500">No saved versions yet.</div>
+                            <div className="text-xs text-da-muted">No saved versions yet.</div>
                           ) : (
                             versions.map((version) => (
-                              <div key={version.id} className="flex items-center gap-2 text-xs bg-white border border-indigo-100 rounded px-2 py-1.5">
-                                <span className="text-slate-500 min-w-32">{new Date(version.created_at).toLocaleString()}</span>
-                                <span className="text-slate-700">{version.part_label || "(empty label)"}</span>
-                                <span className="text-slate-500">[{version.marks ?? 0}]</span>
-                                <span className="text-slate-600 truncate">{version.command_term || "no command term"}</span>
+                              <div key={version.id} className="flex items-center gap-2 text-xs bg-da-surface border border-indigo-400/40 rounded px-2 py-1.5">
+                                <span className="text-da-muted min-w-32">{new Date(version.created_at).toLocaleString()}</span>
+                                <span className="text-da-text">{version.part_label || "(empty label)"}</span>
+                                <span className="text-da-muted">[{version.marks ?? 0}]</span>
+                                <span className="text-da-muted truncate">{version.command_term || "no command term"}</span>
                               </div>
                             ))
                           )}
@@ -1061,13 +1061,13 @@ export function QuestionReviewCard({
                   </div>
                 )}
                 {metadataError && (
-                  <div className="text-xs text-red-600 font-medium">{metadataError}</div>
+                  <div className="text-xs text-red-300 font-medium">{metadataError}</div>
                 )}
               </div>
             )}
             <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
               {parts.length === 0 ? (
-                <p className="text-gray-400 text-sm italic">No parts found.</p>
+                <p className="text-da-muted text-sm italic">No parts found.</p>
               ) : (
                 <>
                   {/* Show stem editor only for questions that have labeled parts. */}

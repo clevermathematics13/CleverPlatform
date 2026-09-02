@@ -7,9 +7,9 @@ export default async function StudentStartPage() {
   const hasActivity = ACTIVITY_URL !== "#";
 
   return (
-    <div className="mx-auto max-w-2xl rounded-xl border border-gray-200 bg-white p-8 shadow-sm">
-      <h1 className="text-2xl font-bold text-gray-900">Student Start</h1>
-      <p className="mt-2 text-sm text-gray-600">
+    <div className="mx-auto max-w-2xl rounded-xl border border-da-border bg-da-surface p-8 shadow-sm">
+      <h1 className="text-2xl font-bold text-da-text">Student Start</h1>
+      <p className="mt-2 text-sm text-da-muted">
         Hi {profile.display_name}. Use the link below to open your interactive activity.
       </p>
 
@@ -29,7 +29,7 @@ export default async function StudentStartPage() {
           </span>
         )}
         {!hasActivity && (
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-da-muted">
             Activity link not set yet. Add NEXT_PUBLIC_STUDENT_ACTIVITY_URL to enable this button.
           </p>
         )}

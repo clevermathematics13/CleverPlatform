@@ -21,9 +21,9 @@ interface Analysis {
 }
 
 const CONFIDENCE_STYLES: Record<string, string> = {
-  high: "bg-green-50 text-green-700",
-  medium: "bg-amber-50 text-amber-700",
-  low: "bg-red-50 text-red-700",
+  high: "bg-green-500/15 text-green-300",
+  medium: "bg-amber-500/15 text-amber-300",
+  low: "bg-red-500/15 text-red-300",
 };
 
 const STATE_LABELS: Record<string, string> = {
@@ -138,7 +138,7 @@ export function ClassroomClient({
   return (
     <div className="space-y-6">
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       )}
@@ -163,7 +163,7 @@ export function ClassroomClient({
           <select
             value={courseId}
             onChange={(e) => onCourseChange(e.target.value)}
-            className="block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+            className="block w-full rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm font-medium text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
           >
             <option value="">Select a course...</option>
             {visibleCourses.map((c) => (
@@ -193,7 +193,7 @@ export function ClassroomClient({
             value={courseWorkId}
             onChange={(e) => onWorkChange(e.target.value)}
             disabled={!courseId || loadingWork}
-            className="block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent disabled:bg-gray-100 disabled:text-gray-400"
+            className="block w-full rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm font-medium text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent disabled:bg-da-hover disabled:text-da-muted"
           >
             <option value="">
               {loadingWork ? "Loading..." : "Select an assignment..."}
@@ -210,37 +210,37 @@ export function ClassroomClient({
       </div>
 
       {courseId && !loadingWork && work.length === 0 && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-da-muted">
           No coursework found in this course.
         </p>
       )}
 
       {loadingRows && (
-        <p className="text-sm text-gray-500">Loading submissions...</p>
+        <p className="text-sm text-da-muted">Loading submissions...</p>
       )}
 
       {/* Submissions */}
       {rows.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <div className="overflow-hidden rounded-xl border border-da-border bg-da-surface">
+          <table className="min-w-full divide-y divide-da-border">
+            <thead className="bg-da-hover">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-da-muted">
                   Student
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-da-muted">
                   Status
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-da-muted">
                   Files
                 </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-da-muted">
                   Clev&apos;s Marks
                 </th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-da-border">
               {rows.map((row) => {
                 const analysis = analyses[row.id];
                 const isOpen = expanded === row.id;
@@ -248,25 +248,25 @@ export function ClassroomClient({
                   <Fragment key={row.id}>
                     <tr className="align-top">
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-da-text">
                           {row.fullName}
                         </div>
-                        <div className="text-xs text-gray-500">{row.email}</div>
+                        <div className="text-xs text-da-muted">{row.email}</div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-da-text">
                         {STATE_LABELS[row.state ?? ""] ?? row.state ?? "—"}
                         {analysis?.work_status
                           ? ` - ${analysis.work_status}`
                           : ""}
                         {row.late && (
-                          <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                          <span className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs text-amber-300">
                             Late
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-da-text">
                         {row.attachments.length === 0 ? (
-                          <span className="text-gray-400">None</span>
+                          <span className="text-da-muted">None</span>
                         ) : (
                           <ul className="space-y-0.5">
                             {row.attachments.map((a) => (
@@ -275,7 +275,7 @@ export function ClassroomClient({
                                   href={a.alternateLink}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="text-blue-600 hover:text-blue-800"
+                                  className="text-blue-300 hover:text-blue-200"
                                 >
                                   {a.title}
                                 </a>
@@ -284,7 +284,7 @@ export function ClassroomClient({
                           </ul>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
+                      <td className="px-4 py-3 text-sm text-da-text">
                         {row.assignedGrade ?? row.draftGrade ?? "—"}
                         {selectedWork?.maxPoints
                           ? ` / ${selectedWork.maxPoints}`
@@ -298,7 +298,7 @@ export function ClassroomClient({
                               onClick={() =>
                                 setExpanded(isOpen ? null : row.id)
                               }
-                              className="text-xs text-gray-500 hover:text-gray-700"
+                              className="text-xs text-da-muted hover:text-da-text"
                             >
                               {isOpen ? "Hide" : "Show"}
                             </button>
@@ -309,7 +309,7 @@ export function ClassroomClient({
                             disabled={
                               busy[row.id] || row.attachments.length === 0
                             }
-                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-gray-300"
+                            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-da-hover"
                           >
                             {busy[row.id]
                               ? "Reading..."
@@ -322,7 +322,7 @@ export function ClassroomClient({
                     </tr>
 
                     {analysis && isOpen && (
-                      <tr className="bg-gray-50">
+                      <tr className="bg-da-hover">
                         <td colSpan={5} className="px-4 py-4">
                           <div className="space-y-4 text-sm">
                             <div className="flex flex-wrap items-center gap-3">
@@ -330,14 +330,14 @@ export function ClassroomClient({
                                 <span
                                   className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
                                     CONFIDENCE_STYLES[analysis.confidence] ??
-                                    "bg-gray-100 text-gray-700"
+                                    "bg-da-hover text-da-text"
                                   }`}
                                 >
                                   {analysis.confidence} confidence
                                 </span>
                               )}
                               {analysis.confidence_notes && (
-                                <span className="text-xs text-gray-600">
+                                <span className="text-xs text-da-muted">
                                   {analysis.confidence_notes}
                                 </span>
                               )}
@@ -351,7 +351,7 @@ export function ClassroomClient({
                                     )
                                   }
                                   disabled={busy[row.id]}
-                                  className="rounded-lg border border-blue-600 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                                  className="rounded-lg border border-blue-600 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                                 >
                                   Apply {analysis.suggested_marks} as draft
                                   Clev&apos;s Marks
@@ -361,10 +361,10 @@ export function ClassroomClient({
 
                             {analysis.transcription && (
                               <div>
-                                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-da-muted">
                                   Transcription
                                 </h4>
-                                <pre className="whitespace-pre-wrap rounded-lg border border-gray-200 bg-white p-3 font-mono text-xs text-gray-800">
+                                <pre className="whitespace-pre-wrap rounded-lg border border-da-border bg-da-surface p-3 font-mono text-xs text-da-text">
                                   {analysis.transcription}
                                 </pre>
                               </div>
@@ -373,16 +373,16 @@ export function ClassroomClient({
                             {analysis.assessment && (
                               <div>
                                 <div className="mb-1 flex items-center gap-2">
-                                  <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                  <h4 className="text-xs font-semibold uppercase tracking-wide text-da-muted">
                                     Assessment
                                   </h4>
                                   {analysis.work_status && (
-                                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                                    <span className="rounded-full bg-blue-500/15 px-2 py-0.5 text-xs font-medium text-blue-300">
                                       {analysis.work_status}
                                     </span>
                                   )}
                                 </div>
-                                <p className="whitespace-pre-wrap text-gray-800">
+                                <p className="whitespace-pre-wrap text-da-text">
                                   {analysis.assessment}
                                 </p>
                               </div>
@@ -391,10 +391,10 @@ export function ClassroomClient({
                             {analysis.misconceptions &&
                               analysis.misconceptions.length > 0 && (
                                 <div>
-                                  <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                  <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-da-muted">
                                     Misconceptions
                                   </h4>
-                                  <ul className="list-inside list-disc space-y-0.5 text-gray-800">
+                                  <ul className="list-inside list-disc space-y-0.5 text-da-text">
                                     {analysis.misconceptions.map((m, i) => (
                                       <li key={i}>{m}</li>
                                     ))}

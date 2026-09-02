@@ -176,43 +176,43 @@ export function ExtractionReviewModal({
     stepTitle = `Step 1 of ${steps.length}: Confirm part structure`;
     stepContent = (
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-gray-700">
+        <p className="text-sm text-da-text">
           The extractor identified these part labels. Edit if incorrect, or clear to save as a whole question.
         </p>
         <div>
-          <label className="block text-xs font-semibold text-gray-600 mb-1">
+          <label className="block text-xs font-semibold text-da-muted mb-1">
             Part labels (comma-separated, e.g.{" "}
-            <code className="bg-gray-100 px-1 rounded">a, b, ci, cii</code>)
+            <code className="bg-da-hover px-1 rounded">a, b, ci, cii</code>)
           </label>
           <input
             type="text"
             value={labelsText}
             onChange={(e) => setLabelsText(e.target.value)}
             placeholder="Leave empty for whole question"
-            className="w-full rounded border border-gray-300 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full rounded border border-da-border px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
           />
           {!labelsText.trim() && (
-            <p className="mt-1 text-xs text-amber-600">No labels — will save as whole question.</p>
+            <p className="mt-1 text-xs text-amber-300">No labels — will save as whole question.</p>
           )}
         </div>
-        <div className="rounded bg-blue-50 border border-blue-200 p-3 text-xs text-blue-800 space-y-1">
+        <div className="rounded bg-blue-500/15 border border-blue-400/40 p-3 text-xs text-blue-300 space-y-1">
           <p className="font-semibold">How these parts were determined:</p>
           <ul className="ml-3 list-disc space-y-0.5">
             <li>
               Claude AI returned labels:{" "}
-              <code className="bg-blue-100 px-0.5 rounded">
+              <code className="bg-blue-500/15 px-0.5 rounded">
                 {plan.debug.claudeLabels.join(", ") || "(none)"}
               </code>
             </li>
             <li>
               OCR regex detected:{" "}
-              <code className="bg-blue-100 px-0.5 rounded">
+              <code className="bg-blue-500/15 px-0.5 rounded">
                 {plan.debug.detectedLabels.join(", ") || "(none)"}
               </code>
             </li>
             <li>
               Split probe found:{" "}
-              <code className="bg-blue-100 px-0.5 rounded">
+              <code className="bg-blue-500/15 px-0.5 rounded">
                 {plan.debug.splitProbeKeys.join(", ") || "(none)"}
               </code>
             </li>
@@ -229,12 +229,12 @@ export function ExtractionReviewModal({
               </strong>
             </li>
             {plan.debug.isSuspiciousSingleA && (
-              <li className="text-amber-700">
+              <li className="text-amber-300">
                 ⚠ Single &apos;(a)&apos; looked incidental — collapsed to whole question
               </li>
             )}
             {plan.debug.saveGuardBlocked && (
-              <li className="text-red-700">⚠ Save guard triggered: {plan.debug.saveGuardReason}</li>
+              <li className="text-red-300">⚠ Save guard triggered: {plan.debug.saveGuardReason}</li>
             )}
           </ul>
         </div>
@@ -244,15 +244,15 @@ export function ExtractionReviewModal({
     stepTitle = `Step ${stepIdx + 1} of ${steps.length}: Confirm stem`;
     stepContent = (
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-da-muted">
           The stem is shared text appearing before the first part label.
         </p>
         <div>
-          <p className="text-xs font-semibold text-gray-600 mb-1">Question stem (rendered):</p>
-          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
+          <p className="text-xs font-semibold text-da-muted mb-1">Question stem (rendered):</p>
+          <div className="rounded bg-da-hover border border-da-border p-3 max-h-32 overflow-y-auto">
             {plan.stemQ
               ? <LatexRenderer latex={plan.stemQ} />
-              : <span className="text-gray-400 text-xs">(empty — no stem)</span>
+              : <span className="text-da-muted text-xs">(empty — no stem)</span>
             }
           </div>
           <textarea
@@ -263,11 +263,11 @@ export function ExtractionReviewModal({
           />
         </div>
         <div>
-          <p className="text-xs font-semibold text-gray-600 mb-1">Mark scheme stem (rendered):</p>
-          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-28 overflow-y-auto">
+          <p className="text-xs font-semibold text-da-muted mb-1">Mark scheme stem (rendered):</p>
+          <div className="rounded bg-da-hover border border-da-border p-3 max-h-28 overflow-y-auto">
             {plan.stemMS
               ? <LatexRenderer latex={plan.stemMS} />
-              : <span className="text-gray-400 text-xs">(empty)</span>
+              : <span className="text-da-muted text-xs">(empty)</span>
             }
           </div>
           <textarea
@@ -283,14 +283,14 @@ export function ExtractionReviewModal({
     stepTitle = `Step ${stepIdx + 1} of ${steps.length}: Confirm whole question`;
     stepContent = (
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-gray-500">No parts detected — will be saved as a single whole question.</p>
+        <p className="text-sm text-da-muted">No parts detected — will be saved as a single whole question.</p>
         <div className="flex items-center gap-3">
-          <label className="text-xs font-semibold text-gray-700">Total marks:</label>
+          <label className="text-xs font-semibold text-da-text">Total marks:</label>
           <input
             type="number"
             min={1}
             max={100}
-            className="w-20 rounded border border-indigo-300 px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="w-20 rounded border border-indigo-400/40 px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
             value={plan.partMarks?.get("") ?? 1}
             onChange={(e) => setPlan((p) => {
               const next = new Map(p.partMarks ?? []);
@@ -300,8 +300,8 @@ export function ExtractionReviewModal({
           />
         </div>
         <div>
-          <p className="text-xs font-semibold text-gray-600 mb-1">Question LaTeX (rendered):</p>
-          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-40 overflow-y-auto">
+          <p className="text-xs font-semibold text-da-muted mb-1">Question LaTeX (rendered):</p>
+          <div className="rounded bg-da-hover border border-da-border p-3 max-h-40 overflow-y-auto">
             <LatexRenderer latex={plan.qDraft} />
           </div>
           <textarea
@@ -312,8 +312,8 @@ export function ExtractionReviewModal({
           />
         </div>
         <div>
-          <p className="text-xs font-semibold text-gray-600 mb-1">Mark scheme (rendered):</p>
-          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
+          <p className="text-xs font-semibold text-da-muted mb-1">Mark scheme (rendered):</p>
+          <div className="rounded bg-da-hover border border-da-border p-3 max-h-32 overflow-y-auto">
             <LatexRenderer latex={plan.msDraft} />
           </div>
           <textarea
@@ -333,12 +333,12 @@ export function ExtractionReviewModal({
     stepContent = (
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
-          <label className="text-xs font-semibold text-gray-700">Marks for part ({label}):</label>
+          <label className="text-xs font-semibold text-da-text">Marks for part ({label}):</label>
           <input
             type="number"
             min={1}
             max={100}
-            className="w-20 rounded border border-indigo-300 px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            className="w-20 rounded border border-indigo-400/40 px-2 py-1 text-sm font-bold text-center focus:outline-none focus:ring-2 focus:ring-indigo-400"
             value={plan.partMarks?.get(label) ?? 1}
             onChange={(e) => setPlan((p) => {
               const next = new Map(p.partMarks ?? []);
@@ -348,13 +348,13 @@ export function ExtractionReviewModal({
           />
         </div>
         <div>
-          <p className="text-xs font-semibold text-gray-600 mb-1">
+          <p className="text-xs font-semibold text-da-muted mb-1">
             Question — part ({label}) (rendered):
           </p>
-          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-36 overflow-y-auto">
+          <div className="rounded bg-da-hover border border-da-border p-3 max-h-36 overflow-y-auto">
             {qContent
               ? <LatexRenderer latex={qContent} />
-              : <span className="text-gray-400 text-xs">(empty)</span>
+              : <span className="text-da-muted text-xs">(empty)</span>
             }
           </div>
           <textarea
@@ -369,13 +369,13 @@ export function ExtractionReviewModal({
           />
         </div>
         <div>
-          <p className="text-xs font-semibold text-gray-600 mb-1">
+          <p className="text-xs font-semibold text-da-muted mb-1">
             Mark scheme — part ({label}) (rendered):
           </p>
-          <div className="rounded bg-gray-50 border border-gray-200 p-3 max-h-32 overflow-y-auto">
+          <div className="rounded bg-da-hover border border-da-border p-3 max-h-32 overflow-y-auto">
             {msContent
               ? <LatexRenderer latex={msContent} />
-              : <span className="text-gray-400 text-xs">(empty)</span>
+              : <span className="text-da-muted text-xs">(empty)</span>
             }
           </div>
           <textarea
@@ -397,11 +397,11 @@ export function ExtractionReviewModal({
   const msImages = images.filter((i) => i.image_type === "markscheme").sort((a, b) => a.sort_order - b.sort_order);
 
   const wizardFooter = (
-    <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
+    <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-da-border shrink-0">
       <button
         type="button"
         onClick={onCancel}
-        className="rounded-lg px-4 py-2 text-sm font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors border border-gray-200"
+        className="rounded-lg px-4 py-2 text-sm font-medium text-da-muted hover:text-red-200 hover:bg-red-500/25 transition-colors border border-da-border"
       >
         Cancel extraction
       </button>
@@ -410,7 +410,7 @@ export function ExtractionReviewModal({
           <button
             type="button"
             onClick={handleBack}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors border border-gray-200"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-da-muted hover:bg-da-hover transition-colors border border-da-border"
           >
             ← Back
           </button>
@@ -419,7 +419,7 @@ export function ExtractionReviewModal({
           <button
             type="button"
             onClick={handleConfirmAll}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 transition-colors border border-green-300"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-green-300 hover:bg-green-500/25 transition-colors border border-green-400/40"
             title="Accept all remaining steps as-is and save directly"
           >
             Save all →
@@ -438,26 +438,26 @@ export function ExtractionReviewModal({
 
   const modal = minimized ? (
     /* -- Minimized bar -- */
-    <div className="fixed bottom-0 left-0 right-0 z-[80] bg-white border-t-2 border-blue-400 shadow-xl px-5 py-2 flex items-center gap-4">
-      <span className="font-mono font-bold text-blue-900 text-sm">{questionCode}</span>
-      <span className="text-xs text-gray-500 truncate">{stepTitle}</span>
+    <div className="fixed bottom-0 left-0 right-0 z-[80] bg-da-surface border-t-2 border-blue-400 shadow-xl px-5 py-2 flex items-center gap-4">
+      <span className="font-mono font-bold text-blue-300 text-sm">{questionCode}</span>
+      <span className="text-xs text-da-muted truncate">{stepTitle}</span>
       <div className="flex gap-1.5 mx-2 shrink-0">
         {steps.map((_, i) => (
-          <span key={i} className={`rounded-full w-2 h-2 transition-colors ${i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-500" : "bg-gray-300"}`} />
+          <span key={i} className={`rounded-full w-2 h-2 transition-colors ${i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-500" : "bg-da-hover"}`} />
         ))}
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <button type="button" onClick={() => setMinimized(false)} className="rounded px-3 py-1.5 text-xs font-bold bg-blue-100 text-blue-800 hover:bg-blue-200 transition-colors">▲ Restore</button>
-        <button type="button" onClick={onCancel} className="rounded w-7 h-7 flex items-center justify-center text-sm font-bold bg-gray-100 text-gray-700 hover:bg-red-100 hover:text-red-700 transition-colors">✕</button>
+        <button type="button" onClick={() => setMinimized(false)} className="rounded px-3 py-1.5 text-xs font-bold bg-blue-500/15 text-blue-300 hover:bg-blue-500/25 transition-colors">▲ Restore</button>
+        <button type="button" onClick={onCancel} className="rounded w-7 h-7 flex items-center justify-center text-sm font-bold bg-da-hover text-da-text hover:bg-red-500/25 hover:text-red-200 transition-colors">✕</button>
       </div>
     </div>
   ) : (
     /* -- Full-screen split layout -- */
-    <div className="fixed inset-0 z-[80] flex flex-col bg-white">
+    <div className="fixed inset-0 z-[80] flex flex-col bg-da-surface">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 bg-gray-900 text-white shadow-md shrink-0">
         <span className="font-mono font-bold text-base">{questionCode}</span>
-        <span className="text-sm text-gray-400 truncate">{stepTitle}</span>
+        <span className="text-sm text-da-muted truncate">{stepTitle}</span>
         <div className="flex gap-1.5 mx-2 shrink-0">
           {steps.map((_, i) => (
             <span key={i} className={`rounded-full w-2.5 h-2.5 transition-colors ${i < stepIdx ? "bg-green-400" : i === stepIdx ? "bg-blue-400" : "bg-gray-600"}`} />
@@ -473,46 +473,46 @@ export function ExtractionReviewModal({
       <div className="flex-1 overflow-hidden flex">
 
         {/* -- Left pane: images -- */}
-        <div className="w-1/2 border-r border-gray-200 flex flex-col overflow-hidden">
+        <div className="w-1/2 border-r border-da-border flex flex-col overflow-hidden">
           {/* Zoom toolbar */}
-          <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-gray-100 bg-gray-50">
-            <span className="text-xs font-semibold text-gray-600 mr-1">Zoom:</span>
+          <div className="shrink-0 flex items-center gap-2 px-4 py-2 border-b border-da-border bg-da-hover">
+            <span className="text-xs font-semibold text-da-muted mr-1">Zoom:</span>
             <button
               type="button"
               onClick={() => setZoom((z) => Math.max(25, z - 25))}
-              className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-sm flex items-center justify-center transition-colors"
+              className="w-6 h-6 rounded bg-da-hover hover:bg-da-border/50 text-da-text font-bold text-sm flex items-center justify-center transition-colors"
             >−</button>
-            <span className="text-xs font-mono w-12 text-center text-gray-700">{zoom}%</span>
+            <span className="text-xs font-mono w-12 text-center text-da-text">{zoom}%</span>
             <button
               type="button"
               onClick={() => setZoom((z) => Math.min(400, z + 25))}
-              className="w-6 h-6 rounded bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold text-sm flex items-center justify-center transition-colors"
+              className="w-6 h-6 rounded bg-da-hover hover:bg-da-border/50 text-da-text font-bold text-sm flex items-center justify-center transition-colors"
             >+</button>
-            <button type="button" onClick={() => setZoom(100)} className="text-xs text-gray-400 hover:text-gray-600 ml-2 underline">Reset</button>
-            <span className="ml-auto text-xs text-gray-400">{qImages.length}Q · {msImages.length}MS</span>
+            <button type="button" onClick={() => setZoom(100)} className="text-xs text-da-muted hover:text-da-text ml-2 underline">Reset</button>
+            <span className="ml-auto text-xs text-da-muted">{qImages.length}Q · {msImages.length}MS</span>
           </div>
           {/* Scrollable images */}
-          <div className="flex-1 overflow-auto p-4 bg-gray-50">
+          <div className="flex-1 overflow-auto p-4 bg-da-hover">
             {qImages.length === 0 && msImages.length === 0 ? (
-              <div className="text-center text-gray-400 text-sm mt-16">No images loaded</div>
+              <div className="text-center text-da-muted text-sm mt-16">No images loaded</div>
             ) : (
               <>
                 {qImages.length > 0 && (
                   <div className="mb-6">
-                    <p className="text-xs font-bold text-blue-700 uppercase tracking-wide mb-2">Question</p>
+                    <p className="text-xs font-bold text-blue-300 uppercase tracking-wide mb-2">Question</p>
                     <div className="space-y-3">
                       {qImages.map((img) => img.url ? (
-                        <img key={img.id} src={img.url} alt={img.alt_text ?? "Question image"} style={{ width: `${zoom}%` }} className="block rounded shadow-sm border border-gray-200" />
+                        <img key={img.id} src={img.url} alt={img.alt_text ?? "Question image"} style={{ width: `${zoom}%` }} className="block rounded shadow-sm border border-da-border" />
                       ) : null)}
                     </div>
                   </div>
                 )}
                 {msImages.length > 0 && (
                   <div>
-                    <p className="text-xs font-bold text-green-700 uppercase tracking-wide mb-2">Mark Scheme</p>
+                    <p className="text-xs font-bold text-green-300 uppercase tracking-wide mb-2">Mark Scheme</p>
                     <div className="space-y-3">
                       {msImages.map((img) => img.url ? (
-                        <img key={img.id} src={img.url} alt={img.alt_text ?? "Markscheme image"} style={{ width: `${zoom}%` }} className="block rounded shadow-sm border border-gray-200" />
+                        <img key={img.id} src={img.url} alt={img.alt_text ?? "Markscheme image"} style={{ width: `${zoom}%` }} className="block rounded shadow-sm border border-da-border" />
                       ) : null)}
                     </div>
                   </div>
@@ -526,7 +526,7 @@ export function ExtractionReviewModal({
         <div className="w-1/2 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto px-6 py-4">{stepContent}</div>
           <div className="px-6 pb-3 shrink-0">
-            <button type="button" onClick={() => setShowDebug((v) => !v)} className="text-xs text-gray-400 hover:text-gray-600 underline">
+            <button type="button" onClick={() => setShowDebug((v) => !v)} className="text-xs text-da-muted hover:text-da-text underline">
               {showDebug ? "Hide" : "Show"} troubleshooting info
             </button>
             {showDebug && (

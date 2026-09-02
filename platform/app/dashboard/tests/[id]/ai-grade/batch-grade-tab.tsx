@@ -46,9 +46,9 @@ interface SplitResultRow {
 }
 
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
-  high: "bg-green-100 text-green-800 border-green-300",
-  medium: "bg-amber-100 text-amber-800 border-amber-300",
-  low: "bg-red-100 text-red-800 border-red-300",
+  high: "bg-green-500/15 text-green-300 border-green-400/40",
+  medium: "bg-amber-500/15 text-amber-300 border-amber-400/40",
+  low: "bg-red-500/15 text-red-300 border-red-400/40",
 };
 
 /** Editable row shape for the review table — one per detected student. */
@@ -360,20 +360,20 @@ export function BatchGradeTab({
       />
 
       {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300">
           {error}
         </div>
       )}
       {statusLine && (
-        <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-3 text-sm text-blue-300">
           {statusLine}
         </div>
       )}
 
       {!batch && (
-        <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-gray-900">Upload a batch scan</h2>
-          <p className="mt-1 text-sm text-gray-500">
+        <section className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
+          <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
+          <p className="mt-1 text-sm text-da-muted">
             One PDF covering multiple students, each starting with a cover page bearing their
             name. Overflow work on loose paper doesn&apos;t need to stay next to its owner —
             the model looks for self-labelled continuation pages anywhere in the document.
@@ -383,7 +383,7 @@ export function BatchGradeTab({
             type="button"
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
-            className="mt-4 rounded-lg border border-purple-300 bg-purple-50 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+            className="mt-4 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
           >
             {uploading ? uploadProgress ?? "Working…" : "Upload batch scan"}
           </button>
@@ -391,13 +391,13 @@ export function BatchGradeTab({
       )}
 
       {batch && (
-        <section className="rounded-xl border border-gray-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-3">
+        <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
             <div>
-              <h2 className="text-lg font-bold text-gray-900">
+              <h2 className="text-lg font-bold text-da-text">
                 {batch.file_name} — {batch.page_count} pages
               </h2>
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-da-muted">
                 Confirm which pages belong to which student. Matched names are pre-filled from
                 the class roster — check every low-confidence row before splitting.
               </p>
@@ -406,7 +406,7 @@ export function BatchGradeTab({
               <button
                 type="button"
                 onClick={reset}
-                className="rounded border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
               >
                 Start over
               </button>
@@ -427,18 +427,18 @@ export function BatchGradeTab({
           </div>
 
           {unclaimedPages.length > 0 && !splitResults && (
-            <div className="border-b border-amber-100 bg-amber-50 px-5 py-2 text-xs text-amber-800">
+            <div className="border-b border-amber-400/40 bg-amber-500/15 px-5 py-2 text-xs text-amber-300">
               ⚠ Page(s) {formatPageList(unclaimedPages)} aren&apos;t assigned to any row yet.
             </div>
           )}
           {rowsWithConflicts.size > 0 && !splitResults && (
-            <div className="border-b border-red-100 bg-red-50 px-5 py-2 text-xs text-red-700">
+            <div className="border-b border-red-400/40 bg-red-500/15 px-5 py-2 text-xs text-red-300">
               ⚠ Some pages are claimed by more than one row — fix the page ranges before
               splitting.
             </div>
           )}
           {duplicateStudentGroups.length > 0 && !splitResults && (
-            <div className="space-y-1 border-b border-red-100 bg-red-50 px-5 py-2 text-xs text-red-700">
+            <div className="space-y-1 border-b border-red-400/40 bg-red-500/15 px-5 py-2 text-xs text-red-300">
               {duplicateStudentGroups.map(([studentId, keys]) => {
                 const name = students.find((st) => st.profile_id === studentId)?.display_name ?? "This student";
                 return (
@@ -450,7 +450,7 @@ export function BatchGradeTab({
                     <button
                       type="button"
                       onClick={() => mergeDuplicates(studentId)}
-                      className="rounded border border-red-300 bg-white px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                      className="rounded border border-red-400/40 bg-da-surface px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-red-500/25"
                     >
                       Merge into one row
                     </button>
@@ -463,7 +463,7 @@ export function BatchGradeTab({
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
                   <th className="px-4 py-2 font-semibold">Name on cover page</th>
                   <th className="px-2 py-2 font-semibold">Pages</th>
                   <th className="px-2 py-2 font-semibold">Matched student</th>
@@ -477,15 +477,15 @@ export function BatchGradeTab({
                   const duplicateStudent = duplicateRowKeys.has(r.key);
                   const result = splitResults?.find((sr) => sr.studentId === r.studentId);
                   return (
-                    <tr key={r.key} className="border-b border-gray-100">
+                    <tr key={r.key} className="border-b border-da-border">
                       <td className="px-4 py-2">
                         <input
                           value={r.label}
                           onChange={(e) => updateRow(r.key, { label: e.target.value })}
                           disabled={!!splitResults}
-                          className="w-40 rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-gray-50"
+                          className="w-40 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover"
                         />
-                        {r.note && <p className="mt-0.5 text-xs text-gray-400">{r.note}</p>}
+                        {r.note && <p className="mt-0.5 text-xs text-da-muted">{r.note}</p>}
                       </td>
                       <td className="px-2 py-2">
                         <input
@@ -493,8 +493,8 @@ export function BatchGradeTab({
                           onChange={(e) => updateRow(r.key, { pages: parsePageList(e.target.value) })}
                           disabled={!!splitResults}
                           placeholder="e.g. 1-8"
-                          className={`w-28 rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-gray-50 ${
-                            conflicted ? "border-red-400" : "border-gray-300"
+                          className={`w-28 rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover ${
+                            conflicted ? "border-red-400" : "border-da-border"
                           }`}
                         />
                       </td>
@@ -503,8 +503,8 @@ export function BatchGradeTab({
                           value={r.studentId}
                           onChange={(e) => updateRow(r.key, { studentId: e.target.value })}
                           disabled={!!splitResults}
-                          className={`rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-gray-50 ${
-                            duplicateStudent ? "border-red-400" : "border-gray-300"
+                          className={`rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover ${
+                            duplicateStudent ? "border-red-400" : "border-da-border"
                           }`}
                         >
                           <option value="">— pick a student —</option>
@@ -525,14 +525,14 @@ export function BatchGradeTab({
                       <td className="px-2 py-2">
                         {result ? (
                           result.status === "complete" ? (
-                            <span className="text-xs text-green-700">
+                            <span className="text-xs text-green-300">
                               graded {result.suggestedTotal}/{result.maxTotal}
                               {typeof result.testTotalMarks === "number" &&
                                 result.testTotalMarks !== result.maxTotal &&
                                 ` of ${result.testTotalMarks} total`}
                             </span>
                           ) : (
-                            <span className="text-xs text-red-600" title={result.error}>
+                            <span className="text-xs text-red-300" title={result.error}>
                               failed
                             </span>
                           )
@@ -541,7 +541,7 @@ export function BatchGradeTab({
                             <button
                               type="button"
                               onClick={() => removeRow(r.key)}
-                              className="text-xs text-red-400 hover:text-red-600"
+                              className="text-xs text-red-400 hover:text-red-200"
                             >
                               Remove
                             </button>
@@ -556,15 +556,15 @@ export function BatchGradeTab({
           </div>
 
           {!splitResults && (
-            <div className="border-t border-gray-100 px-5 py-3">
-              <button type="button" onClick={addRow} className="text-sm text-purple-600 hover:underline">
+            <div className="border-t border-da-border px-5 py-3">
+              <button type="button" onClick={addRow} className="text-sm text-purple-300 hover:underline">
                 + Add a student row (for a page the model missed)
               </button>
             </div>
           )}
 
           {splitResults && (
-            <div className="border-t border-gray-100 px-5 py-3 text-sm text-gray-600">
+            <div className="border-t border-da-border px-5 py-3 text-sm text-da-muted">
               Graded scripts are staged for review. Switch to the{" "}
               <span className="font-semibold">Individual</span> tab and open each student&apos;s
               &quot;Review →&quot; to check and accept their marks.

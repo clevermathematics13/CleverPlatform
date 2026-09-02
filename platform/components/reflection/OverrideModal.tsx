@@ -89,7 +89,7 @@ export function OverrideModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-xl">
+      <div className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-lg bg-da-surface p-6 shadow-xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold">
             Override Scores — {studentName}
@@ -97,7 +97,7 @@ export function OverrideModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600"
+            className="text-da-muted hover:text-da-text"
           >
             ✕
           </button>
@@ -105,7 +105,7 @@ export function OverrideModal({
 
         {step === "auth" && (
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-da-muted">
               Enter your teacher password to override this student&apos;s
               self-assessment scores.
             </p>
@@ -114,10 +114,10 @@ export function OverrideModal({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Teacher password"
-              className="w-full rounded border border-gray-300 px-3 py-2"
+              className="w-full rounded border border-da-border px-3 py-2"
               autoComplete="current-password"
             />
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-red-300">{error}</p>}
             <div className="flex gap-2">
               <button
                 type="button"
@@ -130,7 +130,7 @@ export function OverrideModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded border border-da-border px-4 py-2 text-sm hover:bg-da-hover"
               >
                 Cancel
               </button>
@@ -142,7 +142,7 @@ export function OverrideModal({
           <div className="space-y-4">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b bg-gray-50">
+                <tr className="border-b bg-da-hover">
                   <th className="px-3 py-2 text-left">Question</th>
                   <th className="px-3 py-2 text-center">Max</th>
                   <th className="px-3 py-2 text-center">Self Marks</th>
@@ -175,7 +175,7 @@ export function OverrideModal({
                             [item.test_item_id]: val,
                           }));
                         }}
-                        className="w-16 rounded border border-gray-300 px-2 py-1 text-center"
+                        className="w-16 rounded border border-da-border px-2 py-1 text-center"
                       />
                     </td>
                   </tr>
@@ -183,7 +183,7 @@ export function OverrideModal({
               </tbody>
             </table>
 
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-sm text-red-300">{error}</p>}
 
             <div className="flex gap-2">
               <button
@@ -197,7 +197,7 @@ export function OverrideModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="rounded border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                className="rounded border border-da-border px-4 py-2 text-sm hover:bg-da-hover"
               >
                 Cancel
               </button>

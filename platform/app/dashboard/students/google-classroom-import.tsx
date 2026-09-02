@@ -139,32 +139,32 @@ export function GoogleClassroomImport({
   }
 
   return (
-    <div className="mt-10 rounded-xl border border-gray-200 bg-white">
+    <div className="mt-10 rounded-xl border border-da-border bg-da-surface">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4">
         <span className="text-lg">📥</span>
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">
+          <h2 className="text-sm font-semibold text-da-text">
             Import from Google Classroom
           </h2>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-da-muted">
             Pull student rosters from your Google Classroom courses
           </p>
         </div>
       </div>
 
-      <div className="border-t border-gray-200 px-6 py-4 space-y-4">
+      <div className="border-t border-da-border px-6 py-4 space-y-4">
           {/* Step 1: Connect */}
           {!connected ? (
             <div>
-              <p className="text-sm text-gray-600 mb-3">
+              <p className="text-sm text-da-muted mb-3">
                 Sign in with your school Google account to access your Classroom
                 rosters.
               </p>
               <button
                 type="button"
                 onClick={handleConnect}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg border border-da-border bg-da-surface px-4 py-2 text-sm font-medium text-da-text shadow-sm hover:bg-da-hover transition-colors"
               >
                 <svg className="h-4 w-4" viewBox="0 0 24 24">
                   <path
@@ -191,14 +191,14 @@ export function GoogleClassroomImport({
             <>
               {/* Connected state */}
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-2.5 py-0.5 text-xs font-medium text-green-300">
                   <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
                   Connected to Google Classroom
                 </span>
                 <button
                   type="button"
                   onClick={handleDisconnect}
-                  className="text-xs text-gray-500 hover:text-gray-700"
+                  className="text-xs text-da-muted hover:text-da-text"
                 >
                   Disconnect
                 </button>
@@ -206,22 +206,22 @@ export function GoogleClassroomImport({
 
               {/* Step 2: Select Google Classroom course */}
               {loading ? (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-da-muted">
                   Loading your courses...
                 </p>
               ) : gcCourses.length === 0 ? (
-                <p className="text-sm text-gray-500">
+                <p className="text-sm text-da-muted">
                   No active courses found in your Google Classroom.
                 </p>
               ) : (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-da-text mb-1">
                     Google Classroom Course
                   </label>
                   <select
                     value={selectedCourseId}
                     onChange={(e) => handleSelectGcCourse(e.target.value)}
-                    className="block w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="block w-full max-w-md rounded-lg border border-da-border px-3 py-2 text-sm text-da-text shadow-sm focus:border-blue-500 text-da-text focus:outline-none focus:ring-1 focus:ring-blue-500"
                   >
                     <option value="">Select a course...</option>
                     {gcCourses.map((c) => (
@@ -236,43 +236,43 @@ export function GoogleClassroomImport({
 
               {/* Step 3: Select students */}
               {loadingStudents && (
-                <p className="text-sm text-gray-500">Loading students...</p>
+                <p className="text-sm text-da-muted">Loading students...</p>
               )}
 
               {gcStudents.length > 0 && (
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-gray-700">
+                    <label className="block text-sm font-medium text-da-text">
                       Students ({selectedEmails.size} / {gcStudents.length}{" "}
                       selected)
                     </label>
                     <button
                       type="button"
                       onClick={toggleAll}
-                      className="text-xs text-blue-600 hover:text-blue-800"
+                      className="text-xs text-blue-300 hover:text-blue-200"
                     >
                       {selectedEmails.size === gcStudents.length
                         ? "Deselect all"
                         : "Select all"}
                     </button>
                   </div>
-                  <div className="max-h-60 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100">
+                  <div className="max-h-60 overflow-y-auto rounded-lg border border-da-border divide-y divide-da-border">
                     {gcStudents.map((student) => (
                       <label
                         key={student.userId}
-                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 cursor-pointer"
+                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-da-hover cursor-pointer"
                       >
                         <input
                           type="checkbox"
                           checked={selectedEmails.has(student.email)}
                           onChange={() => toggleEmail(student.email)}
-                          className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          className="h-4 w-4 rounded border-da-border text-blue-300 focus:ring-blue-500"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-gray-900 truncate">
+                          <p className="text-sm font-medium text-da-text truncate">
                             {student.fullName}
                           </p>
-                          <p className="text-xs text-gray-500 truncate">
+                          <p className="text-xs text-da-muted truncate">
                             {student.email}
                           </p>
                         </div>
@@ -283,13 +283,13 @@ export function GoogleClassroomImport({
                   {/* Step 4: Target course + import */}
                   <div className="mt-4 flex flex-wrap items-end gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-medium text-da-text mb-1">
                         Import into CleverPlatform course
                       </label>
                       <select
                         value={targetCourseId}
                         onChange={(e) => setTargetCourseId(e.target.value)}
-                        className="block w-48 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className="block w-48 rounded-lg border border-da-border px-3 py-2 text-sm text-da-text shadow-sm focus:border-blue-500 text-da-text focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
                         <option value="">Select course...</option>
                         {courses.map((c) => (
@@ -320,7 +320,7 @@ export function GoogleClassroomImport({
               {/* Result */}
               {result && (
                 <div
-                  className={`rounded-lg p-3 text-sm ${result.error ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}
+                  className={`rounded-lg p-3 text-sm ${result.error ? "bg-red-500/15 text-red-300" : "bg-green-500/15 text-green-300"}`}
                 >
                   {result.error ? (
                     <p>{result.error}</p>
@@ -334,7 +334,7 @@ export function GoogleClassroomImport({
                         {" "}They&apos;ll be fully activated when they first log in.
                       </p>
                       {result.errors && result.errors.length > 0 && (
-                        <ul className="mt-1 list-disc pl-5 text-xs text-amber-700">
+                        <ul className="mt-1 list-disc pl-5 text-xs text-amber-300">
                           {result.errors.map((e, i) => (
                             <li key={i}>{e}</li>
                           ))}

@@ -82,7 +82,7 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
       </div>
 
       {globalError && (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700">
+        <p className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-2 text-sm text-red-300">
           {globalError}
         </p>
       )}
@@ -120,10 +120,10 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                 </div>
               ) : deletingId === course.id ? (
                 <div className="p-5 flex-1">
-                  <p className="text-sm font-medium text-gray-900 mb-1">
+                  <p className="text-sm font-medium text-da-text mb-1">
                     Delete &ldquo;{course.name}&rdquo;?
                   </p>
-                  <p className="text-xs text-gray-500 mb-4">
+                  <p className="text-xs text-da-muted mb-4">
                     This will remove the course and unenroll all {course.studentCount} student
                     {course.studentCount !== 1 ? "s" : ""}. This cannot be undone.
                   </p>
@@ -147,10 +147,10 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                 </div>
               ) : archivingId === course.id ? (
                 <div className="p-5 flex-1">
-                  <p className="text-sm font-medium text-gray-900 mb-1">
+                  <p className="text-sm font-medium text-da-text mb-1">
                     Archive &ldquo;{course.name}&rdquo;?
                   </p>
-                  <p className="text-xs text-gray-500 mb-4">
+                  <p className="text-xs text-da-muted mb-4">
                     This hides the course and its {course.studentCount} student
                     {course.studentCount !== 1 ? "s" : ""} from Students, Gradebook, and other
                     pickers. Nothing is deleted — you can unarchive it anytime from Archived
@@ -192,7 +192,7 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                         <button
                           type="button"
                           onClick={() => { setArchivingId(course.id); setEditingId(null); setDeletingId(null); setShowCreate(false); }}
-                          className="rounded p-1 text-da-muted hover:bg-amber-900/25 hover:text-amber-300 transition-colors"
+                          className="rounded p-1 text-da-muted hover:bg-amber-900/25 hover:text-amber-200 transition-colors"
                           title="Archive course"
                         >
                           🗄️
@@ -200,7 +200,7 @@ export function CourseList({ courses }: { courses: CourseRow[] }) {
                         <button
                           type="button"
                           onClick={() => { setDeletingId(course.id); setEditingId(null); setArchivingId(null); setShowCreate(false); }}
-                          className="rounded p-1 text-da-muted hover:bg-red-900/25 hover:text-red-300 transition-colors"
+                          className="rounded p-1 text-da-muted hover:bg-red-900/25 hover:text-red-200 transition-colors"
                           title="Delete"
                         >
                           🗑️
@@ -287,7 +287,7 @@ function CourseForm({
           onChange={(e) => setName(e.target.value)}
           required
           placeholder="e.g. IBDP AAHL"
-          className="mt-1 block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+          className="mt-1 block w-full rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm font-medium text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
           autoFocus
         />
       </div>
@@ -298,7 +298,7 @@ function CourseForm({
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           placeholder="Optional — e.g. IB Analysis & Approaches Higher Level"
-          className="mt-1 block w-full rounded-lg border border-da-border bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
+          className="mt-1 block w-full rounded-lg border border-da-border bg-da-surface px-3 py-2 text-sm font-medium text-da-text shadow-sm focus:border-da-accent focus:outline-none focus:ring-1 focus:ring-da-accent"
         />
       </div>
       <div className="flex gap-2 pt-1">

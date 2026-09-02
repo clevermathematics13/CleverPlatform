@@ -93,15 +93,15 @@ export function PartEditor({
   const marks = part.marks != null ? ` [${part.marks} mark${part.marks !== 1 ? "s" : ""}]` : "";
 
   return (
-    <div className="border border-gray-200 rounded-lg overflow-hidden">
+    <div className="border border-da-border rounded-lg overflow-hidden">
       {/* Part header */}
-      <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200">
-        <span className="font-semibold text-sm text-gray-800">
+      <div className="flex items-center gap-3 px-4 py-2 bg-da-hover border-b border-da-border">
+        <span className="font-semibold text-sm text-da-text">
           {label}
-          <span className="text-gray-400 font-normal">{marks}</span>
+          <span className="text-da-muted font-normal">{marks}</span>
         </span>
         {part.latex_verified && (
-          <span className="ml-auto text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+          <span className="ml-auto text-xs bg-green-500/15 text-green-300 px-2 py-0.5 rounded-full font-medium">
             ✓ Verified
           </span>
         )}
@@ -112,7 +112,7 @@ export function PartEditor({
         {editing ? (
           <textarea
             name={`${part.id}-${activeField}`}
-            className="w-full border border-gray-300 rounded-md p-2 font-mono text-sm resize-y min-h-32 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="w-full border border-da-border rounded-md p-2 font-mono text-sm resize-y min-h-32 text-da-text focus:outline-none focus:ring-2 focus:ring-blue-400"
             value={draft[activeField]}
             onChange={(e) =>
               setDraft((d) => ({ ...d, [activeField]: e.target.value }))
@@ -123,7 +123,7 @@ export function PartEditor({
             {draft[activeField] ? (
               <LatexRenderer latex={draft[activeField]} graphImageUrl={pageImageUrl} />
             ) : (
-              <span className="text-gray-400 italic">No LaTeX content</span>
+              <span className="text-da-muted italic">No LaTeX content</span>
             )}
           </div>
         )}
@@ -140,7 +140,7 @@ export function PartEditor({
               </button>
               <button
                 onClick={() => setEditing(false)}
-                className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+                className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
               >
                 Cancel
               </button>
@@ -148,7 +148,7 @@ export function PartEditor({
           ) : (
             <button
               onClick={() => setEditing(true)}
-              className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+              className="px-3 py-1.5 bg-da-hover text-da-text rounded text-xs font-medium hover:bg-da-border/50"
             >
               Edit LaTeX
             </button>
@@ -156,7 +156,7 @@ export function PartEditor({
         </div>
 
         {/* Claude correction row */}
-        <div className="flex gap-2 pt-1 border-t border-gray-100">
+        <div className="flex gap-2 pt-1 border-t border-da-border">
           <input
             name={`claude-instruction-${part.id}-${activeField}`}
             type="text"
@@ -164,7 +164,7 @@ export function PartEditor({
             value={claudeInstruction}
             onChange={(e) => setClaudeInstruction(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runClaude()}
-            className="flex-1 border border-gray-300 rounded-md px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-purple-400"
+            className="flex-1 border border-da-border rounded-md px-3 py-1.5 text-xs text-da-text focus:outline-none focus:ring-2 focus:ring-purple-400"
           />
           <button
             onClick={runClaude}

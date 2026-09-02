@@ -164,7 +164,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
           <button
             type="button"
             onClick={() => setShowImport(true)}
-            className="rounded-lg border border-purple-300 bg-purple-50 px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-100"
+            className="rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25"
           >
             Import from PPQ Bank
           </button>
@@ -183,25 +183,25 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
 
       {/* Create form */}
       {showCreate && (
-        <div className="rounded-xl border-2 border-blue-300 bg-blue-50 p-5 space-y-4">
-          <h2 className="font-bold text-blue-900 text-lg">New Test</h2>
+        <div className="rounded-xl border-2 border-blue-400/40 bg-blue-500/15 p-5 space-y-4">
+          <h2 className="font-bold text-blue-300 text-lg">New Test</h2>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-gray-600 uppercase">Test Name *</span>
+              <span className="text-xs font-semibold text-da-muted uppercase">Test Name *</span>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Paper 1 November 2024"
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+                className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-gray-600 uppercase">Class *</span>
+              <span className="text-xs font-semibold text-da-muted uppercase">Class *</span>
               <select
                 value={courseId}
                 onChange={(e) => setCourseId(e.target.value)}
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+                className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
               >
                 {courses.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -209,21 +209,21 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
               </select>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-gray-600 uppercase">Date</span>
+              <span className="text-xs font-semibold text-da-muted uppercase">Date</span>
               <input
                 type="date"
                 value={testDate}
                 onChange={(e) => setTestDate(e.target.value)}
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+                className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-gray-600 uppercase">Exam Time</span>
+              <span className="text-xs font-semibold text-da-muted uppercase">Exam Time</span>
               <input
                 type="time"
                 value={testTime}
                 onChange={(e) => setTestTime(e.target.value)}
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+                className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
               />
             </label>
           </div>
@@ -231,33 +231,33 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
           {/* Document URLs */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-gray-600 uppercase">Exam Paper URL</span>
+              <span className="text-xs font-semibold text-da-muted uppercase">Exam Paper URL</span>
               <input
                 type="url"
                 value={paperUrl}
                 onChange={(e) => setPaperUrl(e.target.value)}
                 placeholder="https://drive.google.com/file/d/…/view"
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+                className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-gray-600 uppercase">Mark Scheme URL</span>
+              <span className="text-xs font-semibold text-da-muted uppercase">Mark Scheme URL</span>
               <input
                 type="url"
                 value={markSchemeUrl}
                 onChange={(e) => setMarkSchemeUrl(e.target.value)}
                 placeholder="https://drive.google.com/file/d/…/view"
-                className="rounded border border-gray-300 px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
+                className="rounded border border-da-border px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-400"
               />
             </label>
           </div>
 
           {/* Items table */}
           <div className="space-y-2">
-            <h3 className="font-semibold text-blue-900 text-sm">Questions</h3>
+            <h3 className="font-semibold text-blue-300 text-sm">Questions</h3>
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-blue-100 text-blue-900 text-left">
+                <tr className="bg-blue-500/15 text-blue-300 text-left">
                   <th className="px-2 py-1 rounded-tl font-semibold">Q #</th>
                   <th className="px-2 py-1 font-semibold">Part</th>
                   <th className="px-2 py-1 font-semibold">Max</th>
@@ -279,7 +279,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                           })
                         }
                         placeholder="#"
-                        className="w-14 rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
+                        className="w-14 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
                       />
                     </td>
                     <td className="px-1 py-1">
@@ -287,7 +287,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                         value={item.part_label}
                         onChange={(e) => updateItem(i, { part_label: e.target.value })}
                         placeholder="a"
-                        className="w-14 rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
+                        className="w-14 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
                       />
                     </td>
                     <td className="px-1 py-1">
@@ -301,7 +301,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                           })
                         }
                         placeholder="6"
-                        className="w-14 rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
+                        className="w-14 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
                       />
                     </td>
                     <td className="px-1 py-1">
@@ -314,14 +314,14 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                           })
                         }
                         placeholder={String(i)}
-                        className="w-14 rounded border border-gray-300 px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
+                        className="w-14 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
                       />
                     </td>
                     <td className="px-1 py-1 text-center">
                       <button
                         type="button"
                         onClick={() => removeItem(i)}
-                        className="text-red-400 hover:text-red-600 text-lg leading-none"
+                        className="text-red-400 hover:text-red-200 text-lg leading-none"
                         title="Remove row"
                       >
                         ×
@@ -334,13 +334,13 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
             <button
               type="button"
               onClick={addItem}
-              className="text-sm text-blue-600 hover:underline"
+              className="text-sm text-blue-300 hover:underline"
             >
               + Add question
             </button>
           </div>
 
-          {createError && <p className="text-sm text-red-600">{createError}</p>}
+          {createError && <p className="text-sm text-red-300">{createError}</p>}
 
           <div className="flex gap-2">
             <button
@@ -354,7 +354,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
             <button
               type="button"
               onClick={() => setShowCreate(false)}
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              className="rounded-lg border border-da-border px-4 py-2 text-sm text-da-muted hover:bg-da-hover"
             >
               Cancel
             </button>
@@ -364,7 +364,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
 
       {/* Test list */}
       {tests.length === 0 && !showCreate && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-da-muted">
           No tests yet. Create your first test above.
         </p>
       )}
@@ -380,18 +380,18 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
           return (
             <div
               key={test.id}
-              className="rounded-xl border border-gray-200 bg-white shadow-sm"
+              className="rounded-xl border border-da-border bg-da-surface shadow-sm"
             >
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <div>
-                  <p className="font-bold text-gray-900">{test.name}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="font-bold text-da-text">{test.name}</p>
+                  <p className="text-xs text-da-muted">
                     {test.courses?.name ?? "—"}
                     {test.test_date && ` · ${test.test_date}`}
                     {formattedExamTime(test.exam_time) && ` ${formattedExamTime(test.exam_time)}`}
                     {` · ${test.test_items.length} questions · ${totalMax} marks`}
                   </p>
-                  <label className="mt-1 inline-flex items-center gap-2 text-xs text-gray-600">
+                  <label className="mt-1 inline-flex items-center gap-2 text-xs text-da-muted">
                     <input
                       type="checkbox"
                       checked={test.hidden}
@@ -404,13 +404,13 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                 <div className="flex items-center gap-2">
                   <a
                     href={`/dashboard/reflection?testId=${test.id}`}
-                    className="rounded border border-blue-300 bg-blue-50 px-3 py-1 text-xs text-blue-700 hover:bg-blue-100"
+                    className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs text-blue-300 hover:bg-blue-500/25"
                   >
                     Enter Marks →
                   </a>
                   <a
                     href={`/dashboard/tests/${test.id}/ai-grade`}
-                    className="rounded border border-purple-300 bg-purple-50 px-3 py-1 text-xs text-purple-700 hover:bg-purple-100"
+                    className="rounded border border-purple-400/40 bg-purple-500/15 px-3 py-1 text-xs text-purple-300 hover:bg-purple-500/25"
                   >
                     Mark Scans →
                   </a>
@@ -419,7 +419,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                     onClick={() =>
                       setExpanded(isExpanded ? null : test.id)
                     }
-                    className="rounded border border-gray-200 px-3 py-1 text-xs text-gray-600 hover:bg-gray-50"
+                    className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
                   >
                     {isExpanded ? "▲ Hide" : "▼ Questions"}
                   </button>
@@ -427,7 +427,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                     type="button"
                     onClick={() => handleDelete(test.id)}
                     disabled={isDeleting}
-                    className="rounded border border-red-200 px-3 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    className="rounded border border-red-400/40 px-3 py-1 text-xs text-red-300 hover:bg-red-500/25 disabled:opacity-50"
                   >
                     {isDeleting ? "…" : "Archive"}
                   </button>
@@ -438,7 +438,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                 <div className="border-t px-4 py-3">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="text-left text-gray-500 border-b">
+                      <tr className="text-left text-da-muted border-b">
                         <th className="pb-1 font-semibold">Question</th>
                         <th className="pb-1 font-semibold">Part</th>
                         <th className="pb-1 font-semibold">Max Marks</th>

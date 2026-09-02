@@ -3,6 +3,8 @@
 import { createClient } from "@/lib/supabase/client";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { Logo } from "@/components/brand/Logo";
+import { Sphere } from "@/components/brand/Sphere";
 
 // The PKCE code verifier lives in a cookie shared by every tab on this
 // origin. Starting a sign-in in a second tab overwrites the verifier an
@@ -86,14 +88,23 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-da-bg px-4">
-      <div className="w-full max-w-md space-y-8 rounded-2xl border border-da-border bg-da-surface/90 p-8 shadow-2xl shadow-black/55 wood-surface">
-        {/* Logo / Brand */}
-        <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-da-accent font-serif">
-            CleverPlatform
+    <div className="flex min-h-screen items-center justify-center bg-da-bg px-4 py-10">
+      {/* One focal object, one action. The orb carries the page's visual
+          weight so the form can stay quiet; on narrow screens the orb
+          shrinks and stacks above rather than competing for width. */}
+      <div className="grid w-full max-w-5xl items-center gap-10 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
+        <div className="order-1 flex flex-col items-center gap-8 lg:order-none lg:items-start">
+          <Sphere size={300} className="lg:hidden" />
+          <Sphere size={420} className="hidden lg:block" />
+        </div>
+
+        <div className="order-2 w-full max-w-md justify-self-center space-y-8 rounded-2xl border border-da-border bg-da-surface/90 p-8 shadow-2xl shadow-black/55 wood-surface lg:order-none lg:justify-self-start">
+        {/* Brand */}
+        <div className="flex flex-col items-center gap-3 text-center lg:items-start lg:text-left">
+          <h1 className="text-da-text">
+            <Logo size={34} variant="embossed" />
           </h1>
-          <p className="mt-2 text-sm text-da-muted">
+          <p className="text-sm text-da-muted">
             IBDP Mathematics Learning Platform
           </p>
         </div>
@@ -132,7 +143,7 @@ function LoginForm() {
           <button
             onClick={handleGoogleLogin}
             disabled={signingIn}
-            style={{ backgroundColor: "#c88a1a", color: "#2b1408" }}
+            style={{ backgroundColor: "var(--color-da-accent)", color: "var(--color-da-on-accent)" }}
             className="flex w-full items-center justify-center gap-3 rounded-lg border border-da-accent/40 px-4 py-3 text-sm font-semibold shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface disabled:cursor-not-allowed disabled:opacity-60"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">
@@ -177,6 +188,7 @@ function LoginForm() {
           >
             Register as a parent with your access code
           </a>
+        </div>
         </div>
       </div>
     </div>

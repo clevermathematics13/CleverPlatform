@@ -191,7 +191,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg border border-da-accent/40 bg-da-accent px-4 py-3 text-sm font-semibold text-[#2b1408] shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface disabled:opacity-50"
+            className="w-full rounded-lg border border-da-accent/40 bg-da-accent px-4 py-3 text-sm font-semibold text-da-on-accent shadow-sm transition-colors hover:bg-da-amber focus:outline-none focus:ring-2 focus:ring-da-accent focus:ring-offset-2 focus:ring-offset-da-surface disabled:opacity-50"
           >
             {loading ? "Creating account..." : "Register"}
           </button>

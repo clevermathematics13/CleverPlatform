@@ -63,7 +63,7 @@ export function NameCell({ profileId, invitedId, name }: NameCellProps) {
         onBlur={submit}
         disabled={isPending}
         placeholder="Enter name"
-        className="w-40 rounded border border-blue-300 px-2 py-0.5 text-sm font-medium text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="w-40 rounded border border-blue-400/40 px-2 py-0.5 text-sm font-medium text-da-text focus:outline-none focus:ring-1 focus:ring-blue-500"
       />
     );
   }
@@ -75,11 +75,11 @@ export function NameCell({ profileId, invitedId, name }: NameCellProps) {
       title="Click to edit name"
       className="group flex items-center gap-1 text-left"
     >
-      <span className="text-sm font-medium text-gray-900 group-hover:underline">
+      <span className="text-sm font-medium text-da-text group-hover:underline">
         {saved ?? "Unknown"}
       </span>
       <svg
-        className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="h-3 w-3 text-da-muted opacity-0 group-hover:opacity-100 transition-opacity"
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"

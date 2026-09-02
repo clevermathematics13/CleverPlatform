@@ -10,7 +10,7 @@ export default function UnauthorizedPage() {
         </p>
         <Link
           href="/dashboard"
-          className="inline-block rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-[#2b1408] transition-colors hover:bg-da-amber"
+          className="inline-block rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-da-on-accent transition-colors hover:bg-da-amber"
         >
           Back to Dashboard
         </Link>

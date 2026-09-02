@@ -66,25 +66,25 @@ export function CreatePacketForm() {
         : "Generate & Save to Database";
 
   return (
-    <div className="max-w-2xl mx-auto p-6 mt-10 bg-white shadow-lg rounded-lg">
-      <h1 className="text-2xl font-bold mb-6 text-teal-700">CleverPlatform Generator</h1>
+    <div className="max-w-2xl mx-auto p-6 mt-10 bg-da-surface shadow-lg rounded-lg">
+      <h1 className="text-2xl font-bold mb-6 text-teal-300">CleverPlatform Generator</h1>
 
       <input
         placeholder="Topic (e.g., Topic 4.2 Presentation of Data)"
-        className="w-full p-3 border border-gray-300 rounded mb-4 focus:outline-none focus:border-teal-500"
+        className="w-full p-3 border border-da-border rounded mb-4 focus:outline-none focus:border-teal-500"
         value={topic}
         onChange={(e) => setTopic(e.target.value)}
       />
 
       <textarea
         placeholder="Specific Requirements (e.g., Include a Broken Math Critique about outliers...)"
-        className="w-full p-3 border border-gray-300 rounded mb-4 h-40 focus:outline-none focus:border-teal-500"
+        className="w-full p-3 border border-da-border rounded mb-4 h-40 focus:outline-none focus:border-teal-500"
         value={requirements}
         onChange={(e) => setRequirements(e.target.value)}
       />
 
       {stage === "error" && error && (
-        <div className="mb-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded p-3">
+        <div className="mb-4 text-sm text-red-300 bg-red-500/15 border border-red-400/40 rounded p-3">
           {error}
         </div>
       )}

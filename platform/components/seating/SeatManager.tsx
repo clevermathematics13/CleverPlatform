@@ -270,33 +270,33 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
   const totalSeats = sumSeats(configs);
 
   if (!classGroup) {
-    return <p className="text-gray-500 italic py-4">Select a class group first.</p>;
+    return <p className="text-da-muted italic py-4">Select a class group first.</p>;
   }
   if (loading) {
-    return <p className="text-gray-500 py-4">Loading seat layout…</p>;
+    return <p className="text-da-muted py-4">Loading seat layout…</p>;
   }
 
   return (
     <div className="space-y-4">
       {/* Header and layout controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold text-gray-800">
+        <h3 className="text-sm font-semibold text-da-text">
           Pods for{' '}
-          <span className="text-blue-700">{classGroup}</span>
-          <span className="ml-2 font-normal text-gray-500">
+          <span className="text-da-accent">{classGroup}</span>
+          <span className="ml-2 font-normal text-da-muted">
             ({configs.length} pods · {totalSeats} seats)
           </span>
         </h3>
         <div className="flex flex-wrap gap-2 items-center">
           {/* Layout dropdown */}
-          <span className="text-xs text-gray-500">Layouts:</span>
+          <span className="text-xs text-da-muted">Layouts:</span>
           <select
             value={selectedLayoutId ?? ''}
             onChange={e => {
               const id = e.target.value;
               if (id) handleLoadLayout(id);
             }}
-            className="rounded border border-blue-300 px-2 py-1 text-sm text-blue-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="rounded border border-da-border px-2 py-1 text-sm text-da-text focus:outline-none focus:ring-2 focus:ring-da-accent"
             disabled={layoutLoading || layouts.length === 0}
           >
             {layouts.length === 0 && <option value="">(none saved)</option>}
@@ -312,36 +312,36 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
             <button
               onClick={() => handleDeleteLayout(selectedLayoutId)}
               disabled={deletingLayoutId === selectedLayoutId}
-              className="rounded-lg border border-red-400 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
+              className="rounded-lg border border-da-danger/50 px-3 py-1.5 text-sm font-semibold text-da-danger hover:bg-da-danger/15 disabled:opacity-50"
               style={{ marginLeft: 2 }}
             >
               {deletingLayoutId === selectedLayoutId ? 'Deleting…' : '🗑 Delete'}
             </button>
           )}
-          <span className="text-gray-300">|</span>
+          <span className="text-da-muted">|</span>
           {/* Layout name input and save */}
           <input
             type="text"
             value={layoutName}
             onChange={e => setLayoutName(e.target.value)}
             placeholder="Layout name"
-            className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="rounded border border-da-border px-2 py-1 text-sm text-da-text text-da-text focus:outline-none focus:ring-2 focus:ring-da-accent"
             style={{ width: 120 }}
           />
           <button
             onClick={handleSaveLayout}
             disabled={saving || configs.length === 0 || !layoutName.trim()}
-            className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-lg bg-da-accent px-4 py-1.5 text-sm font-semibold text-da-on-accent hover:bg-da-amber disabled:opacity-50"
           >
             {saving ? 'Saving…' : '💾 Save'}
           </button>
-          <span className="text-gray-300">|</span>
+          <span className="text-da-muted">|</span>
           {/* Copy from another class */}
-          <span className="text-xs text-gray-500">Copy from:</span>
+          <span className="text-xs text-da-muted">Copy from:</span>
           <select
             value={copySource}
             onChange={(e) => setCopySource(e.target.value)}
-            className="rounded border border-gray-300 px-2 py-1 text-sm text-gray-700 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            className="rounded border border-da-border px-2 py-1 text-sm text-da-text text-da-text focus:outline-none focus:ring-2 focus:ring-da-accent"
           >
             {ALL_GROUPS.filter((g) => g !== classGroup).map((g) => (
               <option key={g} value={g}>{g}</option>
@@ -350,13 +350,13 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
           <button
             onClick={handleCopyFrom}
             disabled={copying}
-            className="rounded-lg border border-gray-400 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-100 disabled:opacity-50"
+            className="rounded-lg border border-da-border px-3 py-1.5 text-sm text-da-text hover:bg-da-hover disabled:opacity-50"
           >
             {copying ? 'Copying…' : '📋 Copy Layout'}
           </button>
           <button
             onClick={add}
-            className="rounded-lg border border-gray-400 px-3 py-1.5 text-sm text-gray-800 hover:bg-gray-100"
+            className="rounded-lg border border-da-border px-3 py-1.5 text-sm text-da-text hover:bg-da-hover"
           >
             + Add Pod
           </button>
@@ -364,21 +364,21 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
       </div>
 
       {configs.length === 0 ? (
-        <p className="text-gray-500 italic py-6 text-center">
+        <p className="text-da-muted italic py-6 text-center">
           No pods yet. Click &quot;+ Add Pod&quot; to start building your room layout.
         </p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-300 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-lg border border-da-border bg-da-surface shadow-sm">
           <table className="w-full text-sm">
-            <thead className="bg-gray-100">
+            <thead className="bg-da-hover">
               <tr>
-                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 w-44">
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-da-text w-44">
                   Pod Name
                 </th>
-                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-700 w-32">
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-da-text w-32">
                   Seats
                 </th>
-                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-gray-700">
+                <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-da-text">
                   Layout Preview
                 </th>
                 <th className="px-4 py-2.5 w-12" />
@@ -389,14 +389,14 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
                 const topRoles = SEAT_ROLES[cfg.seat_count].filter((r) => !r.startsWith('B'));
                 const botRoles = SEAT_ROLES[cfg.seat_count].filter((r) => r.startsWith('B'));
                 return (
-                  <tr key={idx} className="border-t border-gray-200 hover:bg-gray-50">
+                  <tr key={idx} className="border-t border-da-border hover:bg-da-hover">
                     {/* Pod ID */}
                     <td className="px-4 py-3">
                       <input
                         type="text"
                         value={cfg.pod_id}
                         onChange={(e) => updateId(idx, e.target.value)}
-                        className="w-full rounded border border-gray-400 px-2 py-1 text-sm font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="w-full rounded border border-da-border px-2 py-1 text-sm font-medium text-da-text focus:outline-none focus:ring-2 focus:ring-da-accent"
                       />
                     </td>
 
@@ -405,7 +405,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
                       <select
                         value={cfg.seat_count}
                         onChange={(e) => updateCount(idx, Number(e.target.value) as SeatCount)}
-                        className="rounded border border-gray-400 px-2 py-1 text-sm text-gray-800 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="rounded border border-da-border px-2 py-1 text-sm text-da-text text-da-text focus:outline-none focus:ring-2 focus:ring-da-accent"
                       >
                         <option value={2}>2 seats</option>
                         <option value={3}>3 seats</option>
@@ -421,7 +421,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
                           {topRoles.map((r) => (
                             <div
                               key={r}
-                              className="w-10 h-8 rounded bg-blue-100 border border-blue-300 flex items-center justify-center text-xs font-bold text-blue-800"
+                              className="w-10 h-8 rounded bg-da-accent/20 border border-da-accent/40 flex items-center justify-center text-xs font-bold text-da-text"
                             >
                               {r}
                             </div>
@@ -433,7 +433,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
                             {botRoles.map((r) => (
                               <div
                                 key={r}
-                                className="w-10 h-8 rounded bg-slate-100 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-700"
+                                className="w-10 h-8 rounded bg-da-hover border border-da-border flex items-center justify-center text-xs font-bold text-da-text"
                               >
                                 {r}
                               </div>
@@ -447,7 +447,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
                     <td className="px-4 py-3 text-center">
                       <button
                         onClick={() => handleRemovePod(idx)}
-                        className="text-red-500 hover:text-red-700 text-lg leading-none"
+                        className="text-da-danger hover:opacity-80 text-lg leading-none"
                         title="Remove pod"
                       >
                         ✕
@@ -461,7 +461,7 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
         </div>
       )}
 
-      <p className="text-xs text-gray-500">
+      <p className="text-xs text-da-muted">
         Seat roles: <strong>L</strong> = left, <strong>R</strong> = right,{' '}
         <strong>B</strong> = back-center (3-seat), <strong>BL/BR</strong> = back-left/right (4-seat).
         Seat IDs are auto-generated as <em>Class-PodName-Role</em> (e.g. <em>9C-Pod A-L</em>).
@@ -475,14 +475,14 @@ export default function SeatManager({ classGroup, onSaved }: Props) {
           {undoStack.map((entry, i) => (
             <div
               key={i}
-              className="flex items-center gap-3 bg-gray-900 text-white px-5 py-3 rounded-xl shadow-2xl text-sm border border-gray-700 pointer-events-auto"
+              className="flex items-center gap-3 bg-da-bg text-white px-5 py-3 rounded-xl shadow-2xl text-sm border border-da-border pointer-events-auto"
             >
               <span>
                 Pod <strong>&ldquo;{entry.pod.pod_id}&rdquo;</strong> deleted
               </span>
               <button
                 onClick={() => handleUndoRemove(entry)}
-                className="rounded bg-yellow-400 text-gray-900 font-bold px-3 py-1 hover:bg-yellow-300 transition-colors"
+                className="rounded bg-da-amber text-da-on-accent font-bold px-3 py-1 hover:bg-da-accent transition-colors"
               >
                 Undo
               </button>

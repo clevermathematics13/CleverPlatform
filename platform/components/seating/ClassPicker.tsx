@@ -17,11 +17,11 @@ export default function ClassPicker({ selected, onChange }: Props) {
 
   return (
     <div className="flex items-center gap-2">
-      <label className="text-sm font-semibold text-gray-800">Class</label>
+      <label className="text-sm font-semibold text-da-text">Class</label>
       <select
         value={selected}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-lg border border-gray-400 px-3 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="rounded-lg border border-da-border px-3 py-1.5 text-sm text-da-text focus:outline-none focus:ring-2 focus:ring-da-accent"
       >
         <option value="">— pick a class —</option>
         {groups.map((g) => (

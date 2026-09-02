@@ -87,13 +87,13 @@ export default function ReviewClient({
       {/* Header */}
       <div className="flex items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">LaTeX Review</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-2xl font-bold text-da-text">LaTeX Review</h1>
+          <p className="text-sm text-da-muted mt-0.5">
             {totalVerified} / {questions.length} questions verified
           </p>
         </div>
         {/* Progress bar */}
-        <div className="flex-1 max-w-xs ml-8 bg-gray-200 rounded-full h-2">
+        <div className="flex-1 max-w-xs ml-8 bg-da-hover rounded-full h-2">
           <div
             className="bg-green-500 h-2 rounded-full transition-all"
             style={{
@@ -122,10 +122,10 @@ export default function ReviewClient({
           placeholder="Search by code…"
           value={codeSearch}
           onChange={(e) => setCodeSearch(e.target.value)}
-          className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm w-56 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          className="border border-da-border rounded-lg px-3 py-1.5 text-sm w-56 text-da-text focus:outline-none focus:ring-2 focus:ring-blue-400"
           suppressHydrationWarning
         />
-        <div className="flex rounded-lg border border-gray-300 overflow-hidden text-sm">
+        <div className="flex rounded-lg border border-da-border overflow-hidden text-sm">
           {(["all", "unverified", "verified"] as const).map((v) => (
             <button
               key={v}
@@ -133,7 +133,7 @@ export default function ReviewClient({
               className={`px-3 py-1.5 capitalize transition-colors ${
                 filterVerified === v
                   ? "bg-blue-600 text-white"
-                  : "bg-white text-gray-600 hover:bg-gray-50"
+                  : "bg-da-surface text-da-muted hover:bg-da-hover"
               }`}
               suppressHydrationWarning
             >
@@ -146,7 +146,7 @@ export default function ReviewClient({
           className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
             filterImages
               ? "bg-indigo-600 text-white border-indigo-600"
-              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              : "bg-da-surface text-da-muted border-da-border hover:bg-da-hover"
           }`}
           suppressHydrationWarning
         >
@@ -157,20 +157,20 @@ export default function ReviewClient({
           className={`px-3 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
             filterNoLatex
               ? "bg-red-600 text-white border-red-600"
-              : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+              : "bg-da-surface text-da-muted border-da-border hover:bg-da-hover"
           }`}
           suppressHydrationWarning
         >
           Missing LaTeX
         </button>
-        <span className="text-sm text-gray-400 self-center">
+        <span className="text-sm text-da-muted self-center">
           Showing {visible.length} of {questions.length}
         </span>
       </div>
 
       {/* Question list */}
       {visible.length === 0 ? (
-        <div className="text-center py-20 text-gray-400">
+        <div className="text-center py-20 text-da-muted">
           <p className="text-lg">No questions match your filters.</p>
           <p className="text-sm mt-1">
             Try switching the filter to <strong>All</strong> or turning off <strong>Has images</strong>.

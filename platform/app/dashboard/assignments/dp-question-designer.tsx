@@ -183,14 +183,14 @@ const SAMPLE_MODULE: CurriculumModule = {
 
 // -- Styles --------------------------------------------------------------------
 const inputClass =
-  "w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
-const labelClass = "block text-xs font-semibold text-gray-700 mb-1";
+  "w-full rounded border border-da-border bg-da-surface px-3 py-2 text-sm text-da-text placeholder:text-da-muted focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500";
+const labelClass = "block text-xs font-semibold text-da-text mb-1";
 const btnPrimary =
   "rounded bg-indigo-600 px-4 py-2 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors";
 const btnSecondary =
-  "rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors";
+  "rounded border border-da-border bg-da-surface px-3 py-1.5 text-xs font-semibold text-da-text hover:bg-da-hover transition-colors";
 const btnDanger =
-  "rounded bg-red-50 px-2 py-1 text-xs text-red-600 hover:bg-red-100 transition-colors";
+  "rounded bg-red-500/15 px-2 py-1 text-xs text-red-300 hover:bg-red-500/25 transition-colors";
 
 // -- Component -----------------------------------------------------------------
 
@@ -423,10 +423,10 @@ export function DPQuestionDesigner() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-indigo-900">
+          <h2 className="text-xl font-bold text-indigo-300">
             🎓 DP Question Designer
           </h2>
-          <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm text-da-muted mt-1">
             Design IB DP curriculum modules powered by DeepSeek AI
           </p>
         </div>
@@ -466,11 +466,11 @@ export function DPQuestionDesigner() {
 
       {/* Error display */}
       {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 p-3 flex items-start justify-between">
-          <p className="text-sm text-red-800 font-medium">{error}</p>
+        <div className="rounded-lg border border-red-400/40 bg-red-500/15 p-3 flex items-start justify-between">
+          <p className="text-sm text-red-300 font-medium">{error}</p>
           <button
             onClick={() => setError(null)}
-            className="text-red-400 hover:text-red-700 ml-2 flex-shrink-0 font-bold"
+            className="text-red-400 hover:text-red-200 ml-2 flex-shrink-0 font-bold"
           >
             ✕
           </button>
@@ -479,12 +479,12 @@ export function DPQuestionDesigner() {
 
       {/* Templates panel */}
       {showTemplates && (
-        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-4">
+        <div className="rounded-lg border border-indigo-400/40 bg-indigo-500/15 p-4">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-bold text-indigo-800">Saved Templates</h3>
+            <h3 className="text-sm font-bold text-indigo-300">Saved Templates</h3>
             <button
               onClick={() => setShowTemplates(false)}
-              className="text-indigo-400 hover:text-indigo-700 text-xs font-bold"
+              className="text-indigo-400 hover:text-indigo-200 text-xs font-bold"
             >
               ✕
             </button>
@@ -511,23 +511,23 @@ export function DPQuestionDesigner() {
 
           {/* Template list */}
           {loadingTemplates && (
-            <p className="text-xs text-gray-500">Loading…</p>
+            <p className="text-xs text-da-muted">Loading…</p>
           )}
           {!loadingTemplates && templates.length === 0 && (
-            <p className="text-xs text-gray-500">No saved templates yet.</p>
+            <p className="text-xs text-da-muted">No saved templates yet.</p>
           )}
           <div className="space-y-1 max-h-64 overflow-y-auto">
             {templates.map((tpl) => (
               <div
                 key={tpl.id}
-                className="flex items-center gap-2 rounded border border-gray-200 bg-white px-3 py-2 hover:border-indigo-300 cursor-pointer"
+                className="flex items-center gap-2 rounded border border-da-border bg-da-surface px-3 py-2 hover:border-indigo-400/40 cursor-pointer"
                 onClick={() => loadTemplate(tpl)}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-gray-800 truncate">
+                  <p className="text-sm font-semibold text-da-text truncate">
                     {tpl.template_name}
                   </p>
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-da-muted">
                     {tpl.curriculum} {tpl.level} ·{" "}
                     {tpl.module
                       ? `${tpl.module.stages.length} stages`
@@ -554,9 +554,9 @@ export function DPQuestionDesigner() {
 
       {/* JSON Editor panel */}
       {showJsonEditor && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 p-4">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-bold text-amber-800">JSON Editor</h3>
+            <h3 className="text-sm font-bold text-amber-300">JSON Editor</h3>
             <button
               onClick={applyJsonEdit}
               className="rounded bg-amber-600 px-3 py-1 text-xs font-bold text-white hover:bg-amber-700"
@@ -568,20 +568,20 @@ export function DPQuestionDesigner() {
             value={editJson}
             onChange={(e) => setEditJson(e.target.value)}
             rows={20}
-            className="w-full rounded border border-amber-300 bg-white p-3 text-xs font-mono text-gray-900"
+            className="w-full rounded border border-amber-400/40 bg-da-surface p-3 text-xs font-mono text-da-text"
             spellCheck={false}
           />
         </div>
       )}
 
       {/* Input Form */}
-      <div className="rounded-lg border border-gray-200 bg-white p-5 space-y-4">
-        <h3 className="text-sm font-bold text-gray-900">Module Configuration</h3>
+      <div className="rounded-lg border border-da-border bg-da-surface p-5 space-y-4">
+        <h3 className="text-sm font-bold text-da-text">Module Configuration</h3>
 
         {/* Course + Tone presets */}
         <div className="flex flex-wrap gap-2">
           <div className="flex items-center gap-1">
-            <span className="text-xs font-semibold text-gray-500 mr-1">
+            <span className="text-xs font-semibold text-da-muted mr-1">
               Quick preset:
             </span>
             {Object.keys(FUNCTION_FAMILY_PRESETS).map((key) => (
@@ -589,7 +589,7 @@ export function DPQuestionDesigner() {
                 key={key}
                 type="button"
                 onClick={() => applyPreset(key)}
-                className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-semibold text-gray-600 hover:bg-indigo-50 hover:border-indigo-300"
+                className="rounded border border-da-border bg-da-surface px-2 py-1 text-xs font-semibold text-da-muted hover:bg-indigo-500/25 hover:border-indigo-400/40"
               >
                 {key.replace("_", " ")}
               </button>
@@ -695,9 +695,9 @@ export function DPQuestionDesigner() {
             {input.functionFamilies.map((fam, idx) => (
               <div
                 key={idx}
-                className="flex items-center gap-1 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-xs"
+                className="flex items-center gap-1 rounded border border-da-border bg-da-hover px-2 py-1 text-xs"
               >
-                <span className="text-gray-400 font-bold">{idx + 1}.</span>
+                <span className="text-da-muted font-bold">{idx + 1}.</span>
                 <input
                   type="text"
                   value={fam}
@@ -706,7 +706,7 @@ export function DPQuestionDesigner() {
                     next[idx] = e.target.value;
                     updateInput({ functionFamilies: next });
                   }}
-                  className="bg-transparent text-gray-800 w-40 focus:outline-none"
+                  className="bg-transparent text-da-text w-40 focus:outline-none"
                 />
                 <button
                   type="button"
@@ -719,7 +719,7 @@ export function DPQuestionDesigner() {
                       stageCount: next.length,
                     });
                   }}
-                  className="text-gray-400 hover:text-red-600 font-bold"
+                  className="text-da-muted hover:text-red-200 font-bold"
                 >
                   ✕
                 </button>
@@ -736,7 +736,7 @@ export function DPQuestionDesigner() {
                   stageCount: input.functionFamilies.length + 1,
                 })
               }
-              className="rounded border border-dashed border-gray-300 px-2 py-1 text-xs text-gray-400 hover:text-indigo-600 hover:border-indigo-400"
+              className="rounded border border-dashed border-da-border px-2 py-1 text-xs text-da-muted hover:text-indigo-200 hover:border-indigo-400"
             >
               + Add
             </button>
@@ -745,36 +745,36 @@ export function DPQuestionDesigner() {
 
         {/* Toggles */}
         <div className="flex flex-wrap gap-4">
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-da-text">
             <input
               type="checkbox"
               checked={input.includeTOKLinks}
               onChange={(e) =>
                 updateInput({ includeTOKLinks: e.target.checked })
               }
-              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="rounded border-da-border text-indigo-300 focus:ring-indigo-500"
             />
             Include TOK links
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-da-text">
             <input
               type="checkbox"
               checked={input.includeExplorationActivities}
               onChange={(e) =>
                 updateInput({ includeExplorationActivities: e.target.checked })
               }
-              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="rounded border-da-border text-indigo-300 focus:ring-indigo-500"
             />
             Include explorations
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
+          <label className="flex items-center gap-2 text-sm text-da-text">
             <input
               type="checkbox"
               checked={input.includeKeyProofs}
               onChange={(e) =>
                 updateInput({ includeKeyProofs: e.target.checked })
               }
-              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              className="rounded border-da-border text-indigo-300 focus:ring-indigo-500"
             />
             Include key proofs
           </label>
@@ -800,10 +800,10 @@ export function DPQuestionDesigner() {
         {/* Raw JSON display (debug) */}
         {rawJson && (
           <details className="mt-2">
-            <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600">
+            <summary className="text-xs text-da-muted cursor-pointer hover:text-da-muted">
               View raw API response
             </summary>
-            <pre className="mt-1 max-h-40 overflow-auto rounded border border-gray-200 bg-gray-50 p-2 text-[10px] text-gray-600 whitespace-pre-wrap">
+            <pre className="mt-1 max-h-40 overflow-auto rounded border border-da-border bg-da-hover p-2 text-[10px] text-da-muted whitespace-pre-wrap">
               {rawJson}
             </pre>
           </details>
@@ -814,27 +814,27 @@ export function DPQuestionDesigner() {
       {module && (
         <div className="space-y-3">
           {/* Module header */}
-          <div className="rounded-lg border-2 border-indigo-300 bg-indigo-50 p-5">
+          <div className="rounded-lg border-2 border-indigo-400/40 bg-indigo-500/15 p-5">
             <div className="flex items-start justify-between">
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="rounded-full bg-indigo-600 text-white text-xs font-bold px-2 py-0.5">
                     {module.course}
                   </span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-da-muted">
                     Grade {module.target_grade_level}
                   </span>
                 </div>
-                <h3 className="text-lg font-bold text-indigo-900">
+                <h3 className="text-lg font-bold text-indigo-300">
                   {module.title}
                 </h3>
                 {module.pedagogical_goal && (
-                  <p className="text-sm text-indigo-700 mt-2 italic">
+                  <p className="text-sm text-indigo-300 mt-2 italic">
                     {module.pedagogical_goal}
                   </p>
                 )}
               </div>
-              <span className="text-xs font-semibold text-indigo-500 bg-indigo-100 rounded px-2 py-1 flex-shrink-0">
+              <span className="text-xs font-semibold text-indigo-500 bg-indigo-500/15 rounded px-2 py-1 flex-shrink-0">
                 {module.stages.length} stages · {module.assessment_tracker}
               </span>
             </div>
@@ -870,8 +870,8 @@ function StageCard({
     <div
       className={`rounded-lg border transition-colors ${
         expanded
-          ? "border-indigo-300 bg-white shadow-sm"
-          : "border-gray-200 bg-white hover:border-indigo-200 cursor-pointer"
+          ? "border-indigo-400/40 bg-da-surface shadow-sm"
+          : "border-da-border bg-da-surface hover:border-indigo-400/40 cursor-pointer"
       }`}
       onClick={() => !expanded && onToggle()}
     >
@@ -882,15 +882,15 @@ function StageCard({
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-bold text-gray-900">
+            <h4 className="text-sm font-bold text-da-text">
               {stage.theme}
             </h4>
-            <span className="text-xs text-indigo-500 font-medium bg-indigo-50 rounded px-1.5 py-0.5">
+            <span className="text-xs text-indigo-500 font-medium bg-indigo-500/15 rounded px-1.5 py-0.5">
               {stage.function_family}
             </span>
           </div>
           {!expanded && (
-            <p className="text-xs text-gray-500 mt-0.5 truncate">
+            <p className="text-xs text-da-muted mt-0.5 truncate">
               {stage.core_vocabulary.slice(0, 4).join(" · ")}
               {stage.core_vocabulary.length > 4 ? " …" : ""}
             </p>
@@ -902,7 +902,7 @@ function StageCard({
             e.stopPropagation();
             onToggle();
           }}
-          className="flex-shrink-0 text-gray-400 hover:text-indigo-600 font-bold text-lg leading-none px-1"
+          className="flex-shrink-0 text-da-muted hover:text-indigo-200 font-bold text-lg leading-none px-1"
         >
           {expanded ? "−" : "+"}
         </button>
@@ -910,18 +910,18 @@ function StageCard({
 
       {/* Expanded details */}
       {expanded && (
-        <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-3">
+        <div className="px-4 pb-4 space-y-4 border-t border-da-border pt-3">
           {/* Core Vocabulary */}
           {stage.core_vocabulary.length > 0 && (
             <div>
-              <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+              <h5 className="text-xs font-bold text-da-muted uppercase tracking-wide mb-1.5">
                 Core Vocabulary
               </h5>
               <div className="flex flex-wrap gap-1">
                 {stage.core_vocabulary.map((term, i) => (
                   <span
                     key={i}
-                    className="rounded-full bg-gray-100 text-gray-700 text-xs px-2 py-0.5 font-medium"
+                    className="rounded-full bg-da-hover text-da-text text-xs px-2 py-0.5 font-medium"
                   >
                     {term}
                   </span>
@@ -933,19 +933,19 @@ function StageCard({
           {/* Key Proofs */}
           {stage.key_proofs.length > 0 && (
             <div>
-              <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+              <h5 className="text-xs font-bold text-da-muted uppercase tracking-wide mb-1.5">
                 Key Proofs
               </h5>
               <div className="space-y-2">
                 {stage.key_proofs.map((proof, i) => (
                   <div
                     key={i}
-                    className="rounded border border-gray-200 bg-gray-50 px-3 py-2"
+                    className="rounded border border-da-border bg-da-hover px-3 py-2"
                   >
-                    <p className="text-sm font-semibold text-gray-800">
+                    <p className="text-sm font-semibold text-da-text">
                       {proof.name}
                     </p>
-                    <p className="text-xs text-gray-600 mt-0.5 leading-relaxed">
+                    <p className="text-xs text-da-muted mt-0.5 leading-relaxed">
                       {proof.description}
                     </p>
                   </div>
@@ -957,34 +957,34 @@ function StageCard({
           {/* Exploration Activity */}
           {stage.exploration_activity && (
             <div>
-              <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+              <h5 className="text-xs font-bold text-da-muted uppercase tracking-wide mb-1.5">
                 Exploration Activity
               </h5>
-              <div className="rounded border border-indigo-200 bg-indigo-50 px-3 py-2 space-y-2">
-                <p className="text-sm font-bold text-indigo-800">
+              <div className="rounded border border-indigo-400/40 bg-indigo-500/15 px-3 py-2 space-y-2">
+                <p className="text-sm font-bold text-indigo-300">
                   {stage.exploration_activity.title}
                 </p>
                 <div>
-                  <span className="text-xs font-bold text-indigo-600">
+                  <span className="text-xs font-bold text-indigo-300">
                     Setup:{" "}
                   </span>
-                  <span className="text-xs text-indigo-800">
+                  <span className="text-xs text-indigo-300">
                     {stage.exploration_activity.setup}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-indigo-600">
+                  <span className="text-xs font-bold text-indigo-300">
                     Task:{" "}
                   </span>
-                  <span className="text-xs text-indigo-800">
+                  <span className="text-xs text-indigo-300">
                     {stage.exploration_activity.task}
                   </span>
                 </div>
                 <div>
-                  <span className="text-xs font-bold text-indigo-600">
+                  <span className="text-xs font-bold text-indigo-300">
                     Rigor:{" "}
                   </span>
-                  <span className="text-xs text-indigo-800">
+                  <span className="text-xs text-indigo-300">
                     {stage.exploration_activity.rigor}
                   </span>
                 </div>
@@ -995,11 +995,11 @@ function StageCard({
           {/* TOK Link */}
           {stage.tok_link && (
             <div>
-              <h5 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+              <h5 className="text-xs font-bold text-da-muted uppercase tracking-wide mb-1.5">
                 TOK Link
               </h5>
-              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2">
-                <p className="text-xs text-amber-900 italic leading-relaxed">
+              <div className="rounded border border-amber-400/40 bg-amber-500/15 px-3 py-2">
+                <p className="text-xs text-amber-300 italic leading-relaxed">
                   {stage.tok_link}
                 </p>
               </div>

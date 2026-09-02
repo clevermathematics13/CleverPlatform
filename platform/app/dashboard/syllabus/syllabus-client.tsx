@@ -27,11 +27,11 @@ const SECTION_NAMES: Record<number, string> = {
 };
 
 const SECTION_COLORS: Record<number, { bg: string; border: string; header: string; check: string }> = {
-  1: { bg: "bg-blue-50", border: "border-blue-200", header: "bg-blue-100 text-blue-900", check: "accent-blue-600" },
-  2: { bg: "bg-purple-50", border: "border-purple-200", header: "bg-purple-100 text-purple-900", check: "accent-purple-600" },
-  3: { bg: "bg-green-50", border: "border-green-200", header: "bg-green-100 text-green-900", check: "accent-green-600" },
-  4: { bg: "bg-orange-50", border: "border-orange-200", header: "bg-orange-100 text-orange-900", check: "accent-orange-600" },
-  5: { bg: "bg-red-50", border: "border-red-200", header: "bg-red-100 text-red-900", check: "accent-red-600" },
+  1: { bg: "bg-blue-500/15", border: "border-blue-400/40", header: "bg-blue-500/15 text-blue-300", check: "accent-blue-600" },
+  2: { bg: "bg-purple-500/15", border: "border-purple-400/40", header: "bg-purple-500/15 text-purple-300", check: "accent-purple-600" },
+  3: { bg: "bg-green-500/15", border: "border-green-400/40", header: "bg-green-500/15 text-green-300", check: "accent-green-600" },
+  4: { bg: "bg-orange-500/15", border: "border-orange-400/40", header: "bg-orange-500/15 text-orange-300", check: "accent-orange-600" },
+  5: { bg: "bg-red-500/15", border: "border-red-400/40", header: "bg-red-500/15 text-red-300", check: "accent-red-600" },
 };
 
 // Detect AH courses (class name contains "AH")
@@ -195,19 +195,19 @@ export function SyllabusClient({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">Syllabus Coverage</h1>
-        <p className="mt-1 text-base font-medium text-blue-700">
+        <h1 className="text-3xl font-extrabold text-blue-300 drop-shadow-sm">Syllabus Coverage</h1>
+        <p className="mt-1 text-base font-medium text-blue-300">
           Track which IB AAHL subtopics have been taught for each class.
         </p>
       </div>
 
       {error && (
-        <div className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 space-y-2">
+        <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300 space-y-2">
           <p className="font-semibold">{error}</p>
           {error.includes("schema cache") && (
             <div className="text-xs space-y-1">
-              <p>The <code className="bg-red-100 px-1 rounded">syllabus_coverage</code> table is missing from your Supabase database. Run this in the <strong>Supabase SQL Editor</strong>:</p>
-              <pre className="mt-1 bg-red-100 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap select-all">{`CREATE TABLE IF NOT EXISTS public.syllabus_coverage (
+              <p>The <code className="bg-red-500/15 px-1 rounded">syllabus_coverage</code> table is missing from your Supabase database. Run this in the <strong>Supabase SQL Editor</strong>:</p>
+              <pre className="mt-1 bg-red-500/15 rounded p-2 text-xs overflow-x-auto whitespace-pre-wrap select-all">{`CREATE TABLE IF NOT EXISTS public.syllabus_coverage (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   course_id UUID NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
   subtopic_code TEXT NOT NULL REFERENCES public.subtopics(code) ON DELETE CASCADE,
@@ -231,7 +231,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
       <div className="flex items-center gap-2 flex-wrap">
         {ahCourses.length > 0 && (
           <>
-            <span className="text-xs font-bold text-gray-500 uppercase tracking-wide mr-1">AH Classes:</span>
+            <span className="text-xs font-bold text-da-muted uppercase tracking-wide mr-1">AH Classes:</span>
             {ahCourses.map((c) => (
               <button
                 key={c.id}
@@ -240,7 +240,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                 className={`rounded-full px-4 py-1.5 text-sm font-bold border-2 transition-colors ${
                   selectedCourseId === c.id
                     ? "bg-indigo-600 border-indigo-600 text-white"
-                    : "border-indigo-300 text-indigo-700 bg-white hover:bg-indigo-50"
+                    : "border-indigo-400/40 text-indigo-300 bg-da-surface hover:bg-indigo-500/25"
                 }`}
               >
                 {c.name}
@@ -250,7 +250,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
         )}
         {otherCourses.length > 0 && (
           <>
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wide ml-3 mr-1">Other:</span>
+            <span className="text-xs font-bold text-da-muted uppercase tracking-wide ml-3 mr-1">Other:</span>
             {otherCourses.map((c) => (
               <button
                 key={c.id}
@@ -258,7 +258,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                 onClick={() => setSelectedCourseId(c.id)}
                 disabled
                 title="AAHL syllabus not yet set up for this class"
-                className="rounded-full px-4 py-1.5 text-sm font-bold border-2 border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed opacity-60"
+                className="rounded-full px-4 py-1.5 text-sm font-bold border-2 border-da-border text-da-muted bg-da-hover cursor-not-allowed opacity-60"
               >
                 {c.name}
               </button>
@@ -268,7 +268,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
       </div>
 
       {!isAH && selectedCourse && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300">
           Syllabus coverage for <strong>{selectedCourse.name}</strong> has not been set up yet. Only AAHL (AH) classes are supported at this time.
         </div>
       )}
@@ -276,16 +276,16 @@ NOTIFY pgrst, 'reload schema';`}</pre>
       {isAH && selectedCourse && (
         <>
           {/* Overall progress bar */}
-          <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4">
+          <div className="rounded-xl border border-indigo-400/40 bg-indigo-500/15 px-5 py-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold text-indigo-900">
+              <span className="text-sm font-bold text-indigo-300">
                 {selectedCourse.name} — Overall Progress
               </span>
-              <span className="text-sm font-semibold text-indigo-700">
+              <span className="text-sm font-semibold text-indigo-300">
                 {tp.done} / {tp.total} subtopics covered
               </span>
             </div>
-            <div className="h-3 rounded-full bg-indigo-200 overflow-hidden">
+            <div className="h-3 rounded-full bg-indigo-500/25 overflow-hidden">
               <div
                 className="h-full rounded-full bg-indigo-500 transition-all duration-300"
                 style={{ width: tp.total ? `${(tp.done / tp.total) * 100}%` : "0%" }}
@@ -294,7 +294,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
           </div>
 
           {loadingCoverage ? (
-            <div className="py-12 text-center text-gray-500 font-medium">Loading coverage…</div>
+            <div className="py-12 text-center text-da-muted font-medium">Loading coverage…</div>
           ) : (
             <div className="space-y-4">
               {[1, 2, 3, 4, 5].map((sectionNum) => {
@@ -334,14 +334,14 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                         <button
                           type="button"
                           onClick={() => markSection(sectionNum, true)}
-                          className="rounded px-2 py-0.5 text-xs font-bold bg-white bg-opacity-60 hover:bg-opacity-100 border border-current transition-colors"
+                          className="rounded px-2 py-0.5 text-xs font-bold bg-da-surface bg-opacity-60 hover:bg-opacity-100 border border-current transition-colors"
                         >
                           ✓ All
                         </button>
                         <button
                           type="button"
                           onClick={() => markSection(sectionNum, false)}
-                          className="rounded px-2 py-0.5 text-xs font-bold bg-white bg-opacity-40 hover:bg-opacity-80 border border-current transition-colors"
+                          className="rounded px-2 py-0.5 text-xs font-bold bg-da-surface bg-opacity-40 hover:bg-opacity-80 border border-current transition-colors"
                         >
                           ✕ None
                         </button>
@@ -349,7 +349,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                     </div>
 
                     {/* Progress bar */}
-                    <div className="h-1.5 bg-white bg-opacity-40">
+                    <div className="h-1.5 bg-da-surface bg-opacity-40">
                       <div
                         className="h-full bg-current opacity-40 transition-all duration-300"
                         style={{ width: `${pct}%` }}
@@ -367,7 +367,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                           <div key={sub.code}>
                             {/* Parent subtopic row */}
                             <label
-                              className={`flex items-start gap-3 px-5 py-2.5 cursor-pointer hover:bg-white hover:bg-opacity-40 transition-colors ${
+                              className={`flex items-start gap-3 px-5 py-2.5 cursor-pointer hover:bg-da-surface hover:bg-opacity-40 transition-colors ${
                                 isCovered ? "opacity-100" : "opacity-80"
                               }`}
                             >
@@ -377,22 +377,22 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                                   checked={isCovered}
                                   disabled={isSaving}
                                   onChange={() => toggleCoverage(sub.code)}
-                                  className={`h-4 w-4 rounded border-gray-300 ${colors.check} disabled:opacity-50`}
+                                  className={`h-4 w-4 rounded border-da-border ${colors.check} disabled:opacity-50`}
                                 />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <span className="text-sm font-bold text-gray-800">
+                                <span className="text-sm font-bold text-da-text">
                                   {sub.code}
                                 </span>
-                                <span className="text-sm text-gray-700 ml-2">
+                                <span className="text-sm text-da-text ml-2">
                                   {sub.descriptor}
                                 </span>
                                 {isSaving && (
-                                  <span className="ml-2 text-xs text-gray-400 italic">saving…</span>
+                                  <span className="ml-2 text-xs text-da-muted italic">saving…</span>
                                 )}
                               </div>
                               {isCovered && (
-                                <span className="text-green-600 text-sm font-bold flex-shrink-0">✓</span>
+                                <span className="text-green-300 text-sm font-bold flex-shrink-0">✓</span>
                               )}
                             </label>
 
@@ -403,7 +403,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                               return (
                                 <label
                                   key={child.code}
-                                  className={`flex items-start gap-3 px-5 py-2 pl-12 cursor-pointer hover:bg-white hover:bg-opacity-40 transition-colors border-t border-white border-opacity-40 ${
+                                  className={`flex items-start gap-3 px-5 py-2 pl-12 cursor-pointer hover:bg-da-surface hover:bg-opacity-40 transition-colors border-t border-white border-opacity-40 ${
                                     childCovered ? "opacity-100" : "opacity-65"
                                   }`}
                                 >
@@ -413,18 +413,18 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                                       checked={childCovered}
                                       disabled={childSaving}
                                       onChange={() => toggleCoverage(child.code)}
-                                      className={`h-3.5 w-3.5 rounded border-gray-300 ${colors.check} disabled:opacity-50`}
+                                      className={`h-3.5 w-3.5 rounded border-da-border ${colors.check} disabled:opacity-50`}
                                     />
                                   </div>
                                   <div className="flex-1 min-w-0">
-                                    <span className="text-xs font-bold text-gray-600">
+                                    <span className="text-xs font-bold text-da-muted">
                                       {child.code}
                                     </span>
-                                    <span className="text-xs text-gray-600 ml-2">
+                                    <span className="text-xs text-da-muted ml-2">
                                       {child.descriptor}
                                     </span>
                                     {childSaving && (
-                                      <span className="ml-2 text-xs text-gray-400 italic">saving…</span>
+                                      <span className="ml-2 text-xs text-da-muted italic">saving…</span>
                                     )}
                                   </div>
                                   {childCovered && (
@@ -446,7 +446,7 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                           return (
                             <label
                               key={sub.code}
-                              className={`flex items-start gap-3 px-5 py-2.5 cursor-pointer hover:bg-white hover:bg-opacity-40 transition-colors ${
+                              className={`flex items-start gap-3 px-5 py-2.5 cursor-pointer hover:bg-da-surface hover:bg-opacity-40 transition-colors ${
                                 isCovered ? "opacity-100" : "opacity-80"
                               }`}
                             >
@@ -456,22 +456,22 @@ NOTIFY pgrst, 'reload schema';`}</pre>
                                   checked={isCovered}
                                   disabled={isSaving}
                                   onChange={() => toggleCoverage(sub.code)}
-                                  className={`h-4 w-4 rounded border-gray-300 ${colors.check} disabled:opacity-50`}
+                                  className={`h-4 w-4 rounded border-da-border ${colors.check} disabled:opacity-50`}
                                 />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <span className="text-sm font-bold text-gray-800">
+                                <span className="text-sm font-bold text-da-text">
                                   {sub.code}
                                 </span>
-                                <span className="text-sm text-gray-700 ml-2">
+                                <span className="text-sm text-da-text ml-2">
                                   {sub.descriptor}
                                 </span>
                                 {isSaving && (
-                                  <span className="ml-2 text-xs text-gray-400 italic">saving…</span>
+                                  <span className="ml-2 text-xs text-da-muted italic">saving…</span>
                                 )}
                               </div>
                               {isCovered && (
-                                <span className="text-green-600 text-sm font-bold flex-shrink-0">✓</span>
+                                <span className="text-green-300 text-sm font-bold flex-shrink-0">✓</span>
                               )}
                             </label>
                           );

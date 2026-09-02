@@ -194,17 +194,17 @@ export function useMarkAttribution(
             onClick={() => setActivePopover(null)}
           />
           <div
-            className="absolute right-0 top-full mt-1 z-50 w-56 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-left"
+            className="absolute right-0 top-full mt-1 z-50 w-56 bg-da-surface border border-da-border rounded-lg shadow-lg p-3 text-left"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-2">
-              <span className="font-mono text-xs font-semibold text-indigo-700">
+              <span className="font-mono text-xs font-semibold text-indigo-300">
                 {displayCode ?? "unassigned"}
               </span>
               <button
                 type="button"
                 onClick={() => setActivePopover(null)}
-                className="text-gray-400 hover:text-gray-600 text-sm leading-none ml-2 shrink-0"
+                className="text-da-muted hover:text-da-text text-sm leading-none ml-2 shrink-0"
               >
                 ×
               </button>
@@ -217,8 +217,8 @@ export function useMarkAttribution(
                   onClick={() => { handleManualSelect(code); setActivePopover(null); }}
                   className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
                     displayCode === code
-                      ? "bg-indigo-50 border-indigo-400 text-indigo-700"
-                      : "border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-600"
+                      ? "bg-indigo-500/15 border-indigo-400 text-indigo-300"
+                      : "border-da-border text-da-muted hover:border-indigo-400/40 hover:text-indigo-200"
                   }`}
                 >
                   {code}
@@ -230,8 +230,8 @@ export function useMarkAttribution(
                   onClick={() => { handleManualSelect(""); setActivePopover(null); }}
                   className={`text-[10px] font-mono px-1.5 py-0.5 rounded border transition-colors ${
                     !displayCode
-                      ? "bg-gray-100 border-gray-400 text-gray-700"
-                      : "border-gray-200 text-gray-400 hover:border-gray-400 hover:text-gray-600"
+                      ? "bg-da-hover border-da-border text-da-text"
+                      : "border-da-border text-da-muted hover:border-da-border hover:text-da-muted"
                   }`}
                 >
                   unassigned
@@ -239,12 +239,12 @@ export function useMarkAttribution(
               )}
             </div>
             {hasRationale ? (
-              <div className="space-y-1 border-t border-gray-100 pt-2">
-                <p className="text-xs text-gray-700 leading-snug">{res!.rationale}</p>
+              <div className="space-y-1 border-t border-da-border pt-2">
+                <p className="text-xs text-da-text leading-snug">{res!.rationale}</p>
                 {res!.evidenceSpan && (
-                  <p className="text-[10px] text-gray-400 italic">&ldquo;{res!.evidenceSpan}&rdquo;</p>
+                  <p className="text-[10px] text-da-muted italic">&ldquo;{res!.evidenceSpan}&rdquo;</p>
                 )}
-                <p className="text-[10px] text-gray-400">
+                <p className="text-[10px] text-da-muted">
                   Confidence: {res!.confidenceBucket}
                 </p>
               </div>
@@ -256,7 +256,7 @@ export function useMarkAttribution(
                 e.stopPropagation();
                 void generateMarkRationale(part, token.id);
               }}
-              className="mt-2 text-[10px] text-indigo-500 hover:text-indigo-700 disabled:opacity-40 flex items-center gap-1"
+              className="mt-2 text-[10px] text-indigo-500 hover:text-indigo-200 disabled:opacity-40 flex items-center gap-1"
             >
               {isLoading
                 ? "Generating…"
@@ -282,12 +282,12 @@ export function useMarkAttribution(
               }}
               className={`font-mono text-[10px] px-1 rounded cursor-pointer transition-colors ${
                 isError
-                  ? "bg-red-50 text-red-400"
+                  ? "bg-red-500/15 text-red-400"
                   : isLoading
-                    ? "bg-gray-100 text-gray-400 animate-pulse"
+                    ? "bg-da-hover text-da-muted animate-pulse"
                     : displayCode
-                      ? "bg-gray-100 hover:bg-indigo-50 text-gray-600 hover:text-indigo-600"
-                      : "bg-gray-50 text-gray-400 hover:bg-indigo-50 hover:text-indigo-500 border border-dashed border-gray-300"
+                      ? "bg-da-hover hover:bg-indigo-500/25 text-da-muted hover:text-indigo-200"
+                      : "bg-da-hover text-da-muted hover:bg-indigo-500/25 hover:text-indigo-500 border border-dashed border-da-border"
               }`}
             >
               {isLoading ? "…" : isError ? "err" : (displayCode ?? "?")}

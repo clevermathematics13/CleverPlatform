@@ -154,7 +154,7 @@ export function ContinuityDigestModal({
     >
       <div
         className="my-8 w-full max-w-2xl rounded-xl border border-da-border shadow-xl"
-        style={{ backgroundColor: "var(--color-da-bg, #160904)" }}
+        style={{ backgroundColor: "var(--color-da-bg)" }}
       >
         <div className="border-b border-da-border px-5 py-3">
           <h2 className="text-sm font-semibold text-da-text">

@@ -301,7 +301,7 @@ function renderWithTermHighlights(
     const isCommand =
       cmdAliasSet.has(tokenNorm) || COMMAND_TERM_SET.has(tokenNorm);
     nodes.push(
-      <span key={`ct-${keyIdx++}`} className={isCommand ? "font-bold text-red-600" : "font-bold text-blue-600"}>
+      <span key={`ct-${keyIdx++}`} className={isCommand ? "font-bold text-red-500" : "font-bold text-blue-500"}>
         {token}
       </span>
     );
@@ -772,7 +772,7 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
         <React.Fragment key={key}>
           <span style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "1em" }}>
             <span>{isMarkCode ? null : renderPieces(group.pieces)}</span>
-            <span style={{ fontStyle: "italic", color: "#374151", flexShrink: 0 }}>
+            <span style={{ fontStyle: "italic", opacity: 0.72, flexShrink: 0 }}>
               {isMarkCode ? `${soleTextPiece} ${markCode}` : markCode}
             </span>
           </span>
@@ -852,10 +852,10 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
             key={`${i}-graph`}
             src={graphImageUrl}
             alt="Graph image"
-            className="block my-2 max-w-full h-auto border border-gray-200 rounded"
+            className="block my-2 max-w-full h-auto border border-da-border rounded"
           />
         ) : (
-          <span key={`${i}-graph-placeholder`} className="text-gray-500 italic">
+          <span key={`${i}-graph-placeholder`} className="italic opacity-70">
             [Graph image]
           </span>
         )
@@ -884,7 +884,11 @@ export default function LatexRenderer({ latex, className, graphImageUrl, stripMa
   });
 
   return (
-    <span className={`text-gray-900 ${className ?? ""}`} style={IB_TEXT_STYLE}>
+    // No colour of its own: this renderer is mounted on the dark app surfaces
+    // AND inside white paper previews (NA sandbox, assignment editor, the
+    // LaTeX visual-check screenshot), so it must inherit the text colour of
+    // whichever container it is in rather than assert one.
+    <span className={className ?? ""} style={IB_TEXT_STYLE}>
       {nodes}
     </span>
   );

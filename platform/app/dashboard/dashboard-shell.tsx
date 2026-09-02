@@ -7,6 +7,7 @@ import type { ViewAsOption } from "@/lib/view-as";
 import { useSearchParams } from "next/navigation";
 import { deriveDashboardView } from "@/lib/dashboard-nav";
 import { MandelbrotBg } from "@/components/MandelbrotBg";
+import { Logo } from "@/components/brand/Logo";
 
 interface NavigationItem {
   href: string;
@@ -121,8 +122,8 @@ export function DashboardShell({
         >
           <MandelbrotBg />
           <div className="relative z-10 flex h-16 items-center border-b border-da-border px-6">
-            <Link href="/dashboard" className="text-xl font-bold text-da-accent font-serif tracking-wide">
-              CleverPlatform
+            <Link href="/dashboard" className="text-da-accent" aria-label="CleverMathematics dashboard">
+              <Logo size={30} variant="embossed" />
             </Link>
           </div>
 

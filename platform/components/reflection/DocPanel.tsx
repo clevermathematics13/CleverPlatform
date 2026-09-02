@@ -51,24 +51,24 @@ export function DocPanel({ title, url, onClose }: DocPanelProps) {
       <div
         role="dialog"
         aria-label={title}
-        className="fixed right-0 top-0 bottom-0 z-50 flex w-full max-w-2xl flex-col bg-[#1a0c06] shadow-2xl border-l border-[#6b3d1c]"
+        className="fixed right-0 top-0 bottom-0 z-50 flex w-full max-w-2xl flex-col bg-da-surface shadow-2xl border-l border-da-border"
       >
         {/* Header */}
-        <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 border-b border-[#6b3d1c] bg-[#231108]">
-          <h2 className="font-bold text-[#c88a1a] text-base truncate">{title}</h2>
+        <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3 border-b border-da-border bg-da-hover">
+          <h2 className="font-bold text-da-accent text-base truncate">{title}</h2>
           <div className="flex items-center gap-2 shrink-0">
             <a
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              className="rounded-lg border border-[#6b3d1c] px-3 py-1 text-xs font-medium text-[#c88a1a] hover:bg-[#2e1a0d] transition-colors"
+              className="rounded-lg border border-da-border px-3 py-1 text-xs font-medium text-da-accent hover:bg-da-hover transition-colors"
             >
               ↗ Open in new tab
             </a>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-[#6b3d1c] bg-[#1a0c06] px-3 py-1 text-xs font-medium text-[#9b7555] hover:bg-[#2e1a0d] transition-colors"
+              className="rounded-lg border border-da-border bg-da-surface px-3 py-1 text-xs font-medium text-da-muted hover:bg-da-hover transition-colors"
             >
               ✕ Close
             </button>

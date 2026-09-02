@@ -32,11 +32,11 @@ export function ImageGroup({
 }) {
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
 
-  const borderColor = labelColor === "blue" ? "border-blue-200" : "border-green-200";
+  const borderColor = labelColor === "blue" ? "border-blue-400/40" : "border-green-400/40";
   const hoverBorderColor = labelColor === "blue" ? "hover:border-blue-500" : "hover:border-green-500";
   const labelClass = labelColor === "blue"
-    ? "text-xs font-semibold text-blue-800 mb-1"
-    : "text-xs font-semibold text-green-800 mb-1";
+    ? "text-xs font-semibold text-blue-300 mb-1"
+    : "text-xs font-semibold text-green-300 mb-1";
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.stopPropagation();
@@ -88,7 +88,7 @@ export function ImageGroup({
       <div className="flex items-center gap-2 mb-1">
         <p className={labelClass}>{label}</p>
         {uploading && (
-          <span className="text-xs text-gray-400 italic">Uploading…</span>
+          <span className="text-xs text-da-muted italic">Uploading…</span>
         )}
       </div>
 
@@ -96,14 +96,14 @@ export function ImageGroup({
         tabIndex={0}
         className={`rounded-lg border-2 border-dashed p-2 min-h-[60px] transition-colors outline-none focus:ring-2 cursor-pointer ${
           labelColor === "blue"
-            ? "border-blue-200 bg-blue-50/30 focus:ring-blue-400"
-            : "border-green-200 bg-green-50/30 focus:ring-green-400"
+            ? "border-blue-400/40 bg-blue-500/30 focus:ring-blue-400"
+            : "border-green-400/40 bg-green-500/30 focus:ring-green-400"
         }`}
         onPaste={handlePaste}
         onClick={handleClick}
       >
         {images.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center py-2">
+          <p className="text-xs text-da-muted text-center py-2">
             📋 Click to paste image from clipboard
           </p>
         ) : (
@@ -149,7 +149,7 @@ export function ImageGroup({
                   <img
                     src={img.url ?? ""}
                     alt={img.alt_text ?? `${label} image ${idx + 1}`}
-                    className={`max-w-full w-auto h-auto rounded border bg-white p-1 ${borderColor} ${hoverBorderColor} hover:shadow-md transition-all ${
+                    className={`max-w-full w-auto h-auto rounded border bg-da-surface p-1 ${borderColor} ${hoverBorderColor} hover:shadow-md transition-all ${
                       deletingImageIds.has(img.id) ? "opacity-40" : ""
                     }`}
                     draggable={false}
@@ -161,7 +161,7 @@ export function ImageGroup({
                   href={img.url ?? "#"}
                   download
                   onClick={(e) => e.stopPropagation()}
-                  className={`absolute bottom-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded bg-white/95 text-[11px] text-gray-700 shadow-sm ring-1 ring-gray-300 hover:bg-white opacity-0 group-hover:opacity-100 transition-opacity ${onSaveAsGraphImage ? "right-7" : "right-1"}`}
+                  className={`absolute bottom-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded bg-da-surface/95 text-[11px] text-da-text shadow-sm ring-1 ring-gray-300 hover:bg-da-surface opacity-0 group-hover:opacity-100 transition-opacity ${onSaveAsGraphImage ? "right-7" : "right-1"}`}
                   title="Download image"
                 >
                   🖼
@@ -199,7 +199,7 @@ export function ImageGroup({
                       <button
                         type="button"
                         onClick={() => setConfirmingDelete(null)}
-                        className="rounded bg-gray-200 text-gray-800 text-xs font-bold px-2 py-0.5 hover:bg-gray-300"
+                        className="rounded bg-da-hover text-da-text text-xs font-bold px-2 py-0.5 hover:bg-da-border/50"
                       >
                         No
                       </button>
@@ -221,7 +221,7 @@ export function ImageGroup({
 
         {/* Always show paste hint below images if there are some */}
         {images.length > 0 && (
-          <p className="text-xs text-gray-400 mt-1 text-center">
+          <p className="text-xs text-da-muted mt-1 text-center">
             📋 Paste an image to add
           </p>
         )}

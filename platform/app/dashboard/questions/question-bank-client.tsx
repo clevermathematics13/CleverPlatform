@@ -696,82 +696,82 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
   return (
     <div className={`flex gap-4 items-start ${testBuilderOpen ? "pr-0" : ""}`} suppressHydrationWarning>
       <div className="flex-1 min-w-0 space-y-4" suppressHydrationWarning>
-      {!testBuilderOpen && (<div><h1 className="text-3xl font-extrabold text-blue-900 drop-shadow-sm">Past Paper Questions (PPQ)</h1><p className="mt-1 text-base font-medium text-blue-700">Browse, search, and filter past paper questions.</p></div>)}
+      {!testBuilderOpen && (<div><h1 className="text-3xl font-extrabold text-blue-300 drop-shadow-sm">Past Paper Questions (PPQ)</h1><p className="mt-1 text-base font-medium text-blue-300">Browse, search, and filter past paper questions.</p></div>)}
       {driveConnected ? (
-        <div className="rounded-lg border border-green-300 bg-green-50 px-4 py-3">
+        <div className="rounded-lg border border-green-400/40 bg-green-500/15 px-4 py-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            <span className="text-sm font-semibold text-green-800">Google Drive connected</span>
+            <span className="text-sm font-semibold text-green-300">Google Drive connected</span>
             <div className="flex items-center gap-2 flex-wrap">
               <button type="button" onClick={importFromDrive} disabled={importing || syncing || bulkExtracting} className="rounded-lg bg-violet-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-violet-700 disabled:opacity-50">{importing ? "Importing..." : "Import Missing from Drive"}</button>
               <button type="button" onClick={syncDriveLinks} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50">{syncing ? "Syncing..." : "Sync Doc Links"}</button>
-              <button type="button" onClick={() => fixConflictedLinks(true)} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-bold text-amber-800 hover:bg-amber-50 disabled:opacity-50">{fixingLinks === "dryrun" ? "Scanning..." : "Dry Run Fix Links"}</button>
+              <button type="button" onClick={() => fixConflictedLinks(true)} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg border border-amber-400 bg-da-surface px-3 py-1.5 text-sm font-bold text-amber-300 hover:bg-amber-500/25 disabled:opacity-50">{fixingLinks === "dryrun" ? "Scanning..." : "Dry Run Fix Links"}</button>
               <button type="button" onClick={() => fixConflictedLinks(false)} disabled={syncing || bulkExtracting || importing || !!fixingLinks} className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-50">{fixingLinks === "apply" ? "Applying..." : "Apply Fix Links"}</button>
               <button type="button" onClick={extractAllImages} disabled={bulkExtracting || syncing || importing || !!fixingLinks} className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50">{bulkExtracting ? "Extracting..." : "Extract All Images from Docs"}</button>
-              <button type="button" onClick={copyBulkTroubleshooting} className="rounded-lg border border-slate-400 bg-white px-3 py-1.5 text-sm font-bold text-slate-700 hover:bg-slate-100">{bulkTroubleshootingCopied ? "Copied" : "Copy Logs"}</button>
-              <button type="button" onClick={clearUICache} className="rounded-lg border border-red-400 bg-white px-3 py-1.5 text-sm font-bold text-red-700 hover:bg-red-50">Clear UI Cache</button>
+              <button type="button" onClick={copyBulkTroubleshooting} className="rounded-lg border border-slate-400 bg-da-surface px-3 py-1.5 text-sm font-bold text-da-text hover:bg-da-hover">{bulkTroubleshootingCopied ? "Copied" : "Copy Logs"}</button>
+              <button type="button" onClick={clearUICache} className="rounded-lg border border-red-400 bg-da-surface px-3 py-1.5 text-sm font-bold text-red-300 hover:bg-red-500/25">Clear UI Cache</button>
             </div>
           </div>
-          {importResult && (<div className="mt-1 text-xs text-violet-700"><p>Import complete - {importResult.created} new question{importResult.created !== 1 ? "s" : ""} created, {importResult.updated} doc link{importResult.updated !== 1 ? "s" : ""} updated.</p>{importResult.errors && importResult.errors.length > 0 && <p className="text-red-600">Errors: {importResult.errors.join("; ")}</p>}{importResult.debug && (<details className="mt-1"><summary className="cursor-pointer underline">Debug info</summary><pre className="mt-1 max-h-40 overflow-auto rounded bg-violet-50 p-2 text-[10px] text-violet-900 whitespace-pre-wrap">{JSON.stringify(importResult.debug, null, 2)}</pre></details>)}</div>)}
-          {syncResult && (<div className="mt-1 text-xs text-green-700 space-y-1"><p>Sync complete - {syncResult.found} doc link{syncResult.found !== 1 ? "s" : ""} found, {syncResult.updated} updated.</p>{syncResult.focused && (<div className="rounded border border-green-200 bg-white/80 p-2 text-[11px] text-slate-700"><p>Focused code <span className="font-mono font-semibold">{syncResult.focused.code}</span>: <span className="font-semibold">{syncResult.focused.status ?? "unknown"}</span></p><p>DB Q={syncResult.focused.db?.google_doc_id ?? "null"}, MS={syncResult.focused.db?.google_ms_id ?? "null"}; needs Q={String(syncResult.focused.needs?.doc ?? false)}, MS={String(syncResult.focused.needs?.ms ?? false)}</p><p>Matches Q={syncResult.focused.questionMatchCount}, MS={syncResult.focused.markschemeMatchCount}; selected Q={syncResult.focused.selectedQuestionDocId ?? "null"}, MS={syncResult.focused.selectedMarkschemeDocId ?? "null"}</p></div>)}</div>)}
-          {fixLinksResult && (<p className="mt-1 text-xs text-amber-800">{fixLinksResult.dryRun ? `Fix dry run - ${fixLinksResult.issuesFound} issue(s) found.` : `Fix applied - ${fixLinksResult.updatedRows ?? 0} row(s), cleared Q=${fixLinksResult.clearedGoogleDocId ?? 0}, MS=${fixLinksResult.clearedGoogleMsId ?? 0}.`}</p>)}
-          {bulkProgress && (<div className="mt-2"><div className="flex items-center justify-between text-xs text-gray-700 mb-1"><span>{bulkProgress.completed} / {bulkProgress.total} questions{bulkProgress.currentCode && ` - ${bulkProgress.currentCode}`}</span><span>{bulkProgress.totalImages} images extracted{bulkProgress.errors > 0 && `, ${bulkProgress.errors} errors`}</span></div><div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: bulkProgress.total > 0 ? `${(bulkProgress.completed / bulkProgress.total) * 100}%` : "0%" }} /></div></div>)}
-          {bulkErrors.length > 0 && (<div className="mt-2"><button type="button" onClick={() => setShowErrors((v) => !v)} className="text-xs font-semibold text-red-700 underline">{showErrors ? "Hide" : "Show"} {bulkErrors.length} error{bulkErrors.length !== 1 ? "s" : ""}</button>{showErrors && (<div className="mt-1 max-h-48 overflow-y-auto rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">{bulkErrors.slice(0, 50).map((e, i) => (<div key={i} className="py-0.5"><span className="font-bold">{e.code}:</span> {e.error}</div>))}{bulkErrors.length > 50 && (<div className="py-1 font-semibold">...and {bulkErrors.length - 50} more</div>)}</div>)}</div>)}
+          {importResult && (<div className="mt-1 text-xs text-violet-300"><p>Import complete - {importResult.created} new question{importResult.created !== 1 ? "s" : ""} created, {importResult.updated} doc link{importResult.updated !== 1 ? "s" : ""} updated.</p>{importResult.errors && importResult.errors.length > 0 && <p className="text-red-300">Errors: {importResult.errors.join("; ")}</p>}{importResult.debug && (<details className="mt-1"><summary className="cursor-pointer underline">Debug info</summary><pre className="mt-1 max-h-40 overflow-auto rounded bg-violet-500/15 p-2 text-[10px] text-violet-300 whitespace-pre-wrap">{JSON.stringify(importResult.debug, null, 2)}</pre></details>)}</div>)}
+          {syncResult && (<div className="mt-1 text-xs text-green-300 space-y-1"><p>Sync complete - {syncResult.found} doc link{syncResult.found !== 1 ? "s" : ""} found, {syncResult.updated} updated.</p>{syncResult.focused && (<div className="rounded border border-green-400/40 bg-da-surface/80 p-2 text-[11px] text-da-text"><p>Focused code <span className="font-mono font-semibold">{syncResult.focused.code}</span>: <span className="font-semibold">{syncResult.focused.status ?? "unknown"}</span></p><p>DB Q={syncResult.focused.db?.google_doc_id ?? "null"}, MS={syncResult.focused.db?.google_ms_id ?? "null"}; needs Q={String(syncResult.focused.needs?.doc ?? false)}, MS={String(syncResult.focused.needs?.ms ?? false)}</p><p>Matches Q={syncResult.focused.questionMatchCount}, MS={syncResult.focused.markschemeMatchCount}; selected Q={syncResult.focused.selectedQuestionDocId ?? "null"}, MS={syncResult.focused.selectedMarkschemeDocId ?? "null"}</p></div>)}</div>)}
+          {fixLinksResult && (<p className="mt-1 text-xs text-amber-300">{fixLinksResult.dryRun ? `Fix dry run - ${fixLinksResult.issuesFound} issue(s) found.` : `Fix applied - ${fixLinksResult.updatedRows ?? 0} row(s), cleared Q=${fixLinksResult.clearedGoogleDocId ?? 0}, MS=${fixLinksResult.clearedGoogleMsId ?? 0}.`}</p>)}
+          {bulkProgress && (<div className="mt-2"><div className="flex items-center justify-between text-xs text-da-text mb-1"><span>{bulkProgress.completed} / {bulkProgress.total} questions{bulkProgress.currentCode && ` - ${bulkProgress.currentCode}`}</span><span>{bulkProgress.totalImages} images extracted{bulkProgress.errors > 0 && `, ${bulkProgress.errors} errors`}</span></div><div className="w-full bg-da-hover rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: bulkProgress.total > 0 ? `${(bulkProgress.completed / bulkProgress.total) * 100}%` : "0%" }} /></div></div>)}
+          {bulkErrors.length > 0 && (<div className="mt-2"><button type="button" onClick={() => setShowErrors((v) => !v)} className="text-xs font-semibold text-red-300 underline">{showErrors ? "Hide" : "Show"} {bulkErrors.length} error{bulkErrors.length !== 1 ? "s" : ""}</button>{showErrors && (<div className="mt-1 max-h-48 overflow-y-auto rounded border border-red-400/40 bg-red-500/15 p-2 text-xs text-red-300">{bulkErrors.slice(0, 50).map((e, i) => (<div key={i} className="py-0.5"><span className="font-bold">{e.code}:</span> {e.error}</div>))}{bulkErrors.length > 50 && (<div className="py-1 font-semibold">...and {bulkErrors.length - 50} more</div>)}</div>)}</div>)}
         </div>
       ) : (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 flex items-center justify-between"><p className="text-sm font-semibold text-amber-800">Connect Google Drive to extract images from question documents.</p><a href="/api/questions/connect-drive" className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700">Connect Google Drive</a></div>
+        <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 flex items-center justify-between"><p className="text-sm font-semibold text-amber-300">Connect Google Drive to extract images from question documents.</p><a href="/api/questions/connect-drive" className="rounded-lg bg-blue-600 px-4 py-1.5 text-sm font-bold text-white hover:bg-blue-700">Connect Google Drive</a></div>
       )}
 
-      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+      <div className="rounded-xl border border-blue-400/40 bg-blue-500/15 p-4">
         <div suppressHydrationWarning className="flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-50"><label className="block text-sm font-bold text-blue-900 mb-1">{searchContent ? "Search LaTeX Content" : "Search Code"}</label><input suppressHydrationWarning type="text" value={search} onChange={(e) => { setSearch(e.target.value); try { localStorage.setItem("qbank-search", e.target.value); } catch {} }} placeholder={searchContent ? "e.g. \\binom, \\int..." : "e.g. 22M, TZ2, H_10..."} className="input-dark w-full rounded border-2 border-blue-300 px-3 py-1.5 text-base font-semibold text-blue-900 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-600" /></div>
-          <div><label className="block text-sm font-bold text-blue-900 mb-1">Session</label><select suppressHydrationWarning value={session} onChange={(e) => setSession(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option>{(filters?.sessions ?? []).map((s) => (<option key={s} value={s}>{s}</option>))}</select></div>
-          <div><label className="block text-sm font-bold text-blue-900 mb-1">Paper</label><select suppressHydrationWarning value={paper} onChange={(e) => setPaper(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option><option value="1">Paper 1</option><option value="2">Paper 2</option><option value="3">Paper 3</option></select></div>
-          <div><label className="block text-sm font-bold text-blue-900 mb-1">Level</label><select suppressHydrationWarning value={level} onChange={(e) => setLevel(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option><option value="AHL">HL</option><option value="SL">SL</option></select></div>
-          <div><label className="block text-sm font-bold text-blue-900 mb-1">Timezone</label><select suppressHydrationWarning value={timezone} onChange={(e) => setTimezone(e.target.value)} className="input-dark rounded border-2 border-blue-300 px-3 py-1.5 text-sm font-semibold text-blue-900 bg-white"><option value="">All</option>{(filters?.timezones ?? []).map((tz) => (<option key={tz} value={tz}>{tz}</option>))}</select></div>
-          <div className="min-w-55 flex-1"><label className="block text-sm font-bold text-blue-900 mb-1">Subtopic</label><SubtopicCombobox value={subtopic} onChange={setSubtopic} subtopics={filters?.subtopics ?? []} /></div>
-          <button suppressHydrationWarning type="button" onClick={clearFilters} className="rounded-lg border-2 border-blue-400 bg-white px-3 py-1.5 text-sm font-bold text-blue-700 hover:bg-blue-100">Clear</button>
-          <button suppressHydrationWarning type="button" onClick={() => setSearchContent((v) => !v)} className={`rounded-lg border-2 px-3 py-1.5 text-sm font-bold transition-colors ${searchContent ? "border-purple-500 bg-purple-600 text-white" : "border-purple-300 bg-white text-purple-600 hover:bg-purple-50"}`}>LaTeX</button>
+          <div className="flex-1 min-w-50"><label className="block text-sm font-bold text-blue-300 mb-1">{searchContent ? "Search LaTeX Content" : "Search Code"}</label><input suppressHydrationWarning type="text" value={search} onChange={(e) => { setSearch(e.target.value); try { localStorage.setItem("qbank-search", e.target.value); } catch {} }} placeholder={searchContent ? "e.g. \\binom, \\int..." : "e.g. 22M, TZ2, H_10..."} className="input-dark w-full rounded border-2 border-blue-400/40 px-3 py-1.5 text-base font-semibold text-blue-300 bg-da-surface focus:ring-2 focus:ring-blue-500 focus:border-blue-600" /></div>
+          <div><label className="block text-sm font-bold text-blue-300 mb-1">Session</label><select suppressHydrationWarning value={session} onChange={(e) => setSession(e.target.value)} className="input-dark rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold text-blue-300 bg-da-surface"><option value="">All</option>{(filters?.sessions ?? []).map((s) => (<option key={s} value={s}>{s}</option>))}</select></div>
+          <div><label className="block text-sm font-bold text-blue-300 mb-1">Paper</label><select suppressHydrationWarning value={paper} onChange={(e) => setPaper(e.target.value)} className="input-dark rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold text-blue-300 bg-da-surface"><option value="">All</option><option value="1">Paper 1</option><option value="2">Paper 2</option><option value="3">Paper 3</option></select></div>
+          <div><label className="block text-sm font-bold text-blue-300 mb-1">Level</label><select suppressHydrationWarning value={level} onChange={(e) => setLevel(e.target.value)} className="input-dark rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold text-blue-300 bg-da-surface"><option value="">All</option><option value="AHL">HL</option><option value="SL">SL</option></select></div>
+          <div><label className="block text-sm font-bold text-blue-300 mb-1">Timezone</label><select suppressHydrationWarning value={timezone} onChange={(e) => setTimezone(e.target.value)} className="input-dark rounded border-2 border-blue-400/40 px-3 py-1.5 text-sm font-semibold text-blue-300 bg-da-surface"><option value="">All</option>{(filters?.timezones ?? []).map((tz) => (<option key={tz} value={tz}>{tz}</option>))}</select></div>
+          <div className="min-w-55 flex-1"><label className="block text-sm font-bold text-blue-300 mb-1">Subtopic</label><SubtopicCombobox value={subtopic} onChange={setSubtopic} subtopics={filters?.subtopics ?? []} /></div>
+          <button suppressHydrationWarning type="button" onClick={clearFilters} className="rounded-lg border-2 border-blue-400 bg-da-surface px-3 py-1.5 text-sm font-bold text-blue-300 hover:bg-blue-500/25">Clear</button>
+          <button suppressHydrationWarning type="button" onClick={() => setSearchContent((v) => !v)} className={`rounded-lg border-2 px-3 py-1.5 text-sm font-bold transition-colors ${searchContent ? "border-purple-500 bg-purple-600 text-white" : "border-purple-400/40 bg-da-surface text-purple-600 hover:bg-purple-500/25"}`}>LaTeX</button>
         </div>
       </div>
 
-      {error && (<div className="flex items-start justify-between gap-2 rounded-lg border-2 border-red-300 bg-red-50 p-3 text-sm font-semibold text-red-800"><span>Error: {error}</span><button type="button" className="shrink-0 rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-200" onClick={() => { navigator.clipboard.writeText(`[${new Date().toISOString()}] Error: ${error}`).catch(() => {}); }}>Copy</button></div>)}
+      {error && (<div className="flex items-start justify-between gap-2 rounded-lg border-2 border-red-400/40 bg-red-500/15 p-3 text-sm font-semibold text-red-300"><span>Error: {error}</span><button type="button" className="shrink-0 rounded bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-red-500/25" onClick={() => { navigator.clipboard.writeText(`[${new Date().toISOString()}] Error: ${error}`).catch(() => {}); }}>Copy</button></div>)}
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <p className="text-base font-bold text-blue-900">{loading ? "Loading..." : `${total} question${total !== 1 ? "s" : ""} found`}</p>
-          <button type="button" suppressHydrationWarning onClick={() => setAddQuestionOpen(true)} className="rounded-lg border-2 border-emerald-400 bg-white px-3 py-1.5 text-sm font-bold text-emerald-700 hover:bg-emerald-50">+ New Question</button>
+          <p className="text-base font-bold text-blue-300">{loading ? "Loading..." : `${total} question${total !== 1 ? "s" : ""} found`}</p>
+          <button type="button" suppressHydrationWarning onClick={() => setAddQuestionOpen(true)} className="rounded-lg border-2 border-emerald-400 bg-da-surface px-3 py-1.5 text-sm font-bold text-emerald-300 hover:bg-emerald-500/25">+ New Question</button>
           <button
             type="button"
             onClick={() => { setTestBuilderOpen((v) => { if (!v) window.dispatchEvent(new CustomEvent("exam-builder-open")); return !v; }); }}
             className={`rounded-lg px-4 py-1.5 text-sm font-bold transition-colors ${
               testBuilderOpen
                 ? "bg-indigo-600 text-white hover:bg-indigo-700"
-                : "border-2 border-indigo-400 text-indigo-700 bg-white hover:bg-indigo-50"
+                : "border-2 border-indigo-400 text-indigo-300 bg-da-surface hover:bg-indigo-500/25"
             }`}
             suppressHydrationWarning
           >
             ExamBuilder{testQueue.length > 0 ? ` (${testQueue.length})` : ""}
           </button>
         </div>
-        {totalPages > 1 && (<div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-300 px-2 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Prev</button><span className="text-sm font-semibold text-blue-800">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-300 px-2 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Next</button></div>)}
+        {totalPages > 1 && (<div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-400/40 px-2 py-1 text-sm font-bold text-blue-300 disabled:opacity-40 hover:bg-blue-500/25">Prev</button><span className="text-sm font-semibold text-blue-300">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-400/40 px-2 py-1 text-sm font-bold text-blue-300 disabled:opacity-40 hover:bg-blue-500/25">Next</button></div>)}
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-blue-200 bg-white">
+      <div className="overflow-hidden rounded-xl border border-blue-400/40 bg-da-surface">
         <table className="min-w-full divide-y divide-blue-100">
-          <thead className="bg-blue-50"><tr>
-            <th className="px-4 py-3 text-left text-sm font-bold text-blue-900">Code</th>
-            <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">Session</th>
-            <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">Paper</th>
-            <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">Level</th>
-            <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">TZ</th>
-            <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">Parts</th>
-            <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">Marks</th>
-            <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">Images</th>
-            <th className="px-4 py-3 text-center text-sm font-bold text-blue-900">Section</th>
-            {testBuilderOpen && (<th className="px-3 py-3 text-center text-sm font-bold text-indigo-700">Add</th>)}
-            <th className="px-2 py-3 text-center text-sm font-bold text-blue-900">Notes</th>
+          <thead className="bg-blue-500/15"><tr>
+            <th className="px-4 py-3 text-left text-sm font-bold text-blue-300">Code</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-blue-300">Session</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-blue-300">Paper</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-blue-300">Level</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-blue-300">TZ</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-blue-300">Parts</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-blue-300">Marks</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-blue-300">Images</th>
+            <th className="px-4 py-3 text-center text-sm font-bold text-blue-300">Section</th>
+            {testBuilderOpen && (<th className="px-3 py-3 text-center text-sm font-bold text-indigo-300">Add</th>)}
+            <th className="px-2 py-3 text-center text-sm font-bold text-blue-300">Notes</th>
           </tr></thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-da-border">
             {questions.map((q) => (
               <QuestionRow
                 key={q.id} question={q} expanded={expanded.has(q.id)} onOpen={() => openExpand(q.id)} onClose={() => closeExpand(q.id)} totalMarks={totalMarks(q)}
@@ -789,12 +789,12 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
                 onQueueMarksChange={(qId, marks) => setTestQueue((prev) => prev.map((item) => item.id === qId ? { ...item, marks } : item))}
               />
             ))}
-            {!loading && questions.length === 0 && (<tr><td colSpan={testBuilderOpen ? 10 : 9} className="px-4 py-8 text-center text-base text-blue-700">No questions match your filters.</td></tr>)}
+            {!loading && questions.length === 0 && (<tr><td colSpan={testBuilderOpen ? 10 : 9} className="px-4 py-8 text-center text-base text-blue-300">No questions match your filters.</td></tr>)}
           </tbody>
         </table>
       </div>
 
-      {totalPages > 1 && (<div className="flex justify-center gap-2 pb-4"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-300 px-3 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Prev</button><span className="text-sm font-semibold text-blue-800 py-1">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-300 px-3 py-1 text-sm font-bold text-blue-900 disabled:opacity-40 hover:bg-blue-50">Next</button></div>)}
+      {totalPages > 1 && (<div className="flex justify-center gap-2 pb-4"><button type="button" disabled={page <= 1} onClick={() => setPage((p) => p - 1)} className="rounded border-2 border-blue-400/40 px-3 py-1 text-sm font-bold text-blue-300 disabled:opacity-40 hover:bg-blue-500/25">Prev</button><span className="text-sm font-semibold text-blue-300 py-1">Page {page} of {totalPages}</span><button type="button" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)} className="rounded border-2 border-blue-400/40 px-3 py-1 text-sm font-bold text-blue-300 disabled:opacity-40 hover:bg-blue-500/25">Next</button></div>)}
       </div>
 
       {testBuilderOpen && (
@@ -840,17 +840,17 @@ export function QuestionBankClient({ initialDriveConnected = false }: { initialD
 function AddToExamModal({ questionCode, examName, currentCount, onConfirm, onCancel, saving }: { questionCode: string; examName: string; currentCount: number; onConfirm: () => void; onCancel: () => void; saving: boolean; }) {
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-96 flex flex-col gap-4">
-        <h2 className="text-base font-bold text-gray-800">Add question to this exam?</h2>
-        <p className="text-sm text-gray-600">
+      <div className="bg-da-surface rounded-xl shadow-2xl p-6 w-96 flex flex-col gap-4">
+        <h2 className="text-base font-bold text-da-text">Add question to this exam?</h2>
+        <p className="text-sm text-da-muted">
           <span className="font-mono font-semibold">{questionCode}</span> will be appended to{" "}
           <span className="font-semibold">{examName.trim() || "the saved exam"}</span>, then saved.
         </p>
-        <p className="text-xs text-gray-500">
+        <p className="text-xs text-da-muted">
           The {currentCount} question{currentCount !== 1 ? "s" : ""} already in this exam stay exactly where they are ({currentCount} &rarr; {currentCount + 1}).
         </p>
         <div className="flex gap-3 justify-end">
-          <button type="button" onClick={onCancel} className="rounded px-4 py-1.5 text-sm font-semibold border border-gray-300 text-gray-700 hover:bg-gray-100 transition-colors">Cancel</button>
+          <button type="button" onClick={onCancel} className="rounded px-4 py-1.5 text-sm font-semibold border border-da-border text-da-text hover:bg-da-hover transition-colors">Cancel</button>
           <button type="button" onClick={onConfirm} disabled={saving} className="rounded px-4 py-1.5 text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors">{saving ? "Adding..." : "Add to exam"}</button>
         </div>
       </div>
@@ -937,26 +937,26 @@ function QuestionEditorModal({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="flex min-h-full items-start justify-center py-6 px-3">
-        <div className="bg-white rounded-2xl shadow-2xl w-[90vw]">
+        <div className="bg-da-surface rounded-2xl shadow-2xl w-[90vw]">
 
           {/* Sticky header with - minimize and x close buttons */}
-          <div className="sticky top-0 z-10 flex items-center gap-3 px-6 py-3.5 border-b border-indigo-200 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-2xl">
+          <div className="sticky top-0 z-10 flex items-center gap-3 px-6 py-3.5 border-b border-indigo-400/40 bg-gradient-to-r from-indigo-50 to-blue-50 rounded-t-2xl">
             <span className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1 text-sm font-bold text-white shadow-sm shrink-0">
               Question Studio
             </span>
             {question && (
               <>
-                <span className="font-mono font-bold text-blue-900 text-base tracking-wide">{question.code}</span>
-                <span className="text-xs text-gray-500 font-medium">{totalMarks} {totalMarks === 1 ? "mark" : "marks"}</span>
+                <span className="font-mono font-bold text-blue-300 text-base tracking-wide">{question.code}</span>
+                <span className="text-xs text-da-muted font-medium">{totalMarks} {totalMarks === 1 ? "mark" : "marks"}</span>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                  question.level === "AHL" ? "bg-purple-100 text-purple-800" : "bg-green-100 text-green-800"
+                  question.level === "AHL" ? "bg-purple-500/15 text-purple-300" : "bg-green-500/15 text-green-300"
                 }`}>
                   {question.level === "AHL" ? "HL" : "SL"}
                 </span>
               </>
             )}
             {!question && !fetchLoading && (
-              <span className="text-sm text-gray-400 italic">Loading question...</span>
+              <span className="text-sm text-da-muted italic">Loading question...</span>
             )}
             {/* Window controls - top right */}
             <div className="ml-auto flex items-center gap-1 shrink-0">
@@ -966,7 +966,7 @@ function QuestionEditorModal({
                 onClick={() => setMinimized((v) => !v)}
                 title={minimized ? "Expand" : "Minimise"}
                 aria-label={minimized ? "Expand" : "Minimise"}
-                className="rounded-full w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
+                className="rounded-full w-9 h-9 flex items-center justify-center text-da-muted hover:bg-indigo-500/25 hover:text-indigo-200 transition-colors"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="5" y1="12" x2="19" y2="12" />
@@ -978,7 +978,7 @@ function QuestionEditorModal({
                 onClick={onClose}
                 title="Close (Esc)"
                 aria-label="Close Question Studio"
-                className="rounded-full w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-indigo-100 hover:text-indigo-700 transition-colors"
+                className="rounded-full w-9 h-9 flex items-center justify-center text-da-muted hover:bg-indigo-500/25 hover:text-indigo-200 transition-colors"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="18" y1="6" x2="6" y2="18" />
@@ -990,9 +990,9 @@ function QuestionEditorModal({
 
           {/* Body - outer overlay scrolls */}
           <div>
-            {fetchLoading && <div className="flex items-center justify-center py-20 text-gray-400 text-sm">Loading...</div>}
-            {fetchError && <div className="p-6 text-sm text-red-600 bg-red-50 rounded-b-2xl">Error: {fetchError}</div>}
-            {!fetchLoading && !fetchError && !question && <div className="p-6 text-sm text-gray-400 italic">Question not found.</div>}
+            {fetchLoading && <div className="flex items-center justify-center py-20 text-da-muted text-sm">Loading...</div>}
+            {fetchError && <div className="p-6 text-sm text-red-300 bg-red-500/15 rounded-b-2xl">Error: {fetchError}</div>}
+            {!fetchLoading && !fetchError && !question && <div className="p-6 text-sm text-da-muted italic">Question not found.</div>}
             {!fetchLoading && !fetchError && question && (
               <div>
                 <table className="w-full">

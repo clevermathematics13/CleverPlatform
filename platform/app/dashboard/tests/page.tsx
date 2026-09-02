@@ -24,7 +24,7 @@ export default async function TestsPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-blue-900">Tests</h1>
+        <h1 className="text-2xl font-bold text-blue-300">Tests</h1>
       </div>
       <TestsClient
         initialTests={(tests ?? []) as unknown as TestRow[]}
