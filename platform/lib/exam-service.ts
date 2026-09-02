@@ -47,7 +47,6 @@ export async function getTestsForStudent(
     .from("tests")
     .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden")
     .in("course_id", courseIds)
-    .ilike("name", "%K06%P1%")
     .eq("hidden", false)
     .order("test_date", { ascending: false });
 
@@ -58,7 +57,6 @@ export async function getTestsForStudent(
         .from("tests")
         .select("id, name, test_date, total_marks, course_id")
         .in("course_id", courseIds)
-        .ilike("name", "%K06%P1%")
         .order("test_date", { ascending: false });
       if (fallbackError) throw fallbackError;
       return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
