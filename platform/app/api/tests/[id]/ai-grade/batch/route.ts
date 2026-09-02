@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
@@ -67,7 +68,7 @@ export async function POST(
   const { supabase, user } = auth;
   const { id: testId } = await params;
 
-  let body: { storagePath?: unknown; fileName?: unknown };
+  let body: { storagePath?: unknown; fileName?: unknown; forceResegment?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -146,6 +147,67 @@ export async function POST(
   const fileName =
     typeof body.fileName === "string" && body.fileName.trim() ? body.fileName.trim() : "batch-scan.pdf";
 
+  // -- Reuse an identical earlier upload's segmentation -----------------------
+  // The same batch PDF gets uploaded more than once in practice (one class
+  // scan was uploaded 14 times while the grading flow was being worked out),
+  // and every upload used to pay for a fresh whole-document Opus call --
+  // by far the most expensive single request in the app. Byte-identical
+  // file, same test: the page-to-student mapping cannot differ, so copy the
+  // earlier proposal onto the new batch row and skip the model. The teacher
+  // still confirms the mapping before anything is split or graded, exactly
+  // as for a fresh proposal. forceResegment: true opts out.
+  const sourceSha256 = createHash("sha256").update(buffer).digest("hex");
+  if (body.forceResegment !== true) {
+    const { data: prior } = await supabase
+      .from("ai_grade_batches")
+      .select("id, proposed_segments, unassigned_pages")
+      .eq("test_id", testId)
+      .eq("source_sha256", sourceSha256)
+      .in("status", ["segmented", "split"])
+      .not("proposed_segments", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (prior) {
+      const unassignedPages = (prior.unassigned_pages as number[] | null) ?? [];
+      const { data: reused, error: reuseErr } = await supabase
+        .from("ai_grade_batches")
+        .insert({
+          test_id: testId,
+          created_by: user.id,
+          status: "segmented",
+          source_storage_path: storagePath,
+          file_name: fileName,
+          page_count: pageCount,
+          source_sha256: sourceSha256,
+          proposed_segments: prior.proposed_segments,
+          unassigned_pages: unassignedPages,
+          segmented_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+
+      if (reuseErr || !reused) {
+        return NextResponse.json(
+          { error: `Could not create batch record: ${reuseErr?.message ?? "unknown error"}` },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        batchId: reused.id,
+        pageCount,
+        segments: prior.proposed_segments,
+        unassignedPages,
+        warnings: [
+          "This PDF was uploaded before, so its page-to-student mapping was reused instead of being read again. Send forceResegment: true to re-run the model.",
+        ],
+        reusedFromBatchId: prior.id,
+      });
+    }
+  }
+
   // -- Open the batch row ------------------------------------------------------
   const { data: batch, error: insertErr } = await supabase
     .from("ai_grade_batches")
@@ -156,6 +218,7 @@ export async function POST(
       source_storage_path: storagePath,
       file_name: fileName,
       page_count: pageCount,
+      source_sha256: sourceSha256,
     })
     .select("id")
     .single();
