@@ -23,6 +23,16 @@
  * Usage (from platform/):
  *   npx tsx scripts/rerelease-na-packet.ts --scan <packetScanId> --dry-run
  *   npx tsx scripts/rerelease-na-packet.ts --scan <packetScanId> --snapshot <path>
+ *   npx tsx scripts/rerelease-na-packet.ts --scan <packetScanId> --text-only
+ *
+ * --text-only releases the shortened comment and next step but leaves
+ * final_verdict and final_marks_awarded exactly as they are. A regrade is
+ * a fresh model call, so its marks differ from the original run's on a
+ * minority of crops even when nothing about the work changed -- on the
+ * A.1 pilot packet, 6 of 39. Those differences are AI-vs-AI variance, not
+ * a correction, and re-releasing them silently moves a mark a student has
+ * already been shown. Use --text-only whenever the point of the regrade
+ * was the wording.
  */
 import { writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -37,6 +47,7 @@ const value = (n: string) => {
 
 const SCAN_ID = value("scan");
 const DRY_RUN = flag("dry-run");
+const TEXT_ONLY = flag("text-only");
 const SNAPSHOT = value("snapshot") ?? `na-rerelease-snapshot-${SCAN_ID}.json`;
 
 if (!SCAN_ID) {
@@ -162,21 +173,33 @@ async function main() {
     updates.push({
       id: fb.id,
       qid,
-      fields: {
-        final_verdict: fb.ai_verdict,
-        final_marks_awarded: fb.ai_marks_awarded ?? 0,
-        final_margin_comment: fb.ai_margin_comment ?? "",
-        final_next_step: fb.ai_next_step ?? "",
-        teacher_edited: false,
-      },
+      fields: TEXT_ONLY
+        ? {
+            final_margin_comment: fb.ai_margin_comment ?? "",
+            final_next_step: fb.ai_next_step ?? "",
+            teacher_edited: false,
+          }
+        : {
+            final_verdict: fb.ai_verdict,
+            final_marks_awarded: fb.ai_marks_awarded ?? 0,
+            final_margin_comment: fb.ai_margin_comment ?? "",
+            final_next_step: fb.ai_next_step ?? "",
+            teacher_edited: false,
+          },
     });
   }
 
   writeFileSync(SNAPSHOT, JSON.stringify(snapshot, null, 2));
   console.log(`snapshot of ${snapshot.length} rows written to ${SNAPSHOT}`);
-  console.log(`${updates.length} row(s) to re-approve and re-release`);
+  console.log(
+    `${updates.length} row(s) to re-approve and re-release${TEXT_ONLY ? " (comment and next step only, marks untouched)" : ""}`
+  );
   if (markChanges.length) {
-    console.log(`\nMARKS CHANGING (${markChanges.length}):`);
+    console.log(
+      TEXT_ONLY
+        ? `\n${markChanges.length} regraded mark(s) differ from the released mark and are being IGNORED (--text-only):`
+        : `\nMARKS CHANGING (${markChanges.length}):`
+    );
     for (const m of markChanges) console.log(`  ${m}`);
   } else {
     console.log("no marks change");
