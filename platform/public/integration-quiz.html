@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Choosing an Integration Technique — CleverMathematics</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<style>
+  :root{
+    --paper:#FBFAF7; --ink:#1C1F26; --muted:#5C6270; --rule:#D9D6CE;
+    --blue:#1F4FBF; --blue-soft:#E7EDFB;
+    --green:#237A4B; --green-soft:#E3F1E8;
+    --red:#B23A2E; --red-soft:#F8E6E3;
+    --serif: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{background:var(--paper)}
+  body{
+    margin:0; color:var(--ink); font-family:var(--serif);
+    font-size:18px; line-height:1.55;
+  }
+  main{max-width:660px; margin:0 auto; padding:40px 20px 80px}
+  h1{font-size:30px; line-height:1.2; font-weight:600; margin:0 0 6px}
+  .lede{color:var(--muted); margin:0 0 28px; font-size:17px}
+  .lede strong{color:var(--ink); font-weight:600}
+
+  .progress{display:flex; gap:3px; margin:0 0 6px}
+  .progress span{flex:1; height:5px; background:var(--rule); border-radius:2px}
+  .progress span.now{background:var(--blue)}
+  .progress span.ok{background:var(--green)}
+  .progress span.no{background:var(--red)}
+  .counter{font-family:var(--sans); font-size:14px; color:var(--muted); margin:0 0 28px}
+
+  .integrand{
+    font-size:30px; margin:8px 0 22px; padding:18px 0;
+    border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+    text-align:center; overflow-x:auto;
+  }
+  .ask{margin:0 0 16px; font-size:19px}
+
+  .options{display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none}
+  .opt{
+    display:flex; align-items:flex-start; gap:12px; width:100%; text-align:left;
+    background:#fff; border:1.5px solid var(--rule); border-radius:8px;
+    padding:13px 16px; font:inherit; color:inherit; cursor:pointer;
+    transition:border-color .12s, background .12s;
+  }
+  .opt:hover:not(:disabled){border-color:var(--blue)}
+  .opt:focus-visible{outline:3px solid var(--blue); outline-offset:2px}
+  .opt:disabled{cursor:default}
+  .opt .mark{
+    flex:none; width:22px; height:22px; margin-top:3px; border-radius:50%;
+    border:1.5px solid var(--rule); font-family:var(--sans); font-size:13px;
+    display:grid; place-items:center;
+  }
+  .opt.chosen.right{border-color:var(--green); background:var(--green-soft)}
+  .opt.chosen.right .mark{background:var(--green); border-color:var(--green); color:#fff}
+  .opt.chosen.wrong{border-color:var(--red); background:var(--red-soft)}
+  .opt.chosen.wrong .mark{background:var(--red); border-color:var(--red); color:#fff}
+  .opt.reveal{border-color:var(--green); border-style:dashed}
+  .opt.dim{opacity:.55}
+
+  .tools{margin:16px 0 0}
+  .link{background:none; border:none; padding:0; font:inherit; font-family:var(--sans); font-size:15px; color:var(--blue); cursor:pointer; text-decoration:underline; text-underline-offset:3px}
+  .link:focus-visible{outline:3px solid var(--blue); outline-offset:3px; border-radius:2px}
+  .hint{margin:10px 0 0; padding:12px 16px; background:var(--blue-soft); border-radius:8px; font-size:17px}
+
+  .feedback{margin:22px 0 0; padding:18px 20px; border-radius:8px; border-left:4px solid}
+  .feedback.right{background:var(--green-soft); border-color:var(--green)}
+  .feedback.wrong{background:var(--red-soft); border-color:var(--red)}
+  .feedback .verdict{font-family:var(--sans); font-weight:600; font-size:15px; margin:0 0 8px}
+  .feedback.right .verdict{color:var(--green)}
+  .feedback.wrong .verdict{color:var(--red)}
+  .feedback p{margin:0}
+
+  .btn{
+    font-family:var(--sans); font-size:16px; font-weight:600;
+    background:var(--blue); color:#fff; border:none; border-radius:8px;
+    padding:12px 22px; cursor:pointer; margin-top:22px;
+  }
+  .btn:hover{background:#1840A0}
+  .btn:focus-visible{outline:3px solid var(--ink); outline-offset:2px}
+  .btn.quiet{background:#fff; color:var(--ink); border:1.5px solid var(--rule); margin-left:10px}
+  .btn.quiet:hover{border-color:var(--ink)}
+
+  .summary h2{font-size:24px; font-weight:600; margin:0 0 6px}
+  .summary .score{font-size:40px; font-weight:600; margin:0 0 4px}
+  .summary table{width:100%; border-collapse:collapse; margin:24px 0; font-size:16px}
+  .summary th{text-align:left; font-family:var(--sans); font-weight:600; font-size:14px; color:var(--muted); padding:0 8px 8px 0; border-bottom:1px solid var(--rule)}
+  .summary td{padding:9px 8px 9px 0; border-bottom:1px solid var(--rule); vertical-align:top}
+  .summary td.num{color:var(--muted); width:2.2em}
+  .summary td.res{font-family:var(--sans); font-size:14px; width:6em}
+  .summary td.res.ok{color:var(--green)}
+  .summary td.res.no{color:var(--red)}
+  .summary .revisit{margin:0 0 4px; font-size:17px}
+  .summary .revisit b{font-weight:600}
+
+  .katex{font-size:1.05em}
+  .integrand .katex{font-size:1.25em}
+
+  @media (max-width:480px){
+    body{font-size:17px} h1{font-size:26px} .integrand{font-size:24px}
+  }
+  @media (prefers-reduced-motion:reduce){ .opt{transition:none} }
+</style>
+</head>
+<body>
+<main>
+  <h1>Choosing an integration technique</h1>
+  <p class="lede">For each integrand, choose the most appropriate first manipulation or technique. <strong>Do not evaluate the integral.</strong> This is untimed — think before you commit; feedback follows every answer.</p>
+  <div id="app"></div>
+</main>
+
+<script>
+/* ---------- Question bank ---------- */
+const Q = [
+  { integrand:"\\int x\\,e^{x^{2}}\\,dx", ask:"What is the most appropriate technique?",
+    tags:["Substitution"],
+    options:[
+      {t:"Substitution $u = x^{2}$", ok:true},
+      {t:"Integration by parts with $u = x$, $dv = e^{x^{2}}\\,dx$"},
+      {t:"Rewrite as a standard integral of the form $\\int e^{kx}\\,dx$"},
+      {t:"Partial fractions"}],
+    hint:"Is one factor the derivative (up to a constant) of the inside of the other?",
+    yes:"Spotted the derivative.", no:"Look at the pairing of $x$ and $x^{2}$.",
+    why:"The integrand has the structure $f'(x)\\,g(f(x))$: $x$ is a constant multiple of $\\frac{d}{dx}(x^{2})$. Substitution $u = x^{2}$ converts it to $\\int \\tfrac12 e^{u}\\,du$. By parts fails because $e^{x^{2}}$ has no elementary antiderivative; $e^{x^{2}}$ is not of the form $e^{kx}$; and partial fractions apply only to rational functions." },
+
+  { integrand:"\\int x\\,e^{x}\\,dx", ask:"What is the most appropriate technique?",
+    tags:["Integration by parts"],
+    options:[
+      {t:"Substitution $u = x$"},
+      {t:"Integration by parts with $u = x$, $dv = e^{x}\\,dx$", ok:true},
+      {t:"Partial fractions"},
+      {t:"Substitution $u = e^{x}$"}],
+    hint:"The two factors are unrelated — neither is the derivative of the other's inside.",
+    yes:"Correct — the classic by-parts pairing.", no:"Contrast this with the previous question.",
+    why:"Compare with Q1: here $x$ is not the derivative of anything inside $e^{x}$, so substitution gains nothing. A polynomial times an exponential is the classic by-parts case: differentiate the polynomial (it simplifies), integrate the exponential (it doesn't get worse). Partial fractions only apply to rational functions." },
+
+  { integrand:"\\int \\frac{1}{x^{2}-5x+6}\\,dx", ask:"What is the most appropriate approach?",
+    tags:["Factoring","Partial fractions"],
+    options:[
+      {t:"Complete the square in the denominator, then use the arctan form"},
+      {t:"Factorise the denominator, then use partial fractions", ok:true},
+      {t:"Substitution $u = x^{2}-5x+6$"},
+      {t:"Polynomial division"}],
+    hint:"Check the discriminant of the denominator before deciding.",
+    yes:"Two steps, correctly ordered.", no:"Factorise first — the discriminant is positive.",
+    why:"The discriminant is $25-24 = 1 > 0$, so the denominator factorises over the reals: $(x-2)(x-3)$. Partial fractions then give two $\\ln$ terms. Completing the square would produce a difference of squares, not a sum, so no arctan appears. Substitution $u = $ denominator needs $(2x-5)$ in the numerator, which is absent. Division is only for improper fractions." },
+
+  { integrand:"\\int \\frac{x^{2}+3}{x+1}\\,dx", ask:"What must be done first?",
+    tags:["Polynomial division"],
+    options:[
+      {t:"Partial fractions"},
+      {t:"Polynomial (long) division", ok:true},
+      {t:"Substitution $u = x^{2}+3$"},
+      {t:"Integration by parts with $u = x^{2}+3$"}],
+    hint:"Compare the degrees of numerator and denominator.",
+    yes:"Yes — divide before anything else.", no:"Is the fraction proper?",
+    why:"The fraction is improper (degree 2 over degree 1). Partial fractions can only be applied to proper fractions, so division must come first: $\\frac{x^{2}+3}{x+1} = x-1+\\frac{4}{x+1}$. Each resulting term is then a standard integral. Substitution $u = x^{2}+3$ would need a numerator proportional to $2x$." },
+
+  { integrand:"\\int \\frac{1}{x^{2}+4x+13}\\,dx", ask:"What is the most appropriate approach?",
+    tags:["Completing the square"],
+    options:[
+      {t:"Factorise the denominator, then partial fractions"},
+      {t:"Complete the square, then use the arctan standard form", ok:true},
+      {t:"Substitution $u = x^{2}+4x+13$"},
+      {t:"Polynomial division"}],
+    hint:"Check the discriminant again.",
+    yes:"Irreducible quadratic handled correctly.", no:"Negative discriminant — it won't factorise.",
+    why:"Discriminant $16-52<0$, so the quadratic does not factorise over the reals and partial fractions are unavailable. Completing the square gives $(x+2)^{2}+9$, which is the form $\\int \\frac{1}{u^{2}+a^{2}}\\,du = \\frac{1}{a}\\arctan\\frac{u}{a}$. Substitution $u = $ denominator fails because the numerator is constant, not $(2x+4)$." },
+
+  { integrand:"\\int \\sin^{2}x\\,dx", ask:"What is the most appropriate first manipulation?",
+    tags:["Trigonometric identities"],
+    options:[
+      {t:"Substitution $u = \\sin x$"},
+      {t:"Integration by parts with $u = \\sin x$, $dv = \\sin x\\,dx$"},
+      {t:"Apply the identity $\\sin^{2}x = \\tfrac12(1-\\cos 2x)$", ok:true},
+      {t:"Treat it as a direct standard integral"}],
+    hint:"There is no $\\cos x$ factor available for a substitution.",
+    yes:"Identity first — cleanest route.", no:"An identity removes the square.",
+    why:"Substitution $u = \\sin x$ needs a $\\cos x\\,dx$ to become $du$, and there is none. By parts works but loops back on itself. The power-reducing (double-angle) identity turns the integrand into $\\tfrac12 - \\tfrac12\\cos 2x$, both of which integrate directly. $\\sin^{2}x$ is not a standard integral in the formula booklet." },
+
+  { integrand:"\\int \\frac{x^{3}+2x}{x}\\,dx", ask:"What is the most appropriate first manipulation?",
+    tags:["Algebraic simplification"],
+    options:[
+      {t:"Partial fractions"},
+      {t:"Substitution $u = x^{3}+2x$"},
+      {t:"Simplify algebraically by dividing each term by $x$", ok:true},
+      {t:"Integration by parts"}],
+    hint:"The denominator is a single term.",
+    yes:"Simplify before you integrate.", no:"Divide each term by $x$ first.",
+    why:"With a monomial denominator, split the fraction term by term: $\\frac{x^{3}+2x}{x} = x^{2}+2$, which integrates directly. Reaching for substitution or partial fractions here is over-engineering a problem that simplification dissolves. Always check for cancellation or term-wise division before choosing a heavier technique." },
+
+  { integrand:"\\int \\frac{1}{\\sqrt{9-x^{2}}}\\,dx", ask:"What is the most appropriate approach?",
+    tags:["Direct standard integral"],
+    options:[
+      {t:"Recognise it as the standard integral giving $\\arcsin\\frac{x}{3}$", ok:true},
+      {t:"Complete the square"},
+      {t:"Substitution $u = 9-x^{2}$"},
+      {t:"Factorise $9-x^{2}$ and use partial fractions"}],
+    hint:"Compare with the forms in the formula booklet.",
+    yes:"Recognised the standard form.", no:"This one is in the formula booklet.",
+    why:"This is exactly $\\int \\frac{1}{\\sqrt{a^{2}-x^{2}}}\\,dx = \\arcsin\\frac{x}{a}+C$ with $a = 3$ — a booklet result, so no manipulation is needed. The trig substitution $x = 3\\sin\\theta$ is how that result is derived, but reproducing the derivation is unnecessary. Substitution $u = 9-x^{2}$ needs an $x$ in the numerator; partial fractions don't apply under a square root." },
+
+  { integrand:"\\int \\ln x\\,dx", ask:"What is the most appropriate technique?",
+    tags:["Integration by parts"],
+    options:[
+      {t:"Substitution $u = \\ln x$"},
+      {t:"Direct standard integral"},
+      {t:"Integration by parts with $u = \\ln x$, $dv = dx$", ok:true},
+      {t:"Rewrite using a logarithm identity, then integrate directly"}],
+    hint:"Think of the integrand as $1\\cdot\\ln x$.",
+    yes:"The hidden factor of 1.", no:"Insert a factor of 1 and integrate by parts.",
+    why:"$\\ln x$ is not a standard integral, and substitution $u = \\ln x$ leaves $\\int u\\,e^{u}\\,du$, which is harder. Writing the integrand as $1\\cdot\\ln x$ and applying by parts with $u = \\ln x$, $dv = dx$ gives $x\\ln x - \\int 1\\,dx$. The same idea handles $\\arctan x$ and $\\arcsin x$." },
+
+  { integrand:"\\int \\frac{2x+3}{x^{2}+3x+7}\\,dx", ask:"What is the most appropriate technique?",
+    tags:["Substitution"],
+    options:[
+      {t:"Factorise the denominator, then partial fractions"},
+      {t:"Complete the square, then arctan"},
+      {t:"Substitution $u = x^{2}+3x+7$ (the numerator is the derivative of the denominator)", ok:true},
+      {t:"Polynomial division"}],
+    hint:"Differentiate the denominator and compare.",
+    yes:"The $f'/f$ pattern.", no:"Differentiate the denominator.",
+    why:"$\\frac{d}{dx}(x^{2}+3x+7) = 2x+3$, exactly the numerator, so the integrand is $\\frac{f'(x)}{f(x)}$ and integrates to $\\ln|f(x)|$. The discriminant $9-28<0$ rules out partial fractions; completing the square is only needed when the numerator is constant (as in Q5). Always test for the $f'/f$ pattern before anything else with rational integrands." },
+
+  { integrand:"\\int x^{2}\\sin x\\,dx", ask:"What is the most appropriate approach?",
+    tags:["Integration by parts"],
+    options:[
+      {t:"Substitution $u = x^{2}$"},
+      {t:"Integration by parts, applied twice", ok:true},
+      {t:"Apply a trigonometric identity to $\\sin x$"},
+      {t:"Substitution $u = \\sin x$"}],
+    hint:"What happens to the polynomial each time you differentiate it?",
+    yes:"Two rounds, planned in advance.", no:"Degree 2 means by parts more than once.",
+    why:"Polynomial times trig with unrelated factors is a by-parts case. Differentiating $x^{2}$ gives $2x$, then $2$, so two applications reduce the polynomial to a constant. Neither substitution works: $x^{2}$ is not paired with $2x$, and $\\sin x$ is not paired with $\\cos x$. Recognising in advance that the process must repeat is part of choosing the technique." },
+
+  { integrand:"\\int \\frac{x+5}{x^{2}+4x+13}\\,dx", ask:"What is the most appropriate approach?",
+    tags:["Substitution","Completing the square"],
+    options:[
+      {t:"Partial fractions"},
+      {t:"Split the numerator as $\\tfrac12(2x+4)+3$, then substitution for the first part and completing the square for the second", ok:true},
+      {t:"Substitution $u = x^{2}+4x+13$ for the whole integrand"},
+      {t:"Polynomial division, then complete the square"}],
+    hint:"Part of the numerator matches the derivative of the denominator, but not all of it.",
+    yes:"Both pieces identified.", no:"Split the numerator so part of it matches the derivative.",
+    why:"The denominator's derivative is $2x+4$, and $x+5 = \\tfrac12(2x+4)+3$. The first piece is $f'/f \\to \\ln$; the constant remainder over the irreducible quadratic needs completing the square $\\to \\arctan$. The substitution alone doesn't work because the numerator isn't a multiple of $2x+4$; partial fractions fail (discriminant $<0$); the fraction is already proper, so no division." },
+
+  { integrand:"\\int \\cos^{3}x\\,dx", ask:"What is the most appropriate approach?",
+    tags:["Trigonometric identities","Substitution"],
+    options:[
+      {t:"Integration by parts with $u = \\cos^{2}x$, $dv = \\cos x\\,dx$"},
+      {t:"Write $\\cos^{3}x = \\cos x\\,(1-\\sin^{2}x)$, then substitute $u = \\sin x$", ok:true},
+      {t:"Apply the power-reducing identity as in $\\int \\sin^{2}x\\,dx$"},
+      {t:"Substitution $u = \\cos x$"}],
+    hint:"Odd power of cosine: peel one factor off.",
+    yes:"Odd-power strategy.", no:"Save one $\\cos x$, convert the rest.",
+    why:"For an odd power, keep one $\\cos x$ as the future $du$ and convert the remaining even power with $\\cos^{2}x = 1-\\sin^{2}x$. Then $u = \\sin x$ gives $\\int (1-u^{2})\\,du$. Substitution $u = \\cos x$ fails because there is no $\\sin x$ available. Power-reduction identities are for even powers; by parts works but is far longer." },
+
+  { integrand:"\\int \\frac{x^{2}+1}{x^{3}+x}\\,dx", ask:"What is the most appropriate first manipulation?",
+    tags:["Factoring","Algebraic simplification"],
+    options:[
+      {t:"Partial fractions with denominator $x(x^{2}+1)$"},
+      {t:"Factorise the denominator and cancel the common factor", ok:true},
+      {t:"Substitution $u = x^{3}+x$"},
+      {t:"Polynomial division"}],
+    hint:"Factorise both numerator and denominator before choosing anything.",
+    yes:"Cancelled before committing.", no:"Factorise the denominator and look again.",
+    why:"$x^{3}+x = x(x^{2}+1)$, so the integrand collapses to $\\frac{1}{x}$ and integrates directly. Partial fractions would give the same answer after much more work (and a zero coefficient). Substitution $u = x^{3}+x$ needs $3x^{2}+1$ in the numerator. This is why simplification always precedes technique selection." },
+
+  { integrand:"\\int \\frac{x^{3}}{x^{2}+1}\\,dx", ask:"What is the most appropriate approach?",
+    tags:["Polynomial division","Substitution"],
+    options:[
+      {t:"Partial fractions"},
+      {t:"Substitution $u = x^{2}+1$ on the whole integrand"},
+      {t:"Polynomial division, then substitution $u = x^{2}+1$ for the remainder term", ok:true},
+      {t:"Integration by parts with $u = x^{3}$"}],
+    hint:"Improper fraction — but what does the remainder look like after dividing?",
+    yes:"Division, then substitution.", no:"Divide first, then check the remainder.",
+    why:"Degree 3 over degree 2 is improper, so divide: $\\frac{x^{3}}{x^{2}+1} = x - \\frac{x}{x^{2}+1}$. The $x$ integrates directly; the remainder $\\frac{x}{x^{2}+1}$ has numerator proportional to the derivative of the denominator, so substitution (the $f'/f$ pattern) gives $\\tfrac12\\ln(x^{2}+1)$. Partial fractions need a proper fraction and a reducible denominator — neither holds here." },
+
+  { integrand:"\\int \\tan^{2}x\\,dx", ask:"What is the most appropriate first manipulation?",
+    tags:["Trigonometric identities","Direct standard integral"],
+    options:[
+      {t:"Substitution $u = \\tan x$"},
+      {t:"Rewrite as $\\frac{\\sin^{2}x}{\\cos^{2}x}$ and integrate by parts"},
+      {t:"Apply the identity $\\tan^{2}x = \\sec^{2}x - 1$, then integrate directly", ok:true},
+      {t:"Treat it as a direct standard integral"}],
+    hint:"Which Pythagorean identity involves $\\tan$?",
+    yes:"Pythagorean identity, then direct.", no:"Use the identity linking $\\tan^{2}$ and $\\sec^{2}$.",
+    why:"$\\tan^{2}x$ is not a standard integral, and $u = \\tan x$ needs a $\\sec^{2}x\\,dx$ that isn't present. The identity $1+\\tan^{2}x = \\sec^{2}x$ rewrites the integrand as $\\sec^{2}x - 1$, and both terms are booklet results ($\\tan x$ and $x$). Recognising which identity connects a function to a known derivative is the whole skill here." }
+];
+
+/* ---------- Rendering helpers ---------- */
+function tex(el, src, display){
+  if (window.katex){
+    try { katex.render(src, el, {displayMode:!!display, throwOnError:false}); return; } catch(e){}
+  }
+  el.textContent = src;
+}
+// Text with inline $...$ maths
+function rich(src){
+  const frag = document.createDocumentFragment();
+  src.split(/\$/).forEach((piece, i)=>{
+    if (i % 2 === 0){ frag.appendChild(document.createTextNode(piece)); }
+    else { const s=document.createElement('span'); tex(s, piece, false); frag.appendChild(s); }
+  });
+  return frag;
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+
+/* ---------- State ---------- */
+const app = document.getElementById('app');
+let order = [];      // indices into Q for this run
+let pos = 0;
+let results = [];    // {q, correct}
+
+function start(indices){
+  order = indices; pos = 0; results = [];
+  showQuestion();
+}
+
+function showQuestion(){
+  const qi = order[pos], q = Q[qi];
+  const opts = shuffle(q.options.map(o=>({...o})));
+  app.innerHTML = '';
+
+  const bar = document.createElement('div'); bar.className='progress';
+  order.forEach((_, i)=>{
+    const s = document.createElement('span');
+    if (i < pos) s.className = results[i].correct ? 'ok' : 'no';
+    else if (i === pos) s.className = 'now';
+    bar.appendChild(s);
+  });
+  app.appendChild(bar);
+
+  const counter = document.createElement('p'); counter.className='counter';
+  counter.textContent = `Question ${pos+1} of ${order.length}`;
+  app.appendChild(counter);
+
+  const integ = document.createElement('div'); integ.className='integrand';
+  tex(integ, q.integrand, true); app.appendChild(integ);
+
+  const ask = document.createElement('p'); ask.className='ask'; ask.textContent = q.ask; app.appendChild(ask);
+
+  const list = document.createElement('ul'); list.className='options';
+  const buttons = [];
+  opts.forEach((o, i)=>{
+    const li = document.createElement('li');
+    const b = document.createElement('button'); b.type='button'; b.className='opt';
+    const m = document.createElement('span'); m.className='mark'; m.textContent = 'ABCD'[i];
+    const t = document.createElement('span'); t.appendChild(rich(o.t));
+    b.append(m, t); li.appendChild(b); list.appendChild(li); buttons.push({b, o});
+    b.addEventListener('click', ()=>answer(o, buttons));
+  });
+  app.appendChild(list);
+
+  const tools = document.createElement('div'); tools.className='tools';
+  const hintBtn = document.createElement('button'); hintBtn.type='button'; hintBtn.className='link'; hintBtn.textContent='Show a hint';
+  const hint = document.createElement('div'); hint.className='hint'; hint.hidden = true; hint.appendChild(rich(q.hint));
+  hintBtn.addEventListener('click', ()=>{ hint.hidden = !hint.hidden; hintBtn.textContent = hint.hidden ? 'Show a hint' : 'Hide hint'; });
+  tools.append(hintBtn); app.append(tools, hint);
+}
+
+function answer(chosen, buttons){
+  const q = Q[order[pos]];
+  const correct = !!chosen.ok;
+  results[pos] = {q, correct};
+
+  buttons.forEach(({b, o})=>{
+    b.disabled = true;
+    if (o === chosen){ b.classList.add('chosen', correct ? 'right' : 'wrong'); b.querySelector('.mark').textContent = correct ? '✓' : '✗'; }
+    else if (o.ok){ b.classList.add('reveal'); }
+    else { b.classList.add('dim'); }
+  });
+  app.querySelector('.progress span.now').className = correct ? 'ok' : 'no';
+
+  const fb = document.createElement('div'); fb.className = 'feedback ' + (correct ? 'right' : 'wrong');
+  const v = document.createElement('p'); v.className='verdict'; v.appendChild(rich(correct ? q.yes : 'Not quite. ' + q.no));
+  const why = document.createElement('p'); why.appendChild(rich(q.why));
+  fb.append(v, why); app.appendChild(fb);
+
+  const next = document.createElement('button'); next.type='button'; next.className='btn';
+  next.textContent = pos + 1 < order.length ? 'Next question' : 'See your review';
+  next.addEventListener('click', ()=>{ pos++; pos < order.length ? showQuestion() : showSummary(); });
+  app.appendChild(next); next.focus();
+}
+
+function showSummary(){
+  app.innerHTML = '';
+  const n = results.length, score = results.filter(r=>r.correct).length;
+  const box = document.createElement('div'); box.className='summary';
+
+  const h = document.createElement('h2'); h.textContent = 'Review';
+  const s = document.createElement('p'); s.className='score'; s.textContent = `${score} / ${n}`;
+  box.append(h, s);
+
+  // Techniques to revisit: tags from missed questions
+  const missedTags = {};
+  results.filter(r=>!r.correct).forEach(r=> r.q.tags.forEach(t=> missedTags[t] = (missedTags[t]||0)+1 ));
+  const rv = document.createElement('p'); rv.className='revisit';
+  const keys = Object.keys(missedTags).sort((a,b)=>missedTags[b]-missedTags[a]);
+  rv.innerHTML = keys.length
+    ? 'Techniques to revisit: <b>' + keys.join('</b>, <b>') + '</b>.'
+    : 'Every technique recognised. Try it again later without the hints.';
+  box.appendChild(rv);
+
+  const table = document.createElement('table');
+  table.innerHTML = '<thead><tr><th></th><th>Integrand</th><th>Technique</th><th>Result</th></tr></thead>';
+  const tb = document.createElement('tbody');
+  results.forEach((r, i)=>{
+    const tr = document.createElement('tr');
+    const num = document.createElement('td'); num.className='num'; num.textContent = i+1;
+    const integ = document.createElement('td'); const sp=document.createElement('span'); tex(sp, r.q.integrand, false); integ.appendChild(sp);
+    const tech = document.createElement('td'); tech.textContent = r.q.tags.join(' → ');
+    const res = document.createElement('td'); res.className = 'res ' + (r.correct ? 'ok' : 'no'); res.textContent = r.correct ? 'Correct' : 'Missed';
+    tr.append(num, integ, tech, res); tb.appendChild(tr);
+  });
+  table.appendChild(tb); box.appendChild(table);
+
+  const again = document.createElement('button'); again.type='button'; again.className='btn'; again.textContent='Start again';
+  again.addEventListener('click', ()=>start(Q.map((_, i)=>i)));
+  box.appendChild(again);
+
+  const missed = results.map((r,i)=>({r, idx: Q.indexOf(r.q)})).filter(x=>!x.r.correct).map(x=>x.idx);
+  if (missed.length){
+    const retry = document.createElement('button'); retry.type='button'; retry.className='btn quiet';
+    retry.textContent = `Retry the ${missed.length} you missed`;
+    retry.addEventListener('click', ()=>start(missed));
+    box.appendChild(retry);
+  }
+  app.appendChild(box);
+}
+
+// Start once KaTeX has had a chance to load (falls back to plain text if it hasn't).
+window.addEventListener('DOMContentLoaded', ()=>{
+  const go = ()=>start(Q.map((_, i)=>i));
+  if (window.katex) go(); else { const s=document.querySelector('script[src*="katex"]'); s.addEventListener('load', go); s.addEventListener('error', go); setTimeout(()=>{ if(!app.children.length) go(); }, 2500); }
+});
+</script>
+</body>
+</html>
