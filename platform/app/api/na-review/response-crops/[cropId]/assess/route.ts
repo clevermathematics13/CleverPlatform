@@ -238,6 +238,7 @@ export async function POST(
       const message = await anthropic.messages.create({
         model: ASSESSMENT_MODEL,
         max_tokens: 2048,
+        temperature: 0,
         // Breakpoint on the static system prompt, never after the image --
         // same reasoning as the first-pass call below.
         system: [{ type: "text", text: WIDE_CONTEXT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
@@ -278,6 +279,10 @@ export async function POST(
       // response needs nowhere near 2048 tokens, but it's cheap insurance
       // against a similarly verbose response slipping through.
       max_tokens: 2048,
+      // Marking should be as repeatable as the model allows; the default
+      // temperature (1.0) adds sampling noise unrelated to the work. See the
+      // AI-grade route for the measured run-to-run drift that motivated this.
+      temperature: 0,
       // The cache breakpoint sits on the system prompt, which is the only
       // part of this request that is byte-identical from one crop to the
       // next. It used to sit on the rubric block below, AFTER the image.
