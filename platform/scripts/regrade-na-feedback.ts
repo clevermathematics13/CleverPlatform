@@ -28,6 +28,12 @@
  *   --limit <n>        stop after n crops (per run, for a pilot)
  *   --concurrency <n>  parallel crops in flight (default 4)
  *   --dry-run          assess and report, write nothing
+ *   --not-updated-since <iso>
+ *                      skip crops whose feedback was already written at
+ *                      or after this timestamp -- i.e. resume a run that
+ *                      stopped partway (the first whole-database run died
+ *                      when the API credit balance hit zero, 1,338 crops
+ *                      short) without paying to redo what succeeded.
  */
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
@@ -60,6 +66,7 @@ const value = (name: string) => values(name)[0];
 const DRY_RUN = flag("dry-run");
 const LIMIT = value("limit") ? Number(value("limit")) : Infinity;
 const CONCURRENCY = value("concurrency") ? Number(value("concurrency")) : 4;
+const NOT_UPDATED_SINCE = value("not-updated-since");
 const SCAN_IDS = values("scan");
 const STATUSES = values("status");
 const ALL = flag("all");
@@ -130,6 +137,7 @@ async function selectCrops(scanIds: string[]) {
     possibly_truncated: boolean | null;
     packet_scan_id: string;
     na_anchors: AnchorRow | AnchorRow[] | null;
+    na_feedback: { updated_at: string | null } | Array<{ updated_at: string | null }> | null;
   }> = [];
 
   // Paged: a whole-database run is ~2,000 crops, past PostgREST's default
@@ -138,13 +146,24 @@ async function selectCrops(scanIds: string[]) {
     const { data, error } = await supabase
       .from("na_response_crops")
       .select(
-        "id, storage_path, is_blank, boundary_expanded, possibly_truncated, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks, page_index, x0_pt, y0_pt, x1_pt, y1_pt)"
+        "id, storage_path, is_blank, boundary_expanded, possibly_truncated, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks, page_index, x0_pt, y0_pt, x1_pt, y1_pt), na_feedback(updated_at)"
       )
       .eq("packet_scan_id", scanId);
     if (error) throw error;
     rows.push(...((data ?? []) as unknown as typeof rows));
   }
-  return rows;
+
+  if (!NOT_UPDATED_SINCE) return rows;
+  const cutoff = Date.parse(NOT_UPDATED_SINCE);
+  if (Number.isNaN(cutoff)) {
+    console.error(`--not-updated-since is not a parseable timestamp: ${NOT_UPDATED_SINCE}`);
+    process.exit(1);
+  }
+  return rows.filter((r) => {
+    const fb = Array.isArray(r.na_feedback) ? r.na_feedback[0] : r.na_feedback;
+    if (!fb?.updated_at) return true;
+    return Date.parse(fb.updated_at) < cutoff;
+  });
 }
 
 // ---- one crop ---------------------------------------------------------
@@ -403,8 +422,10 @@ async function main() {
   const crops = allCrops.slice(0, LIMIT === Infinity ? undefined : LIMIT);
 
   console.log(
-    `${DRY_RUN ? "DRY RUN: " : ""}regrading ${crops.length} crop(s) across ${scanIds.length} packet scan(s), concurrency ${CONCURRENCY}`
+    `${DRY_RUN ? "DRY RUN: " : ""}${allCrops.length} crop(s) selected across ${scanIds.length} packet scan(s)` +
+      `${crops.length !== allCrops.length ? `, ${crops.length} after --limit` : ""}, concurrency ${CONCURRENCY}`
   );
+  if (crops.length === 0) return;
 
   const outcomes: Outcome[] = [];
   let cursor = 0;
