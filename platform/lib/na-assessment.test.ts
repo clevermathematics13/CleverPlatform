@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateAssessment } from "./na-assessment";
+import { clampToOneSentence, validateAssessment } from "./na-assessment";
 
 function assessmentJson(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -162,6 +162,76 @@ describe("validateAssessment -- an untouched box is not a wrong answer", () => {
       expect(result.assessment.verdict).toBe("unclear");
       expect(result.assessment.marksAwarded).toBe(0);
       expect(result.assessment.studentAttempted).toBe(false);
+    }
+  });
+});
+
+describe("clampToOneSentence", () => {
+  it("leaves a single short sentence untouched", () => {
+    expect(clampToOneSentence("Nearly all correct -- in (b) the first term should be 2x^2.")).toBe(
+      "Nearly all correct -- in (b) the first term should be 2x^2."
+    );
+  });
+
+  it("keeps only the first sentence of a paragraph-length comment", () => {
+    const paragraph =
+      "Excellent work on parts (a), (c), (d), and (e) -- all correct! In part (b), you listed " +
+      "the first term as 3x^2 instead of 2x^2. Interestingly, you correctly identified the " +
+      "coefficient as 2 in part (c), so it looks like a small slip.";
+    expect(clampToOneSentence(paragraph)).toBe(
+      "Excellent work on parts (a), (c), (d), and (e) -- all correct!"
+    );
+  });
+
+  it("does not split a decimal or an abbreviation mid-sentence", () => {
+    expect(clampToOneSentence("Your answer of 0.5 is right, but round to 2 s.f. next time.")).toBe(
+      "Your answer of 0.5 is right, but round to 2 s.f. next time."
+    );
+  });
+
+  it("returns an empty string unchanged", () => {
+    expect(clampToOneSentence("")).toBe("");
+  });
+});
+
+describe("validateAssessment -- student-facing brevity", () => {
+  it("drops everything after the first sentence of marginComment and nextStep, and warns", () => {
+    const result = validateAssessment(
+      assessmentJson({
+        marginComment: "Good start on (a). You also need to simplify the fraction in (b).",
+        nextStep: "Simplify 6/8 in (b). Then check your answer against (a).",
+      }),
+      3
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.assessment.marginComment).toBe("Good start on (a).");
+      expect(result.assessment.nextStep).toBe("Simplify 6/8 in (b).");
+      expect(result.warnings.filter((w) => w.includes("ran past one sentence"))).toHaveLength(2);
+    }
+  });
+
+  it("keeps an over-budget single sentence but warns so a teacher shortens it", () => {
+    const wordy =
+      "You have clearly understood how to expand the brackets here and your working is very neat " +
+      "throughout the whole question.";
+    const result = validateAssessment(assessmentJson({ marginComment: wordy }), 3);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.assessment.marginComment).toBe(wordy);
+      expect(result.warnings.some((w) => w.includes("word budget"))).toBe(true);
+    }
+  });
+
+  it("adds no brevity warnings for an untouched box, whose fields are already cleared", () => {
+    const result = validateAssessment(
+      assessmentJson({ studentAttempted: false, marksAwarded: 0, transcription: "", verdict: "unclear" }),
+      3
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.assessment.marginComment).toBe("");
+      expect(result.warnings.some((w) => w.includes("sentence") || w.includes("budget"))).toBe(false);
     }
   });
 });

@@ -64,10 +64,13 @@ export const AssessmentSchema = z.object({
    *  misconception_context when that applies. Empty array when the answer
    *  is correct or the error doesn't match a known misconception. */
   misconceptionTags: z.array(z.string()).default([]),
-  /** One or two sentences written TO the student, in the margin of their
-   *  own work. */
+  /** ONE short sentence written TO the student, in the margin of their
+   *  own work. Clamped to its first sentence by validateAssessment -- see
+   *  clampToOneSentence for why the prompt's word budget is not trusted
+   *  on its own. */
   marginComment: z.string(),
-  /** One concrete thing to do next. */
+  /** One concrete thing to do next, in ONE short sentence. Clamped the
+   *  same way as marginComment. */
   nextStep: z.string(),
   /** The model's own confidence in this assessment, 0-1. Low confidence
    *  on a legible answer is a signal the rubric may not fit what the
@@ -192,9 +195,13 @@ Marking rules:
 
 If a MISCONCEPTION note is supplied, it describes a specific error this question was designed to catch. If the student's work shows that error, name it in misconceptionTags. If they avoided it, do not invent a tag.
 
-marginComment is written TO the student, in their own margin: warm, specific, and SHORT -- ONE sentence, no more than about 20 words, full stop. Never two sentences. Pick the single most useful thing to say -- what they did well, OR what to fix, not both -- in as few words as that takes, not a full explanation of the concept. Never sarcastic, never discouraging. This is a margin note a 14-15 year old glances at in passing, not a paragraph to read.
+marginComment is written TO the student, in their own margin: warm, specific, and VERY SHORT -- ONE sentence, 15 words or fewer, full stop. Never two sentences. Say the single most useful thing and stop: what they did well, OR what to fix, never both joined by "but". Do NOT list which parts were right, do NOT restate what the student wrote, do NOT explain the mathematics -- the marks already say how they did, and the question is right there in front of them. A 14-15 year old glances at this in passing; anything that takes longer than a glance is too long. Never sarcastic, never discouraging. Anything after your first sentence is discarded before the student ever sees it, so put everything that matters into that one sentence.
+- Too long: "Excellent work on parts (a), (c), (d), and (e) -- all correct! In part (b), you listed the first term as 3x^2 instead of 2x^2. Interestingly, you correctly identified the coefficient as 2 in part (c), so it looks like a small slip when writing the term."
+- Right: "Nearly all correct -- in (b) the first term should be 2x^2, not 3x^2."
 
-nextStep is one concrete action in ONE short sentence, no more than about 20 words, not a platitude. "Re-read the question and check which number comes first when it says 'fewer than'" -- not "review this topic". If the fix takes more than one sentence to state, you are being too specific about the method and not specific enough about the single next move -- name the move, not the whole solution.
+nextStep is ONE concrete action in ONE sentence, 15 words or fewer, not a platitude. "Re-read the question and check which number comes first when it says 'fewer than'" -- not "review this topic". Name the single move and nothing else: not the reason for it, not the working, not the whole solution, and never a longer re-explanation of what marginComment just said. If the move takes more than one sentence to state, you are describing the method instead of naming the move. Anything after your first sentence is discarded here too.
+- Too long: "When listing terms in (b), double-check that the coefficient you write matches what you used in (c) -- here you correctly knew the coefficient was 2, so the term should have been written as 2x^2."
+- Right: "Rewrite (b)'s first term using the coefficient you already found in (c)."
 
 teacherNote is for the teacher only and never shown to the student. Use it for anything that affects trust in this mark: a crop that looks cut off, work that seems to belong to a different question, an answer that's right by a method the key didn't anticipate, or your reason for an "unclear" verdict. Leave it as an empty string when there is genuinely nothing to flag. Keep it as brief as the reasoning allows -- one or two short sentences, not a paragraph.
 
@@ -373,6 +380,46 @@ function extractJsonBlock(text: string): string | null {
   return candidate.slice(start, end + 1);
 }
 
+/** Word budget for the two student-facing fields. Matches the number
+ *  the system prompt asks for; a comment over it survives (a clean short
+ *  sentence is never worth throwing away for one word) but is warned
+ *  about, so a drift back towards paragraphs shows up in review instead
+ *  of silently reaching students. */
+export const STUDENT_TEXT_WORD_BUDGET = 15;
+
+/**
+ * Keeps only the first sentence of a student-facing comment.
+ *
+ * The prompt has asked for one short sentence through two rounds of
+ * tightening and still came back with paragraphs -- the released
+ * feedback for A.1 Q5 ran to four lines, opening with a roll-call of
+ * every part the student got right before reaching the one thing they
+ * needed to know. Word budgets in a prompt are a request; this is the
+ * enforcement, in the same spirit as the studentAttempted rules above
+ * ("enforced rather than trusted"), because the cost of an over-long
+ * margin note falls on a 14-15 year old who then skims past all of it.
+ *
+ * Cuts only at a sentence boundary, never mid-thought: a boundary is
+ * .!? followed by whitespace and then something that starts a new
+ * sentence (a capital, an opening quote or bracket). Requiring the
+ * whitespace keeps decimals ("0.5") and ellipses intact, and requiring
+ * the capital keeps "2x^2 vs. 3x^2" style abbreviations from splitting a
+ * sentence in half. When the model obeys the prompt and writes one
+ * sentence, this returns it untouched.
+ */
+export function clampToOneSentence(text: string): string {
+  const trimmed = text.trim();
+  const boundary = trimmed.match(/[.!?](?=\s+["'\u201C(\[]?[A-Z])/);
+  if (boundary?.index === undefined) return trimmed;
+  return trimmed.slice(0, boundary.index + 1);
+}
+
+/** Word count as a reader would see it, for the budget warning only. */
+function wordCount(text: string): number {
+  const trimmed = text.trim();
+  return trimmed === "" ? 0 : trimmed.split(/\s+/).length;
+}
+
 export type AssessmentValidation =
   | { ok: true; assessment: Assessment; warnings: string[] }
   | { ok: false; error: string };
@@ -482,6 +529,31 @@ export function validateAssessment(
   if (!a.studentAttempted) {
     a.marginComment = "";
     a.nextStep = "";
+  }
+
+  // Brevity is enforced, not requested. Both fields go straight to the
+  // student, and both are asked for as ONE short sentence; anything the
+  // model adds after that first sentence is dropped here rather than
+  // trusted, and a first sentence that is itself over budget is left
+  // alone but flagged for the teacher reviewing before release.
+  for (const field of ["marginComment", "nextStep"] as const) {
+    const original = a[field];
+    const clamped = clampToOneSentence(original);
+    if (clamped !== original.trim()) {
+      // The dropped tail is quoted rather than discarded silently: it is
+      // occasionally the half that mattered, and a teacher editing before
+      // release is the one person who can tell.
+      warnings.push(
+        `${field} ran past one sentence -- the student sees only the first; dropped: "${original.trim().slice(clamped.length).trim()}".`
+      );
+    }
+    a[field] = clamped;
+    const words = wordCount(clamped);
+    if (words > STUDENT_TEXT_WORD_BUDGET) {
+      warnings.push(
+        `${field} is ${words} words, over the ${STUDENT_TEXT_WORD_BUDGET}-word budget -- shorten it before releasing this to the student.`
+      );
+    }
   }
 
   // Real failure mode found in production: on A.1 Q1 for Kaito Fujii, the
