@@ -238,13 +238,15 @@ export async function POST(
       const message = await anthropic.messages.create({
         model: ASSESSMENT_MODEL,
         max_tokens: 2048,
-        system: WIDE_CONTEXT_SYSTEM_PROMPT,
+        // Breakpoint on the static system prompt, never after the image --
+        // same reasoning as the first-pass call below.
+        system: [{ type: "text", text: WIDE_CONTEXT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
         messages: [
           {
             role: "user",
             content: [
               { type: "image", source: { type: "base64", media_type: "image/png", data: pageImageBase64 } },
-              { type: "text", text: buildRubricBlock(ctx), cache_control: { type: "ephemeral" } },
+              { type: "text", text: buildRubricBlock(ctx) },
               { type: "text", text: buildWideContextUserPrompt() },
             ],
           },
@@ -276,21 +278,25 @@ export async function POST(
       // response needs nowhere near 2048 tokens, but it's cheap insurance
       // against a similarly verbose response slipping through.
       max_tokens: 2048,
-      system: ASSESSMENT_SYSTEM_PROMPT,
+      // The cache breakpoint sits on the system prompt, which is the only
+      // part of this request that is byte-identical from one crop to the
+      // next. It used to sit on the rubric block below, AFTER the image.
+      // The API still served the system prompt as a partial-prefix hit
+      // under that layout (measured: ~2.8K tokens read on the next crop),
+      // but every call also wrote its own image+rubric (~1.8K tokens) to
+      // the cache at the 1.25x write rate, and nothing could ever read
+      // that back because the next crop's image differs. With the
+      // breakpoint here those tokens are plain input instead: about 11%
+      // off the per-call cost, measured cold on two consecutive different
+      // crops (the numbers are in the PR that made this change). Do not
+      // put a breakpoint after the image again.
+      system: [{ type: "text", text: ASSESSMENT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",
           content: [
             { type: "image", source: { type: "base64", media_type: "image/png", data: imageBase64 } },
-            {
-              // NOTE: no longer byte-identical across every student for a
-              // given question, since it now includes this crop's own
-              // boundaryExpanded value (see buildRubricBlock's docstring
-              // for the caching tradeoff this accepts).
-              type: "text",
-              text: buildRubricBlock(ctx),
-              cache_control: { type: "ephemeral" },
-            },
+            { type: "text", text: buildRubricBlock(ctx) },
             { type: "text", text: buildAssessmentUserPrompt() },
           ],
         },

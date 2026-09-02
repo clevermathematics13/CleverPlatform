@@ -283,13 +283,12 @@ export function buildWideContextUserPrompt(): string {
  * answer key, and the scoping/marks context for this specific crop.
  *
  * NOTE: boundaryExpanded is deliberately per-student, not per-question,
- * so including it here means this block is no longer byte-identical
- * across every student answering a given question -- it varies with
- * whether THIS student's crop got expanded. That's an intentional
- * tradeoff: prompt caching benefit is reduced slightly, but the model
- * gets a real per-crop signal directly alongside the rubric it's already
- * reading, rather than needing a second content block that would fragment
- * the cache boundary anyway.
+ * so this block is not byte-identical across every student answering a
+ * given question -- it varies with whether THIS student's crop got
+ * expanded. That has no caching cost: this block sits after the per-crop
+ * image in the request, and the prompt-cache breakpoint is on the system
+ * prompt (the only byte-stable prefix), so nothing here was ever going to
+ * be served from cache regardless.
  */
 export function buildRubricBlock(a: AnchorContext): string {
   const lines: string[] = [];

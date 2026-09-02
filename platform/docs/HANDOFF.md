@@ -900,3 +900,64 @@ schema would have caught the error.
 Anchor: page_index 21, x 50.83-544.50, y 168.00-530.00, `expand_max_y1_pt` 542.00
 (bounded just short of the Q26(b) box at 546.17), marks 2, source `manual_grid`.
 Recorded as migration `20260824021752`.
+
+---
+
+## 10. Anthropic spend, 2 Sep 2026: usage log, NA cache fix, segmentation dedupe
+
+A cost pass over the three per-student pipelines (NA per-crop assessment on
+Sonnet 4.6, AI grading on Opus 4.5, batch segmentation on Opus 4.5) found
+~$60-70 of spend to date and three concrete fixes, shipped as one PR with one
+commit per fix so each can be reverted alone:
+
+- **`ai_usage_log`** (new table, `lib/ai-usage.ts` `recordUsage`): one row per
+  model call with the four token meters, `batch` = went through the Message
+  Batches API (50% rate), and a loose `ref_type`/`ref_id` to the run, crop, or
+  batch it served. Written by every per-student pipeline call site (app routes
+  as the teacher; the bulk-upload worker via service role). Cost per pipeline:
+  ```sql
+  select pipeline, model, batch, count(*) as calls,
+         sum(input_tokens) as input, sum(cache_creation_input_tokens) as cache_w,
+         sum(cache_read_input_tokens) as cache_r, sum(output_tokens) as output
+  from ai_usage_log where created_at > now() - interval '7 days'
+  group by 1,2,3 order by 1;
+  ```
+  Multiply by the model's per-MTok rates (cache write 1.25x input, cache read
+  0.1x input; halve everything where `batch`). Before this table existed, none
+  of the numbers in this section could be measured, only estimated.
+- **NA assessment cache breakpoint** (`response-crops/[cropId]/assess/route.ts`):
+  the only `cache_control` sat on the rubric block, after the per-crop image.
+  Measured cold on two consecutive different crops: the old layout still got
+  the ~2.8K-token system prompt as a partial-prefix cache hit on the next call,
+  but every call also wrote its own image+rubric (~1.8K tokens) to the cache at
+  1.25x with nothing able to read it back. Breakpoint moved to the system
+  prompt; per call that is ~$0.0122 -> ~$0.0109, about 11%. (The first estimate
+  in this session said ~49% -- that assumed the system prompt was never being
+  read under the old layout, which the probe disproved. Don't repeat the
+  estimate; the meters are in the description of the PR that shipped this, and
+  in `ai_usage_log` going forward.) The worker's Batch API path is deliberately unchanged (see its
+  comment); decide from `ai_usage_log` whether a system-only breakpoint pays
+  there.
+- **Segmentation dedupe** (`ai_grade_batches.source_sha256`): the same 90-page
+  BiStats batch had been uploaded 14 times, each paying a fresh whole-document
+  Opus call (~$0.70). A byte-identical re-upload on the same test now copies the
+  earlier `proposed_segments` and skips the model; `forceResegment: true` opts
+  out.
+
+**Deliberately not done**, so it isn't re-litigated: no grading-model or effort
+change (no eval exists; run-to-run drift of 1-3 marks per part was observed on
+Opus 4.5 re-grades of the BiStats test -- `ai_grade_results.accepted` rows are
+the natural golden set for a future one); no Sonnet 5 for segmentation (only
+one distinct batch document exists to evaluate on); no Batch API for bulk-mode
+grading (real submit/poll UX work -- revisit once the usage log shows how much
+grading is bulk-mode).
+
+**Two housekeeping findings.** (1) The migration ledger and this directory have
+drifted again since the Aug 24 reconciliation: 95 ledger rows vs 94 files, and
+the three Aug 30 files carry different version prefixes from their ledger rows
+(e.g. file `20260830190000_na_student_feedback_foundation` vs ledger
+`20260830192256`). The two new migrations in this pass were renamed to their
+ledger versions after `apply_migration`; the older three were left alone.
+(2) `SCHEMA.md` at the repo root is a 312-byte PostgREST error blob
+(`PGRST202 ... get_schema`), not a schema reference, despite `platform/CLAUDE.md`
+listing it as required reading. Regenerate it or drop the instruction.
