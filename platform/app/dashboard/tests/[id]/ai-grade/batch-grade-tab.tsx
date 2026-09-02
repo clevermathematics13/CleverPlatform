@@ -221,7 +221,11 @@ export function BatchGradeTab({
         }))
       );
       setStatusLine(
-        `Found ${segments.length} student(s) across ${data.pageCount} pages. Review the mapping below before grading.`
+        `Found ${segments.length} student(s) across ${data.pageCount} pages.` +
+          (data.reusedFromBatchId
+            ? " This PDF was uploaded before, so its page mapping was reused instead of being read again."
+            : "") +
+          " Review the mapping below before grading."
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload or segmentation failed.");

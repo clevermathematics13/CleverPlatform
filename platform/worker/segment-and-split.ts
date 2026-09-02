@@ -12,6 +12,7 @@ import {
   validateCoverPageCheck,
   type CoverPageCheck,
 } from "../lib/na-scanning";
+import { recordUsage } from "../lib/ai-usage";
 
 const MAX_CONSECUTIVE_API_ERRORS = 3;
 
@@ -131,6 +132,12 @@ export async function runSegmentAndSplit(
         ],
       });
       consecutiveApiErrors = 0;
+      await recordUsage(supabase, {
+        pipeline: "na_cover_page",
+        model: COVER_PAGE_CHECK_MODEL,
+        usage: message.usage,
+        ref: { type: "na_scan_batch", id: batch.id },
+      });
       const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
       const validated = validateCoverPageCheck(text);
       return validated.ok ? validated.result : notCover;
