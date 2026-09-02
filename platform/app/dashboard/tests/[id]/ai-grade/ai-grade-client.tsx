@@ -45,6 +45,8 @@ interface RunRow {
     maxTotal?: number;
     testTotalMarks?: number;
     needsReview?: string[];
+    /** Parts whose suggestion matched the previous run's and so kept their accepted status. */
+    acceptedCarriedForward?: number;
     warnings?: string[];
   } | null;
   error: string | null;
@@ -135,7 +137,12 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const [test, setTest] = useState<TestDetail | null>(null);
   const [students, setStudents] = useState<StudentOption[]>([]);
+  /** Newest COMPLETE run per student -- the one whose results are reviewable. */
   const [runsByStudent, setRunsByStudent] = useState<Record<string, RunRow>>({});
+  /** Newest run of any status per student, when it is NOT the complete one (a failed or still-running attempt). */
+  const [newerAttemptByStudent, setNewerAttemptByStudent] = useState<Record<string, RunRow>>({});
+  /** Previous complete run's suggested marks for the student under review, keyed by test_item_id. */
+  const [previousMarks, setPreviousMarks] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusLine, setStatusLine] = useState<string | null>(null);
@@ -216,12 +223,23 @@ export function AiGradeClient({ testId }: { testId: string }) {
         setError((runs1.data.error as string) ?? "Could not load grading runs.");
         return;
       }
-      const latest: Record<string, RunRow> = {};
+      // Runs come back newest-first. The reviewable run is the newest COMPLETE
+      // one: a failed or half-finished attempt has no results, and treating it
+      // as "the" run used to hide a student's real graded work behind an
+      // empty run (seen when a re-mark failed on API credits). The newer
+      // attempt is kept separately so its error still shows in the roster.
+      const latestComplete: Record<string, RunRow> = {};
+      const newestAny: Record<string, RunRow> = {};
       for (const r of ((runs1.data.runs as RunRow[]) ?? [])) {
-        // runs come back newest-first from the API; keep only the first (latest) per student
-        if (!latest[r.student_id]) latest[r.student_id] = r;
+        if (!newestAny[r.student_id]) newestAny[r.student_id] = r;
+        if (r.status === "complete" && !latestComplete[r.student_id]) latestComplete[r.student_id] = r;
       }
-      setRunsByStudent(latest);
+      const newerAttempt: Record<string, RunRow> = {};
+      for (const [studentId, r] of Object.entries(newestAny)) {
+        if (latestComplete[studentId]?.id !== r.id) newerAttempt[studentId] = r;
+      }
+      setRunsByStudent(latestComplete);
+      setNewerAttemptByStudent(newerAttempt);
 
       const counts: Record<string, { accepted: number; total: number }> = {};
       for (const r of ((runs1.data.results as { run_id: string; accepted: boolean }[]) ?? [])) {
@@ -250,11 +268,29 @@ export function AiGradeClient({ testId }: { testId: string }) {
           return;
         }
         const runs = (data.runs ?? []) as RunRow[];
-        const latestRun = runs[0] ?? null;
+        // Newest COMPLETE run is what gets reviewed (see loadOverview); the
+        // one before it supplies "was N" hints for parts whose suggestion
+        // moved between runs.
+        const completeRuns = runs.filter((r) => r.status === "complete");
+        const latestRun = completeRuns[0] ?? null;
+        const previousRun = completeRuns[1] ?? null;
         const rows = (data.results ?? []) as ResultRow[];
         const rowsForLatest = latestRun
           ? rows.filter((r) => r.run_id === latestRun.id)
-          : rows;
+          : [];
+        const prev: Record<string, number> = {};
+        if (previousRun) {
+          for (const r of rows) if (r.run_id === previousRun.id) prev[r.test_item_id] = r.suggested_marks;
+        }
+        setPreviousMarks(prev);
+
+        const newest = runs[0] ?? null;
+        setNewerAttemptByStudent((current) => {
+          const next = { ...current };
+          if (newest && newest.id !== latestRun?.id) next[studentId] = newest;
+          else delete next[studentId];
+          return next;
+        });
 
         setFocusRunId(latestRun?.id ?? null);
         setResults(rowsForLatest);
@@ -288,6 +324,21 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   // -- Run grading (fresh upload or re-use stored scan) --
   const runGrading = async (studentId: string, file: File | null) => {
+    // A new run replaces the reviewable one. Parts whose new suggestion
+    // matches the current one keep their accepted status (the server carries
+    // it forward); anything that moves needs review again -- say so before
+    // spending the call, since the teacher may have already signed this off.
+    const currentRun = runsByStudent[studentId];
+    const acceptedCount = currentRun ? acceptanceByRun[currentRun.id]?.accepted ?? 0 : 0;
+    if (acceptedCount > 0) {
+      const ok = window.confirm(
+        `${acceptedCount} part(s) for this student are already accepted into Clev's Marks.\n\n` +
+          "Re-marking runs the model again. Parts whose new suggestion matches the current one stay accepted; " +
+          "any part whose suggestion changes will need to be reviewed and accepted again. Clev's Marks themselves are not changed.\n\n" +
+          "Continue?"
+      );
+      if (!ok) return;
+    }
     setBusyStudent(studentId);
     setError(null);
     setStatusLine(file ? "Uploading scan…" : "Marking the stored scan against the mark scheme…");
@@ -335,6 +386,9 @@ export function AiGradeClient({ testId }: { testId: string }) {
       }
       if (Array.isArray(data.needsReview) && data.needsReview.length > 0) {
         parts.push(`${data.needsReview.length} part(s) flagged for review`);
+      }
+      if (typeof data.acceptedCarriedForward === "number" && data.acceptedCarriedForward > 0) {
+        parts.push(`${data.acceptedCarriedForward} previously accepted part(s) unchanged and still accepted`);
       }
       setStatusLine(parts.length > 0 ? parts.join(", ") + "." : "Marking complete.");
 
@@ -600,6 +654,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
               {students.map((s) => {
                 const busy = busyStudent === s.profile_id;
                 const run = runsByStudent[s.profile_id];
+                const newerAttempt = newerAttemptByStudent[s.profile_id];
                 const acceptance = run ? acceptanceByRun[run.id] : undefined;
                 const dot =
                   run?.status === "complete" && acceptance && acceptance.total > 0
@@ -643,10 +698,21 @@ export function AiGradeClient({ testId }: { testId: string }) {
                               } suggested`}
                             {run.error && ` — ${run.error}`}
                           </>
+                        ) : newerAttempt ? (
+                          "No completed run yet"
                         ) : (
                           "No scan graded yet"
                         )}
                       </p>
+                      {newerAttempt && (
+                        <p className="text-xs text-amber-300">
+                          {newerAttempt.status === "failed"
+                            ? `A newer re-mark failed${newerAttempt.error ? ` — ${newerAttempt.error}` : ""}. ${
+                                run ? "The last completed run is still shown." : ""
+                              }`
+                            : "A newer re-mark is still running."}
+                        </p>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -662,7 +728,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                         {busy ? "Working…" : "Upload scan & mark"}
                       </button>
 
-                      {run?.source_storage_path && (
+                      {(run?.source_storage_path || newerAttempt?.source_storage_path) && (
                         <button
                           type="button"
                           disabled={busy}
@@ -700,6 +766,12 @@ export function AiGradeClient({ testId }: { testId: string }) {
                   <p className="text-xs text-da-muted">
                     Suggested total {suggestedTotal} / {maxTotal}. Edit any value before accepting.
                   </p>
+                  {focusStudent && newerAttemptByStudent[focusStudent] && (
+                    <p className="mt-1 text-xs text-amber-300">
+                      ⚠ A newer re-mark {newerAttemptByStudent[focusStudent].status === "failed" ? "failed" : "is still running"}
+                      {newerAttemptByStudent[focusStudent].error ? ` — ${newerAttemptByStudent[focusStudent].error}` : ""}. Showing the last completed run.
+                    </p>
+                  )}
                   {focusRun?.coverage?.warnings && focusRun.coverage.warnings.length > 0 && (
                     <ul className="mt-2 space-y-0.5 text-xs text-amber-300">
                       {focusRun.coverage.warnings.map((w, i) => (
@@ -775,6 +847,15 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                   }
                                   className="w-16 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
                                 />
+                                {previousMarks[r.test_item_id] !== undefined &&
+                                  previousMarks[r.test_item_id] !== r.suggested_marks && (
+                                    <span
+                                      className="ml-2 rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-300"
+                                      title="The previous completed run suggested a different mark for this part -- the model is not certain here, so it is worth a look."
+                                    >
+                                      was {previousMarks[r.test_item_id]}
+                                    </span>
+                                  )}
                               </td>
                               <td className="px-2 py-2 text-da-muted">{r.max_marks}</td>
                               <td className="px-2 py-2">

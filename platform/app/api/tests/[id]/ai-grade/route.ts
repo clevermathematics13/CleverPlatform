@@ -525,23 +525,62 @@ export async function POST(
     if (!cropUploadErr) evidenceImagePathByTestItemId.set(testItemId, storagePath);
   }
 
+  // -- Carry forward acceptance for parts whose suggestion did not change ----
+  // A re-mark used to start every part at accepted=false, so re-marking a
+  // fully reviewed student flipped all of it back to "needs review" even when
+  // the new suggestion was identical. The teacher's earlier decision still
+  // holds for any part where the model suggests the same mark it did last
+  // time (Clev's Marks already carries whatever they accepted for it). Only
+  // parts whose suggestion moved need a fresh look. Scoped to the most recent
+  // COMPLETE run before this one, so a failed attempt in between is ignored.
+  const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
+  {
+    const { data: priorRun } = await supabase
+      .from("ai_grade_runs")
+      .select("id")
+      .eq("test_id", testId)
+      .eq("student_id", studentId)
+      .eq("status", "complete")
+      .neq("id", run.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (priorRun) {
+      const { data: priorRows } = await supabase
+        .from("ai_grade_results")
+        .select("test_item_id, suggested_marks, accepted_at, accepted_by")
+        .eq("run_id", priorRun.id)
+        .eq("accepted", true);
+      for (const p of priorRows ?? []) priorAccepted.set(p.test_item_id, p);
+    }
+  }
+
   // -- Persist results -------------------------------------------------------
-  const rows = grades.map((g) => ({
-    run_id: run.id,
-    test_item_id: g.unit.testItemId,
-    suggested_marks: g.clampedMarks,
-    max_marks: g.unit.maxMarks,
-    confidence: g.confidence,
-    markscheme_source: g.unit.markschemeSource,
-    work_found: g.item.workFound,
-    reasoning: g.item.reasoning,
-    evidence: g.item.evidence,
-    evidence_image_path: evidenceImagePathByTestItemId.get(g.unit.testItemId) ?? null,
-    evidence_box: evidenceImagePathByTestItemId.has(g.unit.testItemId)
-      ? crops.get(g.unit.testItemId)?.box ?? null
-      : null,
-    mark_breakdown: g.item.markBreakdown,
-  }));
+  let acceptedCarriedForward = 0;
+  const rows = grades.map((g) => {
+    const prior = priorAccepted.get(g.unit.testItemId);
+    const carried = prior && prior.suggested_marks === g.clampedMarks ? prior : null;
+    if (carried) acceptedCarriedForward += 1;
+    return {
+      run_id: run.id,
+      test_item_id: g.unit.testItemId,
+      suggested_marks: g.clampedMarks,
+      max_marks: g.unit.maxMarks,
+      confidence: g.confidence,
+      markscheme_source: g.unit.markschemeSource,
+      work_found: g.item.workFound,
+      reasoning: g.item.reasoning,
+      evidence: g.item.evidence,
+      evidence_image_path: evidenceImagePathByTestItemId.get(g.unit.testItemId) ?? null,
+      evidence_box: evidenceImagePathByTestItemId.has(g.unit.testItemId)
+        ? crops.get(g.unit.testItemId)?.box ?? null
+        : null,
+      mark_breakdown: g.item.markBreakdown,
+      accepted: !!carried,
+      accepted_at: carried?.accepted_at ?? null,
+      accepted_by: carried?.accepted_by ?? null,
+    };
+  });
 
   const { error: insertErr } = await supabase.from("ai_grade_results").insert(rows);
   if (insertErr) return failRun(`Could not save results: ${insertErr.message}`);
@@ -563,6 +602,7 @@ export async function POST(
     maxTotal,
     testTotalMarks,
     needsReview,
+    acceptedCarriedForward,
     warnings: [...assemblyWarnings, ...warnings],
   };
 
