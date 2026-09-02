@@ -22,6 +22,8 @@
  *   npx tsx scripts/regrade-na-feedback.ts --all --concurrency 4
  *
  * Flags:
+ *   --crop <id>        one response crop (repeatable) -- for retrying
+ *                      the handful a run leaves with a validation error
  *   --scan <id>        one packet scan (repeatable)
  *   --status <status>  every packet scan with this na_packet_scans.status
  *   --all              every packet scan
@@ -67,12 +69,13 @@ const DRY_RUN = flag("dry-run");
 const LIMIT = value("limit") ? Number(value("limit")) : Infinity;
 const CONCURRENCY = value("concurrency") ? Number(value("concurrency")) : 4;
 const NOT_UPDATED_SINCE = value("not-updated-since");
+const CROP_IDS = values("crop");
 const SCAN_IDS = values("scan");
 const STATUSES = values("status");
 const ALL = flag("all");
 
-if (!SCAN_IDS.length && !STATUSES.length && !ALL) {
-  console.error("Nothing selected. Pass --scan <id>, --status <status>, or --all.");
+if (!SCAN_IDS.length && !STATUSES.length && !ALL && !CROP_IDS.length) {
+  console.error("Nothing selected. Pass --crop <id>, --scan <id>, --status <status>, or --all.");
   process.exit(1);
 }
 
@@ -128,6 +131,9 @@ async function selectScanIds(): Promise<string[]> {
   return SCAN_IDS;
 }
 
+const CROP_SELECT =
+  "id, storage_path, is_blank, boundary_expanded, possibly_truncated, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks, page_index, x0_pt, y0_pt, x1_pt, y1_pt), na_feedback(updated_at)";
+
 async function selectCrops(scanIds: string[]) {
   const rows: Array<{
     id: string;
@@ -145,9 +151,7 @@ async function selectCrops(scanIds: string[]) {
   for (const scanId of scanIds) {
     const { data, error } = await supabase
       .from("na_response_crops")
-      .select(
-        "id, storage_path, is_blank, boundary_expanded, possibly_truncated, packet_scan_id, na_anchors(qid, base_qid, marks_available, command_term, answer_sketch, open_rubric, misconception_context, question_text, question_answer, question_marks, page_index, x0_pt, y0_pt, x1_pt, y1_pt), na_feedback(updated_at)"
-      )
+      .select(CROP_SELECT)
       .eq("packet_scan_id", scanId);
     if (error) throw error;
     rows.push(...((data ?? []) as unknown as typeof rows));
@@ -417,8 +421,17 @@ const words = (s: string | null | undefined) => {
 };
 
 async function main() {
-  const scanIds = await selectScanIds();
-  const allCrops = await selectCrops(scanIds);
+  let scanIds: string[] = [];
+  let allCrops: Awaited<ReturnType<typeof selectCrops>>;
+  if (CROP_IDS.length) {
+    const { data, error } = await supabase.from("na_response_crops").select(CROP_SELECT).in("id", CROP_IDS);
+    if (error) throw error;
+    allCrops = (data ?? []) as unknown as typeof allCrops;
+    scanIds = [...new Set(allCrops.map((c) => c.packet_scan_id))];
+  } else {
+    scanIds = await selectScanIds();
+    allCrops = await selectCrops(scanIds);
+  }
   const crops = allCrops.slice(0, LIMIT === Infinity ? undefined : LIMIT);
 
   console.log(
