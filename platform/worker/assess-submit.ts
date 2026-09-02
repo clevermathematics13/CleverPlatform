@@ -1,9 +1,11 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NA_SCAN_BUCKET } from "../lib/na-scanning";
 import {
   ASSESSMENT_MODEL,
   ASSESSMENT_SYSTEM_PROMPT,
+  AssessmentSchema,
   buildAssessmentUserPrompt,
   buildRubricBlock,
   isUngradedAnchor,
@@ -196,6 +198,9 @@ export async function submitAssessmentBatch(
           model: ASSESSMENT_MODEL,
           max_tokens: 2048,
           temperature: 0, // same as the synchronous assess route: marking, not creative writing
+          // Well-formed JSON by construction; assess-poll.ts still runs
+          // validateAssessment on the text for its own checks.
+          output_config: { format: zodOutputFormat(AssessmentSchema) },
           system: ASSESSMENT_SYSTEM_PROMPT,
           messages: [
             {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
@@ -8,6 +9,7 @@ import {
   SCAN_BUCKET,
   SEGMENTATION_MODEL,
   SEGMENTATION_SYSTEM_PROMPT,
+  SegmentationResponseSchema,
   MAX_BATCH_PAGES,
   MAX_SCAN_BYTES,
   buildSegmentationUserPrompt,
@@ -238,40 +240,63 @@ export async function POST(
   // -- Segment ------------------------------------------------------------------
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  let responseText: string;
-  try {
-    const message = await anthropic.messages.create({
-      model: SEGMENTATION_MODEL,
-      max_tokens: 8192,
-      system: SEGMENTATION_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: buffer.toString("base64") },
-            },
-            { type: "text", text: buildSegmentationUserPrompt(pageCount) },
-          ],
-        },
-      ],
-    });
-    responseText = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-    await recordUsage(supabase, {
-      pipeline: "ai_grade_segment",
-      model: SEGMENTATION_MODEL,
-      usage: message.usage,
-      ref: { type: "ai_grade_batch", id: batch.id },
-    });
-  } catch (e) {
-    return failBatch(`Segmentation request failed: ${e instanceof Error ? e.message : String(e)}`);
+  // Structured output (the same zod schema the validator uses) plus one
+  // retry on a malformed/invalid response -- same shape as the grading
+  // route. A whole-batch call is the most expensive request in the app, so a
+  // second attempt is still far cheaper than a teacher re-uploading.
+  const segmentationRequest: Anthropic.MessageCreateParamsNonStreaming = {
+    model: SEGMENTATION_MODEL,
+    max_tokens: 8192,
+    system: SEGMENTATION_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: buffer.toString("base64") },
+          },
+          { type: "text", text: buildSegmentationUserPrompt(pageCount) },
+        ],
+      },
+    ],
+  };
+
+  let validation: ReturnType<typeof validateSegmentationResponse> | null = null;
+  let lastError = "Model returned an empty segmentation response";
+  for (let attempt = 1; attempt <= 2 && !validation; attempt++) {
+    let responseText: string;
+    try {
+      const message = await anthropic.messages.parse({
+        ...segmentationRequest,
+        output_config: { format: zodOutputFormat(SegmentationResponseSchema) },
+      });
+      await recordUsage(supabase, {
+        pipeline: "ai_grade_segment",
+        model: SEGMENTATION_MODEL,
+        usage: message.usage,
+        ref: { type: "ai_grade_batch", id: batch.id },
+      });
+      if (message.stop_reason === "max_tokens") {
+        lastError = "Model response was cut off at max_tokens";
+        continue;
+      }
+      responseText = message.parsed_output
+        ? JSON.stringify(message.parsed_output)
+        : message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+    } catch (e) {
+      return failBatch(`Segmentation request failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    if (!responseText.trim()) {
+      lastError = "Model returned an empty segmentation response";
+      continue;
+    }
+    const attemptValidation = validateSegmentationResponse(responseText, pageCount);
+    if (attemptValidation.ok) validation = attemptValidation;
+    else lastError = attemptValidation.error;
   }
-
-  if (!responseText.trim()) return failBatch("Model returned an empty segmentation response");
-
-  const validation = validateSegmentationResponse(responseText, pageCount);
-  if (!validation.ok) return failBatch(validation.error, 502);
+  if (!validation || !validation.ok) return failBatch(lastError, 502);
 
   // -- Match against the class roster --------------------------------------
   let roster: RosterEntry[] = [];

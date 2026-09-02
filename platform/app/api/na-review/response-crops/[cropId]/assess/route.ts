@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getApiTeacher } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
 import { NA_SCAN_BUCKET } from "@/lib/na-scanning";
 import {
   ASSESSMENT_MODEL,
   ASSESSMENT_SYSTEM_PROMPT,
+  AssessmentSchema,
   WIDE_CONTEXT_SYSTEM_PROMPT,
   buildAssessmentUserPrompt,
   buildWideContextUserPrompt,
@@ -235,10 +237,11 @@ export async function POST(
     }
 
     try {
-      const message = await anthropic.messages.create({
+      const message = await anthropic.messages.parse({
         model: ASSESSMENT_MODEL,
         max_tokens: 2048,
         temperature: 0,
+        output_config: { format: zodOutputFormat(AssessmentSchema) },
         // Breakpoint on the static system prompt, never after the image --
         // same reasoning as the first-pass call below.
         system: [{ type: "text", text: WIDE_CONTEXT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
@@ -259,7 +262,9 @@ export async function POST(
         usage: message.usage,
         ref: { type: "na_crop", id: cropId },
       });
-      const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+      const text = message.parsed_output
+      ? JSON.stringify(message.parsed_output)
+      : message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
       const validated = validateAssessment(text, ctx.marksAvailable);
       if (!validated.ok) return null;
       return validated;
@@ -269,8 +274,14 @@ export async function POST(
   };
 
   try {
-    const message = await anthropic.messages.create({
+    const message = await anthropic.messages.parse({
       model: ASSESSMENT_MODEL,
+      // Structured output from the same zod schema validateAssessment uses:
+      // the JSON is well-formed by construction, so the "reasoned in prose
+      // and got cut off before the JSON" failure below cannot recur in that
+      // form. validateAssessment still runs on the result for its own checks
+      // (marks clamping, backtracking-language detection).
+      output_config: { format: zodOutputFormat(AssessmentSchema) },
       // Raised from 1024 after a real truncation: the model reasoned in
       // prose before the JSON on one crop and got cut off mid-response
       // (see na-assessment.ts's updated system prompt, which now forbids
@@ -314,7 +325,9 @@ export async function POST(
       usage: message.usage,
       ref: { type: "na_crop", id: cropId },
     });
-    const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+    const text = message.parsed_output
+      ? JSON.stringify(message.parsed_output)
+      : message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
     const validated = validateAssessment(text, ctx.marksAvailable);
 
     if (!validated.ok) {
