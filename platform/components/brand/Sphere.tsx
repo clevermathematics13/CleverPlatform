@@ -3,35 +3,37 @@
 /**
  * The lattice sphere.
  *
- * The supplied artwork is an animated GIF of a black woven sphere on a
- * crimson field. The field is baked into the pixels, so it cannot be cut
- * out - it has to be either embraced or cropped. This crops: a circular
- * mask sized just past the sphere's silhouette turns the square frame into
- * an orb with a thin crimson rim, which sits cleanly on any dark palette and
- * reads as a single focal object rather than a pasted rectangle.
+ * The supplied artwork is a black woven sphere rotating on a crimson field.
+ * The field is baked into the pixels, so it cannot be cut out - it has to be
+ * either embraced or cropped. This crops: a circular mask sized just past the
+ * sphere's silhouette turns the square frame into an orb with a thin crimson
+ * rim, which sits cleanly on the dark palette (the rim IS the accent colour)
+ * and reads as a single focal object rather than a pasted rectangle.
  *
- * Design intent: one animated focal object per surface, at most. It lives
- * on the login page (the platform's only "front door"); it does not loop
- * inside the working dashboard, where motion competes with reading.
+ * Design intent: one animated focal object per surface, at most. It lives on
+ * the sign-in page (the platform's only "front door"); it does not loop inside
+ * the working dashboard, where motion competes with reading.
  *
- * - `prefers-reduced-motion`: the GIF is never requested. The <picture>
- *   element's media-queried <source> is the only place the GIF URL appears,
- *   so a browser with the preference set skips the request entirely and
- *   the <img> resolves to a transparent pixel over the static orb. This is
- *   decided by the browser at first paint, not by JavaScript after
- *   hydration, so server rendering never leaks the GIF to such users.
- * - Missing file (`/public/sphere.gif` not yet added): the same static orb
- *   renders, drawn in CSS to echo the artwork's palette and lattice, so the
- *   layout is never broken by an absent asset.
+ * The animation is an MP4 (H.264), not a GIF. A GIF of this loop was 13 MB
+ * because GIF stores every frame as a near-complete 256-colour image; the
+ * video codec stores only what changes between frames and weighs 1.6 MB at
+ * higher colour fidelity. A muted, looping, inline video with no controls is
+ * indistinguishable from a GIF to the viewer.
  *
- * Drop the artwork at `platform/public/sphere.gif`.
+ * Loading rules:
+ * - The element is rendered with `preload="none"` and WITHOUT `autoplay`, so
+ *   server rendering never issues a request for the file. Playback (and so
+ *   the download) starts only from the effect below, which checks
+ *   `prefers-reduced-motion` first. A reduced-motion user never downloads it
+ *   and sees the static orb; unlike a GIF, nothing has to be withheld by
+ *   markup tricks because a video simply is not told to play.
+ * - The static orb is drawn in CSS underneath and shows until the first frame
+ *   paints, and permanently if the file is missing or fails to decode.
+ *
+ * The artwork lives at `platform/public/sphere.mp4`.
  */
 
-import { useState } from "react";
-
-/** 1x1 transparent GIF: what the <img> shows when no <source> is chosen. */
-const TRANSPARENT_PIXEL =
-  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   size?: number;
@@ -41,7 +43,28 @@ interface Props {
 }
 
 export function Sphere({ size = 320, className, rim = "#c8103f" }: Props) {
+  const videoRef = useRef<HTMLVideoElement>(null);
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const motionOk = window.matchMedia("(prefers-reduced-motion: no-preference)");
+    const start = () => {
+      if (!motionOk.matches) return;
+      video.play().catch(() => {
+        // Autoplay refused (rare for a muted inline video) or decode error:
+        // the static orb underneath is the intended state, nothing to do.
+      });
+    };
+    const onChange = () => {
+      if (motionOk.matches) start();
+      else video.pause();
+    };
+    start();
+    motionOk.addEventListener("change", onChange);
+    return () => motionOk.removeEventListener("change", onChange);
+  }, []);
 
   return (
     <div
@@ -87,32 +110,25 @@ export function Sphere({ size = 320, className, rim = "#c8103f" }: Props) {
       </div>
 
       {!failed && (
-        <picture>
-          {/* The GIF is 13 MB. It is worth it as the desktop sign-in hero and
-              not worth it on a phone, where the static orb carries the same
-              idea at zero cost - so the source is gated on width as well as
-              on motion preference. fetchPriority=low keeps it from competing
-              with the form's own assets. */}
-          <source
-            media="(prefers-reduced-motion: no-preference) and (min-width: 1024px)"
-            srcSet="/sphere.gif"
-          />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={TRANSPARENT_PIXEL}
-            alt=""
-            fetchPriority="low"
-            onError={() => setFailed(true)}
-            style={{
-              position: "absolute",
-              inset: 0,
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              transform: "scale(1.06)",
-            }}
-          />
-        </picture>
+        <video
+          ref={videoRef}
+          src="/sphere.mp4"
+          muted
+          loop
+          playsInline
+          preload="none"
+          disablePictureInPicture
+          disableRemotePlayback
+          onError={() => setFailed(true)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            transform: "scale(1.06)",
+          }}
+        />
       )}
     </div>
   );
