@@ -97,6 +97,8 @@ interface ResultRow {
   evidence: string | null;
   /** Cropped scan region the model used to produce `evidence`, if it could localise the work. */
   evidence_image_url: string | null;
+  /** The fractional-page box `evidence_image_url` was cropped from, if any -- lets the UI fetch the full page for context. */
+  evidence_box: { page: number; x0: number; y0: number; x1: number; y1: number } | null;
   /** Question source image(s) from the PPQ bank, if any are on file for this part. */
   question_image_urls: string[];
   /** Mark scheme source image(s) from the PPQ bank, if any are on file for this part. */
@@ -145,6 +147,8 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  /** Result id currently fetching its full source page (see viewFullPage). */
+  const [pageImageLoadingId, setPageImageLoadingId] = useState<string | null>(null);
   /** Which rows have their question image un-minimized — collapsed by default, keyed by result.id. */
   const [questionImageShown, setQuestionImageShown] = useState<Set<string>>(new Set());
   /** Same, for the student's-work scan crop. */
@@ -444,6 +448,26 @@ export function AiGradeClient({ testId }: { testId: string }) {
       setError(e instanceof Error ? e.message : "Could not re-grade this part.");
     } finally {
       setRegradingId(null);
+    }
+  };
+
+  // Fetches the full scanned page a crop was taken from (with that crop's
+  // region outlined) and opens it in the existing lightbox, so a teacher can
+  // check a crop against its surrounding context without re-grading.
+  const viewFullPage = async (r: ResultRow) => {
+    setPageImageLoadingId(r.id);
+    setError(null);
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/results/${r.id}/page-image`);
+      if (!ok || typeof data.imageBase64 !== "string") {
+        setError((data.error as string) ?? "Could not load the full page for this part.");
+        return;
+      }
+      setLightboxUrl(`data:image/png;base64,${data.imageBase64}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load the full page for this part.");
+    } finally {
+      setPageImageLoadingId(null);
     }
   };
 
@@ -866,14 +890,27 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                         )}
                                         <div className="mt-1 space-y-2">
                                           {evidenceImageShown.has(r.id) && r.evidence_image_url && (
-                                            // eslint-disable-next-line @next/next/no-img-element
-                                            <img
-                                              src={r.evidence_image_url}
-                                              alt="Cropped scan region the model read this part's work from"
-                                              title="Click to enlarge"
-                                              onClick={() => setLightboxUrl(r.evidence_image_url)}
-                                              className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
-                                            />
+                                            <div className="relative inline-block">
+                                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                                              <img
+                                                src={r.evidence_image_url}
+                                                alt="Cropped scan region the model read this part's work from"
+                                                title="Click to enlarge"
+                                                onClick={() => setLightboxUrl(r.evidence_image_url)}
+                                                className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
+                                              />
+                                              {r.evidence_box && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => viewFullPage(r)}
+                                                  disabled={pageImageLoadingId === r.id}
+                                                  title="Show the full page this crop was taken from"
+                                                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-black/60 text-xs text-white hover:bg-black/80 disabled:opacity-50"
+                                                >
+                                                  {pageImageLoadingId === r.id ? "…" : "⤢"}
+                                                </button>
+                                              )}
+                                            </div>
                                           )}
                                           {editingEvidenceId === r.id ? (
                                             <div className="space-y-2">

@@ -186,7 +186,7 @@ export async function GET(
   const { data: results, error: rErr } = await supabase
     .from("ai_grade_results")
     .select(
-      "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, mark_breakdown, accepted, accepted_at, accepted_by"
+      "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, mark_breakdown, accepted, accepted_at, accepted_by"
     )
     .in(
       "run_id",
