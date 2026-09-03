@@ -437,3 +437,33 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
     transform: translateX(6vw);
   }
 }
+
+/* The logo breathing (components/brand/Logo.tsx). A slow swell and settle of
+   the whole lockup, with the crimson glow behind the mark's honeycomb
+   brightening on each swell so the light reads as coming from inside.
+   Transform and opacity only. */
+.logo-breathing {
+  animation: logo-breathe 4.8s ease-in-out infinite;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+.logo-breathing .logo-glow {
+  animation: logo-glow 4.8s ease-in-out infinite;
+}
+.logo-glow {
+  opacity: 0.35;
+}
+@keyframes logo-breathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.05); }
+}
+@keyframes logo-glow {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .logo-breathing,
+  .logo-breathing .logo-glow {
+    animation: none !important;
+  }
+}
