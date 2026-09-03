@@ -971,3 +971,57 @@ change (with a `was N` chip on parts that did); every marking call runs at
 zod schemas plus one retry on an invalid response; and the AI-grade page shows a
 banner when the deployed key cannot complete a call (new `GET /api/health/anthropic`).
 The never-called page-identity code in `lib/na-scanning.ts` was removed.
+
+## 11. Grading eval, spot-check routine, and two loose ends (3 Sep 2026)
+
+**`platform/scripts/eval-grading.ts`** is the first measurement of AI grading
+quality that is not a single run's own confidence label. Golden set = every
+`ai_grade_results` row a teacher accepted, resolved to the mark actually in
+`student_marks` (override included), for runs whose scan is still on file --
+today that is the 9 BiStats students / 51 parts (UniStats has 55 accepted
+parts but no stored scans, so it cannot be re-graded). `--dry` lists the set
+for free; a full run re-grades every scan through the app's own prompts,
+structured output and validator, writes nothing back except `ai_usage_log`
+rows (`pipeline = 'ai_grade_eval'`), and prints exact / within-1 / MAE /
+bias / per-part / cost. Run it before and after any prompt, model, or
+grading-policy change and diff the two `--out` JSON files.
+
+**Baseline, Opus 4.5 at temperature 0** (`docs/eval/2026-09-03-bistats-baseline-t0.json`):
+
+| parts | exact | within 1 | MAE | bias | cost |
+|---|---|---|---|---|---|
+| 51 | 42 (82%) | 51 (100%) | 0.18 | -0.10 | $1.42 |
+
+Per part: Q1 6/9 exact, Q2 7/9, Q3 8/9, Q4(a) 7/8, Q4(b) 8/8, Q4(c) 6/8. Every
+miss is exactly one mark, and the model runs slightly stingy. Read this as
+"the model and the teacher agree within a mark on everything, and exactly on
+four parts in five" -- a floor to protect, not a ceiling. Caveats: the golden
+marks were themselves accepted from this model's earlier suggestions (70 of 77
+as suggested, 7 overridden), so the set is not independent of the model; and
+Julio Bravo's Q1 history across ten runs reads 3,4,3,5,5,5,5,2,2,2 -- the
+oscillation the temperature change was meant to reduce -- so a second
+baseline run a day later is the real test of temperature 0.
+
+**Daily spot-check Routine** (`trig_01C7QDGV5MrvNSFtw3AZhkdi`, 13:07 UTC =
+08:07 Lima, fires into the 2 Sep agent session): pulls the 3 parts most worth
+a look from the last 24 h, the day's spend from `ai_usage_log`, and any failed
+run, then asks the teacher whether they agree. Disagreements are eval cases.
+The Routine's prompt carries a Supabase REST fallback because Routine-fired
+sessions may not hold the MCP connector.
+
+**Two loose ends found while executing the 2 Sep review's plan:**
+
+- **PR #34 (server-side batch run tracking) cannot be merged as-is.** Its
+  branch, like PRs #1 and #2 (now closed), predates a rewrite of `main` and
+  shares no history with it. Its four new files apply cleanly onto today's
+  `main`; the two edits to `dashboard/layout.tsx` and
+  `na-review/scan-test/scan-test-client.tsx` conflict and would need to be
+  re-done by hand. The `na_batch_runs` table it introduced is live and empty.
+  Decision pending: port the feature onto `main`, or drop the table.
+- **The two branches carrying the leaked Google OAuth client secret
+  (`copilot/compile-projects-documentation`, `copilot/vscode-mpclx5x4-qp36`)
+  could not be deleted from the agent environment** -- the git proxy accepts
+  pushes but hangs up on branch deletion, and the GitHub MCP toolset has no
+  delete-branch call. Both are still on the public remote. Delete them from
+  the GitHub branches page, and rotate the secret in Google Cloud Console
+  regardless: deletion does not un-leak a public commit.
