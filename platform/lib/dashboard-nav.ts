@@ -23,6 +23,8 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
       { href: "/dashboard/reflection", label: "Exam Reflection", icon: "\u{1FA9E}" },
       { href: "/dashboard/mastery", label: "Mastery", icon: "\u{1F3AF}" },
       { href: "/dashboard/seating", label: "Seating Chart", icon: "\u{1FA91}" },
+      { href: "/dashboard/na-review/scan-test", label: "Scan Pipeline", icon: "\u{1F5A8}\uFE0F" },
+      { href: "/dashboard/na-review/batch-runs", label: "Active Batch Runs", icon: "\u{1F5C2}\uFE0F" },
       { href: "/dashboard/gradebook", label: "Gradebook", icon: "\u{1F4D2}" },
       { href: "/dashboard/classroom", label: "Google Classroom", icon: "\u{1F393}" },
     ];

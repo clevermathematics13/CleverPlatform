@@ -1017,7 +1017,13 @@ sessions may not hold the MCP connector.
   `main`; the two edits to `dashboard/layout.tsx` and
   `na-review/scan-test/scan-test-client.tsx` conflict and would need to be
   re-done by hand. The `na_batch_runs` table it introduced is live and empty.
-  Decision pending: port the feature onto `main`, or drop the table.
+  **Resolved: ported.** The teacher chose to keep the feature; it was
+  re-applied onto `main` the same day (four files copied verbatim, the
+  scan-test and nav edits re-done by hand, the nav now living in
+  `lib/dashboard-nav.ts`). PR #34 was closed in favour of the port. First
+  real use will be the next automatic crop+assess run from the scan-test
+  page: expect one `na_batch_runs` row per batch, visible at
+  `/dashboard/na-review/batch-runs`.
 - **The two branches carrying the leaked Google OAuth client secret
   (`copilot/compile-projects-documentation`, `copilot/vscode-mpclx5x4-qp36`)
   could not be deleted from the agent environment** -- the git proxy accepts
