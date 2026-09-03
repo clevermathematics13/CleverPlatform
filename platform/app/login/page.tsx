@@ -99,7 +99,7 @@ function LoginForm() {
         {/* Brand */}
         <div className="flex flex-col items-center gap-3 text-center">
           <h1 className="text-da-text">
-            <Logo size={34} variant="embossed" />
+            <Logo size={44} variant="embossed" />
           </h1>
           <p className="text-sm text-da-muted">
             IBDP Mathematics Learning Platform
