@@ -27,6 +27,14 @@ CV service the existing crop route already depends on:
 | `GRAPH_LAB_CV_SERVICE_URL` | Vercel project env — the existing CV service |
 | `CV_SERVICE_SECRET` | Vercel project env |
 
+The image must also contain `feedback_voice/` (and, defensively,
+`grading_policies/`) — `lib/na-assessment.ts` reads the feedback voice guide at
+module init and throws if it is missing. Failure signature: the container
+restarts on boot, `na_scan_batches` rows stay in `status: 'queued'` forever, and
+the logs show a thrown path ending in `na_student_feedback_voice.md`. Note that
+`npm run worker:dev` will NOT reproduce it — that runs with cwd `platform/`,
+where the file is present regardless; only building the image can.
+
 Optional tuning (sane defaults if unset):
 
 | Env var | Default | Purpose |

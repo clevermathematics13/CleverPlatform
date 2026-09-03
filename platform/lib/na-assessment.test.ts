@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { clampToOneSentence, validateAssessment } from "./na-assessment";
+import fs from "node:fs";
+import path from "node:path";
+import {
+  buildAssessmentSystemPrompt,
+  clampToOneSentence,
+  clampToSentences,
+  NA_STUDENT_FEEDBACK_VOICE,
+  STUDENT_TEXT_MAX_SENTENCES,
+  validateAssessment,
+} from "./na-assessment";
 
 function assessmentJson(overrides: Record<string, unknown> = {}): string {
   return JSON.stringify({
@@ -195,7 +204,7 @@ describe("clampToOneSentence", () => {
 });
 
 describe("validateAssessment -- student-facing brevity", () => {
-  it("drops everything after the first sentence of marginComment and nextStep, and warns", () => {
+  it("keeps two sentences, so a comment has room to explain an idea and not just judge it", () => {
     const result = validateAssessment(
       assessmentJson({
         marginComment: "Good start on (a). You also need to simplify the fraction in (b).",
@@ -205,16 +214,31 @@ describe("validateAssessment -- student-facing brevity", () => {
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.assessment.marginComment).toBe("Good start on (a).");
-      expect(result.assessment.nextStep).toBe("Simplify 6/8 in (b).");
-      expect(result.warnings.filter((w) => w.includes("ran past one sentence"))).toHaveLength(2);
+      expect(result.assessment.marginComment).toBe(
+        "Good start on (a). You also need to simplify the fraction in (b)."
+      );
+      expect(result.warnings.filter((w) => w.includes("ran past"))).toHaveLength(0);
     }
   });
 
-  it("keeps an over-budget single sentence but warns so a teacher shortens it", () => {
+  it("drops a third sentence and warns with the text the student will not see", () => {
+    const result = validateAssessment(
+      assessmentJson({
+        marginComment: "Good start on (a). Simplify the fraction in (b). Then check (c) as well.",
+      }),
+      3
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.assessment.marginComment).toBe("Good start on (a). Simplify the fraction in (b).");
+      expect(result.warnings.some((w) => w.includes("Then check (c) as well."))).toBe(true);
+    }
+  });
+
+  it("keeps an over-budget comment but warns so a teacher shortens it", () => {
     const wordy =
       "You have clearly understood how to expand the brackets here and your working is very neat " +
-      "throughout the whole question.";
+      "and legible throughout the whole of this question, which makes it easy to follow your thinking.";
     const result = validateAssessment(assessmentJson({ marginComment: wordy }), 3);
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -233,5 +257,80 @@ describe("validateAssessment -- student-facing brevity", () => {
       expect(result.assessment.marginComment).toBe("");
       expect(result.warnings.some((w) => w.includes("sentence") || w.includes("budget"))).toBe(false);
     }
+  });
+});
+
+describe("clampToSentences", () => {
+  it("keeps two sentences by default", () => {
+    const two = "Every a is the same number. How many factors have an a?";
+    expect(clampToSentences(two)).toBe(two);
+  });
+
+  it("cuts at the limit, never mid-thought", () => {
+    expect(clampToSentences("One. Two. Three.", 2)).toBe("One. Two.");
+  });
+
+  it("still honours an explicit single-sentence request", () => {
+    expect(clampToSentences("One. Two.", 1)).toBe("One.");
+    expect(clampToOneSentence("One. Two.")).toBe("One.");
+  });
+
+  it("returns text shorter than the limit untouched", () => {
+    expect(clampToSentences("Just the one sentence here.")).toBe("Just the one sentence here.");
+  });
+
+  it("does not split a decimal or an abbreviation", () => {
+    const s = "Your answer of 0.5 is right, but round to 2 s.f. next time.";
+    expect(clampToSentences(s, 1)).toBe(s);
+  });
+});
+
+describe("buildAssessmentSystemPrompt", () => {
+  it("loads a voice guide with real content, not an empty read", () => {
+    expect(NA_STUDENT_FEEDBACK_VOICE.length).toBeGreaterThan(0);
+    // A heading a teacher is unlikely to delete while editing the prose.
+    expect(NA_STUDENT_FEEDBACK_VOICE).toContain("## Stance");
+  });
+
+  it("carries the voice guide on BOTH passes", () => {
+    // The wide-context pass has its own prompt constant and would
+    // otherwise silently keep the old voice -- the exact miss the funnel
+    // exists to make impossible.
+    for (const pass of ["crop", "wide_context"] as const) {
+      expect(buildAssessmentSystemPrompt(pass)).toContain(NA_STUDENT_FEEDBACK_VOICE);
+    }
+  });
+
+  it("keeps each pass's own base prompt", () => {
+    expect(buildAssessmentSystemPrompt("wide_context")).toContain("outlined in RED");
+    expect(buildAssessmentSystemPrompt("crop")).not.toContain("outlined in RED");
+  });
+
+  it("injects the voice exactly once, and identically across calls", () => {
+    const a = buildAssessmentSystemPrompt("crop");
+    // Byte-stability is the prompt-cache contract in the assess route.
+    expect(a).toBe(buildAssessmentSystemPrompt("crop"));
+    expect(a.split(NA_STUDENT_FEEDBACK_VOICE)).toHaveLength(2);
+  });
+
+  it("appends the voice after the base prompt, preserving the cached prefix order", () => {
+    const prompt = buildAssessmentSystemPrompt("crop");
+    expect(prompt.indexOf(NA_STUDENT_FEEDBACK_VOICE)).toBeGreaterThan(prompt.indexOf("You are marking"));
+  });
+
+  it("states the guardrails in code, where a teacher editing the .md cannot remove them", () => {
+    const prompt = buildAssessmentSystemPrompt("crop");
+    expect(prompt).toContain("rules above win");
+    expect(prompt).toContain("deleted\nbefore the student sees it");
+  });
+});
+
+describe("worker packaging", () => {
+  it("Dockerfile copies the feedback_voice dir the worker's import needs", () => {
+    // No local run can catch this: `npm run worker:dev` has cwd platform/,
+    // where the file exists regardless. Without the COPY the built image
+    // throws at import and the worker never reaches its poll loop.
+    const dockerfile = fs.readFileSync(path.join(process.cwd(), "worker", "Dockerfile"), "utf8");
+    expect(dockerfile).toMatch(/^COPY\s+feedback_voice\s/m);
   });
 });

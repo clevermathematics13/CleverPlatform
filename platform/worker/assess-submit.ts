@@ -4,7 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { NA_SCAN_BUCKET } from "../lib/na-scanning";
 import {
   ASSESSMENT_MODEL,
-  ASSESSMENT_SYSTEM_PROMPT,
+  buildAssessmentSystemPrompt,
   AssessmentSchema,
   buildAssessmentUserPrompt,
   buildRubricBlock,
@@ -201,7 +201,7 @@ export async function submitAssessmentBatch(
           // Well-formed JSON by construction; assess-poll.ts still runs
           // validateAssessment on the text for its own checks.
           output_config: { format: zodOutputFormat(AssessmentSchema) },
-          system: ASSESSMENT_SYSTEM_PROMPT,
+          system: buildAssessmentSystemPrompt("crop"),
           messages: [
             {
               role: "user",
