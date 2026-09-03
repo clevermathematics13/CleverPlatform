@@ -318,6 +318,15 @@ describe("buildAssessmentSystemPrompt", () => {
     expect(prompt.indexOf(NA_STUDENT_FEEDBACK_VOICE)).toBeGreaterThan(prompt.indexOf("You are marking"));
   });
 
+  it("keeps BOTH halves of the fixed/varies distinction", () => {
+    const prompt = buildAssessmentSystemPrompt("crop");
+    // Dropping either half reintroduces a real, opposite failure: without the
+    // first, a letter gets called "a fixed variable" (Davi's Q7(b)); without
+    // the second, the ~40 correct comments saying pi IS fixed would go wrong.
+    expect(prompt).toContain("is not fixed");
+    expect(prompt).toContain("A constant is fixed");
+  });
+
   it("states the guardrails in code, where a teacher editing the .md cannot remove them", () => {
     const prompt = buildAssessmentSystemPrompt("crop");
     expect(prompt).toContain("rules above win");
