@@ -1,11 +1,24 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { CourseList } from "./course-list";
 import Link from "next/link";
 
 export default async function CoursesPage() {
-  await requireTeacher();
+  const profile = await requireTeacher();
   const supabase = await createClient();
+  const showHidden = await getShowHiddenStudents(supabase, profile.id);
+
+  let studentsQuery = supabase.from("students").select("course_id");
+  if (!showHidden) studentsQuery = studentsQuery.eq("hidden", false);
+
+  // Only count invited students who haven't signed in yet (no profile_id) to avoid double-counting
+  let invitedQuery = supabase
+    .from("invited_students")
+    .select("course_id")
+    .eq("registered", true)
+    .is("profile_id", null);
+  if (!showHidden) invitedQuery = invitedQuery.eq("hidden", false);
 
   const [coursesRes, studentsRes, invitedRes, testsRes, archivedCountRes] = await Promise.all([
     supabase
@@ -13,14 +26,8 @@ export default async function CoursesPage() {
       .select("id, name, description, created_at")
       .eq("archived", false)
       .order("name"),
-    supabase.from("students").select("course_id").eq("hidden", false),
-    // Only count invited students who haven't signed in yet (no profile_id) to avoid double-counting
-    supabase
-      .from("invited_students")
-      .select("course_id")
-      .eq("registered", true)
-      .eq("hidden", false)
-      .is("profile_id", null),
+    studentsQuery,
+    invitedQuery,
     supabase.from("tests").select("course_id"),
     supabase.from("courses").select("id", { count: "exact", head: true }).eq("archived", true),
   ]);

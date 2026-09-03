@@ -6,8 +6,12 @@ export async function GET() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { data } = await supabase.from("teacher_settings").select("show_corrections, show_feedback").eq("teacher_id", user.id).single();
-  return NextResponse.json({ show_corrections: data?.show_corrections ?? false, show_feedback: data?.show_feedback ?? false });
+  const { data } = await supabase.from("teacher_settings").select("show_corrections, show_feedback, show_hidden_students").eq("teacher_id", user.id).single();
+  return NextResponse.json({
+    show_corrections: data?.show_corrections ?? false,
+    show_feedback: data?.show_feedback ?? false,
+    show_hidden_students: data?.show_hidden_students ?? false,
+  });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -15,8 +19,8 @@ export async function PATCH(request: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const body = await request.json() as { show_corrections?: boolean; show_feedback?: boolean };
-  const { data, error } = await supabase.from("teacher_settings").upsert({ teacher_id: user.id, ...body }, { onConflict: "teacher_id" }).select("show_corrections, show_feedback").single();
+  const body = await request.json() as { show_corrections?: boolean; show_feedback?: boolean; show_hidden_students?: boolean };
+  const { data, error } = await supabase.from("teacher_settings").upsert({ teacher_id: user.id, ...body }, { onConflict: "teacher_id" }).select("show_corrections, show_feedback, show_hidden_students").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
