@@ -356,7 +356,7 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
   --ball: clamp(180px, 34vw, 420px);
   --floor: 28px;                 /* the ground line, above the viewport's bottom */
   --apex: min(34vh, 400px);      /* hop height: the ball's top stays around mid-screen */
-  --crossing: 7s;                /* edge to edge */
+  --crossing: 7s;                /* wall to wall */
   --hop: 1.75s;                  /* --crossing / 4 */
   position: fixed;
   left: 0;
@@ -372,6 +372,7 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
   left: 0;
   width: var(--ball);
   height: 0;
+  transform-origin: 50% 0;
   animation: sphere-travel var(--crossing) linear infinite alternate;
   will-change: transform;
 }
@@ -401,15 +402,25 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
   transform: translate(-50%, 50%);
   animation: sphere-glow var(--hop) infinite;
 }
+/* Wall to wall. The ball's outer edge meets each side of the viewport and it
+   turns round there, squashing against the wall for a moment on the way: the
+   end keyframes carry a scaleX squash, with the translate nudged so the
+   squashed ball's edge still touches the wall (scale is about the centre).
+   The 6% keyframes are the unsquashed ball at 6% of the crossing, so the
+   position stays linear through the squash. */
 @keyframes sphere-travel {
-  from { transform: translateX(100vw); }
-  to   { transform: translateX(calc(-1 * var(--ball))); }
+  0%   { transform: translateX(calc(100vw - 0.95 * var(--ball))) scaleX(0.9); }
+  6%   { transform: translateX(calc(0.94 * (100vw - var(--ball)))) scaleX(1); }
+  94%  { transform: translateX(calc(0.06 * (100vw - var(--ball)))) scaleX(1); }
+  100% { transform: translateX(calc(-0.05 * var(--ball))) scaleX(0.9); }
 }
-/* Rising decelerates, falling accelerates: the two halves get their own
-   curves, which is what makes it read as gravity rather than a sine wave. */
+/* A parabola, exactly: these two curves are the quadratics 2t - t^2 and t^2
+   lifted to cubic Beziers, i.e. uniform gravity. The ball is at its apex for
+   an instant only - velocity zero, acceleration unchanged - rather than
+   hanging there, which is what an ease-out with a flatter tail does. */
 @keyframes sphere-hop {
-  0%   { transform: translateY(0); animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1); }
-  50%  { transform: translateY(calc(-1 * var(--apex))); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.3); }
+  0%   { transform: translateY(0); animation-timing-function: cubic-bezier(0.333, 0.667, 0.667, 1); }
+  50%  { transform: translateY(calc(-1 * var(--apex))); animation-timing-function: cubic-bezier(0.333, 0, 0.667, 0.333); }
   100% { transform: translateY(0); }
 }
 @keyframes sphere-squash {

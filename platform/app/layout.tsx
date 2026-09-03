@@ -37,7 +37,7 @@ const brand = Audiowide({
 
 export const metadata: Metadata = {
   title: "CleverPlatform",
-  description: "IBDP Mathematics Learning Platform",
+  description: "Mathematics Learning Platform",
   verification: {
     // Two verification codes: the original for clever-platform.vercel.app,
     // and a second for the new custom domain (www.clevermathematics.com).
