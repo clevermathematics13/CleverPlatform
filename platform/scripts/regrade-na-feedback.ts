@@ -1,7 +1,7 @@
 /**
  * One-off: re-run stage 5 assessment over crops that were already
  * assessed, so their feedback is rewritten under the current
- * ASSESSMENT_SYSTEM_PROMPT.
+ * assessment prompt, including the teacher's feedback voice guide.
  *
  * Written for the brevity change (marginComment/nextStep cut to one
  * sentence of 15 words or fewer): the stored feedback for every packet
@@ -42,8 +42,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NA_SCAN_BUCKET } from "../lib/na-scanning";
 import {
   ASSESSMENT_MODEL,
-  ASSESSMENT_SYSTEM_PROMPT,
-  WIDE_CONTEXT_SYSTEM_PROMPT,
+  buildAssessmentSystemPrompt,
   buildAssessmentUserPrompt,
   buildWideContextUserPrompt,
   buildRubricBlock,
@@ -249,7 +248,7 @@ async function resolveRedirect(
     const message = await anthropic.messages.create({
       model: ASSESSMENT_MODEL,
       max_tokens: 2048,
-      system: WIDE_CONTEXT_SYSTEM_PROMPT,
+      system: buildAssessmentSystemPrompt("wide_context"),
       messages: [
         {
           role: "user",
@@ -348,7 +347,7 @@ async function regradeCrop(crop: Awaited<ReturnType<typeof selectCrops>>[number]
   const message = await anthropic.messages.create({
     model: ASSESSMENT_MODEL,
     max_tokens: 2048,
-    system: ASSESSMENT_SYSTEM_PROMPT,
+    system: buildAssessmentSystemPrompt("crop"),
     messages: [
       {
         role: "user",

@@ -26,4 +26,21 @@ RUN npm ci
 COPY lib ./lib
 COPY worker ./worker
 
+# Load-bearing, not optional. lib/na-assessment.ts reads
+# feedback_voice/na_student_feedback_voice.md at MODULE INIT (see
+# buildAssessmentSystemPrompt) and throws if it is missing, and
+# worker/assess-submit.ts imports that module -- so without this COPY the
+# worker throws on import, never reaches its poll loop, and na_scan_batches
+# rows sit in 'queued' forever. WORKDIR is /app, which is the process.cwd()
+# those paths resolve against.
+#
+# `npm run worker:dev` cannot catch a missing COPY here: it runs with cwd
+# platform/, where the file exists regardless. Only building the image can.
+COPY feedback_voice ./feedback_voice
+
+# Deliberate insurance rather than dead weight: lib/ai-grading.ts loads
+# grading_policies/ the same way, and is one stray import away from being
+# reachable from this worker with the identical non-obvious crashloop.
+COPY grading_policies ./grading_policies
+
 CMD ["npx", "tsx", "worker/index.ts"]
