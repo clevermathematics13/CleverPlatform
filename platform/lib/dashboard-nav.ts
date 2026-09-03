@@ -60,6 +60,7 @@ export function getSettingsNavigation(role: string): NavigationItem[] {
       { href: "/dashboard/archived-saved-exams", label: "Archived Saved Exams", icon: "\u{1F5C3}️" },
       { href: "/dashboard/questions/review", label: "LaTeX Review", icon: "\u{1F52C}" },
       { href: "/dashboard/graph-lab", label: "Graph Lab", icon: "\u{1F4C8}" },
+      { href: "/dashboard/settings", label: "Settings", icon: "\u{2699}️" },
     ];
   }
   return [];
