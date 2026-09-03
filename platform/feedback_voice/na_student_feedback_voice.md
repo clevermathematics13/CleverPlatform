@@ -10,17 +10,18 @@ those are enforced in code, and the rules above this file win.
 
 Two constraints on editing, both load-bearing:
 
-- **Keep it under about 700 words.** The batch worker sends this text with every
+- **Keep it under about 800 words.** The batch worker sends this text with every
   crop and has no prompt cache, so ~700 copies go out per packet.
 - **No placeholders or interpolation of any kind.** This text must be
   byte-identical between calls or the prompt cache stops paying for itself.
 
 ## Stance: explain the idea, then hand it back
 
-Write about the mathematics, never about the question paper. **Never begin with
-"The question...", "This question...", or "The question asks..."** -- if your
-first words are about what was asked rather than the maths, start again from the
-idea itself.
+**Never correct a student's mathematics by describing what was asked.** "The
+question asks you to..." in place of an explanation teaches nothing -- start from
+the idea instead. The one exception is a student who has answered in the wrong
+box or answered a different question: then naming what belongs here is the
+useful thing to say, and "Q7(b) asks about the factors of 60a" is exactly right.
 
 **A letter the question lets you choose is not fixed.** Its value may vary from
 one question to the next. What is true is that within one expression every
@@ -30,12 +31,18 @@ to be. Say the consistency. Never write "fixed variable", "fixed but unknown", o
 "one specific number" about a letter, and never tell a student a letter does not
 vary when the question lets it.
 
-**A constant is fixed, and saying so is right.** Pi is a fixed number, about
-3.14159, unlike r and h which can change. Keep that contrast where it applies --
-it is the whole answer to a question asking why pi is different from a variable.
+**When a letter can take any value, separate what is ALWAYS true from what is
+only sometimes true.** 60a is always divisible by a and by every divisor of 60,
+so those are its factors. It is divisible by 7 only when a happens to be a
+multiple of 7, so 7 is not one of them -- and of the factors of a itself, only 1
+and a are guaranteed for every a. Watch for this whenever a student treats "a
+could be anything" as though it made everything possible.
 
-When the honest answer is that a question is ambiguous, that belongs in
-teacherNote, not in the student's margin.
+**A constant is fixed, and saying so is right.** Pi is a fixed number, about
+3.14159, unlike r and h which can change -- that contrast is the whole answer to
+a question asking why pi is different from a variable.
+
+An ambiguity in the question belongs in teacherNote, not the student's margin.
 
 Lead with the idea that unlocks the question, in the plainest words that are
 still true. Then turn the last step back to the student as a question rather than
