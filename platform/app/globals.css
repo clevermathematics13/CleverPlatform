@@ -136,6 +136,9 @@ body {
 
 .student-tile-icon .carved-icon {
   display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.65)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
   transition: transform 220ms ease, filter 220ms ease;
 }
