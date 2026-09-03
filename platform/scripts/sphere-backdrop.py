@@ -30,6 +30,11 @@ full-size sphere is crisp steel. A sharpening and re-lighting pass, scaled by
 the fitted radius, brings the small sphere up to the large one's look; see the
 GLOSS_* settings.
 
+Finally each frame is shifted so the sphere is centred and its bottom edge
+rests on the bottom of the frame (FLOOR_MARGIN). The sign-in page bounces the
+video along the floor of the viewport like a ball, and the ball's contact
+point has to be the frame's edge for that to read.
+
 Usage (from platform/):
     pip install numpy scipy imageio-ffmpeg
     python3 scripts/sphere-backdrop.py <source.mp4> public/sphere.mp4
@@ -73,6 +78,14 @@ INSET = 2.0
 
 # Width of the antialiased edge, in pixels.
 EDGE = 1.5
+
+# After the cut, each frame is shifted so the sphere is centred horizontally
+# and its bottom edge sits this many pixels above the bottom of the frame. In
+# the artwork the sphere floats at different heights as it pulses (its bottom
+# edge wanders over ~140 px), which was invisible on a plain field but matters
+# once the video is a ball bouncing on a floor: the CSS can only place the
+# frame's edge on the floor, so the sphere's edge has to be on the frame's.
+FLOOR_MARGIN = 4
 
 # Temporal smoothing of the circle parameters: Savitzky-Golay window (frames)
 # and polynomial order. Fit noise is a few tenths of a pixel; the sphere's own
@@ -174,6 +187,19 @@ def cut(rgb, cx, cy, r):
     return np.clip(rgb * inside + BG * (1 - inside), 0, 255).astype(np.uint8)
 
 
+def register(rgb, dx, dy):
+    """Shift a cut frame by whole pixels, filling the exposed edges with the
+    ground. Whole pixels so the sharpened weave is never resampled; the
+    residual half-pixel wobble is far below what a moving ball shows."""
+    h, w = rgb.shape[:2]
+    out = np.empty_like(rgb)
+    out[:] = BG.astype(rgb.dtype)
+    sx, sy = slice(max(dx, 0), w + min(dx, 0)), slice(max(dy, 0), h + min(dy, 0))
+    tx, ty = slice(max(-dx, 0), w + min(-dx, 0)), slice(max(-dy, 0), h + min(-dy, 0))
+    out[sy, sx] = rgb[ty, tx]
+    return out
+
+
 def probe(path):
     # ffmpeg with no output file reports the stream and exits non-zero; that
     # is the frame size, without needing ffprobe to be installed too.
@@ -218,7 +244,9 @@ def main(src, dst):
                         frames[(i - 1) % n].astype(np.float32),
                         frames[(i + 1) % n].astype(np.float32),
                         strength[i])
-        enc.stdin.write(cut(glossed, cx[i], cy[i], r[i]).tobytes())
+        dx = int(round(w / 2 - cx[i]))
+        dy = int(round((h - FLOOR_MARGIN) - (cy[i] + r[i])))
+        enc.stdin.write(register(cut(glossed, cx[i], cy[i], r[i]), dx, dy).tobytes())
     enc.stdin.close()
     enc.wait()
     print(f"{len(frames)} frames -> {dst}  (radius {r.min():.0f}..{r.max():.0f} px)")

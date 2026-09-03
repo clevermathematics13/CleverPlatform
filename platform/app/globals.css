@@ -345,3 +345,95 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* The sign-in sphere as a bouncing ball (components/brand/BouncingSphere.tsx).
+   A fixed layer along the floor of the viewport; three nested transforms
+   (travel, hop, squash) plus a pool of light on the floor. Everything here is
+   transform/opacity, so it composites off the main thread. The hop count per
+   crossing is --crossing / --hop and should stay a whole number so the ball
+   is on the floor when it turns round at each edge. */
+.bouncing-sphere {
+  --ball: clamp(180px, 34vw, 420px);
+  --floor: 28px;                 /* the ground line, above the viewport's bottom */
+  --apex: min(34vh, 400px);      /* hop height: the ball's top stays around mid-screen */
+  --crossing: 7s;                /* edge to edge */
+  --hop: 1.75s;                  /* --crossing / 4 */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--floor);
+  height: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+.bouncing-sphere__travel {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--ball);
+  height: 0;
+  animation: sphere-travel var(--crossing) linear infinite alternate;
+  will-change: transform;
+}
+.bouncing-sphere__bounce {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: var(--ball);
+  height: var(--ball);
+  animation: sphere-hop var(--hop) infinite;
+  will-change: transform;
+}
+.bouncing-sphere__squash {
+  width: 100%;
+  height: 100%;
+  transform-origin: 50% 100%;
+  animation: sphere-squash var(--hop) infinite;
+}
+.bouncing-sphere__glow {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: calc(var(--ball) * 0.9);
+  height: calc(var(--ball) * 0.14);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(224, 64, 95, 0.55), rgba(224, 64, 95, 0));
+  transform: translate(-50%, 50%);
+  animation: sphere-glow var(--hop) infinite;
+}
+@keyframes sphere-travel {
+  from { transform: translateX(100vw); }
+  to   { transform: translateX(calc(-1 * var(--ball))); }
+}
+/* Rising decelerates, falling accelerates: the two halves get their own
+   curves, which is what makes it read as gravity rather than a sine wave. */
+@keyframes sphere-hop {
+  0%   { transform: translateY(0); animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1); }
+  50%  { transform: translateY(calc(-1 * var(--apex))); animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.3); }
+  100% { transform: translateY(0); }
+}
+@keyframes sphere-squash {
+  0%   { transform: scale(1.14, 0.84); }
+  14%  { transform: scale(0.97, 1.04); }
+  28%  { transform: scale(1, 1); }
+  86%  { transform: scale(1, 1); }
+  94%  { transform: scale(0.97, 1.05); }
+  100% { transform: scale(1.14, 0.84); }
+}
+@keyframes sphere-glow {
+  0%   { opacity: 1;    transform: translate(-50%, 50%) scale(1); }
+  50%  { opacity: 0.25; transform: translate(-50%, 50%) scale(0.55); }
+  100% { opacity: 1;    transform: translate(-50%, 50%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bouncing-sphere__travel,
+  .bouncing-sphere__bounce,
+  .bouncing-sphere__squash,
+  .bouncing-sphere__glow {
+    animation: none !important;
+  }
+  /* Resting near the bottom-left corner, out of the form's way. */
+  .bouncing-sphere__travel {
+    transform: translateX(6vw);
+  }
+}

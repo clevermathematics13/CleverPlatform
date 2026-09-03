@@ -21,8 +21,13 @@
  * card, or on any tinted surface it would show as a dark square.
  *
  * Design intent: one animated focal object per surface, at most. It lives on
- * the sign-in page (the platform's only "front door"); it does not loop inside
- * the working dashboard, where motion competes with reading.
+ * the sign-in page (the platform's only "front door"), where BouncingSphere
+ * carries it across the floor of the viewport; it does not loop inside the
+ * working dashboard, where motion competes with reading.
+ *
+ * The frame is registered so the sphere's bottom edge rests on the frame's
+ * bottom edge (see scripts/sphere-backdrop.py, FLOOR_MARGIN): the element's
+ * bottom IS the ball's contact point, which is what lets it bounce.
  *
  * The animation is an MP4 (H.264), not a GIF. A GIF of this loop was 13 MB
  * because GIF stores every frame as a near-complete 256-colour image; the
@@ -46,7 +51,8 @@
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
-  size?: number;
+  /** Pixels, or any CSS length (a custom property, a clamp()). */
+  size?: number | string;
   className?: string;
   /** Crimson of the artwork, used by the static orb; defaults to the lattice's. */
   accent?: string;
