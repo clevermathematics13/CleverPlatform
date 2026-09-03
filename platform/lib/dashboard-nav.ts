@@ -27,6 +27,7 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
       { href: "/dashboard/na-review/batch-runs", label: "Active Batch Runs", icon: "\u{1F5C2}\uFE0F" },
       { href: "/dashboard/gradebook", label: "Gradebook", icon: "\u{1F4D2}" },
       { href: "/dashboard/classroom", label: "Google Classroom", icon: "\u{1F393}" },
+      { href: "/dashboard/games", label: "Live Game", icon: "\u{1F3AE}" },
     ];
   }
 
@@ -37,7 +38,7 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
     if (isGrade9) {
       return [{ href: "/dashboard/na-feedback", label: "Feedback", icon: "\u{1F4DD}" }];
     }
-    return shared;
+    return [...shared, { href: "/dashboard/games", label: "Live Game", icon: "\u{1F3AE}" }];
   }
 
   if (role === "parent") {
