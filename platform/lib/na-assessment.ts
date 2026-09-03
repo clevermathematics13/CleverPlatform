@@ -397,7 +397,17 @@ const NA_FEEDBACK_VOICE_PATH = path.join(
 
 function loadNaFeedbackVoice(): string {
   try {
-    return fs.readFileSync(NA_FEEDBACK_VOICE_PATH, "utf8");
+    // HTML comments are stripped: they hold notes to whoever maintains the
+    // file (the word budget, why interpolation is banned, what the loader
+    // does) which the model has no use for. Keeping that guidance next to
+    // the prose it governs is worth a lot; paying to send it on ~700 batch
+    // calls per packet is not. Blank runs left behind are collapsed so the
+    // stripped text still reads as clean markdown.
+    return fs
+      .readFileSync(NA_FEEDBACK_VOICE_PATH, "utf8")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
   } catch (e) {
     throw new Error(
       `Could not load the NA student feedback voice guide from ${NA_FEEDBACK_VOICE_PATH}: ${

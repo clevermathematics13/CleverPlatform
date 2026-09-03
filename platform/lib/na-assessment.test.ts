@@ -318,6 +318,21 @@ describe("buildAssessmentSystemPrompt", () => {
     expect(prompt.indexOf(NA_STUDENT_FEEDBACK_VOICE)).toBeGreaterThan(prompt.indexOf("You are marking"));
   });
 
+  it("strips editor notes, so guidance for the file's maintainer costs nothing", () => {
+    const raw = fs.readFileSync(
+      path.join(process.cwd(), "feedback_voice", "na_student_feedback_voice.md"),
+      "utf8"
+    );
+    // The notes exist on disk for whoever edits the file...
+    expect(raw).toContain("<!--");
+    expect(raw).toMatch(/no prompt cache/i);
+    // ...and reach neither the loaded constant nor the prompt, because the
+    // batch worker sends this text once per crop with no cache to amortise it.
+    expect(NA_STUDENT_FEEDBACK_VOICE).not.toContain("<!--");
+    expect(NA_STUDENT_FEEDBACK_VOICE).not.toMatch(/no prompt cache/i);
+    expect(buildAssessmentSystemPrompt("crop")).not.toContain("<!--");
+  });
+
   it("keeps BOTH halves of the fixed/varies distinction", () => {
     const prompt = buildAssessmentSystemPrompt("crop");
     // Dropping either half reintroduces a real, opposite failure: without the
