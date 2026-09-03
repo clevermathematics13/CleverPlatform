@@ -135,10 +135,9 @@ export function NaFeedbackClient({
                 </button>
               </div>
             </div>
-            {!item.fullMarks && (item.marginComment || item.nextStep) && (
-              <div className="mt-2 space-y-1 text-sm">
-                {item.marginComment && <p className="text-da-text">{item.marginComment}</p>}
-                {item.nextStep && <p className="text-da-muted">Next step: {item.nextStep}</p>}
+            {!item.fullMarks && item.marginComment && (
+              <div className="mt-2 text-sm">
+                <p className="text-da-text">{item.marginComment}</p>
               </div>
             )}
 
