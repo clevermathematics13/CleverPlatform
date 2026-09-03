@@ -2,6 +2,7 @@ import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { resolveViewAs } from "@/lib/view-as";
 import { DeployCard } from "./deploy-card";
+import { FeedbackIcon, SelfAssessIcon, StudentTile } from "./student-tiles";
 
 export default async function DashboardPage({
   searchParams,
@@ -23,8 +24,16 @@ export default async function DashboardPage({
         {getRoleDescription(viewRole)}
       </p>
 
-      {/* Quick Stats / Cards */}
-      <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {/* Quick Stats / Cards. The student view is two large tiles, so it
+          gets a two-column grid of its own rather than sitting in the first
+          two cells of the teacher's three. */}
+      <div
+        className={
+          viewRole === "student"
+            ? "mt-10 grid max-w-3xl grid-cols-1 gap-8 sm:grid-cols-2"
+            : "mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
+        }
+      >
         {viewRole === "teacher" && <TeacherDashboard supabase={supabase} />}
         {viewRole === "student" && (
           <StudentDashboard viewAsId={viewAs?.invitedStudentId ?? null} />
@@ -109,23 +118,17 @@ async function StudentDashboard({ viewAsId }: { viewAsId: string | null }) {
 
   return (
     <>
-      <DashboardCard
-        title="Interactive Activity"
-        value="→"
-        description="Open your assigned activity"
-        href={`/dashboard/student-start${q}`}
-      />
-      <DashboardCard
+      <StudentTile
         title="Self-Assess"
-        value="→"
         description="Grade your own exams and review feedback"
         href={`/dashboard/reflection${q}`}
+        icon={<SelfAssessIcon />}
       />
-      <DashboardCard
+      <StudentTile
         title="My Feedback"
-        value="→"
         description="See Clev's Marks feedback on your work"
         href={`/dashboard/na-feedback${q}`}
+        icon={<FeedbackIcon />}
       />
     </>
   );
@@ -177,7 +180,7 @@ function getRoleDescription(role: string): string {
     case "teacher":
       return "Manage your courses, students, and assignments.";
     case "student":
-      return "Open your activity from the student start page.";
+      return "Grade your own work and read Clev's Marks feedback on it.";
     case "parent":
       return "View your student's progress and grades.";
     default:
