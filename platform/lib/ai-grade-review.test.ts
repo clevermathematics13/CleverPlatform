@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  pickLatestRunForStudent,
+  runsForStudent,
   rowsForRun,
   partSortKey,
   sortReviewRows,
@@ -9,34 +9,62 @@ import {
 const LUCIANA = "42d4dd74-a367-4776-b45b-c1702989dbe8";
 const SALIM = "183fbc20-4984-4ee9-bfa0-425a410e4499";
 
-describe("pickLatestRunForStudent", () => {
-  it("returns the newest run for that student", () => {
-    const run = pickLatestRunForStudent(LUCIANA, [
+describe("runsForStudent", () => {
+  it("returns that student's runs newest first", () => {
+    const runs = runsForStudent(LUCIANA, [
       { id: "old", student_id: LUCIANA, created_at: "2026-08-30T22:12:41Z" },
       { id: "new", student_id: LUCIANA, created_at: "2026-08-30T22:38:02Z" },
     ]);
-    expect(run?.id).toBe("new");
+    expect(runs.map((r) => r.id)).toEqual(["new", "old"]);
   });
 
   it("does not order by array position when created_at disagrees", () => {
-    const run = pickLatestRunForStudent(LUCIANA, [
+    const runs = runsForStudent(LUCIANA, [
       { id: "old", student_id: LUCIANA, created_at: "2026-08-30T22:12:41Z" },
       { id: "newer", student_id: LUCIANA, created_at: "2026-09-02T02:50:34Z" },
     ]);
-    expect(run?.id).toBe("newer");
+    expect(runs[0].id).toBe("newer");
   });
 
   // The production bug: a response that belongs to a different student must
   // never resolve to a run, or its rows render under this student's name.
-  it("ignores runs belonging to another student", () => {
-    const run = pickLatestRunForStudent(LUCIANA, [
+  it("drops runs belonging to another student", () => {
+    const runs = runsForStudent(LUCIANA, [
       { id: "salims", student_id: SALIM, created_at: "2026-09-02T02:50:34Z" },
+      { id: "hers", student_id: LUCIANA, created_at: "2026-08-30T22:38:02Z" },
     ]);
-    expect(run).toBeNull();
+    expect(runs.map((r) => r.id)).toEqual(["hers"]);
   });
 
-  it("returns null for an empty payload", () => {
-    expect(pickLatestRunForStudent(LUCIANA, [])).toBeNull();
+  it("returns an empty list when the payload holds none of this student's runs", () => {
+    expect(runsForStudent(LUCIANA, [])).toEqual([]);
+    expect(
+      runsForStudent(LUCIANA, [
+        { id: "salims", student_id: SALIM, created_at: "2026-09-02T02:50:34Z" },
+      ])
+    ).toEqual([]);
+  });
+
+  // The caller narrows to complete runs and takes [0] and [1] for the
+  // reviewed run and its "was N" hints -- both must stay this student's.
+  it("preserves extra fields so callers can filter on status", () => {
+    const runs = runsForStudent(LUCIANA, [
+      { id: "running", student_id: LUCIANA, created_at: "2026-09-02T03:00:00Z", status: "running" },
+      { id: "latest", student_id: LUCIANA, created_at: "2026-09-02T02:00:00Z", status: "complete" },
+      { id: "salims", student_id: SALIM, created_at: "2026-09-02T01:30:00Z", status: "complete" },
+      { id: "previous", student_id: LUCIANA, created_at: "2026-09-02T01:00:00Z", status: "complete" },
+    ]);
+    const complete = runs.filter((r) => r.status === "complete");
+    expect(complete.map((r) => r.id)).toEqual(["latest", "previous"]);
+  });
+
+  it("does not mutate the input array", () => {
+    const runs = [
+      { id: "old", student_id: LUCIANA, created_at: "2026-08-30T22:12:41Z" },
+      { id: "new", student_id: LUCIANA, created_at: "2026-08-30T22:38:02Z" },
+    ];
+    runsForStudent(LUCIANA, runs);
+    expect(runs.map((r) => r.id)).toEqual(["old", "new"]);
   });
 });
 

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { getApiTeacher } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
 import {
+  AiGradeResponseSchema,
   GRADING_MODEL,
   assembleMarkScheme,
   buildGradingSystemPrompt,
@@ -118,37 +120,53 @@ export async function POST(
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-    let responseText: string;
-    try {
-      const message = await anthropic.messages.create({
-        model: GRADING_MODEL,
-        max_tokens: 4096,
-        system: buildGradingSystemPrompt([unit]),
-        messages: [
-          { role: "user", content: buildRegradeItemPrompt(unit, correctedEvidence) },
-        ],
-      });
-      responseText = message.content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
-      await recordUsage(supabase, {
-        pipeline: "ai_regrade",
-        model: GRADING_MODEL,
-        usage: message.usage,
-        ref: { type: "ai_grade_result", id: resultId },
-      });
-    } catch (e) {
-      return NextResponse.json(
-        { error: `Re-grading request failed: ${e instanceof Error ? e.message : String(e)}` },
-        { status: 500 }
-      );
-    }
+    // Structured output plus one retry on a malformed/invalid response --
+    // same shape as the main grading route, see the comment there.
+    let validation: ReturnType<typeof validateGradeResponse> | null = null;
+    let lastError = "Model returned an empty response";
+    for (let attempt = 1; attempt <= 2 && !validation; attempt++) {
+      let responseText: string;
+      try {
+        const message = await anthropic.messages.parse({
+          model: GRADING_MODEL,
+          max_tokens: 4096,
+          temperature: 0, // same reasoning as the main grading route
+          system: buildGradingSystemPrompt([unit]),
+          messages: [
+            { role: "user", content: buildRegradeItemPrompt(unit, correctedEvidence) },
+          ],
+          output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
+        });
+        await recordUsage(supabase, {
+          pipeline: "ai_regrade",
+          model: GRADING_MODEL,
+          usage: message.usage,
+          ref: { type: "ai_grade_result", id: resultId },
+        });
+        if (message.stop_reason === "max_tokens") {
+          lastError = "Model response was cut off at max_tokens";
+          continue;
+        }
+        responseText = message.parsed_output
+          ? JSON.stringify(message.parsed_output)
+          : message.content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
+      } catch (e) {
+        return NextResponse.json(
+          { error: `Re-grading request failed: ${e instanceof Error ? e.message : String(e)}` },
+          { status: 500 }
+        );
+      }
 
-    if (!responseText.trim()) {
-      return NextResponse.json({ error: "Model returned an empty response" }, { status: 502 });
+      if (!responseText.trim()) {
+        lastError = "Model returned an empty response";
+        continue;
+      }
+      const attemptValidation = validateGradeResponse(responseText, [unit]);
+      if (attemptValidation.ok) validation = attemptValidation;
+      else lastError = attemptValidation.error;
     }
-
-    const validation = validateGradeResponse(responseText, [unit]);
-    if (!validation.ok) {
-      return NextResponse.json({ error: validation.error }, { status: 502 });
+    if (!validation || !validation.ok) {
+      return NextResponse.json({ error: lastError }, { status: 502 });
     }
     const grade = validation.outcome.grades[0];
     if (!grade) {

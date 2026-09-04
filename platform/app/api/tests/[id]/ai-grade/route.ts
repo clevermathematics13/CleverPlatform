@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
 import {
+  AiGradeResponseSchema,
   GRADING_MODEL,
   MAX_SCAN_BYTES,
   SCAN_BUCKET,
@@ -458,11 +460,24 @@ export async function POST(
   // -- Grade -----------------------------------------------------------------
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  let responseText: string;
-  try {
-    const message = await anthropic.messages.create({
+  // The request is built once and may be sent twice: a response that comes
+  // back malformed or schema-invalid gets ONE retry before the run fails.
+  // Structured output (output_config.format, from the same zod schema the
+  // validator uses) makes the JSON itself well-formed, which removes the
+  // failure that killed a whole student's grading on 2 Sep 2026 -- a single
+  // stray character at position 8267 of an otherwise fine response. The
+  // retry covers what structured output cannot: a response cut off at
+  // max_tokens, or one that parses but fails validateGradeResponse's own
+  // checks (unknown testItemId, etc.).
+  const gradingRequest: Anthropic.MessageCreateParamsNonStreaming = {
       model: GRADING_MODEL,
       max_tokens: 16384,
+      // Marking should be as repeatable as the model allows. At the default
+      // temperature (1.0) the same scan re-marked minutes apart moved by 1-3
+      // marks on several parts (BiStats, 2 Sep 2026: Q1 5 -> 2 for one
+      // student at "high" confidence). 0 does not make it deterministic, but
+      // it removes the sampling noise that has nothing to do with the work.
+      temperature: 0,
       // Identical for every student sitting this same test (it only varies by
       // which policies this test's questions require, not by student), so
       // it's still worth caching on a batch upload even though it's no
@@ -492,25 +507,43 @@ export async function POST(
           ],
         },
       ],
-    });
+  };
 
-    responseText = message.content
-      .map((block) => (block.type === "text" ? block.text : ""))
-      .join("\n");
-    await recordUsage(supabase, {
-      pipeline: "ai_grade",
-      model: GRADING_MODEL,
-      usage: message.usage,
-      ref: { type: "ai_grade_run", id: run.id },
-    });
-  } catch (e) {
-    return failRun(`Grading request failed: ${e instanceof Error ? e.message : String(e)}`);
+  let validation: ReturnType<typeof validateGradeResponse> | null = null;
+  let lastError = "Model returned an empty response";
+  for (let attempt = 1; attempt <= 2 && !validation; attempt++) {
+    let responseText: string;
+    try {
+      const message = await anthropic.messages.parse({
+        ...gradingRequest,
+        output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
+      });
+      await recordUsage(supabase, {
+        pipeline: "ai_grade",
+        model: GRADING_MODEL,
+        usage: message.usage,
+        ref: { type: "ai_grade_run", id: run.id },
+      });
+      if (message.stop_reason === "max_tokens") {
+        lastError = "Model response was cut off at max_tokens";
+        continue;
+      }
+      responseText = message.parsed_output
+        ? JSON.stringify(message.parsed_output)
+        : message.content.map((block) => (block.type === "text" ? block.text : "")).join("\n");
+    } catch (e) {
+      return failRun(`Grading request failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    if (!responseText.trim()) {
+      lastError = "Model returned an empty response";
+      continue;
+    }
+    const attemptValidation = validateGradeResponse(responseText, gradeable);
+    if (attemptValidation.ok) validation = attemptValidation;
+    else lastError = attemptValidation.error;
   }
-
-  if (!responseText.trim()) return failRun("Model returned an empty response");
-
-  const validation = validateGradeResponse(responseText, gradeable);
-  if (!validation.ok) return failRun(validation.error, 502);
+  if (!validation || !validation.ok) return failRun(lastError, 502);
 
   const { grades, warnings } = validation.outcome;
 
@@ -525,23 +558,62 @@ export async function POST(
     if (!cropUploadErr) evidenceImagePathByTestItemId.set(testItemId, storagePath);
   }
 
+  // -- Carry forward acceptance for parts whose suggestion did not change ----
+  // A re-mark used to start every part at accepted=false, so re-marking a
+  // fully reviewed student flipped all of it back to "needs review" even when
+  // the new suggestion was identical. The teacher's earlier decision still
+  // holds for any part where the model suggests the same mark it did last
+  // time (Clev's Marks already carries whatever they accepted for it). Only
+  // parts whose suggestion moved need a fresh look. Scoped to the most recent
+  // COMPLETE run before this one, so a failed attempt in between is ignored.
+  const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
+  {
+    const { data: priorRun } = await supabase
+      .from("ai_grade_runs")
+      .select("id")
+      .eq("test_id", testId)
+      .eq("student_id", studentId)
+      .eq("status", "complete")
+      .neq("id", run.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (priorRun) {
+      const { data: priorRows } = await supabase
+        .from("ai_grade_results")
+        .select("test_item_id, suggested_marks, accepted_at, accepted_by")
+        .eq("run_id", priorRun.id)
+        .eq("accepted", true);
+      for (const p of priorRows ?? []) priorAccepted.set(p.test_item_id, p);
+    }
+  }
+
   // -- Persist results -------------------------------------------------------
-  const rows = grades.map((g) => ({
-    run_id: run.id,
-    test_item_id: g.unit.testItemId,
-    suggested_marks: g.clampedMarks,
-    max_marks: g.unit.maxMarks,
-    confidence: g.confidence,
-    markscheme_source: g.unit.markschemeSource,
-    work_found: g.item.workFound,
-    reasoning: g.item.reasoning,
-    evidence: g.item.evidence,
-    evidence_image_path: evidenceImagePathByTestItemId.get(g.unit.testItemId) ?? null,
-    evidence_box: evidenceImagePathByTestItemId.has(g.unit.testItemId)
-      ? crops.get(g.unit.testItemId)?.box ?? null
-      : null,
-    mark_breakdown: g.item.markBreakdown,
-  }));
+  let acceptedCarriedForward = 0;
+  const rows = grades.map((g) => {
+    const prior = priorAccepted.get(g.unit.testItemId);
+    const carried = prior && prior.suggested_marks === g.clampedMarks ? prior : null;
+    if (carried) acceptedCarriedForward += 1;
+    return {
+      run_id: run.id,
+      test_item_id: g.unit.testItemId,
+      suggested_marks: g.clampedMarks,
+      max_marks: g.unit.maxMarks,
+      confidence: g.confidence,
+      markscheme_source: g.unit.markschemeSource,
+      work_found: g.item.workFound,
+      reasoning: g.item.reasoning,
+      evidence: g.item.evidence,
+      evidence_image_path: evidenceImagePathByTestItemId.get(g.unit.testItemId) ?? null,
+      evidence_box: evidenceImagePathByTestItemId.has(g.unit.testItemId)
+        ? crops.get(g.unit.testItemId)?.box ?? null
+        : null,
+      mark_breakdown: g.item.markBreakdown,
+      accepted: !!carried,
+      accepted_at: carried?.accepted_at ?? null,
+      accepted_by: carried?.accepted_by ?? null,
+    };
+  });
 
   const { error: insertErr } = await supabase.from("ai_grade_results").insert(rows);
   if (insertErr) return failRun(`Could not save results: ${insertErr.message}`);
@@ -563,6 +635,7 @@ export async function POST(
     maxTotal,
     testTotalMarks,
     needsReview,
+    acceptedCarriedForward,
     warnings: [...assemblyWarnings, ...warnings],
   };
 

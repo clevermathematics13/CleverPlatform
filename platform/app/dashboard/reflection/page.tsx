@@ -61,8 +61,22 @@ export default async function ReflectionPage({
     }
   }
 
+  // Key the client on the data it seeds its state from. After a student
+  // submits self-marks the client calls router.refresh(); the server then
+  // re-renders with Clev's Marks unlocked, but a client component keeps its
+  // useState across a refresh, so without this key the page kept showing the
+  // pre-submit copy (marks blanked, self-marks null) and told the student to
+  // wait for the teacher. A changed key remounts it from the fresh props.
+  const stateKey = [
+    selectedTestId ?? "none",
+    effectiveStudentId ?? "none",
+    pdfUpload?.id ?? "no-upload",
+    ...(items ?? []).map((i) => `${i.test_item_id}:${i.self_marks ?? "-"}:${i.marks_awarded ?? "-"}`),
+  ].join("|");
+
   return (
     <ReflectionClient
+      key={stateKey}
       profile={{ id: profile.id, role: profile.role, display_name: profile.display_name }}
       tests={tests}
       selectedTestId={selectedTestId}

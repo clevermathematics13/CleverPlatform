@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
-import { Sphere } from "@/components/brand/Sphere";
+import { BouncingSphere } from "@/components/brand/BouncingSphere";
 
 // The PKCE code verifier lives in a cookie shared by every tab on this
 // origin. Starting a sign-in in a second tab overwrites the verifier an
@@ -88,21 +88,18 @@ function LoginForm() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-da-bg px-4 py-10">
-      {/* One focal object, one action. The orb carries the page's visual
-          weight so the form can stay quiet; on narrow screens the orb
-          shrinks and stacks above rather than competing for width. */}
-      <div className="grid w-full max-w-5xl items-center gap-10 lg:grid-cols-[1.1fr_1fr] lg:gap-16">
-        <div className="order-1 flex flex-col items-center gap-8 lg:order-none lg:items-start">
-          <Sphere size={300} className="lg:hidden" />
-          <Sphere size={420} className="hidden lg:block" />
-        </div>
+    <div className="relative flex min-h-screen items-center justify-center bg-da-bg px-4 py-10">
+      {/* One focal object, one action. The orb bounces along the floor of
+          the viewport behind the form, which stays centred and quiet; the
+          ball passes behind the card rather than competing with it. */}
+      <BouncingSphere />
 
-        <div className="order-2 w-full max-w-md justify-self-center space-y-8 rounded-2xl border border-da-border bg-da-surface/90 p-8 shadow-2xl shadow-black/55 wood-surface lg:order-none lg:justify-self-start">
+      <div className="relative z-10 w-full max-w-md">
+        <div className="w-full space-y-8 rounded-2xl border border-da-border bg-da-surface/90 p-8 shadow-2xl shadow-black/55 wood-surface">
         {/* Brand */}
-        <div className="flex flex-col items-center gap-3 text-center lg:items-start lg:text-left">
+        <div className="flex flex-col items-center gap-3 text-center">
           <h1 className="text-da-text">
-            <Logo size={34} variant="embossed" />
+            <Logo size={44} variant="embossed" />
           </h1>
           <p className="text-sm text-da-muted">
             IBDP Mathematics Learning Platform

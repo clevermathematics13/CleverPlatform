@@ -1,5 +1,6 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
 import { GradebookGrid } from "./GradebookGrid";
 
@@ -17,9 +18,10 @@ export default async function GradebookCoursePage({
 }: {
   params: Promise<{ courseId: string }>;
 }) {
-  await requireTeacher();
+  const profile = await requireTeacher();
   const { courseId } = await params;
   const supabase = await createClient();
+  const showHidden = await getShowHiddenStudents(supabase, profile.id);
 
   // Course
   const { data: course } = await supabase
@@ -87,11 +89,12 @@ export default async function GradebookCoursePage({
   }
 
   // Students enrolled in this course
-  const { data: rawStudents } = await supabase
+  let studentsQuery = supabase
     .from("students")
     .select("profile_id, profiles(display_name)")
-    .eq("course_id", courseId)
-    .eq("hidden", false);
+    .eq("course_id", courseId);
+  if (!showHidden) studentsQuery = studentsQuery.eq("hidden", false);
+  const { data: rawStudents } = await studentsQuery;
 
   const students = (rawStudents ?? [])
     .map((s) => {

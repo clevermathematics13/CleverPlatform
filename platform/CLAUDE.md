@@ -26,3 +26,11 @@ Design docs (read before any NA content or PDF layout work):
   platform/grading_policies/ibdp_math_aa_hl_paper_2_numerical_accuracy.md —
   it is loaded at runtime by lib/ai-grading.ts (buildGradingSystemPrompt),
   not just documentation. Edit the .md file, not a copy of its text.
+- NA student feedback voice lives in
+  platform/feedback_voice/na_student_feedback_voice.md — loaded at runtime by
+  lib/na-assessment.ts (buildAssessmentSystemPrompt), not just documentation.
+  Edit the .md file, not a copy of its text. Every sender must build its system
+  prompt through buildAssessmentSystemPrompt(); the raw prompt constants are
+  deliberately unexported so missing one is a compile error.
+  worker/Dockerfile MUST copy feedback_voice/ — the worker imports that module,
+  so a missing file throws at import and the worker never starts.

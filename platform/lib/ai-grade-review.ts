@@ -34,29 +34,30 @@ export interface ReviewItemRef {
 }
 
 /**
- * The newest run belonging to `studentId`, or null when the payload holds
- * none.
+ * The runs belonging to `studentId`, newest first.
  *
- * The API already filters by student and returns newest-first, so the
- * student_id check is redundant on the happy path -- it is here so that a
- * response for the wrong student (a stale in-flight request, a future caller
- * that forgets the query parameter) yields null rather than another
- * student's marks. Ordering is re-derived from created_at rather than
- * trusted, for the same reason.
+ * The API already filters by student and returns newest-first, so both the
+ * student_id check and the re-sort are redundant on the happy path -- they
+ * are here so that a response for the wrong student (a stale in-flight
+ * request, a future caller that forgets the query parameter) yields nothing
+ * rather than another student's marks, and so callers that pick the first
+ * entry are not trusting array position for recency.
+ *
+ * Callers filter this further (e.g. to complete runs only); returning the
+ * list rather than one run is what lets them do that without dropping the
+ * ownership guard.
  */
-export function pickLatestRunForStudent<R extends ReviewRunRef>(
-  studentId: string,
-  runs: R[]
-): R | null {
-  const mine = runs.filter((r) => r.student_id === studentId);
-  if (mine.length === 0) return null;
-  return mine.reduce((newest, r) => {
-    const a = r.created_at ? Date.parse(r.created_at) : NaN;
-    const b = newest.created_at ? Date.parse(newest.created_at) : NaN;
-    if (Number.isNaN(a)) return newest;
-    if (Number.isNaN(b)) return r;
-    return a > b ? r : newest;
-  });
+export function runsForStudent<R extends ReviewRunRef>(studentId: string, runs: R[]): R[] {
+  return runs
+    .filter((r) => r.student_id === studentId)
+    .sort((a, b) => {
+      const ta = a.created_at ? Date.parse(a.created_at) : NaN;
+      const tb = b.created_at ? Date.parse(b.created_at) : NaN;
+      if (Number.isNaN(ta) && Number.isNaN(tb)) return 0;
+      if (Number.isNaN(ta)) return 1;
+      if (Number.isNaN(tb)) return -1;
+      return tb - ta;
+    });
 }
 
 /**
