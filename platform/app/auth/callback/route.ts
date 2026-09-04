@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { MULTI_ROLE_TEST_EMAILS } from "@/lib/test-accounts";
 
 function isMissingExtraTimeColumnError(message?: string) {
   if (!message) return false;
@@ -10,12 +11,6 @@ function isMissingExtraTimeColumnError(message?: string) {
 // TEMPORARY: allowlist for OAuth verification testing with non-school emails.
 // Remove once Google OAuth branding verification is confirmed working.
 const TEST_ACCOUNT_EMAILS = ["paulsclevenger@gmail.com"];
-
-// Pablo Clevenger's two personal accounts, used to test the platform as
-// other roles. Kept as a hardcoded pair, not a general mechanism -- see
-// set_test_account_role() in the migrations for why this can't be a normal
-// role edit. Asked on every sign-in, deliberately not remembered.
-const MULTI_ROLE_TEST_EMAILS = ["pcleveng@amersol.edu.pe", "paulsclevenger@gmail.com"];
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
