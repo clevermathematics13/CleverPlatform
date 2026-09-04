@@ -56,6 +56,15 @@ export function HostGameClient({
     setPlayers((data as GamePlayerRow[]) ?? []);
   }
 
+  async function refreshAnsweredIds(questionIndex: number) {
+    const { data } = await supabase
+      .from("game_answers")
+      .select("player_id")
+      .eq("session_id", sessionId)
+      .eq("question_index", questionIndex);
+    setAnsweredIds(new Set((data ?? []).map((r) => r.player_id as string)));
+  }
+
   async function checkLuckyWinner(questionIndex: number) {
     const { data } = await supabase
       .from("game_answers")
@@ -135,6 +144,9 @@ export function HostGameClient({
     const pollId = setInterval(() => {
       refreshSession();
       refreshPlayers();
+      if (sessionRef.current?.status === "question") {
+        refreshAnsweredIds(sessionRef.current.current_question_index);
+      }
     }, 3000);
 
     return () => {
