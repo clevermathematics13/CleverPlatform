@@ -53,7 +53,7 @@ export async function GET(
   const { data: batches, error } = await supabase
     .from("ai_grade_batches")
     .select(
-      "id, test_id, status, source_storage_path, file_name, page_count, proposed_segments, confirmed_segments, unassigned_pages, error, created_at, segmented_at, split_at"
+      "id, test_id, status, source_storage_path, file_name, page_count, proposed_segments, confirmed_segments, unassigned_pages, blank_pages, error, created_at, segmented_at, split_at"
     )
     .eq("test_id", testId)
     .order("created_at", { ascending: false })
@@ -164,7 +164,7 @@ export async function POST(
   if (body.forceResegment !== true) {
     const { data: prior } = await supabase
       .from("ai_grade_batches")
-      .select("id, proposed_segments, unassigned_pages")
+      .select("id, proposed_segments, unassigned_pages, blank_pages")
       .eq("test_id", testId)
       .eq("source_sha256", sourceSha256)
       .in("status", ["segmented", "split"])
@@ -175,6 +175,7 @@ export async function POST(
 
     if (prior) {
       const unassignedPages = (prior.unassigned_pages as number[] | null) ?? [];
+      const blankPages = (prior.blank_pages as number[] | null) ?? [];
       const { data: reused, error: reuseErr } = await supabase
         .from("ai_grade_batches")
         .insert({
@@ -187,6 +188,7 @@ export async function POST(
           source_sha256: sourceSha256,
           proposed_segments: prior.proposed_segments,
           unassigned_pages: unassignedPages,
+          blank_pages: blankPages,
           segmented_at: new Date().toISOString(),
         })
         .select("id")
@@ -204,6 +206,7 @@ export async function POST(
         pageCount,
         segments: prior.proposed_segments,
         unassignedPages,
+        blankPages,
         warnings: [
           "This PDF was uploaded before, so its page-to-student mapping was reused instead of being read again. Send forceResegment: true to re-run the model.",
         ],
@@ -336,6 +339,7 @@ export async function POST(
       }),
     ]),
   ].sort((a, b) => a - b);
+  const blankPages = [...validation.response.blankPages].sort((a, b) => a - b);
 
   const { error: updateErr } = await supabase
     .from("ai_grade_batches")
@@ -343,6 +347,7 @@ export async function POST(
       status: "segmented",
       proposed_segments: proposedSegments,
       unassigned_pages: unassignedPages,
+      blank_pages: blankPages,
       segmented_at: new Date().toISOString(),
     })
     .eq("id", batch.id);
@@ -354,6 +359,7 @@ export async function POST(
     pageCount,
     segments: proposedSegments,
     unassignedPages,
+    blankPages,
     warnings: validation.warnings,
   });
 }

@@ -29,6 +29,8 @@ interface BatchRow {
   proposed_segments: ProposedSegment[];
   confirmed_segments: { label: string; pages: number[]; matchedStudentId: string }[] | null;
   unassigned_pages: number[];
+  /** Pages the model confidently identified as blank -- not shown as "needs review", unlike unassigned_pages. */
+  blank_pages: number[];
   error: string | null;
   created_at: string;
 }
@@ -112,16 +114,24 @@ export function BatchGradeTab({
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [splitting, setSplitting] = useState(false);
   const [splitResults, setSplitResults] = useState<SplitResultRow[] | null>(null);
+  const [stopRequested, setStopRequested] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // A ref, not just the stopRequested state, so the running loop's closure
+  // sees a stop the instant it's clicked rather than waiting for a re-render.
+  const stopRequestedRef = useRef(false);
 
   const studentByName = new Map(students.map((s) => [s.display_name, s.profile_id]));
 
   const allPages = batch?.page_count
     ? Array.from({ length: batch.page_count }, (_, i) => i + 1)
     : [];
+  const blankPages = new Set(batch?.blank_pages ?? []);
   const claimedPages = new Set(rows.flatMap((r) => r.pages));
-  const unclaimedPages = allPages.filter((p) => !claimedPages.has(p));
+  // Confirmed-blank pages (e.g. a fixed-length booklet's unused last page)
+  // are excluded here rather than folded into "needs review" -- they were
+  // never going to have work on them, so nothing for the teacher to check.
+  const unclaimedPages = allPages.filter((p) => !claimedPages.has(p) && !blankPages.has(p));
 
   const rowsWithConflicts = (() => {
     const owners = new Map<number, string[]>();
@@ -199,6 +209,7 @@ export function BatchGradeTab({
       if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
 
       const segments: ProposedSegment[] = (data.segments as ProposedSegment[]) ?? [];
+      const blankPages = (data.blankPages as number[]) ?? [];
       setBatch({
         id: data.batchId as string,
         status: "segmented",
@@ -207,6 +218,7 @@ export function BatchGradeTab({
         proposed_segments: segments,
         confirmed_segments: null,
         unassigned_pages: (data.unassignedPages as number[]) ?? [],
+        blank_pages: blankPages,
         error: null,
         created_at: new Date().toISOString(),
       });
@@ -259,9 +271,16 @@ export function BatchGradeTab({
     rowsWithConflicts.size === 0 &&
     new Set(rows.map((r) => r.studentId)).size === rows.length;
 
+  const handleStop = () => {
+    stopRequestedRef.current = true;
+    setStopRequested(true);
+  };
+
   const handleSplit = async () => {
     if (!batch || !canSplit) return;
     setSplitting(true);
+    setStopRequested(false);
+    stopRequestedRef.current = false;
     setError(null);
     setStatusLine("Splitting the batch into per-student scans…");
     try {
@@ -285,7 +304,16 @@ export function BatchGradeTab({
       // serverless invocation has to grade a whole class inside one
       // duration budget.
       const graded: SplitResultRow[] = [];
+      let stoppedEarly = false;
       for (const sr of splitRows) {
+        // Checked before starting each student rather than aborting an
+        // in-flight request -- once a grading call has been sent, the model
+        // has already been billed for it either way, so there is nothing to
+        // save by cancelling mid-flight. This only stops the NEXT one.
+        if (stopRequestedRef.current) {
+          stoppedEarly = true;
+          break;
+        }
         if (sr.status !== "split" || !sr.storagePath) {
           graded.push({ studentId: sr.studentId, label: sr.label, runId: null, status: "failed", error: sr.error });
           setSplitResults([...graded]);
@@ -332,16 +360,21 @@ export function BatchGradeTab({
 
       const completedCount = graded.filter((r) => r.status === "complete").length;
       const failedCount = graded.filter((r) => r.status === "failed").length;
+      const remaining = splitRows.length - graded.length;
       setStatusLine(
-        `Graded ${completedCount} of ${graded.length} student(s). ${
-          failedCount > 0 ? `${failedCount} failed — see below.` : "Review each student from the Individual tab."
-        }`
+        stoppedEarly
+          ? `Stopped after ${graded.length} of ${splitRows.length} student(s) — ${remaining} not started. ` +
+              `${completedCount} graded${failedCount > 0 ? `, ${failedCount} failed` : ""}.`
+          : `Graded ${completedCount} of ${graded.length} student(s). ${
+              failedCount > 0 ? `${failedCount} failed — see below.` : "Review each student from the Individual tab."
+            }`
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Splitting failed.");
       setStatusLine(null);
     } finally {
       setSplitting(false);
+      setStopRequested(false);
     }
   };
 
@@ -414,6 +447,17 @@ export function BatchGradeTab({
               >
                 Start over
               </button>
+              {splitting && (
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  disabled={stopRequested}
+                  title="Finishes the student currently being marked (already billed either way), then stops before starting the next one."
+                  className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                >
+                  {stopRequested ? "Stopping after this student…" : "Stop"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleSplit}
@@ -430,6 +474,12 @@ export function BatchGradeTab({
             </div>
           </div>
 
+          {batch.blank_pages.length > 0 && !splitResults && (
+            <div className="border-b border-da-border bg-da-hover px-5 py-2 text-xs text-da-muted">
+              Page(s) {formatPageList(batch.blank_pages)} were identified as blank and skipped — nothing to
+              review there.
+            </div>
+          )}
           {unclaimedPages.length > 0 && !splitResults && (
             <div className="border-b border-amber-400/40 bg-amber-500/15 px-5 py-2 text-xs text-amber-300">
               ⚠ Page(s) {formatPageList(unclaimedPages)} aren&apos;t assigned to any row yet.
@@ -540,16 +590,19 @@ export function BatchGradeTab({
                               failed
                             </span>
                           )
+                        ) : splitResults ? (
+                          // Present once grading has started but this row
+                          // never got to it -- either still queued behind
+                          // others, or skipped by a Stop click.
+                          <span className="text-xs text-da-muted">not started</span>
                         ) : (
-                          !splitResults && (
-                            <button
-                              type="button"
-                              onClick={() => removeRow(r.key)}
-                              className="text-xs text-red-400 hover:text-red-200"
-                            >
-                              Remove
-                            </button>
-                          )
+                          <button
+                            type="button"
+                            onClick={() => removeRow(r.key)}
+                            className="text-xs text-red-400 hover:text-red-200"
+                          >
+                            Remove
+                          </button>
                         )}
                       </td>
                     </tr>
