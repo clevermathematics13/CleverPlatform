@@ -171,19 +171,34 @@ async function selectCrops(scanIds: string[]) {
 
 // ---- one crop ---------------------------------------------------------
 
+/**
+ * Writes one crop's assessment, updating by crop_id rather than
+ * find-then-update-by-row-id.
+ *
+ * The find-or-create this replaces used `.maybeSingle()`, which ERRORS when
+ * a crop already has more than one na_feedback row -- and the error was
+ * destructured away, leaving `existing` null, so the fallback INSERT added
+ * yet another duplicate. Every subsequent run compounded it; one crop had
+ * reached five rows. na_feedback has no UNIQUE constraint on crop_id, so
+ * nothing at the database level stopped it.
+ *
+ * Updating by crop_id fixes both halves: it touches every row a crop has,
+ * so duplicates converge on identical current text instead of leaving a
+ * stale one for the student read path to pick (that path takes whichever
+ * row PostgREST returns first), and it cannot insert when rows exist.
+ */
 const upsertFeedback = async (cropId: string, fields: Record<string, unknown>) => {
   if (DRY_RUN) return;
-  const { data: existing } = await supabase
+  const { data: updated, error: updateErr } = await supabase
     .from("na_feedback")
-    .select("id")
+    .update({ ...fields, updated_at: new Date().toISOString() })
     .eq("crop_id", cropId)
-    .maybeSingle();
-  if (existing?.id) {
-    const { error } = await supabase
-      .from("na_feedback")
-      .update({ ...fields, updated_at: new Date().toISOString() })
-      .eq("id", existing.id);
-    if (error) throw new Error(`Could not update feedback: ${error.message}`);
+    .select("id");
+  if (updateErr) throw new Error(`Could not update feedback: ${updateErr.message}`);
+  if (updated && updated.length > 0) {
+    if (updated.length > 1) {
+      console.log(`  note: crop ${cropId} has ${updated.length} feedback rows -- all updated`);
+    }
     return;
   }
   const { error } = await supabase.from("na_feedback").insert({ crop_id: cropId, ...fields });
