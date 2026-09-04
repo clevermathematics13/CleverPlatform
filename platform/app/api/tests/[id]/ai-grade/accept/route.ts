@@ -69,21 +69,15 @@ export async function POST(
       { status: 400 }
     );
   }
-  // student_marks ("Clev's Marks") is keyed by a real profiles.id — a run
-  // graded against an imported-but-not-yet-registered student (see
-  // ai_grade_runs.invited_student_id) has no profile to write against yet.
-  // The suggested marks stay reviewable here regardless; auto_enroll_from_invitations
-  // backfills student_id the moment the student logs in, after which this
-  // same run can be accepted normally.
-  if (!run.student_id) {
-    return NextResponse.json(
-      {
-        error:
-          "This student hasn't logged in yet, so their marks can't be written to Clev's Marks. The suggested marks stay here for review — accept them once the student signs in for the first time.",
-      },
-      { status: 409 }
-    );
-  }
+  // student_marks ("Clev's Marks") accepts either identity, mirroring
+  // ai_grade_runs: a run graded against an imported-but-not-yet-registered
+  // student (student_id null, invited_student_id set) writes against
+  // invited_student_id instead. auto_enroll_from_invitations reconciles it
+  // to student_id automatically the moment the student logs in.
+  const identity: { student_id: string | null; invited_student_id: string | null } = run.student_id
+    ? { student_id: run.student_id, invited_student_id: null }
+    : { student_id: null, invited_student_id: run.invited_student_id };
+  const marksConflictTarget = identity.student_id ? "test_item_id,student_id" : "test_item_id,invited_student_id";
 
   const { data: results, error: rErr } = await supabase
     .from("ai_grade_results")
@@ -109,22 +103,22 @@ export async function POST(
     const wasOverridden = marks !== r.suggested_marks;
 
     // Prior mark, for the audit log
-    const { data: existing } = await supabase
-      .from("student_marks")
-      .select("marks_awarded")
-      .eq("test_item_id", r.test_item_id)
-      .eq("student_id", run.student_id)
-      .maybeSingle();
+    let existingQuery = supabase.from("student_marks").select("marks_awarded").eq("test_item_id", r.test_item_id);
+    existingQuery = identity.student_id
+      ? existingQuery.eq("student_id", identity.student_id)
+      : existingQuery.eq("invited_student_id", identity.invited_student_id!);
+    const { data: existing } = await existingQuery.maybeSingle();
 
     const oldMarks = existing?.marks_awarded ?? null;
 
     const { error: upsertErr } = await supabase.from("student_marks").upsert(
       {
         test_item_id: r.test_item_id,
-        student_id: run.student_id,
+        student_id: identity.student_id,
+        invited_student_id: identity.invited_student_id,
         marks_awarded: marks,
       },
-      { onConflict: "test_item_id,student_id" }
+      { onConflict: marksConflictTarget }
     );
 
     if (upsertErr) {
@@ -134,7 +128,8 @@ export async function POST(
 
     await supabase.from("mark_changes").insert({
       test_item_id: r.test_item_id,
-      student_id: run.student_id,
+      student_id: identity.student_id,
+      invited_student_id: identity.invited_student_id,
       changed_by: user.id,
       old_marks: oldMarks,
       new_marks: marks,

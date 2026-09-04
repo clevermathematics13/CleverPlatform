@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { parseGradingSubject } from "@/lib/ai-grading";
 
 export async function POST(req: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
-  const { supabase, user, profile } = auth;
+  const { supabase } = auth;
 
   let body: unknown;
   try {
@@ -28,13 +29,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // studentId is the opaque subject id every AI-grade endpoint also
+  // understands -- usually a real profiles.id, but "invited-<id>" for a
+  // roster entry that has never logged in (see parseGradingSubject).
+  const subject = parseGradingSubject(studentId);
+
   // Delete mark (clear the cell)
   if (marksAwarded === null || marksAwarded === undefined) {
-    const { error } = await supabase
-      .from("student_marks")
-      .delete()
-      .eq("test_item_id", testItemId)
-      .eq("student_id", studentId);
+    let del = supabase.from("student_marks").delete().eq("test_item_id", testItemId);
+    del = subject.kind === "invited" ? del.eq("invited_student_id", subject.id) : del.eq("student_id", subject.id);
+    const { error } = await del;
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
@@ -52,10 +56,11 @@ export async function POST(req: NextRequest) {
   const { error } = await supabase.from("student_marks").upsert(
     {
       test_item_id: testItemId,
-      student_id: studentId,
+      student_id: subject.kind === "profile" ? subject.id : null,
+      invited_student_id: subject.kind === "invited" ? subject.id : null,
       marks_awarded: marks,
     },
-    { onConflict: "test_item_id,student_id" }
+    { onConflict: subject.kind === "invited" ? "test_item_id,invited_student_id" : "test_item_id,student_id" }
   );
 
   if (error)

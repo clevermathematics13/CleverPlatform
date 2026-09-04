@@ -551,15 +551,8 @@ export function AiGradeClient({ testId }: { testId: string }) {
         setError((data.error as string) ?? "Could not accept all marks.");
         return;
       }
-      const skippedList = (data.skipped as { name: string | null; reason: string }[] | undefined) ?? [];
-      const skippedNote =
-        skippedList.length > 0
-          ? ` ${skippedList.length} student(s) skipped: ${skippedList
-              .map((s) => s.name ?? "unknown")
-              .join(", ")} (not yet registered).`
-          : "";
       setStatusLine(
-        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s) into Clev's Marks.${skippedNote}`
+        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s) into Clev's Marks.`
       );
       await loadOverview();
       if (focusStudent) await loadResultsFor(focusStudent);

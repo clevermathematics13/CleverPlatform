@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
 import { GradebookGrid } from "./GradebookGrid";
+import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
+import { loadInvitedRoster } from "@/lib/na-scanning";
 
 function inferComponent(name: string): "P1" | "P2" | "P3" | "IA" | null {
   const u = name.toUpperCase();
@@ -96,24 +98,40 @@ export default async function GradebookCoursePage({
   if (!showHidden) studentsQuery = studentsQuery.eq("hidden", false);
   const { data: rawStudents } = await studentsQuery;
 
-  const students = (rawStudents ?? [])
-    .map((s) => {
-      const prof = s.profiles as unknown;
-      const displayName =
-        prof && typeof prof === "object" && !Array.isArray(prof)
-          ? (prof as { display_name: string }).display_name
-          : Array.isArray(prof) && prof.length > 0
-          ? (prof[0] as { display_name: string }).display_name
-          : null;
-      return {
-        profile_id: s.profile_id as string,
-        name: displayName ?? "Unknown",
-      };
-    })
-    .sort((a, b) => {
-      const lastName = (n: string) => n.trim().split(/\s+/).slice(-1)[0] ?? n;
-      return lastName(a.name).localeCompare(lastName(b.name)) || a.name.localeCompare(b.name);
-    });
+  const registeredStudents = (rawStudents ?? []).map((s) => {
+    const prof = s.profiles as unknown;
+    const displayName =
+      prof && typeof prof === "object" && !Array.isArray(prof)
+        ? (prof as { display_name: string }).display_name
+        : Array.isArray(prof) && prof.length > 0
+        ? (prof[0] as { display_name: string }).display_name
+        : null;
+    return {
+      profile_id: s.profile_id as string,
+      name: displayName ?? "Unknown",
+    };
+  });
+
+  // Students imported (e.g. via Google Classroom) but who have never logged
+  // in have no profiles row yet, so they never appear in the students table
+  // above -- see auto_enroll_from_invitations. Included here with the same
+  // composite subject id every AI-grade endpoint understands (see
+  // parseGradingSubject in lib/ai-grading.ts), so their marks -- accepted
+  // straight from AI grading, or entered by hand below -- show up in the
+  // grid like any other student's. A registered invitee is skipped: their
+  // real enrollment already appears in `students` above.
+  const { roster: invitedRoster } = await loadInvitedRoster(supabase, courseId);
+  const invitedStudents = invitedRoster
+    .filter((r) => !r.profileId)
+    .map((r) => ({
+      profile_id: `${INVITED_SUBJECT_PREFIX}${r.invitedId}`,
+      name: r.fullName,
+    }));
+
+  const students = [...registeredStudents, ...invitedStudents].sort((a, b) => {
+    const lastName = (n: string) => n.trim().split(/\s+/).slice(-1)[0] ?? n;
+    return lastName(a.name).localeCompare(lastName(b.name)) || a.name.localeCompare(b.name);
+  });
 
   // Student marks
   const itemIds = allItems.map((i) => i.id);
@@ -121,11 +139,13 @@ export default async function GradebookCoursePage({
   if (itemIds.length > 0) {
     const { data: rawMarks } = await supabase
       .from("student_marks")
-      .select("test_item_id, student_id, marks_awarded")
+      .select("test_item_id, student_id, invited_student_id, marks_awarded")
       .in("test_item_id", itemIds);
     for (const m of rawMarks ?? []) {
+      const subjectId = m.student_id ?? (m.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${m.invited_student_id}` : null);
+      if (!subjectId) continue;
       if (!marksMap[m.test_item_id]) marksMap[m.test_item_id] = {};
-      marksMap[m.test_item_id][m.student_id] = m.marks_awarded;
+      marksMap[m.test_item_id][subjectId] = m.marks_awarded;
     }
   }
 

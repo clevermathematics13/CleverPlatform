@@ -475,12 +475,13 @@ Server-side Google OAuth token store. Replaces browser-cookie token storage so t
 |---|---|---|
 | `id` | uuid | default `gen_random_uuid()` |
 | `test_item_id` | uuid |  |
-| `student_id` | uuid |  |
+| `student_id` | uuid, nullable | FK profiles(id) — null for a change logged against an invited-only student; backfilled by `auto_enroll_from_invitations` on first login |
 | `changed_by` | uuid |  |
 | `old_marks` | integer, nullable |  |
 | `new_marks` | integer |  |
 | `reason` | text, nullable |  |
 | `created_at` | timestamp with time zone | default `now()` |
+| `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null |
 
 ### `na_anchors`
 
@@ -1157,9 +1158,10 @@ One row per uploaded scanned placement-test PDF. student_name is manually tagged
 |---|---|---|
 | `id` | uuid | default `gen_random_uuid()` |
 | `test_item_id` | uuid |  |
-| `student_id` | uuid |  |
+| `student_id` | uuid, nullable | FK profiles(id) — null for a mark written against an invited-only student; backfilled by `auto_enroll_from_invitations` on first login |
 | `marks_awarded` | integer | default `0` |
 | `created_at` | timestamp with time zone | default `now()` |
+| `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null; unique together with test_item_id |
 
 ### `student_responses`
 
