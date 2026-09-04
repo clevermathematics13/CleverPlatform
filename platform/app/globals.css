@@ -146,100 +146,340 @@ body {
 }
 
 /* ---- Live game critters (app/dashboard/games/question-progress.tsx) -------
-   One critter per question. Awake ones dance: the whole figure bobs and
-   tilts, the ears flick, the arms wave, each offset by --critter-delay so a
-   row moves as a wave. Asleep ones breathe slowly with three pink Zs
-   drifting up and fading in turn. Reduced motion stills everything; the two
-   moods still read from the pose (open grin and raised arms vs closed eyes
-   and Zs). transform-box: fill-box lets each part pivot about its own
-   corner rather than the SVG origin. */
+   One critter per question. Awake ones each dance a different dance: the
+   figure is split into legs, body, arms and head so a dance can move them
+   independently, and each dance is a class (critter-dance-<name>) that binds
+   its own keyframes to those parts, offset by --critter-delay so a row moves
+   as a chorus line rather than in lockstep. Arms start from a per-dance rest
+   angle (--arm-l-rest / --arm-r-rest, set inline) and the dance swings them
+   from there. Asleep ones breathe slowly with three pink Zs drifting up and
+   fading in turn. Reduced motion stills everything; poses and props still
+   tell the dances and the two moods apart. transform-box: fill-box lets each
+   part pivot about its own corner rather than the SVG origin. */
 .critter {
   overflow: visible;
-  filter: drop-shadow(0 0 4px rgba(240, 106, 160, 0.45)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 4px rgba(240, 106, 160, 0.28));
 }
-.critter-sleeping {
-  filter: drop-shadow(0 0 3px rgba(240, 106, 160, 0.25)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
-  opacity: 0.88;
-}
-
-.critter-dancing .critter-figure {
+.critter-figure,
+.critter-head,
+.critter-arm,
+.critter-ear,
+.critter-body,
+.critter-skirt,
+.critter-legs {
   transform-box: fill-box;
-  transform-origin: 50% 95%;
-  animation: critter-dance 0.72s ease-in-out infinite;
+}
+.critter-figure { transform-origin: 50% 100%; }
+.critter-head { transform-origin: 50% 92%; }
+.critter-body { transform-origin: 50% 100%; }
+.critter-legs { transform-origin: 50% 100%; }
+.critter-skirt { transform-origin: 50% 0%; }
+.critter-arm-l { transform-origin: 100% 100%; transform: rotate(var(--arm-l-rest, 0deg)); }
+.critter-arm-r { transform-origin: 0% 100%; transform: rotate(var(--arm-r-rest, 0deg)); }
+.critter-ear-l { transform-origin: 90% 95%; }
+.critter-ear-r { transform-origin: 10% 95%; }
+.critter-glow { filter: drop-shadow(0 0 2px currentColor); }
+
+/* Every animated part reads the same delay so a critter stays in time with
+   itself; the row is staggered by giving each critter a different delay. */
+.critter-dancing .critter-figure,
+.critter-dancing .critter-head,
+.critter-dancing .critter-arm,
+.critter-dancing .critter-ear,
+.critter-dancing .critter-body,
+.critter-dancing .critter-skirt,
+.critter-dancing .critter-float {
   animation-delay: var(--critter-delay, 0s);
+  animation-iteration-count: infinite;
 }
 
-.critter-dancing .critter-ear {
-  transform-box: fill-box;
-  animation: critter-ear 0.72s ease-in-out infinite;
-  animation-delay: var(--critter-delay, 0s);
+/* -- Salsa: quick hips side to side, arms alternating up and down. */
+.critter-dance-salsa .critter-figure { animation: critter-salsa-body 0.56s ease-in-out infinite; }
+.critter-dance-salsa .critter-head { animation: critter-salsa-head 0.56s ease-in-out infinite; }
+.critter-dance-salsa .critter-arm-l { animation: critter-salsa-arm-l 0.56s ease-in-out infinite; }
+.critter-dance-salsa .critter-arm-r { animation: critter-salsa-arm-r 0.56s ease-in-out infinite; }
+@keyframes critter-salsa-body {
+  0%, 100% { transform: translateX(-3px) rotate(-5deg); }
+  50% { transform: translateX(3px) rotate(5deg); }
 }
-.critter-dancing .critter-ear-l { transform-origin: 90% 95%; }
-.critter-dancing .critter-ear-r { transform-origin: 10% 95%; animation-direction: reverse; }
-
-.critter-dancing .critter-arm {
-  transform-box: fill-box;
-  animation: critter-arm 0.36s ease-in-out infinite alternate;
-  animation-delay: var(--critter-delay, 0s);
+@keyframes critter-salsa-head {
+  0%, 100% { transform: rotate(4deg); }
+  50% { transform: rotate(-4deg); }
 }
-.critter-dancing .critter-arm-l { transform-origin: 100% 100%; }
-.critter-dancing .critter-arm-r { transform-origin: 0% 100%; animation-name: critter-arm-r; }
+@keyframes critter-salsa-arm-l {
+  0%, 100% { transform: rotate(calc(var(--arm-l-rest) + 30deg)); }
+  50% { transform: rotate(calc(var(--arm-l-rest) - 25deg)); }
+}
+@keyframes critter-salsa-arm-r {
+  0%, 100% { transform: rotate(calc(var(--arm-r-rest) + 25deg)); }
+  50% { transform: rotate(calc(var(--arm-r-rest) - 30deg)); }
+}
 
+/* -- Merengue: bouncy march on the spot, hips rolling, maracas shaking. */
+.critter-dance-merengue .critter-figure { animation: critter-merengue-body 0.5s ease-in-out infinite; }
+.critter-dance-merengue .critter-legs { animation: critter-merengue-legs 0.5s ease-in-out infinite; }
+.critter-dance-merengue .critter-arm-l { animation: critter-merengue-arm-l 0.25s ease-in-out infinite alternate; }
+.critter-dance-merengue .critter-arm-r { animation: critter-merengue-arm-r 0.25s ease-in-out infinite alternate; }
+@keyframes critter-merengue-body {
+  0%, 100% { transform: translateY(0) rotate(-3deg); }
+  25% { transform: translateY(-3px) rotate(0deg); }
+  50% { transform: translateY(0) rotate(3deg); }
+  75% { transform: translateY(-3px) rotate(0deg); }
+}
+@keyframes critter-merengue-legs {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(0.92); }
+}
+@keyframes critter-merengue-arm-l {
+  from { transform: rotate(calc(var(--arm-l-rest) - 12deg)); }
+  to { transform: rotate(calc(var(--arm-l-rest) + 12deg)); }
+}
+@keyframes critter-merengue-arm-r {
+  from { transform: rotate(calc(var(--arm-r-rest) + 12deg)); }
+  to { transform: rotate(calc(var(--arm-r-rest) - 12deg)); }
+}
+
+/* -- Bachata: slow four-count side to side with a hip tap on four; the
+      heart above drifts with it. */
+.critter-dance-bachata .critter-figure { animation: critter-bachata-body 1.6s ease-in-out infinite; }
+.critter-dance-bachata .critter-head { animation: critter-bachata-head 1.6s ease-in-out infinite; }
+.critter-dance-bachata .critter-arm-l { animation: critter-bachata-arm-l 1.6s ease-in-out infinite; }
+.critter-dance-bachata .critter-arm-r { animation: critter-bachata-arm-r 1.6s ease-in-out infinite; }
+.critter-dance-bachata .critter-float { animation: critter-bachata-heart 1.6s ease-in-out infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+@keyframes critter-bachata-body {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  20% { transform: translateX(4px) rotate(2deg); }
+  40% { transform: translateX(5px) rotate(6deg); }
+  50% { transform: translateX(3px) rotate(0deg); }
+  70% { transform: translateX(-4px) rotate(-2deg); }
+  90% { transform: translateX(-5px) rotate(-6deg); }
+}
+@keyframes critter-bachata-head {
+  0%, 100% { transform: rotate(0deg); }
+  40% { transform: rotate(-6deg); }
+  90% { transform: rotate(6deg); }
+}
+@keyframes critter-bachata-arm-l {
+  0%, 100% { transform: rotate(var(--arm-l-rest)); }
+  40% { transform: rotate(calc(var(--arm-l-rest) - 12deg)); }
+  90% { transform: rotate(calc(var(--arm-l-rest) + 8deg)); }
+}
+@keyframes critter-bachata-arm-r {
+  0%, 100% { transform: rotate(var(--arm-r-rest)); }
+  40% { transform: rotate(calc(var(--arm-r-rest) - 8deg)); }
+  90% { transform: rotate(calc(var(--arm-r-rest) + 12deg)); }
+}
+@keyframes critter-bachata-heart {
+  0%, 100% { transform: translateY(0) scale(1); opacity: 0.9; }
+  50% { transform: translateY(-3px) scale(1.15); opacity: 1; }
+}
+
+/* -- Cumbia: a gentle circling sway, arms low, skirt swishing the other way. */
+.critter-dance-cumbia .critter-figure { animation: critter-cumbia-body 1.4s ease-in-out infinite; }
+.critter-dance-cumbia .critter-skirt { animation: critter-cumbia-skirt 1.4s ease-in-out infinite; }
+.critter-dance-cumbia .critter-arm-l { animation: critter-cumbia-arm-l 1.4s ease-in-out infinite; }
+.critter-dance-cumbia .critter-arm-r { animation: critter-cumbia-arm-r 1.4s ease-in-out infinite; }
+@keyframes critter-cumbia-body {
+  0%, 100% { transform: translateX(-3px) rotate(-4deg); }
+  50% { transform: translateX(3px) rotate(4deg); }
+}
+@keyframes critter-cumbia-skirt {
+  0%, 100% { transform: skewX(10deg) scaleX(1.05); }
+  50% { transform: skewX(-10deg) scaleX(1.05); }
+}
+@keyframes critter-cumbia-arm-l {
+  0%, 100% { transform: rotate(calc(var(--arm-l-rest) - 14deg)); }
+  50% { transform: rotate(calc(var(--arm-l-rest) + 10deg)); }
+}
+@keyframes critter-cumbia-arm-r {
+  0%, 100% { transform: rotate(calc(var(--arm-r-rest) + 10deg)); }
+  50% { transform: rotate(calc(var(--arm-r-rest) - 14deg)); }
+}
+
+/* -- Hip-hop: a hard bounce on the beat with a head nod and one arm pumping. */
+.critter-dance-hip-hop .critter-figure { animation: critter-hiphop-body 0.7s cubic-bezier(0.3, 0, 0.2, 1) infinite; }
+.critter-dance-hip-hop .critter-head { animation: critter-hiphop-head 0.7s ease-out infinite; }
+.critter-dance-hip-hop .critter-arm-r { animation: critter-hiphop-arm-r 0.7s ease-out infinite; }
+.critter-dance-hip-hop .critter-arm-l { animation: critter-hiphop-arm-l 0.7s ease-out infinite; }
+@keyframes critter-hiphop-body {
+  0%, 100% { transform: translateY(0) scaleY(1); }
+  22% { transform: translateY(3px) scaleY(0.93); }
+  45% { transform: translateY(-1px) scaleY(1.02); }
+}
+@keyframes critter-hiphop-head {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  22% { transform: rotate(9deg) translateY(1.5px); }
+  55% { transform: rotate(-3deg) translateY(-0.5px); }
+}
+@keyframes critter-hiphop-arm-r {
+  0%, 100% { transform: rotate(var(--arm-r-rest)); }
+  22% { transform: rotate(calc(var(--arm-r-rest) + 35deg)); }
+}
+@keyframes critter-hiphop-arm-l {
+  0%, 100% { transform: rotate(var(--arm-l-rest)); }
+  22% { transform: rotate(calc(var(--arm-l-rest) - 10deg)); }
+}
+
+/* -- Reggae: the slow skank, leaning forward and back with loose arms. */
+.critter-dance-reggae .critter-figure { animation: critter-reggae-body 1.3s ease-in-out infinite; }
+.critter-dance-reggae .critter-head { animation: critter-reggae-head 1.3s ease-in-out infinite; }
+.critter-dance-reggae .critter-arm-l { animation: critter-reggae-arm-l 1.3s ease-in-out infinite; }
+.critter-dance-reggae .critter-arm-r { animation: critter-reggae-arm-r 1.3s ease-in-out infinite; }
+@keyframes critter-reggae-body {
+  0%, 100% { transform: rotate(-4deg) translateY(0); }
+  50% { transform: rotate(4deg) translateY(2px); }
+}
+@keyframes critter-reggae-head {
+  0%, 100% { transform: rotate(6deg); }
+  50% { transform: rotate(-6deg); }
+}
+@keyframes critter-reggae-arm-l {
+  0%, 100% { transform: rotate(calc(var(--arm-l-rest) + 18deg)); }
+  50% { transform: rotate(calc(var(--arm-l-rest) - 18deg)); }
+}
+@keyframes critter-reggae-arm-r {
+  0%, 100% { transform: rotate(calc(var(--arm-r-rest) - 18deg)); }
+  50% { transform: rotate(calc(var(--arm-r-rest) + 18deg)); }
+}
+
+/* -- Headbanging: the head whips down and back, ears flying, arms up. */
+.critter-dance-headbanging .critter-head { animation: critter-bang-head 0.34s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate; }
+.critter-dance-headbanging .critter-ear { animation: critter-bang-ear 0.34s ease-in-out infinite alternate; }
+.critter-dance-headbanging .critter-ear-r { animation-direction: alternate-reverse; }
+.critter-dance-headbanging .critter-figure { animation: critter-bang-body 0.68s ease-in-out infinite; }
+.critter-dance-headbanging .critter-arm-l { animation: critter-bang-arm-l 0.34s ease-in-out infinite alternate; }
+.critter-dance-headbanging .critter-arm-r { animation: critter-bang-arm-r 0.34s ease-in-out infinite alternate; }
+@keyframes critter-bang-head {
+  from { transform: rotate(-22deg) translateY(-2px); }
+  to { transform: rotate(24deg) translateY(3px); }
+}
+@keyframes critter-bang-ear {
+  from { transform: rotate(-14deg); }
+  to { transform: rotate(14deg); }
+}
+@keyframes critter-bang-body {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(2px); }
+}
+@keyframes critter-bang-arm-l {
+  from { transform: rotate(calc(var(--arm-l-rest) - 6deg)); }
+  to { transform: rotate(calc(var(--arm-l-rest) + 6deg)); }
+}
+@keyframes critter-bang-arm-r {
+  from { transform: rotate(calc(var(--arm-r-rest) + 6deg)); }
+  to { transform: rotate(calc(var(--arm-r-rest) - 6deg)); }
+}
+
+/* -- Disco: one arm points up to the corner and sweeps down across the hip
+      while the hips pop the other way. */
+.critter-dance-disco .critter-arm-r { animation: critter-disco-arm-r 0.9s ease-in-out infinite alternate; }
+.critter-dance-disco .critter-arm-l { animation: critter-disco-arm-l 0.9s ease-in-out infinite alternate; }
+.critter-dance-disco .critter-figure { animation: critter-disco-body 0.9s ease-in-out infinite alternate; }
+.critter-dance-disco .critter-head { animation: critter-disco-head 0.9s ease-in-out infinite alternate; }
+@keyframes critter-disco-arm-r {
+  from { transform: rotate(calc(var(--arm-r-rest) - 5deg)); }
+  to { transform: rotate(calc(var(--arm-r-rest) + 95deg)); }
+}
+@keyframes critter-disco-arm-l {
+  from { transform: rotate(calc(var(--arm-l-rest) + 5deg)); }
+  to { transform: rotate(calc(var(--arm-l-rest) - 20deg)); }
+}
+@keyframes critter-disco-body {
+  from { transform: translateX(-2px) rotate(-5deg); }
+  to { transform: translateX(3px) rotate(4deg); }
+}
+@keyframes critter-disco-head {
+  from { transform: rotate(6deg); }
+  to { transform: rotate(-5deg); }
+}
+
+/* -- Trance: both arms up waving overhead, a steady bounce, glowsticks. */
+.critter-dance-trance .critter-figure { animation: critter-trance-body 0.45s ease-in-out infinite alternate; }
+.critter-dance-trance .critter-arm-l { animation: critter-trance-arm-l 1.8s ease-in-out infinite; }
+.critter-dance-trance .critter-arm-r { animation: critter-trance-arm-r 1.8s ease-in-out infinite; }
+.critter-dance-trance .critter-head { animation: critter-trance-head 1.8s ease-in-out infinite; }
+@keyframes critter-trance-body {
+  from { transform: translateY(0) scaleY(1); }
+  to { transform: translateY(-3px) scaleY(1.02); }
+}
+@keyframes critter-trance-arm-l {
+  0%, 100% { transform: rotate(calc(var(--arm-l-rest) - 10deg)); }
+  50% { transform: rotate(calc(var(--arm-l-rest) + 22deg)); }
+}
+@keyframes critter-trance-arm-r {
+  0%, 100% { transform: rotate(calc(var(--arm-r-rest) + 22deg)); }
+  50% { transform: rotate(calc(var(--arm-r-rest) - 10deg)); }
+}
+@keyframes critter-trance-head {
+  0%, 100% { transform: rotate(-5deg); }
+  50% { transform: rotate(5deg); }
+}
+
+/* -- Twist: the hips grind side to side while the shoulders go the other way
+      and the feet screw into the floor. */
+.critter-dance-twist .critter-figure { animation: critter-twist-body 0.6s ease-in-out infinite alternate; }
+.critter-dance-twist .critter-head { animation: critter-twist-head 0.6s ease-in-out infinite alternate; }
+.critter-dance-twist .critter-legs { animation: critter-twist-legs 0.6s ease-in-out infinite alternate; }
+.critter-dance-twist .critter-arm-l { animation: critter-twist-arm-l 0.6s ease-in-out infinite alternate; }
+.critter-dance-twist .critter-arm-r { animation: critter-twist-arm-r 0.6s ease-in-out infinite alternate; }
+@keyframes critter-twist-body {
+  from { transform: rotate(-8deg) scaleX(1) translateY(0); }
+  to { transform: rotate(8deg) scaleX(0.92) translateY(2px); }
+}
+@keyframes critter-twist-head {
+  from { transform: rotate(8deg); }
+  to { transform: rotate(-8deg); }
+}
+@keyframes critter-twist-legs {
+  from { transform: scaleX(1.1) skewX(8deg); }
+  to { transform: scaleX(0.9) skewX(-8deg); }
+}
+@keyframes critter-twist-arm-l {
+  from { transform: rotate(calc(var(--arm-l-rest) - 20deg)); }
+  to { transform: rotate(calc(var(--arm-l-rest) + 20deg)); }
+}
+@keyframes critter-twist-arm-r {
+  from { transform: rotate(calc(var(--arm-r-rest) - 20deg)); }
+  to { transform: rotate(calc(var(--arm-r-rest) + 20deg)); }
+}
+
+/* -- Asleep: slow breathing, drooped ears, Zs drifting up in turn. */
 .critter-sleeping .critter-figure {
-  transform-box: fill-box;
-  transform-origin: 50% 100%;
   animation: critter-breathe 3.2s ease-in-out infinite;
   animation-delay: var(--critter-delay, 0s);
 }
-.critter-sleeping .critter-ear {
-  transform-box: fill-box;
-}
-.critter-sleeping .critter-ear-l { transform-origin: 90% 95%; transform: rotate(-14deg); }
-.critter-sleeping .critter-ear-r { transform-origin: 10% 95%; transform: rotate(14deg); }
-
-.critter-z {
-  animation: critter-z 2.4s ease-in-out infinite;
-  animation-delay: var(--critter-delay, 0s);
+.critter-sleeping .critter-ear-l { transform: rotate(-14deg); }
+.critter-sleeping .critter-ear-r { transform: rotate(14deg); }
+.critter-sleeping .critter-z {
   opacity: 0;
+  animation: critter-z 2.4s ease-out infinite;
+  animation-delay: var(--critter-delay, 0s);
 }
-.critter-z-2 { animation-delay: calc(var(--critter-delay, 0s) + 0.8s); }
-.critter-z-3 { animation-delay: calc(var(--critter-delay, 0s) + 1.6s); }
-
-@keyframes critter-dance {
-  0%, 100% { transform: translateY(0) rotate(-7deg); }
-  50% { transform: translateY(-4px) rotate(7deg); }
-}
-@keyframes critter-ear {
-  0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(-12deg); }
-}
-@keyframes critter-arm {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(-40deg); }
-}
-@keyframes critter-arm-r {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(40deg); }
-}
+.critter-sleeping .critter-z-2 { animation-delay: calc(var(--critter-delay, 0s) + 0.8s); }
+.critter-sleeping .critter-z-3 { animation-delay: calc(var(--critter-delay, 0s) + 1.6s); }
 @keyframes critter-breathe {
-  0%, 100% { transform: scaleY(1); }
-  50% { transform: scaleY(1.035); }
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.03, 1.05); }
 }
 @keyframes critter-z {
   0% { opacity: 0; transform: translate(0, 4px); }
   25% { opacity: 1; }
-  100% { opacity: 0; transform: translate(4px, -8px); }
+  100% { opacity: 0; transform: translate(3px, -7px); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .critter-dancing .critter-figure,
-  .critter-dancing .critter-ear,
-  .critter-dancing .critter-arm,
-  .critter-sleeping .critter-figure,
-  .critter-z {
+  .critter .critter-figure,
+  .critter .critter-head,
+  .critter .critter-arm,
+  .critter .critter-ear,
+  .critter .critter-body,
+  .critter .critter-legs,
+  .critter .critter-skirt,
+  .critter .critter-float,
+  .critter .critter-z {
     animation: none;
   }
-  .critter-z { opacity: 0.9; }
+  .critter-sleeping .critter-z { opacity: 0.8; }
 }
 
 /* Shared semantic controls so button/link styling can be unified app-wide */
