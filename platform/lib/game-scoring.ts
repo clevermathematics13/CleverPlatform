@@ -11,10 +11,13 @@
  * correct answer is worth more than the first. That rewards a player who
  * reads the question fully rather than mashing the first option, while still
  * rewarding speed overall (rank 3+ tapers off). Anything answered after the
- * time limit earns zero credit, correct or not.
+ * time limit earns zero credit, correct or not. The time limit itself is a
+ * per-session, teacher-adjustable setting (game_sessions.time_limit_seconds,
+ * default 10s) -- not a fixed constant -- so it's passed into
+ * computeGamePoints() rather than hardcoded here.
  */
 
-export const GAME_TIME_LIMIT_MS = 15_000;
+export const DEFAULT_GAME_TIME_LIMIT_SECONDS = 10;
 export const LUCKY_BONUS_POINTS = 50;
 
 // Base points by 1-based rank among correct, on-time answers for a question.
@@ -35,6 +38,8 @@ function basePointsForRank(rank: number): number {
 export interface GameScoreInput {
   isCorrect: boolean;
   elapsedMs: number;
+  /** This session's configured answer window, in milliseconds. */
+  timeLimitMs: number;
   /** 1-based rank among correct, on-time answers for this question. Required when the answer is correct and within the time limit. */
   correctRank: number | null;
   /** Consecutive correct-and-scored answers immediately before this one. */
@@ -70,7 +75,7 @@ function computeUnderdogBonus(
 }
 
 export function computeGamePoints(input: GameScoreInput): GameScoreBreakdown {
-  const withinTimeLimit = input.elapsedMs <= GAME_TIME_LIMIT_MS;
+  const withinTimeLimit = input.elapsedMs <= input.timeLimitMs;
   const scored = input.isCorrect && withinTimeLimit;
 
   if (!scored) {

@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { computeGamePoints, GAME_TIME_LIMIT_MS } from "./game-scoring";
+import { computeGamePoints, DEFAULT_GAME_TIME_LIMIT_SECONDS } from "./game-scoring";
+
+const DEFAULT_TIME_LIMIT_MS = DEFAULT_GAME_TIME_LIMIT_SECONDS * 1000;
 
 const base = {
   isCorrect: true,
   elapsedMs: 3000,
+  timeLimitMs: DEFAULT_TIME_LIMIT_MS,
   correctRank: 1,
   streakBeforeAnswer: 0,
   playerRankBeforeQuestion: 1,
@@ -19,16 +22,23 @@ describe("computeGamePoints", () => {
   });
 
   it("awards zero points once the time limit is exceeded, even if correct", () => {
-    const result = computeGamePoints({ ...base, elapsedMs: GAME_TIME_LIMIT_MS + 1 });
+    const result = computeGamePoints({ ...base, elapsedMs: DEFAULT_TIME_LIMIT_MS + 1 });
     expect(result.withinTimeLimit).toBe(false);
     expect(result.scored).toBe(false);
     expect(result.totalPoints).toBe(0);
   });
 
   it("still scores an answer landing exactly on the time limit", () => {
-    const result = computeGamePoints({ ...base, elapsedMs: GAME_TIME_LIMIT_MS });
+    const result = computeGamePoints({ ...base, elapsedMs: DEFAULT_TIME_LIMIT_MS });
     expect(result.withinTimeLimit).toBe(true);
     expect(result.scored).toBe(true);
+  });
+
+  it("honors a teacher-adjusted time limit, not a fixed constant", () => {
+    const shortLimit = computeGamePoints({ ...base, elapsedMs: 12_000, timeLimitMs: 10_000 });
+    const longLimit = computeGamePoints({ ...base, elapsedMs: 12_000, timeLimitMs: 30_000 });
+    expect(shortLimit.scored).toBe(false);
+    expect(longLimit.scored).toBe(true);
   });
 
   it("makes the second correct answer worth more than the first", () => {

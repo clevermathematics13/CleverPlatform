@@ -171,6 +171,16 @@ export function HostGameClient({
     return () => clearInterval(id);
   }, [session?.status, question]);
 
+  async function updateTimeLimit(seconds: number) {
+    const clamped = Math.max(5, Math.min(60, Math.round(seconds) || 5));
+    setSession((prev) => (prev ? { ...prev, time_limit_seconds: clamped } : prev));
+    const { error: updateError } = await supabase
+      .from("game_sessions")
+      .update({ time_limit_seconds: clamped })
+      .eq("id", sessionId);
+    if (updateError) setError(updateError.message);
+  }
+
   async function advance(action: "start" | "reveal" | "next") {
     setBusy(true);
     setError(null);
@@ -225,6 +235,24 @@ export function HostGameClient({
               </span>
             ))}
           </div>
+
+          <label className="mt-5 flex max-w-xs items-center justify-between gap-4 text-sm text-da-text">
+            <span>
+              Seconds per question
+              <span className="block text-xs text-da-muted">
+                Answers after this cutoff earn no credit.
+              </span>
+            </span>
+            <input
+              type="number"
+              min={5}
+              max={60}
+              value={session.time_limit_seconds}
+              onChange={(e) => updateTimeLimit(Number(e.target.value))}
+              className="w-20 rounded-lg border border-da-border bg-da-hover px-3 py-2 text-center text-da-text outline-none focus:border-da-accent"
+            />
+          </label>
+
           <button
             type="button"
             className="da-btn mt-5"

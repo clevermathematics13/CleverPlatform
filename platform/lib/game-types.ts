@@ -12,6 +12,7 @@ export interface GameSessionRow {
   current_question_index: number;
   current_question_started_at: string | null;
   question_order: string[];
+  time_limit_seconds: number;
   created_at: string;
   started_at: string | null;
   ended_at: string | null;
