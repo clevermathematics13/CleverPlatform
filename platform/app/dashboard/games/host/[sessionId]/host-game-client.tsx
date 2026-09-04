@@ -72,6 +72,26 @@ export function HostGameClient({
     setLuckyWinner({ playerId: data.player_id, nickname: player?.nickname ?? "A player" });
   }
 
+  // Shared by the realtime handler and the poll fallback below, so a missed
+  // or delayed websocket event and a routine poll tick converge on the same
+  // state instead of applying the phase transition differently.
+  function applySessionRow(next: GameSessionRow) {
+    const prev = sessionRef.current;
+    if (prev && prev.status === next.status && prev.current_question_index === next.current_question_index) {
+      setSession(next);
+      return;
+    }
+    setSession(next);
+    setAnsweredIds(new Set());
+    setLuckyWinner(null);
+    if (next.status !== "lobby") refreshQuestion();
+  }
+
+  async function refreshSession() {
+    const { data } = await supabase.from("game_sessions").select("*").eq("id", sessionId).single();
+    if (data) applySessionRow(data as GameSessionRow);
+  }
+
   useEffect(() => {
     (async () => {
       const { data: sessionRow } = await supabase
@@ -89,20 +109,7 @@ export function HostGameClient({
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "game_sessions", filter: `id=eq.${sessionId}` },
-        (payload) => {
-          const next = payload.new as GameSessionRow;
-          const prev = sessionRef.current;
-          setSession(next);
-          if (
-            !prev ||
-            prev.status !== next.status ||
-            prev.current_question_index !== next.current_question_index
-          ) {
-            setAnsweredIds(new Set());
-            setLuckyWinner(null);
-            if (next.status !== "lobby") refreshQuestion();
-          }
-        }
+        (payload) => applySessionRow(payload.new as GameSessionRow)
       )
       .on(
         "postgres_changes",
@@ -121,8 +128,18 @@ export function HostGameClient({
       )
       .subscribe();
 
+    // Realtime websocket subscriptions can silently drop (flaky networks,
+    // proxies that time out idle connections, a backgrounded tab) with no
+    // visible error, so this screen must not depend on them exclusively --
+    // a plain poll keeps it live either way.
+    const pollId = setInterval(() => {
+      refreshSession();
+      refreshPlayers();
+    }, 3000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
