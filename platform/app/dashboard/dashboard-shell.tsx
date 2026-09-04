@@ -137,9 +137,24 @@ export function DashboardShell({
     top: "top-0 left-0 w-full flex-col",
     bottom: "bottom-0 left-0 w-full flex-col-reverse",
   }[navPosition];
+  // Closed sizes. A side rail's strip is its own hit target. A top or bottom
+  // bar gets a taller invisible hit zone than its visible strip: the cursor
+  // heading for the top of the window tends to overshoot into the browser's
+  // tab bar, so a 6px target there is missed; 18px catches it. The visible
+  // line stays 6px on the outer edge so the chrome does not get heavier.
+  const STRIP_PX = 6;
+  const BAR_HIT_PX = 18;
+  // While a bar is open its zone is as tall as the bar, which animates up
+  // from 0. Without a floor, the zone is briefly shorter than the cursor's
+  // position, the cursor is "outside", the bar closes, the closed zone is
+  // tall again, the cursor is "inside", it reopens: a flicker at the
+  // animation boundary. The floor keeps the hit zone at least as tall as the
+  // strip the cursor entered through, for the whole animation.
   const zoneStyle: React.CSSProperties = vertical
-    ? { width: sidebarVisible ? "16rem" : "6px" }
-    : { height: sidebarVisible ? "auto" : "6px" };
+    ? { width: sidebarVisible ? "16rem" : `${STRIP_PX}px` }
+    : sidebarVisible
+      ? { height: "auto", minHeight: `${BAR_HIT_PX}px` }
+      : { height: `${BAR_HIT_PX}px` };
   // Border on the side that faces the content.
   const innerEdgeBorder = {
     left: "border-r",
@@ -220,7 +235,10 @@ export function DashboardShell({
         {/* Strip indicator, visible only when the nav is hidden */}
         {!sidebarVisible && (
           <div
-            className={`w-full h-full bg-da-surface hover:bg-da-hover ${innerEdgeBorder} border-da-accent/30 hover:border-da-accent/60 transition-colors cursor-pointer`}
+            className={`w-full bg-da-surface hover:bg-da-hover ${innerEdgeBorder} border-da-accent/30 hover:border-da-accent/60 transition-colors cursor-pointer ${
+              vertical ? "h-full" : "shrink-0"
+            }`}
+            style={vertical ? undefined : { height: STRIP_PX }}
           />
         )}
 
