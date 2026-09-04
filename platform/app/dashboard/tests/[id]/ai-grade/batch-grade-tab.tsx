@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import { useEffect, useImperativeHandle, useRef, useState } from "react";
+import type { ChangeEvent, Ref } from "react";
 import { fetchJson } from "./fetch-json";
 
 type Confidence = "high" | "medium" | "low";
@@ -85,6 +85,22 @@ interface UploadState {
   warnings: string[];
 }
 
+/**
+ * Where one part's panel is in its own lifecycle, reported up to the tab so
+ * the "all parts" controls know what a click would actually do.
+ *   reviewing  rows still need a matched student / non-empty pages / no conflicts
+ *   ready      the panel's own "Split and grade" button is enabled
+ *   grading    its split+grade loop is running
+ *   done       grading has started and finished (or was stopped)
+ */
+type PanelStatus = "reviewing" | "ready" | "grading" | "done";
+
+/** What the tab can ask a panel to do on the teacher's behalf. */
+interface BatchPanelHandle {
+  splitAndGrade: () => Promise<void>;
+  stop: () => void;
+}
+
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
   high: "bg-green-500/15 text-green-300 border-green-400/40",
   medium: "bg-amber-500/15 text-amber-300 border-amber-400/40",
@@ -163,8 +179,12 @@ export function BatchGradeTab({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
   const [upload, setUpload] = useState<UploadState | null>(null);
+  const [panelStatus, setPanelStatus] = useState<Record<string, PanelStatus>>({});
+  const [gradingAll, setGradingAll] = useState(false);
+  const [allStatusLine, setAllStatusLine] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const panelRefs = useRef(new Map<string, BatchPanelHandle>());
 
   const updatePart = (key: string, patch: Partial<PartState>) =>
     setUpload((prev) =>
@@ -207,6 +227,9 @@ export function BatchGradeTab({
     setUploading(true);
     setError(null);
     setUpload(null);
+    setPanelStatus({});
+    setAllStatusLine(null);
+    panelRefs.current.clear();
 
     try {
       // Batch scans can be very large — upload straight to Storage from the
@@ -292,10 +315,52 @@ export function BatchGradeTab({
   const reset = () => {
     setUpload(null);
     setError(null);
+    setPanelStatus({});
+    setAllStatusLine(null);
+    panelRefs.current.clear();
   };
 
   const segmentingAny = !!upload?.parts.some((p) => p.status === "pending" || p.status === "segmenting");
   const partCount = upload?.parts.length ?? 0;
+
+  // -- "All parts" controls ---------------------------------------------------
+  // Each part is an independent batch with its own per-student grading loop
+  // (sequential, one request per student, so no single serverless call ever
+  // grades more than one script). Running the parts' loops CONCURRENTLY is
+  // the efficient way to grade a whole upload: a 4-part scan grades four
+  // students at a time instead of one, with no request any bigger than
+  // before. Parts whose rows still need review are skipped and named, so a
+  // half-reviewed upload can still start on the parts that are ready.
+  const statusOf = (key: string): PanelStatus | undefined => panelStatus[key];
+  const readyParts = upload ? upload.parts.filter((p) => statusOf(p.key) === "ready") : [];
+  const reviewingParts = upload ? upload.parts.filter((p) => statusOf(p.key) === "reviewing") : [];
+  const gradingParts = upload ? upload.parts.filter((p) => statusOf(p.key) === "grading") : [];
+  const partNumber = (p: PartState) => (p.chunk ? p.chunk.index + 1 : 1);
+
+  const handleGradeAll = async () => {
+    if (readyParts.length === 0) return;
+    setGradingAll(true);
+    const skipped = reviewingParts.map(partNumber);
+    setAllStatusLine(
+      `Grading ${readyParts.length} part(s) at once` +
+        (skipped.length > 0 ? ` — part(s) ${skipped.join(", ")} skipped until their rows are reviewed.` : ".")
+    );
+    try {
+      await Promise.allSettled(
+        readyParts.map((p) => panelRefs.current.get(p.key)?.splitAndGrade() ?? Promise.resolve())
+      );
+      setAllStatusLine(
+        `Finished ${readyParts.length} part(s). See each part below for its results.` +
+          (skipped.length > 0 ? ` Part(s) ${skipped.join(", ")} still need review.` : "")
+      );
+    } finally {
+      setGradingAll(false);
+    }
+  };
+
+  const handleStopAll = () => {
+    for (const p of gradingParts) panelRefs.current.get(p.key)?.stop();
+  };
 
   return (
     <div className="space-y-6">
@@ -351,15 +416,54 @@ export function BatchGradeTab({
                   : "Confirm which pages belong to which student before grading."}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={reset}
-              disabled={segmentingAny}
-              className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
-            >
-              Start over
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={reset}
+                disabled={segmentingAny || gradingParts.length > 0}
+                className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+              >
+                Start over
+              </button>
+              {partCount > 1 && gradingParts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleStopAll}
+                  title="Each part finishes the student it is currently marking (already billed either way), then stops before starting the next one."
+                  className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/25"
+                >
+                  Stop all parts
+                </button>
+              )}
+              {partCount > 1 && (
+                <button
+                  type="button"
+                  onClick={handleGradeAll}
+                  disabled={segmentingAny || gradingAll || gradingParts.length > 0 || readyParts.length === 0}
+                  title={
+                    segmentingAny
+                      ? "Wait for every part to be read first"
+                      : readyParts.length === 0
+                        ? "No part is ready yet — every row in a part needs a matched student, at least one page, and no page conflicts"
+                        : reviewingParts.length > 0
+                          ? `Grades the ${readyParts.length} ready part(s) at once; part(s) ${reviewingParts.map(partNumber).join(", ")} still need review and will be skipped`
+                          : "Splits and grades every part at once — each part marks its students one at a time, in parallel with the other parts"
+                  }
+                  className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                >
+                  {gradingAll
+                    ? "Grading all parts…"
+                    : `Split and grade all ${readyParts.length === partCount ? partCount : `${readyParts.length} ready`} part(s)`}
+                </button>
+              )}
+            </div>
           </div>
+
+          {allStatusLine && (
+            <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-3 text-sm text-blue-300">
+              {allStatusLine}
+            </div>
+          )}
 
           {upload.warnings.map((w, i) => (
             <div
@@ -379,11 +483,18 @@ export function BatchGradeTab({
               return (
                 <BatchPanel
                   key={part.key}
+                  ref={(handle) => {
+                    if (handle) panelRefs.current.set(part.key, handle);
+                    else panelRefs.current.delete(part.key);
+                  }}
                   testId={testId}
                   students={students}
                   batch={part.batch}
                   partLabel={partLabel}
                   reused={part.reused}
+                  onStatus={(status) =>
+                    setPanelStatus((prev) => (prev[part.key] === status ? prev : { ...prev, [part.key]: status }))
+                  }
                 />
               );
             }
@@ -438,17 +549,22 @@ export function BatchGradeTab({
  * reviewed in any order and graded independently.
  */
 function BatchPanel({
+  ref,
   testId,
   students,
   batch,
   partLabel,
   reused,
+  onStatus,
 }: {
+  ref?: Ref<BatchPanelHandle>;
   testId: string;
   students: StudentOption[];
   batch: BatchRow;
   partLabel: string | null;
   reused: boolean;
+  /** Reports the panel's lifecycle up to the tab -- see PanelStatus. */
+  onStatus?: (status: PanelStatus) => void;
 }) {
   const studentByName = new Map(students.map((s) => [s.display_name, s.profile_id]));
 
@@ -652,6 +768,16 @@ function BatchPanel({
       setStopRequested(false);
     }
   };
+
+  useImperativeHandle(ref, () => ({ splitAndGrade: handleSplit, stop: handleStop }));
+
+  const status: PanelStatus = splitting ? "grading" : splitResults ? "done" : canSplit ? "ready" : "reviewing";
+  useEffect(() => {
+    onStatus?.(status);
+    // onStatus is a fresh arrow each render of the parent; keying on the
+    // status value alone is what keeps this from firing every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status]);
 
   return (
     <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
