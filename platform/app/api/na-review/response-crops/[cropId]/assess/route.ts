@@ -118,23 +118,27 @@ export async function POST(
   };
 
   /** Writes one na_feedback row, replacing any prior assessment for this
-   *  crop. na_feedback has no UNIQUE constraint on crop_id, so re-running
-   *  assessment would otherwise stack duplicate rows for the same answer;
-   *  find-or-create keeps exactly one AI proposal per crop. Deliberately
-   *  never touches final_*, approved_*, or released_at. */
+   *  crop, keeping exactly one AI proposal per crop.
+   *
+   *  Updates by crop_id rather than looking the row up first. The
+   *  find-or-create this replaces used `.maybeSingle()`, which ERRORS when a
+   *  crop already has more than one row, and the error was destructured away
+   *  -- so it fell through to INSERT and added yet another duplicate,
+   *  compounding on every run. 60 such rows had accumulated across 28 crops
+   *  before this was found; na_feedback now has a UNIQUE constraint on
+   *  crop_id so it cannot happen again, and updating by crop_id means this
+   *  never attempts the insert that would trip it.
+   *
+   *  Deliberately never touches final_*, approved_*, or released_at. */
   const upsertFeedback = async (fields: Record<string, unknown>) => {
-    const { data: existing } = await supabase
+    const { data: updated, error: updateErr } = await supabase
       .from("na_feedback")
-      .select("id")
+      .update({ ...fields, updated_at: new Date().toISOString() })
       .eq("crop_id", cropId)
-      .maybeSingle();
-    if (existing?.id) {
-      const { error } = await supabase
-        .from("na_feedback")
-        .update({ ...fields, updated_at: new Date().toISOString() })
-        .eq("id", existing.id);
-      if (error) throw new Error(`Could not update feedback: ${error.message}`);
-      return existing.id as string;
+      .select("id");
+    if (updateErr) throw new Error(`Could not update feedback: ${updateErr.message}`);
+    if (updated && updated.length > 0) {
+      return updated[0].id as string;
     }
     const { data: created, error } = await supabase
       .from("na_feedback")

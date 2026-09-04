@@ -569,7 +569,7 @@ Server-side Google OAuth token store. Replaces browser-cookie token storage so t
 | column | type | default |
 |---|---|---|
 | `id` | uuid | default `gen_random_uuid()` |
-| `crop_id` | uuid |  |
+| `crop_id` | uuid, unique |  UNIQUE (`na_feedback_crop_id_key`) -- at most one feedback row per crop |
 | `ai_attempted` | boolean, nullable |  |
 | `ai_transcription` | text, nullable |  |
 | `ai_verdict` | text, nullable |  |
