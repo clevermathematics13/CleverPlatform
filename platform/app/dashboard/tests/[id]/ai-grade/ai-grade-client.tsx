@@ -186,6 +186,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
   const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
+  const [acceptingAll, setAcceptingAll] = useState(false);
 
   /** How many of a run's results are accepted, keyed by run id — drives the roster's status dot. */
   const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
@@ -530,6 +531,45 @@ export function AiGradeClient({ testId }: { testId: string }) {
     }
   };
 
+  // -- Accept every not-yet-accepted suggested mark, every question, every
+  // student's latest completed run -- skips the per-student review entirely,
+  // so it asks for confirmation up front rather than after the fact.
+  const acceptAllForTest = async () => {
+    const ok = window.confirm(
+      "This writes every suggested mark, for every question, for every student's latest completed run straight into " +
+        "Clev's Marks -- without opening each student's review first. Already-accepted marks are left as they are. " +
+        "Continue?"
+    );
+    if (!ok) return;
+    setAcceptingAll(true);
+    setError(null);
+    try {
+      const { ok: reqOk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept-all`, {
+        method: "POST",
+      });
+      if (!reqOk) {
+        setError((data.error as string) ?? "Could not accept all marks.");
+        return;
+      }
+      const skippedList = (data.skipped as { name: string | null; reason: string }[] | undefined) ?? [];
+      const skippedNote =
+        skippedList.length > 0
+          ? ` ${skippedList.length} student(s) skipped: ${skippedList
+              .map((s) => s.name ?? "unknown")
+              .join(", ")} (not yet registered).`
+          : "";
+      setStatusLine(
+        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s) into Clev's Marks.${skippedNote}`
+      );
+      await loadOverview();
+      if (focusStudent) await loadResultsFor(focusStudent);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not accept all marks.");
+    } finally {
+      setAcceptingAll(false);
+    }
+  };
+
   // -- Manually correct a misread transcription, then re-grade just this part --
   const startEditEvidence = (r: ResultRow) => {
     setEvidenceDraft((prev) => ({ ...prev, [r.id]: r.evidence ?? "" }));
@@ -720,8 +760,19 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
           {/* -- Students ----------------------------------------------------- */}
           <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
-            <div className="border-b border-da-border px-5 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
               <h2 className="text-lg font-bold text-da-text">Students</h2>
+              {Object.keys(runsByStudent).length > 0 && (
+                <button
+                  type="button"
+                  onClick={acceptAllForTest}
+                  disabled={acceptingAll}
+                  title="Accepts every suggested mark for every student's latest completed run, without opening each review individually"
+                  className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-2 text-sm font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
+                >
+                  {acceptingAll ? "Accepting all…" : "Accept all into Clev's Marks"}
+                </button>
+              )}
             </div>
 
             {students.length === 0 && (
