@@ -145,6 +145,103 @@ body {
   filter: drop-shadow(0 16px 20px rgba(0, 0, 0, 0.7)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
 }
 
+/* ---- Live game critters (app/dashboard/games/question-progress.tsx) -------
+   One critter per question. Awake ones dance: the whole figure bobs and
+   tilts, the ears flick, the arms wave, each offset by --critter-delay so a
+   row moves as a wave. Asleep ones breathe slowly with three pink Zs
+   drifting up and fading in turn. Reduced motion stills everything; the two
+   moods still read from the pose (open grin and raised arms vs closed eyes
+   and Zs). transform-box: fill-box lets each part pivot about its own
+   corner rather than the SVG origin. */
+.critter {
+  overflow: visible;
+  filter: drop-shadow(0 0 4px rgba(240, 106, 160, 0.45)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+}
+.critter-sleeping {
+  filter: drop-shadow(0 0 3px rgba(240, 106, 160, 0.25)) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+  opacity: 0.88;
+}
+
+.critter-dancing .critter-figure {
+  transform-box: fill-box;
+  transform-origin: 50% 95%;
+  animation: critter-dance 0.72s ease-in-out infinite;
+  animation-delay: var(--critter-delay, 0s);
+}
+
+.critter-dancing .critter-ear {
+  transform-box: fill-box;
+  animation: critter-ear 0.72s ease-in-out infinite;
+  animation-delay: var(--critter-delay, 0s);
+}
+.critter-dancing .critter-ear-l { transform-origin: 90% 95%; }
+.critter-dancing .critter-ear-r { transform-origin: 10% 95%; animation-direction: reverse; }
+
+.critter-dancing .critter-arm {
+  transform-box: fill-box;
+  animation: critter-arm 0.36s ease-in-out infinite alternate;
+  animation-delay: var(--critter-delay, 0s);
+}
+.critter-dancing .critter-arm-l { transform-origin: 100% 100%; }
+.critter-dancing .critter-arm-r { transform-origin: 0% 100%; animation-name: critter-arm-r; }
+
+.critter-sleeping .critter-figure {
+  transform-box: fill-box;
+  transform-origin: 50% 100%;
+  animation: critter-breathe 3.2s ease-in-out infinite;
+  animation-delay: var(--critter-delay, 0s);
+}
+.critter-sleeping .critter-ear {
+  transform-box: fill-box;
+}
+.critter-sleeping .critter-ear-l { transform-origin: 90% 95%; transform: rotate(-14deg); }
+.critter-sleeping .critter-ear-r { transform-origin: 10% 95%; transform: rotate(14deg); }
+
+.critter-z {
+  animation: critter-z 2.4s ease-in-out infinite;
+  animation-delay: var(--critter-delay, 0s);
+  opacity: 0;
+}
+.critter-z-2 { animation-delay: calc(var(--critter-delay, 0s) + 0.8s); }
+.critter-z-3 { animation-delay: calc(var(--critter-delay, 0s) + 1.6s); }
+
+@keyframes critter-dance {
+  0%, 100% { transform: translateY(0) rotate(-7deg); }
+  50% { transform: translateY(-4px) rotate(7deg); }
+}
+@keyframes critter-ear {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-12deg); }
+}
+@keyframes critter-arm {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(-40deg); }
+}
+@keyframes critter-arm-r {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(40deg); }
+}
+@keyframes critter-breathe {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(1.035); }
+}
+@keyframes critter-z {
+  0% { opacity: 0; transform: translate(0, 4px); }
+  25% { opacity: 1; }
+  100% { opacity: 0; transform: translate(4px, -8px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .critter-dancing .critter-figure,
+  .critter-dancing .critter-ear,
+  .critter-dancing .critter-arm,
+  .critter-sleeping .critter-figure,
+  .critter-z {
+    animation: none;
+  }
+  .critter-z { opacity: 0.9; }
+}
+
 /* Shared semantic controls so button/link styling can be unified app-wide */
 .da-btn {
   display: inline-flex;
