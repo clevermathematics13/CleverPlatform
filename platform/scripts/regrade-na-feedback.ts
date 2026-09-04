@@ -248,13 +248,20 @@ async function resolveRedirect(
     const message = await anthropic.messages.create({
       model: ASSESSMENT_MODEL,
       max_tokens: 2048,
-      system: buildAssessmentSystemPrompt("wide_context"),
+      // Cache breakpoint on the system block, NOT after the image. The system
+      // prompt is the only byte-stable prefix across crops (~3.5K tokens, 71%
+      // of a request); the image differs every call, so a breakpoint after it
+      // writes image+rubric at the 1.25x rate for a read that can never land.
+      // Same reasoning as the assess route -- see its comment there.
+      system: [
+        { type: "text" as const, text: buildAssessmentSystemPrompt("wide_context"), cache_control: { type: "ephemeral" as const } },
+      ],
       messages: [
         {
           role: "user",
           content: [
             { type: "image", source: { type: "base64", media_type: "image/png", data: pageImageBase64 } },
-            { type: "text", text: buildRubricBlock(ctx), cache_control: { type: "ephemeral" } },
+            { type: "text", text: buildRubricBlock(ctx) },
             { type: "text", text: buildWideContextUserPrompt() },
           ],
         },
@@ -347,13 +354,20 @@ async function regradeCrop(crop: Awaited<ReturnType<typeof selectCrops>>[number]
   const message = await anthropic.messages.create({
     model: ASSESSMENT_MODEL,
     max_tokens: 2048,
-    system: buildAssessmentSystemPrompt("crop"),
+    // Cache breakpoint on the system block, NOT after the image. The system
+    // prompt is the only byte-stable prefix across crops (~3.5K tokens, 71%
+    // of a request); the image differs every call, so a breakpoint after it
+    // writes image+rubric at the 1.25x rate for a read that can never land.
+    // Same reasoning as the assess route -- see its comment there.
+    system: [
+      { type: "text" as const, text: buildAssessmentSystemPrompt("crop"), cache_control: { type: "ephemeral" as const } },
+    ],
     messages: [
       {
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: "image/png", data: imageBase64 } },
-          { type: "text", text: buildRubricBlock(ctx), cache_control: { type: "ephemeral" } },
+          { type: "text", text: buildRubricBlock(ctx) },
           { type: "text", text: buildAssessmentUserPrompt() },
         ],
       },
