@@ -403,8 +403,9 @@ export function HostGameClient({
       {session.status === "finished" && (
         <div className="rounded-2xl border border-da-border bg-da-surface/90 p-5 shadow-lg shadow-black/30 wood-surface">
           <h2 className="font-serif text-2xl font-bold text-da-text">Final Results</h2>
+          <p className="mt-1 text-xs text-da-muted uppercase tracking-wide">Top 5</p>
           <ol className="mt-4 space-y-2">
-            {leaderboard.map((p) => (
+            {leaderboard.slice(0, 5).map((p) => (
               <li
                 key={p.id}
                 className="flex items-center justify-between rounded-lg border border-da-border bg-da-hover px-4 py-2 text-da-text"
