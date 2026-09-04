@@ -1,7 +1,7 @@
 /**
  * One-off: re-run stage 5 assessment over crops that were already
  * assessed, so their feedback is rewritten under the current
- * ASSESSMENT_SYSTEM_PROMPT.
+ * assessment prompt, including the teacher's feedback voice guide.
  *
  * Written for the brevity change (marginComment/nextStep cut to one
  * sentence of 15 words or fewer): the stored feedback for every packet
@@ -42,8 +42,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NA_SCAN_BUCKET } from "../lib/na-scanning";
 import {
   ASSESSMENT_MODEL,
-  ASSESSMENT_SYSTEM_PROMPT,
-  WIDE_CONTEXT_SYSTEM_PROMPT,
+  buildAssessmentSystemPrompt,
   buildAssessmentUserPrompt,
   buildWideContextUserPrompt,
   buildRubricBlock,
@@ -172,19 +171,34 @@ async function selectCrops(scanIds: string[]) {
 
 // ---- one crop ---------------------------------------------------------
 
+/**
+ * Writes one crop's assessment, updating by crop_id rather than
+ * find-then-update-by-row-id.
+ *
+ * The find-or-create this replaces used `.maybeSingle()`, which ERRORS when
+ * a crop already has more than one na_feedback row -- and the error was
+ * destructured away, leaving `existing` null, so the fallback INSERT added
+ * yet another duplicate. Every subsequent run compounded it; one crop had
+ * reached five rows. na_feedback has no UNIQUE constraint on crop_id, so
+ * nothing at the database level stopped it.
+ *
+ * Updating by crop_id fixes both halves: it touches every row a crop has,
+ * so duplicates converge on identical current text instead of leaving a
+ * stale one for the student read path to pick (that path takes whichever
+ * row PostgREST returns first), and it cannot insert when rows exist.
+ */
 const upsertFeedback = async (cropId: string, fields: Record<string, unknown>) => {
   if (DRY_RUN) return;
-  const { data: existing } = await supabase
+  const { data: updated, error: updateErr } = await supabase
     .from("na_feedback")
-    .select("id")
+    .update({ ...fields, updated_at: new Date().toISOString() })
     .eq("crop_id", cropId)
-    .maybeSingle();
-  if (existing?.id) {
-    const { error } = await supabase
-      .from("na_feedback")
-      .update({ ...fields, updated_at: new Date().toISOString() })
-      .eq("id", existing.id);
-    if (error) throw new Error(`Could not update feedback: ${error.message}`);
+    .select("id");
+  if (updateErr) throw new Error(`Could not update feedback: ${updateErr.message}`);
+  if (updated && updated.length > 0) {
+    if (updated.length > 1) {
+      console.log(`  note: crop ${cropId} has ${updated.length} feedback rows -- all updated`);
+    }
     return;
   }
   const { error } = await supabase.from("na_feedback").insert({ crop_id: cropId, ...fields });
@@ -249,13 +263,20 @@ async function resolveRedirect(
     const message = await anthropic.messages.create({
       model: ASSESSMENT_MODEL,
       max_tokens: 2048,
-      system: WIDE_CONTEXT_SYSTEM_PROMPT,
+      // Cache breakpoint on the system block, NOT after the image. The system
+      // prompt is the only byte-stable prefix across crops (~3.5K tokens, 71%
+      // of a request); the image differs every call, so a breakpoint after it
+      // writes image+rubric at the 1.25x rate for a read that can never land.
+      // Same reasoning as the assess route -- see its comment there.
+      system: [
+        { type: "text" as const, text: buildAssessmentSystemPrompt("wide_context"), cache_control: { type: "ephemeral" as const } },
+      ],
       messages: [
         {
           role: "user",
           content: [
             { type: "image", source: { type: "base64", media_type: "image/png", data: pageImageBase64 } },
-            { type: "text", text: buildRubricBlock(ctx), cache_control: { type: "ephemeral" } },
+            { type: "text", text: buildRubricBlock(ctx) },
             { type: "text", text: buildWideContextUserPrompt() },
           ],
         },
@@ -297,11 +318,17 @@ async function regradeCrop(crop: Awaited<ReturnType<typeof selectCrops>>[number]
     possiblyTruncated: crop.possibly_truncated ?? undefined,
   };
 
-  const { data: priorRow } = await supabase
+  // limit(1) rather than maybeSingle(): a crop with duplicate feedback rows
+  // would make maybeSingle error, and this read swallows errors, so the
+  // before/after report would silently show "(none)" for exactly the crops
+  // whose history is most worth seeing.
+  const { data: priorRows } = await supabase
     .from("na_feedback")
     .select("ai_margin_comment, ai_next_step, ai_marks_awarded")
     .eq("crop_id", crop.id)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const priorRow = priorRows?.[0];
   const before = {
     comment: priorRow?.ai_margin_comment ?? null,
     next: priorRow?.ai_next_step ?? null,
@@ -348,13 +375,20 @@ async function regradeCrop(crop: Awaited<ReturnType<typeof selectCrops>>[number]
   const message = await anthropic.messages.create({
     model: ASSESSMENT_MODEL,
     max_tokens: 2048,
-    system: ASSESSMENT_SYSTEM_PROMPT,
+    // Cache breakpoint on the system block, NOT after the image. The system
+    // prompt is the only byte-stable prefix across crops (~3.5K tokens, 71%
+    // of a request); the image differs every call, so a breakpoint after it
+    // writes image+rubric at the 1.25x rate for a read that can never land.
+    // Same reasoning as the assess route -- see its comment there.
+    system: [
+      { type: "text" as const, text: buildAssessmentSystemPrompt("crop"), cache_control: { type: "ephemeral" as const } },
+    ],
     messages: [
       {
         role: "user",
         content: [
           { type: "image", source: { type: "base64", media_type: "image/png", data: imageBase64 } },
-          { type: "text", text: buildRubricBlock(ctx), cache_control: { type: "ephemeral" } },
+          { type: "text", text: buildRubricBlock(ctx) },
           { type: "text", text: buildAssessmentUserPrompt() },
         ],
       },

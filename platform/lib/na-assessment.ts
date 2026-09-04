@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { z } from "zod";
 
 /**
@@ -64,13 +66,14 @@ export const AssessmentSchema = z.object({
    *  misconception_context when that applies. Empty array when the answer
    *  is correct or the error doesn't match a known misconception. */
   misconceptionTags: z.array(z.string()).default([]),
-  /** ONE short sentence written TO the student, in the margin of their
-   *  own work. Clamped to its first sentence by validateAssessment -- see
-   *  clampToOneSentence for why the prompt's word budget is not trusted
-   *  on its own. */
+  /** At most two short sentences written TO the student, in the margin of
+   *  their own work. Clamped by validateAssessment -- see
+   *  clampToSentences for why the prompt's word budget is not trusted on
+   *  its own, and the voice guide loaded by buildAssessmentSystemPrompt
+   *  for how the wording is chosen. */
   marginComment: z.string(),
-  /** One concrete thing to do next, in ONE short sentence. Clamped the
-   *  same way as marginComment. */
+  /** One concrete thing to do next. Clamped the same way as
+   *  marginComment. */
   nextStep: z.string(),
   /** The model's own confidence in this assessment, 0-1. Low confidence
    *  on a legible answer is a signal the rubric may not fit what the
@@ -170,7 +173,7 @@ export function isUngradedAnchor(a: AnchorContext): boolean {
   );
 }
 
-export const ASSESSMENT_SYSTEM_PROMPT = `You are marking one handwritten answer from a Grade 9 IB MYP mathematics packet, against the teacher's own answer key.
+const ASSESSMENT_SYSTEM_PROMPT_BASE = `You are marking one handwritten answer from a Grade 9 IB MYP mathematics packet, against the teacher's own answer key.
 
 You will be shown ONE cropped image: a single answer box from a student's scanned worksheet, containing their handwriting. You will also be given the question that was asked and the teacher's answer key for it.
 
@@ -195,15 +198,11 @@ Marking rules:
 
 If a MISCONCEPTION note is supplied, it describes a specific error this question was designed to catch. If the student's work shows that error, name it in misconceptionTags. If they avoided it, do not invent a tag.
 
-marginComment is written TO the student, in their own margin: warm, specific, and VERY SHORT -- ONE sentence, 15 words or fewer, full stop. Never two sentences. Say the single most useful thing and stop: what they did well, OR what to fix, never both joined by "but". Do NOT list which parts were right, do NOT restate what the student wrote, do NOT explain the mathematics -- the marks already say how they did, and the question is right there in front of them. A 14-15 year old glances at this in passing; anything that takes longer than a glance is too long. Never sarcastic, never discouraging. Anything after your first sentence is discarded before the student ever sees it, so put everything that matters into that one sentence.
-- Too long: "Excellent work on parts (a), (c), (d), and (e) -- all correct! In part (b), you listed the first term as 3x^2 instead of 2x^2. Interestingly, you correctly identified the coefficient as 2 in part (c), so it looks like a small slip when writing the term."
-- Right: "Nearly all correct -- in (b) the first term should be 2x^2, not 3x^2."
+marginComment is written TO the student, in their own margin: warm, specific, and SHORT -- at most TWO sentences and about 30 words. Do NOT list which parts were right and do NOT restate what the student wrote: the marks already say how they did, and the question is in front of them. HOW you word it -- what to explain, when to hand the idea back, which words to avoid -- is governed by the teacher's voice guide at the end of this prompt, which is the authority on style. Anything after your second sentence is discarded before the student ever sees it, so put everything that matters into those two.
 
-nextStep is ONE concrete action in ONE sentence, 15 words or fewer, not a platitude. "Re-read the question and check which number comes first when it says 'fewer than'" -- not "review this topic". Name the single move and nothing else: not the reason for it, not the working, not the whole solution, and never a longer re-explanation of what marginComment just said. If the move takes more than one sentence to state, you are describing the method instead of naming the move. Anything after your first sentence is discarded here too.
-- Too long: "When listing terms in (b), double-check that the coefficient you write matches what you used in (c) -- here you correctly knew the coefficient was 2, so the term should have been written as 2x^2."
-- Right: "Rewrite (b)'s first term using the coefficient you already found in (c)."
+nextStep is ONE concrete action, at most TWO sentences and about 30 words, not a platitude. "Re-read the question and check which number comes first when it says 'fewer than'" -- not "review this topic". Name the single move and nothing else: not the reason for it, not the working, not the whole solution, and never a longer re-explanation of what marginComment just said. Anything after your second sentence is discarded here too.
 
-teacherNote is for the teacher only and never shown to the student. Use it for anything that affects trust in this mark: a crop that looks cut off, work that seems to belong to a different question, an answer that's right by a method the key didn't anticipate, or your reason for an "unclear" verdict. Leave it as an empty string when there is genuinely nothing to flag. Keep it as brief as the reasoning allows -- one or two short sentences, not a paragraph.
+teacherNote is for the teacher only and never shown to the student. Use it for anything that affects trust in this mark: a crop that looks cut off, work that seems to belong to a different question, an answer that's right by a method the key didn't anticipate, or your reason for an "unclear" verdict. Say so explicitly whenever the student's reasoning is mathematically sound in a way the answer key does not cover -- name what they saw and why the key does not allow it, so the teacher can decide whether the mark or the key is the thing that needs changing. Mark to the key regardless; that decision is the teacher's, not yours. Leave it as an empty string when there is genuinely nothing to flag. Keep it as brief as the reasoning allows -- one or two short sentences, not a paragraph.
 
 redirectedElsewhere: set this true whenever an arrow crosses this crop's boundary -- in EITHER direction -- and the answer visible inside the box is not itself a complete answer to the question. The arrow means the student's real work for this question lives somewhere else on the page, outside what you can see. Two patterns both count:
 - An arrow LEAVING the box, next to work that is crossed out (an X, a scribble-out, a strike-through): the student rejected what's in the box and pointed to a replacement written elsewhere.
@@ -248,7 +247,7 @@ Return ONLY the JSON object below. No markdown fences, no commentary, no analysi
  * narrower job (this call already knows there's a redirect; it isn't
  * re-deciding whether one exists).
  */
-export const WIDE_CONTEXT_SYSTEM_PROMPT = `You are marking one handwritten answer from a Grade 9 IB MYP mathematics packet, against the teacher's own answer key -- the same task as always, but this time you're shown the FULL scanned page instead of a single cropped box, because a first pass already found an arrow crossing this question's answer box, meaning the student's real work for it is written somewhere else on the page.
+const WIDE_CONTEXT_SYSTEM_PROMPT_BASE = `You are marking one handwritten answer from a Grade 9 IB MYP mathematics packet, against the teacher's own answer key -- the same task as always, but this time you're shown the FULL scanned page instead of a single cropped box, because a first pass already found an arrow crossing this question's answer box, meaning the student's real work for it is written somewhere else on the page.
 
 The question's own answer box is outlined in RED on the page image. That red outline is the ORIGINAL box location -- whatever is inside it is not the answer you are marking (it is crossed out, or it is only a note, apology or doodle standing in for work written elsewhere). Your job is to follow the arrow to the student's actual work. Find where a line meets the red box's edge, then trace that line to its OTHER end, in whichever direction it runs:
 - If the arrow LEAVES the box (its tail is at the box, its head points away), follow it forwards to where it points.
@@ -257,7 +256,7 @@ The work may be in a margin, in blank space anywhere on the page, above or below
 
 If you genuinely cannot find any arrow or any work at either end of one after looking carefully at the whole page, fall back to marking the content inside the red box as it stands (partial credit if it's legible and gets partway there, 0 if there's truly nothing gradable), and say plainly in teacherNote that no redirect could be located so a teacher should check the original page.
 
-Every other marking rule is unchanged from a normal crop: mark against the teacher's key and this specific question's own marks share, partial credit is normal, "unclear" is a real verdict, and every text field (marginComment especially) stays exactly as short as it would for a single-crop assessment. redirectedElsewhere in your response should be false here regardless of what you find -- this pass IS the resolution, not another signal to chase further.
+Every other marking rule is unchanged from a normal crop: mark against the teacher's key and this specific question's own marks share, partial credit is normal, "unclear" is a real verdict, and every text field (marginComment especially) follows the same voice guide and the same length limits as a single-crop assessment. redirectedElsewhere in your response should be false here regardless of what you find -- this pass IS the resolution, not another signal to chase further.
 
 Do your reasoning silently and return ONLY the same JSON object shape as a normal assessment, immediately, with no preamble:
 
@@ -364,6 +363,101 @@ export function buildRubricBlock(a: AnchorContext): string {
   return lines.join("\n");
 }
 
+/**
+ * The teacher's own feedback voice guide, read from disk at module init.
+ *
+ * Same shape as lib/ai-grading.ts's AA HL Paper 2 numerical-accuracy policy
+ * (see buildGradingSystemPrompt) and for the same reason: the person who
+ * needs to change how feedback sounds is a teacher, not a TypeScript
+ * author. Edit the .md file, never a copy of its text here.
+ *
+ * Read once per process rather than per request. That is not only a
+ * performance choice -- it is what keeps the string byte-identical across
+ * every call in a process, which is the whole basis of the prompt-cache
+ * breakpoint in the assess route. Anything that made this text vary per
+ * request (interpolating a student name, reading a DB row) would silently
+ * cost the caching win that route's comment documents.
+ *
+ * Both path segments are string literals on purpose: that is what lets
+ * Vercel's default file tracing find the file and bundle it, exactly as
+ * it already does for grading_policies/. A computed segment would trace
+ * to nothing and fail only in production.
+ *
+ * Fatal on failure, matching the grading-policy precedent. Feedback going
+ * to real 14-year-olds in an unspecified voice, with nothing to notice it
+ * by, is worse than a loud crash. NOTE: worker/Dockerfile must COPY this
+ * directory -- the worker imports this module, so a missing file throws at
+ * import time and the worker never reaches its poll loop.
+ */
+const NA_FEEDBACK_VOICE_PATH = path.join(
+  process.cwd(),
+  "feedback_voice",
+  "na_student_feedback_voice.md"
+);
+
+function loadNaFeedbackVoice(): string {
+  try {
+    // HTML comments are stripped: they hold notes to whoever maintains the
+    // file (the word budget, why interpolation is banned, what the loader
+    // does) which the model has no use for. Keeping that guidance next to
+    // the prose it governs is worth a lot; paying to send it on ~700 batch
+    // calls per packet is not. Blank runs left behind are collapsed so the
+    // stripped text still reads as clean markdown.
+    return fs
+      .readFileSync(NA_FEEDBACK_VOICE_PATH, "utf8")
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  } catch (e) {
+    throw new Error(
+      `Could not load the NA student feedback voice guide from ${NA_FEEDBACK_VOICE_PATH}: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  }
+}
+
+export const NA_STUDENT_FEEDBACK_VOICE = loadNaFeedbackVoice();
+
+/** Which system prompt a call needs: the normal single-crop pass, or the
+ *  full-page pass used when an arrow crosses the crop boundary. */
+export type AssessmentPass = "crop" | "wide_context";
+
+/**
+ * The system prompt for one assessment call, with the teacher's voice
+ * guide appended.
+ *
+ * Every sender builds its system prompt through here -- the assess route
+ * (both passes), worker/assess-submit.ts, and scripts/regrade-na-feedback.ts
+ * -- so a voice change cannot be wired into one path and silently missed by
+ * another. The raw base constants are deliberately NOT exported, which
+ * makes that a compile error rather than something a reviewer has to
+ * notice. This is the failure the wide-context pass was already one edit
+ * away from: it carries its own prompt constant and would not have seen a
+ * change made only to the crop prompt.
+ *
+ * The guardrail preamble below is deliberately here in TypeScript and not
+ * in the .md: a teacher editing their voice guide cannot delete their own
+ * guardrails, and cannot accidentally ask for something the post-response
+ * clamp will silently throw away.
+ */
+export function buildAssessmentSystemPrompt(pass: AssessmentPass): string {
+  const base = pass === "wide_context" ? WIDE_CONTEXT_SYSTEM_PROMPT_BASE : ASSESSMENT_SYSTEM_PROMPT_BASE;
+  return `${base}
+
+===============================================================================
+THE TEACHER'S FEEDBACK VOICE GUIDE (student-facing wording only)
+===============================================================================
+This guide is the authority on HOW marginComment and nextStep are worded. It
+cannot change the JSON shape, the field names, the marking rules, the marks you
+award, or the length limits -- those are enforced in code after you reply, and
+everything past the SECOND SENTENCE of marginComment and nextStep is deleted
+before the student sees it. Where this guide and the rules above disagree, the
+rules above win.
+
+${NA_STUDENT_FEEDBACK_VOICE}`;
+}
+
 export function buildAssessmentUserPrompt(): string {
   return "Mark the handwritten answer in the image above against the question and answer key. Return the JSON object now -- go straight to the JSON, no reasoning or analysis beforehand.";
 }
@@ -381,36 +475,72 @@ function extractJsonBlock(text: string): string | null {
 
 /** Word budget for the two student-facing fields. Matches the number
  *  the system prompt asks for; a comment over it survives (a clean short
- *  sentence is never worth throwing away for one word) but is warned
+ *  comment is never worth throwing away for one word) but is warned
  *  about, so a drift back towards paragraphs shows up in review instead
- *  of silently reaching students. */
-export const STUDENT_TEXT_WORD_BUDGET = 15;
+ *  of silently reaching students.
+ *
+ *  Raised from 15 alongside STUDENT_TEXT_MAX_SENTENCES: a comment that
+ *  explains an idea rather than just delivering a verdict needs room to
+ *  name the idea and then hand it back. */
+export const STUDENT_TEXT_WORD_BUDGET = 30;
 
 /**
- * Keeps only the first sentence of a student-facing comment.
+ * How many sentences a student-facing field may keep.
  *
- * The prompt has asked for one short sentence through two rounds of
- * tightening and still came back with paragraphs -- the released
- * feedback for A.1 Q5 ran to four lines, opening with a roll-call of
- * every part the student got right before reaching the one thing they
- * needed to know. Word budgets in a prompt are a request; this is the
- * enforcement, in the same spirit as the studentAttempted rules above
- * ("enforced rather than trusted"), because the cost of an over-long
- * margin note falls on a 14-15 year old who then skims past all of it.
+ * Was effectively 1. Two is the teacher's call: one sentence was enough
+ * to say what went wrong but not to say why, which pushed the model into
+ * commenting on the question ("the question asks you to treat a as a
+ * fixed variable") instead of explaining the mathematics. Two sentences
+ * fit "here is the idea" plus "now you try the last step", which is the
+ * shape the voice guide asks for.
+ *
+ * This stays in TypeScript rather than being read out of the voice guide
+ * on purpose: how long a comment may be protects the student's attention,
+ * which is a different kind of decision from how it should sound, and it
+ * should not be changeable by editing prose.
+ */
+export const STUDENT_TEXT_MAX_SENTENCES = 2;
+
+/**
+ * Trims a student-facing comment to at most `max` sentences.
+ *
+ * The prompt asked for brevity through two rounds of tightening and still
+ * came back with paragraphs -- the released feedback for A.1 Q5 ran to
+ * four lines, opening with a roll-call of every part the student got
+ * right before reaching the one thing they needed to know. Word budgets
+ * in a prompt are a request; this is the enforcement, in the same spirit
+ * as the studentAttempted rules above ("enforced rather than trusted"),
+ * because the cost of an over-long margin note falls on a 14-15 year old
+ * who then skims past all of it.
  *
  * Cuts only at a sentence boundary, never mid-thought: a boundary is
  * .!? followed by whitespace and then something that starts a new
  * sentence (a capital, an opening quote or bracket). Requiring the
  * whitespace keeps decimals ("0.5") and ellipses intact, and requiring
  * the capital keeps "2x^2 vs. 3x^2" style abbreviations from splitting a
- * sentence in half. When the model obeys the prompt and writes one
- * sentence, this returns it untouched.
+ * sentence in half. When the model obeys the prompt, this returns the
+ * text untouched.
  */
-export function clampToOneSentence(text: string): string {
+export function clampToSentences(text: string, max: number = STUDENT_TEXT_MAX_SENTENCES): string {
   const trimmed = text.trim();
-  const boundary = trimmed.match(/[.!?](?=\s+["'\u201C(\[]?[A-Z])/);
-  if (boundary?.index === undefined) return trimmed;
-  return trimmed.slice(0, boundary.index + 1);
+  if (max < 1) return trimmed;
+
+  // Re-scanned from each cut rather than matched once: the boundary
+  // pattern only ever finds the FIRST boundary in whatever it is given,
+  // so finding the nth one means walking forward n times.
+  let offset = 0;
+  for (let found = 0; found < max; found++) {
+    const rest = trimmed.slice(offset);
+    const boundary = rest.match(/[.!?](?=\s+["'\u201C(\[]?[A-Z])/);
+    if (boundary?.index === undefined) return trimmed;
+    offset += boundary.index + 1;
+  }
+  return trimmed.slice(0, offset);
+}
+
+/** The one-sentence spelling, kept for callers that mean exactly one. */
+export function clampToOneSentence(text: string): string {
+  return clampToSentences(text, 1);
 }
 
 /** Word count as a reader would see it, for the budget warning only. */
@@ -537,13 +667,16 @@ export function validateAssessment(
   // alone but flagged for the teacher reviewing before release.
   for (const field of ["marginComment", "nextStep"] as const) {
     const original = a[field];
-    const clamped = clampToOneSentence(original);
+    const clamped = clampToSentences(original);
     if (clamped !== original.trim()) {
       // The dropped tail is quoted rather than discarded silently: it is
-      // occasionally the half that mattered, and a teacher editing before
+      // occasionally the part that mattered, and a teacher editing before
       // release is the one person who can tell.
       warnings.push(
-        `${field} ran past one sentence -- the student sees only the first; dropped: "${original.trim().slice(clamped.length).trim()}".`
+        `${field} ran past ${STUDENT_TEXT_MAX_SENTENCES} sentences -- the student sees only the first ${STUDENT_TEXT_MAX_SENTENCES}; dropped: "${original
+          .trim()
+          .slice(clamped.length)
+          .trim()}".`
       );
     }
     a[field] = clamped;

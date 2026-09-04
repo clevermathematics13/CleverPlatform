@@ -6,9 +6,8 @@ import { recordUsage } from "@/lib/ai-usage";
 import { NA_SCAN_BUCKET } from "@/lib/na-scanning";
 import {
   ASSESSMENT_MODEL,
-  ASSESSMENT_SYSTEM_PROMPT,
+  buildAssessmentSystemPrompt,
   AssessmentSchema,
-  WIDE_CONTEXT_SYSTEM_PROMPT,
   buildAssessmentUserPrompt,
   buildWideContextUserPrompt,
   buildRubricBlock,
@@ -244,7 +243,7 @@ export async function POST(
         output_config: { format: zodOutputFormat(AssessmentSchema) },
         // Breakpoint on the static system prompt, never after the image --
         // same reasoning as the first-pass call below.
-        system: [{ type: "text", text: WIDE_CONTEXT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        system: [{ type: "text", text: buildAssessmentSystemPrompt("wide_context"), cache_control: { type: "ephemeral" } }],
         messages: [
           {
             role: "user",
@@ -306,7 +305,7 @@ export async function POST(
       // off the per-call cost, measured cold on two consecutive different
       // crops (the numbers are in the PR that made this change). Do not
       // put a breakpoint after the image again.
-      system: [{ type: "text", text: ASSESSMENT_SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+      system: [{ type: "text", text: buildAssessmentSystemPrompt("crop"), cache_control: { type: "ephemeral" } }],
       messages: [
         {
           role: "user",

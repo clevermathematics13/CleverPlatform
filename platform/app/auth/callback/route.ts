@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { MULTI_ROLE_TEST_EMAILS } from "@/lib/test-accounts";
 
 function isMissingExtraTimeColumnError(message?: string) {
   if (!message) return false;
@@ -203,6 +204,12 @@ export async function GET(request: Request) {
 
   if (currentProfile?.role === "student" && !currentProfile.nickname) {
     return NextResponse.redirect(`${redirectBase}/register/nickname`);
+  }
+
+  if (MULTI_ROLE_TEST_EMAILS.includes(userEmail)) {
+    return NextResponse.redirect(
+      `${redirectBase}/login/choose-role?next=${encodeURIComponent(next)}`
+    );
   }
 
   return NextResponse.redirect(`${redirectBase}${next}`);

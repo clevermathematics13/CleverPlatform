@@ -1,6 +1,7 @@
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { resolveViewAs } from "@/lib/view-as";
+import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { DeployCard } from "./deploy-card";
 import { FeedbackIcon, SelfAssessIcon, StudentTile } from "./student-tiles";
 
@@ -34,7 +35,7 @@ export default async function DashboardPage({
             : "mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
         }
       >
-        {viewRole === "teacher" && <TeacherDashboard supabase={supabase} />}
+        {viewRole === "teacher" && <TeacherDashboard supabase={supabase} teacherId={profile.id} />}
         {viewRole === "student" && (
           <StudentDashboard viewAsId={viewAs?.invitedStudentId ?? null} />
         )}
@@ -45,17 +46,30 @@ export default async function DashboardPage({
   );
 }
 
-async function TeacherDashboard({ supabase }: { supabase: Awaited<ReturnType<typeof createClient>> }) {
+async function TeacherDashboard({
+  supabase,
+  teacherId,
+}: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  teacherId: string;
+}) {
+  const showHidden = await getShowHiddenStudents(supabase, teacherId);
+
+  let studentsQuery = supabase.from("students").select(`
+    id,
+    profiles:profile_id ( email )
+  `);
+  if (!showHidden) studentsQuery = studentsQuery.eq("hidden", false);
+
+  let invitedQuery = supabase
+    .from("invited_students")
+    .select("id, email")
+    .eq("registered", true);
+  if (!showHidden) invitedQuery = invitedQuery.eq("hidden", false);
+
   const [studentsRes, invitedRes, assignmentsRes, questionsRes, coursesRes] = await Promise.all([
-    supabase.from("students").select(`
-      id,
-      profiles:profile_id ( email )
-    `).eq("hidden", false),
-    supabase
-      .from("invited_students")
-      .select("id, email")
-      .eq("registered", true)
-      .eq("hidden", false),
+    studentsQuery,
+    invitedQuery,
     supabase.from("assignments").select("id", { count: "exact", head: true }).eq("status", "active"),
     supabase
       .from("ib_questions")

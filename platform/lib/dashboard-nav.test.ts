@@ -9,9 +9,9 @@ describe("getNavigation", () => {
     expect(nav[0].label).toBe("Feedback");
   });
 
-  it("leaves a non-Grade-9 student on the Dashboard", () => {
+  it("gives a non-Grade-9 student the Dashboard plus the Live Game", () => {
     const nav = getNavigation("student", false);
-    expect(nav.map((n) => n.href)).toEqual(["/dashboard"]);
+    expect(nav.map((n) => n.href)).toEqual(["/dashboard", "/dashboard/games"]);
   });
 
   it("does not leak teacher destinations into a student menu", () => {
@@ -68,7 +68,7 @@ describe("deriveDashboardView", () => {
 
   it("gives a DP student the ordinary student menu, not the Grade 9 one", () => {
     const r = derive("dp");
-    expect(r.navigation.map((n) => n.href)).toEqual(["/dashboard"]);
+    expect(r.navigation.map((n) => n.href)).toEqual(["/dashboard", "/dashboard/games"]);
   });
 
   it("falls back to the teacher view for an unrecognised id", () => {

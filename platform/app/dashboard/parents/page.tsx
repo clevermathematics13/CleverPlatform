@@ -1,11 +1,24 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { LinkParentForm, type StudentOption } from "./link-parent-form";
 import { unlinkParent } from "./actions";
 
 export default async function ParentsPage() {
-  await requireTeacher();
+  const profile = await requireTeacher();
   const supabase = await createClient();
+  const showHidden = await getShowHiddenStudents(supabase, profile.id);
+
+  let studentsQuery = supabase
+    .from("students")
+    .select(`
+      id,
+      hidden,
+      profiles:profile_id ( display_name, email ),
+      courses:course_id ( name )
+    `)
+    .order("created_at", { ascending: false });
+  if (!showHidden) studentsQuery = studentsQuery.eq("hidden", false);
 
   const [linksRes, studentsRes] = await Promise.all([
     supabase
@@ -21,16 +34,7 @@ export default async function ParentsPage() {
         )
       `)
       .order("created_at", { ascending: false }),
-    supabase
-      .from("students")
-      .select(`
-        id,
-        hidden,
-        profiles:profile_id ( display_name, email ),
-        courses:course_id ( name )
-      `)
-      .eq("hidden", false)
-      .order("created_at", { ascending: false }),
+    studentsQuery,
   ]);
 
   const { data: links, error } = linksRes;

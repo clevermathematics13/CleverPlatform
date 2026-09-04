@@ -139,8 +139,13 @@ export interface NaFeedbackItem {
   marksAwarded: number | null;
   marksAvailable: number | null;
   fullMarks: boolean;
+  /** The one short sentence a student reads on this question. There is
+   *  deliberately no nextStep alongside it: na_feedback.final_next_step
+   *  is still written and still shown to teachers in review, but it is
+   *  no longer part of what a student sees, so it is not selected here
+   *  and never reaches the browser. Removing the field, rather than
+   *  just not rendering it, is what keeps that true. */
   marginComment: string | null;
-  nextStep: string | null;
   cropImageUrl: string | null;
   promptCropImageUrl: string | null;
   studentFlaggedMisread: boolean;
@@ -203,7 +208,6 @@ export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<
     final_marks_awarded: number | null;
     ai_marks_available: number | null;
     final_margin_comment: string | null;
-    final_next_step: string | null;
     released_at: string | null;
     student_flagged_misread: boolean | null;
     student_flag_note: string | null;
@@ -221,7 +225,7 @@ export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<
     .select(
       `id, storage_path,
        na_anchors(qid, part_label, sort_order, prompt_crop_storage_path),
-       na_feedback(final_marks_awarded, ai_marks_available, final_margin_comment, final_next_step, released_at, student_flagged_misread, student_flag_note, ai_student_attempted)`
+       na_feedback(final_marks_awarded, ai_marks_available, final_margin_comment, released_at, student_flagged_misread, student_flag_note, ai_student_attempted)`
     )
     .eq("packet_scan_id", packetScanId);
   if (error) throw error;
@@ -244,7 +248,6 @@ export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<
         marksAvailable,
         fullMarks: marksAwarded !== null && marksAvailable !== null && marksAwarded >= marksAvailable,
         marginComment: fb.final_margin_comment,
-        nextStep: fb.final_next_step,
         promptCropStoragePath: anchor.prompt_crop_storage_path,
         cropStoragePath: row.storage_path,
         studentFlaggedMisread: fb.student_flagged_misread ?? false,
@@ -272,7 +275,6 @@ export async function getNaFeedbackForPacketScan(packetScanId: string): Promise<
         marksAvailable: r.marksAvailable,
         fullMarks: r.fullMarks,
         marginComment: r.marginComment,
-        nextStep: r.nextStep,
         cropImageUrl: cropSigned?.signedUrl ?? null,
         promptCropImageUrl: promptSigned?.data?.signedUrl ?? null,
         studentFlaggedMisread: r.studentFlaggedMisread,
