@@ -852,9 +852,20 @@ the happy path work."
 
 **Low**
 
-6. Full NA generation wiring for Grade 9. The generator is hardcoded to Grade 12,
-   `buildActivityGeneratorSystemPrompt()` does not fetch `na_continuity`, and saves
-   do not write back.
+6. ~~Full NA generation wiring for Grade 9~~ — stale. Generation, continuity, and
+   save-back all already work for Grade 9: `buildActivityGeneratorSystemPrompt()`
+   has a real `isMYP` branch (Grade 9/10), the NA sandbox fetches `na_continuity`
+   client-side and threads it in as `continuityContext`, and `POST
+   /api/nuanced-analyses` writes `grade_level`/`parts` and appends a continuity
+   digest. The real gap this item was gesturing at: a saved packet's `parts`
+   never became `na_rubric_items` — the table the Stage 5 assessor actually
+   reads — so a freshly generated packet couldn't be graded without hand-written
+   SQL (as was done for packet "A.1"). Fixed via `lib/na-rubric-bridge.ts`,
+   which derives rubric rows from `parts` and syncs them on every save,
+   non-destructively (a row a teacher has hand-edited is left alone). Anchor
+   *geometry* (where each answer box sits on the printed page) remains a
+   manual/SQL step by design — it inherently requires a human looking at the
+   rendered page.
 
 **Closed since the previous handoff**
 

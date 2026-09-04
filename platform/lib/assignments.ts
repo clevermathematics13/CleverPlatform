@@ -52,6 +52,7 @@ export type AssignmentQuestion = {
   subparts?: Array<{
     prompt: string;
     marks?: number;
+    answer?: string;
     hint?: string;
     tier?: 1 | 2 | 3;
     contentTag?: string;
