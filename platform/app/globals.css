@@ -108,30 +108,27 @@ body {
 }
 
 /* ---- Student tiles: topographic title and carved-steel emblem ------------
-   .terrain-title stands the word up out of the card in stepped layers. Each
-   text-shadow is one contour, one pixel lower and a shade lighter than the
-   last: the face of the letter is the maroon of the navigation rail, the
-   slopes warm through the accent and rose, and the base is the brushed
-   silver of the steel emblem above it, then a soft ground shadow. Offsets
-   drift a little to the right as they descend so the ridge reads as lit
-   from the upper left, the same light the steel emblem is lit by. */
+   .terrain-title stands the word up out of the card in stepped layers. The
+   face is a lit maroon (the rail's colour, one stop brighter so it reads on
+   the dark card) with a hairline of light along its top edge, as a raised
+   letter catches the key. Each text-shadow beneath is one contour, a pixel
+   lower and a shade lighter than the last, running through the accent and
+   rose to brushed silver at the base, then a soft ground shadow. The stack
+   is kept short: more steps blurred the letterforms into each other. */
 .terrain-title {
-  color: #861535;
-  letter-spacing: 0.01em;
+  color: #b3244a;
+  letter-spacing: 0.03em;
   line-height: 1;
   text-shadow:
-    0 1px 0 #8f1a3b,
-    1px 2px 0 #a52344,
-    1px 3px 0 #bb3251,
-    2px 4px 0 #cc4a63,
-    2px 5px 0 #d66b7d,
-    3px 6px 0 #dc8f9a,
-    3px 7px 0 #dbb0b6,
-    4px 8px 0 #d6c8cb,
-    4px 9px 0 #cfd3d8,
-    5px 10px 0 #b9bec6,
-    6px 11px 0 #9ea3ac,
-    6px 15px 12px rgba(0, 0, 0, 0.75);
+    0 -1px 0 rgba(255, 232, 238, 0.55),
+    0 1px 0 #8a1637,
+    1px 2px 0 #a3203f,
+    1px 3px 0 #c9415c,
+    2px 4px 0 #dd7a8d,
+    2px 5px 0 #dfb2b9,
+    3px 6px 0 #d7dadf,
+    3px 7px 0 #a9aeb6,
+    4px 12px 10px rgba(0, 0, 0, 0.75);
 }
 
 .student-tile-icon .carved-icon {
