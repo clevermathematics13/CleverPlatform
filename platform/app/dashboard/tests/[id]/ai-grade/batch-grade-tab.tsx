@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { fetchJson } from "./fetch-json";
 
@@ -45,6 +45,44 @@ interface SplitResultRow {
   maxTotal?: number;
   testTotalMarks?: number;
   partsGraded?: number;
+}
+
+/**
+ * One part of an upload the server cut into chunks (see
+ * lib/batch-chunking.ts), as returned by POST .../ai-grade/batch with
+ * chunked: true. Page numbers are those of the ORIGINAL upload.
+ */
+interface UploadChunk {
+  index: number;
+  count: number;
+  storagePath: string;
+  fileName: string;
+  firstPage: number;
+  lastPage: number;
+  pageCount: number;
+  cleanCutAfter: boolean;
+}
+
+/**
+ * Per-part lifecycle. A small upload is a single part with chunk: null; an
+ * oversized one has one part per chunk, each segmented by its own request
+ * and reviewed/graded in its own panel.
+ */
+interface PartState {
+  key: string;
+  chunk: UploadChunk | null;
+  status: "pending" | "segmenting" | "segmented" | "failed";
+  batch: BatchRow | null;
+  reused: boolean;
+  error: string | null;
+}
+
+interface UploadState {
+  fileName: string;
+  pageCount: number;
+  parts: PartState[];
+  /** Warnings from the chunk planner (e.g. a cut that may split a student). */
+  warnings: string[];
 }
 
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
@@ -98,6 +136,22 @@ function formatPageList(pages: number[]): string {
   return parts.join(", ");
 }
 
+/** Turn a segmentation response into the batch row + review rows a panel starts from. */
+function batchFromSegmentation(data: Record<string, unknown>, fileName: string): BatchRow {
+  return {
+    id: data.batchId as string,
+    status: "segmented",
+    file_name: fileName,
+    page_count: data.pageCount as number,
+    proposed_segments: (data.segments as ProposedSegment[]) ?? [],
+    confirmed_segments: null,
+    unassigned_pages: (data.unassignedPages as number[]) ?? [],
+    blank_pages: (data.blankPages as number[]) ?? [],
+    error: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
 export function BatchGradeTab({
   testId,
   students,
@@ -106,27 +160,325 @@ export function BatchGradeTab({
   students: StudentOption[];
 }) {
   const [error, setError] = useState<string | null>(null);
-  const [statusLine, setStatusLine] = useState<string | null>(null);
-
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
-  const [batch, setBatch] = useState<BatchRow | null>(null);
-  const [rows, setRows] = useState<ReviewRow[]>([]);
+  const [upload, setUpload] = useState<UploadState | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const updatePart = (key: string, patch: Partial<PartState>) =>
+    setUpload((prev) =>
+      prev ? { ...prev, parts: prev.parts.map((p) => (p.key === key ? { ...p, ...patch } : p)) } : prev
+    );
+
+  /**
+   * Segment one stored PDF (the whole upload, or one part of a chunked one)
+   * through the batch route and record the outcome on its part.
+   */
+  const segmentPart = async (part: PartState, storagePath: string, fileName: string) => {
+    updatePart(part.key, { status: "segmenting", error: null });
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storagePath, fileName }),
+      });
+      if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
+      if (data.chunked) {
+        // A part is already under both limits by construction, so this
+        // can't happen unless the planner is wrong -- surface it rather
+        // than recursing into parts of parts.
+        throw new Error("The server tried to split this part again; upload the scan again.");
+      }
+      updatePart(part.key, {
+        status: "segmented",
+        batch: batchFromSegmentation(data, fileName),
+        reused: !!data.reusedFromBatchId,
+      });
+    } catch (e) {
+      updatePart(part.key, {
+        status: "failed",
+        error: e instanceof Error ? e.message : "Segmentation failed.",
+      });
+    }
+  };
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    setError(null);
+    setUpload(null);
+
+    try {
+      // Batch scans can be very large — upload straight to Storage from the
+      // browser rather than sending it as JSON through this Next.js route,
+      // which stays well under Vercel's request-body limit either way.
+      setUploadProgress("Uploading scan…");
+      const supaModule = await import("@/lib/supabase/client");
+      const supabase = supaModule.createClient();
+
+      const safeName = file.name.replace(/[^\w.\-]/g, "_");
+      const storagePath = `batches/${crypto.randomUUID()}/${safeName}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from("exam-scans")
+        .upload(storagePath, file, { contentType: "application/pdf", upsert: false });
+      if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
+
+      setUploadProgress("Reading cover pages and matching names — this can take a minute for a full class…");
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storagePath, fileName: file.name }),
+      });
+      if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
+
+      if (data.chunked) {
+        // Too many pages (or bytes) for one segmentation call: the server
+        // cut the scan into parts on cover pages and stored each one. Read
+        // them one request at a time -- each is its own 300s budget -- and
+        // let the teacher start reviewing part 1 while later parts load.
+        const chunks = (data.chunks as UploadChunk[]) ?? [];
+        const parts: PartState[] = chunks.map((c) => ({
+          key: `part-${c.index}`,
+          chunk: c,
+          status: "pending",
+          batch: null,
+          reused: false,
+          error: null,
+        }));
+        setUpload({
+          fileName: file.name,
+          pageCount: data.pageCount as number,
+          parts,
+          warnings: (data.warnings as string[]) ?? [],
+        });
+        setUploading(false);
+        setUploadProgress(null);
+        for (const part of parts) {
+          await segmentPart(part, part.chunk!.storagePath, part.chunk!.fileName);
+        }
+        return;
+      }
+
+      setUpload({
+        fileName: file.name,
+        pageCount: data.pageCount as number,
+        warnings: [],
+        parts: [
+          {
+            key: "whole",
+            chunk: null,
+            status: "segmented",
+            batch: batchFromSegmentation(data, file.name),
+            reused: !!data.reusedFromBatchId,
+            error: null,
+          },
+        ],
+      });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload or segmentation failed.");
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const handleFilePicked = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    e.target.value = "";
+    if (file) await handleUpload(file);
+  };
+
+  const reset = () => {
+    setUpload(null);
+    setError(null);
+  };
+
+  const segmentingAny = !!upload?.parts.some((p) => p.status === "pending" || p.status === "segmenting");
+  const partCount = upload?.parts.length ?? 0;
+
+  return (
+    <div className="space-y-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={handleFilePicked}
+        className="hidden"
+      />
+
+      {error && (
+        <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+
+      {!upload && (
+        <section className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
+          <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
+          <p className="mt-1 text-sm text-da-muted">
+            One PDF covering multiple students, each starting with a cover page bearing their
+            name. Overflow work on loose paper doesn&apos;t need to stay next to its owner —
+            the model looks for self-labelled continuation pages anywhere in the document.
+            You&apos;ll confirm the page-to-student mapping before anything is graded.
+          </p>
+          <p className="mt-1 text-sm text-da-muted">
+            There is no page limit: a scan too long to read in one go is cut into parts on
+            students&apos; cover pages, and each part is reviewed and graded separately below.
+          </p>
+          <button
+            type="button"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+            className="mt-4 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
+          >
+            {uploading ? uploadProgress ?? "Working…" : "Upload batch scan"}
+          </button>
+        </section>
+      )}
+
+      {upload && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-da-border bg-da-surface px-5 py-3 shadow-sm">
+            <div>
+              <h2 className="text-lg font-bold text-da-text">
+                {upload.fileName} — {upload.pageCount} pages
+                {partCount > 1 && ` in ${partCount} parts`}
+              </h2>
+              <p className="text-xs text-da-muted">
+                {partCount > 1
+                  ? "Cut into parts on students' cover pages so each can be read in one go. Review and grade each part below — they're independent."
+                  : "Confirm which pages belong to which student before grading."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={reset}
+              disabled={segmentingAny}
+              className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+            >
+              Start over
+            </button>
+          </div>
+
+          {upload.warnings.map((w, i) => (
+            <div
+              key={i}
+              className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300"
+            >
+              ⚠ {w}
+            </div>
+          ))}
+
+          {upload.parts.map((part) => {
+            const partLabel = part.chunk
+              ? `Part ${part.chunk.index + 1} of ${part.chunk.count} (pages ${part.chunk.firstPage}-${part.chunk.lastPage} of the scan)`
+              : null;
+
+            if (part.status === "segmented" && part.batch) {
+              return (
+                <BatchPanel
+                  key={part.key}
+                  testId={testId}
+                  students={students}
+                  batch={part.batch}
+                  partLabel={partLabel}
+                  reused={part.reused}
+                />
+              );
+            }
+
+            if (part.status === "failed") {
+              return (
+                <section
+                  key={part.key}
+                  className="rounded-xl border border-red-400/40 bg-da-surface p-5 shadow-sm"
+                >
+                  <h3 className="font-bold text-da-text">{partLabel ?? upload.fileName}</h3>
+                  <p className="mt-1 text-sm text-red-300">{part.error}</p>
+                  {part.chunk && (
+                    <button
+                      type="button"
+                      disabled={segmentingAny}
+                      onClick={() => segmentPart(part, part.chunk!.storagePath, part.chunk!.fileName)}
+                      className="mt-3 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
+                    >
+                      Read this part again
+                    </button>
+                  )}
+                </section>
+              );
+            }
+
+            return (
+              <section
+                key={part.key}
+                className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm"
+              >
+                <h3 className="font-bold text-da-text">{partLabel ?? upload.fileName}</h3>
+                <p className="mt-1 text-sm text-da-muted">
+                  {part.status === "segmenting"
+                    ? "Reading cover pages and matching names — this can take a minute…"
+                    : "Waiting for the earlier parts to be read…"}
+                </p>
+              </section>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The review-and-grade panel for one segmented batch: the editable
+ * page-to-student table, the split call, and the per-student grading loop.
+ * A chunked upload renders one of these per part; a small upload renders
+ * exactly one. Each owns its own rows and grading state so parts can be
+ * reviewed in any order and graded independently.
+ */
+function BatchPanel({
+  testId,
+  students,
+  batch,
+  partLabel,
+  reused,
+}: {
+  testId: string;
+  students: StudentOption[];
+  batch: BatchRow;
+  partLabel: string | null;
+  reused: boolean;
+}) {
+  const studentByName = new Map(students.map((s) => [s.display_name, s.profile_id]));
+
+  const [error, setError] = useState<string | null>(null);
+  const [statusLine, setStatusLine] = useState<string | null>(
+    `Found ${batch.proposed_segments.length} student(s) across ${batch.page_count} pages.` +
+      (reused
+        ? " This PDF was uploaded before, so its page mapping was reused instead of being read again."
+        : "") +
+      " Review the mapping below before grading."
+  );
+  const [rows, setRows] = useState<ReviewRow[]>(() =>
+    batch.proposed_segments.map((s, i) => ({
+      key: `${i}-${s.label}`,
+      label: s.label,
+      pages: s.pages,
+      confidence: s.confidence,
+      note: s.note,
+      studentId: s.matchedStudentId ?? studentByName.get(s.label) ?? "",
+    }))
+  );
   const [splitting, setSplitting] = useState(false);
   const [splitResults, setSplitResults] = useState<SplitResultRow[] | null>(null);
   const [stopRequested, setStopRequested] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
   // A ref, not just the stopRequested state, so the running loop's closure
   // sees a stop the instant it's clicked rather than waiting for a re-render.
   const stopRequestedRef = useRef(false);
 
-  const studentByName = new Map(students.map((s) => [s.display_name, s.profile_id]));
-
-  const allPages = batch?.page_count
-    ? Array.from({ length: batch.page_count }, (_, i) => i + 1)
-    : [];
-  const blankPages = new Set(batch?.blank_pages ?? []);
+  const allPages = batch.page_count ? Array.from({ length: batch.page_count }, (_, i) => i + 1) : [];
+  const blankPages = new Set(batch.blank_pages);
   const claimedPages = new Set(rows.flatMap((r) => r.pages));
   // Confirmed-blank pages (e.g. a fixed-length booklet's unused last page)
   // are excluded here rather than folded into "needs review" -- they were
@@ -177,82 +529,6 @@ export function BatchGradeTab({
       return [...prev.filter((r) => r.studentId !== studentId), merged];
     });
 
-  const handleUpload = async (file: File) => {
-    setUploading(true);
-    setError(null);
-    setBatch(null);
-    setSplitResults(null);
-    setStatusLine(null);
-
-    try {
-      // Batch scans can be very large — upload straight to Storage from the
-      // browser rather than sending it as JSON through this Next.js route,
-      // which stays well under Vercel's request-body limit either way.
-      setUploadProgress("Uploading scan…");
-      const supaModule = await import("@/lib/supabase/client");
-      const supabase = supaModule.createClient();
-
-      const safeName = file.name.replace(/[^\w.\-]/g, "_");
-      const storagePath = `batches/${crypto.randomUUID()}/${safeName}`;
-
-      const { error: uploadErr } = await supabase.storage
-        .from("exam-scans")
-        .upload(storagePath, file, { contentType: "application/pdf", upsert: false });
-      if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
-
-      setUploadProgress("Reading cover pages and matching names — this can take a minute for a full class…");
-      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storagePath, fileName: file.name }),
-      });
-      if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
-
-      const segments: ProposedSegment[] = (data.segments as ProposedSegment[]) ?? [];
-      const blankPages = (data.blankPages as number[]) ?? [];
-      setBatch({
-        id: data.batchId as string,
-        status: "segmented",
-        file_name: file.name,
-        page_count: data.pageCount as number,
-        proposed_segments: segments,
-        confirmed_segments: null,
-        unassigned_pages: (data.unassignedPages as number[]) ?? [],
-        blank_pages: blankPages,
-        error: null,
-        created_at: new Date().toISOString(),
-      });
-      setRows(
-        segments.map((s, i) => ({
-          key: `${i}-${s.label}`,
-          label: s.label,
-          pages: s.pages,
-          confidence: s.confidence,
-          note: s.note,
-          studentId: s.matchedStudentId ?? studentByName.get(s.label) ?? "",
-        }))
-      );
-      setStatusLine(
-        `Found ${segments.length} student(s) across ${data.pageCount} pages.` +
-          (data.reusedFromBatchId
-            ? " This PDF was uploaded before, so its page mapping was reused instead of being read again."
-            : "") +
-          " Review the mapping below before grading."
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload or segmentation failed.");
-    } finally {
-      setUploading(false);
-      setUploadProgress(null);
-    }
-  };
-
-  const handleFilePicked = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
-    e.target.value = "";
-    if (file) await handleUpload(file);
-  };
-
   const updateRow = (key: string, patch: Partial<ReviewRow>) =>
     setRows((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
 
@@ -265,7 +541,6 @@ export function BatchGradeTab({
     ]);
 
   const canSplit =
-    !!batch &&
     rows.length > 0 &&
     rows.every((r) => r.studentId && r.pages.length > 0) &&
     rowsWithConflicts.size === 0 &&
@@ -277,7 +552,7 @@ export function BatchGradeTab({
   };
 
   const handleSplit = async () => {
-    if (!batch || !canSplit) return;
+    if (!canSplit) return;
     setSplitting(true);
     setStopRequested(false);
     stopRequestedRef.current = false;
@@ -378,257 +653,210 @@ export function BatchGradeTab({
     }
   };
 
-  const reset = () => {
-    setBatch(null);
-    setRows([]);
-    setSplitResults(null);
-    setStatusLine(null);
-    setError(null);
-  };
-
   return (
-    <div className="space-y-6">
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="application/pdf"
-        onChange={handleFilePicked}
-        className="hidden"
-      />
+    <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
+        <div>
+          <h2 className="text-lg font-bold text-da-text">
+            {partLabel ?? `${batch.file_name} — ${batch.page_count} pages`}
+          </h2>
+          <p className="text-xs text-da-muted">
+            {partLabel && `${batch.page_count} pages in this part. `}
+            Confirm which pages belong to which student. Matched names are pre-filled from
+            the class roster — check every low-confidence row before splitting.
+            {partLabel && " Page numbers here count from 1 within this part."}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {splitting && (
+            <button
+              type="button"
+              onClick={handleStop}
+              disabled={stopRequested}
+              title="Finishes the student currently being marked (already billed either way), then stops before starting the next one."
+              className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+            >
+              {stopRequested ? "Stopping after this student…" : "Stop"}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleSplit}
+            disabled={!canSplit || splitting || !!splitResults}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+            title={
+              !canSplit
+                ? "Every row needs a matched student, at least one page, and no page conflicts"
+                : undefined
+            }
+          >
+            {splitting ? "Splitting & grading…" : `Split and grade ${rows.length} student(s)`}
+          </button>
+        </div>
+      </div>
 
       {error && (
-        <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300">
-          {error}
-        </div>
+        <div className="border-b border-red-400/40 bg-red-500/15 px-5 py-2 text-sm text-red-300">{error}</div>
       )}
       {statusLine && (
-        <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-3 text-sm text-blue-300">
+        <div className="border-b border-blue-400/40 bg-blue-500/15 px-5 py-2 text-sm text-blue-300">
           {statusLine}
         </div>
       )}
 
-      {!batch && (
-        <section className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
-          <p className="mt-1 text-sm text-da-muted">
-            One PDF covering multiple students, each starting with a cover page bearing their
-            name. Overflow work on loose paper doesn&apos;t need to stay next to its owner —
-            the model looks for self-labelled continuation pages anywhere in the document.
-            You&apos;ll confirm the page-to-student mapping before anything is graded.
-          </p>
-          <button
-            type="button"
-            disabled={uploading}
-            onClick={() => fileInputRef.current?.click()}
-            className="mt-4 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
-          >
-            {uploading ? uploadProgress ?? "Working…" : "Upload batch scan"}
-          </button>
-        </section>
+      {batch.blank_pages.length > 0 && !splitResults && (
+        <div className="border-b border-da-border bg-da-hover px-5 py-2 text-xs text-da-muted">
+          Page(s) {formatPageList(batch.blank_pages)} were identified as blank and skipped — nothing to
+          review there.
+        </div>
       )}
-
-      {batch && (
-        <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
-            <div>
-              <h2 className="text-lg font-bold text-da-text">
-                {batch.file_name} — {batch.page_count} pages
-              </h2>
-              <p className="text-xs text-da-muted">
-                Confirm which pages belong to which student. Matched names are pre-filled from
-                the class roster — check every low-confidence row before splitting.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={reset}
-                className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
-              >
-                Start over
-              </button>
-              {splitting && (
+      {unclaimedPages.length > 0 && !splitResults && (
+        <div className="border-b border-amber-400/40 bg-amber-500/15 px-5 py-2 text-xs text-amber-300">
+          ⚠ Page(s) {formatPageList(unclaimedPages)} aren&apos;t assigned to any row yet.
+        </div>
+      )}
+      {rowsWithConflicts.size > 0 && !splitResults && (
+        <div className="border-b border-red-400/40 bg-red-500/15 px-5 py-2 text-xs text-red-300">
+          ⚠ Some pages are claimed by more than one row — fix the page ranges before
+          splitting.
+        </div>
+      )}
+      {duplicateStudentGroups.length > 0 && !splitResults && (
+        <div className="space-y-1 border-b border-red-400/40 bg-red-500/15 px-5 py-2 text-xs text-red-300">
+          {duplicateStudentGroups.map(([studentId, keys]) => {
+            const name = students.find((st) => st.profile_id === studentId)?.display_name ?? "This student";
+            return (
+              <div key={studentId} className="flex flex-wrap items-center gap-2">
+                <span>
+                  ⚠ {name} is matched to {keys.length} rows — likely a continuation sheet the
+                  model read as its own cover page.
+                </span>
                 <button
                   type="button"
-                  onClick={handleStop}
-                  disabled={stopRequested}
-                  title="Finishes the student currently being marked (already billed either way), then stops before starting the next one."
-                  className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-2 text-sm font-medium text-red-300 hover:bg-red-500/25 disabled:opacity-50"
+                  onClick={() => mergeDuplicates(studentId)}
+                  className="rounded border border-red-400/40 bg-da-surface px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-red-500/25"
                 >
-                  {stopRequested ? "Stopping after this student…" : "Stop"}
+                  Merge into one row
                 </button>
-              )}
-              <button
-                type="button"
-                onClick={handleSplit}
-                disabled={!canSplit || splitting || !!splitResults}
-                className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-                title={
-                  !canSplit
-                    ? "Every row needs a matched student, at least one page, and no page conflicts"
-                    : undefined
-                }
-              >
-                {splitting ? "Splitting & grading…" : `Split and grade ${rows.length} student(s)`}
-              </button>
-            </div>
-          </div>
-
-          {batch.blank_pages.length > 0 && !splitResults && (
-            <div className="border-b border-da-border bg-da-hover px-5 py-2 text-xs text-da-muted">
-              Page(s) {formatPageList(batch.blank_pages)} were identified as blank and skipped — nothing to
-              review there.
-            </div>
-          )}
-          {unclaimedPages.length > 0 && !splitResults && (
-            <div className="border-b border-amber-400/40 bg-amber-500/15 px-5 py-2 text-xs text-amber-300">
-              ⚠ Page(s) {formatPageList(unclaimedPages)} aren&apos;t assigned to any row yet.
-            </div>
-          )}
-          {rowsWithConflicts.size > 0 && !splitResults && (
-            <div className="border-b border-red-400/40 bg-red-500/15 px-5 py-2 text-xs text-red-300">
-              ⚠ Some pages are claimed by more than one row — fix the page ranges before
-              splitting.
-            </div>
-          )}
-          {duplicateStudentGroups.length > 0 && !splitResults && (
-            <div className="space-y-1 border-b border-red-400/40 bg-red-500/15 px-5 py-2 text-xs text-red-300">
-              {duplicateStudentGroups.map(([studentId, keys]) => {
-                const name = students.find((st) => st.profile_id === studentId)?.display_name ?? "This student";
-                return (
-                  <div key={studentId} className="flex flex-wrap items-center gap-2">
-                    <span>
-                      ⚠ {name} is matched to {keys.length} rows — likely a continuation sheet the
-                      model read as its own cover page.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => mergeDuplicates(studentId)}
-                      className="rounded border border-red-400/40 bg-da-surface px-2 py-0.5 text-xs font-medium text-red-300 hover:bg-red-500/25"
-                    >
-                      Merge into one row
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
-                  <th className="px-4 py-2 font-semibold">Name on cover page</th>
-                  <th className="px-2 py-2 font-semibold">Pages</th>
-                  <th className="px-2 py-2 font-semibold">Matched student</th>
-                  <th className="px-2 py-2 font-semibold">Confidence</th>
-                  <th className="px-2 py-2 font-semibold" />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const conflicted = rowsWithConflicts.has(r.key);
-                  const duplicateStudent = duplicateRowKeys.has(r.key);
-                  const result = splitResults?.find((sr) => sr.studentId === r.studentId);
-                  return (
-                    <tr key={r.key} className="border-b border-da-border">
-                      <td className="px-4 py-2">
-                        <input
-                          value={r.label}
-                          onChange={(e) => updateRow(r.key, { label: e.target.value })}
-                          disabled={!!splitResults}
-                          className="w-40 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover"
-                        />
-                        {r.note && <p className="mt-0.5 text-xs text-da-muted">{r.note}</p>}
-                      </td>
-                      <td className="px-2 py-2">
-                        <input
-                          value={formatPageList(r.pages)}
-                          onChange={(e) => updateRow(r.key, { pages: parsePageList(e.target.value) })}
-                          disabled={!!splitResults}
-                          placeholder="e.g. 1-8"
-                          className={`w-28 rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover ${
-                            conflicted ? "border-red-400" : "border-da-border"
-                          }`}
-                        />
-                      </td>
-                      <td className="px-2 py-2">
-                        <select
-                          value={r.studentId}
-                          onChange={(e) => updateRow(r.key, { studentId: e.target.value })}
-                          disabled={!!splitResults}
-                          className={`rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover ${
-                            duplicateStudent ? "border-red-400" : "border-da-border"
-                          }`}
-                        >
-                          <option value="">— pick a student —</option>
-                          {students.map((s) => (
-                            <option key={s.profile_id} value={s.profile_id}>
-                              {s.display_name}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-2 py-2">
-                        <span
-                          className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
-                        >
-                          {r.confidence}
-                        </span>
-                      </td>
-                      <td className="px-2 py-2">
-                        {result ? (
-                          result.status === "complete" ? (
-                            <span className="text-xs text-green-300">
-                              graded {result.suggestedTotal}/{result.maxTotal}
-                              {typeof result.testTotalMarks === "number" &&
-                                result.testTotalMarks !== result.maxTotal &&
-                                ` of ${result.testTotalMarks} total`}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-red-300" title={result.error}>
-                              failed
-                            </span>
-                          )
-                        ) : splitResults ? (
-                          // Present once grading has started but this row
-                          // never got to it -- either still queued behind
-                          // others, or skipped by a Stop click.
-                          <span className="text-xs text-da-muted">not started</span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => removeRow(r.key)}
-                            className="text-xs text-red-400 hover:text-red-200"
-                          >
-                            Remove
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {!splitResults && (
-            <div className="border-t border-da-border px-5 py-3">
-              <button type="button" onClick={addRow} className="text-sm text-purple-300 hover:underline">
-                + Add a student row (for a page the model missed)
-              </button>
-            </div>
-          )}
-
-          {splitResults && (
-            <div className="border-t border-da-border px-5 py-3 text-sm text-da-muted">
-              Graded scripts are staged for review. Switch to the{" "}
-              <span className="font-semibold">Individual</span> tab and open each student&apos;s
-              &quot;Review →&quot; to check and accept their marks.
-            </div>
-          )}
-        </section>
+              </div>
+            );
+          })}
+        </div>
       )}
-    </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
+              <th className="px-4 py-2 font-semibold">Name on cover page</th>
+              <th className="px-2 py-2 font-semibold">Pages</th>
+              <th className="px-2 py-2 font-semibold">Matched student</th>
+              <th className="px-2 py-2 font-semibold">Confidence</th>
+              <th className="px-2 py-2 font-semibold" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const conflicted = rowsWithConflicts.has(r.key);
+              const duplicateStudent = duplicateRowKeys.has(r.key);
+              const result = splitResults?.find((sr) => sr.studentId === r.studentId);
+              return (
+                <tr key={r.key} className="border-b border-da-border">
+                  <td className="px-4 py-2">
+                    <input
+                      value={r.label}
+                      onChange={(e) => updateRow(r.key, { label: e.target.value })}
+                      disabled={!!splitResults}
+                      className="w-40 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover"
+                    />
+                    {r.note && <p className="mt-0.5 text-xs text-da-muted">{r.note}</p>}
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      value={formatPageList(r.pages)}
+                      onChange={(e) => updateRow(r.key, { pages: parsePageList(e.target.value) })}
+                      disabled={!!splitResults}
+                      placeholder="e.g. 1-8"
+                      className={`w-28 rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover ${
+                        conflicted ? "border-red-400" : "border-da-border"
+                      }`}
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <select
+                      value={r.studentId}
+                      onChange={(e) => updateRow(r.key, { studentId: e.target.value })}
+                      disabled={!!splitResults}
+                      className={`rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover ${
+                        duplicateStudent ? "border-red-400" : "border-da-border"
+                      }`}
+                    >
+                      <option value="">— pick a student —</option>
+                      {students.map((s) => (
+                        <option key={s.profile_id} value={s.profile_id}>
+                          {s.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-2 py-2">
+                    <span
+                      className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
+                    >
+                      {r.confidence}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2">
+                    {result ? (
+                      result.status === "complete" ? (
+                        <span className="text-xs text-green-300">
+                          graded {result.suggestedTotal}/{result.maxTotal}
+                          {typeof result.testTotalMarks === "number" &&
+                            result.testTotalMarks !== result.maxTotal &&
+                            ` of ${result.testTotalMarks} total`}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-red-300" title={result.error}>
+                          failed
+                        </span>
+                      )
+                    ) : splitResults ? (
+                      // Present once grading has started but this row
+                      // never got to it -- either still queued behind
+                      // others, or skipped by a Stop click.
+                      <span className="text-xs text-da-muted">not started</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => removeRow(r.key)}
+                        className="text-xs text-red-400 hover:text-red-200"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {!splitResults && (
+        <div className="border-t border-da-border px-5 py-3">
+          <button type="button" onClick={addRow} className="text-sm text-purple-300 hover:underline">
+            + Add a student row (for a page the model missed)
+          </button>
+        </div>
+      )}
+
+      {splitResults && (
+        <div className="border-t border-da-border px-5 py-3 text-sm text-da-muted">
+          Graded scripts are staged for review. Switch to the{" "}
+          <span className="font-semibold">Individual</span> tab and open each student&apos;s
+          &quot;Review →&quot; to check and accept their marks.
+        </div>
+      )}
+    </section>
   );
 }
