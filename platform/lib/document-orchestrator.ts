@@ -140,6 +140,21 @@ function renderAnswerBox(lines: number, lineHeightMm: number): string {
     <div class="answer-box continuation-box">${answerLinesHtml(remainingLines, lineHeightMm)}</div>`;
 }
 
+/**
+ * Formative Assessment: a labeled "Working / reasoning" box (for shown
+ * method/steps) followed by a short single "Answer" line — distinct from
+ * `renderAnswerBox()`'s single answer space, for a question whose command
+ * term (solve/show/hence/determine) requires visible working to be marked,
+ * not just a final value.
+ */
+function renderWorkingAndAnswerBox(lines: number, lineHeightMm: number): string {
+  const workingLines = Math.max(MIN_USEFUL_LINES, lines);
+  return `
+    <div class="working-box-label">Working / reasoning</div>
+    ${renderAnswerBox(workingLines, lineHeightMm)}
+    <div class="answer-line-row"><span class="answer-line-label">Answer</span><span class="answer-line-rule"></span></div>`;
+}
+
 // -- Tier badge ----------------------------------------------------------------
 
 function tierBadge(tier?: 1 | 2 | 3): string {
@@ -158,8 +173,15 @@ function tierBadge(tier?: 1 | 2 | 3): string {
 type QuestionWithExtras = ValidatedAssignmentPdfRequest["sections"][number]["questions"][number] & {
   tier?: 1 | 2 | 3;
   hint?: string;
-  subparts?: Array<{ prompt: string; marks?: number; tier?: 1 | 2 | 3; hint?: string }>;
+  subparts?: Array<{
+    prompt: string;
+    marks?: number;
+    tier?: 1 | 2 | 3;
+    hint?: string;
+    requiresWorking?: boolean;
+  }>;
   answerBoxLines?: number;
+  requiresWorking?: boolean;
 };
 
 function renderQuestion(
@@ -186,17 +208,25 @@ function renderQuestion(
             ? `<span class="marks">[${sp.marks}]</span>` : "";
           const spTier = sp.tier ? tierBadge(sp.tier) : "";
           const spHint = sp.hint ? `<div class="hint"><em>Hint: ${escapeHtml(sp.hint)}</em></div>` : "";
+          const spAnswerLines = Math.max(MIN_USEFUL_LINES, Math.ceil(answerLines / 2));
+          const spAnswerHtml = sp.requiresWorking
+            ? renderWorkingAndAnswerBox(spAnswerLines, formatting.answerLineHeightMm)
+            : renderAnswerBox(spAnswerLines, formatting.answerLineHeightMm);
           return `
             <div class="subpart">
               <span class="subpart-label">(${spLabel})</span>
               <div><span class="q-text">${renderMath(escapeHtml(sp.prompt))}</span>${spTier}${spHint}</div>
               ${spMarks}
             </div>
-            ${renderAnswerBox(Math.max(MIN_USEFUL_LINES, Math.ceil(answerLines / 2)), formatting.answerLineHeightMm)}`;
+            ${spAnswerHtml}`;
         }).join("")
       : "";
 
-  const mainAnswerBox = !subpartsHtml ? renderAnswerBox(answerLines, formatting.answerLineHeightMm) : "";
+  const mainAnswerBox = !subpartsHtml
+    ? question.requiresWorking
+      ? renderWorkingAndAnswerBox(answerLines, formatting.answerLineHeightMm)
+      : renderAnswerBox(answerLines, formatting.answerLineHeightMm)
+    : "";
 
   // Rule 2 — if the prompt + a *minimum useful* answer box can't both fit on
   // a fresh page either (vanishingly rare, but possible with very long
@@ -282,6 +312,21 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       margin-top: 4px;
     }
     .meta-row strong { display: inline; }
+
+    /* -- Section Scores summary box (Formative Assessment) -- */
+    .score-summary-table {
+      margin: 8px 0 4px auto;
+      border-collapse: collapse;
+      font-size: 9.5pt;
+      min-width: 220px;
+    }
+    .score-summary-table td {
+      border: 0.5pt solid #d1d5db;
+      padding: 3px 10px;
+    }
+    .score-summary-table td:first-child { text-align: left; }
+    .score-summary-table td:last-child { text-align: right; width: 60px; }
+    .score-summary-total td { font-weight: 700; background: #f3f4f6; }
 
     /* -- Command terms tear-off strip -- */
     .ct-wrap {
@@ -413,6 +458,17 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       /* Rule: section titles should not appear alone at the bottom of a page */
       break-after: avoid;
       page-break-after: avoid;
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .section-banner-meta {
+      font-family: system-ui, sans-serif;
+      font-size: 9pt;
+      font-weight: 400;
+      color: #555;
+      white-space: nowrap;
     }
 
     /* -- Prerequisite box -- */
@@ -524,6 +580,39 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     }
     .tier-badge { font-family: serif; }
 
+    /* -- Working / reasoning box + separate Answer line (Formative Assessment) -- */
+    .working-box-label {
+      font-family: system-ui, sans-serif;
+      font-size: 8.5pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #374151;
+      background: #f3f4f6;
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px 3px 0 0;
+      margin: 6px 0 -1px 0;
+    }
+    .answer-line-row {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin: 6px 0 10px 0;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .answer-line-label {
+      font-weight: 600;
+      font-size: 9.5pt;
+      white-space: nowrap;
+    }
+    .answer-line-rule {
+      flex: 1;
+      border-bottom: 1pt solid #333;
+      height: 1em;
+    }
+
     /* -- Translation table -- */
     .translation-table {
       width: 100%;
@@ -615,6 +704,18 @@ function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string
       margin-top: 4px; font-size: 9.5pt; }
     .ms-tier { font-size: 8pt; margin-left: 3px; }
     .ms-hint { font-size: 8.5pt; color: #6b7280; font-style: italic; margin-top: 2px; }
+    .ms-notes { background: #fff7ed; border-left: 3px solid #ea580c; padding: 4px 8px;
+      margin-top: 4px; font-size: 9.5pt; }
+    .ms-principles { margin-bottom: 16px; }
+    .ms-principles h3 { font-size: 11pt; font-weight: 700; margin-bottom: 6px; }
+    .ms-principles ol { margin-left: 18px; font-size: 9.5pt; }
+    .ms-principles li { margin-bottom: 3px; }
+    .ms-bands, .ms-reteach { margin-top: 20px; break-inside: avoid; page-break-inside: avoid; }
+    .ms-bands h3, .ms-reteach h3 { font-size: 11pt; font-weight: 700; margin-bottom: 6px; }
+    .ms-bands-table, .ms-reteach-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+    .ms-bands-table th, .ms-bands-table td,
+    .ms-reteach-table td { border: 0.5pt solid #d1d5db; padding: 4px 8px; text-align: left; vertical-align: top; }
+    .ms-bands-table th { background: #f5f3ff; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; }
     .katex { font-size: 1em; }
     .katex-display { margin: 4px 0; }
   `;
@@ -656,6 +757,7 @@ type NuancedDraftExtras = {
   materials?: string;
   atl?: string;
   compulsoryCore?: string;
+  showSectionScoreSummary?: boolean;
 };
 
 type ExtendedSection = ValidatedAssignmentPdfRequest["sections"][number] & {
@@ -663,7 +765,24 @@ type ExtendedSection = ValidatedAssignmentPdfRequest["sections"][number] & {
   spotlight?: { title: string; body: string };
   translationTable?: { caption: string; rows: Array<{ informal: string; formal: string }> };
   geometricReading?: { body: string };
+  estimatedMinutes?: number;
 };
+
+/**
+ * A question's marks contribution to its section total: subparts' marks
+ * when present (they replace the parent's own mark value, same convention
+ * as lib/formative-assessment-bridge.ts), else the question's own marks.
+ */
+function questionMarksTotal(question: { marks?: number; subparts?: Array<{ marks?: number }> }): number {
+  if (Array.isArray(question.subparts) && question.subparts.length > 0) {
+    return question.subparts.reduce((sum, sp) => sum + (sp.marks ?? 0), 0);
+  }
+  return question.marks ?? 0;
+}
+
+function sectionMarksTotal(section: { questions: Array<{ marks?: number; subparts?: Array<{ marks?: number }> }> }): number {
+  return section.questions.reduce((sum, q) => sum + questionMarksTotal(q), 0);
+}
 
 function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number): string {
   const { title, subtitle, instructions, sections, formatting } = validated;
@@ -682,8 +801,27 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
       <span class="meta-line-rule"></span>
     </div>` : "";
 
-  const metaGridHtml = (nameLineHtml || dateLineHtml)
-    ? `<div class="meta-grid">${nameLineHtml}${dateLineHtml}</div>` : "";
+  const blockLineHtml = formatting.includeBlockLine ? `
+    <div class="meta-field">
+      <strong>Block:</strong>
+      <span class="meta-line-rule"></span>
+    </div>` : "";
+
+  const metaGridHtml = (nameLineHtml || dateLineHtml || blockLineHtml)
+    ? `<div class="meta-grid">${nameLineHtml}${blockLineHtml}${dateLineHtml}</div>` : "";
+
+  // -- Section Scores summary box (Formative Assessment) --
+  const sectionScoreSummaryHtml = nd.showSectionScoreSummary
+    ? (() => {
+        const rows = sections.map((section) =>
+          `<tr><td>${escapeHtml(section.heading)}</td><td>/ ${sectionMarksTotal(section)}</td></tr>`
+        ).join("");
+        const total = sections.reduce((sum, section) => sum + sectionMarksTotal(section), 0);
+        return `<table class="score-summary-table">
+          <tbody>${rows}<tr class="score-summary-total"><td>TOTAL</td><td>/ ${total}</td></tr></tbody>
+        </table>`;
+      })()
+    : "";
 
   const extraMetaHtml = [
     nd.syllabusTopics ? `<div class="meta-row"><strong>Syllabus Topics:</strong> ${escapeHtml(nd.syllabusTopics)}</div>` : "",
@@ -786,8 +924,12 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
           <p style="margin-top:3px">${renderMath(escapeHtml(sec.geometricReading.body))}</p>
         </div>` : "";
 
+    const sectionBannerHtml = sec.estimatedMinutes != null
+      ? `<span class="section-banner-meta">Suggested time: ${sec.estimatedMinutes} min | ${sectionMarksTotal(sec)} marks</span>`
+      : "";
+
     return `${separatorHtml}<div class="assignment-section">
-      <div class="section-heading">${escapeHtml(section.heading)}</div>
+      <div class="section-heading"><span>${escapeHtml(section.heading)}</span>${sectionBannerHtml}</div>
       ${prereqHtml}${spotlightHtml}${questionBlocksHtml}${translationHtml}${geometricHtml}
     </div>`;
   }).join("");
@@ -822,6 +964,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
     <hr class="header-rule"/>
     ${metaGridHtml}
     ${extraMetaHtml}
+    ${sectionScoreSummaryHtml}
   </div>
 
   ${commandTermsHtml}
@@ -847,16 +990,29 @@ export type MarkSchemeRequest = {
       answer?: string;
       tier?: 1 | 2 | 3;
       hint?: string;
-      subparts?: Array<{ prompt: string; marks?: number; answer?: string }>;
+      markScheme?: string;
+      subparts?: Array<{ prompt: string; marks?: number; answer?: string; markScheme?: string }>;
     }>;
   }>;
   formatting: ValidatedFormattingRequirements;
+  /** Formative Assessment: general marking rules, rendered as a numbered list above the questions. */
+  markingPrinciples?: string[];
+  /** Formative Assessment: Criterion-A-style achievement-band table, rendered after the questions. */
+  achievementBands?: Array<{ band: string; marksRange: string; description: string }>;
+  /** Formative Assessment: "if marks were lost here, reteach this" table, rendered last. */
+  reteachGuide?: Array<{ questions: string; topic: string }>;
 };
 
 export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
-  const { title, subtitle, sections, formatting } = req;
+  const { title, subtitle, sections, formatting, markingPrinciples, achievementBands, reteachGuide } = req;
   const tierLabel: Record<number, string> = { 1: "★", 2: "★★", 3: "★★★" };
   let globalQ = 0;
+
+  const markingPrinciplesHtml = Array.isArray(markingPrinciples) && markingPrinciples.length > 0
+    ? `<div class="ms-principles">
+        <h3>Marking Principles</h3>
+        <ol>${markingPrinciples.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ol>
+      </div>` : "";
 
   const sectionsHtml = sections.map((section) => {
     const questionsHtml = section.questions.map((q) => {
@@ -867,24 +1023,49 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
       const promptHtml = `<div>${renderMath(escapeHtml(q.prompt))}</div>`;
       const answerHtml = q.answer
         ? `<div class="ms-answer">${renderMath(escapeHtml(q.answer))}</div>` : "";
+      const markSchemeHtml = q.markScheme
+        ? `<div class="ms-notes">${renderMath(escapeHtml(q.markScheme))}</div>` : "";
       const hintHtml = q.hint ? `<div class="ms-hint">Hint: ${escapeHtml(q.hint)}</div>` : "";
       const subpartsHtml = Array.isArray(q.subparts) && q.subparts.length > 0
         ? q.subparts.map((sp, spIdx) => {
             const spLabel = `${label}(${String.fromCharCode(97 + spIdx)})`;
+            const spAnswerHtml = sp.answer ? `<div class="ms-answer">${renderMath(escapeHtml(sp.answer))}</div>` : "";
+            const spNotesHtml = sp.markScheme ? `<div class="ms-notes">${renderMath(escapeHtml(sp.markScheme))}</div>` : "";
             return `<div class="ms-row" style="margin-left:24px">
               <span class="ms-label">${spLabel}</span>
-              <div>${renderMath(escapeHtml(sp.prompt))}${sp.answer ? `<div class="ms-answer">${renderMath(escapeHtml(sp.answer))}</div>` : ""}</div>
+              <div>${renderMath(escapeHtml(sp.prompt))}${spAnswerHtml}${spNotesHtml}</div>
               <span class="ms-marks">[${sp.marks ?? 0}M]</span>
             </div>`;
           }).join("") : "";
       return `<div class="ms-row">
         <span class="ms-label">${label}.${tier}</span>
-        <div class="ms-content">${promptHtml}${answerHtml}${hintHtml}</div>
+        <div class="ms-content">${promptHtml}${answerHtml}${markSchemeHtml}${hintHtml}</div>
         ${marksHtml}
       </div>${subpartsHtml}`;
     }).join("");
     return `<div class="ms-section"><h3>${escapeHtml(section.heading)}</h3>${questionsHtml}</div>`;
   }).join("");
+
+  const achievementBandsHtml = Array.isArray(achievementBands) && achievementBands.length > 0
+    ? `<div class="ms-bands">
+        <h3>Achievement Bands</h3>
+        <table class="ms-bands-table">
+          <thead><tr><th>Band</th><th>Marks</th><th>What the work looks like</th></tr></thead>
+          <tbody>${achievementBands.map((b) =>
+            `<tr><td>${escapeHtml(b.band)}</td><td>${escapeHtml(b.marksRange)}</td><td>${escapeHtml(b.description)}</td></tr>`
+          ).join("")}</tbody>
+        </table>
+      </div>` : "";
+
+  const reteachGuideHtml = Array.isArray(reteachGuide) && reteachGuide.length > 0
+    ? `<div class="ms-reteach">
+        <h3>If marks were lost here, reteach this</h3>
+        <table class="ms-reteach-table">
+          <tbody>${reteachGuide.map((r) =>
+            `<tr><td>${escapeHtml(r.questions)}</td><td>${escapeHtml(r.topic)}</td></tr>`
+          ).join("")}</tbody>
+        </table>
+      </div>` : "";
 
   return `<!doctype html>
 <html lang="en">
@@ -894,7 +1075,10 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
   <h1>${escapeHtml(title)}</h1>
   <h2>${escapeHtml(subtitle ?? "Mark Scheme")}</h2>
   <div class="ms-banner">⚠ Teacher Copy — Mark Scheme — Not for Distribution</div>
+  ${markingPrinciplesHtml}
   ${sectionsHtml}
+  ${achievementBandsHtml}
+  ${reteachGuideHtml}
 </body></html>`;
 }
 

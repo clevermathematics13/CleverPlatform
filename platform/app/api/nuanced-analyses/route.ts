@@ -29,6 +29,7 @@ import {
   normalizeDigest,
   type PacketDigest,
 } from "@/lib/na-continuity";
+import { syncRubricItems, type RubricSyncResult } from "@/lib/na-rubric-bridge";
 import type { AssignmentDraft } from "@/lib/assignments";
 
 export const runtime = "nodejs";
@@ -75,6 +76,15 @@ function slugify(input: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+/** Flattens a RubricSyncResult into the small status shape the save response reports. */
+function rubricStatus(
+  result: RubricSyncResult,
+): { status: "synced"; synced: number; skipped: number } | { status: "failed"; error: string } {
+  return result.ok
+    ? { status: "synced", synced: result.synced, skipped: result.skipped }
+    : { status: "failed", error: result.error };
 }
 
 export async function GET(req: Request) {
@@ -225,22 +235,40 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: saveError.message }, { status: 500 });
   }
 
+  // -- Sync the rubric (answer key) --------------------------------------
+  // Also reported separately rather than rolled back, for the same reason as
+  // continuity below: a rubric-sync failure must not cost the teacher the
+  // packet they just saved. See lib/na-rubric-bridge.ts — this is what makes
+  // a freshly saved packet gradeable without hand-written SQL.
+  const rubricResult = await syncRubricItems(supabase, saved.id, draft.sections);
+
   // -- Commit continuity ------------------------------------------------
   // Reported separately rather than rolled back: the packet is saved and the
   // teacher should not lose it because the continuity write failed. The
   // response makes the partial state explicit so the UI can offer a retry.
 
   if (!commitContinuity || !digest) {
-    return NextResponse.json({ packet: saved, continuity: "skipped" }, { status: 200 });
+    return NextResponse.json(
+      { packet: saved, continuity: "skipped", rubric: rubricStatus(rubricResult) },
+      { status: 200 },
+    );
   }
 
   const result = await appendPacketDigest(supabase, courseId, digest);
   if (!result.ok) {
     return NextResponse.json(
-      { packet: saved, continuity: "failed", continuityError: result.error },
+      {
+        packet: saved,
+        continuity: "failed",
+        continuityError: result.error,
+        rubric: rubricStatus(rubricResult),
+      },
       { status: 207 },
     );
   }
 
-  return NextResponse.json({ packet: saved, continuity: "committed" }, { status: 200 });
+  return NextResponse.json(
+    { packet: saved, continuity: "committed", rubric: rubricStatus(rubricResult) },
+    { status: 200 },
+  );
 }

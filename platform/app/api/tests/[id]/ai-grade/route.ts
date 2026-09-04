@@ -16,6 +16,8 @@ import {
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
   gradeNeedsReview,
+  INVITED_SUBJECT_PREFIX,
+  parseGradingSubject,
   unitLabel,
   validateGradeResponse,
 } from "@/lib/ai-grading";
@@ -176,15 +178,30 @@ export async function GET(
 
   let query = supabase
     .from("ai_grade_runs")
-    .select("id, test_id, student_id, status, model, source_storage_path, coverage, error, created_at, completed_at")
+    .select(
+      "id, test_id, student_id, invited_student_id, status, model, source_storage_path, coverage, error, created_at, completed_at"
+    )
     .eq("test_id", testId)
     .order("created_at", { ascending: false });
 
-  if (studentId) query = query.eq("student_id", studentId);
+  if (studentId) {
+    const subject = parseGradingSubject(studentId);
+    query =
+      subject.kind === "invited"
+        ? query.eq("invited_student_id", subject.id)
+        : query.eq("student_id", subject.id);
+  }
 
-  const { data: runs, error } = await query.limit(studentId ? 5 : 100);
+  const { data: rawRuns, error } = await query.limit(studentId ? 5 : 100);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!runs || runs.length === 0) return NextResponse.json({ runs: [], results: [] });
+  // Collapse student_id/invited_student_id back into the one opaque subject
+  // id every caller already keys its state by (see parseGradingSubject) —
+  // the review UI never needs to know which column a run's identity lives in.
+  const runs = (rawRuns ?? []).map((r) => ({
+    ...r,
+    student_id: r.student_id ?? (r.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${r.invited_student_id}` : null),
+  }));
+  if (runs.length === 0) return NextResponse.json({ runs: [], results: [] });
 
   const { data: results, error: rErr } = await supabase
     .from("ai_grade_results")
@@ -314,11 +331,23 @@ export async function POST(
   if (testErr) return NextResponse.json({ error: testErr.message }, { status: 500 });
   if (!test) return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
 
-  const { data: studentProfile } = await supabase
-    .from("profiles")
-    .select("display_name")
-    .eq("id", studentId)
-    .maybeSingle();
+  const subject = parseGradingSubject(studentId);
+  let studentDisplayName: string | undefined;
+  if (subject.kind === "profile") {
+    const { data: studentProfile } = await supabase
+      .from("profiles")
+      .select("display_name")
+      .eq("id", subject.id)
+      .maybeSingle();
+    studentDisplayName = studentProfile?.display_name ?? undefined;
+  } else {
+    const { data: invited } = await supabase
+      .from("invited_students")
+      .select("full_name, nickname")
+      .eq("id", subject.id)
+      .maybeSingle();
+    studentDisplayName = invited?.nickname || invited?.full_name || undefined;
+  }
 
   // -- Mark scheme assembly --------------------------------------------------
   let units: GradingUnit[];
@@ -392,15 +421,18 @@ export async function POST(
 
     scanBase64 = buffer.toString("base64");
   } else if (body.reuseExistingScan === true) {
-    const { data: priorRun } = await supabase
+    let priorRunQuery = supabase
       .from("ai_grade_runs")
       .select("source_storage_path")
       .eq("test_id", testId)
-      .eq("student_id", studentId)
       .not("source_storage_path", "is", null)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    priorRunQuery =
+      subject.kind === "invited"
+        ? priorRunQuery.eq("invited_student_id", subject.id)
+        : priorRunQuery.eq("student_id", subject.id);
+    const { data: priorRun } = await priorRunQuery.maybeSingle();
 
     if (!priorRun?.source_storage_path) {
       return NextResponse.json(
@@ -433,7 +465,8 @@ export async function POST(
     .from("ai_grade_runs")
     .insert({
       test_id: testId,
-      student_id: studentId,
+      student_id: subject.kind === "profile" ? subject.id : null,
+      invited_student_id: subject.kind === "invited" ? subject.id : null,
       created_by: user.id,
       status: "running",
       model: GRADING_MODEL,
@@ -502,7 +535,7 @@ export async function POST(
             },
             {
               type: "text",
-              text: buildGradingStudentPrompt(studentProfile?.display_name ?? undefined),
+              text: buildGradingStudentPrompt(studentDisplayName),
             },
           ],
         },
@@ -568,16 +601,19 @@ export async function POST(
   // COMPLETE run before this one, so a failed attempt in between is ignored.
   const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
   {
-    const { data: priorRun } = await supabase
+    let priorCompleteQuery = supabase
       .from("ai_grade_runs")
       .select("id")
       .eq("test_id", testId)
-      .eq("student_id", studentId)
       .eq("status", "complete")
       .neq("id", run.id)
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    priorCompleteQuery =
+      subject.kind === "invited"
+        ? priorCompleteQuery.eq("invited_student_id", subject.id)
+        : priorCompleteQuery.eq("student_id", subject.id);
+    const { data: priorRun } = await priorCompleteQuery.maybeSingle();
     if (priorRun) {
       const { data: priorRows } = await supabase
         .from("ai_grade_results")

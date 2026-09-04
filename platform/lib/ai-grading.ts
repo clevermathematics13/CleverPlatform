@@ -45,6 +45,7 @@ export type MarkschemeSource =
   | "part_text"
   | "whole_question"
   | "draft"
+  | "custom"
   | "none";
 
 export type Confidence = "high" | "medium" | "low";
@@ -80,6 +81,16 @@ export interface GradingUnit {
  */
 export function isAaHlPaper2(u: Pick<GradingUnit, "curriculum" | "level" | "paper">): boolean {
   return u.curriculum.includes("AA") && u.level === "AHL" && u.paper === 2;
+}
+
+/**
+ * Whether a unit's content was authored directly on the test_items row
+ * (Formative Assessment creator) rather than resolved from the IB question
+ * bank — see assembleMarkScheme()'s `source = 'custom'` branch. Scope of
+ * grading_policies/g9_formative_assessment_marking_principles.md.
+ */
+export function isCustomAssessment(u: Pick<GradingUnit, "markschemeSource">): boolean {
+  return u.markschemeSource === "custom";
 }
 
 /** Human-readable label, e.g. "3(b)(ii)" or "5". */
@@ -549,9 +560,12 @@ interface TestItemRow {
   question_number: number;
   part_label: string | null;
   max_marks: number;
-  ib_question_code: string;
+  ib_question_code: string | null;
   subtopic_codes: string[] | null;
   sort_order: number;
+  question_text: string | null;
+  markscheme_text: string | null;
+  source: string;
 }
 
 interface QuestionRow {
@@ -603,7 +617,9 @@ export async function assembleMarkScheme(
 
   const { data: itemRows, error: itemsError } = await supabase
     .from("test_items")
-    .select("id, question_number, part_label, max_marks, ib_question_code, subtopic_codes, sort_order")
+    .select(
+      "id, question_number, part_label, max_marks, ib_question_code, subtopic_codes, sort_order, question_text, markscheme_text, source"
+    )
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
 
@@ -643,7 +659,34 @@ export async function assembleMarkScheme(
   }
 
   const units: GradingUnit[] = items.map((item) => {
-    const question = questionByCode.get(item.ib_question_code);
+    const label = `${item.question_number}${item.part_label ? `(${item.part_label})` : ""}`;
+
+    // Custom (non-IB-bank) item, authored inline via the Formative
+    // Assessment creator (lib/formative-assessment-bridge.ts). Build the
+    // unit straight from the row's own text — there is nothing to join
+    // against ib_questions/question_parts for these.
+    if (item.source === "custom") {
+      if (!item.markscheme_text?.trim()) {
+        warnings.push(`${label}: no mark scheme text stored on this item — cannot be graded.`);
+      }
+      return {
+        testItemId: item.id,
+        questionNumber: item.question_number,
+        partLabel: item.part_label ?? "",
+        maxMarks: item.max_marks,
+        questionCode: "",
+        questionLatex: item.question_text ?? "",
+        markscheme: item.markscheme_text?.trim() ?? "",
+        markschemeSource: (item.markscheme_text?.trim() ? "custom" : "none") as MarkschemeSource,
+        commandTerms: [],
+        subtopicCodes: item.subtopic_codes ?? [],
+        curriculum: [],
+        level: null,
+        paper: null,
+      };
+    }
+
+    const question = item.ib_question_code ? questionByCode.get(item.ib_question_code) : undefined;
     const questionParts = question ? partsByQuestion.get(question.id) ?? [] : [];
 
     const wanted = normalisePartLabel(item.part_label);
@@ -683,7 +726,6 @@ export async function assembleMarkScheme(
         ? [matched.command_term]
         : [];
 
-    const label = `${item.question_number}${item.part_label ? `(${item.part_label})` : ""}`;
     if (!question) {
       warnings.push(
         `${label}: question ${item.ib_question_code} is not in the PPQ bank — cannot be graded.`
@@ -703,7 +745,7 @@ export async function assembleMarkScheme(
       questionNumber: item.question_number,
       partLabel: item.part_label ?? "",
       maxMarks: item.max_marks,
-      questionCode: item.ib_question_code,
+      questionCode: item.ib_question_code ?? "",
       questionLatex,
       markscheme,
       markschemeSource,
@@ -746,7 +788,7 @@ async function assembleQuestionBankImages(
     .eq("test_id", testId);
   if (itemsError) throw new Error(`Failed to load test items: ${itemsError.message}`);
 
-  const items = (itemRows ?? []) as { id: string; part_label: string | null; ib_question_code: string }[];
+  const items = (itemRows ?? []) as { id: string; part_label: string | null; ib_question_code: string | null }[];
   if (items.length === 0) return [];
 
   const codes = [...new Set(items.map((i) => i.ib_question_code).filter(Boolean))];
@@ -798,7 +840,7 @@ async function assembleQuestionBankImages(
 
   const result: MarkschemeImageRef[] = [];
   for (const item of items) {
-    const question = questionByCode.get(item.ib_question_code);
+    const question = item.ib_question_code ? questionByCode.get(item.ib_question_code) : undefined;
     if (!question) continue;
     const questionImages = imagesByQuestion.get(question.id) ?? [];
     if (questionImages.length === 0) continue;
@@ -1017,18 +1059,39 @@ function loadAaHlPaper2Policy(): string {
 
 export const AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY = loadAaHlPaper2Policy();
 
+const G9_FORMATIVE_ASSESSMENT_POLICY_PATH = path.join(
+  process.cwd(),
+  "grading_policies",
+  "g9_formative_assessment_marking_principles.md"
+);
+
+function loadG9FormativeAssessmentPolicy(): string {
+  try {
+    return fs.readFileSync(G9_FORMATIVE_ASSESSMENT_POLICY_PATH, "utf8");
+  } catch (e) {
+    throw new Error(
+      `Could not load the Formative Assessment marking principles from ${G9_FORMATIVE_ASSESSMENT_POLICY_PATH}: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  }
+}
+
+export const G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES = loadG9FormativeAssessmentPolicy();
+
 /**
  * The system prompt for a specific grading call: the universal marking
- * rules, plus grading_policies/ibdp_math_aa_hl_paper_2_numerical_accuracy.md
- * appended whenever at least one unit being graded is IBDP Mathematics: AA
- * HL Paper 2 (see isAaHlPaper2). Every route that calls the grading model
- * builds its system prompt through this function rather than using
- * GRADING_SYSTEM_PROMPT directly, so the policy can't be wired into one
- * grading path and silently missed by another.
+ * rules, plus any policy document whose scope applies to at least one unit
+ * being graded. Every route that calls the grading model builds its system
+ * prompt through this function rather than using GRADING_SYSTEM_PROMPT
+ * directly, so a policy can't be wired into one grading path and silently
+ * missed by another.
  */
 export function buildGradingSystemPrompt(units: GradingUnit[]): string {
-  if (!units.some(isAaHlPaper2)) return GRADING_SYSTEM_PROMPT;
-  return `${GRADING_SYSTEM_PROMPT}
+  let prompt = GRADING_SYSTEM_PROMPT;
+
+  if (units.some(isAaHlPaper2)) {
+    prompt += `
 
 ===============================================================================
 ADDITIONAL POLICY -- IBDP Mathematics: Analysis and Approaches HL Paper 2
@@ -1036,6 +1099,20 @@ Numerical Accuracy (applies to this assessment)
 ===============================================================================
 
 ${AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY}`;
+  }
+
+  if (units.some(isCustomAssessment)) {
+    prompt += `
+
+===============================================================================
+ADDITIONAL POLICY -- Formative Assessment Marking Principles
+(applies to this assessment's custom-authored parts)
+===============================================================================
+
+${G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES}`;
+  }
+
+  return prompt;
 }
 
 /**
@@ -1285,6 +1362,28 @@ export function validateSegmentationResponse(
 export interface RosterEntry {
   profileId: string;
   displayName: string;
+}
+
+/**
+ * Every AI-grade endpoint's "studentId" is an opaque subject id in one of two
+ * forms: a real `profiles.id` (the historical case, and still what most
+ * graded students are), or the composite form `"invited-<invited_students.id>"`
+ * for a roster entry that has been imported (e.g. via Google Classroom import
+ * or a manual invite) but has never logged in, so has no profiles row yet.
+ * This mirrors the NA scanning pipeline's invited_students-first identity
+ * model (lib/na-scanning.ts, na_packet_scans.invited_student_id) rather than
+ * requiring every student to sign in before their work can be graded — see
+ * ai_grade_runs.invited_student_id.
+ */
+export const INVITED_SUBJECT_PREFIX = "invited-";
+
+export type GradingSubject = { kind: "profile"; id: string } | { kind: "invited"; id: string };
+
+export function parseGradingSubject(studentId: string): GradingSubject {
+  if (studentId.startsWith(INVITED_SUBJECT_PREFIX)) {
+    return { kind: "invited", id: studentId.slice(INVITED_SUBJECT_PREFIX.length) };
+  }
+  return { kind: "profile", id: studentId };
 }
 
 /**

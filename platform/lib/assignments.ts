@@ -17,6 +17,11 @@ export type FormattingRequirements = {
   numberingStyle: "numeric" | "lettered";
   answerBoxLines?: number;
   answerStyle?: "boxes" | "lines" | "none";
+  /**
+   * Formative Assessment title page: a write-in line for the student's
+   * class/block, alongside the existing name/date lines.
+   */
+  includeBlockLine?: boolean;
 };
 
 export type AssignmentInput = {
@@ -49,13 +54,31 @@ export type AssignmentQuestion = {
    * E.g. "Proof by mathematical induction"
    */
   skillTag?: string;
+  /**
+   * Formative Assessment mark scheme: free-text, M/A/R/FT-coded marking
+   * notes for this question (e.g. "M1 for a correct substitution shown; A1
+   * for the correct value"). This is exactly the shape
+   * `GradingUnit.markscheme: string` in lib/ai-grading.ts already expects,
+   * so authoring it here makes a saved question gradeable with no
+   * translation step — see lib/formative-assessment-bridge.ts.
+   */
+  markScheme?: string;
+  /**
+   * Formative Assessment: render a labeled "Working / reasoning" box before
+   * the answer line, for a question whose command term (solve/show/hence/
+   * determine) requires visible working, not just a final answer.
+   */
+  requiresWorking?: boolean;
   subparts?: Array<{
     prompt: string;
     marks?: number;
+    answer?: string;
     hint?: string;
     tier?: 1 | 2 | 3;
     contentTag?: string;
     skillTag?: string;
+    markScheme?: string;
+    requiresWorking?: boolean;
   }>;
   answerBoxLines?: number;
 };
@@ -77,7 +100,16 @@ export type AssignmentSection = {
   spotlight?: SpotlightBox;
   translationTable?: TranslationTable;
   geometricReading?: GeometricReading;
+  /** Formative Assessment: shown in the section banner, e.g. "Suggested time: 10 min". */
+  estimatedMinutes?: number;
 };
+
+// ---- Formative Assessment enrichments ----
+
+/** One row of a Criterion-A-style achievement-band table, e.g. "7-8: 42-50 marks: ...". */
+export type AchievementBand = { band: string; marksRange: string; description: string };
+/** One row of a "if marks were lost here, reteach this" table. */
+export type ReteachGuideEntry = { questions: string; topic: string };
 
 export type AssignmentDraft = {
   title: string;
@@ -95,6 +127,14 @@ export type AssignmentDraft = {
   compulsoryCore?: string;
   plantedErrorIntro?: string;
   reflectionQuestions?: string[];
+  /** Formative Assessment: general marking rules, e.g. "Accept equivalent correct forms". */
+  markingPrinciples?: string[];
+  /** Formative Assessment: mark-scheme-PDF-only achievement-band table. */
+  achievementBands?: AchievementBand[];
+  /** Formative Assessment: mark-scheme-PDF-only "if marks were lost here, reteach this" table. */
+  reteachGuide?: ReteachGuideEntry[];
+  /** Formative Assessment: render a per-section "Score: ___/N" summary box on the title page. */
+  showSectionScoreSummary?: boolean;
 };
 
 export type ClaudeTextBlock = { type: string; text?: string };
@@ -397,6 +437,8 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
                   ...(question.hint ? { hint: question.hint } : {}),
                   ...(question.contentTag ? { contentTag: question.contentTag } : {}),
                   ...(question.skillTag ? { skillTag: question.skillTag } : {}),
+                  ...(question.markScheme ? { markScheme: question.markScheme } : {}),
+                  ...(question.requiresWorking !== undefined ? { requiresWorking: question.requiresWorking } : {}),
                   ...(Array.isArray(question.subparts) ? { subparts: question.subparts } : {}),
                   ...(question.answerBoxLines !== undefined ? { answerBoxLines: question.answerBoxLines } : {}),
                 }))
@@ -406,6 +448,7 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
           ...(section.spotlight ? { spotlight: section.spotlight } : {}),
           ...(section.translationTable ? { translationTable: section.translationTable } : {}),
           ...(section.geometricReading ? { geometricReading: section.geometricReading } : {}),
+          ...(section.estimatedMinutes !== undefined ? { estimatedMinutes: section.estimatedMinutes } : {}),
         }))
         .filter((section) => section.questions.length > 0)
     : [];
@@ -439,6 +482,18 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
     ...(draft.plantedErrorIntro ? { plantedErrorIntro: draft.plantedErrorIntro } : {}),
     ...(Array.isArray(draft.reflectionQuestions) && draft.reflectionQuestions.length > 0
       ? { reflectionQuestions: draft.reflectionQuestions }
+      : {}),
+    ...(Array.isArray(draft.markingPrinciples) && draft.markingPrinciples.length > 0
+      ? { markingPrinciples: draft.markingPrinciples }
+      : {}),
+    ...(Array.isArray(draft.achievementBands) && draft.achievementBands.length > 0
+      ? { achievementBands: draft.achievementBands }
+      : {}),
+    ...(Array.isArray(draft.reteachGuide) && draft.reteachGuide.length > 0
+      ? { reteachGuide: draft.reteachGuide }
+      : {}),
+    ...(draft.showSectionScoreSummary !== undefined
+      ? { showSectionScoreSummary: draft.showSectionScoreSummary }
       : {}),
   };
 }

@@ -86,7 +86,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 |---|---|---|
 | `id` | uuid | default `gen_random_uuid()` |
 | `test_id` | uuid |  |
-| `student_id` | uuid |  |
+| `student_id` | uuid, nullable | FK profiles(id) — null for a run graded against an invited-only student; backfilled by `auto_enroll_from_invitations` on first login |
 | `created_by` | uuid |  |
 | `status` | text | default `'running'::text` |
 | `model` | text, nullable |  |
@@ -95,6 +95,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `error` | text, nullable |  |
 | `created_at` | timestamp with time zone | default `now()` |
 | `completed_at` | timestamp with time zone, nullable |  |
+| `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null — set for every run created via the batch/invited-roster flow, regardless of registration status |
 
 ### `ai_usage_log`
 
@@ -1246,7 +1247,7 @@ One row per uploaded scanned placement-test PDF. student_name is manually tagged
 | `id` | uuid | default `gen_random_uuid()` |
 | `test_id` | uuid |  |
 | `question_number` | integer |  |
-| `ib_question_code` | text |  |
+| `ib_question_code` | text, nullable |  |
 | `part_label` | text | default `''::text` |
 | `max_marks` | integer |  |
 | `subtopic_codes` | ARRAY, nullable | default `'{}'::text[]` |
@@ -1254,6 +1255,11 @@ One row per uploaded scanned placement-test PDF. student_name is manually tagged
 | `google_ms_id` | text, nullable |  |
 | `sort_order` | integer | default `0` |
 | `created_at` | timestamp with time zone | default `now()` |
+| `question_text` | text, nullable | inline teacher-authored question text, used when `source = 'custom'` |
+| `markscheme_text` | text, nullable | inline free-text mark scheme (M/A/R/FT-style), used when `source = 'custom'` |
+| `source` | text | default `'bank'::text` — `'bank'` (resolved via `ib_question_code`) or `'custom'` (inline content from the Formative Assessment creator) |
+
+Unique on `(test_id, question_number, part_label)`.
 
 ### `tests`
 
@@ -1271,6 +1277,7 @@ One row per uploaded scanned placement-test PDF. student_name is manually tagged
 | `hidden` | boolean | default `false` |
 | `boundary_set_id` | uuid, nullable |  |
 | `exam_time` | time without time zone, nullable |  |
+| `custom_content` | jsonb, nullable | full authored draft for a Formative-Assessment-creator test; null for IB-bank/external tests |
 | `release_at` | timestamp with time zone, nullable |  |
 
 ### `topics`

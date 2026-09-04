@@ -8,8 +8,9 @@ import { Grade12PdfSandbox } from "./grade12-pdf-sandbox";
 import { DPQuestionDesigner } from "./dp-question-designer";
 import { NuancedAnalysisSandbox } from "./nuanced-analysis-sandbox";
 import { NuancedAnalysisManage } from "./nuanced-analysis-manage";
+import { FormativeAssessmentSandbox } from "./formative-assessment-sandbox";
 
-type TabId = "dp-designer" | "nuanced-analysis" | "manage-nuanced-analysis" | "grade9" | "grade10" | "grade11" | "grade12";
+type TabId = "dp-designer" | "nuanced-analysis" | "manage-nuanced-analysis" | "formative-assessment" | "grade9" | "grade10" | "grade11" | "grade12";
 
 type TabOption = {
   id: TabId;
@@ -27,6 +28,7 @@ const TABS: TabOption[] = [
   { id: "dp-designer",               label: "DP Designer",             emoji: "🎓" },
   { id: "nuanced-analysis",          label: "Nuanced Analysis",         emoji: "🔬" },
   { id: "manage-nuanced-analysis",   label: "Manage Saved Packets",     emoji: "🗂️" },
+  { id: "formative-assessment",      label: "Formative Assessment",     emoji: "📝" },
   { id: "grade9",                    label: "Grade 9 (generic PDF)",    emoji: "9️⃣" },
   { id: "grade10",                   label: "Grade 10 (generic PDF)",   emoji: "🔟" },
   { id: "grade11",                   label: "Grade 11 (generic PDF)",   emoji: "11" },
@@ -65,6 +67,7 @@ export function AssignmentsClient() {
       {activeTab === "dp-designer"               && <DPQuestionDesigner />}
       {activeTab === "nuanced-analysis"          && <NuancedAnalysisSandbox />}
       {activeTab === "manage-nuanced-analysis"   && <NuancedAnalysisManage />}
+      {activeTab === "formative-assessment"      && <FormativeAssessmentSandbox />}
       {activeTab === "grade9"                    && <Grade9PdfSandbox />}
       {activeTab === "grade10"                   && <Grade10PdfSandbox />}
       {activeTab === "grade11"                   && <Grade11PdfSandbox />}
