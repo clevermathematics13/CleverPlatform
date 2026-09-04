@@ -129,15 +129,31 @@ async function writeResultsForBatch(
     })
   );
 
+  /** Updates by crop_id rather than looking the row up first. The
+   *  find-or-create this replaces used `.maybeSingle()`, which ERRORS when a
+   *  crop already has more than one row, and the error was destructured away
+   *  -- so it fell through to INSERT and added yet another duplicate,
+   *  compounding on every run. 60 such rows had accumulated across 28 crops
+   *  before this was found; na_feedback now has a UNIQUE constraint on
+   *  crop_id so it cannot happen again, and updating by crop_id means this
+   *  never attempts the insert that would trip it.
+   *
+   *  Write errors are logged rather than swallowed: a silently failed write
+   *  here loses a batch result that has already been paid for. */
   const upsertFeedback = async (cropId: string, fields: Record<string, unknown>) => {
-    const { data: existing } = await supabase.from("na_feedback").select("id").eq("crop_id", cropId).maybeSingle();
-    if (existing?.id) {
-      await supabase
-        .from("na_feedback")
-        .update({ ...fields, updated_at: new Date().toISOString() })
-        .eq("id", existing.id);
-    } else {
-      await supabase.from("na_feedback").insert({ crop_id: cropId, ...fields });
+    const { data: updated, error: updateErr } = await supabase
+      .from("na_feedback")
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq("crop_id", cropId)
+      .select("id");
+    if (updateErr) {
+      console.error(`[assess-poll] could not update feedback for crop ${cropId}:`, updateErr.message);
+      return;
+    }
+    if (updated && updated.length > 0) return;
+    const { error: insertErr } = await supabase.from("na_feedback").insert({ crop_id: cropId, ...fields });
+    if (insertErr) {
+      console.error(`[assess-poll] could not create feedback for crop ${cropId}:`, insertErr.message);
     }
   };
 
