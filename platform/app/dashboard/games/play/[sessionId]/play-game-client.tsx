@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LatexRenderer from "@/components/LatexRenderer";
+import { GameCountdown } from "../../game-countdown";
 import {
   CHOICE_COLORS,
   type ActiveQuestion,
@@ -169,14 +170,15 @@ export function PlayGameClient({
 
       {session.status === "question" && question && (
         <div className="rounded-2xl border border-da-border bg-da-surface/90 p-5 shadow-lg shadow-black/30 wood-surface">
-          <div className="flex items-center justify-between text-xs font-semibold text-da-muted uppercase">
-            <span>
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-da-muted uppercase">
               Question {question.questionIndex + 1} / {question.totalQuestions}
             </span>
             {!myAnswer && (
-              <span className={secondsLeft === 0 ? "text-da-danger" : "text-da-accent"}>
-                {secondsLeft ?? question.timeLimitSeconds}s
-              </span>
+              <GameCountdown
+                secondsLeft={secondsLeft ?? question.timeLimitSeconds}
+                totalSeconds={question.timeLimitSeconds}
+              />
             )}
           </div>
           <div className="mt-3 text-center">
