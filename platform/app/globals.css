@@ -107,6 +107,47 @@ body {
   font-weight: 400;
 }
 
+/* ---- Student tiles: topographic title and carved-steel emblem ------------
+   .terrain-title stands the word up out of the card in stepped layers. Each
+   text-shadow is one contour, one pixel lower and a shade lighter than the
+   last: the face of the letter is the maroon of the navigation rail, the
+   slopes warm through the accent and rose, and the base is the brushed
+   silver of the steel emblem above it, then a soft ground shadow. Offsets
+   drift a little to the right as they descend so the ridge reads as lit
+   from the upper left, the same light the steel emblem is lit by. */
+.terrain-title {
+  color: #861535;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  text-shadow:
+    0 1px 0 #8f1a3b,
+    1px 2px 0 #a52344,
+    1px 3px 0 #bb3251,
+    2px 4px 0 #cc4a63,
+    2px 5px 0 #d66b7d,
+    3px 6px 0 #dc8f9a,
+    3px 7px 0 #dbb0b6,
+    4px 8px 0 #d6c8cb,
+    4px 9px 0 #cfd3d8,
+    5px 10px 0 #b9bec6,
+    6px 11px 0 #9ea3ac,
+    6px 15px 12px rgba(0, 0, 0, 0.75);
+}
+
+.student-tile-icon .carved-icon {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.65)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+  transition: transform 220ms ease, filter 220ms ease;
+}
+
+.student-tile:hover .student-tile-icon .carved-icon {
+  transform: translateY(-3px) scale(1.02);
+  filter: drop-shadow(0 16px 20px rgba(0, 0, 0, 0.7)) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+}
+
 /* Shared semantic controls so button/link styling can be unified app-wide */
 .da-btn {
   display: inline-flex;
