@@ -3,6 +3,7 @@ import { getViewAsOptions } from "@/lib/view-as";
 import { isGrade9Course } from "@/lib/course-level";
 import { getNavigation, getSettingsNavigation } from "@/lib/dashboard-nav";
 import { createClient } from "@/lib/supabase/server";
+import { MULTI_ROLE_TEST_PROFILE_IDS } from "@/lib/test-accounts";
 import { cookies } from "next/headers";
 import { DEFAULT_NAV_POSITION, NAV_POSITION_COOKIE, isNavPosition } from "@/lib/nav-position";
 import { DashboardShell } from "./dashboard-shell";
@@ -24,8 +25,11 @@ export default async function DashboardLayout({
   const viewAsOptions = profile.role === "teacher" ? await getViewAsOptions() : [];
 
   // A real (non-impersonating) student's own courses, for the Grade 9 menu.
+  // The two multi-role test accounts are enrolled in 9A for test coverage,
+  // not because they're real Grade 9 students -- exempt them so choosing
+  // "Student" gets the ordinary nav, not the minimal Grade 9 one.
   let isGrade9 = false;
-  if (profile.role === "student") {
+  if (profile.role === "student" && !MULTI_ROLE_TEST_PROFILE_IDS.includes(profile.id)) {
     const { data } = await supabase
       .from("students")
       .select("courses(name)")
