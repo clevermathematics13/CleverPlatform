@@ -6,7 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import LatexRenderer from "@/components/LatexRenderer";
 import { GameCountdown } from "../../game-countdown";
 import { ChoiceFrequencyChart } from "../../choice-frequency-chart";
-import { rankPlayers, tallyChoices, type ChoiceFrequency } from "@/lib/game-summary";
+import { QuestionProgress } from "../../question-progress";
+import { completedQuestionCount, rankPlayers, tallyChoices, type ChoiceFrequency } from "@/lib/game-summary";
 import {
   CHOICE_COLORS,
   type ActiveQuestion,
@@ -224,6 +225,10 @@ export function HostGameClient({
   const leaderboard = [...players].sort((a, b) => b.total_score - a.total_score);
   // Tied scores share a place, so two students on 1800 are both 4th.
   const ranks = rankPlayers(leaderboard);
+  // question_order is on the session row from the lobby onwards, so the
+  // progress row can show the whole game before the first question loads.
+  const totalQuestions = session.question_order?.length || question?.totalQuestions || 0;
+  const completedQuestions = completedQuestionCount(session.status, session.current_question_index, totalQuestions);
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -246,6 +251,8 @@ export function HostGameClient({
           {error}
         </div>
       )}
+
+      <QuestionProgress total={totalQuestions} completed={completedQuestions} />
 
       {session.status === "lobby" && (
         <div className="rounded-2xl border border-da-border bg-da-surface/90 p-5 shadow-lg shadow-black/30 wood-surface">

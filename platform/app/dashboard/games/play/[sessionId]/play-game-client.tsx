@@ -5,7 +5,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LatexRenderer from "@/components/LatexRenderer";
 import { GameCountdown } from "../../game-countdown";
-import { rankPlayers } from "@/lib/game-summary";
+import { QuestionProgress } from "../../question-progress";
+import { completedQuestionCount, rankPlayers } from "@/lib/game-summary";
 import {
   CHOICE_COLORS,
   type ActiveQuestion,
@@ -155,6 +156,8 @@ export function PlayGameClient({
   };
   const chosenIndex = (myAnswer as (SubmitAnswerResult & { chosenIndex: number }) | null)
     ?.chosenIndex;
+  const totalQuestions = session.question_order?.length || question?.totalQuestions || 0;
+  const completedQuestions = completedQuestionCount(session.status, session.current_question_index, totalQuestions);
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
@@ -188,6 +191,8 @@ export function PlayGameClient({
           {error}
         </div>
       )}
+
+      <QuestionProgress total={totalQuestions} completed={completedQuestions} />
 
       {session.status === "lobby" && (
         <div className="rounded-2xl border border-da-border bg-da-surface/90 p-6 text-center shadow-lg shadow-black/30 wood-surface">

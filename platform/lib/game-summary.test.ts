@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rankPlayers, tallyChoices } from "./game-summary";
+import { completedQuestionCount, rankPlayers, tallyChoices } from "./game-summary";
 
 describe("rankPlayers", () => {
   it("ranks by score descending", () => {
@@ -82,5 +82,26 @@ describe("tallyChoices", () => {
     const t = tallyChoices([], 4, 0);
     expect(t.choices.every((c) => c.count === 0 && c.pct === 0)).toBe(true);
     expect(t.noAnswer).toBe(0);
+  });
+});
+
+describe("completedQuestionCount", () => {
+  it("is zero in the lobby and during the first question", () => {
+    expect(completedQuestionCount("lobby", 0, 6)).toBe(0);
+    expect(completedQuestionCount("question", 0, 6)).toBe(0);
+  });
+
+  it("counts a question once it is revealed", () => {
+    expect(completedQuestionCount("question", 2, 6)).toBe(2);
+    expect(completedQuestionCount("reveal", 2, 6)).toBe(3);
+  });
+
+  it("is the total when finished, and never exceeds it", () => {
+    expect(completedQuestionCount("finished", 5, 6)).toBe(6);
+    expect(completedQuestionCount("reveal", 9, 6)).toBe(6);
+  });
+
+  it("handles an empty bank", () => {
+    expect(completedQuestionCount("reveal", 0, 0)).toBe(0);
   });
 });

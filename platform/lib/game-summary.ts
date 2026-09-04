@@ -68,3 +68,21 @@ export function tallyChoices(
     players,
   };
 }
+
+/**
+ * How many questions are "done" from the player's point of view: a question
+ * counts once its answer has been revealed, so during the question itself
+ * the marker for it is still awake, and the reveal is the moment it dozes
+ * off. In the lobby nothing is done; when the game is finished everything is.
+ */
+export function completedQuestionCount(
+  status: "lobby" | "question" | "reveal" | "finished",
+  currentIndex: number,
+  total: number
+): number {
+  if (total <= 0) return 0;
+  if (status === "lobby") return 0;
+  if (status === "finished") return total;
+  const done = status === "reveal" ? currentIndex + 1 : currentIndex;
+  return Math.max(0, Math.min(total, done));
+}
