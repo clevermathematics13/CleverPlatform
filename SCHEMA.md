@@ -54,6 +54,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `unassigned_pages` | jsonb | default `'[]'::jsonb` |
 | `error` | text, nullable |  |
 | `created_at` | timestamp with time zone | default `now()` |
+| `blank_pages` | jsonb | default `'[]'::jsonb` — page numbers the segmentation model confidently identified as blank, distinct from unassigned_pages |
 | `segmented_at` | timestamp with time zone, nullable |  |
 | `split_at` | timestamp with time zone, nullable |  |
 | `source_sha256` | text, nullable |  |

@@ -1237,8 +1237,10 @@ export const SegmentedStudentSchema = z.object({
 
 export const SegmentationResponseSchema = z.object({
   students: z.array(SegmentedStudentSchema).min(1),
-  /** Pages the model could not confidently attribute to any student. */
+  /** Pages the model could not confidently attribute to any student — needs a teacher's eyes (ambiguous ownership, illegible name, unclear continuation). */
   unassignedPages: z.array(z.number().int().min(1)).default([]),
+  /** Pages confidently identified as blank (no handwriting or printed content at all) — nothing to grade, and nothing for the teacher to review either. Kept separate from unassignedPages so the review UI doesn't raise an alarm over a page that was never going to have work on it. */
+  blankPages: z.array(z.number().int().min(1)).default([]),
 });
 
 export type SegmentedStudent = z.infer<typeof SegmentedStudentSchema>;
@@ -1265,7 +1267,8 @@ Your job is to assign EVERY page in the document to the student it belongs to.
 IMPORTANT — pages are not guaranteed to be contiguous per student:
 - A student may run out of room in the printed booklet and continue on a loose sheet of lined paper. That continuation page is usually appended immediately after that student's own pages, but it can also appear later in the document, even after a different student's cover page, if scripts were shuffled during scanning.
 - A continuation page is often self-labelled (the student's name or initials handwritten at the top, or a circled question number matching an earlier page) — use that as strong evidence for which student it belongs to, even if it is physically out of order.
-- Blank pages, the backs of loose sheets bleeding through, or illegible fragments should go in unassignedPages rather than being guessed into a student's set.
+- A page that is confidently and entirely blank — no handwriting, no printed content beyond a bare template (e.g. a printed booklet's unused last page, or the back of a loose sheet with nothing bled through) — goes in blankPages, NOT unassignedPages. It is common for a fixed-length printed booklet to end in one blank page per student; that is expected and not something to flag for review.
+- Reserve unassignedPages for pages that genuinely need a teacher's judgement: ownership is ambiguous, ownership is unclear because a name is illegible, or the page has content but you cannot tell which student it belongs to. Do not put a blank page there just because it is also unclaimed — blank and unassigned are different signals to the reviewing teacher.
 
 For each student you identify, report:
 - label: their name exactly as written on their cover page (best-effort transcription of handwriting — do not normalise or guess a "corrected" spelling)
@@ -1279,10 +1282,11 @@ Return ONLY a JSON object, no markdown fences, no commentary:
   "students": [
     { "label": "Pedro Costa", "pages": [1,2,3,4,5,6,7,8], "confidence": "high", "note": "pages 7-8 are a self-labelled loose-leaf continuation" }
   ],
-  "unassignedPages": []
+  "unassignedPages": [],
+  "blankPages": [12]
 }
 
-Every page number from 1 to the last page of the document must appear exactly once, either in exactly one student's "pages" array or in "unassignedPages". Double-check this before responding.`;
+Every page number from 1 to the last page of the document must appear exactly once, in exactly one of: a student's "pages" array, "blankPages", or "unassignedPages". Double-check this before responding.`;
 
 export function buildSegmentationUserPrompt(pageCount: number): string {
   return `This PDF has ${pageCount} pages and contains multiple students' exam scripts. Identify each student from their cover page and assign every page (1 to ${pageCount}) to the correct student, per the system instructions. Return the JSON object now.`;
@@ -1343,6 +1347,16 @@ export function validateSegmentationResponse(
       continue;
     }
     seenPages.set(page, "unassigned");
+  }
+
+  for (const page of parsed.data.blankPages) {
+    if (page > pageCount) continue;
+    if (seenPages.has(page)) {
+      // Already claimed (by a student or unassignedPages) — that assignment
+      // wins; a page can't be both graded work and confidently blank.
+      continue;
+    }
+    seenPages.set(page, "blank");
   }
 
   const missing: number[] = [];
