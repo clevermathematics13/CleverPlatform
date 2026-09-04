@@ -5,6 +5,8 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import LatexRenderer from "@/components/LatexRenderer";
 import { GameCountdown } from "../../game-countdown";
+import { ChoiceFrequencyChart } from "../../choice-frequency-chart";
+import { rankPlayers, tallyChoices, type ChoiceFrequency } from "@/lib/game-summary";
 import {
   CHOICE_COLORS,
   type ActiveQuestion,
@@ -32,6 +34,7 @@ export function HostGameClient({
   const [question, setQuestion] = useState<ActiveQuestion | null>(null);
   const [answeredIds, setAnsweredIds] = useState<Set<string>>(new Set());
   const [luckyWinner, setLuckyWinner] = useState<LuckyWinner | null>(null);
+  const [frequency, setFrequency] = useState<ChoiceFrequency | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
@@ -66,6 +69,17 @@ export function HostGameClient({
     setAnsweredIds(new Set((data ?? []).map((r) => r.player_id as string)));
   }
 
+  /** How the room split across the choices for one question. Read at reveal,
+   *  when submissions are closed, so the bars are final rather than creeping. */
+  async function refreshFrequency(questionIndex: number, choiceCount: number, playerCount: number) {
+    const { data } = await supabase
+      .from("game_answers")
+      .select("choice_index")
+      .eq("session_id", sessionId)
+      .eq("question_index", questionIndex);
+    setFrequency(tallyChoices((data as { choice_index: number }[]) ?? [], choiceCount, playerCount));
+  }
+
   async function checkLuckyWinner(questionIndex: number) {
     const { data } = await supabase
       .from("game_answers")
@@ -94,6 +108,7 @@ export function HostGameClient({
     setSession(next);
     setAnsweredIds(new Set());
     setLuckyWinner(null);
+    setFrequency(null);
     if (next.status !== "lobby") refreshQuestion();
   }
 
@@ -162,6 +177,15 @@ export function HostGameClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.status, session?.current_question_index]);
 
+  // The tally needs the question (for its choice count) as well as the
+  // phase, and the question arrives a beat after the session row does.
+  useEffect(() => {
+    if (session?.status === "reveal" && question && question.questionIndex === session.current_question_index) {
+      refreshFrequency(session.current_question_index, question.choices.length, players.length);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.status, session?.current_question_index, question?.questionIndex, players.length]);
+
   useEffect(() => {
     if (session?.status !== "question" || !question) return;
     const startedMs = new Date(question.questionStartedAt).getTime();
@@ -198,6 +222,8 @@ export function HostGameClient({
   }
 
   const leaderboard = [...players].sort((a, b) => b.total_score - a.total_score);
+  // Tied scores share a place, so two students on 1800 are both 4th.
+  const ranks = rankPlayers(leaderboard);
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -338,12 +364,18 @@ export function HostGameClient({
             </p>
           )}
 
+          {frequency && (
+            <div className="mt-6 rounded-xl border border-da-border bg-da-surface/60 p-4">
+              <ChoiceFrequencyChart choices={question.choices} frequency={frequency} />
+            </div>
+          )}
+
           <h3 className="mt-6 font-serif text-lg font-bold text-da-text">Leaderboard</h3>
           <ol className="mt-2 space-y-1">
-            {leaderboard.slice(0, 5).map((p, i) => (
+            {leaderboard.slice(0, 5).map((p) => (
               <li key={p.id} className="flex items-center justify-between text-sm text-da-text">
                 <span>
-                  {i + 1}. {p.nickname}
+                  {ranks.get(p.id)}. {p.nickname}
                   {p.current_streak >= 2 && (
                     <span className="ml-2 text-da-warning">🔥{p.current_streak}</span>
                   )}
@@ -365,13 +397,13 @@ export function HostGameClient({
         <div className="rounded-2xl border border-da-border bg-da-surface/90 p-5 shadow-lg shadow-black/30 wood-surface">
           <h2 className="font-serif text-2xl font-bold text-da-text">Final Results</h2>
           <ol className="mt-4 space-y-2">
-            {leaderboard.map((p, i) => (
+            {leaderboard.map((p) => (
               <li
                 key={p.id}
                 className="flex items-center justify-between rounded-lg border border-da-border bg-da-hover px-4 py-2 text-da-text"
               >
                 <span className="font-semibold">
-                  {["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`} {p.nickname}
+                  {["🥇", "🥈", "🥉"][(ranks.get(p.id) ?? 0) - 1] ?? `${ranks.get(p.id)}.`} {p.nickname}
                   {p.best_streak >= 3 && (
                     <span className="ml-2 text-xs text-da-warning">
                       best streak 🔥{p.best_streak}
