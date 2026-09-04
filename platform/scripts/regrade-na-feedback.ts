@@ -318,11 +318,17 @@ async function regradeCrop(crop: Awaited<ReturnType<typeof selectCrops>>[number]
     possiblyTruncated: crop.possibly_truncated ?? undefined,
   };
 
-  const { data: priorRow } = await supabase
+  // limit(1) rather than maybeSingle(): a crop with duplicate feedback rows
+  // would make maybeSingle error, and this read swallows errors, so the
+  // before/after report would silently show "(none)" for exactly the crops
+  // whose history is most worth seeing.
+  const { data: priorRows } = await supabase
     .from("na_feedback")
     .select("ai_margin_comment, ai_next_step, ai_marks_awarded")
     .eq("crop_id", crop.id)
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const priorRow = priorRows?.[0];
   const before = {
     comment: priorRow?.ai_margin_comment ?? null,
     next: priorRow?.ai_next_step ?? null,
