@@ -12,11 +12,13 @@ import {
   SegmentationResponseSchema,
   MAX_BATCH_PAGES,
   MAX_SCAN_BYTES,
+  INVITED_SUBJECT_PREFIX,
   buildSegmentationUserPrompt,
   validateSegmentationResponse,
   matchSegmentsToRoster,
   type RosterEntry,
 } from "@/lib/ai-grading";
+import { loadInvitedRoster } from "@/lib/na-scanning";
 
 export const maxDuration = 300;
 
@@ -299,26 +301,28 @@ export async function POST(
   if (!validation || !validation.ok) return failBatch(lastError, 502);
 
   // -- Match against the class roster --------------------------------------
+  // Sourced from invited_students, not the students table directly: a class
+  // imported via Google Classroom (or added with a manual invite) has a
+  // pending invited_students row for every student well before any of them
+  // have logged in, while a students enrollment row only exists once they
+  // have (see auto_enroll_from_invitations). Every currently-enrolled
+  // student still has an invited_students row too (both import paths write
+  // one), so this covers exactly the same roster plus the not-yet-registered
+  // students the old students-only query silently excluded. Mirrors the NA
+  // scanning pipeline's own roster source (lib/na-scanning.ts) — including
+  // its virtual "track course" pooling for grouped classes.
   let roster: RosterEntry[] = [];
   if (test.course_id) {
-    const { data: studentRows } = await supabase
-      .from("students")
-      .select("profile_id, profiles:profile_id(display_name, nickname)")
-      .eq("course_id", test.course_id)
-      .eq("hidden", false);
-
-    roster = (studentRows ?? [])
-      .map((s) => {
-        const profile = s.profiles as unknown as { display_name: string; nickname: string | null } | null;
-        // Full name, not nickname: matchSegmentsToRoster needs the surname
-        // to resolve cover-page reads where the OCR'd first name is badly
-        // garbled but the last name is still recognisable (or vice versa).
-        // A nickname-only roster entry silently drops that signal.
-        return {
-          profileId: s.profile_id as string,
-          displayName: profile?.display_name || profile?.nickname || "",
-        };
-      })
+    const { roster: invitedRoster } = await loadInvitedRoster(supabase, test.course_id);
+    roster = invitedRoster
+      .map((r) => ({
+        // Registered students resolve straight to their real profile id, so
+        // a returning student's batch scan is written the ordinary way.
+        // Not-yet-registered students get the composite subject id instead
+        // — see parseGradingSubject.
+        profileId: r.profileId ?? `${INVITED_SUBJECT_PREFIX}${r.invitedId}`,
+        displayName: r.fullName,
+      }))
       .filter((r): r is RosterEntry => !!r.displayName);
   }
 

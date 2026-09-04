@@ -30,7 +30,13 @@ interface TestDetail {
 }
 
 interface StudentOption {
-  /** profiles.id — what every AI-grade endpoint expects as studentId. */
+  /**
+   * The opaque subject id every AI-grade endpoint expects as studentId --
+   * usually a real profiles.id, but "invited-<invited_students.id>" for a
+   * roster entry imported (e.g. via Google Classroom) that has never logged
+   * in and so has no profiles row yet. See parseGradingSubject in
+   * lib/ai-grading.ts; this component never needs to tell the two apart.
+   */
   profile_id: string;
   display_name: string;
 }
@@ -210,7 +216,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
       const testData = test1.data as unknown as TestDetail;
       setTest(testData);
 
-      const students1 = await fetchJson(`/api/students?courseId=${testData.course_id}`);
+      const students1 = await fetchJson(`/api/students?courseId=${testData.course_id}&includeInvited=true`);
       if (!students1.ok) {
         setError((students1.data.error as string) ?? "Could not load the class roster.");
         return;

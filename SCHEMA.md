@@ -86,7 +86,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 |---|---|---|
 | `id` | uuid | default `gen_random_uuid()` |
 | `test_id` | uuid |  |
-| `student_id` | uuid |  |
+| `student_id` | uuid, nullable | FK profiles(id) — null for a run graded against an invited-only student; backfilled by `auto_enroll_from_invitations` on first login |
 | `created_by` | uuid |  |
 | `status` | text | default `'running'::text` |
 | `model` | text, nullable |  |
@@ -95,6 +95,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `error` | text, nullable |  |
 | `created_at` | timestamp with time zone | default `now()` |
 | `completed_at` | timestamp with time zone, nullable |  |
+| `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null — set for every run created via the batch/invited-roster flow, regardless of registration status |
 
 ### `ai_usage_log`
 

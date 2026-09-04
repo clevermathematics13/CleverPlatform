@@ -57,7 +57,7 @@ export async function POST(
   // -- Verify the run belongs to this assessment -----------------------------
   const { data: run, error: runErr } = await supabase
     .from("ai_grade_runs")
-    .select("id, test_id, student_id, status")
+    .select("id, test_id, student_id, invited_student_id, status")
     .eq("id", runId)
     .maybeSingle();
 
@@ -67,6 +67,21 @@ export async function POST(
     return NextResponse.json(
       { error: "This grading run does not belong to the specified assessment" },
       { status: 400 }
+    );
+  }
+  // student_marks ("Clev's Marks") is keyed by a real profiles.id — a run
+  // graded against an imported-but-not-yet-registered student (see
+  // ai_grade_runs.invited_student_id) has no profile to write against yet.
+  // The suggested marks stay reviewable here regardless; auto_enroll_from_invitations
+  // backfills student_id the moment the student logs in, after which this
+  // same run can be accepted normally.
+  if (!run.student_id) {
+    return NextResponse.json(
+      {
+        error:
+          "This student hasn't logged in yet, so their marks can't be written to Clev's Marks. The suggested marks stay here for review — accept them once the student signs in for the first time.",
+      },
+      { status: 409 }
     );
   }
 

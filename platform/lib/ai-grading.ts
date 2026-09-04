@@ -1365,6 +1365,28 @@ export interface RosterEntry {
 }
 
 /**
+ * Every AI-grade endpoint's "studentId" is an opaque subject id in one of two
+ * forms: a real `profiles.id` (the historical case, and still what most
+ * graded students are), or the composite form `"invited-<invited_students.id>"`
+ * for a roster entry that has been imported (e.g. via Google Classroom import
+ * or a manual invite) but has never logged in, so has no profiles row yet.
+ * This mirrors the NA scanning pipeline's invited_students-first identity
+ * model (lib/na-scanning.ts, na_packet_scans.invited_student_id) rather than
+ * requiring every student to sign in before their work can be graded — see
+ * ai_grade_runs.invited_student_id.
+ */
+export const INVITED_SUBJECT_PREFIX = "invited-";
+
+export type GradingSubject = { kind: "profile"; id: string } | { kind: "invited"; id: string };
+
+export function parseGradingSubject(studentId: string): GradingSubject {
+  if (studentId.startsWith(INVITED_SUBJECT_PREFIX)) {
+    return { kind: "invited", id: studentId.slice(INVITED_SUBJECT_PREFIX.length) };
+  }
+  return { kind: "profile", id: studentId };
+}
+
+/**
  * Loosely normalise a name for matching: lowercase, strip punctuation and
  * extra whitespace, drop generational suffixes. Deliberately permissive —
  * this only produces a *proposed* match; the teacher confirms it.
