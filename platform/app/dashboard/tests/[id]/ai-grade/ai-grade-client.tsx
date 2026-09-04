@@ -5,6 +5,11 @@ import type { ChangeEvent } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import { BatchGradeTab } from "./batch-grade-tab";
 import { fetchJson } from "./fetch-json";
+import {
+  runsForStudent,
+  rowsForRun,
+  sortReviewRows,
+} from "@/lib/ai-grade-review";
 
 type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "none";
 type Confidence = "high" | "medium" | "low";
@@ -151,6 +156,13 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const [focusStudent, setFocusStudent] = useState<string | null>(null);
   const [results, setResults] = useState<ResultRow[]>([]);
+  /**
+   * Which student the rows currently in `results` were loaded for. The review
+   * panel refuses to render unless this matches `focusStudent`, so one
+   * student's marks can never appear under another student's heading -- see
+   * lib/ai-grade-review.ts for the incident this guards against.
+   */
+  const [resultsStudent, setResultsStudent] = useState<string | null>(null);
   const [focusRunId, setFocusRunId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, number>>({}); // keyed by result.id
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
@@ -181,6 +193,8 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pendingUploadStudent = useRef<string | null>(null);
+  /** Incremented per review load; a response from an older load is discarded. */
+  const reviewRequestSeq = useRef(0);
 
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
 
@@ -260,6 +274,22 @@ export function AiGradeClient({ testId }: { testId: string }) {
     loadOverview().finally(() => setLoading(false));
   }, [loadOverview]);
 
+  /** Drops whatever is in the review panel. Called before every load, so a
+   * failed or superseded fetch leaves the panel empty rather than showing the
+   * previously reviewed student's rows under the new student's name. The
+   * "was N" hints go too -- a previous run's marks belong to the student
+   * they were loaded for, same as the rows themselves. */
+  const clearReview = useCallback(() => {
+    setResults([]);
+    setResultsStudent(null);
+    setFocusRunId(null);
+    setDrafts({});
+    setSelected(new Set());
+    setExpanded(null);
+    setEditingEvidenceId(null);
+    setPreviousMarks({});
+  }, []);
+
   // Is the deployed Anthropic key able to complete a call at all? When the
   // account is out of credit every marking action on this page fails with
   // the same error, one student at a time -- say so once, up front, instead.
@@ -280,30 +310,36 @@ export function AiGradeClient({ testId }: { testId: string }) {
   // -- Load one student's results for review --
   const loadResultsFor = useCallback(
     async (studentId: string) => {
+      const requestId = ++reviewRequestSeq.current;
+      // A teacher clicking down the roster has several of these in flight at
+      // once; responses can arrive out of order. Only the newest may write.
+      const superseded = () => requestId !== reviewRequestSeq.current;
       try {
         const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade?studentId=${studentId}`);
+        if (superseded()) return;
         if (!ok) {
           setError((data.error as string) ?? "Could not load results for this student.");
           return;
         }
         const runs = (data.runs ?? []) as RunRow[];
+        // Only this student's runs, newest first -- a response for anyone
+        // else yields nothing rather than their marks under this heading.
+        const mine = runsForStudent(studentId, runs);
         // Newest COMPLETE run is what gets reviewed (see loadOverview); the
         // one before it supplies "was N" hints for parts whose suggestion
         // moved between runs.
-        const completeRuns = runs.filter((r) => r.status === "complete");
+        const completeRuns = mine.filter((r) => r.status === "complete");
         const latestRun = completeRuns[0] ?? null;
         const previousRun = completeRuns[1] ?? null;
         const rows = (data.results ?? []) as ResultRow[];
-        const rowsForLatest = latestRun
-          ? rows.filter((r) => r.run_id === latestRun.id)
-          : [];
+        const rowsForLatest = rowsForRun(latestRun?.id ?? null, rows);
         const prev: Record<string, number> = {};
-        if (previousRun) {
-          for (const r of rows) if (r.run_id === previousRun.id) prev[r.test_item_id] = r.suggested_marks;
+        for (const r of rowsForRun(previousRun?.id ?? null, rows)) {
+          prev[r.test_item_id] = r.suggested_marks;
         }
         setPreviousMarks(prev);
 
-        const newest = runs[0] ?? null;
+        const newest = mine[0] ?? null;
         setNewerAttemptByStudent((current) => {
           const next = { ...current };
           if (newest && newest.id !== latestRun?.id) next[studentId] = newest;
@@ -313,6 +349,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
         setFocusRunId(latestRun?.id ?? null);
         setResults(rowsForLatest);
+        setResultsStudent(studentId);
         setDrafts(Object.fromEntries(rowsForLatest.map((r) => [r.id, r.suggested_marks])));
         setSelected(
           new Set(rowsForLatest.filter((r) => !r.accepted && r.work_found).map((r) => r.id))
@@ -328,6 +365,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
           }));
         }
       } catch (e) {
+        if (superseded()) return;
         setError(e instanceof Error ? e.message : "Could not load results for this student.");
       }
     },
@@ -335,6 +373,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
   );
 
   const openReview = async (studentId: string) => {
+    clearReview();
     setFocusStudent(studentId);
     setStatusLine(null);
     setError(null);
@@ -411,6 +450,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
       }
       setStatusLine(parts.length > 0 ? parts.join(", ") + "." : "Marking complete.");
 
+      clearReview();
       setFocusStudent(studentId);
       await loadResultsFor(studentId);
     } catch (e) {
@@ -790,7 +830,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
           </section>
 
           {/* -- Review table ---------------------------------------------- */}
-          {focusStudent && results.length > 0 && (
+          {focusStudent && resultsStudent === focusStudent && results.length > 0 && (
             <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
                 <div>
@@ -841,13 +881,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {results
-                      .slice()
-                      .sort((a, b) => {
-                        const ia = itemById.get(a.test_item_id);
-                        const ib = itemById.get(b.test_item_id);
-                        return (ia?.question_number ?? 0) - (ib?.question_number ?? 0);
-                      })
+                    {sortReviewRows(results, (r) => itemById.get(r.test_item_id))
                       .map((r) => {
                         const meta = itemById.get(r.test_item_id);
                         const label = itemLabel(meta);
