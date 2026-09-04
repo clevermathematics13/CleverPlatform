@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { PDFDocument } from "pdf-lib";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getApiTeacher } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
 import {
@@ -10,7 +11,6 @@ import {
   SEGMENTATION_MODEL,
   SEGMENTATION_SYSTEM_PROMPT,
   SegmentationResponseSchema,
-  MAX_BATCH_PAGES,
   MAX_SCAN_BYTES,
   INVITED_SUBJECT_PREFIX,
   buildSegmentationUserPrompt,
@@ -18,7 +18,14 @@ import {
   matchSegmentsToRoster,
   type RosterEntry,
 } from "@/lib/ai-grading";
-import { loadInvitedRoster } from "@/lib/na-scanning";
+import {
+  COVER_PAGE_CHECK_MODEL,
+  COVER_PAGE_CHECK_SYSTEM_PROMPT,
+  buildCoverPageCheckUserPrompt,
+  loadInvitedRoster,
+  validateCoverPageCheck,
+} from "@/lib/na-scanning";
+import { chunkFileName, needsChunking, planBatchChunks } from "@/lib/batch-chunking";
 
 export const maxDuration = 300;
 
@@ -39,6 +46,20 @@ export const maxDuration = 300;
  * to which student. It does not grade anything and does not split the PDF —
  * see POST .../batch/[batchId]/split for that, which runs only after the
  * teacher confirms the mapping this route proposes.
+ *
+ * Oversized uploads. That single whole-document call is bounded by
+ * Anthropic's 100-page document limit and 32MB request limit, and a full
+ * class of a Grade 9 formative assessment breaks the page limit easily.
+ * Rather than rejecting such an upload, this route cuts it into parts
+ * (lib/batch-chunking.ts): each hard boundary is pulled back to the nearest
+ * cover page, found with the NA pipeline's cheap single-page Haiku check, so
+ * no student's script straddles a part. Each part is written back to
+ * Storage next to the original and the response lists them
+ * ({ chunked: true, chunks: [...] }); the client then POSTs each part's
+ * storagePath to this same route, so every part is segmented, reviewed,
+ * split and graded as an ordinary batch. No database row is written for
+ * the parent upload — its parts carry "(part i of n, pages a-b)" in their
+ * file_name, which is all the linkage the review UI needs.
  */
 
 export async function GET(
@@ -61,6 +82,130 @@ export async function GET(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ batches: batches ?? [] });
+}
+
+/**
+ * Cut an upload that is too large for one segmentation call into parts,
+ * each stored as its own PDF next to the original. See the route comment
+ * and lib/batch-chunking.ts for why the cuts land on cover pages.
+ */
+async function chunkOversizedUpload(args: {
+  supabase: SupabaseClient;
+  anthropic: Anthropic;
+  sourceDoc: PDFDocument;
+  buffer: Buffer;
+  pageCount: number;
+  storagePath: string;
+  fileName: string;
+  rosterNames: string[];
+}) {
+  const { supabase, anthropic, sourceDoc, buffer, pageCount, storagePath, fileName, rosterNames } = args;
+
+  // One page as its own PDF, so the check is never near either limit
+  // whatever the upload's size or scan resolution -- the same trick the
+  // NA batch route uses for its whole segmentation.
+  const singlePagePdf = async (page: number): Promise<string> => {
+    const doc = await PDFDocument.create();
+    const [copied] = await doc.copyPages(sourceDoc, [page - 1]);
+    doc.addPage(copied);
+    return Buffer.from(await doc.save()).toString("base64");
+  };
+
+  const isCoverPage = async (page: number): Promise<boolean> => {
+    const message = await anthropic.messages.create({
+      model: COVER_PAGE_CHECK_MODEL,
+      max_tokens: 512,
+      system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: await singlePagePdf(page) },
+            },
+            { type: "text", text: buildCoverPageCheckUserPrompt(rosterNames) },
+          ],
+        },
+      ],
+    });
+    // No batch row exists yet for the parent upload (its parts get their
+    // own rows when they are segmented), so the usage has no ref.
+    await recordUsage(supabase, {
+      pipeline: "ai_grade_chunk_cover",
+      model: COVER_PAGE_CHECK_MODEL,
+      usage: message.usage,
+    });
+    const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+    const validated = validateCoverPageCheck(text);
+    return validated.ok && validated.result.isCoverPage;
+  };
+
+  const plan = await planBatchChunks({ pageCount, byteLength: buffer.length, isCoverPage });
+
+  const folder = storagePath.slice(0, storagePath.lastIndexOf("/"));
+  const chunks: {
+    index: number;
+    count: number;
+    storagePath: string;
+    fileName: string;
+    firstPage: number;
+    lastPage: number;
+    pageCount: number;
+    cleanCutAfter: boolean;
+  }[] = [];
+
+  for (const chunk of plan.chunks) {
+    const doc = await PDFDocument.create();
+    // Fixed metadata dates so re-uploading the same scan produces
+    // byte-identical parts, which lets the per-part sha256 dedupe below
+    // skip the expensive Opus call the second time round.
+    doc.setCreationDate(new Date(0));
+    doc.setModificationDate(new Date(0));
+    const indices = Array.from({ length: chunk.pageCount }, (_, i) => chunk.firstPage - 1 + i);
+    const copied = await doc.copyPages(sourceDoc, indices);
+    for (const page of copied) doc.addPage(page);
+    const bytes = Buffer.from(await doc.save());
+
+    if (bytes.length > MAX_SCAN_BYTES) {
+      return NextResponse.json(
+        {
+          error: `Part ${chunk.index + 1} (pages ${chunk.firstPage}-${chunk.lastPage}) is still ${(bytes.length / 1024 / 1024).toFixed(1)}MB after splitting, past the 32MB request limit. Rescan at a lower resolution (or in grayscale/black-and-white) and upload again.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    const chunkPath = `${folder}/part-${chunk.index + 1}-of-${plan.chunks.length}.pdf`;
+    const { error: uploadErr } = await supabase.storage
+      .from(SCAN_BUCKET)
+      .upload(chunkPath, bytes, { contentType: "application/pdf", upsert: true });
+    if (uploadErr) {
+      return NextResponse.json(
+        { error: `Could not store part ${chunk.index + 1} of the scan: ${uploadErr.message}` },
+        { status: 500 }
+      );
+    }
+
+    chunks.push({
+      index: chunk.index,
+      count: plan.chunks.length,
+      storagePath: chunkPath,
+      fileName: chunkFileName(fileName, chunk, plan.chunks.length),
+      firstPage: chunk.firstPage,
+      lastPage: chunk.lastPage,
+      pageCount: chunk.pageCount,
+      cleanCutAfter: chunk.cleanCutAfter,
+    });
+  }
+
+  return NextResponse.json({
+    chunked: true,
+    pageCount,
+    chunks,
+    warnings: plan.warnings,
+    pagesChecked: plan.pagesChecked,
+  });
 }
 
 export async function POST(
@@ -119,37 +264,86 @@ export async function POST(
   if (buffer.subarray(0, 5).toString("utf8") !== "%PDF-") {
     return NextResponse.json({ error: "Uploaded file is not a PDF" }, { status: 400 });
   }
-  if (buffer.length > MAX_SCAN_BYTES) {
-    return NextResponse.json(
-      {
-        error: `This batch scan is ${(buffer.length / 1024 / 1024).toFixed(1)}MB; Anthropic's API caps a single request at 32MB regardless of page count. Rescan at a lower resolution (or in grayscale/black-and-white) or split the class into two smaller batches.`,
-      },
-      { status: 400 }
-    );
-  }
 
+  let sourceDoc: PDFDocument;
   let pageCount: number;
   try {
-    const pdfDoc = await PDFDocument.load(buffer, { updateMetadata: false });
-    pageCount = pdfDoc.getPageCount();
+    sourceDoc = await PDFDocument.load(buffer, { updateMetadata: false });
+    pageCount = sourceDoc.getPageCount();
   } catch (e) {
     return NextResponse.json(
       { error: `Could not read the PDF's page count: ${e instanceof Error ? e.message : String(e)}` },
       { status: 400 }
     );
   }
-
-  if (pageCount > MAX_BATCH_PAGES) {
-    return NextResponse.json(
-      {
-        error: `This scan has ${pageCount} pages; a single batch is limited to ${MAX_BATCH_PAGES} pages (Anthropic's PDF document limit). Split the scan into two batches and upload each separately.`,
-      },
-      { status: 400 }
-    );
+  if (pageCount < 1) {
+    return NextResponse.json({ error: "The uploaded PDF has no pages" }, { status: 400 });
   }
 
   const fileName =
     typeof body.fileName === "string" && body.fileName.trim() ? body.fileName.trim() : "batch-scan.pdf";
+
+  // -- Load the class roster ---------------------------------------------------
+  // Sourced from invited_students, not the students table directly: a class
+  // imported via Google Classroom (or added with a manual invite) has a
+  // pending invited_students row for every student well before any of them
+  // have logged in, while a students enrollment row only exists once they
+  // have (see auto_enroll_from_invitations). Every currently-enrolled
+  // student still has an invited_students row too (both import paths write
+  // one), so this covers exactly the same roster plus the not-yet-registered
+  // students the old students-only query silently excluded. Mirrors the NA
+  // scanning pipeline's own roster source (lib/na-scanning.ts) — including
+  // its virtual "track course" pooling for grouped classes.
+  //
+  // Loaded before segmentation because the oversized-upload path also
+  // hands the name list to its cover-page checks (constrained recognition
+  // against real names beats open-vocabulary handwriting OCR).
+  let roster: RosterEntry[] = [];
+  if (test.course_id) {
+    const { roster: invitedRoster } = await loadInvitedRoster(supabase, test.course_id);
+    roster = invitedRoster
+      .map((r) => ({
+        // Registered students resolve straight to their real profile id, so
+        // a returning student's batch scan is written the ordinary way.
+        // Not-yet-registered students get the composite subject id instead
+        // — see parseGradingSubject.
+        profileId: r.profileId ?? `${INVITED_SUBJECT_PREFIX}${r.invitedId}`,
+        displayName: r.fullName,
+      }))
+      .filter((r): r is RosterEntry => !!r.displayName);
+  }
+
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // -- Too big for one segmentation call: cut into parts ----------------------
+  if (needsChunking(pageCount, buffer.length)) {
+    if (pageCount === 1) {
+      // A single page can't be cut any smaller; only a rescan helps.
+      return NextResponse.json(
+        {
+          error: `This scan is ${(buffer.length / 1024 / 1024).toFixed(1)}MB for a single page; Anthropic's API caps a request at 32MB. Rescan at a lower resolution (or in grayscale/black-and-white).`,
+        },
+        { status: 400 }
+      );
+    }
+    try {
+      return await chunkOversizedUpload({
+        supabase,
+        anthropic,
+        sourceDoc,
+        buffer,
+        pageCount,
+        storagePath,
+        fileName,
+        rosterNames: roster.map((r) => r.displayName),
+      });
+    } catch (e) {
+      return NextResponse.json(
+        { error: `Could not split this ${pageCount}-page scan into parts: ${e instanceof Error ? e.message : String(e)}` },
+        { status: 500 }
+      );
+    }
+  }
 
   // -- Reuse an identical earlier upload's segmentation -----------------------
   // The same batch PDF gets uploaded more than once in practice (one class
@@ -243,8 +437,6 @@ export async function POST(
   };
 
   // -- Segment ------------------------------------------------------------------
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
   // Structured output (the same zod schema the validator uses) plus one
   // retry on a malformed/invalid response -- same shape as the grading
   // route. A whole-batch call is the most expensive request in the app, so a
@@ -304,31 +496,6 @@ export async function POST(
   if (!validation || !validation.ok) return failBatch(lastError, 502);
 
   // -- Match against the class roster --------------------------------------
-  // Sourced from invited_students, not the students table directly: a class
-  // imported via Google Classroom (or added with a manual invite) has a
-  // pending invited_students row for every student well before any of them
-  // have logged in, while a students enrollment row only exists once they
-  // have (see auto_enroll_from_invitations). Every currently-enrolled
-  // student still has an invited_students row too (both import paths write
-  // one), so this covers exactly the same roster plus the not-yet-registered
-  // students the old students-only query silently excluded. Mirrors the NA
-  // scanning pipeline's own roster source (lib/na-scanning.ts) — including
-  // its virtual "track course" pooling for grouped classes.
-  let roster: RosterEntry[] = [];
-  if (test.course_id) {
-    const { roster: invitedRoster } = await loadInvitedRoster(supabase, test.course_id);
-    roster = invitedRoster
-      .map((r) => ({
-        // Registered students resolve straight to their real profile id, so
-        // a returning student's batch scan is written the ordinary way.
-        // Not-yet-registered students get the composite subject id instead
-        // — see parseGradingSubject.
-        profileId: r.profileId ?? `${INVITED_SUBJECT_PREFIX}${r.invitedId}`,
-        displayName: r.fullName,
-      }))
-      .filter((r): r is RosterEntry => !!r.displayName);
-  }
-
   const proposedSegments = matchSegmentsToRoster(validation.response.students, roster);
   const unassignedPages = [
     ...new Set([

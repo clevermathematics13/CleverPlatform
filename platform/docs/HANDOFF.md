@@ -1042,3 +1042,28 @@ sessions may not hold the MCP connector.
   delete-branch call. Both are still on the public remote. Delete them from
   the GitHub branches page, and rotate the secret in Google Cloud Console
   regardless: deletion does not un-leak a public commit.
+
+## 12. Formative-assessment batch uploads over 100 pages (4 Sep 2026)
+
+The Grade 9 NA pipeline never had a page limit (it sends the model one cover
+page at a time, see §5 and `app/api/na-review/batch/route.ts`), but the
+formative-assessment batch route (`/api/tests/[id]/ai-grade/batch`) sends the
+WHOLE PDF to Opus in one call, so it rejected anything over Anthropic's
+100-page document limit or 32MB request limit with "split the scan into two
+batches and upload each separately".
+
+It now cuts such an upload into parts itself (`lib/batch-chunking.ts`,
+tested in `lib/batch-chunking.test.ts`). Each hard boundary is pulled back to
+the nearest cover page, found with the NA pipeline's single-page Haiku check
+(`pipeline = 'ai_grade_chunk_cover'` in `ai_usage_log`, a few cents per
+upload), so no student's script straddles a cut; if no cover page is found
+within 24 pages the cut lands on the hard boundary and the UI shows a
+warning naming the two parts to check. Parts are written next to the
+original in Storage (`batches/<uuid>/part-i-of-n.pdf`) with fixed metadata
+dates, so a re-upload of the same scan produces byte-identical parts and the
+`source_sha256` dedupe from §10 skips the Opus call. There is NO parent row
+in `ai_grade_batches` (its `status` check constraint has no value for one);
+each part is an ordinary batch whose `file_name` reads
+"scan.pdf (part 2 of 3, pages 98-190)". The Batch tab segments the parts one
+request at a time and renders one review-and-grade panel per part. Page
+numbers inside a part's panel count from 1 within that part.
