@@ -8,6 +8,7 @@ import { useSearchParams } from "next/navigation";
 import { deriveDashboardView } from "@/lib/dashboard-nav";
 import { MandelbrotBg } from "@/components/MandelbrotBg";
 import { Logo } from "@/components/brand/Logo";
+import { Sphere } from "@/components/brand/Sphere";
 import {
   DEFAULT_NAV_POSITION,
   NAV_POSITIONS,
@@ -95,6 +96,23 @@ export function DashboardShell({
   const [settingsHover, setSettingsHover] = useState(false);
   const [gradebookOpen, setGradebookOpen] = useState(false);
   const [navPosition, setNavPosition] = useState<NavPosition>(initialNavPosition);
+
+  // The nav above is a hover zone: it opens on mouseenter and closes on
+  // mouseleave, with no click handler at all. That's unreachable on a
+  // touch-only device (an iPad with no trackpad/mouse attached) -- there is
+  // no hover to enter or leave. `(hover: none) and (pointer: coarse)` is the
+  // standard media-query test for "this pointer can't hover", so it's how
+  // that class of device is detected here, the same pattern Sphere.tsx uses
+  // for prefers-reduced-motion. Defaults to false so SSR and mouse-driven
+  // browsers never render the button.
+  const [touchNav, setTouchNav] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(hover: none) and (pointer: coarse)");
+    const update = () => setTouchNav(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   // Every way the nav closes goes through here, so the Gradebook submenu is
   // collapsed at the same time and never reopens "for free" the next time
@@ -455,6 +473,22 @@ export function DashboardShell({
           </div>
         </aside>
       </div>
+
+      {/* Touch-device stand-in for the hover zone above: same open/close
+          state, reached by tap instead of an unreachable mouseenter. Fixed to
+          the corner regardless of navPosition, so it's findable no matter
+          which edge the nav itself is docked to. */}
+      {touchNav && (
+        <button
+          type="button"
+          onClick={() => (sidebarVisible ? closeSidebar() : setSidebarVisible(true))}
+          aria-label={sidebarVisible ? "Close menu" : "Open menu"}
+          aria-expanded={sidebarVisible}
+          className="fixed right-4 bottom-4 z-50 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border border-da-border shadow-lg shadow-black/50"
+        >
+          <Sphere size={56} />
+        </button>
+      )}
 
       <main className="flex-1 min-w-0 p-8 text-da-text">{children}</main>
     </div>
