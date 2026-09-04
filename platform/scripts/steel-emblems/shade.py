@@ -244,7 +244,7 @@ def to_image(rgba: np.ndarray) -> Image.Image:
 def main() -> None:
     os.makedirs(OUT_DIR, exist_ok=True)
     disc = load("disc")
-    for name in ("self-assess", "feedback"):
+    for name in ("self-assess", "feedback", "live-game"):
         rng = np.random.default_rng(20260903)
         raised = load(f"{name}.raised")
         grooves = load(f"{name}.grooves")

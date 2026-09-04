@@ -67,6 +67,26 @@ const feedback = {
     <circle cx="104" cy="139" r="3.2"/>`,
 };
 
+
+const liveGame = {
+  raised: `
+    <path d="M56 40 h88 v6 c0 40 -14 66 -44 74 c-30 -8 -44 -34 -44 -74 Z"/>
+    <path d="M56 50 c-22 0 -30 10 -30 24 c0 16 12 28 34 32 l-4 -12 c-12 -4 -18 -12 -18 -20 c0 -8 6 -12 18 -12 Z"/>
+    <path d="M144 50 c22 0 30 10 30 24 c0 16 -12 28 -34 32 l4 -12 c12 -4 18 -12 18 -20 c0 -8 -6 -12 -18 -12 Z"/>
+    <path d="M92 118 h16 l6 22 h-28 Z"/>
+    <rect x="72" y="140" width="56" height="12" rx="4"/>
+    <path d="M60 152 h80 a8 8 0 0 1 8 8 v14 H52 v-14 a8 8 0 0 1 8 -8 Z"/>
+    <rect x="46" y="30" width="108" height="12" rx="6"/>`,
+  grooves: `
+    <path d="M100 58 l7 15 l16 2 l-12 11 l3 16 l-14 -8 l-14 8 l3 -16 l-12 -11 l16 -2 Z"/>
+    <g fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round">
+      <path d="M70 164 h60"/>
+    </g>
+    <g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round">
+      <path d="M64 46 c2 18 6 36 16 52 M136 46 c-2 18 -6 36 -16 52"/>
+    </g>`,
+};
+
 const disc = `<circle cx="100" cy="100" r="98"/>`;
 
 const svg = (inner) =>
@@ -85,6 +105,8 @@ const jobs = [
   ["self-assess.grooves", selfAssess.grooves],
   ["feedback.raised", feedback.raised],
   ["feedback.grooves", feedback.grooves],
+  ["live-game.raised", liveGame.raised],
+  ["live-game.grooves", liveGame.grooves],
 ];
 for (const [name, inner] of jobs) {
   await page.setContent(page_html(inner));

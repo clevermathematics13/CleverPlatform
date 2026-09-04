@@ -19,6 +19,7 @@
 import Image from "next/image";
 import selfAssess from "@/public/student-tiles/self-assess.png";
 import feedback from "@/public/student-tiles/feedback.png";
+import liveGame from "@/public/student-tiles/live-game.png";
 
 /** Self-Assess: a balance scale. Weighing your own work against the mark
  *  scheme is the whole act, and a pair of pans on a pillar is what a carver
@@ -44,6 +45,22 @@ export function FeedbackIcon() {
     <Image
       src={feedback}
       alt="My Feedback: a scroll and quill embossed in steel"
+      className="carved-icon"
+      sizes="(min-width: 640px) 13rem, 11rem"
+      priority
+    />
+  );
+}
+
+/** Live Game: a trophy cup with a star cut into the bowl and a laurel line
+ *  round its base. The game is the one thing on this page that is played
+ *  against the room in real time, and the cup is what everyone in the room
+ *  is playing for. */
+export function LiveGameIcon() {
+  return (
+    <Image
+      src={liveGame}
+      alt="Live Game: a trophy embossed in steel"
       className="carved-icon"
       sizes="(min-width: 640px) 13rem, 11rem"
       priority
