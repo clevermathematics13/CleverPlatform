@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { parseGradingSubject } from "@/lib/ai-grading";
 
 type MarkEntry = {
   testItemId: string;
@@ -39,11 +40,26 @@ export async function POST(req: NextRequest) {
 
   const entries = marks as MarkEntry[];
 
-  const upserts = entries
-    .filter((e) => e.marksAwarded !== null && e.marksAwarded !== undefined)
+  // studentId is the opaque subject id every AI-grade endpoint also
+  // understands -- usually a real profiles.id, but "invited-<id>" for a
+  // roster entry that has never logged in (see parseGradingSubject). Split
+  // into two groups since each identity kind needs its own upsert conflict
+  // target (test_item_id,student_id vs test_item_id,invited_student_id).
+  const withMarks = entries.filter((e) => e.marksAwarded !== null && e.marksAwarded !== undefined);
+  const profileUpserts = withMarks
+    .filter((e) => parseGradingSubject(e.studentId).kind === "profile")
     .map((e) => ({
       test_item_id: e.testItemId,
       student_id: e.studentId,
+      invited_student_id: null,
+      marks_awarded: e.marksAwarded as number,
+    }));
+  const invitedUpserts = withMarks
+    .filter((e) => parseGradingSubject(e.studentId).kind === "invited")
+    .map((e) => ({
+      test_item_id: e.testItemId,
+      student_id: null,
+      invited_student_id: parseGradingSubject(e.studentId).id,
       marks_awarded: e.marksAwarded as number,
     }));
 
@@ -51,20 +67,27 @@ export async function POST(req: NextRequest) {
     (e) => e.marksAwarded === null || e.marksAwarded === undefined
   );
 
-  if (upserts.length > 0) {
+  if (profileUpserts.length > 0) {
     const { error } = await supabase
       .from("student_marks")
-      .upsert(upserts, { onConflict: "test_item_id,student_id" });
+      .upsert(profileUpserts, { onConflict: "test_item_id,student_id" });
+    if (error)
+      return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (invitedUpserts.length > 0) {
+    const { error } = await supabase
+      .from("student_marks")
+      .upsert(invitedUpserts, { onConflict: "test_item_id,invited_student_id" });
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   for (const e of deletes) {
-    const { error } = await supabase
-      .from("student_marks")
-      .delete()
-      .eq("test_item_id", e.testItemId)
-      .eq("student_id", e.studentId);
+    const subject = parseGradingSubject(e.studentId);
+    let del = supabase.from("student_marks").delete().eq("test_item_id", e.testItemId);
+    del = subject.kind === "invited" ? del.eq("invited_student_id", subject.id) : del.eq("student_id", subject.id);
+    const { error } = await del;
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });
   }
