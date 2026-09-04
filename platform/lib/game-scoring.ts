@@ -13,11 +13,11 @@
  * rewarding speed overall (rank 3+ tapers off). Anything answered after the
  * time limit earns zero credit, correct or not. The time limit itself is a
  * per-session, teacher-adjustable setting (game_sessions.time_limit_seconds,
- * default 10s) -- not a fixed constant -- so it's passed into
+ * default 15s) -- not a fixed constant -- so it's passed into
  * computeGamePoints() rather than hardcoded here.
  */
 
-export const DEFAULT_GAME_TIME_LIMIT_SECONDS = 10;
+export const DEFAULT_GAME_TIME_LIMIT_SECONDS = 15;
 export const LUCKY_BONUS_POINTS = 50;
 
 // Base points by 1-based rank among correct, on-time answers for a question.
