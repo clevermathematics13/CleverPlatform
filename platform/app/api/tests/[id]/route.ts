@@ -19,7 +19,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("tests")
     .select(`
-      id, name, test_date, exam_time, release_at, total_marks, course_id, hidden,
+      id, name, test_date, exam_time, release_at, total_marks, course_id, hidden, custom_content,
       courses(name),
       test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order)
     `)

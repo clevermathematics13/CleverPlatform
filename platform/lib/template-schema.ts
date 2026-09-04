@@ -35,6 +35,8 @@ export const FormattingRequirementsSchema = z.object({
   answerLineHeightMm: z.number().min(6).max(16).default(12),
   /** Optional: answer space style — bordered boxes, bare lines, or none */
   answerStyle: z.enum(["boxes", "lines", "none"]).optional(),
+  /** Formative Assessment title page: a write-in line for the student's class/block. */
+  includeBlockLine: z.boolean().optional(),
 });
 
 export type ValidatedFormattingRequirements = z.infer<typeof FormattingRequirementsSchema>;
@@ -46,6 +48,10 @@ export const QuestionSubpartSchema = z.object({
   marks: z.number().int().min(0).max(20).optional(),
   hint: z.string().optional(),
   tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+  /** Formative Assessment: free-text, M/A/R/FT-coded marking notes for this subpart. */
+  markScheme: z.string().optional(),
+  /** Formative Assessment: render a "Working / reasoning" box before the answer line. */
+  requiresWorking: z.boolean().optional(),
 });
 
 export const AssignmentQuestionSchema = z.object({
@@ -56,6 +62,10 @@ export const AssignmentQuestionSchema = z.object({
   tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
   hint: z.string().optional(),
   subparts: z.array(QuestionSubpartSchema).optional(),
+  /** Formative Assessment: free-text, M/A/R/FT-coded marking notes for this question. */
+  markScheme: z.string().optional(),
+  /** Formative Assessment: render a "Working / reasoning" box before the answer line. */
+  requiresWorking: z.boolean().optional(),
 });
 
 export const SpotlightBoxSchema = z.object({
@@ -92,6 +102,8 @@ export const AssignmentSectionSchema = z.object({
   spotlight: SpotlightBoxSchema.optional(),
   translationTable: TranslationTableSchema.optional(),
   geometricReading: GeometricReadingSchema.optional(),
+  /** Formative Assessment: shown in the section banner, e.g. "Suggested time: 10 min". */
+  estimatedMinutes: z.number().int().min(0).optional(),
 });
 
 export const CommandTermEntrySchema = z.object({
@@ -106,6 +118,19 @@ export const TokProvocationSchema = z.object({
 
 export const InternationalMindednessBoxSchema = z.object({
   body: z.string().min(1),
+});
+
+// -- Formative Assessment enrichments -------------------------------------------
+
+export const AchievementBandSchema = z.object({
+  band: z.string().min(1),
+  marksRange: z.string().min(1),
+  description: z.string().min(1),
+});
+
+export const ReteachGuideEntrySchema = z.object({
+  questions: z.string().min(1),
+  topic: z.string().min(1),
 });
 
 // -- Top-level draft -----------------------------------------------------------
@@ -129,6 +154,11 @@ export const AssignmentDraftSchema = z.object({
   commandTerms: z.array(CommandTermEntrySchema).optional(),
   tokProvocations: z.array(TokProvocationSchema).optional(),
   internationalMindedness: InternationalMindednessBoxSchema.optional(),
+  // Optional Formative Assessment fields
+  markingPrinciples: z.array(z.string().min(1)).optional(),
+  achievementBands: z.array(AchievementBandSchema).optional(),
+  reteachGuide: z.array(ReteachGuideEntrySchema).optional(),
+  showSectionScoreSummary: z.boolean().optional(),
 });
 
 export type ValidatedAssignmentDraft = z.infer<typeof AssignmentDraftSchema>;
@@ -160,11 +190,15 @@ export const AssignmentPdfRequestSchema = z.object({
           tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
           hint: z.string().optional(),
           answerBoxLines: z.number().int().min(1).max(20).optional(),
+          markScheme: z.string().optional(),
+          requiresWorking: z.boolean().optional(),
           subparts: z.array(z.object({
             prompt: z.string().min(1),
             marks: z.number().int().min(0).max(20).optional(),
             hint: z.string().optional(),
             tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+            markScheme: z.string().optional(),
+            requiresWorking: z.boolean().optional(),
           })).optional(),
         })
       ).min(1),
@@ -172,6 +206,7 @@ export const AssignmentPdfRequestSchema = z.object({
       spotlight: SpotlightBoxSchema.optional(),
       translationTable: TranslationTableSchema.optional(),
       geometricReading: GeometricReadingSchema.optional(),
+      estimatedMinutes: z.number().int().min(0).optional(),
     })
   ),
   formatting: FormattingRequirementsSchema,
@@ -185,6 +220,11 @@ export const AssignmentPdfRequestSchema = z.object({
   commandTerms: z.array(CommandTermEntrySchema).optional(),
   tokProvocations: z.array(TokProvocationSchema).optional(),
   internationalMindedness: InternationalMindednessBoxSchema.optional(),
+  // Formative Assessment fields — see the "Formative Assessment enrichments" schemas above.
+  markingPrinciples: z.array(z.string().min(1)).optional(),
+  achievementBands: z.array(AchievementBandSchema).optional(),
+  reteachGuide: z.array(ReteachGuideEntrySchema).optional(),
+  showSectionScoreSummary: z.boolean().optional(),
 });
 
 export type ValidatedAssignmentPdfRequest = z.infer<typeof AssignmentPdfRequestSchema>;

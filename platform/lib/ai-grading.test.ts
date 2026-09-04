@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY,
+  G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
   buildGradingSystemPrompt,
   isAaHlPaper2,
+  isCustomAssessment,
   isImpliedToken,
   matchSegmentsToRoster,
   validateGradeResponse,
@@ -1157,6 +1159,14 @@ describe("isAaHlPaper2", () => {
   });
 });
 
+describe("isCustomAssessment", () => {
+  it("is true only for markschemeSource 'custom'", () => {
+    expect(isCustomAssessment({ markschemeSource: "custom" })).toBe(true);
+    expect(isCustomAssessment({ markschemeSource: "part_latex" })).toBe(false);
+    expect(isCustomAssessment({ markschemeSource: "none" })).toBe(false);
+  });
+});
+
 describe("isImpliedToken", () => {
   it("recognizes a parenthesized token as implied", () => {
     expect(isImpliedToken("(M1)")).toBe(true);
@@ -1193,6 +1203,27 @@ describe("buildGradingSystemPrompt", () => {
   it("policy content is actually loaded from grading_policies/, not empty", () => {
     expect(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY).toContain("three significant figures");
     expect(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY).toContain("numericCheck");
+  });
+
+  it("appends the Formative Assessment marking principles when any unit is custom", () => {
+    const prompt = buildGradingSystemPrompt([unit({ markschemeSource: "custom" })]);
+    expect(prompt.startsWith(GRADING_SYSTEM_PROMPT)).toBe(true);
+    expect(prompt).toContain(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES);
+    expect(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES.length).toBeGreaterThan(0);
+  });
+
+  it("does not append the Formative Assessment policy for bank-sourced units", () => {
+    const prompt = buildGradingSystemPrompt([unit({ markschemeSource: "part_latex" })]);
+    expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
+  });
+
+  it("can append both policies at once for a mixed test", () => {
+    const prompt = buildGradingSystemPrompt([
+      unit({ testItemId: "item-1", curriculum: ["AA"], level: "AHL", paper: 2 }),
+      unit({ testItemId: "item-2", markschemeSource: "custom" }),
+    ]);
+    expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
+    expect(prompt).toContain(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES);
   });
 });
 
