@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import { SCAN_BUCKET } from "@/lib/ai-grading";
+import { canCopySourceWhole } from "@/lib/batch-split";
 
 // Hobby-plan serverless functions cap at 300s. Grading a full class
 // sequentially in one request (as an earlier version of this route did)
@@ -12,7 +13,17 @@ import { SCAN_BUCKET } from "@/lib/ai-grading";
 // POST /api/tests/[id]/ai-grade route (reuseExistingScan: true), one per
 // student, made by the client after this route returns. That keeps every
 // grading call inside its own 300s budget regardless of class size.
-export const maxDuration = 120;
+//
+// Even so, this route timed out at its earlier 120s limit 25 times between
+// 17 Aug and 5 Sep 2026 -- never because of pdf-lib (rebuilding a 12MB
+// part takes ~100ms) but because "grade all parts" fired every part of a
+// class-sized upload at once, and 26 concurrent invocations each pulling
+// 12-18MB out of Storage and pushing it back in starved one another. Two
+// changes address that: the client now runs parts through a small pool,
+// and a part that is one student's whole booklet (the common case for a
+// chunked upload) is copied inside Storage rather than rebuilt here. The
+// budget is raised to the platform cap for the rebuild path that remains.
+export const maxDuration = 300;
 
 interface ConfirmedSegment {
   label: string;
@@ -81,7 +92,7 @@ export async function POST(
   // -- Load the batch and the source PDF -------------------------------------
   const { data: batch, error: batchErr } = await supabase
     .from("ai_grade_batches")
-    .select("id, test_id, status, source_storage_path, page_count")
+    .select("id, test_id, status, source_storage_path, page_count, blank_pages")
     .eq("id", batchId)
     .maybeSingle();
 
@@ -90,12 +101,12 @@ export async function POST(
   if (batch.test_id !== testId) {
     return NextResponse.json({ error: "This batch does not belong to the specified assessment" }, { status: 400 });
   }
-  if (batch.status === "split") {
-    return NextResponse.json(
-      { error: "This batch has already been split. Re-upload to grade again." },
-      { status: 409 }
-    );
-  }
+  // A batch that is already "split" is NOT rejected: this route used to
+  // 409 in that case, which meant a split whose response was lost to a
+  // gateway timeout (the row had been updated, the client never heard)
+  // could only be retried by re-uploading the scan. Splitting again just
+  // writes fresh per-student PDFs; grading them again is an ordinary
+  // re-mark, which the grading route already handles.
 
   const pageCount = batch.page_count ?? 0;
   const outOfRange = segments.flatMap((s) => s.pages.filter((p) => p > pageCount));
@@ -106,26 +117,29 @@ export async function POST(
     );
   }
 
-  const { data: sourceFile, error: dlErr } = await supabase.storage
-    .from(SCAN_BUCKET)
-    .download(batch.source_storage_path);
-  if (dlErr || !sourceFile) {
-    return NextResponse.json(
-      { error: `Could not read the batch scan: ${dlErr?.message ?? "not found"}` },
-      { status: 500 }
-    );
-  }
-  const sourceBuffer = Buffer.from(await sourceFile.arrayBuffer());
+  const blankPages = (batch.blank_pages as number[] | null) ?? [];
 
-  let sourceDoc: PDFDocument;
-  try {
-    sourceDoc = await PDFDocument.load(sourceBuffer, { updateMetadata: false });
-  } catch (e) {
-    return NextResponse.json(
-      { error: `Could not open the batch PDF: ${e instanceof Error ? e.message : String(e)}` },
-      { status: 500 }
-    );
-  }
+  // The source PDF is only downloaded and parsed if some segment actually
+  // needs pages cut out of it. A segment that claims the whole source (bar
+  // confirmed-blank pages) is served by a Storage-side copy instead -- see
+  // canCopySourceWhole for why that is the common case and why it matters.
+  let sourceDoc: PDFDocument | null = null;
+  const loadSourceDoc = async (): Promise<PDFDocument> => {
+    if (sourceDoc) return sourceDoc;
+    const { data: sourceFile, error: dlErr } = await supabase.storage
+      .from(SCAN_BUCKET)
+      .download(batch.source_storage_path);
+    if (dlErr || !sourceFile) {
+      throw new Error(`Could not read the batch scan: ${dlErr?.message ?? "not found"}`);
+    }
+    const sourceBuffer = Buffer.from(await sourceFile.arrayBuffer());
+    try {
+      sourceDoc = await PDFDocument.load(sourceBuffer, { updateMetadata: false });
+    } catch (e) {
+      throw new Error(`Could not open the batch PDF: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return sourceDoc;
+  };
 
   const results: {
     studentId: string;
@@ -137,15 +151,31 @@ export async function POST(
 
   for (const segment of segments) {
     try {
+      const splitPath = `${testId}/${segment.studentId}/${Date.now()}-batch-${batchId}.pdf`;
+
+      if (canCopySourceWhole(segment.pages, pageCount, blankPages)) {
+        const { error: copyErr } = await supabase.storage
+          .from(SCAN_BUCKET)
+          .copy(batch.source_storage_path, splitPath);
+        if (copyErr) throw new Error(`Could not store split scan: ${copyErr.message}`);
+        results.push({
+          studentId: segment.studentId,
+          label: segment.label,
+          status: "split",
+          storagePath: splitPath,
+        });
+        continue;
+      }
+
+      const source = await loadSourceDoc();
       const splitDoc = await PDFDocument.create();
       const copiedPages = await splitDoc.copyPages(
-        sourceDoc,
+        source,
         segment.pages.map((p) => p - 1)
       );
       for (const page of copiedPages) splitDoc.addPage(page);
       const splitBytes = Buffer.from(await splitDoc.save());
 
-      const splitPath = `${testId}/${segment.studentId}/${Date.now()}-batch-${batchId}.pdf`;
       const { error: uploadErr } = await supabase.storage
         .from(SCAN_BUCKET)
         .upload(splitPath, splitBytes, { contentType: "application/pdf", upsert: true });

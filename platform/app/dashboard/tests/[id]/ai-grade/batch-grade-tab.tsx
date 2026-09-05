@@ -4,6 +4,19 @@ import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, Ref } from "react";
 import { fetchJson } from "./fetch-json";
 import { StudentPicker } from "./student-picker";
+import { runWithConcurrency } from "@/lib/concurrency";
+
+/**
+ * How many parts "grade all parts" works on at once, after the first
+ * student has warmed the mark-scheme cache. Every part in flight is a
+ * split call (12-18MB in and out of Storage) followed by a grading call
+ * holding the same scan in memory while the model marks it. With no cap,
+ * a three-file upload fired 26 parts at the same instant (5 Sep 2026) and
+ * the splits, starved by one another, ran past the serverless time limit.
+ * Four keeps a class moving (grading is mostly waiting on the model, so
+ * four parts overlap well) without a burst of that size.
+ */
+const MAX_CONCURRENT_PARTS = 4;
 
 type Confidence = "high" | "medium" | "low";
 type BatchStatus = "uploaded" | "segmenting" | "segmented" | "failed" | "split";
@@ -396,9 +409,11 @@ export function BatchGradeTab({
   // grades more than one script). Running the parts' loops CONCURRENTLY is
   // the efficient way to grade a whole upload -- or several uploads: a
   // 4-part scan grades four students at a time instead of one, with no
-  // request any bigger than before. Parts whose rows still need review are
-  // skipped and named, so a half-reviewed stack can still start on the
-  // parts that are ready.
+  // request any bigger than before. The concurrency is capped at
+  // MAX_CONCURRENT_PARTS, though: unbounded, a class-sized upload starves
+  // its own split calls. Parts whose rows still need review are skipped and
+  // named, so a half-reviewed stack can still start on the parts that are
+  // ready.
   //
   // One deliberate wrinkle: the first student is graded ALONE before the
   // other parts start. Every grading call for the same test shares a cached
@@ -420,7 +435,7 @@ export function BatchGradeTab({
     setGradingAll(true);
     const skipped = reviewingParts.map(partLabelOf);
     setAllStatusLine(
-      `Grading ${readyParts.length} part(s) — the first student goes alone to warm the mark-scheme cache, then the rest run side by side.` +
+      `Grading ${readyParts.length} part(s) — the first student goes alone to warm the mark-scheme cache, then the rest run ${MAX_CONCURRENT_PARTS} at a time.` +
         (skipped.length > 0 ? ` Skipped until their rows are reviewed: ${skipped.join(", ")}.` : "")
     );
     try {
@@ -432,9 +447,14 @@ export function BatchGradeTab({
       const firstRun = (panelRefs.current.get(first.key)?.splitAndGrade({ onFirstStudentGraded: releaseRest }) ??
         Promise.resolve()).finally(releaseRest);
       await restMayStart;
+      // The first part is still grading its remaining students while the
+      // pool starts, so it counts as one of the slots in flight.
       await Promise.allSettled([
         firstRun,
-        ...rest.map(({ key }) => panelRefs.current.get(key)?.splitAndGrade() ?? Promise.resolve()),
+        runWithConcurrency(
+          rest.map(({ key }) => () => panelRefs.current.get(key)?.splitAndGrade() ?? Promise.resolve()),
+          MAX_CONCURRENT_PARTS - 1
+        ),
       ]);
       setAllStatusLine(
         `Finished ${readyParts.length} part(s). See each part below for its results.` +
