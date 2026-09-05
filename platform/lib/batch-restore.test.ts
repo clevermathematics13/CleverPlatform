@@ -67,6 +67,22 @@ describe("groupUnfinishedBatches", () => {
     expect(uploads[1].parts.map((p) => p.batch.id)).toEqual(["w2"]);
   });
 
+  it("does not resurrect an older duplicate of a part whose newest row is finished", () => {
+    const uploads = groupUnfinishedBatches([
+      row({
+        id: "new-graded",
+        file_name: "A.pdf (part 1 of 2, pages 1-12)",
+        status: "split",
+        graded_runs: 1,
+        created_at: "2026-09-05T02:00:00Z",
+      }),
+      row({ id: "old-read", file_name: "A.pdf (part 1 of 2, pages 1-12)", created_at: "2026-09-05T01:00:00Z" }),
+      row({ id: "p2", file_name: "A.pdf (part 2 of 2, pages 13-24)" }),
+    ]);
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0].parts.map((p) => p.batch.id)).toEqual(["p2"]);
+  });
+
   it("flags a part that was split but never graded, and omits graded ones", () => {
     const uploads = groupUnfinishedBatches([
       row({ id: "s", file_name: "A.pdf (part 2 of 3, pages 13-24)", status: "split", graded_runs: 0 }),
