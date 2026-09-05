@@ -39,6 +39,12 @@ interface StudentOption {
    */
   profile_id: string;
   display_name: string;
+  /**
+   * The real class the student is in ("9A"). A Grade 9 test sits on one
+   * class but its roster pools every class in the track, so the UI groups
+   * by this. Null when the API could not name the class.
+   */
+  class_name: string | null;
 }
 
 interface RunRow {
@@ -204,6 +210,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const reviewRequestSeq = useRef(0);
 
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
+  const classCount = new Set(students.map((s) => s.class_name ?? "")).size;
 
   // -- Initial load: test detail (for items + course), roster, latest runs --
   const loadOverview = useCallback(async () => {
@@ -217,13 +224,28 @@ export function AiGradeClient({ testId }: { testId: string }) {
       const testData = test1.data as unknown as TestDetail;
       setTest(testData);
 
-      const students1 = await fetchJson(`/api/students?courseId=${testData.course_id}&includeInvited=true`);
+      // includeTrackSiblings: a Grade 9 test is attached to one class (9G)
+      // but the scanned pile mixes every class in its track (9A, 9C, 9G),
+      // so the roster pools them all -- signed in or not.
+      const students1 = await fetchJson(
+        `/api/students?courseId=${testData.course_id}&includeInvited=true&includeTrackSiblings=true`
+      );
       if (!students1.ok) {
         setError((students1.data.error as string) ?? "Could not load the class roster.");
         return;
       }
-      type RosterRow = { profile_id?: string; profiles: { display_name: string; nickname: string | null } };
-      const roster: StudentOption[] = ((students1.data.students as RosterRow[]) ?? [])
+      type RosterRow = {
+        profile_id?: string;
+        profiles: { display_name: string; nickname: string | null };
+        course_id?: string;
+        course_name?: string | null;
+      };
+      const rawRows = (students1.data.students as RosterRow[]) ?? [];
+      // Class order: the test's own class first, then the pooled sibling
+      // classes alphabetically, then students whose class is unknown.
+      const ownClass = rawRows.find((s) => s.course_id === testData.course_id)?.course_name ?? null;
+      const classRank = (name: string | null) => (name === ownClass ? 0 : name ? 1 : 2);
+      const roster: StudentOption[] = rawRows
         .filter((s): s is RosterRow & { profile_id: string } => !!s.profile_id)
         .map((s) => {
           const fullName = s.profiles?.display_name;
@@ -236,9 +258,14 @@ export function AiGradeClient({ testId }: { testId: string }) {
             fullName && nickname && nickname !== fullName
               ? `${fullName} (${nickname})`
               : fullName || nickname || "Unknown";
-          return { profile_id: s.profile_id, display_name: label };
+          return { profile_id: s.profile_id, display_name: label, class_name: s.course_name ?? null };
         })
-        .sort((a: StudentOption, b: StudentOption) => a.display_name.localeCompare(b.display_name));
+        .sort(
+          (a: StudentOption, b: StudentOption) =>
+            classRank(a.class_name) - classRank(b.class_name) ||
+            (a.class_name ?? "").localeCompare(b.class_name ?? "") ||
+            a.display_name.localeCompare(b.display_name)
+        );
       setStudents(roster);
 
       const runs1 = await fetchJson(`/api/tests/${testId}/ai-grade`);
@@ -775,7 +802,13 @@ export function AiGradeClient({ testId }: { testId: string }) {
             )}
 
             <ul className="divide-y divide-da-border">
-              {students.map((s) => {
+              {students.map((s, i) => {
+                // Class heading above the first student of each class, only
+                // when the roster spans more than one (a pooled Grade 9 track).
+                const classHeading =
+                  classCount > 1 && (i === 0 || students[i - 1].class_name !== s.class_name)
+                    ? (s.class_name ?? "Other")
+                    : null;
                 const busy = busyStudent === s.profile_id;
                 const run = runsByStudent[s.profile_id];
                 const newerAttempt = newerAttemptByStudent[s.profile_id];
@@ -792,88 +825,92 @@ export function AiGradeClient({ testId }: { testId: string }) {
                           }
                     : null;
                 return (
-                  <li
-                    key={s.profile_id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-5 py-3"
-                  >
-                    <div>
-                      <p className="flex items-center gap-2 font-semibold text-da-text">
-                        {dot && (
-                          <span
-                            className={`h-2 w-2 shrink-0 rounded-full ${dot.color}`}
-                            role="img"
-                            aria-label={dot.title}
-                            title={dot.title}
-                          />
-                        )}
-                        {s.display_name}
-                      </p>
-                      <p className="text-xs text-da-muted">
-                        {run ? (
-                          <>
-                            Last run: {run.status}
-                            {run.coverage?.suggestedTotal !== undefined &&
-                              run.coverage?.maxTotal !== undefined &&
-                              ` · ${run.coverage.suggestedTotal}/${run.coverage.maxTotal}${
-                                typeof run.coverage.testTotalMarks === "number" &&
-                                run.coverage.testTotalMarks !== run.coverage.maxTotal
-                                  ? ` of ${run.coverage.testTotalMarks} total`
-                                  : ""
-                              } suggested`}
-                            {run.error && ` — ${run.error}`}
-                          </>
-                        ) : newerAttempt ? (
-                          "No completed run yet"
-                        ) : (
-                          "No scan graded yet"
-                        )}
-                      </p>
-                      {newerAttempt && (
-                        <p className="text-xs text-amber-300">
-                          {newerAttempt.status === "failed"
-                            ? `A newer re-mark failed${newerAttempt.error ? ` — ${newerAttempt.error}` : ""}. ${
-                                run ? "The last completed run is still shown." : ""
-                              }`
-                            : "A newer re-mark is still running."}
+                  <Fragment key={s.profile_id}>
+                    {classHeading && (
+                      <li className="bg-da-hover/40 px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
+                        {classHeading}
+                      </li>
+                    )}
+                    <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                      <div>
+                        <p className="flex items-center gap-2 font-semibold text-da-text">
+                          {dot && (
+                            <span
+                              className={`h-2 w-2 shrink-0 rounded-full ${dot.color}`}
+                              role="img"
+                              aria-label={dot.title}
+                              title={dot.title}
+                            />
+                          )}
+                          {s.display_name}
                         </p>
-                      )}
-                    </div>
+                        <p className="text-xs text-da-muted">
+                          {run ? (
+                            <>
+                              Last run: {run.status}
+                              {run.coverage?.suggestedTotal !== undefined &&
+                                run.coverage?.maxTotal !== undefined &&
+                                ` · ${run.coverage.suggestedTotal}/${run.coverage.maxTotal}${
+                                  typeof run.coverage.testTotalMarks === "number" &&
+                                  run.coverage.testTotalMarks !== run.coverage.maxTotal
+                                    ? ` of ${run.coverage.testTotalMarks} total`
+                                    : ""
+                                } suggested`}
+                              {run.error && ` — ${run.error}`}
+                            </>
+                          ) : newerAttempt ? (
+                            "No completed run yet"
+                          ) : (
+                            "No scan graded yet"
+                          )}
+                        </p>
+                        {newerAttempt && (
+                          <p className="text-xs text-amber-300">
+                            {newerAttempt.status === "failed"
+                              ? `A newer re-mark failed${newerAttempt.error ? ` — ${newerAttempt.error}` : ""}. ${
+                                  run ? "The last completed run is still shown." : ""
+                                }`
+                              : "A newer re-mark is still running."}
+                          </p>
+                        )}
+                      </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => {
-                          pendingUploadStudent.current = s.profile_id;
-                          fileInputRef.current?.click();
-                        }}
-                        className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
-                      >
-                        {busy ? "Working…" : "Upload scan & mark"}
-                      </button>
-
-                      {(run?.source_storage_path || newerAttempt?.source_storage_path) && (
+                      <div className="flex items-center gap-2">
                         <button
                           type="button"
                           disabled={busy}
-                          onClick={() => runGrading(s.profile_id, null)}
-                          className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                          onClick={() => {
+                            pendingUploadStudent.current = s.profile_id;
+                            fileInputRef.current?.click();
+                          }}
+                          className="rounded border border-blue-400/40 bg-blue-500/15 px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
                         >
-                          Re-mark stored scan
+                          {busy ? "Working…" : "Upload scan & mark"}
                         </button>
-                      )}
 
-                      {run?.status === "complete" && (
-                        <button
-                          type="button"
-                          onClick={() => openReview(s.profile_id)}
-                          className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
-                        >
-                          Review →
-                        </button>
-                      )}
-                    </div>
-                  </li>
+                        {(run?.source_storage_path || newerAttempt?.source_storage_path) && (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => runGrading(s.profile_id, null)}
+                            className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                          >
+                            Re-mark stored scan
+                          </button>
+                        )}
+
+                        {run?.status === "complete" && (
+                          <button
+                            type="button"
+                            onClick={() => openReview(s.profile_id)}
+                            className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
+                          >
+                            Review →
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  </Fragment>
                 );
               })}
             </ul>

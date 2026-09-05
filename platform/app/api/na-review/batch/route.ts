@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
   // rather than reading names blind and fuzzy-matching afterward.
   const rosterResolution = courseId
     ? await loadInvitedRoster(supabase, courseId)
-    : { roster: [], sourceCourseIds: [], isTrack: false };
+    : { roster: [], sourceCourseIds: [], sourceCourseNames: {}, isTrack: false };
   const rosterNames = rosterResolution.roster.map((r) => r.fullName);
   const rosterByName = new Map(rosterResolution.roster.map((r) => [r.fullName, r]));
 

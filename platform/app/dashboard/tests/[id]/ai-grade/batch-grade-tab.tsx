@@ -3,6 +3,7 @@
 import { useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, Ref } from "react";
 import { fetchJson } from "./fetch-json";
+import { StudentPicker } from "./student-picker";
 
 type Confidence = "high" | "medium" | "low";
 type BatchStatus = "uploaded" | "segmenting" | "segmented" | "failed" | "split";
@@ -10,6 +11,8 @@ type BatchStatus = "uploaded" | "segmenting" | "segmented" | "failed" | "split";
 interface StudentOption {
   profile_id: string;
   display_name: string;
+  /** Real class ("9A"); the picker groups the pooled roster by this. */
+  class_name: string | null;
 }
 
 interface ProposedSegment {
@@ -917,7 +920,8 @@ function BatchPanel({
           <p className="text-xs text-da-muted">
             {partLabel && `${batch.page_count} pages in this part. `}
             Confirm which pages belong to which student. Matched names are pre-filled from
-            the class roster — check every low-confidence row before splitting.
+            the roster of every class in this group, signed in or not — type the start of a
+            first or last name to find someone. Check every low-confidence row before splitting.
             {partLabel && " Page numbers here count from 1 within this part."}
           </p>
         </div>
@@ -1037,21 +1041,14 @@ function BatchPanel({
                     />
                   </td>
                   <td className="px-2 py-2">
-                    <select
+                    <StudentPicker
+                      students={students}
                       value={r.studentId}
-                      onChange={(e) => updateRow(r.key, { studentId: e.target.value })}
+                      onChange={(studentId) => updateRow(r.key, { studentId })}
                       disabled={!!splitResults}
-                      className={`rounded border px-2 py-1 text-sm focus:ring-2 focus:ring-purple-400 disabled:bg-da-hover ${
-                        duplicateStudent ? "border-red-400" : "border-da-border"
-                      }`}
-                    >
-                      <option value="">— pick a student —</option>
-                      {students.map((s) => (
-                        <option key={s.profile_id} value={s.profile_id}>
-                          {s.display_name}
-                        </option>
-                      ))}
-                    </select>
+                      invalid={duplicateStudent}
+                      placeholder="— pick a student —"
+                    />
                   </td>
                   <td className="px-2 py-2">
                     <span

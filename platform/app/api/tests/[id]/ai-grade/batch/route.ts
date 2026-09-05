@@ -293,14 +293,20 @@ export async function POST(
   // one), so this covers exactly the same roster plus the not-yet-registered
   // students the old students-only query silently excluded. Mirrors the NA
   // scanning pipeline's own roster source (lib/na-scanning.ts) — including
-  // its virtual "track course" pooling for grouped classes.
+  // its virtual "track course" pooling for grouped classes, and, because a
+  // test sits on one class (9G) while the scanned pile mixes every class in
+  // the track (9A, 9C, 9G), the sibling classes of that track too. Must
+  // match the roster /api/students serves the dropdown, or a name matched
+  // here would have no option to land on.
   //
   // Loaded before segmentation because the oversized-upload path also
   // hands the name list to its cover-page checks (constrained recognition
   // against real names beats open-vocabulary handwriting OCR).
   let roster: RosterEntry[] = [];
   if (test.course_id) {
-    const { roster: invitedRoster } = await loadInvitedRoster(supabase, test.course_id);
+    const { roster: invitedRoster } = await loadInvitedRoster(supabase, test.course_id, {
+      includeTrackSiblings: true,
+    });
     roster = invitedRoster
       .map((r) => ({
         // Registered students resolve straight to their real profile id, so

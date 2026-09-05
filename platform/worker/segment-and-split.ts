@@ -70,7 +70,7 @@ export async function runSegmentAndSplit(
 
   const rosterResolution = batch.course_id
     ? await loadInvitedRoster(supabase, batch.course_id)
-    : { roster: [], sourceCourseIds: [], isTrack: false };
+    : { roster: [], sourceCourseIds: [], sourceCourseNames: {}, isTrack: false };
   const rosterNames = rosterResolution.roster.map((r) => r.fullName);
   const rosterByName = new Map(rosterResolution.roster.map((r) => [r.fullName, r]));
 
