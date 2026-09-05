@@ -86,6 +86,8 @@ export interface InvitedRosterEntry {
   profileId: string | null;
   /** The real class course this student is actually enrolled/invited on. */
   sourceCourseId: string;
+  /** Teacher-confirmed alternative spellings (invited_students.name_aliases). */
+  aliases?: string[];
 }
 
 export interface ProposedInvitedSegment {
@@ -128,10 +130,14 @@ export function matchSegmentsToInvitedRoster(
   students: SegmentedStudent[],
   roster: InvitedRosterEntry[]
 ): ProposedInvitedSegment[] {
+  // Each roster entry is matched under its full name and every
+  // teacher-confirmed alias, taking the best score across them.
   const normalisedRoster = roster.map((r) => ({
     ...r,
-    normalised: normaliseName(r.fullName),
-    tokens: new Set(normaliseName(r.fullName).split(" ").filter(Boolean)),
+    names: [r.fullName, ...(r.aliases ?? [])].map((name) => ({
+      normalised: normaliseName(name),
+      tokens: new Set(normaliseName(name).split(" ").filter(Boolean)),
+    })),
   }));
 
   return students.map((s) => {
@@ -142,13 +148,17 @@ export function matchSegmentsToInvitedRoster(
 
     for (const entry of normalisedRoster) {
       let score = 0;
-      if (entry.normalised === target) {
-        score = 1;
-      } else {
-        let shared = 0;
-        for (const t of targetTokens) if (entry.tokens.has(t)) shared++;
-        const denom = Math.max(entry.tokens.size, targetTokens.size, 1);
-        score = shared / denom;
+      for (const name of entry.names) {
+        let nameScore = 0;
+        if (name.normalised === target) {
+          nameScore = 1;
+        } else {
+          let shared = 0;
+          for (const t of targetTokens) if (name.tokens.has(t)) shared++;
+          const denom = Math.max(name.tokens.size, targetTokens.size, 1);
+          nameScore = shared / denom;
+        }
+        score = Math.max(score, nameScore);
       }
       if (score > 0 && (!best || score > best.score)) best = { entry, score };
     }
@@ -260,7 +270,7 @@ export async function loadInvitedRoster(
 
   const { data, error } = await supabase
     .from("invited_students")
-    .select("id, full_name, profile_id, course_id")
+    .select("id, full_name, profile_id, course_id, name_aliases")
     .in("course_id", sourceCourseIds)
     .eq("hidden", false);
 
@@ -268,14 +278,22 @@ export async function loadInvitedRoster(
 
   const roster = (data ?? [])
     .filter(
-      (r): r is { id: string; full_name: string; profile_id: string | null; course_id: string } =>
-        !!r.full_name
+      (
+        r
+      ): r is {
+        id: string;
+        full_name: string;
+        profile_id: string | null;
+        course_id: string;
+        name_aliases: string[] | null;
+      } => !!r.full_name
     )
     .map((r) => ({
       invitedId: r.id,
       fullName: r.full_name,
       profileId: r.profile_id,
       sourceCourseId: r.course_id,
+      aliases: r.name_aliases ?? [],
     }));
 
   return { roster, sourceCourseIds, sourceCourseNames, isTrack };
