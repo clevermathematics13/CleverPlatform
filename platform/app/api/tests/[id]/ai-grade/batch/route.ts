@@ -16,6 +16,8 @@ import {
   buildSegmentationUserPrompt,
   validateSegmentationResponse,
   matchSegmentsToRoster,
+  rematchUnmatchedSegments,
+  type ProposedSegment,
   type RosterEntry,
 } from "@/lib/ai-grading";
 import {
@@ -63,6 +65,39 @@ export const maxDuration = 300;
  * file_name, which is all the linkage the review UI needs.
  */
 
+/**
+ * The roster every cover-page name is matched against. Sourced from
+ * invited_students, not the students table directly: a class imported via
+ * Google Classroom (or added with a manual invite) has a pending
+ * invited_students row for every student well before any of them have
+ * logged in, while a students enrollment row only exists once they have
+ * (see auto_enroll_from_invitations). Every currently-enrolled student
+ * still has an invited_students row too (both import paths write one), so
+ * this covers exactly the same roster plus the not-yet-registered students
+ * a students-only query would silently exclude. Mirrors the NA scanning
+ * pipeline's own roster source (lib/na-scanning.ts) -- including its
+ * virtual "track course" pooling for grouped classes, and, because a test
+ * sits on one class (9G) while the scanned pile mixes every class in the
+ * track (9A, 9C, 9G), the sibling classes of that track too. Must match
+ * the roster /api/students serves the dropdown, or a name matched here
+ * would have no option to land on.
+ */
+async function loadGradingRoster(supabase: SupabaseClient, courseId: string | null): Promise<RosterEntry[]> {
+  if (!courseId) return [];
+  const { roster } = await loadInvitedRoster(supabase, courseId, { includeTrackSiblings: true });
+  return roster
+    .map((r): RosterEntry => ({
+      // Registered students resolve straight to their real profile id, so
+      // a returning student's batch scan is written the ordinary way.
+      // Not-yet-registered students get the composite subject id instead
+      // -- see parseGradingSubject.
+      profileId: r.profileId ?? `${INVITED_SUBJECT_PREFIX}${r.invitedId}`,
+      displayName: r.fullName,
+      aliases: r.aliases ?? [],
+    }))
+    .filter((r) => !!r.displayName);
+}
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -104,8 +139,30 @@ export async function GET(
     if (m) gradedRunsByBatch.set(m[1], (gradedRunsByBatch.get(m[1]) ?? 0) + 1);
   }
 
+  // Proposals are frozen when a batch is read, so a spelling recorded
+  // afterwards (or a student added to the roster since) never reached
+  // rows read earlier. Re-match the unmatched ones against today's roster
+  // and persist what changed, so the restored panel pre-fills them.
+  let rematchRoster: RosterEntry[] = [];
+  try {
+    const { data: test } = await supabase.from("tests").select("course_id").eq("id", testId).maybeSingle();
+    rematchRoster = await loadGradingRoster(supabase, (test?.course_id as string | null) ?? null);
+  } catch {
+    // A roster failure only means the stored proposals are served as-is.
+  }
+  const refreshed = await Promise.all(
+    (batches ?? []).map(async (b) => {
+      const proposals = Array.isArray(b.proposed_segments) ? (b.proposed_segments as ProposedSegment[]) : null;
+      if (!proposals || rematchRoster.length === 0 || !["segmented", "split"].includes(b.status as string)) return b;
+      const { segments, changed } = rematchUnmatchedSegments(proposals, rematchRoster);
+      if (!changed) return b;
+      await supabase.from("ai_grade_batches").update({ proposed_segments: segments }).eq("id", b.id);
+      return { ...b, proposed_segments: segments };
+    })
+  );
+
   return NextResponse.json({
-    batches: (batches ?? []).map((b) => ({ ...b, graded_runs: gradedRunsByBatch.get(b.id as string) ?? 0 })),
+    batches: refreshed.map((b) => ({ ...b, graded_runs: gradedRunsByBatch.get(b.id as string) ?? 0 })),
   });
 }
 
@@ -309,41 +366,11 @@ export async function POST(
     typeof body.fileName === "string" && body.fileName.trim() ? body.fileName.trim() : "batch-scan.pdf";
 
   // -- Load the class roster ---------------------------------------------------
-  // Sourced from invited_students, not the students table directly: a class
-  // imported via Google Classroom (or added with a manual invite) has a
-  // pending invited_students row for every student well before any of them
-  // have logged in, while a students enrollment row only exists once they
-  // have (see auto_enroll_from_invitations). Every currently-enrolled
-  // student still has an invited_students row too (both import paths write
-  // one), so this covers exactly the same roster plus the not-yet-registered
-  // students the old students-only query silently excluded. Mirrors the NA
-  // scanning pipeline's own roster source (lib/na-scanning.ts) — including
-  // its virtual "track course" pooling for grouped classes, and, because a
-  // test sits on one class (9G) while the scanned pile mixes every class in
-  // the track (9A, 9C, 9G), the sibling classes of that track too. Must
-  // match the roster /api/students serves the dropdown, or a name matched
-  // here would have no option to land on.
-  //
-  // Loaded before segmentation because the oversized-upload path also
-  // hands the name list to its cover-page checks (constrained recognition
-  // against real names beats open-vocabulary handwriting OCR).
-  let roster: RosterEntry[] = [];
-  if (test.course_id) {
-    const { roster: invitedRoster } = await loadInvitedRoster(supabase, test.course_id, {
-      includeTrackSiblings: true,
-    });
-    roster = invitedRoster
-      .map((r): RosterEntry => ({
-        // Registered students resolve straight to their real profile id, so
-        // a returning student's batch scan is written the ordinary way.
-        // Not-yet-registered students get the composite subject id instead
-        // — see parseGradingSubject.
-        profileId: r.profileId ?? `${INVITED_SUBJECT_PREFIX}${r.invitedId}`,
-        displayName: r.fullName,
-        aliases: r.aliases ?? [],
-      }))
-      .filter((r): r is RosterEntry => !!r.displayName);
-  }
+  // See loadGradingRoster. Loaded before segmentation because the
+  // oversized-upload path also hands the name list to its cover-page checks
+  // (constrained recognition against real names beats open-vocabulary
+  // handwriting OCR).
+  const roster = await loadGradingRoster(supabase, (test.course_id as string | null) ?? null);
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 

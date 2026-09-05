@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  rematchUnmatchedSegments,
   AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY,
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
@@ -35,6 +36,40 @@ function unit(overrides: Partial<GradingUnit> = {}): GradingUnit {
 function segment(label: string) {
   return { label, pages: [1], confidence: "high" as const, note: "" };
 }
+
+describe("rematchUnmatchedSegments", () => {
+  const proposed = (label: string, matchedStudentId: string | null = null) => ({
+    label,
+    pages: [1],
+    confidence: "high" as const,
+    note: "",
+    matchedStudentId,
+    matchedStudentName: matchedStudentId ? "Someone" : null,
+  });
+
+  it("fills in matches that a newly recorded alias now makes possible, leaving matched rows alone", () => {
+    const roster: RosterEntry[] = [
+      { profileId: "s1", displayName: "Gyuwon Kim", aliases: ["Nicole Kum"] },
+      { profileId: "s2", displayName: "Liam Seminario" },
+    ];
+    const { segments, changed } = rematchUnmatchedSegments(
+      [proposed("Nicole Kum"), proposed("Liam Seminario", "s2"), proposed("Nobody Here")],
+      roster
+    );
+    expect(changed).toBe(true);
+    expect(segments[0]).toMatchObject({ matchedStudentId: "s1", matchedStudentName: "Gyuwon Kim" });
+    expect(segments[1]).toMatchObject({ matchedStudentId: "s2", matchedStudentName: "Someone" });
+    expect(segments[2].matchedStudentId).toBeNull();
+  });
+
+  it("reports no change when nothing new matches", () => {
+    const { segments, changed } = rematchUnmatchedSegments([proposed("Nobody Here")], [
+      { profileId: "s1", displayName: "Gyuwon Kim" },
+    ]);
+    expect(changed).toBe(false);
+    expect(segments[0].matchedStudentId).toBeNull();
+  });
+});
 
 describe("matchSegmentsToRoster", () => {
   it("matches a cover-page name that differs only by a nickname/full-name split", () => {
