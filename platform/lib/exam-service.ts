@@ -41,12 +41,22 @@ export async function getTestsForStudent(
 
   if (!enrollments || enrollments.length === 0) return [];
 
-  const courseIds = enrollments.map((e) => e.course_id);
+  // A test attached to one class of a track (Formative Assessment 1 lives
+  // on 9G) is sat by the whole track, so a 9A student's list must include
+  // it. track_family_course_ids is the same rule the student RLS policies
+  // on tests/test_items use (migration student_track_family_test_access);
+  // the RPC exists because students cannot read track_courses directly.
+  const enrolledIds = enrollments.map((e) => e.course_id as string);
+  const courseIds = new Set(enrolledIds);
+  for (const courseId of enrolledIds) {
+    const { data: family } = await supabase.rpc("track_family_course_ids", { p_course_id: courseId });
+    for (const id of (family ?? []) as string[]) courseIds.add(id);
+  }
 
   const { data: tests, error } = await supabase
     .from("tests")
     .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden")
-    .in("course_id", courseIds)
+    .in("course_id", [...courseIds])
     .eq("hidden", false)
     .order("test_date", { ascending: false });
 
@@ -56,7 +66,7 @@ export async function getTestsForStudent(
       const { data: fallback, error: fallbackError } = await supabase
         .from("tests")
         .select("id, name, test_date, total_marks, course_id")
-        .in("course_id", courseIds)
+        .in("course_id", [...courseIds])
         .order("test_date", { ascending: false });
       if (fallbackError) throw fallbackError;
       return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
