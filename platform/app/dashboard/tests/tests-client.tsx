@@ -50,6 +50,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
   // Deleting
   const [deleting, setDeleting] = useState<string | null>(null);
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null);
+  const [updatingSelfAssessment, setUpdatingSelfAssessment] = useState<string | null>(null);
 
   const formattedExamTime = (value: string | null) => {
     if (!value) return null;
@@ -66,7 +67,10 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
     const detailRes = await fetch(`/api/tests/${testId}`);
     const detail = await detailRes.json();
     if (detailRes.ok) {
-      setTests((prev) => [{ ...detail, hidden: detail.hidden ?? false } as TestRow, ...prev]);
+      setTests((prev) => [
+        { ...detail, hidden: detail.hidden ?? false, require_self_assessment: detail.require_self_assessment ?? true } as TestRow,
+        ...prev,
+      ]);
     }
   };
 
@@ -146,6 +150,23 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
       setTests((prev) => prev.map((t) => (t.id === testId ? { ...t, hidden } : t)));
     } finally {
       setUpdatingVisibility(null);
+    }
+  };
+
+  const handleToggleRequireSelfAssessment = async (testId: string, requireSelfAssessment: boolean) => {
+    setUpdatingSelfAssessment(testId);
+    try {
+      const res = await fetch(`/api/tests/${testId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ require_self_assessment: requireSelfAssessment }),
+      });
+      if (!res.ok) return;
+      setTests((prev) =>
+        prev.map((t) => (t.id === testId ? { ...t, require_self_assessment: requireSelfAssessment } : t))
+      );
+    } finally {
+      setUpdatingSelfAssessment(null);
     }
   };
 
@@ -399,6 +420,15 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                       onChange={(e) => handleToggleHidden(test.id, e.target.checked)}
                     />
                     Hide this exam from student reflection dropdown
+                  </label>
+                  <label className="mt-1 flex items-center gap-2 text-xs text-da-muted">
+                    <input
+                      type="checkbox"
+                      checked={test.require_self_assessment}
+                      disabled={updatingSelfAssessment === test.id}
+                      onChange={(e) => handleToggleRequireSelfAssessment(test.id, e.target.checked)}
+                    />
+                    Require self-assessment before releasing Clev&apos;s Marks
                   </label>
                 </div>
                 <div className="flex items-center gap-2">

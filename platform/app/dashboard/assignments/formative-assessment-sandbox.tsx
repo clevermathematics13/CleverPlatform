@@ -107,6 +107,7 @@ export function FormativeAssessmentSandbox() {
   const [levelCount, setLevelCount] = useState(4);
   const [contextNotes, setContextNotes] = useState("");
   const [savedTestId, setSavedTestId] = useState<string | null>(null);
+  const [requireSelfAssessment, setRequireSelfAssessment] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingMs, setIsExportingMs] = useState(false);
@@ -239,7 +240,7 @@ export function FormativeAssessmentSandbox() {
       const res = await fetch("/api/formative-assessments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ testId: savedTestId ?? undefined, courseId, draft }),
+        body: JSON.stringify({ testId: savedTestId ?? undefined, courseId, draft, requireSelfAssessment }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as { error?: string }).error ?? `Save failed (${res.status})`);
@@ -307,6 +308,11 @@ export function FormativeAssessmentSandbox() {
                 ))}
               </select>
             </label>
+            <ToggleField
+              label="Require self-assessment before releasing Clev's Marks"
+              checked={requireSelfAssessment}
+              onChange={setRequireSelfAssessment}
+            />
             <button
               type="button"
               onClick={handleSave}
