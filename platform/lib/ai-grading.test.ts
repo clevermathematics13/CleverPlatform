@@ -61,6 +61,25 @@ describe("matchSegmentsToRoster", () => {
     expect(result.matchedStudentId).toBe("s1");
   });
 
+  it("matches a teacher-confirmed alias exactly, beating another student who ties on the first name", () => {
+    const roster: RosterEntry[] = [
+      { profileId: "s1", displayName: "Arianna Cortes", aliases: ["Arianna C"] },
+      { profileId: "s2", displayName: "Arianna Bonfil" },
+    ];
+    const [result] = matchSegmentsToRoster([segment("Arianna C")], roster);
+    expect(result.matchedStudentId).toBe("s1");
+    expect(result.matchedStudentName).toBe("Arianna Cortes");
+  });
+
+  it("matches a misread surname recorded as an alias that fuzzy matching alone would not reach", () => {
+    const roster: RosterEntry[] = [
+      { profileId: "s1", displayName: "Galo Masias", aliases: ["Galo Mafiol"] },
+      { profileId: "s2", displayName: "Galo Perez" },
+    ];
+    const [result] = matchSegmentsToRoster([segment("Galo Mafiol")], roster);
+    expect(result.matchedStudentId).toBe("s1");
+  });
+
   it("does not propose a match when two roster entries tie on a shared first name", () => {
     const roster: RosterEntry[] = [
       { profileId: "s1", displayName: "Maria Lopez" },

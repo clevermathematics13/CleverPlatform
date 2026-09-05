@@ -164,6 +164,12 @@ interface ReviewRow {
   confidence: Confidence;
   note: string;
   studentId: string; // "" until the teacher picks one
+  /**
+   * What the server's roster match proposed for this row ("" if nothing).
+   * When the teacher picks someone else, the cover-page label is a spelling
+   * the matcher did not know -- offered as an alias to remember.
+   */
+  proposedStudentId: string;
 }
 
 function parsePageList(text: string): number[] {
@@ -817,8 +823,25 @@ function BatchPanel({
       confidence: s.confidence,
       note: s.note,
       studentId: s.matchedStudentId ?? studentByName.get(s.label) ?? "",
+      proposedStudentId: s.matchedStudentId ?? studentByName.get(s.label) ?? "",
     }))
   );
+  /** Cover-page labels already recorded as an alias this session, by row key. */
+  const [rememberedRows, setRememberedRows] = useState<Record<string, "saving" | "saved" | "failed">>({});
+
+  // Records the row's cover-page label as an accepted spelling of the
+  // student the teacher picked, so the next scan with the same handwriting
+  // is matched automatically (POST /api/students/aliases).
+  const rememberSpelling = async (row: ReviewRow) => {
+    if (!row.studentId || !row.label.trim()) return;
+    setRememberedRows((prev) => ({ ...prev, [row.key]: "saving" }));
+    const { ok } = await fetchJson("/api/students/aliases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentId: row.studentId, alias: row.label.trim() }),
+    });
+    setRememberedRows((prev) => ({ ...prev, [row.key]: ok ? "saved" : "failed" }));
+  };
   const [splitting, setSplitting] = useState(false);
   const [splitResults, setSplitResults] = useState<SplitResultRow[] | null>(null);
   const [stopRequested, setStopRequested] = useState(false);
@@ -874,6 +897,7 @@ function BatchPanel({
         confidence: group[0].confidence,
         note: [...new Set(group.map((r) => r.note).filter(Boolean))].join(" / "),
         studentId,
+        proposedStudentId: group[0].proposedStudentId,
       };
       return [...prev.filter((r) => r.studentId !== studentId), merged];
     });
@@ -886,7 +910,15 @@ function BatchPanel({
   const addRow = () =>
     setRows((prev) => [
       ...prev,
-      { key: `manual-${Date.now()}`, label: "New student", pages: [], confidence: "low", note: "Added manually", studentId: "" },
+      {
+        key: `manual-${Date.now()}`,
+        label: "New student",
+        pages: [],
+        confidence: "low",
+        note: "Added manually",
+        studentId: "",
+        proposedStudentId: "",
+      },
     ]);
 
   const canSplit =
@@ -1163,6 +1195,38 @@ function BatchPanel({
                       invalid={duplicateStudent}
                       placeholder="— pick a student —"
                     />
+                    {(() => {
+                      // Offer to remember the cover-page spelling once the
+                      // teacher has picked a student the matcher did not
+                      // propose, unless the label already is that name.
+                      const chosen = students.find((st) => st.profile_id === r.studentId);
+                      const label = r.label.trim();
+                      const offer =
+                        !!chosen &&
+                        !!label &&
+                        r.studentId !== r.proposedStudentId &&
+                        label.localeCompare(chosen.display_name, undefined, { sensitivity: "base" }) !== 0 &&
+                        !r.key.startsWith("manual-");
+                      if (!offer) return null;
+                      const state = rememberedRows[r.key];
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => rememberSpelling(r)}
+                          disabled={state === "saving" || state === "saved"}
+                          title={`Record "${label}" as an accepted spelling of ${chosen.display_name}, so the next scan with this name is matched automatically`}
+                          className="mt-1 block text-xs text-purple-300 hover:underline disabled:no-underline disabled:opacity-70"
+                        >
+                          {state === "saved"
+                            ? `✓ "${label}" remembered for ${chosen.display_name}`
+                            : state === "saving"
+                              ? "Remembering…"
+                              : state === "failed"
+                                ? "Could not remember this spelling — try again"
+                                : `Remember "${label}" as ${chosen.display_name}`}
+                        </button>
+                      );
+                    })()}
                   </td>
                   <td className="px-2 py-2">
                     <span

@@ -457,6 +457,7 @@ Server-side Google OAuth token store. Replaces browser-cookie token storage so t
 | `hidden` | boolean | default `false` |
 | `extra_time` | integer | default `0` |
 | `nickname` | text, nullable |  |
+| `name_aliases` | text[] | default `'{}'` — teacher-confirmed alternative spellings of `full_name` (e.g. a cover-page misread), matched by the AI grader roster matcher |
 
 ### `lessons`
 

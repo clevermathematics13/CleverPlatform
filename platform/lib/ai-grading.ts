@@ -1376,6 +1376,12 @@ export function validateSegmentationResponse(
 export interface RosterEntry {
   profileId: string;
   displayName: string;
+  /**
+   * Alternative spellings the teacher has confirmed for this student
+   * (invited_students.name_aliases) -- typically how a name was misread
+   * off a scanned cover page. Each is matched as if it were the name.
+   */
+  aliases?: string[];
 }
 
 /**
@@ -1461,10 +1467,16 @@ export function matchSegmentsToRoster(
   students: SegmentedStudent[],
   roster: RosterEntry[]
 ): ProposedSegment[] {
+  // Every roster entry is matched under each of its names: the display
+  // name plus any teacher-confirmed aliases. An alias that equals the
+  // cover-page label outright scores 1, which is what lets "Arianna C"
+  // land on Arianna Cortes even when another Arianna would otherwise tie.
   const normalisedRoster = roster.map((r) => ({
     ...r,
-    normalised: normaliseName(r.displayName),
-    tokens: [...new Set(normaliseName(r.displayName).split(" ").filter(Boolean))],
+    names: [r.displayName, ...(r.aliases ?? [])].map((name) => ({
+      normalised: normaliseName(name),
+      tokens: [...new Set(normaliseName(name).split(" ").filter(Boolean))],
+    })),
   }));
 
   return students.map((s) => {
@@ -1474,19 +1486,23 @@ export function matchSegmentsToRoster(
     const scored: { entry: (typeof normalisedRoster)[number]; score: number }[] = [];
     for (const entry of normalisedRoster) {
       let score = 0;
-      if (entry.normalised === target) {
-        score = 1;
-      } else if (targetTokens.length > 0 && entry.tokens.length > 0) {
-        // Token overlap, fuzzy per word. Scored against whichever side has
-        // FEWER tokens, so a nickname-only roster entry ("Luciana") isn't
-        // penalised for matching only part of a longer OCR-read cover-page
-        // name ("Luciana Rojas More"), and a sparse cover-page read isn't
-        // penalised against a longer roster name either.
-        let shared = 0;
-        for (const t of targetTokens) {
-          if (entry.tokens.some((et) => tokensMatch(t, et))) shared++;
+      for (const name of entry.names) {
+        let nameScore = 0;
+        if (name.normalised === target) {
+          nameScore = 1;
+        } else if (targetTokens.length > 0 && name.tokens.length > 0) {
+          // Token overlap, fuzzy per word. Scored against whichever side has
+          // FEWER tokens, so a nickname-only roster entry ("Luciana") isn't
+          // penalised for matching only part of a longer OCR-read cover-page
+          // name ("Luciana Rojas More"), and a sparse cover-page read isn't
+          // penalised against a longer roster name either.
+          let shared = 0;
+          for (const t of targetTokens) {
+            if (name.tokens.some((et) => tokensMatch(t, et))) shared++;
+          }
+          nameScore = shared / Math.min(targetTokens.length, name.tokens.length);
         }
-        score = shared / Math.min(targetTokens.length, entry.tokens.length);
+        score = Math.max(score, nameScore);
       }
       if (score > 0) scored.push({ entry, score });
     }

@@ -332,13 +332,14 @@ export async function POST(
       includeTrackSiblings: true,
     });
     roster = invitedRoster
-      .map((r) => ({
+      .map((r): RosterEntry => ({
         // Registered students resolve straight to their real profile id, so
         // a returning student's batch scan is written the ordinary way.
         // Not-yet-registered students get the composite subject id instead
         // — see parseGradingSubject.
         profileId: r.profileId ?? `${INVITED_SUBJECT_PREFIX}${r.invitedId}`,
         displayName: r.fullName,
+        aliases: r.aliases ?? [],
       }))
       .filter((r): r is RosterEntry => !!r.displayName);
   }
