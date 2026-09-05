@@ -71,6 +71,10 @@ export async function GET(
   const { supabase } = auth;
   const { id: testId } = await params;
 
+  // 100, not 20: a class set arrives as three files cut into 27 parts, and
+  // the Batch upload tab restores every unfinished part from this list
+  // after a page reload (lib/batch-restore.ts). A limit that only covered
+  // the newest few would silently drop the rest.
   const { data: batches, error } = await supabase
     .from("ai_grade_batches")
     .select(
@@ -78,10 +82,30 @@ export async function GET(
     )
     .eq("test_id", testId)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(100);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ batches: batches ?? [] });
+
+  // How many students from each batch have a completed grading run. The
+  // split route names every per-student scan "...-batch-<batchId>.pdf", so
+  // the run's source path is the link. Lets the tab tell a batch that was
+  // split and graded (finished) from one that was split and then lost to a
+  // gateway timeout before grading started (still needs doing).
+  const { data: runs } = await supabase
+    .from("ai_grade_runs")
+    .select("source_storage_path")
+    .eq("test_id", testId)
+    .eq("status", "complete")
+    .like("source_storage_path", "%-batch-%.pdf");
+  const gradedRunsByBatch = new Map<string, number>();
+  for (const r of runs ?? []) {
+    const m = /-batch-([0-9a-f-]{36})\.pdf$/.exec(r.source_storage_path ?? "");
+    if (m) gradedRunsByBatch.set(m[1], (gradedRunsByBatch.get(m[1]) ?? 0) + 1);
+  }
+
+  return NextResponse.json({
+    batches: (batches ?? []).map((b) => ({ ...b, graded_runs: gradedRunsByBatch.get(b.id as string) ?? 0 })),
+  });
 }
 
 /**

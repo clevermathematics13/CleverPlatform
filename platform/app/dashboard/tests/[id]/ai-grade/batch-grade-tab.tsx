@@ -5,6 +5,7 @@ import type { ChangeEvent, Ref } from "react";
 import { fetchJson } from "./fetch-json";
 import { StudentPicker } from "./student-picker";
 import { runWithConcurrency } from "@/lib/concurrency";
+import { groupUnfinishedBatches, type RestorableBatch } from "@/lib/batch-restore";
 
 /**
  * How many parts "grade all parts" works on at once, after the first
@@ -91,6 +92,13 @@ interface PartState {
   batch: BatchRow | null;
   reused: boolean;
   error: string | null;
+  /**
+   * Set when this part came back from the server on page load rather than
+   * from an upload in this session (lib/batch-restore.ts): "segmented" for
+   * one still awaiting review, "split" for one that was split earlier but
+   * never graded -- what a gateway timeout mid-flow leaves behind.
+   */
+  restored: "segmented" | "split" | null;
 }
 
 interface UploadState {
@@ -222,9 +230,71 @@ export function BatchGradeTab({
   const [panelStatus, setPanelStatus] = useState<Record<string, PanelStatus>>({});
   const [gradingAll, setGradingAll] = useState(false);
   const [allStatusLine, setAllStatusLine] = useState<string | null>(null);
+  /** True until the first look at the server's batch list has come back. */
+  const [restoring, setRestoring] = useState(true);
+  const [restoredCount, setRestoredCount] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const panelRefs = useRef(new Map<string, BatchPanelHandle>());
+
+  // -- Restore unfinished batches on load --------------------------------------
+  // This list used to start empty on every page load, so a reload (or just
+  // coming back the next day) hid every upload the model had already read
+  // but nobody had graded yet -- and the only way back was re-uploading the
+  // scans. The server keeps every batch row; rebuild the list from the
+  // ones that still have grading to do. A batch uploaded in THIS session
+  // is never duplicated: the restore only runs while the list is empty.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`);
+        if (!ok || cancelled) return;
+        type ApiBatch = BatchRow & RestorableBatch & { source_storage_path?: string | null };
+        const restored = groupUnfinishedBatches(((data.batches as ApiBatch[]) ?? []));
+        if (restored.length === 0) return;
+        const entries: UploadState[] = restored.map((u) => ({
+          key: `restored-${u.fileName}`,
+          fileName: u.fileName,
+          status: "ready",
+          pageCount: u.pageCount,
+          warnings: [],
+          error: null,
+          parts: u.parts.map((p) => ({
+            key: p.count > 1 ? `part-${p.index}` : "whole",
+            chunk:
+              p.count > 1
+                ? {
+                    index: p.index,
+                    count: p.count,
+                    storagePath: p.batch.source_storage_path ?? "",
+                    fileName: p.batch.file_name ?? u.fileName,
+                    firstPage: p.firstPage,
+                    lastPage: p.lastPage,
+                    pageCount: p.batch.page_count ?? p.lastPage - p.firstPage + 1,
+                    cleanCutAfter: true,
+                  }
+                : null,
+            status: "segmented",
+            batch: p.batch,
+            reused: false,
+            error: null,
+            restored: p.splitButUngraded ? "split" : "segmented",
+          })),
+        }));
+        const partCount = entries.reduce((n, u) => n + u.parts.length, 0);
+        setUploads((prev) => (prev.length > 0 ? prev : entries));
+        setRestoredCount(partCount);
+      } catch {
+        // A failed restore only means an empty list, exactly as before.
+      } finally {
+        if (!cancelled) setRestoring(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [testId]);
 
   const updateUpload = (key: string, patch: Partial<UploadState>) =>
     setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, ...patch } : u)));
@@ -312,6 +382,7 @@ export function BatchGradeTab({
           batch: null,
           reused: false,
           error: null,
+          restored: null,
         }));
         updateUpload(uploadKey, {
           status: "ready",
@@ -337,6 +408,7 @@ export function BatchGradeTab({
             batch: batchFromSegmentation(data, file.name),
             reused: !!data.reusedFromBatchId,
             error: null,
+            restored: null,
           },
         ],
       });
@@ -393,6 +465,7 @@ export function BatchGradeTab({
     setError(null);
     setPanelStatus({});
     setAllStatusLine(null);
+    setRestoredCount(0);
     panelRefs.current.clear();
   };
 
@@ -486,7 +559,13 @@ export function BatchGradeTab({
         </div>
       )}
 
-      {uploads.length === 0 && (
+      {uploads.length === 0 && restoring && (
+        <section className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
+          <p className="text-sm text-da-muted">Checking for earlier uploads that still need grading…</p>
+        </section>
+      )}
+
+      {uploads.length === 0 && !restoring && (
         <section className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
           <h2 className="text-lg font-bold text-da-text">Upload batch scans</h2>
           <p className="mt-1 text-sm text-da-muted">
@@ -578,6 +657,14 @@ export function BatchGradeTab({
             </div>
           </div>
 
+          {restoredCount > 0 && (
+            <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-3 text-sm text-blue-300">
+              Restored {restoredCount} part(s) from earlier uploads that were read but not yet graded. Their
+              page-to-student rows are as the model proposed them — check each before grading. &ldquo;Start
+              over&rdquo; only clears this list; the uploads stay on the server.
+            </div>
+          )}
+
           {allStatusLine && (
             <div className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-3 text-sm text-blue-300">
               {allStatusLine}
@@ -624,21 +711,28 @@ export function BatchGradeTab({
 
                 if (part.status === "segmented" && part.batch) {
                   return (
-                    <BatchPanel
-                      key={key}
-                      ref={(handle) => {
-                        if (handle) panelRefs.current.set(key, handle);
-                        else panelRefs.current.delete(key);
-                      }}
-                      testId={testId}
-                      students={students}
-                      batch={part.batch}
-                      partLabel={partLabel}
-                      reused={part.reused}
-                      onStatus={(status) =>
-                        setPanelStatus((prev) => (prev[key] === status ? prev : { ...prev, [key]: status }))
-                      }
-                    />
+                    <div key={key} className="space-y-2">
+                      {part.restored === "split" && (
+                        <div className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300">
+                          ⚠ This part was split before but none of its students was graded — most likely the
+                          earlier attempt timed out. Splitting and grading it again is safe.
+                        </div>
+                      )}
+                      <BatchPanel
+                        ref={(handle) => {
+                          if (handle) panelRefs.current.set(key, handle);
+                          else panelRefs.current.delete(key);
+                        }}
+                        testId={testId}
+                        students={students}
+                        batch={part.batch}
+                        partLabel={partLabel}
+                        reused={part.reused}
+                        onStatus={(status) =>
+                          setPanelStatus((prev) => (prev[key] === status ? prev : { ...prev, [key]: status }))
+                        }
+                      />
+                    </div>
                   );
                 }
 
