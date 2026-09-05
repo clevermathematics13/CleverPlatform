@@ -9,9 +9,12 @@ interface NativeFormProps {
   paperUrl?: string | null;
   markSchemeUrl?: string | null;
   onOpenDoc?: (title: string, url: string) => void;
+  /** Preview mode: inputs and the submit button are disabled, since there is
+   *  no real student behind this session to attribute a submission to. */
+  readOnly?: boolean;
 }
 
-export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc }: NativeFormProps) {
+export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc, readOnly = false }: NativeFormProps) {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   // Use "" for "no entry yet" (dash / not attempted); number for a real score
@@ -80,6 +83,13 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
         </div>
       )}
 
+      {readOnly && (
+        <p className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          Preview only — this student has not submitted self-grades yet, so
+          this is the blank form they will see first.
+        </p>
+      )}
+
       <p className="text-base text-da-text">
         For each question, enter the marks you think you earned based on the
         mark scheme.
@@ -142,6 +152,7 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
                     max={item.max_marks}
                     value={scores[item.test_item_id] ?? ""}
                     placeholder="–"
+                    disabled={readOnly}
                     onChange={(e) =>
                       handleChange(item.test_item_id, e.target.value, item.max_marks)
                     }
@@ -153,7 +164,7 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
                         if (next) next.focus();
                       }
                     }}
-                    className="w-16 rounded border-2 border-da-border bg-da-surface px-2 py-1 text-center text-da-text font-bold focus:ring-2 focus:ring-da-accent focus:border-da-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    className="w-16 rounded border-2 border-da-border bg-da-surface px-2 py-1 text-center text-da-text font-bold focus:ring-2 focus:ring-da-accent focus:border-da-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
                   />
                 </td>
               </tr>
@@ -166,14 +177,16 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
         <p className="text-sm text-red-400">{error}</p>
       )}
 
-      <button
-        type="button"
-        onClick={handleSubmit}
-        disabled={submitting}
-        className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50"
-      >
-        {submitting ? "Submitting…" : "Submit Self-Grades"}
-      </button>
+      {!readOnly && (
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={submitting}
+          className="rounded-lg bg-da-accent px-4 py-2 text-sm font-bold text-da-bg hover:bg-da-amber disabled:opacity-50"
+        >
+          {submitting ? "Submitting…" : "Submit Self-Grades"}
+        </button>
+      )}
     </div>
   );
 }

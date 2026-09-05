@@ -27,6 +27,49 @@ function computeReleaseTimestamp(
   return parsed + 80 * 60 * 1000;
 }
 
+/** Core of getTestsForStudent/getTestsForInvitedStudent: every test visible
+ *  from a set of enrolled course ids, expanded to their track family (a
+ *  test attached to one class of a track, e.g. Formative Assessment 1 on
+ *  9G, is sat by the whole track, so a sibling class's list must include
+ *  it -- track_family_course_ids is the same rule the student RLS policies
+ *  on tests/test_items use, migration student_track_family_test_access). */
+async function getTestsVisibleToCourses(courseIds: string[]): Promise<ReflectionTest[]> {
+  if (courseIds.length === 0) return [];
+  const supabase = await createClient();
+
+  const allCourseIds = new Set(courseIds);
+  for (const courseId of courseIds) {
+    const { data: family } = await supabase.rpc("track_family_course_ids", { p_course_id: courseId });
+    for (const id of (family ?? []) as string[]) allCourseIds.add(id);
+  }
+
+  const { data: tests, error } = await supabase
+    .from("tests")
+    .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden")
+    .in("course_id", [...allCourseIds])
+    .eq("hidden", false)
+    .order("test_date", { ascending: false });
+
+  if (error) {
+    // Fallback if migration 045/049 columns haven't been applied yet
+    if (/paper_url|mark_scheme_url|hidden|exam_time|release_at/.test(error.message)) {
+      const { data: fallback, error: fallbackError } = await supabase
+        .from("tests")
+        .select("id, name, test_date, total_marks, course_id")
+        .in("course_id", [...allCourseIds])
+        .order("test_date", { ascending: false });
+      if (fallbackError) throw fallbackError;
+      return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
+    }
+    throw error;
+  }
+  const now = Date.now();
+  return ((tests ?? []) as ReflectionTest[]).filter((t) => {
+    const unlockAt = computeReleaseTimestamp(t.test_date, t.exam_time, t.release_at);
+    return unlockAt === null || unlockAt <= now;
+  });
+}
+
 /** Fetch all tests visible to a student (via their course enrollment). */
 export async function getTestsForStudent(
   studentProfileId: string
@@ -40,44 +83,16 @@ export async function getTestsForStudent(
     .eq("profile_id", studentProfileId);
 
   if (!enrollments || enrollments.length === 0) return [];
+  return getTestsVisibleToCourses(enrollments.map((e) => e.course_id as string));
+}
 
-  // A test attached to one class of a track (Formative Assessment 1 lives
-  // on 9G) is sat by the whole track, so a 9A student's list must include
-  // it. track_family_course_ids is the same rule the student RLS policies
-  // on tests/test_items use (migration student_track_family_test_access);
-  // the RPC exists because students cannot read track_courses directly.
-  const enrolledIds = enrollments.map((e) => e.course_id as string);
-  const courseIds = new Set(enrolledIds);
-  for (const courseId of enrolledIds) {
-    const { data: family } = await supabase.rpc("track_family_course_ids", { p_course_id: courseId });
-    for (const id of (family ?? []) as string[]) courseIds.add(id);
-  }
-
-  const { data: tests, error } = await supabase
-    .from("tests")
-    .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden")
-    .in("course_id", [...courseIds])
-    .eq("hidden", false)
-    .order("test_date", { ascending: false });
-
-  if (error) {
-    // Fallback if migration 045/049 columns haven't been applied yet
-    if (/paper_url|mark_scheme_url|hidden|exam_time|release_at/.test(error.message)) {
-      const { data: fallback, error: fallbackError } = await supabase
-        .from("tests")
-        .select("id, name, test_date, total_marks, course_id")
-        .in("course_id", [...courseIds])
-        .order("test_date", { ascending: false });
-      if (fallbackError) throw fallbackError;
-      return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
-    }
-    throw error;
-  }
-  const now = Date.now();
-  return ((tests ?? []) as ReflectionTest[]).filter((t) => {
-    const unlockAt = computeReleaseTimestamp(t.test_date, t.exam_time, t.release_at);
-    return unlockAt === null || unlockAt <= now;
-  });
+/** Same as getTestsForStudent, but for a teacher's "view as" preview of an
+ *  invited_students row that has no profiles row yet (never signed in).
+ *  There is no students row to look an enrolment up through in that case --
+ *  the roster's own course_id, which the caller already has from
+ *  resolveViewAs, stands in directly. */
+export async function getTestsForInvitedStudent(courseId: string): Promise<ReflectionTest[]> {
+  return getTestsVisibleToCourses([courseId]);
 }
 
 /** Fetch all tests (teacher view). */
@@ -164,6 +179,64 @@ export async function getReflectionItems(
     ),
     marks_awarded: marksMap.get(item.id) ?? null,
     self_marks: selfMap.get(item.id) ?? null,
+  }));
+}
+
+/** Same as getReflectionItems, but for a teacher's "view as" preview of a
+ *  student who has no profiles row yet. Teacher marks are looked up by
+ *  invited_student_id -- the fallback key student_marks carries for a mark
+ *  entered before the student's first login (migration
+ *  student_marks_invited_student_fallback); getReflectionItems's own
+ *  student_id-keyed query would find none of them, same as the real app
+ *  would for that student today. Self-assessment is always empty here:
+ *  student_self_scores has no invited-student fallback, correctly -- an
+ *  account that doesn't exist yet cannot have submitted one. */
+export async function getReflectionItemsForInvitedStudent(
+  testId: string,
+  invitedStudentId: string
+): Promise<ReflectionItem[]> {
+  const supabase = await createClient();
+
+  const { data: subtopics } = await supabase
+    .from("subtopics")
+    .select("code, descriptor");
+
+  const subtopicMap = new Map(
+    (subtopics ?? []).map((s) => [s.code, s.descriptor])
+  );
+
+  const { data: items, error: itemsError } = await supabase
+    .from("test_items")
+    .select("id, question_number, part_label, max_marks, subtopic_codes")
+    .eq("test_id", testId)
+    .order("sort_order", { ascending: true });
+
+  if (itemsError) throw itemsError;
+  if (!items || items.length === 0) return [];
+
+  const itemIds = items.map((i) => i.id);
+  const { data: marks } = await supabase
+    .from("student_marks")
+    .select("test_item_id, marks_awarded")
+    .eq("invited_student_id", invitedStudentId)
+    .in("test_item_id", itemIds);
+
+  const marksMap = new Map(
+    (marks ?? []).map((m) => [m.test_item_id, m.marks_awarded])
+  );
+
+  return items.map((item) => ({
+    id: item.id,
+    test_item_id: item.id,
+    question_number: item.question_number,
+    part_label: item.part_label,
+    max_marks: item.max_marks,
+    subtopic_codes: item.subtopic_codes ?? [],
+    subtopic_labels: (item.subtopic_codes ?? []).map(
+      (code: string) => `${code} — ${subtopicMap.get(code) ?? code}`
+    ),
+    marks_awarded: marksMap.get(item.id) ?? null,
+    self_marks: null,
   }));
 }
 

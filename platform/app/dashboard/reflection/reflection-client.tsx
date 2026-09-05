@@ -28,6 +28,15 @@ interface ReflectionClientProps {
   isTeacher: boolean;
   viewStudentId?: string | null;
   viewStudentName?: string | null;
+  /** True for the ?viewAs= preview (lib/view-as.ts): a read-only simulation
+   *  of exactly what this student will see, including one who has never
+   *  signed in. Never writes self-scores/uploads on the student's behalf --
+   *  unlike the older ?viewStudent= preview below, which does and is left
+   *  untouched. */
+  readOnlyPreview?: boolean;
+  /** Only meaningful alongside readOnlyPreview: whether the previewed
+   *  student has ever actually signed in. Purely informational copy. */
+  previewHasAccount?: boolean;
 }
 
 export function ReflectionClient({
@@ -39,6 +48,8 @@ export function ReflectionClient({
   isTeacher,
   viewStudentId,
   viewStudentName,
+  readOnlyPreview = false,
+  previewHasAccount = true,
 }: ReflectionClientProps) {
   const router = useRouter();
   const targetStudentId = isTeacher && viewStudentId ? viewStudentId : profile.id;
@@ -68,6 +79,9 @@ export function ReflectionClient({
 
   const handleSubmitSelfGrades = useCallback(
     async (scores: SelfScore[]) => {
+      if (readOnlyPreview) {
+        throw new Error("This is a read-only preview — self-grading is disabled.");
+      }
       const supabase = createClient();
       for (const score of scores) {
         const { error } = await supabase.from("student_self_scores").upsert(
@@ -85,11 +99,14 @@ export function ReflectionClient({
       router.refresh();
       setStep(2);
     },
-    [router, targetStudentId]
+    [router, targetStudentId, readOnlyPreview]
   );
 
   const handleSaveComparison = useCallback(
     async (scores: SelfScore[]) => {
+      if (readOnlyPreview) {
+        throw new Error("This is a read-only preview — saving is disabled.");
+      }
       const supabase = createClient();
       for (const score of scores) {
         const { error } = await supabase.from("student_self_scores").upsert(
@@ -112,7 +129,7 @@ export function ReflectionClient({
       const newDisagreement = computeDisagreement(updatedItems);
       if (newDisagreement === 0) setStep(3);
     },
-    [items, targetStudentId]
+    [items, targetStudentId, readOnlyPreview]
   );
 
   if (tests.length === 0) {
@@ -154,6 +171,14 @@ export function ReflectionClient({
           : "Exam Reflection"}
       </h1>
 
+      {readOnlyPreview && (
+        <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          &#128065; Read-only preview — this is exactly what {viewStudentName} will see
+          {previewHasAccount ? "" : " once they sign in for the first time"}. Self-grading
+          and uploads are disabled here; only {viewStudentName} can submit those.
+        </div>
+      )}
+
       {/* Test selector */}
       <div className="mb-4 flex items-center gap-3">
         <label htmlFor="test-selector" className="text-base font-semibold text-da-amber">
@@ -193,6 +218,7 @@ export function ReflectionClient({
           paperUrl={selectedTest?.paper_url}
           markSchemeUrl={selectedTest?.mark_scheme_url}
           onOpenDoc={(title, url) => setDocPanel({ title, url })}
+          readOnly={readOnlyPreview}
         />
       )}
 
@@ -200,8 +226,8 @@ export function ReflectionClient({
         <div className="space-y-4">
           <ScoreTable
             items={items}
-            editable={true}
-            onSave={handleSaveComparison}
+            editable={!readOnlyPreview}
+            onSave={readOnlyPreview ? undefined : handleSaveComparison}
           />
 
           {!hasTeacherMarks && (
@@ -225,16 +251,24 @@ export function ReflectionClient({
       {step === 3 && selectedTestId && (
         <div className="space-y-4">
           <ScoreTable items={items} editable={false} />
-          <UploadSection
-            studentId={profile.id}
-            testId={selectedTestId}
-            existingUpload={pdfUpload}
-            disagreement={disagreement}
-            onChangeUpload={(u) => {
-              setPdfUpload(u);
-              if (u) setStep(4);
-            }}
-          />
+          {readOnlyPreview ? (
+            <div className="rounded-lg border-2 border-dashed border-da-border bg-da-surface p-5 text-sm text-da-muted">
+              {pdfUpload
+                ? `${viewStudentName} has already uploaded corrected work for this test (${pdfUpload.file_name}).`
+                : "Corrections upload step — disabled in preview. This is where the student uploads a PDF of their corrected work once disagreement reaches 0%."}
+            </div>
+          ) : (
+            <UploadSection
+              studentId={profile.id}
+              testId={selectedTestId}
+              existingUpload={pdfUpload}
+              disagreement={disagreement}
+              onChangeUpload={(u) => {
+                setPdfUpload(u);
+                if (u) setStep(4);
+              }}
+            />
+          )}
         </div>
       )}
 

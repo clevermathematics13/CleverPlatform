@@ -38,6 +38,11 @@ export interface ViewAsTarget {
   profileId: string | null;
   name: string;
   courseName: string | null;
+  /** invited_students.course_id. Present even when profileId is null, so a
+   *  preview can look up what the student's course grants them (tests,
+   *  track-family access) without needing a students row, which only
+   *  exists once they've signed in at least once. */
+  courseId: string | null;
   /** False when the student has no login yet. The banner says so, because
    *  "viewing as" someone with no account shows an emptier page than they
    *  will eventually see, and that is otherwise indistinguishable from a
@@ -61,14 +66,14 @@ export async function resolveViewAs(requested: string | null | undefined): Promi
   const supabase = await createClient();
   let { data } = await supabase
     .from("invited_students")
-    .select("id, full_name, nickname, profile_id, courses(name)")
+    .select("id, full_name, nickname, profile_id, course_id, courses(name)")
     .eq("id", requested)
     .maybeSingle();
 
   if (!data) {
     ({ data } = await supabase
       .from("invited_students")
-      .select("id, full_name, nickname, profile_id, courses(name)")
+      .select("id, full_name, nickname, profile_id, course_id, courses(name)")
       .eq("profile_id", requested)
       .maybeSingle());
   }
@@ -80,6 +85,7 @@ export async function resolveViewAs(requested: string | null | undefined): Promi
     profileId: data.profile_id ?? null,
     name: data.nickname ?? data.full_name ?? "Student",
     courseName: (course as { name: string } | null)?.name ?? null,
+    courseId: data.course_id ?? null,
     hasAccount: !!data.profile_id,
   };
 }
