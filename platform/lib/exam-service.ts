@@ -45,21 +45,21 @@ async function getTestsVisibleToCourses(courseIds: string[]): Promise<Reflection
 
   const { data: tests, error } = await supabase
     .from("tests")
-    .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden")
+    .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden, require_self_assessment")
     .in("course_id", [...allCourseIds])
     .eq("hidden", false)
     .order("test_date", { ascending: false });
 
   if (error) {
-    // Fallback if migration 045/049 columns haven't been applied yet
-    if (/paper_url|mark_scheme_url|hidden|exam_time|release_at/.test(error.message)) {
+    // Fallback if migration 045/049/this one's columns haven't been applied yet
+    if (/paper_url|mark_scheme_url|hidden|exam_time|release_at|require_self_assessment/.test(error.message)) {
       const { data: fallback, error: fallbackError } = await supabase
         .from("tests")
         .select("id, name, test_date, total_marks, course_id")
         .in("course_id", [...allCourseIds])
         .order("test_date", { ascending: false });
       if (fallbackError) throw fallbackError;
-      return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
+      return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false, require_self_assessment: true })) as ReflectionTest[];
     }
     throw error;
   }
@@ -101,19 +101,19 @@ export async function getAllTests(): Promise<ReflectionTest[]> {
 
   const { data: tests, error } = await supabase
     .from("tests")
-    .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden")
+    .select("id, name, test_date, exam_time, release_at, total_marks, course_id, paper_url, mark_scheme_url, hidden, require_self_assessment")
     .eq("hidden", false)
     .order("test_date", { ascending: false });
 
   if (error) {
-    // Fallback if migration 045/049 columns haven't been applied yet
-    if (/paper_url|mark_scheme_url|hidden|exam_time|release_at/.test(error.message)) {
+    // Fallback if migration 045/049/this one's columns haven't been applied yet
+    if (/paper_url|mark_scheme_url|hidden|exam_time|release_at|require_self_assessment/.test(error.message)) {
       const { data: fallback, error: fallbackError } = await supabase
         .from("tests")
         .select("id, name, test_date, total_marks, course_id")
         .order("test_date", { ascending: false });
       if (fallbackError) throw fallbackError;
-      return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false })) as ReflectionTest[];
+      return (fallback ?? []).map((t) => ({ ...t, exam_time: null, release_at: null, paper_url: null, mark_scheme_url: null, hidden: false, require_self_assessment: true })) as ReflectionTest[];
     }
     throw error;
   }

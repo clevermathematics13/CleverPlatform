@@ -53,12 +53,19 @@ export default async function ReflectionPage({
           : await getReflectionItemsForInvitedStudent(selectedTestId, viewAs.invitedStudentId);
 
       // Same gate a real student hits: Clev's Marks stay hidden until they
-      // submit their own self-assessment for this test. The preview must
-      // show this, not the teacher's own ungated grading view, since the
-      // whole point is showing exactly what the student sees.
-      const hasSelfAssessed = items.some((i) => i.self_marks !== null);
-      if (!hasSelfAssessed) {
-        items = items.map((i) => ({ ...i, marks_awarded: null }));
+      // submit their own self-assessment for this test -- unless the teacher
+      // has marked this test's self-assessment step optional
+      // (tests.require_self_assessment), in which case the preview shows
+      // marks immediately, same as a real student would see. The preview
+      // must match exactly what the student sees, not the teacher's own
+      // ungated grading view.
+      const selectedTest = tests.find((t) => t.id === selectedTestId);
+      const selfAssessmentRequired = selectedTest?.require_self_assessment ?? true;
+      if (selfAssessmentRequired) {
+        const hasSelfAssessed = items.some((i) => i.self_marks !== null);
+        if (!hasSelfAssessed) {
+          items = items.map((i) => ({ ...i, marks_awarded: null }));
+        }
       }
 
       if (viewAs.hasAccount && viewAs.profileId) {
@@ -125,9 +132,14 @@ export default async function ReflectionPage({
     items = await getReflectionItems(selectedTestId, effectiveStudentId);
     pdfUpload = await getPdfUpload(effectiveStudentId, selectedTestId);
 
-    // Students must self-assess before seeing teacher marks
+    // Students must self-assess before seeing teacher marks -- unless the
+    // teacher has marked this specific test's self-assessment step optional
+    // (tests.require_self_assessment), in which case marks are visible
+    // immediately regardless of whether the student has self-assessed.
+    const selectedTest = tests.find((t) => t.id === selectedTestId);
     const viewerIsStudent = !isTeacher;
-    if (viewerIsStudent && items) {
+    const selfAssessmentRequired = selectedTest?.require_self_assessment ?? true;
+    if (viewerIsStudent && selfAssessmentRequired && items) {
       const hasSelfAssessed = items.some((i) => i.self_marks !== null);
       if (!hasSelfAssessed) {
         items = items.map((i) => ({ ...i, marks_awarded: null }));

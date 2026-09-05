@@ -13,7 +13,7 @@ export default async function TestsPage() {
     supabase
       .from("tests")
       .select(
-        `id, name, test_date, exam_time, release_at, total_marks, course_id, hidden,
+        `id, name, test_date, exam_time, release_at, total_marks, course_id, hidden, require_self_assessment,
          courses(name),
          test_items(id, question_number, part_label, max_marks, sort_order)`
       )
@@ -44,6 +44,7 @@ export interface TestRow {
   total_marks: number | null;
   course_id: string | null;
   hidden: boolean;
+  require_self_assessment: boolean;
   courses: { name: string } | null;
   test_items: {
     id: string;

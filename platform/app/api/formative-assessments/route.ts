@@ -27,6 +27,7 @@ type SaveBody = {
   testId?: unknown;
   courseId?: unknown;
   draft?: unknown;
+  requireSelfAssessment?: unknown;
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,11 +63,20 @@ export async function POST(req: Request) {
   const testId =
     typeof body.testId === "string" && UUID_RE.test(body.testId) ? body.testId : null;
   const totalMarks = computeTotalMarks(draft.sections);
+  // Defaults to required (true) to match tests.require_self_assessment's own
+  // column default -- every other creation path leaves this untouched.
+  const requireSelfAssessment = body.requireSelfAssessment !== false;
 
   const saveResult = testId
     ? await supabase
         .from("tests")
-        .update({ name: draft.title, course_id: courseId, total_marks: totalMarks, custom_content: draft })
+        .update({
+          name: draft.title,
+          course_id: courseId,
+          total_marks: totalMarks,
+          custom_content: draft,
+          require_self_assessment: requireSelfAssessment,
+        })
         .eq("id", testId)
         .select("id, name, total_marks")
         .single()
@@ -78,6 +88,7 @@ export async function POST(req: Request) {
           teacher_id: profile.id,
           total_marks: totalMarks,
           custom_content: draft,
+          require_self_assessment: requireSelfAssessment,
         })
         .select("id, name, total_marks")
         .single();

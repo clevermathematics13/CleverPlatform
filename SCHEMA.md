@@ -1297,6 +1297,7 @@ Unique on `(test_id, question_number, part_label)`.
 | `exam_time` | time without time zone, nullable |  |
 | `custom_content` | jsonb, nullable | full authored draft for a Formative-Assessment-creator test; null for IB-bank/external tests |
 | `release_at` | timestamp with time zone, nullable |  |
+| `require_self_assessment` | boolean | default `true` — when false, app/dashboard/reflection reveals marks to a student without requiring a self-assessment submission first |
 
 ### `topics`
 
