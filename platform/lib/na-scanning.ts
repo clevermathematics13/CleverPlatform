@@ -171,8 +171,25 @@ export interface RosterResolution {
   roster: InvitedRosterEntry[];
   /** The course IDs actually queried for students -- either [courseId] itself, or its track_courses members. */
   sourceCourseIds: string[];
+  /**
+   * Display names for every id in sourceCourseIds (e.g. "9A"), so a caller
+   * pooling several real classes can label which class each student is in.
+   */
+  sourceCourseNames: Record<string, string>;
   /** True if courseId was resolved as a track (its members were pooled) rather than queried directly. */
   isTrack: boolean;
+}
+
+export interface LoadInvitedRosterOptions {
+  /**
+   * When courseId is itself a real class that belongs to a track (e.g. 9G,
+   * a member of Grade 9 Extended), also pool the track's other member
+   * classes (9A, 9C). Off by default: the NA scan pipeline attaches packets
+   * to the track course and never needs this, while the IB-test AI grader
+   * attaches a test to one class but marks a scan pile that mixes all
+   * three, so it opts in.
+   */
+  includeTrackSiblings?: boolean;
 }
 
 /**
@@ -194,7 +211,8 @@ export interface RosterResolution {
  */
 export async function loadInvitedRoster(
   supabase: SupabaseClient,
-  courseId: string
+  courseId: string,
+  options: LoadInvitedRosterOptions = {}
 ): Promise<RosterResolution> {
   const { data: trackMembers, error: trackErr } = await supabase
     .from("track_courses")
@@ -204,9 +222,41 @@ export async function loadInvitedRoster(
   if (trackErr) throw new Error(`Failed to resolve track_courses for ${courseId}: ${trackErr.message}`);
 
   const isTrack = (trackMembers ?? []).length > 0;
-  const sourceCourseIds = isTrack
+  let sourceCourseIds = isTrack
     ? (trackMembers ?? []).map((r) => r.member_course_id as string)
     : [courseId];
+
+  if (!isTrack && options.includeTrackSiblings) {
+    // courseId is a real class. If it belongs to one or more tracks, pool
+    // every member of those tracks alongside it, keeping courseId first so
+    // the test's own class stays at the top of any grouped listing.
+    const { data: parentTracks, error: parentErr } = await supabase
+      .from("track_courses")
+      .select("track_course_id")
+      .eq("member_course_id", courseId);
+    if (parentErr) throw new Error(`Failed to resolve parent tracks for ${courseId}: ${parentErr.message}`);
+
+    const trackIds = [...new Set((parentTracks ?? []).map((r) => r.track_course_id as string))];
+    if (trackIds.length > 0) {
+      const { data: siblings, error: siblingErr } = await supabase
+        .from("track_courses")
+        .select("member_course_id")
+        .in("track_course_id", trackIds);
+      if (siblingErr) throw new Error(`Failed to resolve sibling classes for ${courseId}: ${siblingErr.message}`);
+      sourceCourseIds = [
+        courseId,
+        ...new Set((siblings ?? []).map((r) => r.member_course_id as string).filter((id) => id !== courseId)),
+      ];
+    }
+  }
+
+  const { data: courseRows, error: courseErr } = await supabase
+    .from("courses")
+    .select("id, name")
+    .in("id", sourceCourseIds);
+  if (courseErr) throw new Error(`Failed to load course names: ${courseErr.message}`);
+  const sourceCourseNames: Record<string, string> = {};
+  for (const c of courseRows ?? []) sourceCourseNames[c.id as string] = (c.name as string) ?? "";
 
   const { data, error } = await supabase
     .from("invited_students")
@@ -228,7 +278,7 @@ export async function loadInvitedRoster(
       sourceCourseId: r.course_id,
     }));
 
-  return { roster, sourceCourseIds, isTrack };
+  return { roster, sourceCourseIds, sourceCourseNames, isTrack };
 }
 
 // -----------------------------------------------------------------------------
