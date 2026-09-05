@@ -1,0 +1,14 @@
+-- na_feedback holds at most one row per response crop.
+--
+-- Enforced here after 60 duplicate rows accumulated across 28 crops. All
+-- three upsert paths (the assess route, worker/assess-submit, worker/
+-- assess-poll) looked the row up with .maybeSingle(), which ERRORS once a
+-- crop has more than one row, and the error was destructured away -- so
+-- each fell through to INSERT and added another duplicate, compounding on
+-- every run until one crop held five. Nothing at the database level
+-- stopped it.
+--
+-- The code now updates by crop_id and only inserts when no row exists, so
+-- it never attempts the insert this would reject; this constraint is the
+-- guarantee that the invariant holds even if a future write path forgets.
+alter table na_feedback add constraint na_feedback_crop_id_key unique (crop_id);

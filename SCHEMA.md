@@ -1312,6 +1312,8 @@ Unique on `(test_id, question_number, part_label)`.
 
 Maps a virtual track course (no roster of its own, e.g. Grade 9 Extended) to the real roster-bearing class courses that follow it (e.g. 9A, 9C, 9G). Used to resolve "which real students does this NA packet/track apply to" for roster matching, since NA content lives on the track course but rosters live on the real class courses.
 
+A test attached to any course in a track family is visible to every member class. `track_family_course_ids(course_id)` (security definer) returns the course plus its track and the track's other members; `student_can_view_test_course(course_id)` backs the student SELECT policies on `tests` and `test_items`, and `lib/track-courses.ts` applies the same rule to the teacher's gradebook. Students cannot read `track_courses` directly; the app calls the function via RPC.
+
 | column | type | default |
 |---|---|---|
 | `id` | uuid | default `gen_random_uuid()` |
