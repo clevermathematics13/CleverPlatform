@@ -850,12 +850,59 @@ function BatchPanel({
   const stopRequestedRef = useRef(false);
 
   const allPages = batch.page_count ? Array.from({ length: batch.page_count }, (_, i) => i + 1) : [];
-  const blankPages = new Set(batch.blank_pages);
+  // Blank pages can grow after mount: pages the segmentation read left
+  // unassigned are re-checked one by one (see the effect below) and the
+  // confirmed-blank ones join this list without a reload.
+  const [knownBlankPages, setKnownBlankPages] = useState<number[]>(batch.blank_pages);
+  const [blankCheck, setBlankCheck] = useState<
+    | { status: "checking"; pages: number[] }
+    | { status: "done"; blank: number[]; kept: number[] }
+    | { status: "failed" }
+    | null
+  >(null);
+  const blankPages = new Set(knownBlankPages);
   const claimedPages = new Set(rows.flatMap((r) => r.pages));
   // Confirmed-blank pages (e.g. a fixed-length booklet's unused last page)
   // are excluded here rather than folded into "needs review" -- they were
   // never going to have work on them, so nothing for the teacher to check.
   const unclaimedPages = allPages.filter((p) => !claimedPages.has(p) && !blankPages.has(p));
+
+  // Pages nobody claimed and the model did not call blank are usually the
+  // unused back page of a booklet. Ask the server to look at each one
+  // (POST .../blank-check) once, as soon as the panel appears, so the
+  // teacher is not told to find a row for a page that has nothing on it.
+  // Runs once per batch: later edits to page ranges do not re-trigger it.
+  const blankCheckStarted = useRef(false);
+  useEffect(() => {
+    if (blankCheckStarted.current || splitResults) return;
+    const candidates = allPages.filter((p) => !claimedPages.has(p) && !blankPages.has(p));
+    if (candidates.length === 0) return;
+    blankCheckStarted.current = true;
+    let cancelled = false;
+    (async () => {
+      setBlankCheck({ status: "checking", pages: candidates });
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch/${batch.id}/blank-check`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pages: candidates }),
+      });
+      if (cancelled) return;
+      if (!ok) {
+        setBlankCheck({ status: "failed" });
+        return;
+      }
+      const serverBlank = (data.blankPages as number[] | undefined) ?? batch.blank_pages;
+      const blank = serverBlank.filter((p) => candidates.includes(p));
+      setKnownBlankPages(serverBlank);
+      setBlankCheck({ status: "done", blank, kept: candidates.filter((p) => !blank.includes(p)) });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately not keyed on the derived page sets: this is a one-shot
+    // check for the pages unassigned when the panel first rendered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batch.id]);
 
   const rowsWithConflicts = (() => {
     const owners = new Map<number, string[]>();
@@ -1108,15 +1155,28 @@ function BatchPanel({
         </div>
       )}
 
-      {batch.blank_pages.length > 0 && !splitResults && (
+      {knownBlankPages.length > 0 && !splitResults && (
         <div className="border-b border-da-border bg-da-hover px-5 py-2 text-xs text-da-muted">
-          Page(s) {formatPageList(batch.blank_pages)} were identified as blank and skipped — nothing to
+          Page(s) {formatPageList(knownBlankPages)} were identified as blank and skipped — nothing to
           review there.
         </div>
       )}
-      {unclaimedPages.length > 0 && !splitResults && (
+      {blankCheck?.status === "checking" && !splitResults && (
+        <div className="border-b border-blue-400/40 bg-blue-500/15 px-5 py-2 text-xs text-blue-300">
+          Checking whether page(s) {formatPageList(blankCheck.pages)} are blank…
+        </div>
+      )}
+      {blankCheck?.status === "failed" && !splitResults && (
         <div className="border-b border-amber-400/40 bg-amber-500/15 px-5 py-2 text-xs text-amber-300">
-          ⚠ Page(s) {formatPageList(unclaimedPages)} aren&apos;t assigned to any row yet.
+          Could not check the unassigned pages for being blank — review them by hand.
+        </div>
+      )}
+      {unclaimedPages.length > 0 && blankCheck?.status !== "checking" && !splitResults && (
+        <div className="border-b border-amber-400/40 bg-amber-500/15 px-5 py-2 text-xs text-amber-300">
+          ⚠ Page(s) {formatPageList(unclaimedPages)} aren&apos;t assigned to any row yet
+          {blankCheck?.status === "done" && blankCheck.kept.length > 0
+            ? " — they do not look blank, so they need a row."
+            : "."}
         </div>
       )}
       {rowsWithConflicts.size > 0 && !splitResults && (
