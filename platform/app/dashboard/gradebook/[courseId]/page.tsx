@@ -4,7 +4,8 @@ import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
 import { GradebookGrid } from "./GradebookGrid";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
-import { loadInvitedRoster } from "@/lib/na-scanning";
+import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
+import { loadTrackLinks, trackFamilyCourseIds } from "@/lib/track-courses";
 
 function inferComponent(name: string): "P1" | "P2" | "P3" | "IA" | null {
   const u = name.toUpperCase();
@@ -61,11 +62,20 @@ export default async function GradebookCoursePage({
     setNameById[s.id] = s.name;
   }
 
-  // Tests for this course ordered most-recent-first
+  // Who this gradebook is for. A track (Grade 9 Extended) pools its member
+  // classes' students; a class lists its own. Either way the students are
+  // the invited roster (plus anyone registered) of sourceCourseIds.
+  const { roster: invitedRoster, sourceCourseIds } = await loadInvitedRoster(supabase, courseId);
+
+  // Tests for this course's track family (lib/track-courses.ts), ordered
+  // most-recent-first. A test attached to one class of a track is sat by
+  // the whole track, so it belongs on every member's gradebook and the
+  // track's own.
+  const testCourseIds = trackFamilyCourseIds(courseId, await loadTrackLinks(supabase, courseId));
   const { data: rawTests } = await supabase
     .from("tests")
     .select("id, name, test_date, total_marks, boundary_set_id")
-    .eq("course_id", courseId)
+    .in("course_id", testCourseIds)
     .order("test_date", { ascending: false });
 
   const testList = rawTests ?? [];
@@ -90,11 +100,11 @@ export default async function GradebookCoursePage({
     allItems = data ?? [];
   }
 
-  // Students enrolled in this course
+  // Students enrolled in this course (or, for a track, in any member class)
   let studentsQuery = supabase
     .from("students")
     .select("profile_id, profiles(display_name)")
-    .eq("course_id", courseId);
+    .in("course_id", sourceCourseIds);
   if (!showHidden) studentsQuery = studentsQuery.eq("hidden", false);
   const { data: rawStudents } = await studentsQuery;
 
@@ -120,7 +130,6 @@ export default async function GradebookCoursePage({
   // straight from AI grading, or entered by hand below -- show up in the
   // grid like any other student's. A registered invitee is skipped: their
   // real enrollment already appears in `students` above.
-  const { roster: invitedRoster } = await loadInvitedRoster(supabase, courseId);
   const invitedStudents = invitedRoster
     .filter((r) => !r.profileId)
     .map((r) => ({
@@ -133,15 +142,27 @@ export default async function GradebookCoursePage({
     return lastName(a.name).localeCompare(lastName(b.name)) || a.name.localeCompare(b.name);
   });
 
-  // Student marks
+  // Student marks. One assessment for a 50-student track is already 2,050
+  // rows, past PostgREST's silent 1000-row cap, so this pages through
+  // .range() (fetchAllRows) -- a single query left half of 9G's marks off
+  // the grid on 5 Sep 2026 with no error.
   const itemIds = allItems.map((i) => i.id);
   const marksMap: Record<string, Record<string, number>> = {};
   if (itemIds.length > 0) {
-    const { data: rawMarks } = await supabase
-      .from("student_marks")
-      .select("test_item_id, student_id, invited_student_id, marks_awarded")
-      .in("test_item_id", itemIds);
-    for (const m of rawMarks ?? []) {
+    const rawMarks = await fetchAllRows<{
+      test_item_id: string;
+      student_id: string | null;
+      invited_student_id: string | null;
+      marks_awarded: number;
+    }>((from, to) =>
+      supabase
+        .from("student_marks")
+        .select("test_item_id, student_id, invited_student_id, marks_awarded")
+        .in("test_item_id", itemIds)
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
+    for (const m of rawMarks) {
       const subjectId = m.student_id ?? (m.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${m.invited_student_id}` : null);
       if (!subjectId) continue;
       if (!marksMap[m.test_item_id]) marksMap[m.test_item_id] = {};
