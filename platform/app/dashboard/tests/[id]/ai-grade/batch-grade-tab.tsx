@@ -78,11 +78,14 @@ interface PartState {
 }
 
 interface UploadState {
+  key: string;
   fileName: string;
-  pageCount: number;
+  status: "uploading" | "reading" | "ready" | "failed";
+  pageCount: number | null;
   parts: PartState[];
   /** Warnings from the chunk planner (e.g. a cut that may split a student). */
   warnings: string[];
+  error: string | null;
 }
 
 /**
@@ -97,8 +100,30 @@ type PanelStatus = "reviewing" | "ready" | "grading" | "done";
 
 /** What the tab can ask a panel to do on the teacher's behalf. */
 interface BatchPanelHandle {
-  splitAndGrade: () => Promise<void>;
+  splitAndGrade: (opts?: { onFirstStudentGraded?: () => void }) => Promise<void>;
   stop: () => void;
+}
+
+/**
+ * How many files are uploaded and read at once. Each file's segmentation is
+ * one serverless request carrying one Opus call, so this is also the number
+ * of concurrent whole-document model reads; three keeps a stack of class
+ * scans moving without leaning on rate limits.
+ */
+const FILE_CONCURRENCY = 3;
+
+/** Run async tasks with at most `limit` in flight. Results keep task order. */
+async function runPool<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
+  const results: T[] = new Array(tasks.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < tasks.length) {
+      const i = next++;
+      results[i] = await tasks[i]();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results;
 }
 
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
@@ -177,8 +202,7 @@ export function BatchGradeTab({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
-  const [upload, setUpload] = useState<UploadState | null>(null);
+  const [uploads, setUploads] = useState<UploadState[]>([]);
   const [panelStatus, setPanelStatus] = useState<Record<string, PanelStatus>>({});
   const [gradingAll, setGradingAll] = useState(false);
   const [allStatusLine, setAllStatusLine] = useState<string | null>(null);
@@ -186,17 +210,24 @@ export function BatchGradeTab({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const panelRefs = useRef(new Map<string, BatchPanelHandle>());
 
-  const updatePart = (key: string, patch: Partial<PartState>) =>
-    setUpload((prev) =>
-      prev ? { ...prev, parts: prev.parts.map((p) => (p.key === key ? { ...p, ...patch } : p)) } : prev
+  const updateUpload = (key: string, patch: Partial<UploadState>) =>
+    setUploads((prev) => prev.map((u) => (u.key === key ? { ...u, ...patch } : u)));
+
+  const updatePart = (uploadKey: string, partKey: string, patch: Partial<PartState>) =>
+    setUploads((prev) =>
+      prev.map((u) =>
+        u.key === uploadKey
+          ? { ...u, parts: u.parts.map((p) => (p.key === partKey ? { ...p, ...patch } : p)) }
+          : u
+      )
     );
 
   /**
-   * Segment one stored PDF (the whole upload, or one part of a chunked one)
+   * Segment one stored PDF (a whole upload, or one part of a chunked one)
    * through the batch route and record the outcome on its part.
    */
-  const segmentPart = async (part: PartState, storagePath: string, fileName: string) => {
-    updatePart(part.key, { status: "segmenting", error: null });
+  const segmentPart = async (uploadKey: string, partKey: string, storagePath: string, fileName: string) => {
+    updatePart(uploadKey, partKey, { status: "segmenting", error: null });
     try {
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
@@ -210,32 +241,29 @@ export function BatchGradeTab({
         // than recursing into parts of parts.
         throw new Error("The server tried to split this part again; upload the scan again.");
       }
-      updatePart(part.key, {
+      updatePart(uploadKey, partKey, {
         status: "segmented",
         batch: batchFromSegmentation(data, fileName),
         reused: !!data.reusedFromBatchId,
       });
     } catch (e) {
-      updatePart(part.key, {
+      updatePart(uploadKey, partKey, {
         status: "failed",
         error: e instanceof Error ? e.message : "Segmentation failed.",
       });
     }
   };
 
-  const handleUpload = async (file: File) => {
-    setUploading(true);
-    setError(null);
-    setUpload(null);
-    setPanelStatus({});
-    setAllStatusLine(null);
-    panelRefs.current.clear();
-
+  /**
+   * One file, end to end: upload to Storage, ask the server to read it (or
+   * cut it into parts), then read each part. Never throws -- a bad file
+   * marks its own upload failed and the others carry on.
+   */
+  const processFile = async (uploadKey: string, file: File) => {
     try {
       // Batch scans can be very large — upload straight to Storage from the
       // browser rather than sending it as JSON through this Next.js route,
       // which stays well under Vercel's request-body limit either way.
-      setUploadProgress("Uploading scan…");
       const supaModule = await import("@/lib/supabase/client");
       const supabase = supaModule.createClient();
 
@@ -247,7 +275,7 @@ export function BatchGradeTab({
         .upload(storagePath, file, { contentType: "application/pdf", upsert: false });
       if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
 
-      setUploadProgress("Reading cover pages and matching names — this can take a minute for a full class…");
+      updateUpload(uploadKey, { status: "reading" });
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -269,22 +297,20 @@ export function BatchGradeTab({
           reused: false,
           error: null,
         }));
-        setUpload({
-          fileName: file.name,
+        updateUpload(uploadKey, {
+          status: "ready",
           pageCount: data.pageCount as number,
           parts,
           warnings: (data.warnings as string[]) ?? [],
         });
-        setUploading(false);
-        setUploadProgress(null);
         for (const part of parts) {
-          await segmentPart(part, part.chunk!.storagePath, part.chunk!.fileName);
+          await segmentPart(uploadKey, part.key, part.chunk!.storagePath, part.chunk!.fileName);
         }
         return;
       }
 
-      setUpload({
-        fileName: file.name,
+      updateUpload(uploadKey, {
+        status: "ready",
         pageCount: data.pageCount as number,
         warnings: [],
         parts: [
@@ -299,59 +325,117 @@ export function BatchGradeTab({
         ],
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Upload or segmentation failed.");
+      updateUpload(uploadKey, {
+        status: "failed",
+        error: e instanceof Error ? e.message : "Upload or segmentation failed.",
+      });
+    }
+  };
+
+  const handleUpload = async (files: File[]) => {
+    if (files.length === 0) return;
+    setUploading(true);
+    setError(null);
+    setAllStatusLine(null);
+
+    // Every file shows up at once (so the teacher can see the whole stack)
+    // and is then uploaded and read with bounded concurrency: files are
+    // independent, and a class set that arrives as several scanner runs
+    // shouldn't have to wait for each one to finish before the next starts.
+    const entries = files.map((file) => ({
+      file,
+      upload: {
+        key: crypto.randomUUID(),
+        fileName: file.name,
+        status: "uploading" as const,
+        pageCount: null,
+        parts: [],
+        warnings: [],
+        error: null,
+      } satisfies UploadState,
+    }));
+    setUploads((prev) => [...prev, ...entries.map((e) => e.upload)]);
+
+    try {
+      await runPool(
+        entries.map((e) => () => processFile(e.upload.key, e.file)),
+        FILE_CONCURRENCY
+      );
     } finally {
       setUploading(false);
-      setUploadProgress(null);
     }
   };
 
   const handleFilePicked = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0] ?? null;
+    const files = Array.from(e.target.files ?? []);
     e.target.value = "";
-    if (file) await handleUpload(file);
+    await handleUpload(files);
   };
 
   const reset = () => {
-    setUpload(null);
+    setUploads([]);
     setError(null);
     setPanelStatus({});
     setAllStatusLine(null);
     panelRefs.current.clear();
   };
 
-  const segmentingAny = !!upload?.parts.some((p) => p.status === "pending" || p.status === "segmenting");
-  const partCount = upload?.parts.length ?? 0;
+  const allParts = uploads.flatMap((u) => u.parts.map((p) => ({ upload: u, part: p, key: `${u.key}/${p.key}` })));
+  const readingAny =
+    uploading ||
+    uploads.some((u) => u.status === "uploading" || u.status === "reading") ||
+    allParts.some(({ part }) => part.status === "pending" || part.status === "segmenting");
+  const partCount = allParts.length;
 
   // -- "All parts" controls ---------------------------------------------------
   // Each part is an independent batch with its own per-student grading loop
   // (sequential, one request per student, so no single serverless call ever
   // grades more than one script). Running the parts' loops CONCURRENTLY is
-  // the efficient way to grade a whole upload: a 4-part scan grades four
-  // students at a time instead of one, with no request any bigger than
-  // before. Parts whose rows still need review are skipped and named, so a
-  // half-reviewed upload can still start on the parts that are ready.
+  // the efficient way to grade a whole upload -- or several uploads: a
+  // 4-part scan grades four students at a time instead of one, with no
+  // request any bigger than before. Parts whose rows still need review are
+  // skipped and named, so a half-reviewed stack can still start on the
+  // parts that are ready.
+  //
+  // One deliberate wrinkle: the first student is graded ALONE before the
+  // other parts start. Every grading call for the same test shares a cached
+  // prefix (the mark scheme); the first call writes that cache and the rest
+  // read it at a tenth of the price -- but only if they start after the
+  // write has landed. Firing all parts at once makes each part's first
+  // student pay the full write. The stagger costs one student's latency.
   const statusOf = (key: string): PanelStatus | undefined => panelStatus[key];
-  const readyParts = upload ? upload.parts.filter((p) => statusOf(p.key) === "ready") : [];
-  const reviewingParts = upload ? upload.parts.filter((p) => statusOf(p.key) === "reviewing") : [];
-  const gradingParts = upload ? upload.parts.filter((p) => statusOf(p.key) === "grading") : [];
-  const partNumber = (p: PartState) => (p.chunk ? p.chunk.index + 1 : 1);
+  const readyParts = allParts.filter(({ key }) => statusOf(key) === "ready");
+  const reviewingParts = allParts.filter(({ key }) => statusOf(key) === "reviewing");
+  const gradingParts = allParts.filter(({ key }) => statusOf(key) === "grading");
+  const partLabelOf = ({ upload, part }: { upload: UploadState; part: PartState }) =>
+    uploads.length > 1
+      ? `${upload.fileName}${part.chunk ? ` part ${part.chunk.index + 1}` : ""}`
+      : `part ${part.chunk ? part.chunk.index + 1 : 1}`;
 
   const handleGradeAll = async () => {
     if (readyParts.length === 0) return;
     setGradingAll(true);
-    const skipped = reviewingParts.map(partNumber);
+    const skipped = reviewingParts.map(partLabelOf);
     setAllStatusLine(
-      `Grading ${readyParts.length} part(s) at once` +
-        (skipped.length > 0 ? ` — part(s) ${skipped.join(", ")} skipped until their rows are reviewed.` : ".")
+      `Grading ${readyParts.length} part(s) — the first student goes alone to warm the mark-scheme cache, then the rest run side by side.` +
+        (skipped.length > 0 ? ` Skipped until their rows are reviewed: ${skipped.join(", ")}.` : "")
     );
     try {
-      await Promise.allSettled(
-        readyParts.map((p) => panelRefs.current.get(p.key)?.splitAndGrade() ?? Promise.resolve())
-      );
+      const [first, ...rest] = readyParts;
+      let releaseRest!: () => void;
+      const restMayStart = new Promise<void>((resolve) => {
+        releaseRest = resolve;
+      });
+      const firstRun = (panelRefs.current.get(first.key)?.splitAndGrade({ onFirstStudentGraded: releaseRest }) ??
+        Promise.resolve()).finally(releaseRest);
+      await restMayStart;
+      await Promise.allSettled([
+        firstRun,
+        ...rest.map(({ key }) => panelRefs.current.get(key)?.splitAndGrade() ?? Promise.resolve()),
+      ]);
       setAllStatusLine(
         `Finished ${readyParts.length} part(s). See each part below for its results.` +
-          (skipped.length > 0 ? ` Part(s) ${skipped.join(", ")} still need review.` : "")
+          (skipped.length > 0 ? ` Still need review: ${skipped.join(", ")}.` : "")
       );
     } finally {
       setGradingAll(false);
@@ -359,7 +443,7 @@ export function BatchGradeTab({
   };
 
   const handleStopAll = () => {
-    for (const p of gradingParts) panelRefs.current.get(p.key)?.stop();
+    for (const { key } of gradingParts) panelRefs.current.get(key)?.stop();
   };
 
   return (
@@ -368,6 +452,7 @@ export function BatchGradeTab({
         ref={fileInputRef}
         type="file"
         accept="application/pdf"
+        multiple
         onChange={handleFilePicked}
         className="hidden"
       />
@@ -378,18 +463,20 @@ export function BatchGradeTab({
         </div>
       )}
 
-      {!upload && (
+      {uploads.length === 0 && (
         <section className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
-          <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
+          <h2 className="text-lg font-bold text-da-text">Upload batch scans</h2>
           <p className="mt-1 text-sm text-da-muted">
-            One PDF covering multiple students, each starting with a cover page bearing their
-            name. Overflow work on loose paper doesn&apos;t need to stay next to its owner —
-            the model looks for self-labelled continuation pages anywhere in the document.
-            You&apos;ll confirm the page-to-student mapping before anything is graded.
+            One or more PDFs, each covering multiple students, each student starting with a
+            cover page bearing their name. Overflow work on loose paper doesn&apos;t need to
+            stay next to its owner — the model looks for self-labelled continuation pages
+            anywhere in the document. You&apos;ll confirm the page-to-student mapping before
+            anything is graded.
           </p>
           <p className="mt-1 text-sm text-da-muted">
             There is no page limit: a scan too long to read in one go is cut into parts on
-            students&apos; cover pages, and each part is reviewed and graded separately below.
+            students&apos; cover pages. Several files are uploaded and read side by side, and
+            every part is reviewed and graded separately below — or all at once.
           </p>
           <button
             type="button"
@@ -397,30 +484,39 @@ export function BatchGradeTab({
             onClick={() => fileInputRef.current?.click()}
             className="mt-4 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
           >
-            {uploading ? uploadProgress ?? "Working…" : "Upload batch scan"}
+            {uploading ? "Working…" : "Upload batch scan(s)"}
           </button>
         </section>
       )}
 
-      {upload && (
+      {uploads.length > 0 && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-da-border bg-da-surface px-5 py-3 shadow-sm">
             <div>
               <h2 className="text-lg font-bold text-da-text">
-                {upload.fileName} — {upload.pageCount} pages
-                {partCount > 1 && ` in ${partCount} parts`}
+                {uploads.length === 1
+                  ? `${uploads[0].fileName}${uploads[0].pageCount ? ` — ${uploads[0].pageCount} pages` : ""}${partCount > 1 ? ` in ${partCount} parts` : ""}`
+                  : `${uploads.length} files${partCount > 0 ? ` — ${partCount} part(s)` : ""}`}
               </h2>
               <p className="text-xs text-da-muted">
                 {partCount > 1
-                  ? "Cut into parts on students' cover pages so each can be read in one go. Review and grade each part below — they're independent."
+                  ? "Each part is read, reviewed and graded independently. Grade them one at a time below, or all at once here."
                   : "Confirm which pages belong to which student before grading."}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={readingAny || gradingParts.length > 0}
+                className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+              >
+                Add more files
+              </button>
+              <button
+                type="button"
                 onClick={reset}
-                disabled={segmentingAny || gradingParts.length > 0}
+                disabled={readingAny || gradingParts.length > 0}
                 className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
               >
                 Start over
@@ -439,14 +535,14 @@ export function BatchGradeTab({
                 <button
                   type="button"
                   onClick={handleGradeAll}
-                  disabled={segmentingAny || gradingAll || gradingParts.length > 0 || readyParts.length === 0}
+                  disabled={readingAny || gradingAll || gradingParts.length > 0 || readyParts.length === 0}
                   title={
-                    segmentingAny
-                      ? "Wait for every part to be read first"
+                    readingAny
+                      ? "Wait for every file to be read first"
                       : readyParts.length === 0
                         ? "No part is ready yet — every row in a part needs a matched student, at least one page, and no page conflicts"
                         : reviewingParts.length > 0
-                          ? `Grades the ${readyParts.length} ready part(s) at once; part(s) ${reviewingParts.map(partNumber).join(", ")} still need review and will be skipped`
+                          ? `Grades the ${readyParts.length} ready part(s) at once; still need review and will be skipped: ${reviewingParts.map(partLabelOf).join(", ")}`
                           : "Splits and grades every part at once — each part marks its students one at a time, in parallel with the other parts"
                   }
                   className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
@@ -465,76 +561,96 @@ export function BatchGradeTab({
             </div>
           )}
 
-          {upload.warnings.map((w, i) => (
-            <div
-              key={i}
-              className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300"
-            >
-              ⚠ {w}
+          {uploads.map((upload) => (
+            <div key={upload.key} className="space-y-4">
+              {(uploads.length > 1 || upload.status !== "ready") && (
+                <div
+                  className={`rounded-xl border px-5 py-3 shadow-sm ${
+                    upload.status === "failed" ? "border-red-400/40 bg-da-surface" : "border-da-border bg-da-surface"
+                  }`}
+                >
+                  <h3 className="font-bold text-da-text">
+                    {upload.fileName}
+                    {upload.pageCount ? ` — ${upload.pageCount} pages` : ""}
+                    {upload.parts.length > 1 ? ` in ${upload.parts.length} parts` : ""}
+                  </h3>
+                  {upload.status === "uploading" && <p className="text-sm text-da-muted">Uploading…</p>}
+                  {upload.status === "reading" && (
+                    <p className="text-sm text-da-muted">
+                      Reading cover pages and matching names — this can take a minute for a full class…
+                    </p>
+                  )}
+                  {upload.status === "failed" && <p className="text-sm text-red-300">{upload.error}</p>}
+                </div>
+              )}
+
+              {upload.warnings.map((w, i) => (
+                <div
+                  key={i}
+                  className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300"
+                >
+                  ⚠ {w}
+                </div>
+              ))}
+
+              {upload.parts.map((part) => {
+                const key = `${upload.key}/${part.key}`;
+                const partLabel = part.chunk
+                  ? `Part ${part.chunk.index + 1} of ${part.chunk.count} (pages ${part.chunk.firstPage}-${part.chunk.lastPage} of ${upload.fileName})`
+                  : null;
+
+                if (part.status === "segmented" && part.batch) {
+                  return (
+                    <BatchPanel
+                      key={key}
+                      ref={(handle) => {
+                        if (handle) panelRefs.current.set(key, handle);
+                        else panelRefs.current.delete(key);
+                      }}
+                      testId={testId}
+                      students={students}
+                      batch={part.batch}
+                      partLabel={partLabel}
+                      reused={part.reused}
+                      onStatus={(status) =>
+                        setPanelStatus((prev) => (prev[key] === status ? prev : { ...prev, [key]: status }))
+                      }
+                    />
+                  );
+                }
+
+                if (part.status === "failed") {
+                  return (
+                    <section key={key} className="rounded-xl border border-red-400/40 bg-da-surface p-5 shadow-sm">
+                      <h3 className="font-bold text-da-text">{partLabel ?? upload.fileName}</h3>
+                      <p className="mt-1 text-sm text-red-300">{part.error}</p>
+                      {part.chunk && (
+                        <button
+                          type="button"
+                          disabled={readingAny}
+                          onClick={() => segmentPart(upload.key, part.key, part.chunk!.storagePath, part.chunk!.fileName)}
+                          className="mt-3 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
+                        >
+                          Read this part again
+                        </button>
+                      )}
+                    </section>
+                  );
+                }
+
+                return (
+                  <section key={key} className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
+                    <h3 className="font-bold text-da-text">{partLabel ?? upload.fileName}</h3>
+                    <p className="mt-1 text-sm text-da-muted">
+                      {part.status === "segmenting"
+                        ? "Reading cover pages and matching names — this can take a minute…"
+                        : "Waiting for the earlier parts to be read…"}
+                    </p>
+                  </section>
+                );
+              })}
             </div>
           ))}
-
-          {upload.parts.map((part) => {
-            const partLabel = part.chunk
-              ? `Part ${part.chunk.index + 1} of ${part.chunk.count} (pages ${part.chunk.firstPage}-${part.chunk.lastPage} of the scan)`
-              : null;
-
-            if (part.status === "segmented" && part.batch) {
-              return (
-                <BatchPanel
-                  key={part.key}
-                  ref={(handle) => {
-                    if (handle) panelRefs.current.set(part.key, handle);
-                    else panelRefs.current.delete(part.key);
-                  }}
-                  testId={testId}
-                  students={students}
-                  batch={part.batch}
-                  partLabel={partLabel}
-                  reused={part.reused}
-                  onStatus={(status) =>
-                    setPanelStatus((prev) => (prev[part.key] === status ? prev : { ...prev, [part.key]: status }))
-                  }
-                />
-              );
-            }
-
-            if (part.status === "failed") {
-              return (
-                <section
-                  key={part.key}
-                  className="rounded-xl border border-red-400/40 bg-da-surface p-5 shadow-sm"
-                >
-                  <h3 className="font-bold text-da-text">{partLabel ?? upload.fileName}</h3>
-                  <p className="mt-1 text-sm text-red-300">{part.error}</p>
-                  {part.chunk && (
-                    <button
-                      type="button"
-                      disabled={segmentingAny}
-                      onClick={() => segmentPart(part, part.chunk!.storagePath, part.chunk!.fileName)}
-                      className="mt-3 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
-                    >
-                      Read this part again
-                    </button>
-                  )}
-                </section>
-              );
-            }
-
-            return (
-              <section
-                key={part.key}
-                className="rounded-xl border border-da-border bg-da-surface p-5 shadow-sm"
-              >
-                <h3 className="font-bold text-da-text">{partLabel ?? upload.fileName}</h3>
-                <p className="mt-1 text-sm text-da-muted">
-                  {part.status === "segmenting"
-                    ? "Reading cover pages and matching names — this can take a minute…"
-                    : "Waiting for the earlier parts to be read…"}
-                </p>
-              </section>
-            );
-          })}
         </>
       )}
     </div>
@@ -667,8 +783,14 @@ function BatchPanel({
     setStopRequested(true);
   };
 
-  const handleSplit = async () => {
+  const handleSplit = async (opts: { onFirstStudentGraded?: () => void } = {}) => {
     if (!canSplit) return;
+    let firstSignalled = false;
+    const signalFirst = () => {
+      if (firstSignalled) return;
+      firstSignalled = true;
+      opts.onFirstStudentGraded?.();
+    };
     setSplitting(true);
     setStopRequested(false);
     stopRequestedRef.current = false;
@@ -747,6 +869,9 @@ function BatchPanel({
           });
         }
         setSplitResults([...graded]);
+        // Whether it succeeded or failed, one grading request for this test
+        // has now completed, so the shared mark-scheme cache is warm.
+        signalFirst();
       }
 
       const completedCount = graded.filter((r) => r.status === "complete").length;
@@ -766,6 +891,9 @@ function BatchPanel({
     } finally {
       setSplitting(false);
       setStopRequested(false);
+      // Nothing graded (split failed, or every row was skipped): release
+      // anyone waiting on the first student so the other parts still run.
+      signalFirst();
     }
   };
 
@@ -807,7 +935,7 @@ function BatchPanel({
           )}
           <button
             type="button"
-            onClick={handleSplit}
+            onClick={() => handleSplit()}
             disabled={!canSplit || splitting || !!splitResults}
             className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
             title={
