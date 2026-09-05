@@ -22,8 +22,29 @@ import {
   validateGradeResponse,
 } from "@/lib/ai-grading";
 import type { GradingUnit, ValidatedGrade } from "@/lib/ai-grading";
+import { fetchAllRows } from "@/lib/na-scanning";
 
 export const maxDuration = 300;
+
+/** One ai_grade_results row as the review UI reads it (GET below). */
+interface ResultRow {
+  id: string;
+  run_id: string;
+  test_item_id: string;
+  suggested_marks: number;
+  max_marks: number;
+  confidence: string;
+  markscheme_source: string | null;
+  work_found: boolean;
+  reasoning: string | null;
+  evidence: string | null;
+  evidence_image_path: string | null;
+  evidence_box: unknown;
+  mark_breakdown: unknown;
+  accepted: boolean;
+  accepted_at: string | null;
+  accepted_by: string | null;
+}
 
 interface CvCropResult {
   qid: string;
@@ -203,18 +224,28 @@ export async function GET(
   }));
   if (runs.length === 0) return NextResponse.json({ runs: [], results: [] });
 
-  const { data: results, error: rErr } = await supabase
-    .from("ai_grade_results")
-    .select(
-      "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, mark_breakdown, accepted, accepted_at, accepted_by"
-    )
-    .in(
-      "run_id",
-      runs.map((r) => r.id)
+  // A whole class's runs carry well over PostgREST's 1000-row cap (60 runs x
+  // ~39 items = 2,337 rows on 5 Sep 2026), and a single .in() query returns
+  // only the first 1000 with no error. Whichever runs land past the cap then
+  // have no results in the response, so the review UI shows them as never
+  // graded (no acceptance counts, no green dot) even though every mark is
+  // accepted. Page through .range() so every run's results reach the page.
+  const runIds = runs.map((r) => r.id);
+  let rows: ResultRow[];
+  try {
+    rows = await fetchAllRows<ResultRow>((from, to) =>
+      supabase
+        .from("ai_grade_results")
+        .select(
+          "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, mark_breakdown, accepted, accepted_at, accepted_by"
+        )
+        .in("run_id", runIds)
+        .order("id", { ascending: true })
+        .range(from, to)
     );
-
-  if (rErr) return NextResponse.json({ error: rErr.message }, { status: 500 });
-  const rows = results ?? [];
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
 
   // -- Evidence crop images (private "exam-scans" bucket) ---------------------
   const evidencePaths = [...new Set(rows.map((r) => r.evidence_image_path).filter((p): p is string => !!p))];
