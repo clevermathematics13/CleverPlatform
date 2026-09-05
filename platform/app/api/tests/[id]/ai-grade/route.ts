@@ -515,8 +515,22 @@ export async function POST(
       // which policies this test's questions require, not by student), so
       // it's still worth caching on a batch upload even though it's no
       // longer identical across every test in the app.
+      //
+      // 1-hour cache lifetime, not the 5-minute default. The teacher reviews
+      // one part's page mapping, grades it, then reviews the next -- gaps of
+      // 5-40 minutes between grading calls for the same test are the normal
+      // rhythm (ai_usage_log, 4 Sep 2026: one 41-part test re-wrote its
+      // 14.4K-token prefix three times in a session because each gap
+      // outlived the 5-minute entry). A 1-hour write costs 2x input instead
+      // of 1.25x, and pays for itself the first time it prevents one re-write.
+      // Both breakpoints must carry the same TTL: a longer-lived entry may
+      // not follow a shorter-lived one in the prefix.
       system: [
-        { type: "text", text: buildGradingSystemPrompt(gradeable), cache_control: { type: "ephemeral" } },
+        {
+          type: "text",
+          text: buildGradingSystemPrompt(gradeable),
+          cache_control: { type: "ephemeral", ttl: "1h" },
+        },
       ],
       messages: [
         {
@@ -527,7 +541,7 @@ export async function POST(
               // upload only pays full price for the first student's call.
               type: "text",
               text: buildGradingUserPrompt(gradeable, { testName: test.name }),
-              cache_control: { type: "ephemeral" },
+              cache_control: { type: "ephemeral", ttl: "1h" },
             },
             {
               type: "document",
