@@ -244,9 +244,11 @@ interface Props {
   tests: Test[];
   students: Student[];
   initialMarks: Record<string, Record<string, number>>;
+  /** testId -> subject ids recorded as absent (table test_absences); shown as "Abs". */
+  absences?: Record<string, string[]>;
 }
 
-export function GradebookGrid({ tests, students, initialMarks }: Props) {
+export function GradebookGrid({ tests, students, initialMarks, absences = {} }: Props) {
   const [expandedOverall, setExpandedOverall] = useState(false);
   const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
 
@@ -681,6 +683,26 @@ export function GradebookGrid({ tests, students, initialMarks }: Props) {
                   {/* Test cells */}
                   {tests.map((test) => {
                     const isExp = expandedTests.has(test.id);
+
+                    // Recorded absent: one "Abs" cell in place of the marks,
+                    // so an empty row no longer reads as "not graded yet".
+                    if (absences[test.id]?.includes(student.profile_id)) {
+                      const span = isExp
+                        ? Math.max(1, test.items.length) +
+                          (test.items.some((i) => i.question_number <= SECTION_A_MAX_Q) ? 2 : 0) +
+                          (test.items.some((i) => i.question_number > SECTION_A_MAX_Q) ? 2 : 0)
+                        : 1;
+                      return (
+                        <td
+                          key={test.id}
+                          colSpan={span}
+                          className={`${tdBase} text-xs font-medium uppercase tracking-wide text-amber-300 bg-amber-950/30`}
+                          title="Recorded as absent for this test"
+                        >
+                          Abs
+                        </td>
+                      );
+                    }
 
                     if (isExp) {
                       if (test.items.length === 0) {
