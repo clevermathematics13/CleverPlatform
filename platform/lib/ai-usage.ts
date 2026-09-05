@@ -9,6 +9,7 @@ export type UsagePipeline =
   | "ai_regrade"
   | "ai_grade_segment"
   | "ai_grade_chunk_cover"
+  | "ai_grade_blank_check"
   | "na_assess"
   | "na_assess_wide"
   | "na_assess_batch"

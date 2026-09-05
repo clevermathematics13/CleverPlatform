@@ -26,6 +26,7 @@ import {
   validateCoverPageCheck,
 } from "@/lib/na-scanning";
 import { chunkFileName, needsChunking, planBatchChunks } from "@/lib/batch-chunking";
+import { applyBlankPages, detectBlankPages } from "@/lib/blank-pages";
 
 export const maxDuration = 300;
 
@@ -537,14 +538,37 @@ export async function POST(
       }),
     ]),
   ].sort((a, b) => a - b);
-  const blankPages = [...validation.response.blankPages].sort((a, b) => a - b);
+  const modelBlankPages = [...validation.response.blankPages].sort((a, b) => a - b);
+
+  // -- Second look at unassigned pages ---------------------------------------
+  // The whole-document read misses blank back pages often enough that a
+  // 4-booklet scan came back with all four flagged as unassigned. Each
+  // page the model left out gets its own cheap single-page question, and
+  // a confident "blank" moves it out of the teacher's way (lib/blank-pages.ts).
+  let { blankPages, unassignedPages: stillUnassigned } = applyBlankPages(
+    { blankPages: modelBlankPages, unassignedPages },
+    []
+  );
+  if (stillUnassigned.length > 0) {
+    const checked = await detectBlankPages({
+      anthropic,
+      supabase,
+      sourceDoc,
+      pages: stillUnassigned.slice(0, 20),
+      batchId: batch.id,
+    });
+    ({ blankPages, unassignedPages: stillUnassigned } = applyBlankPages(
+      { blankPages, unassignedPages: stillUnassigned },
+      checked.filter((c) => c.blank).map((c) => c.page)
+    ));
+  }
 
   const { error: updateErr } = await supabase
     .from("ai_grade_batches")
     .update({
       status: "segmented",
       proposed_segments: proposedSegments,
-      unassigned_pages: unassignedPages,
+      unassigned_pages: stillUnassigned,
       blank_pages: blankPages,
       segmented_at: new Date().toISOString(),
     })
@@ -556,7 +580,7 @@ export async function POST(
     batchId: batch.id,
     pageCount,
     segments: proposedSegments,
-    unassignedPages,
+    unassignedPages: stillUnassigned,
     blankPages,
     warnings: validation.warnings,
   });
