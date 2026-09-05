@@ -1529,3 +1529,35 @@ export function matchSegmentsToRoster(
     };
   });
 }
+
+/**
+ * Re-runs roster matching for the segments of an already-read batch that
+ * still have no match. A batch's proposals are frozen at the moment it was
+ * segmented, so a spelling the teacher records afterwards ("Nicole Kum"
+ * for Gyuwon Kim) -- or a roster that has since gained a student -- never
+ * reached rows that were read earlier. The Batch upload tab restores those
+ * rows from the server on every load, so the batch list route calls this
+ * first. Segments that already carry a match are left exactly as they are.
+ */
+export function rematchUnmatchedSegments(
+  segments: ProposedSegment[],
+  roster: RosterEntry[]
+): { segments: ProposedSegment[]; changed: boolean } {
+  const unmatched = segments.filter((s) => !s.matchedStudentId);
+  if (unmatched.length === 0 || roster.length === 0) return { segments, changed: false };
+
+  const rematched = matchSegmentsToRoster(
+    unmatched.map(({ label, pages, confidence, note }) => ({ label, pages, confidence, note })),
+    roster
+  );
+  let next = 0;
+  let changed = false;
+  const out = segments.map((s) => {
+    if (s.matchedStudentId) return s;
+    const r = rematched[next++];
+    if (!r?.matchedStudentId) return s;
+    changed = true;
+    return { ...s, matchedStudentId: r.matchedStudentId, matchedStudentName: r.matchedStudentName };
+  });
+  return { segments: out, changed };
+}
