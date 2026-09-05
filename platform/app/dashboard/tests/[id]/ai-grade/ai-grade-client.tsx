@@ -160,6 +160,9 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const [runsByStudent, setRunsByStudent] = useState<Record<string, RunRow>>({});
   /** Newest run of any status per student, when it is NOT the complete one (a failed or still-running attempt). */
   const [newerAttemptByStudent, setNewerAttemptByStudent] = useState<Record<string, RunRow>>({});
+  /** Subject ids recorded as absent for this test (table test_absences). */
+  const [absentStudents, setAbsentStudents] = useState<Set<string>>(new Set());
+  const [absenceBusy, setAbsenceBusy] = useState<string | null>(null);
   /** Previous complete run's suggested marks for the student under review, keyed by test_item_id. */
   const [previousMarks, setPreviousMarks] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -211,6 +214,32 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
   const classCount = new Set(students.map((s) => s.class_name ?? "")).size;
+
+  // -- Absence: a student who did not sit the test ------------------------------
+  // Recorded in test_absences so the roster here and the gradebook show
+  // "Absent" instead of an empty row that reads like "not graded yet".
+  const setAbsent = async (studentId: string, absent: boolean) => {
+    setAbsenceBusy(studentId);
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/absences`, {
+        method: absent ? "POST" : "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId }),
+      });
+      if (!ok) {
+        setError((data.error as string) ?? "Could not update the absence.");
+        return;
+      }
+      setAbsentStudents((prev) => {
+        const next = new Set(prev);
+        if (absent) next.add(studentId);
+        else next.delete(studentId);
+        return next;
+      });
+    } finally {
+      setAbsenceBusy(null);
+    }
+  };
 
   // -- Initial load: test detail (for items + course), roster, latest runs --
   const loadOverview = useCallback(async () => {
@@ -290,6 +319,14 @@ export function AiGradeClient({ testId }: { testId: string }) {
       }
       setRunsByStudent(latestComplete);
       setNewerAttemptByStudent(newerAttempt);
+
+      // Absences are loaded best-effort: a failure here should not hide
+      // the roster, it just means nobody shows as absent.
+      const absences1 = await fetchJson(`/api/tests/${testId}/absences`);
+      if (absences1.ok) {
+        const ids = ((absences1.data.absences as { studentId: string }[]) ?? []).map((a) => a.studentId);
+        setAbsentStudents(new Set(ids));
+      }
 
       const counts: Record<string, { accepted: number; total: number }> = {};
       for (const r of ((runs1.data.results as { run_id: string; accepted: boolean }[]) ?? [])) {
@@ -810,6 +847,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
                     ? (s.class_name ?? "Other")
                     : null;
                 const busy = busyStudent === s.profile_id;
+                const absent = absentStudents.has(s.profile_id);
                 const run = runsByStudent[s.profile_id];
                 const newerAttempt = newerAttemptByStudent[s.profile_id];
                 const acceptance = run ? acceptanceByRun[run.id] : undefined;
@@ -843,9 +881,16 @@ export function AiGradeClient({ testId }: { testId: string }) {
                             />
                           )}
                           {s.display_name}
+                          {absent && (
+                            <span className="rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[11px] font-medium text-amber-300">
+                              Absent
+                            </span>
+                          )}
                         </p>
                         <p className="text-xs text-da-muted">
-                          {run ? (
+                          {absent && !run ? (
+                            "Recorded as absent — no script to mark"
+                          ) : run ? (
                             <>
                               Last run: {run.status}
                               {run.coverage?.suggestedTotal !== undefined &&
@@ -907,6 +952,31 @@ export function AiGradeClient({ testId }: { testId: string }) {
                           >
                             Review →
                           </button>
+                        )}
+
+                        {absent ? (
+                          <button
+                            type="button"
+                            disabled={absenceBusy === s.profile_id}
+                            onClick={() => setAbsent(s.profile_id, false)}
+                            title="Remove the absence record for this test"
+                            className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                          >
+                            Not absent
+                          </button>
+                        ) : (
+                          !run &&
+                          !newerAttempt && (
+                            <button
+                              type="button"
+                              disabled={absenceBusy === s.profile_id}
+                              onClick={() => setAbsent(s.profile_id, true)}
+                              title="Record that this student did not sit the test — shows as Absent here and in the gradebook"
+                              className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                            >
+                              Mark absent
+                            </button>
+                          )
                         )}
                       </div>
                     </li>

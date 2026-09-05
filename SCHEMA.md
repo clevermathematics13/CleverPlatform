@@ -1153,6 +1153,20 @@ One row per uploaded scanned placement-test PDF. student_name is manually tagged
 | `status` | text | default `'active'::text` |
 | `created_at` | timestamp with time zone | default `now()` |
 
+### `test_absences`
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `test_id` | uuid | FK tests(id) on delete cascade |
+| `profile_id` | uuid, nullable | FK profiles(id) on delete cascade — set for a registered student |
+| `invited_student_id` | uuid, nullable | FK invited_students(id) on delete cascade — set for an invited-only student; exactly one of the two is set (check `test_absences_one_subject`); unique per test with either |
+| `note` | text, nullable |  |
+| `created_by` | uuid, nullable | FK profiles(id) on delete set null |
+| `created_at` | timestamp with time zone | default `now()` |
+
+A student who did not sit a test. The AI grader roster and the gradebook show "Absent" / "Abs" instead of an empty row.
+
 ### `student_marks`
 
 | column | type | default |

@@ -149,6 +149,21 @@ export default async function GradebookCoursePage({
     }
   }
 
+  // Absences (table test_absences): testId -> subject ids shown as "Abs".
+  const absencesByTest: Record<string, string[]> = {};
+  const absenceTestIds = testList.map((t) => t.id as string);
+  if (absenceTestIds.length > 0) {
+    const { data: rawAbsences } = await supabase
+      .from("test_absences")
+      .select("test_id, profile_id, invited_student_id")
+      .in("test_id", absenceTestIds);
+    for (const a of rawAbsences ?? []) {
+      const subjectId = a.profile_id ?? (a.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${a.invited_student_id}` : null);
+      if (!subjectId) continue;
+      (absencesByTest[a.test_id] ??= []).push(subjectId);
+    }
+  }
+
   // Group items by test
   const itemsByTest: Record<string, typeof allItems> = {};
   for (const item of allItems) {
@@ -194,6 +209,7 @@ export default async function GradebookCoursePage({
         tests={tests}
         students={students}
         initialMarks={marksMap}
+        absences={absencesByTest}
       />
     </div>
   );
