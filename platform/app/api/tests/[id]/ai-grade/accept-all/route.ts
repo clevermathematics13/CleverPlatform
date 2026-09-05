@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
+import { fetchAllRows } from "@/lib/na-scanning";
 
 export const maxDuration = 300;
 
@@ -15,6 +16,25 @@ interface RunRow {
 interface Identity {
   student_id: string | null;
   invited_student_id: string | null;
+}
+
+/** One not-yet-accepted ai_grade_results row, as this route reads it. */
+interface PendingResult {
+  id: string;
+  run_id: string;
+  test_item_id: string;
+  suggested_marks: number;
+  max_marks: number;
+  confidence: string;
+}
+
+/** One student_marks row this batch may overwrite (for the audit log). */
+interface ExistingMark {
+  id: string;
+  student_id: string | null;
+  invited_student_id: string | null;
+  test_item_id: string;
+  marks_awarded: number;
 }
 
 function identityFor(r: RunRow): Identity {
@@ -76,13 +96,27 @@ export async function POST(
   const identityByRun = new Map(runs.map((r) => [r.id, identityFor(r)]));
   const runIds = runs.map((r) => r.id);
 
-  const { data: results, error: resultsErr } = await supabase
-    .from("ai_grade_results")
-    .select("id, run_id, test_item_id, suggested_marks, max_marks, confidence")
-    .in("run_id", runIds)
-    .eq("accepted", false);
-
-  if (resultsErr) return NextResponse.json({ error: resultsErr.message }, { status: 500 });
+  // Every read here pages through .range(): PostgREST returns at most 1000
+  // rows per request and does not say when it stopped. A single query for
+  // a 50-student test (2,050 result rows) handed back 1,000 of them, so the
+  // marks below were written for half the class while the accepted flag,
+  // set by run id at the end, covered everyone -- 21 students then had
+  // "accepted" suggestions and nothing in Clev's Marks, and a second click
+  // reported nothing left to accept.
+  let results: PendingResult[];
+  try {
+    results = await fetchAllRows<PendingResult>((from, to) =>
+      supabase
+        .from("ai_grade_results")
+        .select("id, run_id, test_item_id, suggested_marks, max_marks, confidence")
+        .in("run_id", runIds)
+        .eq("accepted", false)
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
 
   if (!results || results.length === 0) {
     return NextResponse.json({
@@ -106,26 +140,35 @@ export async function POST(
   const invitedRows = clamped.filter((r) => r.identity.invited_student_id);
 
   const existingByKey = new Map<string, number>();
-  if (profileRows.length > 0) {
-    const studentIds = [...new Set(profileRows.map((r) => r.identity.student_id!))];
-    const { data, error } = await supabase
-      .from("student_marks")
-      .select("student_id, test_item_id, marks_awarded")
-      .in("student_id", studentIds)
-      .in("test_item_id", testItemIds);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    for (const m of data ?? []) existingByKey.set(`p:${m.student_id}:${m.test_item_id}`, m.marks_awarded);
-  }
-  if (invitedRows.length > 0) {
-    const invitedIds = [...new Set(invitedRows.map((r) => r.identity.invited_student_id!))];
-    const { data, error } = await supabase
-      .from("student_marks")
-      .select("invited_student_id, test_item_id, marks_awarded")
-      .in("invited_student_id", invitedIds)
-      .in("test_item_id", testItemIds);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    for (const m of data ?? [])
-      existingByKey.set(`i:${m.invited_student_id}:${m.test_item_id}`, m.marks_awarded);
+  try {
+    if (profileRows.length > 0) {
+      const studentIds = [...new Set(profileRows.map((r) => r.identity.student_id!))];
+      const existing = await fetchAllRows<ExistingMark>((from, to) =>
+        supabase
+          .from("student_marks")
+          .select("id, student_id, invited_student_id, test_item_id, marks_awarded")
+          .in("student_id", studentIds)
+          .in("test_item_id", testItemIds)
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+      for (const m of existing) existingByKey.set(`p:${m.student_id}:${m.test_item_id}`, m.marks_awarded);
+    }
+    if (invitedRows.length > 0) {
+      const invitedIds = [...new Set(invitedRows.map((r) => r.identity.invited_student_id!))];
+      const existing = await fetchAllRows<ExistingMark>((from, to) =>
+        supabase
+          .from("student_marks")
+          .select("id, student_id, invited_student_id, test_item_id, marks_awarded")
+          .in("invited_student_id", invitedIds)
+          .in("test_item_id", testItemIds)
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+      for (const m of existing) existingByKey.set(`i:${m.invited_student_id}:${m.test_item_id}`, m.marks_awarded);
+    }
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 
   const keyFor = (r: (typeof clamped)[number]) =>
