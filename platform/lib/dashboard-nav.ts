@@ -32,11 +32,17 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
   }
 
   if (role === "student") {
-    // A Grade 9 student's whole use of the platform is reading the feedback
-    // on their Nuanced Analysis packets, so that is the only thing in their
-    // menu -- not a Dashboard whose tiles lead where they have no reason to go.
+    // A Grade 9 student's whole use of the platform is reading feedback --
+    // not a Dashboard whose tiles lead where they have no reason to go --
+    // but that now comes from two separate places: Nuanced Analysis packets
+    // (na-feedback) and Clev's Marks on a Tests-based assessment like a
+    // Formative Assessment (reflection). Both need a menu entry, or a
+    // student whose class only uses one of the two has no way to reach it.
     if (isGrade9) {
-      return [{ href: "/dashboard/na-feedback", label: "Feedback", icon: "\u{1F4DD}" }];
+      return [
+        { href: "/dashboard/na-feedback", label: "Feedback", icon: "\u{1F4DD}" },
+        { href: "/dashboard/reflection", label: "Test Feedback", icon: "\u{1FA9E}" },
+      ];
     }
     return [...shared, { href: "/dashboard/games", label: "Live Game", icon: "\u{1F3AE}" }];
   }
