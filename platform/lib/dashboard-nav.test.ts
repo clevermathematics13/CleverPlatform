@@ -2,10 +2,9 @@ import { describe, it, expect } from "vitest";
 import { getNavigation, getSettingsNavigation, deriveDashboardView } from "./dashboard-nav";
 
 describe("getNavigation", () => {
-  it("gives a Grade 9 student exactly one item: their feedback", () => {
+  it("gives a Grade 9 student both feedback destinations: NA packets and Tests-based reflection", () => {
     const nav = getNavigation("student", true);
-    expect(nav).toHaveLength(1);
-    expect(nav[0].href).toBe("/dashboard/na-feedback");
+    expect(nav.map((n) => n.href)).toEqual(["/dashboard/na-feedback", "/dashboard/reflection"]);
     expect(nav[0].label).toBe("Feedback");
   });
 
@@ -62,7 +61,7 @@ describe("deriveDashboardView", () => {
   it("swaps to the Grade 9 student menu when viewing a Grade 9 student", () => {
     const r = derive("davi");
     expect(r.viewing?.name).toBe("Davi Verma");
-    expect(r.navigation.map((n) => n.href)).toEqual(["/dashboard/na-feedback"]);
+    expect(r.navigation.map((n) => n.href)).toEqual(["/dashboard/na-feedback", "/dashboard/reflection"]);
     expect(r.settingsNavigation).toEqual([]);
   });
 
