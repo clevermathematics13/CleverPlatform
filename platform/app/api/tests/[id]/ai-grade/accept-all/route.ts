@@ -133,9 +133,22 @@ export async function POST(
       ? `p:${r.identity.student_id}:${r.test_item_id}`
       : `i:${r.identity.invited_student_id}:${r.test_item_id}`;
 
-  if (profileRows.length > 0) {
+  // Every write below goes out in chunks. A whole-class accept (50 students
+  // x 41 parts = 2,018 rows on 5 Sep 2026) sent as ONE request had only its
+  // first 1,000 rows land, silently, and the request that followed was
+  // refused outright -- so 21 students' marks never reached Clev's Marks
+  // while the audit log said they had. 400 rows per request stays well
+  // inside the gateway's limits.
+  const CHUNK = 400;
+  const chunks = <T,>(rows: T[]): T[][] => {
+    const out: T[][] = [];
+    for (let i = 0; i < rows.length; i += CHUNK) out.push(rows.slice(i, i + CHUNK));
+    return out;
+  };
+
+  for (const chunk of chunks(profileRows)) {
     const { error } = await supabase.from("student_marks").upsert(
-      profileRows.map((r) => ({
+      chunk.map((r) => ({
         test_item_id: r.test_item_id,
         student_id: r.identity.student_id,
         invited_student_id: null,
@@ -145,9 +158,9 @@ export async function POST(
     );
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  if (invitedRows.length > 0) {
+  for (const chunk of chunks(invitedRows)) {
     const { error } = await supabase.from("student_marks").upsert(
-      invitedRows.map((r) => ({
+      chunk.map((r) => ({
         test_item_id: r.test_item_id,
         student_id: null,
         invited_student_id: r.identity.invited_student_id,
@@ -158,8 +171,11 @@ export async function POST(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const { error: changesErr } = await supabase.from("mark_changes").insert(
-    clamped.map((r) => ({
+  // Audit only real changes: a mark that already held this value (e.g. a
+  // re-run of accept-all after a partial failure) is not a change.
+  const changes = clamped
+    .filter((r) => existingByKey.get(keyFor(r)) !== r.marks)
+    .map((r) => ({
       test_item_id: r.test_item_id,
       student_id: r.identity.student_id,
       invited_student_id: r.identity.invited_student_id,
@@ -167,19 +183,33 @@ export async function POST(
       old_marks: existingByKey.get(keyFor(r)) ?? null,
       new_marks: r.marks,
       reason: `AI grading run ${r.run_id}, suggestion accepted as marked via batch accept-all (${r.confidence} confidence)`,
-    }))
-  );
-  if (changesErr) return NextResponse.json({ error: changesErr.message }, { status: 500 });
+    }));
+  for (const chunk of chunks(changes)) {
+    const { error: changesErr } = await supabase.from("mark_changes").insert(chunk);
+    if (changesErr) return NextResponse.json({ error: changesErr.message }, { status: 500 });
+  }
 
+  // Flag the results accepted by RUN, not by result id. Listing every
+  // result id put ~2,000 UUIDs in the query string for a 50-student test
+  // (41 parts each) and the database gateway refused the URL with a bare
+  // "Bad Request" -- after the marks above had already been written, so
+  // the review UI kept showing them as unaccepted. The run list is short
+  // (one id per student) and, with the same accepted = false filter the
+  // results were selected with, names exactly the rows just applied.
   const acceptedAt = new Date().toISOString();
   const { error: acceptErr } = await supabase
     .from("ai_grade_results")
     .update({ accepted: true, accepted_at: acceptedAt, accepted_by: user.id })
-    .in(
-      "id",
-      clamped.map((r) => r.id)
+    .in("run_id", runIds)
+    .eq("accepted", false);
+  if (acceptErr) {
+    return NextResponse.json(
+      {
+        error: `The marks were written to Clev's Marks, but flagging the suggestions as accepted failed: ${acceptErr.message}. Run "Accept all" again to finish.`,
+      },
+      { status: 500 }
     );
-  if (acceptErr) return NextResponse.json({ error: acceptErr.message }, { status: 500 });
+  }
 
   return NextResponse.json({
     appliedCount: clamped.length,
