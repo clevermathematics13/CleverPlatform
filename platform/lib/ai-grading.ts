@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import fs from "fs";
 import path from "path";
-import { findExposedDeliberation } from "./examiner-reasoning";
+import { findExposedDeliberation, findHedgedReading } from "./examiner-reasoning";
 import { classifyUnderPrecision, matchesRequiredPrecision } from "./numerical-accuracy";
 
 /**
@@ -514,9 +514,12 @@ export function validateGradeResponse(
     // a broken sentence -- it only flags it for teacher review, the same
     // way any other reason for uncertainty here does.
     const deliberationHits = new Set<string>();
+    const hedgingHits = new Set<string>();
     for (const hit of findExposedDeliberation(item.reasoning)) deliberationHits.add(hit);
+    for (const hit of findHedgedReading(item.reasoning)) hedgingHits.add(hit);
     for (const entry of item.markBreakdown) {
       for (const hit of findExposedDeliberation(entry.note)) deliberationHits.add(hit);
+      for (const hit of findHedgedReading(entry.note)) hedgingHits.add(hit);
     }
     if (deliberationHits.size > 0) {
       confidence = "low";
@@ -524,6 +527,19 @@ export function validateGradeResponse(
         `${unitLabel(unit)}: examiner reasoning exposes internal deliberation (${[...deliberationHits]
           .map((h) => `"${h}"`)
           .join(", ")}) — flagged for teacher review`
+      );
+    }
+    // Hedging is a weaker signal than deliberation: the model is saying it
+    // could not read the scan cleanly, which is honest and often correct on
+    // handwriting. Worth the teacher's eye on the crop, not a reason to
+    // distrust the mark -- so it caps confidence at medium rather than
+    // forcing low, and never overrides a low set by a real defect above.
+    if (hedgingHits.size > 0) {
+      if (confidence === "high") confidence = "medium";
+      warnings.push(
+        `${unitLabel(unit)}: reasoning hedges on reading the student's work (${[...hedgingHits]
+          .map((h) => `"${h}"`)
+          .join(", ")}) — check the crop before accepting`
       );
     }
 
