@@ -1006,6 +1006,93 @@ describe("validateGradeResponse", () => {
     ).toBe(true);
   });
 
+  // Hedging is a separate, weaker signal: the model saying it could not read
+  // the handwriting cleanly is honest examiner language, not a defect. It
+  // caps confidence at medium and says so in its own words, so the stronger
+  // deliberation flag keeps its meaning.
+  it("caps confidence at medium for hedged reading, without claiming exposed deliberation", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "A1", awarded: true, note: "" }],
+          reasoning: "The student's answer appears to be 2, which is incorrect.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.grades[0].confidence).toBe("medium");
+    expect(result.outcome.warnings.some((w) => w.includes("hedges on reading"))).toBe(true);
+    expect(
+      result.outcome.warnings.some((w) => w.includes("exposes internal deliberation"))
+    ).toBe(false);
+  });
+
+  it("keeps low confidence when reasoning both deliberates and hedges", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "A1", awarded: true, note: "" }],
+          reasoning: "The answer appears to be 2. Let me reconsider: it is 11.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // Hedging must never lift a low set by a real defect.
+    expect(result.outcome.grades[0].confidence).toBe("low");
+    expect(result.outcome.warnings.some((w) => w.includes("hedges on reading"))).toBe(true);
+    expect(
+      result.outcome.warnings.some((w) => w.includes("exposes internal deliberation"))
+    ).toBe(true);
+  });
+
+  // Regression for the phrase dropped from the banned list: a correct answer
+  // to a question about one expression not matching another must not be
+  // flagged at all. See examiner-reasoning.ts's header.
+  it("does not flag settled reasoning that says the work doesn't match", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "R1", awarded: true, note: "Contextual explanation using units" },
+          ],
+          reasoning:
+            "The student explained that 78mn doesn't match the context because mn doesn't represent the cost per box of either item. R1 awarded.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].confidence).toBe("high");
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
   it("does not flag clean, settled professional reasoning", () => {
     const raw = JSON.stringify({
       items: [
