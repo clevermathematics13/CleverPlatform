@@ -180,3 +180,75 @@ export function fractionBoxToPoints(box: EvidenceBox, size: PageSizePt): PointBo
 export function noExpansionCaps(points: PointBox): { expandMaxX1Pt: number; expandMaxY1Pt: number } {
   return { expandMaxX1Pt: points.x1Pt, expandMaxY1Pt: points.y1Pt };
 }
+
+/** One region on a reference page, as stored in test_item_anchors. */
+export interface AnchorRegion {
+  /** 0-indexed page of the reference PDF. */
+  pageIndex: number;
+  x0Pt: number;
+  y0Pt: number;
+  x1Pt: number;
+  y1Pt: number;
+}
+
+/**
+ * Gap left between a region's growth cap and the next region below it, in
+ * points. Small enough that a student writing slightly past their box is
+ * still captured, large enough that expansion stops before the next part's
+ * first line rather than clipping into it.
+ */
+export const EXPANSION_GAP_PT = 4;
+
+/**
+ * Growth caps for a set of per-paper anchors.
+ *
+ * Anchors are drawn ONCE for a whole class, so unlike a teacher's per-student
+ * redraw they must tolerate a student who writes more than the region allows.
+ * That is what the CV service's adaptive expansion is for -- it grows the
+ * right/bottom edge while ink is still touching it. Left uncapped it would
+ * happily run down into the next part's answer, so each region's bottom cap
+ * is the top of the nearest region below it on the same page.
+ *
+ * The rule existed only as prose in cv_crop_extract.py's docstring ("the next
+ * anchor's position, or the page edge"), and HANDOFF records it propagating a
+ * neighbour's measurement error into a cap when applied by hand. Computing it
+ * makes it checkable.
+ *
+ * The x cap is the page edge, deliberately. Regions on a written paper stack
+ * vertically; a region to the RIGHT is rare, and capping horizontally on one
+ * would truncate a long line of working for every student on the paper.
+ */
+export function computeExpansionCaps(
+  regions: AnchorRegion[],
+  pageSizes: PageSizePt[]
+): { expandMaxX1Pt: number; expandMaxY1Pt: number }[] {
+  return regions.map((region) => {
+    const page = pageSizes[region.pageIndex];
+    const pageWidthPt = page?.widthPt ?? region.x1Pt;
+    const pageHeightPt = page?.heightPt ?? region.y1Pt;
+
+    // The nearest region that starts below this one's bottom edge. Regions
+    // that merely overlap it are not "below" and must not cap it, or two
+    // slightly overlapping boxes would cap each other to nothing.
+    let nextTopPt: number | null = null;
+    for (const other of regions) {
+      if (other === region || other.pageIndex !== region.pageIndex) continue;
+      if (other.y0Pt >= region.y1Pt && (nextTopPt === null || other.y0Pt < nextTopPt)) {
+        nextTopPt = other.y0Pt;
+      }
+    }
+
+    // The gap is there to stop growth clipping into the NEXT REGION, so it
+    // applies only when there is one. Against the page edge there is nothing
+    // to keep clear of, and shaving it would cost the last region on a page
+    // the bottom of a long answer for no reason.
+    const ceilingPt = nextTopPt === null ? pageHeightPt : Math.min(pageHeightPt, nextTopPt - EXPANSION_GAP_PT);
+
+    return {
+      expandMaxX1Pt: pageWidthPt,
+      // Never below the region's own bottom edge: a cap inside the box would
+      // make the crop smaller than what was drawn.
+      expandMaxY1Pt: Math.max(region.y1Pt, ceilingPt),
+    };
+  });
+}

@@ -5,6 +5,7 @@ import {
   PAD_PROPORTION,
   fractionBoxToPoints,
   noExpansionCaps,
+  computeExpansionCaps,
   normalizeFractionBox,
   padModelBox,
 } from "./evidence-crops";
@@ -158,5 +159,71 @@ describe("padModelBox", () => {
     // pull in the neighbouring part's writing.
     const drawn = normalizeFractionBox({ page: 1, x0: 0.1, y0: 0.3, x1: 0.6, y1: 0.4 });
     expect(drawn).toEqual({ ok: true, box: { page: 1, x0: 0.1, y0: 0.3, x1: 0.6, y1: 0.4 } });
+  });
+});
+
+describe("computeExpansionCaps", () => {
+  const A4 = [{ widthPt: 595, heightPt: 842 }];
+
+  it("caps each region's growth at the top of the next region below it", () => {
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 160 },
+      { pageIndex: 0, x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 260 },
+    ];
+    const caps = computeExpansionCaps(regions, A4);
+    // First grows down to just above the second (200 - 4).
+    expect(caps[0].expandMaxY1Pt).toBe(196);
+    // Last on the page grows to the page edge.
+    expect(caps[1].expandMaxY1Pt).toBe(842);
+  });
+
+  it("caps x at the page edge, never on a neighbour", () => {
+    // A region to the right must not truncate a long line of working for
+    // every student on the paper.
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 100, x1Pt: 300, y1Pt: 160 },
+      { pageIndex: 0, x0Pt: 320, y0Pt: 100, x1Pt: 500, y1Pt: 160 },
+    ];
+    expect(computeExpansionCaps(regions, A4).map((c) => c.expandMaxX1Pt)).toEqual([595, 595]);
+  });
+
+  it("only lets regions on the same page cap each other", () => {
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 700, x1Pt: 500, y1Pt: 760 },
+      { pageIndex: 1, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 160 },
+    ];
+    const caps = computeExpansionCaps(regions, [
+      { widthPt: 595, heightPt: 842 },
+      { widthPt: 595, heightPt: 842 },
+    ]);
+    expect(caps[0].expandMaxY1Pt).toBe(842);
+  });
+
+  it("is not capped by a region that merely overlaps it", () => {
+    // Two slightly overlapping boxes would otherwise cap each other to
+    // nothing, making both crops smaller than what was drawn.
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 200 },
+      { pageIndex: 0, x0Pt: 50, y0Pt: 180, x1Pt: 500, y1Pt: 280 },
+    ];
+    const caps = computeExpansionCaps(regions, A4);
+    expect(caps[0].expandMaxY1Pt).toBe(842);
+    expect(caps[1].expandMaxY1Pt).toBe(842);
+  });
+
+  it("never caps inside the region itself", () => {
+    // A cap below the drawn bottom edge would shrink the crop. Regions this
+    // tightly packed just get no room to grow.
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 200 },
+      { pageIndex: 0, x0Pt: 50, y0Pt: 202, x1Pt: 500, y1Pt: 300 },
+    ];
+    const caps = computeExpansionCaps(regions, A4);
+    expect(caps[0].expandMaxY1Pt).toBe(200);
+  });
+
+  it("falls back to the region's own edges when the page size is missing", () => {
+    const regions = [{ pageIndex: 9, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 200 }];
+    expect(computeExpansionCaps(regions, A4)[0]).toEqual({ expandMaxX1Pt: 500, expandMaxY1Pt: 200 });
   });
 });

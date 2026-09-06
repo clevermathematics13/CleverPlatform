@@ -3,26 +3,9 @@ import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import { SCAN_BUCKET } from "@/lib/ai-grading";
 import { fractionBoxToPoints, type EvidenceBox } from "@/lib/evidence-crops";
-import { cvServiceEndpoint } from "@/lib/cv-crop-service";
+import { cvServiceEndpoint, renderPageImage } from "@/lib/cv-crop-service";
 
 export const maxDuration = 60;
-
-/**
- * The CV service renders pages at CROP_DPI (300) as lossless PNG and returns
- * them base64-encoded inside a JSON body. On a real scanned A4 page that is
- * 2480x3508px of photocopier noise: measured across seven of one class's
- * scans, the worst page is 7.85MB of PNG, or 10.5MB once base64'd -- comfortably
- * past what a serverless function can return, so that page simply failed.
- *
- * Downscaling here rather than in the CV service keeps this change inside the
- * Next.js app (the CV service is separately deployed, and a `dpi` parameter
- * there would need a Railway redeploy to take effect). The same worst-case page
- * comes out at 0.26MB, and the red highlight the model's region is drawn with
- * stays crisp -- 2000px of height is still more than double what the editor
- * displays, so drawing precision is bounded by the screen, not by this.
- */
-const PAGE_VIEW_MAX_HEIGHT_PX = 2000;
-const PAGE_VIEW_JPEG_QUALITY = 85;
 
 /**
  * GET /api/tests/[id]/ai-grade/results/[resultId]/page-image[?page=N]
@@ -135,63 +118,22 @@ export async function GET(
   const highlightBox =
     box && box.page === requestedPage ? fractionBoxToPoints(box, { widthPt, heightPt }) : null;
 
-  try {
-    const upstream = await fetch(target, {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        ...(process.env.CV_SERVICE_SECRET ? { "X-CV-Secret": process.env.CV_SERVICE_SECRET } : {}),
-      },
-      body: JSON.stringify({
-        studentPdfBase64: pdfBase64,
-        pageIndex: requestedPage - 1,
-        rotationHint: 0,
-        ...(highlightBox ? { highlightBox } : {}),
-      }),
-    });
-    if (!upstream.ok) {
-      const body = (await upstream.json().catch(() => ({}))) as { error?: string };
-      return NextResponse.json({ error: body.error ?? "Full-page render failed" }, { status: 502 });
-    }
-    const body = (await upstream.json()) as { imageBase64?: string };
-    if (!body.imageBase64) {
-      return NextResponse.json({ error: "Full-page render failed" }, { status: 502 });
-    }
+  const rendered = await renderPageImage({
+    pdfBase64,
+    pageIndex: requestedPage - 1,
+    highlightBox,
+  });
+  if (!rendered.ok) return NextResponse.json({ error: rendered.error }, { status: 502 });
 
-    // See PAGE_VIEW_MAX_HEIGHT_PX. Sharp is imported lazily and its absence
-    // falls back to the original PNG, matching lib/graph-raster-snap.ts --
-    // that fallback is today's behaviour, so a missing binary degrades to the
-    // status quo rather than introducing a new failure.
-    let imageBase64 = body.imageBase64;
-    let imageMediaType = "image/png";
-    try {
-      const sharp = (await import("sharp")).default;
-      const resized = await sharp(Buffer.from(body.imageBase64, "base64"))
-        .resize({ height: PAGE_VIEW_MAX_HEIGHT_PX, withoutEnlargement: true })
-        .jpeg({ quality: PAGE_VIEW_JPEG_QUALITY, mozjpeg: true })
-        .toBuffer();
-      imageBase64 = resized.toString("base64");
-      imageMediaType = "image/jpeg";
-    } catch {
-      // Keep the full-resolution PNG.
-    }
-
-    return NextResponse.json({
-      imageBase64,
-      imageMediaType,
-      page: requestedPage,
-      pageCount,
-      // The editor draws in page fractions, so it never needs these -- they
-      // are here so a caller can report what it is looking at without a
-      // second round trip to the PDF.
-      widthPt,
-      heightPt,
-    });
-  } catch (e) {
-    return NextResponse.json(
-      { error: `Full-page render failed: ${e instanceof Error ? e.message : String(e)}` },
-      { status: 502 }
-    );
-  }
+  return NextResponse.json({
+    imageBase64: rendered.value.imageBase64,
+    imageMediaType: rendered.value.imageMediaType,
+    page: requestedPage,
+    pageCount,
+    // The editor draws in page fractions, so it never needs these -- they are
+    // here so a caller can report what it is looking at without a second round
+    // trip to the PDF.
+    widthPt,
+    heightPt,
+  });
 }
