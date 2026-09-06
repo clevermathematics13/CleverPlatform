@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { computeDisagreement } from "@/lib/reflection-utils";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
+import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
   ReflectionTest,
   ReflectionItem,
@@ -13,6 +14,11 @@ import type {
 } from "@/lib/reflection-types";
 
 export { computeDisagreement };
+
+/** Stands in for an empty id list. PostgREST renders `.in("col", [])` as
+ *  `in.()`, which is a syntax error rather than a match-nothing filter, so a
+ *  uuid that cannot exist is passed instead. */
+const NO_SUCH_UUID = "00000000-0000-0000-0000-000000000000";
 
 function computeReleaseTimestamp(
   testDate: string | null,
@@ -436,7 +442,15 @@ export async function getStudentMastery(
 /** Get class-wide reflection data for teacher dashboard. */
 export async function getClassReflectionData(
   testId: string
-): Promise<{ items: { id: string; question_number: number; part_label: string; max_marks: number; subtopic_codes: string[]; subtopic_labels: string[] }[]; rows: StudentReflectionRow[] }> {
+): Promise<{
+  items: { id: string; question_number: number; part_label: string; max_marks: number; subtopic_codes: string[]; subtopic_labels: string[] }[];
+  rows: StudentReflectionRow[];
+  /** tests.total_marks, for the percentage behind each achievement level. */
+  totalMarks: number | null;
+  /** The test's grade boundaries, or null when it has no set assigned -- the
+   *  dashboard then falls back to generic bands and says so. */
+  boundaries: GradeBoundary[] | null;
+}> {
   const supabase = await createClient();
 
   // Get test items
@@ -462,16 +476,33 @@ export async function getClassReflectionData(
     ),
   }));
 
-  if (!itemsWithLabels.length) return { items: [], rows: [] };
+  if (!itemsWithLabels.length) return { items: [], rows: [], totalMarks: null, boundaries: null };
 
   // Get the test to find course
   const { data: test } = await supabase
     .from("tests")
-    .select("course_id")
+    .select("course_id, total_marks, boundary_set_id")
     .eq("id", testId)
     .single();
 
-  if (!test?.course_id) return { items: itemsWithLabels, rows: [] };
+  // Levels come from the test's own boundary set where it has one, so the
+  // dashboard and the gradebook never disagree about a student's grade.
+  let boundaries: GradeBoundary[] | null = null;
+  if (test?.boundary_set_id) {
+    const { data: rows } = await supabase
+      .from("grade_boundaries")
+      .select("grade, min_proportion")
+      .eq("set_id", test.boundary_set_id)
+      .order("grade", { ascending: true });
+    boundaries = (rows ?? []).map((b) => ({
+      grade: b.grade as number,
+      min_proportion: Number(b.min_proportion),
+    }));
+    if (boundaries.length === 0) boundaries = null;
+  }
+  const totalMarks = (test?.total_marks as number | null) ?? null;
+
+  if (!test?.course_id) return { items: itemsWithLabels, rows: [], totalMarks, boundaries };
 
   // The roster, not the accounts. This used to read the `students` table,
   // which only gains a row on a student's first sign-in -- so a class where
@@ -484,10 +515,10 @@ export async function getClassReflectionData(
   // paper is sat by the whole track: Formative Assessment 1 hangs off 9G and
   // has marks for 50 students across 9A, 9C and 9G. Scoping to the test's own
   // course would show 17 of them.
-  const { roster } = await loadInvitedRoster(supabase, test.course_id, {
+  const { roster, sourceCourseIds } = await loadInvitedRoster(supabase, test.course_id, {
     includeTrackSiblings: true,
   });
-  if (roster.length === 0) return { items: itemsWithLabels, rows: [] };
+  if (roster.length === 0) return { items: itemsWithLabels, rows: [], totalMarks, boundaries };
 
   const itemIds = itemsWithLabels.map((i) => i.id);
   const invitedIds = roster.map((r) => r.invitedId);
@@ -534,20 +565,48 @@ export async function getClassReflectionData(
     markMap.get(invitedId)!.set(m.test_item_id, m.marks_awarded);
   }
 
+  // There are two independent hide flags with two independent toggles:
+  // invited_students.hidden (setInvitedStudentHidden), which loadInvitedRoster
+  // already filters, and students.hidden (setStudentHidden), which only
+  // exists once a student has enrolled. Reading the roster instead of the
+  // `students` table dropped the second one, so a student the teacher had
+  // deliberately hidden came back -- and could not be hidden again, because
+  // the Students page offers the invited toggle only for people who are NOT
+  // yet enrolled. Both flags are honoured, as the gradebook already does.
+  const { data: enrolled } = await supabase
+    .from("students")
+    .select("profile_id, hidden")
+    .in("course_id", sourceCourseIds)
+    .in("profile_id", profileIds.length ? profileIds : [NO_SUCH_UUID]);
+  const hiddenProfiles = new Set(
+    (enrolled ?? []).filter((e) => e.hidden).map((e) => e.profile_id as string)
+  );
+
   // Self-scores and corrections uploads stay profile-keyed: both are things
   // the student does in their own account, so a student who has never signed
   // in correctly has none rather than being missing data.
-  const { data: allSelf } = await supabase
-    .from("student_self_scores")
-    .select("student_id, test_item_id, self_marks")
-    .in("student_id", profileIds.length ? profileIds : ["00000000-0000-0000-0000-000000000000"])
-    .in("test_item_id", itemIds);
+  //
+  // Paged for the same reason the mark reads are: this used to cover one
+  // class and now covers a whole track, so it can outgrow PostgREST's silent
+  // 1000-row cap once a cohort actually self-assesses.
+  type SelfRow = { student_id: string; test_item_id: string; self_marks: number | null };
+  const allSelf = profileIds.length
+    ? await fetchAllRows<SelfRow>((from, to) =>
+        supabase
+          .from("student_self_scores")
+          .select("student_id, test_item_id, self_marks")
+          .in("student_id", profileIds)
+          .in("test_item_id", itemIds)
+          .order("id", { ascending: true })
+          .range(from, to)
+      )
+    : [];
 
   const { data: uploads } = await supabase
     .from("pdf_uploads")
     .select("student_id, storage_path, file_name")
     .eq("test_id", testId)
-    .in("student_id", profileIds.length ? profileIds : ["00000000-0000-0000-0000-000000000000"]);
+    .in("student_id", profileIds.length ? profileIds : [NO_SUCH_UUID]);
 
   const uploadMap = new Map(
     (uploads ?? []).map((u) => [u.student_id, u])
@@ -597,13 +656,12 @@ export async function getClassReflectionData(
       has_upload: !!upload,
       pdf_url,
       disagreement,
-      // loadInvitedRoster already excludes hidden roster rows.
-      hidden: false,
+      hidden: s.profileId ? hiddenProfiles.has(s.profileId) : false,
     };
   });
 
   rows.sort((a, b) => a.display_name.localeCompare(b.display_name));
-  return { items: itemsWithLabels, rows };
+  return { items: itemsWithLabels, rows, totalMarks, boundaries };
 }
 
 /** Get heatmap data for class mastery. */
