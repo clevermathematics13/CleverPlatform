@@ -8,9 +8,21 @@ interface ScoreTableProps {
   items: ReflectionItem[];
   editable: boolean;
   onSave?: (scores: SelfScore[]) => Promise<void>;
+  /** False when the student has not self-graded at all.
+   *
+   *  Every self-mark read below falls back to 0 when it is null, which is
+   *  harmless for a student who HAS self-graded (a blank box really is a 0)
+   *  but invents a whole assessment for one who has not: a Self column of
+   *  zeros, and a "Judgement Disagreement" that is really just their score
+   *  subtracted from 100. This table was previously only ever reached after
+   *  a self-assessment, so that never showed; opening Compare first makes it
+   *  reachable, and a fabricated number presented as the student's own
+   *  judgement is worse than no number. When false, the self side reads as
+   *  "not entered yet" instead. */
+  selfMarksEntered?: boolean;
 }
 
-export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
+export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }: ScoreTableProps) {
   const [editedScores, setEditedScores] = useState<Record<string, number>>(
     () => {
       const init: Record<string, number> = {};
@@ -34,12 +46,14 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
   );
   const totalMax = items.reduce((sum, i) => sum + i.max_marks, 0);
 
-  // Compute live disagreement from current edited scores
+  // Compute live disagreement from current edited scores. Skipped entirely
+  // when nothing has been self-graded: there is no judgement to disagree
+  // with, and computing one anyway just restates the student's score.
   const liveItems: ReflectionItem[] = items.map((item) => ({
     ...item,
     self_marks: editedScores[item.test_item_id] ?? item.self_marks,
   }));
-  const disagreement = computeDisagreement(liveItems);
+  const disagreement = selfMarksEntered ? computeDisagreement(liveItems) : null;
 
   const handleSave = async () => {
     if (!onSave) return;
@@ -95,7 +109,9 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
 
       {disagreement === null && (
         <div className="rounded-lg border border-da-border/50 bg-da-surface px-4 py-3 text-sm text-da-muted">
-          ⏳ Waiting for teacher marks — disagreement will appear once grading is complete.
+          {selfMarksEntered
+            ? "⏳ Waiting for teacher marks — disagreement will appear once grading is complete."
+            : "Self-grade this test to see how your judgement compares with Clev's Marks."}
         </div>
       )}
 
@@ -114,14 +130,16 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
             {items.map((item) => {
               const self =
                 editedScores[item.test_item_id] ?? item.self_marks ?? 0;
+              // Nothing self-graded: the row has no self mark and therefore
+              // no difference to report, rather than a difference from 0.
               const diff =
-                item.marks_awarded !== null
+                selfMarksEntered && item.marks_awarded !== null
                   ? self - item.marks_awarded
                   : null;
               return (
                 <tr
                   key={item.test_item_id}
-                  className={`border-b ${getDiffClass(item.marks_awarded, self)}`}
+                  className={`border-b ${selfMarksEntered ? getDiffClass(item.marks_awarded, self) : ""}`}
                 >
                   <td className="px-3 py-2">
                     <div className="relative inline-block">
@@ -180,8 +198,10 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
                         }}
                         className="w-16 rounded border-2 border-da-border bg-da-surface px-2 py-1 text-center text-da-text font-bold focus:ring-2 focus:ring-da-accent focus:border-da-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
-                    ) : (
+                    ) : selfMarksEntered ? (
                       self
+                    ) : (
+                      "\u2014"
                     )}
                   </td>
                   <td className="px-3 py-2 text-center">
@@ -210,11 +230,13 @@ export function ScoreTable({ items, editable, onSave }: ScoreTableProps) {
               <td className="px-3 py-2">Total</td>
               <td className="px-3 py-2 text-center">{totalMax}</td>
               <td className="px-3 py-2 text-center">{totalTeacher}</td>
-              <td className="px-3 py-2 text-center">{totalSelf}</td>
+              <td className="px-3 py-2 text-center">{selfMarksEntered ? totalSelf : "\u2014"}</td>
               <td className="px-3 py-2 text-center">
-                {totalSelf - totalTeacher > 0
-                  ? `+${totalSelf - totalTeacher}`
-                  : totalSelf - totalTeacher}
+                {!selfMarksEntered
+                  ? "\u2014"
+                  : totalSelf - totalTeacher > 0
+                    ? `+${totalSelf - totalTeacher}`
+                    : totalSelf - totalTeacher}
               </td>
             </tr>
           </tfoot>

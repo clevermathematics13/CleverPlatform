@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   NA_SCAN_BUCKET,
   loadInvitedRoster,
+  loadInvitedProfileIds,
   matchSegmentsToInvitedRoster,
   scanCoverPages,
   COVER_PAGE_CHECK_MODEL,
@@ -216,9 +217,17 @@ export async function runSegmentAndSplit(
   // automatically instead of waiting for a teacher click, since every
   // segment already cleared the auto-continue bar above.
   const packetScanIds: string[] = [];
+  // Same roster -> account linkage the manual split route does; both writers
+  // must set student_profile_id or the automatic path re-opens the gap where
+  // a scan taken after a student's first sign-in never reaches them.
+  const profileIdByInvitedId = await loadInvitedProfileIds(
+    supabase,
+    proposedSegments.map((s) => s.matchedInvitedId as string)
+  );
   let seq = 1;
   for (const seg of proposedSegments) {
     const invitedId = seg.matchedInvitedId as string;
+    const studentProfileId = profileIdByInvitedId[invitedId] ?? null;
     try {
       const splitDoc = await PDFDocument.create();
       const copiedPages = await splitDoc.copyPages(
@@ -246,7 +255,13 @@ export async function runSegmentAndSplit(
       if (packetScanId) {
         const { error: updateErr } = await supabase
           .from("na_packet_scans")
-          .update({ split_storage_path: splitPath, status: "split", updated_at: now })
+          .update({
+            split_storage_path: splitPath,
+            status: "split",
+            // Fills the link in, never clears it -- see the manual split route.
+            ...(studentProfileId ? { student_profile_id: studentProfileId } : {}),
+            updated_at: now,
+          })
           .eq("id", packetScanId);
         if (updateErr) throw new Error(`Could not update existing packet scan: ${updateErr.message}`);
       } else {
@@ -257,6 +272,7 @@ export async function runSegmentAndSplit(
             packet_version_id: batch.packet_version_id,
             packet_seq: seq,
             invited_student_id: invitedId,
+            student_profile_id: studentProfileId,
             split_storage_path: splitPath,
             id_status: "confirmed",
             status: "split",

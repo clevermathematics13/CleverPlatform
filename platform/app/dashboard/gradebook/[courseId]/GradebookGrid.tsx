@@ -266,6 +266,10 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
   const [saving, setSaving] = useState<Set<string>>(new Set());
   const [cellErrors, setCellErrors] = useState<Record<string, string>>({});
+  // Deliberately NOT a cellError: the mark saved, only its history did not.
+  // Marking the cell red would tell the teacher to re-enter a mark that is
+  // already stored.
+  const [auditWarning, setAuditWarning] = useState<string | null>(null);
 
   // -- Handlers ----------------------------------------------------------------
 
@@ -311,10 +315,15 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ testItemId: itemId, studentId: profileId, marksAwarded: value }),
         });
+        const d = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          auditWarning?: string;
+        };
         if (!res.ok) {
-          const d = (await res.json()) as { error?: string };
           setCellErrors((prev) => ({ ...prev, [key]: "Save failed" }));
           console.error("Mark save error:", d.error);
+        } else if (d.auditWarning) {
+          setAuditWarning(d.auditWarning);
         }
       } catch {
         setCellErrors((prev) => ({ ...prev, [key]: "Network error" }));
@@ -410,14 +419,20 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
         }),
       })
         .then(async (res) => {
+          const d = (await res.json().catch(() => ({}))) as {
+            error?: string;
+            auditWarning?: string;
+          };
           if (!res.ok) {
-            const d = (await res.json()) as { error?: string };
+            console.error("Mark paste error:", d.error);
             setCellErrors((prev) => {
               const next = { ...prev };
               for (const { itemId, profileId } of updates)
                 next[`${itemId}:${profileId}`] = "Paste save failed";
               return next;
             });
+          } else if (d.auditWarning) {
+            setAuditWarning(d.auditWarning);
           }
         })
         .catch(() => {
@@ -462,6 +477,22 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
   return (
     <div className="overflow-hidden rounded-xl border border-da-border bg-da-surface/85 shadow-sm shadow-black/25">
+      {auditWarning && (
+        <div
+          role="status"
+          className="flex items-start gap-3 border-b border-amber-400/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-200"
+        >
+          <span aria-hidden="true">&#9888;</span>
+          <p className="flex-1">{auditWarning}</p>
+          <button
+            type="button"
+            onClick={() => setAuditWarning(null)}
+            className="shrink-0 font-bold hover:underline"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="border-collapse min-w-full text-da-text text-sm">
           {/* -- Header --------------------------------------------------- */}

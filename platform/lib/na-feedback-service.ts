@@ -16,41 +16,30 @@ export interface ReleasedPacketScan {
   releasedAt: string;
 }
 
-/** Every released packet scan for one student, newest first. Reads
- *  na_packet_scans.status = 'released' rather than joining through
- *  na_feedback -- cheaper, and status is only ever set to 'released' by
- *  the release routes at the same moment every gradable feedback row's
- *  released_at is set, so the two are always in lockstep. */
-export async function getReleasedPacketScansForStudent(
-  studentProfileId: string
-): Promise<ReleasedPacketScan[]> {
-  const supabase = await createClient();
+const RELEASED_SCAN_SELECT =
+  "id, packet_version_id, updated_at, na_packet_versions(version_label, nuanced_analyses(title))";
 
-  type Row = {
-    id: string;
-    packet_version_id: string;
-    updated_at: string;
-    na_packet_versions:
-      | {
-          version_label: string | null;
-          nuanced_analyses: { title: string } | { title: string }[] | null;
-        }
-      | {
-          version_label: string | null;
-          nuanced_analyses: { title: string } | { title: string }[] | null;
-        }[]
-      | null;
-  };
+type ReleasedScanRow = {
+  id: string;
+  packet_version_id: string;
+  updated_at: string;
+  na_packet_versions:
+    | {
+        version_label: string | null;
+        nuanced_analyses: { title: string } | { title: string }[] | null;
+      }
+    | {
+        version_label: string | null;
+        nuanced_analyses: { title: string } | { title: string }[] | null;
+      }[]
+    | null;
+};
 
-  const { data, error } = await supabase
-    .from("na_packet_scans")
-    .select("id, packet_version_id, updated_at, na_packet_versions(version_label, nuanced_analyses(title))")
-    .eq("student_profile_id", studentProfileId)
-    .eq("status", "released")
-    .order("updated_at", { ascending: false });
-  if (error) throw error;
-
-  return ((data ?? []) as unknown as Row[]).map((row) => {
+/** Shared by both released-scan lookups below so the two keys (profile and
+ *  roster row) can never drift into showing differently-shaped or
+ *  differently-ordered pickers. */
+function toReleasedPacketScans(data: unknown): ReleasedPacketScan[] {
+  return ((data ?? []) as ReleasedScanRow[]).map((row) => {
     const version = Array.isArray(row.na_packet_versions) ? row.na_packet_versions[0] : row.na_packet_versions;
     const analysis = version
       ? Array.isArray(version.nuanced_analyses)
@@ -65,6 +54,77 @@ export async function getReleasedPacketScansForStudent(
       releasedAt: row.updated_at,
     };
   });
+}
+
+/** Every released packet scan for one student, newest first. Reads
+ *  na_packet_scans.status = 'released' rather than joining through
+ *  na_feedback -- cheaper, and status is only ever set to 'released' by
+ *  the release routes at the same moment every gradable feedback row's
+ *  released_at is set, so the two are always in lockstep. */
+export async function getReleasedPacketScansForStudent(
+  studentProfileId: string
+): Promise<ReleasedPacketScan[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("na_packet_scans")
+    .select(RELEASED_SCAN_SELECT)
+    .eq("student_profile_id", studentProfileId)
+    .eq("status", "released")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+
+  return toReleasedPacketScans(data);
+}
+
+/** The same list, keyed on the roster row instead of the profile -- what a
+ *  teacher's ?viewAs= preview needs. invited_student_id is the linkage the
+ *  scan pipeline actually writes (split/route.ts), and it exists whether or
+ *  not the student has ever signed in, so this is the only key that can show
+ *  a preview for a class where nobody has logged in yet.
+ *
+ *  Deliberately returns ALL released scans rather than just the newest one:
+ *  the preview is meant to be what the student sees, and the student's own
+ *  page above lists every released packet in a picker. Showing one here made
+ *  a second released packet invisible to the teacher checking their work.
+ *
+ *  Teacher-only: callers must have established the role first (resolveViewAs
+ *  does). This leans on the teacher's own full-access RLS, not on any
+ *  student-scoped policy. */
+export async function getReleasedPacketScansForInvitedStudent(
+  invitedStudentId: string
+): Promise<ReleasedPacketScan[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("na_packet_scans")
+    .select(RELEASED_SCAN_SELECT)
+    .eq("invited_student_id", invitedStudentId)
+    .eq("status", "released")
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+
+  return toReleasedPacketScans(data);
+}
+
+/** Every na_packet_scans.status this roster student has, newest first.
+ *
+ *  Exists purely so an empty preview can say WHICH of the several possible
+ *  nothings it is looking at -- no scan at all, or a scan still short of
+ *  release (see lib/na-feedback-preview.ts). An empty array means no packet
+ *  of theirs has ever been scanned, which is a different fact from "nothing
+ *  released" and used to be indistinguishable on this page. */
+export async function getPacketScanStatusesForInvitedStudent(invitedStudentId: string): Promise<string[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("na_packet_scans")
+    .select("status")
+    .eq("invited_student_id", invitedStudentId)
+    .order("updated_at", { ascending: false });
+  if (error) throw error;
+
+  return (data ?? []).map((r) => r.status as string);
 }
 
 /** One released packet scan looked up by its own id, for a teacher

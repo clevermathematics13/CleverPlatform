@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { parseGradingSubject } from "@/lib/ai-grading";
+import {
+  describeAuditWarning,
+  logMarkChanges,
+  markKey,
+  readPriorMarks,
+  type MarkChange,
+} from "@/lib/mark-audit";
+
+const AUDIT_REASON = "Gradebook edit (batch)";
 
 type MarkEntry = {
   testItemId: string;
@@ -11,7 +20,7 @@ type MarkEntry = {
 export async function POST(req: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
-  const { supabase } = auth;
+  const { supabase, user } = auth;
 
   let body: unknown;
   try {
@@ -67,6 +76,15 @@ export async function POST(req: NextRequest) {
     (e) => e.marksAwarded === null || e.marksAwarded === undefined
   );
 
+  // Every prior value in at most two queries, before any of it is
+  // overwritten. A paste can cover a whole class times a whole paper, so
+  // this deliberately does not read cell by cell.
+  const targets = entries.map((e) => ({
+    testItemId: e.testItemId,
+    subject: parseGradingSubject(e.studentId),
+  }));
+  const { prior, failed: priorReadFailed } = await readPriorMarks(supabase, targets);
+
   if (profileUpserts.length > 0) {
     const { error } = await supabase
       .from("student_marks")
@@ -92,5 +110,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  // One audit row per cell the paste actually changed. Cells re-sent with
+  // the value they already had are dropped by buildMarkChangeRows, so a
+  // wide paste does not bury the real edits.
+  const changes: MarkChange[] = entries.map((e) => {
+    const subject = parseGradingSubject(e.studentId);
+    return {
+      testItemId: e.testItemId,
+      subject,
+      oldMarks: prior.get(markKey(e.testItemId, subject)) ?? null,
+      newMarks:
+        e.marksAwarded === null || e.marksAwarded === undefined ? null : e.marksAwarded,
+    };
+  });
+  const audit = await logMarkChanges(supabase, changes, user.id, AUDIT_REASON);
+
+  // The marks are already written, so an incomplete trail is reported, not
+  // raised: logged for the server, and returned as a warning the gradebook
+  // shows without telling the teacher their paste failed.
+  if (audit.error || priorReadFailed) {
+    console.error("[gradebook] mark audit incomplete", {
+      action: "batch",
+      cells: entries.length,
+      missed: audit.missed,
+      priorReadFailed,
+      error: audit.error,
+    });
+  }
+  const warning = describeAuditWarning({ priorReadFailed, missed: audit.missed });
+
+  return NextResponse.json(warning ? { ok: true, auditWarning: warning } : { ok: true });
 }

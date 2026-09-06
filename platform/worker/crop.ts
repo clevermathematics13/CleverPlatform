@@ -176,7 +176,14 @@ export async function runCrop(supabase: SupabaseClient, packetScanId: string): P
 
   const allAnchorsCropped = savedCount >= anchors.length && cvResponse.pageCountMismatch === null;
   if (allAnchorsCropped) {
-    await supabase.from("na_packet_scans").update({ status: "cropped", updated_at: new Date().toISOString() }).eq("id", packetScanId);
+    // .neq('status','released'): never demote an already-released packet --
+    // that would take published feedback back off the student's page. Same
+    // guard as the manual crop route.
+    await supabase
+      .from("na_packet_scans")
+      .update({ status: "cropped", updated_at: new Date().toISOString() })
+      .eq("id", packetScanId)
+      .neq("status", "released");
   }
 
   if (!allAnchorsCropped) {

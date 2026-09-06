@@ -2,10 +2,13 @@ import { getProfile, requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import {
   getReleasedPacketScansForStudent,
+  getReleasedPacketScansForInvitedStudent,
+  getPacketScanStatusesForInvitedStudent,
   getReleasedPacketScanForTeacher,
   getNaFeedbackForStudent,
   getNaFeedbackForPacketScan,
 } from "@/lib/na-feedback-service";
+import { describeEmptyFeedbackPreview } from "@/lib/na-feedback-preview";
 import { resolveViewAs } from "@/lib/view-as";
 import { NaFeedbackClient } from "./na-feedback-client";
 
@@ -26,26 +29,44 @@ export default async function NaFeedbackPage({
   // does not exist yet.
   const viewAs = await resolveViewAs(params.viewAs);
   if (viewAs) {
-    const supabase = await createClient();
-    const { data: scan } = await supabase
-      .from("na_packet_scans")
-      .select("id")
-      .eq("invited_student_id", viewAs.invitedStudentId)
-      .eq("status", "released")
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const items = scan ? await getNaFeedbackForPacketScan(scan.id) : [];
-    const preview = scan ? await getReleasedPacketScanForTeacher(scan.id) : null;
+    // Every released packet, not just the newest -- the picker below is what
+    // the student themselves gets, and a preview that silently showed one of
+    // two released packets is not the thing being previewed.
+    const previewScans = await getReleasedPacketScansForInvitedStudent(viewAs.invitedStudentId);
+    const requestedScanId = params.scanId ?? null;
+    const previewScanId =
+      requestedScanId && previewScans.some((s) => s.packetScanId === requestedScanId)
+        ? requestedScanId
+        : (previewScans[0]?.packetScanId ?? null);
+    const items = previewScanId ? await getNaFeedbackForPacketScan(previewScanId) : [];
+
+    // When there is nothing to show, say which nothing it is. "No feedback
+    // has been released to you yet" is true of a student whose packet was
+    // never scanned, of one whose packet is sitting half-marked, and of a
+    // page that is simply broken -- and a teacher cannot tell those apart,
+    // so a correct page reads as a bug. Only fetched on the empty path:
+    // when there IS feedback the question does not arise.
+    const emptyPreview =
+      previewScans.length === 0
+        ? describeEmptyFeedbackPreview({
+            studentName: viewAs.name,
+            scanStatuses: await getPacketScanStatusesForInvitedStudent(viewAs.invitedStudentId),
+          })
+        : null;
+
     return (
       <NaFeedbackClient
-        key={scan?.id ?? "none"}
+        key={previewScanId ?? "none"}
         isTeacher
         viewStudentId={null}
         viewStudentName={viewAs.name}
-        scans={preview ? [preview.scan] : []}
-        selectedScanId={scan?.id ?? null}
+        scans={previewScans}
+        selectedScanId={previewScanId}
         initialItems={items}
+        readOnlyPreview
+        previewViewAsId={viewAs.invitedStudentId}
+        previewHasAccount={viewAs.hasAccount}
+        emptyPreview={emptyPreview}
       />
     );
   }
