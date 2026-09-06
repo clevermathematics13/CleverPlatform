@@ -41,9 +41,12 @@ export function initialReflectionStep(input: InitialReflectionStepInput): Reflec
   if (input.hasSelfScores) {
     return input.hasTeacherMarks && input.disagreement === 0 ? 3 : 2;
   }
-  // Nothing self-graded yet. Only send them to Self-Grade if this test
-  // actually requires it; otherwise open on the marks they are here to read.
-  return input.selfAssessmentRequired ? 1 : 2;
+  // Nothing self-graded yet. Skipping ahead to Compare is only an
+  // improvement when there is something there to read: with no Clev's Marks
+  // in yet, Compare is an empty table and Self-Grade is the one step that
+  // actually works, so an unmarked test still opens there however the gate is
+  // set. Otherwise open on the marks the student came for.
+  return input.selfAssessmentRequired || !input.hasTeacherMarks ? 1 : 2;
 }
 
 /**

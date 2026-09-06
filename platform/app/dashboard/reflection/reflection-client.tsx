@@ -237,20 +237,16 @@ export function ReflectionClient({
 
       {step === 2 && (
         <div className="space-y-4">
-          <ScoreTable
-            items={items}
-            editable={!readOnlyPreview}
-            onSave={readOnlyPreview ? undefined : handleSaveComparison}
-          />
-
+          {/* Above the table on purpose: it explains why the Self column is
+              empty, which is only useful before the numbers are read. */}
           {selfGradeSkipped && (
             <div className="rounded-lg border border-da-border bg-da-surface px-4 py-3 text-sm">
               <p className="text-da-text">
                 Self-grading is optional for this test, so Clev&apos;s Marks are already here.
               </p>
               <p className="mt-1 text-da-muted">
-                You can still predict your own marks first if you want the disagreement score —
-                it only works out once you have.
+                You have not predicted your own marks, so there is no disagreement score yet.
+                You can still go back and do it if you want one.
               </p>
               <button
                 type="button"
@@ -262,7 +258,18 @@ export function ReflectionClient({
             </div>
           )}
 
-          {!hasTeacherMarks && (
+          {/* Read-only until a self-assessment exists. The editable table
+              seeds every empty box with 0, so one click of Save Changes would
+              file an all-zero self-assessment the student never made --
+              self-grading has to go through step 1, above. */}
+          <ScoreTable
+            items={items}
+            editable={!readOnlyPreview && !selfGradeSkipped}
+            onSave={readOnlyPreview || selfGradeSkipped ? undefined : handleSaveComparison}
+            selfMarksEntered={!selfGradeSkipped}
+          />
+
+          {!hasTeacherMarks && !selfGradeSkipped && (
             <p className="text-sm text-da-muted">
               Waiting for your teacher to enter marks — come back once grading is
               complete to see your disagreement score.

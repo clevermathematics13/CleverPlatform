@@ -27,11 +27,15 @@ describe("initialReflectionStep", () => {
     const open = { ...base, selfAssessmentRequired: false };
 
     it("skips Self-Grade and opens on Compare, where Clev's Marks are", () => {
-      expect(initialReflectionStep(open)).toBe(2);
+      expect(initialReflectionStep({ ...open, hasTeacherMarks: true })).toBe(2);
     });
 
-    it("opens on Compare whether or not the teacher has marked yet", () => {
-      expect(initialReflectionStep({ ...open, hasTeacherMarks: true })).toBe(2);
+    // Skipping ahead is only worth it if there is something to skip TO.
+    // With no marks in, Compare is an empty table whose Self column has
+    // nothing in it either, and the page would claim "Clev's Marks are
+    // already here" directly above "waiting for your teacher to enter marks".
+    it("still opens on Self-Grade when the teacher has not marked yet", () => {
+      expect(initialReflectionStep(open)).toBe(1);
     });
 
     it("does not skip past Compare just because there is no disagreement to show", () => {
@@ -73,6 +77,21 @@ describe("initialReflectionStep", () => {
         ).toBe(2);
       });
     }
+  });
+
+  // The landing step never puts a student in front of the comparison table
+  // with neither side filled in: that screen invents a Self column of zeros
+  // and a disagreement score to match (see ScoreTable's selfMarksEntered).
+  it("never opens on Compare with nothing on either side", () => {
+    for (const selfAssessmentRequired of [true, false])
+      expect(
+        initialReflectionStep({
+          ...base,
+          selfAssessmentRequired,
+          hasSelfScores: false,
+          hasTeacherMarks: false,
+        })
+      ).toBe(1);
   });
 
   it("an existing upload wins over every other state", () => {
