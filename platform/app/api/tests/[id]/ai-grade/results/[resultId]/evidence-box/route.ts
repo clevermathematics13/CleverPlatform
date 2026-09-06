@@ -160,7 +160,7 @@ export async function POST(
 
   const { error: updateErr } = await supabase
     .from("ai_grade_results")
-    .update({ evidence_image_path: storagePath, evidence_box: box })
+    .update({ evidence_image_path: storagePath, evidence_box: box, evidence_box_source: "teacher" })
     .eq("id", resultId);
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
@@ -171,6 +171,7 @@ export async function POST(
   return NextResponse.json({
     ok: true,
     evidence_box: box,
+    evidence_box_source: "teacher",
     evidence_image_path: storagePath,
     evidence_image_url: signed?.signedUrl ?? null,
   });

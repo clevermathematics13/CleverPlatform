@@ -47,6 +47,7 @@ interface ResultRow {
   evidence: string | null;
   evidence_image_path: string | null;
   evidence_box: unknown;
+  evidence_box_source: string | null;
   mark_breakdown: unknown;
   accepted: boolean;
   accepted_at: string | null;
@@ -188,7 +189,7 @@ export async function GET(
       supabase
         .from("ai_grade_results")
         .select(
-          "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, mark_breakdown, accepted, accepted_at, accepted_by"
+          "id, run_id, test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, evidence_box_source, mark_breakdown, accepted, accepted_at, accepted_by"
         )
         .in("run_id", runIds)
         .order("id", { ascending: true })
@@ -640,6 +641,10 @@ export async function POST(
       evidence_box: evidenceImagePathByTestItemId.has(g.unit.testItemId)
         ? crops.get(g.unit.testItemId)?.box ?? null
         : null,
+      // Kept in step with evidence_box: a row either has a model-located box
+      // and is labelled as such, or has neither. A teacher redrawing the
+      // region later overwrites both (see the evidence-box route).
+      evidence_box_source: evidenceImagePathByTestItemId.has(g.unit.testItemId) ? "model" : null,
       mark_breakdown: g.item.markBreakdown,
       accepted: !!carried,
       accepted_at: carried?.accepted_at ?? null,

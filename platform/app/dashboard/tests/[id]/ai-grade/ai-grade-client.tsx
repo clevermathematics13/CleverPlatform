@@ -119,6 +119,13 @@ interface ResultRow {
   evidence_image_url: string | null;
   /** The fractional-page box `evidence_image_url` was cropped from, if any -- lets the UI fetch the full page for context. */
   evidence_box: { page: number; x0: number; y0: number; x1: number; y1: number } | null;
+  /**
+   * Where that box came from: "model" (located by the grader, and wrong far
+   * more often than it looks), "teacher" (redrawn by hand), or null for rows
+   * graded before the column existed. Shown as a badge so a corrected crop is
+   * not mistaken for a guessed one.
+   */
+  evidence_box_source: string | null;
   /** Question source image(s) from the PPQ bank, if any are on file for this part. */
   question_image_urls: string[];
   /** Mark scheme source image(s) from the PPQ bank, if any are on file for this part. */
@@ -754,7 +761,15 @@ export function AiGradeClient({ testId }: { testId: string }) {
       const nextBox = data.evidence_box as ResultRow["evidence_box"];
       setResults((prev) =>
         prev.map((row) =>
-          row.id === r.id ? { ...row, evidence_image_url: nextUrl, evidence_box: nextBox } : row
+          row.id === r.id
+            ? {
+                ...row,
+                evidence_image_url: nextUrl,
+                evidence_box: nextBox,
+                evidence_box_source:
+                  typeof data.evidence_box_source === "string" ? data.evidence_box_source : "teacher",
+              }
+            : row
         )
       );
       // Make sure the corrected crop is actually visible behind the editor.
@@ -1274,6 +1289,14 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                           <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
                                             Student&apos;s work
                                           </p>
+                                        )}
+                                        {r.evidence_box_source === "teacher" && (
+                                          <span
+                                            title="You drew this region by hand; the crop was re-cut from it."
+                                            className="rounded border border-green-400/40 bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-green-300"
+                                          >
+                                            Region set by you
+                                          </span>
                                         )}
                                         {!r.evidence_image_url && (
                                           <button

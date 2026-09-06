@@ -80,6 +80,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `created_at` | timestamp with time zone | default `now()` |
 | `evidence_image_path` | text, nullable |  |
 | `evidence_box` | jsonb, nullable |  |
+| `evidence_box_source` | text, nullable | `'model'` \| `'teacher'` \| `'anchor'` — where `evidence_box` came from. No check constraint. Null for rows graded before it existed and for rows with no box |
 
 ### `ai_grade_runs`
 
