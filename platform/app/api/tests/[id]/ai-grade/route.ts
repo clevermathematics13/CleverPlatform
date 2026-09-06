@@ -23,6 +23,13 @@ import {
 } from "@/lib/ai-grading";
 import type { GradingUnit, ValidatedGrade } from "@/lib/ai-grading";
 import { fetchAllRows } from "@/lib/na-scanning";
+import { cropRegions, cvServiceEndpoint, type CropRegion } from "@/lib/cv-crop-service";
+import {
+  fractionBoxToPoints,
+  padModelBox,
+  type EvidenceBox,
+  type PageSizePt,
+} from "@/lib/evidence-crops";
 
 export const maxDuration = 300;
 
@@ -46,19 +53,7 @@ interface ResultRow {
   accepted_by: string | null;
 }
 
-interface CvCropResult {
-  qid: string;
-  imageBase64: string;
-}
-
-export interface EvidenceBox {
-  page: number;
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-}
-
+/** One rendered crop plus the (padded) box it was cut from. */
 interface EvidenceCrop {
   buffer: Buffer;
   box: EvidenceBox;
@@ -66,12 +61,20 @@ interface EvidenceCrop {
 
 /**
  * Best-effort: renders one cropped PNG per graded part from the model's
- * reported evidenceBox, via the same Railway CV service the NA scan
- * pipeline uses (see platform/app/api/na-review/packet-scans/[id]/crop/route.ts
- * for the sibling usage). Unlike that pipeline, anchors here are per-request
- * and AI-located rather than pre-locked in the database — the CV service's
- * /crop endpoint takes anchors directly in the request body either way, so
- * no server-side changes were needed to reuse it.
+ * reported evidenceBox, via the same Railway CV service the NA scan pipeline
+ * uses (see app/api/na-review/packet-scans/[id]/crop/route.ts for the sibling
+ * usage). Unlike that pipeline, regions here are per-request and AI-located
+ * rather than pre-locked in the database.
+ *
+ * A WORD ON HOW WELL THAT WORKS: audited in full against one 41-part paper,
+ * 22 of the 33 crops this produced did not contain the work they were
+ * captioned as evidence for. The cropper is exact -- all 33 reproduce
+ * byte-for-byte from their recorded boxes -- but the model synthesises a
+ * plausible page layout instead of measuring one, and lands above the real
+ * answer every time. The padding below narrows that gap and does not close
+ * it. A teacher can correct any individual part through
+ * results/[resultId]/evidence-box, which is the repair path until per-paper
+ * anchors replace the model's guess.
  *
  * Never throws: a crop is a nice-to-have alongside the suggested grade, not
  * something worth failing (or even warning on) a whole grading run over.
@@ -83,102 +86,50 @@ async function fetchEvidenceCrops(
   grades: ValidatedGrade[]
 ): Promise<Map<string, EvidenceCrop>> {
   const byTestItemId = new Map<string, EvidenceCrop>();
-
-  const serviceUrl = process.env.GRAPH_LAB_CV_SERVICE_URL;
-  if (!serviceUrl) return byTestItemId;
+  if (!cvServiceEndpoint("/crop")) return byTestItemId;
 
   let pageCount: number;
-  const pageSizePt: { width: number; height: number }[] = [];
+  const pageSizePt: PageSizePt[] = [];
   try {
     const pdfDoc = await PDFDocument.load(Buffer.from(scanBase64, "base64"));
     pageCount = pdfDoc.getPageCount();
     for (const page of pdfDoc.getPages()) {
-      pageSizePt.push({ width: page.getWidth(), height: page.getHeight() });
+      pageSizePt.push({ widthPt: page.getWidth(), heightPt: page.getHeight() });
     }
   } catch {
     return byTestItemId;
   }
 
-  const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
-  // The model's evidenceBox is an estimate, and it skews tight rather than
-  // loose -- it's especially prone to clipping the tail end of a line that
-  // runs further right or lower than expected (e.g. a final numeric answer
-  // after "=" ). Pad every edge outward before cropping: proportional to the
-  // box's own size so a large block of working doesn't get padded away past
-  // the page, with a fraction-of-page floor so a small, tightly-drawn box
-  // still gets a meaningful margin.
-  const PAD_PROPORTION = 0.18;
-  const PAD_FLOOR = 0.03;
-  const anchors = grades
-    .map((g) => {
-      const box = g.item.evidenceBox;
-      if (!g.item.workFound || !box) return null;
-      const pageIndex = box.page - 1;
-      if (pageIndex < 0 || pageIndex >= pageCount) return null;
-      const { width, height } = pageSizePt[pageIndex];
-      const rawX0 = clamp01(box.x0);
-      const rawY0 = clamp01(box.y0);
-      const rawX1 = clamp01(box.x1);
-      const rawY1 = clamp01(box.y1);
-      if (rawX1 <= rawX0 || rawY1 <= rawY0) return null;
-      const padX = Math.max((rawX1 - rawX0) * PAD_PROPORTION, PAD_FLOOR);
-      const padY = Math.max((rawY1 - rawY0) * PAD_PROPORTION, PAD_FLOOR);
-      const x0 = clamp01(rawX0 - padX);
-      const y0 = clamp01(rawY0 - padY);
-      const x1 = clamp01(rawX1 + padX);
-      const y1 = clamp01(rawY1 + padY);
-      return {
-        qid: g.unit.testItemId,
-        pageIndex,
-        x0Pt: x0 * width,
-        y0Pt: y0 * height,
-        x1Pt: x1 * width,
-        y1Pt: y1 * height,
-        box: { page: box.page, x0, y0, x1, y1 } satisfies EvidenceBox,
-      };
-    })
-    .filter((a): a is NonNullable<typeof a> => a !== null);
-
-  if (anchors.length === 0) return byTestItemId;
-
-  const boxByQid = new Map(anchors.map((a) => [a.qid, a.box]));
-
-  const serviceBase = serviceUrl.trim().replace(/\/$/, "");
-  const target = `${/^https?:\/\//i.test(serviceBase) ? serviceBase : `https://${serviceBase}`}/crop`;
-  const cvSecret = process.env.CV_SERVICE_SECRET ?? "";
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-  try {
-    const upstream = await fetch(target, {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        ...(cvSecret ? { "X-CV-Secret": cvSecret } : {}),
-      },
-      body: JSON.stringify({
-        studentPdfBase64: scanBase64,
-        expectedPageCount: pageCount,
-        rotationHint: 0,
-        anchors: anchors.map(({ box, ...anchor }) => { void box; return anchor; }),
-      }),
-      signal: controller.signal,
+  const boxByQid = new Map<string, EvidenceBox>();
+  const regions: CropRegion[] = [];
+  for (const g of grades) {
+    const reported = g.item.evidenceBox;
+    if (!g.item.workFound || !reported) continue;
+    const pageIndex = reported.page - 1;
+    if (pageIndex < 0 || pageIndex >= pageCount) continue;
+    const padded = padModelBox(reported);
+    if (!padded) continue;
+    boxByQid.set(g.unit.testItemId, padded);
+    regions.push({
+      qid: g.unit.testItemId,
+      pageIndex,
+      ...fractionBoxToPoints(padded, pageSizePt[pageIndex]),
     });
-    if (!upstream.ok) return byTestItemId;
-    const data = (await upstream.json()) as { crops?: CvCropResult[] };
-    for (const crop of data.crops ?? []) {
-      const box = boxByQid.get(crop.qid);
-      if (crop.imageBase64 && box) {
-        byTestItemId.set(crop.qid, { buffer: Buffer.from(crop.imageBase64, "base64"), box });
-      }
-    }
-  } catch {
-    // Network/timeout failure -- crops stay empty, grading still succeeds.
-  } finally {
-    clearTimeout(timeout);
   }
 
+  const cropped = await cropRegions({
+    pdfBase64: scanBase64,
+    expectedPageCount: pageCount,
+    regions,
+  });
+  if (!cropped.ok) return byTestItemId;
+
+  for (const crop of cropped.value) {
+    const box = boxByQid.get(crop.qid);
+    if (crop.imageBase64 && box) {
+      byTestItemId.set(crop.qid, { buffer: Buffer.from(crop.imageBase64, "base64"), box });
+    }
+  }
   return byTestItemId;
 }
 

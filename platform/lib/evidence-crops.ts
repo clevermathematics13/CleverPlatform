@@ -60,6 +60,54 @@ export const MIN_BOX_FRACTION = 0.01;
 
 const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
 
+/**
+ * Outward padding applied to the box the GRADING MODEL reports, before it is
+ * cropped. Proportional to the box's own size so a large block of working is
+ * not padded off the page, with a fraction-of-page floor so a small, tightly
+ * drawn box still gets a usable margin.
+ *
+ * These exist because the model's box skews tight -- it clips the tail of a
+ * line that runs further right or lower than expected, e.g. a final numeric
+ * answer after an "=". They do NOT fix the model's much larger vertical
+ * mislocation (measured mean 0.106 page-heights below the box centre, against
+ * a floor of 0.03), and they are deliberately NOT applied to a teacher-drawn
+ * box, which is a decision rather than an estimate.
+ */
+export const PAD_PROPORTION = 0.18;
+export const PAD_FLOOR = 0.03;
+
+/**
+ * Clamp, reject, and pad one model-reported box.
+ *
+ * Returns null for a box that cannot be cropped at all -- inverted or
+ * zero-width/height after clamping. That is the same "skip this part, keep
+ * grading" outcome the grading route has always taken; a missing crop is fine,
+ * a nonsense one is not.
+ *
+ * Kept byte-compatible with what is already in ai_grade_results.evidence_box:
+ * lib/evidence-crops.test.ts replays real padded boxes from a graded paper
+ * through it and requires exact equality, so a change in this arithmetic
+ * cannot pass unnoticed.
+ */
+export function padModelBox(box: EvidenceBox): EvidenceBox | null {
+  const rawX0 = clamp01(box.x0);
+  const rawY0 = clamp01(box.y0);
+  const rawX1 = clamp01(box.x1);
+  const rawY1 = clamp01(box.y1);
+  if (rawX1 <= rawX0 || rawY1 <= rawY0) return null;
+
+  const padX = Math.max((rawX1 - rawX0) * PAD_PROPORTION, PAD_FLOOR);
+  const padY = Math.max((rawY1 - rawY0) * PAD_PROPORTION, PAD_FLOOR);
+
+  return {
+    page: box.page,
+    x0: clamp01(rawX0 - padX),
+    y0: clamp01(rawY0 - padY),
+    x1: clamp01(rawX1 + padX),
+    y1: clamp01(rawY1 + padY),
+  };
+}
+
 export type NormalizeResult = { ok: true; box: EvidenceBox } | { ok: false; error: string };
 
 /**

@@ -3,6 +3,7 @@ import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import { SCAN_BUCKET } from "@/lib/ai-grading";
 import { fractionBoxToPoints, type EvidenceBox } from "@/lib/evidence-crops";
+import { cvServiceEndpoint } from "@/lib/cv-crop-service";
 
 export const maxDuration = 60;
 
@@ -93,8 +94,8 @@ export async function GET(
     return NextResponse.json({ error: "No source scan on file for this run" }, { status: 404 });
   }
 
-  const serviceUrl = process.env.GRAPH_LAB_CV_SERVICE_URL;
-  if (!serviceUrl) {
+  const target = cvServiceEndpoint("/page-image");
+  if (!target) {
     return NextResponse.json({ error: "Full-page view is not configured on this deployment" }, { status: 503 });
   }
 
@@ -134,17 +135,13 @@ export async function GET(
   const highlightBox =
     box && box.page === requestedPage ? fractionBoxToPoints(box, { widthPt, heightPt }) : null;
 
-  const serviceBase = serviceUrl.trim().replace(/\/$/, "");
-  const target = `${/^https?:\/\//i.test(serviceBase) ? serviceBase : `https://${serviceBase}`}/page-image`;
-  const cvSecret = process.env.CV_SERVICE_SECRET ?? "";
-
   try {
     const upstream = await fetch(target, {
       method: "POST",
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
-        ...(cvSecret ? { "X-CV-Secret": cvSecret } : {}),
+        ...(process.env.CV_SERVICE_SECRET ? { "X-CV-Secret": process.env.CV_SERVICE_SECRET } : {}),
       },
       body: JSON.stringify({
         studentPdfBase64: pdfBase64,

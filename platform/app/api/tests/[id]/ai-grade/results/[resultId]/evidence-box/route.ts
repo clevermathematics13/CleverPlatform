@@ -4,6 +4,7 @@ import { getApiTeacher } from "@/lib/auth";
 import { SCAN_BUCKET } from "@/lib/ai-grading";
 import { formatGradingSubject } from "@/lib/grading-subject";
 import { fractionBoxToPoints, noExpansionCaps, normalizeFractionBox } from "@/lib/evidence-crops";
+import { cropRegions, cvServiceEndpoint } from "@/lib/cv-crop-service";
 
 export const maxDuration = 60;
 
@@ -87,8 +88,7 @@ export async function POST(
     return NextResponse.json({ error: "This run has no student on it to file the crop under" }, { status: 422 });
   }
 
-  const serviceUrl = process.env.GRAPH_LAB_CV_SERVICE_URL;
-  if (!serviceUrl) {
+  if (!cvServiceEndpoint("/crop")) {
     return NextResponse.json({ error: "Cropping is not configured on this deployment" }, { status: 503 });
   }
 
@@ -124,57 +124,27 @@ export async function POST(
 
   const points = fractionBoxToPoints(box, { widthPt, heightPt });
 
-  const serviceBase = serviceUrl.trim().replace(/\/$/, "");
-  const target = `${/^https?:\/\//i.test(serviceBase) ? serviceBase : `https://${serviceBase}`}/crop`;
-  const cvSecret = process.env.CV_SERVICE_SECRET ?? "";
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-  let cropBuffer: Buffer;
-  try {
-    const upstream = await fetch(target, {
-      method: "POST",
-      cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        ...(cvSecret ? { "X-CV-Secret": cvSecret } : {}),
+  const cropped = await cropRegions({
+    pdfBase64,
+    expectedPageCount: pageCount,
+    regions: [
+      {
+        qid: result.test_item_id,
+        pageIndex: box.page - 1,
+        ...points,
+        // Suppress adaptive growth: the teacher has already decided where this
+        // part's work ends. See noExpansionCaps.
+        ...noExpansionCaps(points),
       },
-      body: JSON.stringify({
-        studentPdfBase64: pdfBase64,
-        expectedPageCount: pageCount,
-        rotationHint: 0,
-        anchors: [
-          {
-            qid: result.test_item_id,
-            pageIndex: box.page - 1,
-            ...points,
-            // Suppress adaptive growth: the teacher has already decided where
-            // this part's work ends. See noExpansionCaps.
-            ...noExpansionCaps(points),
-          },
-        ],
-      }),
-      signal: controller.signal,
-    });
-    if (!upstream.ok) {
-      const errBody = (await upstream.json().catch(() => ({}))) as { error?: string };
-      return NextResponse.json({ error: errBody.error ?? "Crop failed" }, { status: 502 });
-    }
-    const data = (await upstream.json()) as { crops?: { qid: string; imageBase64?: string }[] };
-    const crop = (data.crops ?? []).find((c) => c.qid === result.test_item_id);
-    if (!crop?.imageBase64) {
-      return NextResponse.json({ error: "The crop service returned no image for that region" }, { status: 502 });
-    }
-    cropBuffer = Buffer.from(crop.imageBase64, "base64");
-  } catch (e) {
-    const aborted = e instanceof Error && e.name === "AbortError";
-    return NextResponse.json(
-      { error: aborted ? "Cropping timed out" : `Crop failed: ${e instanceof Error ? e.message : String(e)}` },
-      { status: 502 }
-    );
-  } finally {
-    clearTimeout(timeout);
+    ],
+  });
+  if (!cropped.ok) return NextResponse.json({ error: cropped.error }, { status: 502 });
+
+  const crop = cropped.value.find((c) => c.qid === result.test_item_id);
+  if (!crop?.imageBase64) {
+    return NextResponse.json({ error: "The crop service returned no image for that region" }, { status: 502 });
   }
+  const cropBuffer = Buffer.from(crop.imageBase64, "base64");
 
   // Sits alongside the run's model-located crops rather than replacing one.
   // `Date.now()` keeps successive corrections of the same part distinct, so a
