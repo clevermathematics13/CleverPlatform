@@ -80,6 +80,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `created_at` | timestamp with time zone | default `now()` |
 | `evidence_image_path` | text, nullable |  |
 | `evidence_box` | jsonb, nullable |  |
+| `evidence_box_source` | text, nullable | `'model'` \| `'teacher'` \| `'anchor'` — where `evidence_box` came from. No check constraint. Null for rows graded before it existed and for rows with no box |
 
 ### `ai_grade_runs`
 
@@ -1257,6 +1258,51 @@ A student who did not sit a test. The AI grader roster and the gradebook show "A
 | `show_corrections` | boolean | default `false` |
 | `show_feedback` | boolean | default `false` |
 | `updated_at` | timestamp with time zone | default `now()` |
+
+### `test_item_anchors`
+
+One answer region per part of a paper layout, in absolute points on the reference page.
+Keyed on `(question_number, part_label)` rather than `test_items.id`, because `syncTestItems`
+recreates `test_items` rows with new uuids on every Formative Assessment save. Column names
+mirror `na_anchors` so rows map straight onto the CV `/crop` request body.
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `layout_id` | uuid | FK test_paper_layouts(id) on delete cascade |
+| `question_number` | integer |  |
+| `part_label` | text, nullable | null for a question with no parts |
+| `page_index` | integer | 0-indexed page of the reference PDF |
+| `x0_pt` `y0_pt` `x1_pt` `y1_pt` | numeric | absolute points on the reference page |
+| `expand_max_x1_pt` `expand_max_y1_pt` | numeric, nullable | caps adaptive right/bottom growth |
+| `sort_order` | integer, nullable |  |
+| `source` | text | default `'manual_draw'` |
+| `created_at` `updated_at` | timestamp with time zone | default `now()` |
+
+Unique on `(layout_id, question_number, coalesce(part_label, ''))` — the `coalesce` matters:
+NULLs are distinct in Postgres, so a plain unique constraint would allow Q7 twice.
+Check: `x1_pt > x0_pt and y1_pt > y0_pt`.
+
+### `test_paper_layouts`
+
+One physical layout of a test paper. A re-sitting reuses the `tests` row, so a test can
+accumulate several; exactly one is `is_active` (partial unique index on `test_id`) and that
+is the one new grading runs use. Nothing reads these yet.
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `test_id` | uuid | FK tests(id) on delete cascade |
+| `label` | text |  |
+| `reference_storage_path` | text, nullable | the PDF the regions were drawn on, in `exam-scans` |
+| `reference_kind` | text, nullable | `'master_upload'` \| `'student_scan'` |
+| `reference_run_id` | uuid, nullable | FK ai_grade_runs(id) on delete set null — provenance only |
+| `page_count` | integer |  |
+| `reference_page_sizes` | jsonb | one `{widthPt, heightPt}` per page, so a differently sized or scaled scan is detectable |
+| `anchors_locked` | boolean | default `false` |
+| `is_active` | boolean | default `true` |
+| `created_by` | uuid, nullable | FK profiles(id) on delete set null |
+| `created_at` `updated_at` | timestamp with time zone | default `now()` |
 
 ### `test_items`
 

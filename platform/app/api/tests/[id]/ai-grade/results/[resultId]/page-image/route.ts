@@ -2,27 +2,49 @@ import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
 import { SCAN_BUCKET } from "@/lib/ai-grading";
+import { fractionBoxToPoints, type EvidenceBox } from "@/lib/evidence-crops";
+import { cvServiceEndpoint } from "@/lib/cv-crop-service";
 
-interface EvidenceBox {
-  page: number;
-  x0: number;
-  y0: number;
-  x1: number;
-  y1: number;
-}
+export const maxDuration = 60;
 
 /**
- * GET /api/tests/[id]/ai-grade/results/[resultId]/page-image
+ * The CV service renders pages at CROP_DPI (300) as lossless PNG and returns
+ * them base64-encoded inside a JSON body. On a real scanned A4 page that is
+ * 2480x3508px of photocopier noise: measured across seven of one class's
+ * scans, the worst page is 7.85MB of PNG, or 10.5MB once base64'd -- comfortably
+ * past what a serverless function can return, so that page simply failed.
  *
- * Renders the FULL scanned page a result's evidence crop was taken from,
- * with that crop's region outlined in red, so a teacher can check the crop
- * against its surrounding context (e.g. is this really part (b), or did the
- * model crop the wrong line of a stacked a)/b)/c) list) without re-grading.
+ * Downscaling here rather than in the CV service keeps this change inside the
+ * Next.js app (the CV service is separately deployed, and a `dpi` parameter
+ * there would need a Railway redeploy to take effect). The same worst-case page
+ * comes out at 0.26MB, and the red highlight the model's region is drawn with
+ * stays crisp -- 2000px of height is still more than double what the editor
+ * displays, so drawing precision is bounded by the screen, not by this.
+ */
+const PAGE_VIEW_MAX_HEIGHT_PX = 2000;
+const PAGE_VIEW_JPEG_QUALITY = 85;
+
+/**
+ * GET /api/tests/[id]/ai-grade/results/[resultId]/page-image[?page=N]
+ *
+ * Renders one full scanned page of the run this result came from, with the
+ * result's evidence region outlined in red when that region is on the page
+ * being rendered. A teacher uses it to check a crop against its surrounding
+ * context (is this really part (b), or did the model crop the wrong line of a
+ * stacked a)/b)/c) list?) and, via the box editor, to redraw the region when
+ * it is wrong.
+ *
+ * `page` is 1-indexed to match ai_grade_results.evidence_box.page, and
+ * defaults to that box's page. It is a parameter at all because a part with
+ * NO box is exactly the case a teacher most needs to see the page for: the
+ * model either could not localise the work or found none, and the only way to
+ * fix that by hand is to look at a page and draw the region. This route used
+ * to 404 when evidence_box was null, which locked those parts out of the one
+ * repair path available to them.
+ *
  * Reuses the same Railway CV service /page-image endpoint the NA-review
  * "follow the arrow" second pass already calls (see
- * app/api/na-review/response-crops/[cropId]/assess/route.ts) -- this is the
- * first place it's exposed directly to a teacher rather than fed straight
- * back into a model call.
+ * app/api/na-review/response-crops/[cropId]/assess/route.ts).
  *
  * Not persisted anywhere: rendered fresh from the run's source PDF on every
  * request, since it's cheap and there's no other reason to store a second
@@ -47,8 +69,16 @@ export async function GET(
   if (!result) return NextResponse.json({ error: "Result not found" }, { status: 404 });
 
   const box = result.evidence_box as EvidenceBox | null;
-  if (!box) {
-    return NextResponse.json({ error: "This part has no located region to show in context" }, { status: 404 });
+
+  const requestedPageParam = request.nextUrl.searchParams.get("page");
+  let requestedPage: number;
+  if (requestedPageParam === null) {
+    requestedPage = box?.page ?? 1;
+  } else {
+    requestedPage = Number(requestedPageParam);
+    if (!Number.isInteger(requestedPage) || requestedPage < 1) {
+      return NextResponse.json({ error: "page must be a whole number of 1 or more" }, { status: 400 });
+    }
   }
 
   const { data: run, error: runErr } = await supabase
@@ -64,8 +94,8 @@ export async function GET(
     return NextResponse.json({ error: "No source scan on file for this run" }, { status: 404 });
   }
 
-  const serviceUrl = process.env.GRAPH_LAB_CV_SERVICE_URL;
-  if (!serviceUrl) {
+  const target = cvServiceEndpoint("/page-image");
+  if (!target) {
     return NextResponse.json({ error: "Full-page view is not configured on this deployment" }, { status: 503 });
   }
 
@@ -77,14 +107,21 @@ export async function GET(
   }
   const pdfBase64 = Buffer.from(await pdfFile.arrayBuffer()).toString("base64");
 
-  let pageWidthPt: number;
-  let pageHeightPt: number;
+  let pageCount: number;
+  let widthPt: number;
+  let heightPt: number;
   try {
     const pdfDoc = await PDFDocument.load(Buffer.from(pdfBase64, "base64"));
-    const page = pdfDoc.getPages()[box.page - 1];
-    if (!page) return NextResponse.json({ error: "Page out of range for this scan" }, { status: 422 });
-    pageWidthPt = page.getWidth();
-    pageHeightPt = page.getHeight();
+    pageCount = pdfDoc.getPageCount();
+    const page = pdfDoc.getPages()[requestedPage - 1];
+    if (!page) {
+      return NextResponse.json(
+        { error: `Page ${requestedPage} is out of range for this ${pageCount}-page scan`, pageCount },
+        { status: 422 }
+      );
+    }
+    widthPt = page.getWidth();
+    heightPt = page.getHeight();
   } catch (e) {
     return NextResponse.json(
       { error: `Could not read the source scan: ${e instanceof Error ? e.message : String(e)}` },
@@ -92,9 +129,11 @@ export async function GET(
     );
   }
 
-  const serviceBase = serviceUrl.trim().replace(/\/$/, "");
-  const target = `${/^https?:\/\//i.test(serviceBase) ? serviceBase : `https://${serviceBase}`}/page-image`;
-  const cvSecret = process.env.CV_SERVICE_SECRET ?? "";
+  // Outline the stored region only when it is on the page actually being
+  // rendered -- a box from page 3 drawn onto page 4 would point at nothing
+  // and read as a second, contradictory answer to "where is the work".
+  const highlightBox =
+    box && box.page === requestedPage ? fractionBoxToPoints(box, { widthPt, heightPt }) : null;
 
   try {
     const upstream = await fetch(target, {
@@ -102,18 +141,13 @@ export async function GET(
       cache: "no-store",
       headers: {
         "Content-Type": "application/json",
-        ...(cvSecret ? { "X-CV-Secret": cvSecret } : {}),
+        ...(process.env.CV_SERVICE_SECRET ? { "X-CV-Secret": process.env.CV_SERVICE_SECRET } : {}),
       },
       body: JSON.stringify({
         studentPdfBase64: pdfBase64,
-        pageIndex: box.page - 1,
+        pageIndex: requestedPage - 1,
         rotationHint: 0,
-        highlightBox: {
-          x0Pt: box.x0 * pageWidthPt,
-          y0Pt: box.y0 * pageHeightPt,
-          x1Pt: box.x1 * pageWidthPt,
-          y1Pt: box.y1 * pageHeightPt,
-        },
+        ...(highlightBox ? { highlightBox } : {}),
       }),
     });
     if (!upstream.ok) {
@@ -124,7 +158,36 @@ export async function GET(
     if (!body.imageBase64) {
       return NextResponse.json({ error: "Full-page render failed" }, { status: 502 });
     }
-    return NextResponse.json({ imageBase64: body.imageBase64 });
+
+    // See PAGE_VIEW_MAX_HEIGHT_PX. Sharp is imported lazily and its absence
+    // falls back to the original PNG, matching lib/graph-raster-snap.ts --
+    // that fallback is today's behaviour, so a missing binary degrades to the
+    // status quo rather than introducing a new failure.
+    let imageBase64 = body.imageBase64;
+    let imageMediaType = "image/png";
+    try {
+      const sharp = (await import("sharp")).default;
+      const resized = await sharp(Buffer.from(body.imageBase64, "base64"))
+        .resize({ height: PAGE_VIEW_MAX_HEIGHT_PX, withoutEnlargement: true })
+        .jpeg({ quality: PAGE_VIEW_JPEG_QUALITY, mozjpeg: true })
+        .toBuffer();
+      imageBase64 = resized.toString("base64");
+      imageMediaType = "image/jpeg";
+    } catch {
+      // Keep the full-resolution PNG.
+    }
+
+    return NextResponse.json({
+      imageBase64,
+      imageMediaType,
+      page: requestedPage,
+      pageCount,
+      // The editor draws in page fractions, so it never needs these -- they
+      // are here so a caller can report what it is looking at without a
+      // second round trip to the PDF.
+      widthPt,
+      heightPt,
+    });
   } catch (e) {
     return NextResponse.json(
       { error: `Full-page render failed: ${e instanceof Error ? e.message : String(e)}` },

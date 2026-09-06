@@ -1391,6 +1391,7 @@ export interface RosterEntry {
  */
 export {
   INVITED_SUBJECT_PREFIX,
+  formatGradingSubject,
   parseGradingSubject,
   type GradingSubject,
 } from "./grading-subject";

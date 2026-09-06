@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
+import EvidenceBoxEditor from "@/components/EvidenceBoxEditor";
 import { BatchGradeTab } from "./batch-grade-tab";
 import { fetchJson } from "./fetch-json";
 import {
@@ -118,6 +119,13 @@ interface ResultRow {
   evidence_image_url: string | null;
   /** The fractional-page box `evidence_image_url` was cropped from, if any -- lets the UI fetch the full page for context. */
   evidence_box: { page: number; x0: number; y0: number; x1: number; y1: number } | null;
+  /**
+   * Where that box came from: "model" (located by the grader, and wrong far
+   * more often than it looks), "teacher" (redrawn by hand), or null for rows
+   * graded before the column existed. Shown as a badge so a corrected crop is
+   * not mistaken for a guessed one.
+   */
+  evidence_box_source: string | null;
   /** Question source image(s) from the PPQ bank, if any are on file for this part. */
   question_image_urls: string[];
   /** Mark scheme source image(s) from the PPQ bank, if any are on file for this part. */
@@ -183,8 +191,22 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
-  /** Result id currently fetching its full source page (see viewFullPage). */
+  /** Result id currently fetching its full source page (see openBoxEditor). */
   const [pageImageLoadingId, setPageImageLoadingId] = useState<string | null>(null);
+  /**
+   * The part whose evidence region is being redrawn on the scanned page, if
+   * any. `page` is 1-indexed to match evidence_box.page.
+   */
+  const [boxEditor, setBoxEditor] = useState<{
+    result: ResultRow;
+    label: string;
+    page: number;
+    pageCount: number;
+    imageSrc: string | null;
+  } | null>(null);
+  const [boxEditorLoading, setBoxEditorLoading] = useState(false);
+  const [boxEditorSaving, setBoxEditorSaving] = useState(false);
+  const [boxEditorError, setBoxEditorError] = useState<string | null>(null);
   /** Which rows have their question image un-minimized — collapsed by default, keyed by result.id. */
   const [questionImageShown, setQuestionImageShown] = useState<Set<string>>(new Set());
   /** Same, for the student's-work scan crop. */
@@ -667,23 +689,97 @@ export function AiGradeClient({ testId }: { testId: string }) {
     }
   };
 
-  // Fetches the full scanned page a crop was taken from (with that crop's
-  // region outlined) and opens it in the existing lightbox, so a teacher can
-  // check a crop against its surrounding context without re-grading.
-  const viewFullPage = async (r: ResultRow) => {
-    setPageImageLoadingId(r.id);
-    setError(null);
+  // Loads one full scanned page for the box editor, with the part's current
+  // region already outlined in red by the CV service.
+  const loadEditorPage = async (r: ResultRow, page: number) => {
+    setBoxEditorLoading(true);
+    setBoxEditorError(null);
     try {
-      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/results/${r.id}/page-image`);
+      const { ok, data } = await fetchJson(
+        `/api/tests/${testId}/ai-grade/results/${r.id}/page-image?page=${page}`
+      );
       if (!ok || typeof data.imageBase64 !== "string") {
-        setError((data.error as string) ?? "Could not load the full page for this part.");
+        setBoxEditorError((data.error as string) ?? "Could not load that page.");
         return;
       }
-      setLightboxUrl(`data:image/png;base64,${data.imageBase64}`);
+      setBoxEditor((prev) =>
+        prev && prev.result.id === r.id
+          ? {
+              ...prev,
+              page: typeof data.page === "number" ? data.page : page,
+              pageCount: typeof data.pageCount === "number" ? data.pageCount : prev.pageCount,
+              imageSrc: `data:${
+                typeof data.imageMediaType === "string" ? data.imageMediaType : "image/png"
+              };base64,${data.imageBase64}`,
+            }
+          : prev
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not load the full page for this part.");
+      setBoxEditorError(e instanceof Error ? e.message : "Could not load that page.");
+    } finally {
+      setBoxEditorLoading(false);
+    }
+  };
+
+  // Opens the scanned page a part's crop came from, so a teacher can check it
+  // against its surrounding context and, when the region is wrong, drag a
+  // correct one. Parts with no crop at all open on page 1 -- they are the ones
+  // most in need of this, since the model either mislocated the work or
+  // reported none.
+  const openBoxEditor = async (r: ResultRow, label: string) => {
+    const startPage = r.evidence_box?.page ?? 1;
+    setPageImageLoadingId(r.id);
+    setBoxEditor({ result: r, label, page: startPage, pageCount: 0, imageSrc: null });
+    try {
+      await loadEditorPage(r, startPage);
     } finally {
       setPageImageLoadingId(null);
+    }
+  };
+
+  // Re-cuts this part's crop from the region the teacher drew. Marks are not
+  // touched -- see the evidence-box route for why that separation matters.
+  const saveEvidenceBox = async (drawn: { x0: number; y0: number; x1: number; y1: number }) => {
+    if (!boxEditor) return;
+    const { result: r, page } = boxEditor;
+    setBoxEditorSaving(true);
+    setBoxEditorError(null);
+    try {
+      const { ok, data } = await fetchJson(
+        `/api/tests/${testId}/ai-grade/results/${r.id}/evidence-box`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ page, ...drawn }),
+        }
+      );
+      if (!ok) {
+        setBoxEditorError((data.error as string) ?? "Could not re-cut this crop.");
+        return;
+      }
+      const nextUrl = typeof data.evidence_image_url === "string" ? data.evidence_image_url : null;
+      const nextBox = data.evidence_box as ResultRow["evidence_box"];
+      setResults((prev) =>
+        prev.map((row) =>
+          row.id === r.id
+            ? {
+                ...row,
+                evidence_image_url: nextUrl,
+                evidence_box: nextBox,
+                evidence_box_source:
+                  typeof data.evidence_box_source === "string" ? data.evidence_box_source : "teacher",
+              }
+            : row
+        )
+      );
+      // Make sure the corrected crop is actually visible behind the editor.
+      setEvidenceImageShown((prev) => new Set(prev).add(r.id));
+      setBoxEditor(null);
+      setStatusLine("Evidence region updated and the crop re-cut. The mark is unchanged.");
+    } catch (e) {
+      setBoxEditorError(e instanceof Error ? e.message : "Could not re-cut this crop.");
+    } finally {
+      setBoxEditorSaving(false);
     }
   };
 
@@ -1178,8 +1274,8 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                       </div>
                                     )}
 
-                                    {(r.evidence || r.evidence_image_url || editingEvidenceId === r.id) && (
-                                      <div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
                                         {r.evidence_image_url ? (
                                           <button
                                             type="button"
@@ -1194,86 +1290,103 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                             Student&apos;s work
                                           </p>
                                         )}
-                                        <div className="mt-1 space-y-2">
-                                          {evidenceImageShown.has(r.id) && r.evidence_image_url && (
-                                            <div className="relative inline-block">
-                                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                                              <img
-                                                src={r.evidence_image_url}
-                                                alt="Cropped scan region the model read this part's work from"
-                                                title="Click to enlarge"
-                                                onClick={() => setLightboxUrl(r.evidence_image_url)}
-                                                className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
-                                              />
-                                              {r.evidence_box && (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => viewFullPage(r)}
-                                                  disabled={pageImageLoadingId === r.id}
-                                                  title="Show the full page this crop was taken from"
-                                                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-black/60 text-xs text-white hover:bg-black/80 disabled:opacity-50"
-                                                >
-                                                  {pageImageLoadingId === r.id ? "…" : "⤢"}
-                                                </button>
-                                              )}
-                                            </div>
-                                          )}
-                                          {editingEvidenceId === r.id ? (
-                                            <div className="space-y-2">
-                                              <textarea
-                                                value={evidenceDraft[r.id] ?? ""}
-                                                onChange={(e) =>
-                                                  setEvidenceDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
-                                                }
-                                                rows={3}
-                                                placeholder="Correct the transcription of the student's work for this part -- checked against the scan above -- then save to re-grade it."
-                                                className="w-full rounded border border-da-border p-2 font-mono text-xs focus:ring-2 focus:ring-blue-400"
-                                              />
-                                              <div className="flex gap-2">
-                                                <button
-                                                  type="button"
-                                                  onClick={() => saveEvidence(r)}
-                                                  disabled={regradingId === r.id}
-                                                  className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                                                >
-                                                  {regradingId === r.id ? "Re-grading…" : "Save & re-grade"}
-                                                </button>
-                                                <button
-                                                  type="button"
-                                                  onClick={cancelEditEvidence}
-                                                  disabled={regradingId === r.id}
-                                                  className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
-                                                >
-                                                  Cancel
-                                                </button>
-                                              </div>
-                                            </div>
-                                          ) : (
-                                            <div
-                                              role="button"
-                                              tabIndex={0}
-                                              onClick={() => startEditEvidence(r)}
-                                              onKeyDown={(e) => {
-                                                if (e.key === "Enter" || e.key === " ") {
-                                                  e.preventDefault();
-                                                  startEditEvidence(r);
-                                                }
-                                              }}
-                                              title="Click to fix transcription"
-                                              className="cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/30"
-                                            >
-                                              {r.evidence ? (
-                                                <LatexRenderer latex={r.evidence} />
-                                              ) : (
-                                                <p className="text-xs text-da-muted">
-                                                  No transcription on file -- click to add one.
-                                                </p>
-                                              )}
-                                            </div>
-                                          )}
-                                        </div>
+                                        {r.evidence_box_source === "teacher" && (
+                                          <span
+                                            title="You drew this region by hand; the crop was re-cut from it."
+                                            className="rounded border border-green-400/40 bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-green-300"
+                                          >
+                                            Region set by you
+                                          </span>
+                                        )}
+                                        {!r.evidence_image_url && (
+                                          <button
+                                            type="button"
+                                            onClick={() => openBoxEditor(r, label)}
+                                            disabled={pageImageLoadingId === r.id}
+                                            title="Open the scanned page and draw where this part's work is"
+                                            className="text-xs text-blue-400 underline underline-offset-2 hover:text-blue-300 disabled:opacity-50"
+                                          >
+                                            {pageImageLoadingId === r.id ? "Opening…" : "Locate on page"}
+                                          </button>
+                                        )}
                                       </div>
-                                    )}
+                                      <div className="mt-1 space-y-2">
+                                        {evidenceImageShown.has(r.id) && r.evidence_image_url && (
+                                          <div className="relative inline-block">
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img
+                                              src={r.evidence_image_url}
+                                              alt="Cropped scan region the model read this part's work from"
+                                              title="Click to enlarge"
+                                              onClick={() => setLightboxUrl(r.evidence_image_url)}
+                                              className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
+                                            />
+                                            <button
+                                              type="button"
+                                              onClick={() => openBoxEditor(r, label)}
+                                              disabled={pageImageLoadingId === r.id}
+                                              title="Show the full page this crop came from, and redraw the region if it is wrong"
+                                              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-black/60 text-xs text-white hover:bg-black/80 disabled:opacity-50"
+                                            >
+                                              {pageImageLoadingId === r.id ? "…" : "⤢"}
+                                            </button>
+                                          </div>
+                                        )}
+                                        {editingEvidenceId === r.id ? (
+                                          <div className="space-y-2">
+                                            <textarea
+                                              value={evidenceDraft[r.id] ?? ""}
+                                              onChange={(e) =>
+                                                setEvidenceDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
+                                              }
+                                              rows={3}
+                                              placeholder="Correct the transcription of the student's work for this part -- checked against the scan above -- then save to re-grade it."
+                                              className="w-full rounded border border-da-border p-2 font-mono text-xs focus:ring-2 focus:ring-blue-400"
+                                            />
+                                            <div className="flex gap-2">
+                                              <button
+                                                type="button"
+                                                onClick={() => saveEvidence(r)}
+                                                disabled={regradingId === r.id}
+                                                className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                                              >
+                                                {regradingId === r.id ? "Re-grading…" : "Save & re-grade"}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={cancelEditEvidence}
+                                                disabled={regradingId === r.id}
+                                                className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                                              >
+                                                Cancel
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <div
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => startEditEvidence(r)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter" || e.key === " ") {
+                                                e.preventDefault();
+                                                startEditEvidence(r);
+                                              }
+                                            }}
+                                            title="Click to fix transcription"
+                                            className="cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/30"
+                                          >
+                                            {r.evidence ? (
+                                              <LatexRenderer latex={r.evidence} />
+                                            ) : (
+                                              <p className="text-xs text-da-muted">
+                                                No transcription on file -- click to add one.
+                                              </p>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
 
                                     {r.markscheme_image_urls.length > 0 && (
                                       <div>
@@ -1354,6 +1467,27 @@ export function AiGradeClient({ testId }: { testId: string }) {
             onClick={(e) => e.stopPropagation()}
           />
         </div>
+      )}
+
+      {boxEditor && (
+        <EvidenceBoxEditor
+          title={boxEditor.label}
+          imageSrc={boxEditor.imageSrc}
+          page={boxEditor.page}
+          pageCount={boxEditor.pageCount}
+          loading={boxEditorLoading}
+          saving={boxEditorSaving}
+          error={boxEditorError}
+          onPageChange={(page) => {
+            setBoxEditor((prev) => (prev ? { ...prev, page, imageSrc: null } : prev));
+            void loadEditorPage(boxEditor.result, page);
+          }}
+          onSave={saveEvidenceBox}
+          onClose={() => {
+            setBoxEditor(null);
+            setBoxEditorError(null);
+          }}
+        />
       )}
     </div>
   );
