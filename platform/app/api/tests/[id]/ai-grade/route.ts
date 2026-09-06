@@ -15,8 +15,8 @@ import {
   buildGradingStudentPrompt,
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
+  formatGradingSubject,
   gradeNeedsReview,
-  INVITED_SUBJECT_PREFIX,
   parseGradingSubject,
   unitLabel,
   validateGradeResponse,
@@ -220,7 +220,7 @@ export async function GET(
   // the review UI never needs to know which column a run's identity lives in.
   const runs = (rawRuns ?? []).map((r) => ({
     ...r,
-    student_id: r.student_id ?? (r.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${r.invited_student_id}` : null),
+    student_id: formatGradingSubject(r),
   }));
   if (runs.length === 0) return NextResponse.json({ runs: [], results: [] });
 
