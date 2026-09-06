@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { parseGradingSubject } from "@/lib/ai-grading";
+import { logMarkChanges, markKey, readPriorMarks } from "@/lib/mark-audit";
+
+const AUDIT_REASON = "Gradebook edit";
 
 export async function POST(req: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
-  const { supabase } = auth;
+  const { supabase, user } = auth;
 
   let body: unknown;
   try {
@@ -34,6 +37,12 @@ export async function POST(req: NextRequest) {
   // roster entry that has never logged in (see parseGradingSubject).
   const subject = parseGradingSubject(studentId);
 
+  // Read what is there now, before either branch overwrites it -- a mark
+  // that is about to be replaced or deleted is the only place the old value
+  // still exists.
+  const prior = await readPriorMarks(supabase, [{ testItemId, subject }]);
+  const oldMarks = prior.get(markKey(testItemId, subject)) ?? null;
+
   // Delete mark (clear the cell)
   if (marksAwarded === null || marksAwarded === undefined) {
     let del = supabase.from("student_marks").delete().eq("test_item_id", testItemId);
@@ -41,6 +50,13 @@ export async function POST(req: NextRequest) {
     const { error } = await del;
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });
+    // Logged as new_marks null: a cleared cell is not a score of 0.
+    await logMarkChanges(
+      supabase,
+      [{ testItemId, subject, oldMarks, newMarks: null }],
+      user.id,
+      AUDIT_REASON
+    );
     return NextResponse.json({ ok: true });
   }
 
@@ -65,6 +81,13 @@ export async function POST(req: NextRequest) {
 
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logMarkChanges(
+    supabase,
+    [{ testItemId, subject, oldMarks, newMarks: marks }],
+    user.id,
+    AUDIT_REASON
+  );
 
   return NextResponse.json({ ok: true });
 }
