@@ -1,5 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { computeDisagreement } from "@/lib/reflection-utils";
+import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
+import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import type {
   ReflectionTest,
   ReflectionItem,
@@ -469,59 +471,99 @@ export async function getClassReflectionData(
     .eq("id", testId)
     .single();
 
-  if (!test) return { items: itemsWithLabels, rows: [] };
+  if (!test?.course_id) return { items: itemsWithLabels, rows: [] };
 
-  // Get all students in the course
-  const { data: students } = await supabase
-    .from("students")
-    .select("profile_id, hidden, profiles(display_name)")
-    .eq("course_id", test.course_id);
+  // The roster, not the accounts. This used to read the `students` table,
+  // which only gains a row on a student's first sign-in -- so a class where
+  // nobody has signed in yet returned zero rows here and the dashboard drew
+  // its columns above an empty grid, with no way to tell that apart from a
+  // test nobody had sat. Every student who was invited is on the roster from
+  // the moment the teacher imports them, whether or not they ever log in.
+  //
+  // includeTrackSiblings because a test is attached to ONE class while the
+  // paper is sat by the whole track: Formative Assessment 1 hangs off 9G and
+  // has marks for 50 students across 9A, 9C and 9G. Scoping to the test's own
+  // course would show 17 of them.
+  const { roster } = await loadInvitedRoster(supabase, test.course_id, {
+    includeTrackSiblings: true,
+  });
+  if (roster.length === 0) return { items: itemsWithLabels, rows: [] };
 
-  if (!students || students.length === 0) return { items: itemsWithLabels, rows: [] };
-
-  const studentIds = students.map((s) => s.profile_id);
   const itemIds = itemsWithLabels.map((i) => i.id);
+  const invitedIds = roster.map((r) => r.invitedId);
+  const profileIds = roster.map((r) => r.profileId).filter((id): id is string => !!id);
 
-  // Get all marks
-  const { data: allMarks } = await supabase
-    .from("student_marks")
-    .select("student_id, test_item_id, marks_awarded")
-    .in("student_id", studentIds)
-    .in("test_item_id", itemIds);
+  // Marks are keyed by whichever identity existed when they were written:
+  // invited_student_id for a student with no account, student_id once
+  // auto_enroll_from_invitations backfills it on first sign-in. Read both and
+  // resolve each row back to its roster entry, or a class that has since
+  // signed in would lose the marks recorded before they did.
+  //
+  // Paged: one 50-student assessment is 2050 mark rows, past PostgREST's
+  // silent 1000-row cap.
+  type MarkRow = { student_id: string | null; invited_student_id: string | null; test_item_id: string; marks_awarded: number | null };
+  const marksByIdentity = async (column: "student_id" | "invited_student_id", ids: string[]) =>
+    ids.length === 0
+      ? []
+      : await fetchAllRows<MarkRow>((from, to) =>
+          supabase
+            .from("student_marks")
+            .select("student_id, invited_student_id, test_item_id, marks_awarded")
+            .in(column, ids)
+            .in("test_item_id", itemIds)
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
 
-  // Get all self-scores
+  const allMarks = [
+    ...(await marksByIdentity("invited_student_id", invitedIds)),
+    ...(await marksByIdentity("student_id", profileIds)),
+  ];
+
+  // marks[invitedId][itemId]. Keyed on the roster row so both identities land
+  // in the same place; a row carrying both columns resolves once.
+  const profileToInvited = new Map(
+    roster.filter((r) => r.profileId).map((r) => [r.profileId as string, r.invitedId])
+  );
+  const markMap = new Map<string, Map<string, number>>();
+  for (const m of allMarks) {
+    const invitedId =
+      m.invited_student_id ?? (m.student_id ? profileToInvited.get(m.student_id) : undefined);
+    if (!invitedId || m.marks_awarded === null) continue;
+    if (!markMap.has(invitedId)) markMap.set(invitedId, new Map());
+    markMap.get(invitedId)!.set(m.test_item_id, m.marks_awarded);
+  }
+
+  // Self-scores and corrections uploads stay profile-keyed: both are things
+  // the student does in their own account, so a student who has never signed
+  // in correctly has none rather than being missing data.
   const { data: allSelf } = await supabase
     .from("student_self_scores")
     .select("student_id, test_item_id, self_marks")
-    .in("student_id", studentIds)
+    .in("student_id", profileIds.length ? profileIds : ["00000000-0000-0000-0000-000000000000"])
     .in("test_item_id", itemIds);
 
-  // Get uploads (include storage_path so we can build signed URLs if needed)
   const { data: uploads } = await supabase
     .from("pdf_uploads")
     .select("student_id, storage_path, file_name")
     .eq("test_id", testId)
-    .in("student_id", studentIds);
+    .in("student_id", profileIds.length ? profileIds : ["00000000-0000-0000-0000-000000000000"]);
 
   const uploadMap = new Map(
     (uploads ?? []).map((u) => [u.student_id, u])
   );
 
   // Build rows with disagreement computed server-side
-  const rows: StudentReflectionRow[] = students.map((s) => {
-    const profile = s.profiles as unknown as { display_name: string } | null;
+  const rows: StudentReflectionRow[] = roster.map((s) => {
+    const marks = markMap.get(s.invitedId);
     const rowItems = itemsWithLabels.map((item) => ({
       test_item_id: item.id,
-      marks_awarded:
-        allMarks?.find(
-          (m) =>
-            m.student_id === s.profile_id && m.test_item_id === item.id
-        )?.marks_awarded ?? null,
+      marks_awarded: marks?.get(item.id) ?? null,
       self_marks:
-        allSelf?.find(
-          (ss) =>
-            ss.student_id === s.profile_id && ss.test_item_id === item.id
-        )?.self_marks ?? null,
+        (s.profileId
+          ? allSelf?.find((ss) => ss.student_id === s.profileId && ss.test_item_id === item.id)
+              ?.self_marks
+          : null) ?? null,
     }));
 
     // Compute disagreement for this student
@@ -538,20 +580,25 @@ export async function getClassReflectionData(
     }));
     const disagreement = computeDisagreement(reflectionItems);
 
-    const upload = uploadMap.get(s.profile_id);
+    const upload = s.profileId ? uploadMap.get(s.profileId) : undefined;
     // Build a public-style path; the client can create a signed URL if needed
     const pdf_url = upload
       ? supabase.storage.from("corrections").getPublicUrl(upload.storage_path).data.publicUrl
       : null;
 
     return {
-      student_id: s.profile_id,
-      display_name: profile?.display_name ?? "Unknown",
+      // The opaque subject id every grading endpoint understands: a real
+      // profiles.id once the student has an account, "invited-<id>" until
+      // then (parseGradingSubject). Editing a cell posts this back, so it has
+      // to carry the identity the mark can actually be written against.
+      student_id: s.profileId ?? `${INVITED_SUBJECT_PREFIX}${s.invitedId}`,
+      display_name: s.fullName,
       items: rowItems,
       has_upload: !!upload,
       pdf_url,
       disagreement,
-      hidden: s.hidden ?? false,
+      // loadInvitedRoster already excludes hidden roster rows.
+      hidden: false,
     };
   });
 
