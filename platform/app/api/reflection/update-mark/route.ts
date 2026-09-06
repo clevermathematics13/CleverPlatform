@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { parseGradingSubject } from "@/lib/ai-grading";
 
 /**
  * POST /api/reflection/update-mark
  * Teacher adjusts a student's mark for a single test item.
  * Writes to student_marks and logs the change in mark_changes.
+ *
+ * studentId is the opaque subject id the reflection dashboard renders --
+ * a profiles.id, or "invited-<id>" for a roster student who has never signed
+ * in (parseGradingSubject). Both are writable: student_marks and
+ * mark_changes each take either identity, so a teacher can correct a mark
+ * for a class where nobody has an account yet.
  */
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
@@ -42,12 +49,21 @@ export async function POST(request: NextRequest) {
 
   const clamped = Math.max(0, Math.min(Math.round(newMarks), testItem.max_marks));
 
+  const subject = parseGradingSubject(studentId);
+  const identity =
+    subject.kind === "invited"
+      ? { student_id: null, invited_student_id: subject.id }
+      : { student_id: subject.id, invited_student_id: null };
+  const conflictTarget =
+    subject.kind === "invited" ? "test_item_id,invited_student_id" : "test_item_id,student_id";
+  const identityColumn = subject.kind === "invited" ? "invited_student_id" : "student_id";
+
   // Get current mark for audit log
   const { data: existing } = await supabase
     .from("student_marks")
     .select("marks_awarded")
     .eq("test_item_id", testItemId)
-    .eq("student_id", studentId)
+    .eq(identityColumn, subject.id)
     .maybeSingle();
 
   const oldMarks = existing?.marks_awarded ?? null;
@@ -58,10 +74,10 @@ export async function POST(request: NextRequest) {
     .upsert(
       {
         test_item_id: testItemId,
-        student_id: studentId,
+        ...identity,
         marks_awarded: clamped,
       },
-      { onConflict: "test_item_id,student_id" }
+      { onConflict: conflictTarget }
     );
 
   if (upsertError) {
@@ -74,7 +90,7 @@ export async function POST(request: NextRequest) {
   // Log the change
   await supabase.from("mark_changes").insert({
     test_item_id: testItemId,
-    student_id: studentId,
+    ...identity,
     changed_by: user.id,
     old_marks: oldMarks,
     new_marks: clamped,
