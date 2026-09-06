@@ -35,6 +35,19 @@ export default async function AiGradePage({
           Suggestions are staged for your review — nothing enters Clev&apos;s Marks
           until you accept it.
         </p>
+
+        <p className="mt-3 text-sm">
+          <a
+            href={`/dashboard/tests/${test.id}/paper-layout`}
+            className="text-blue-300 hover:underline"
+          >
+            Paper layout →
+          </a>{" "}
+          <span className="text-da-muted">
+            — draw where each part&apos;s answer sits on the printed paper, once for
+            the whole class.
+          </span>
+        </p>
       </div>
 
       <AiGradeClient testId={test.id as string} />

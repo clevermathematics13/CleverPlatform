@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
 import {
+  ANCHOR_TOLERANCE_PT,
   MIN_BOX_FRACTION,
   PAD_FLOOR,
   PAD_PROPORTION,
   fractionBoxToPoints,
   noExpansionCaps,
+  anchorToEvidenceBox,
+  computeExpansionCaps,
   normalizeFractionBox,
   padModelBox,
 } from "./evidence-crops";
@@ -158,5 +161,135 @@ describe("padModelBox", () => {
     // pull in the neighbouring part's writing.
     const drawn = normalizeFractionBox({ page: 1, x0: 0.1, y0: 0.3, x1: 0.6, y1: 0.4 });
     expect(drawn).toEqual({ ok: true, box: { page: 1, x0: 0.1, y0: 0.3, x1: 0.6, y1: 0.4 } });
+  });
+});
+
+describe("computeExpansionCaps", () => {
+  const A4 = [{ widthPt: 595, heightPt: 842 }];
+
+  it("caps each region's growth at the top of the next region below it", () => {
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 160 },
+      { pageIndex: 0, x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 260 },
+    ];
+    const caps = computeExpansionCaps(regions, A4);
+    // First grows down to just above the second (200 - 4).
+    expect(caps[0].expandMaxY1Pt).toBe(196);
+    // Last on the page grows to the page edge.
+    expect(caps[1].expandMaxY1Pt).toBe(842);
+  });
+
+  it("caps x at the page edge, never on a neighbour", () => {
+    // A region to the right must not truncate a long line of working for
+    // every student on the paper.
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 100, x1Pt: 300, y1Pt: 160 },
+      { pageIndex: 0, x0Pt: 320, y0Pt: 100, x1Pt: 500, y1Pt: 160 },
+    ];
+    expect(computeExpansionCaps(regions, A4).map((c) => c.expandMaxX1Pt)).toEqual([595, 595]);
+  });
+
+  it("only lets regions on the same page cap each other", () => {
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 700, x1Pt: 500, y1Pt: 760 },
+      { pageIndex: 1, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 160 },
+    ];
+    const caps = computeExpansionCaps(regions, [
+      { widthPt: 595, heightPt: 842 },
+      { widthPt: 595, heightPt: 842 },
+    ]);
+    expect(caps[0].expandMaxY1Pt).toBe(842);
+  });
+
+  it("is not capped by a region that merely overlaps it", () => {
+    // Two slightly overlapping boxes would otherwise cap each other to
+    // nothing, making both crops smaller than what was drawn.
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 200 },
+      { pageIndex: 0, x0Pt: 50, y0Pt: 180, x1Pt: 500, y1Pt: 280 },
+    ];
+    const caps = computeExpansionCaps(regions, A4);
+    expect(caps[0].expandMaxY1Pt).toBe(842);
+    expect(caps[1].expandMaxY1Pt).toBe(842);
+  });
+
+  it("never caps inside the region itself", () => {
+    // A cap below the drawn bottom edge would shrink the crop. Regions this
+    // tightly packed just get no room to grow.
+    const regions = [
+      { pageIndex: 0, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 200 },
+      { pageIndex: 0, x0Pt: 50, y0Pt: 202, x1Pt: 500, y1Pt: 300 },
+    ];
+    const caps = computeExpansionCaps(regions, A4);
+    expect(caps[0].expandMaxY1Pt).toBe(200);
+  });
+
+  it("falls back to the region's own edges when the page size is missing", () => {
+    const regions = [{ pageIndex: 9, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 200 }];
+    expect(computeExpansionCaps(regions, A4)[0]).toEqual({ expandMaxX1Pt: 500, expandMaxY1Pt: 200 });
+  });
+});
+
+describe("anchorToEvidenceBox", () => {
+  const A4 = { widthPt: 595, heightPt: 842 };
+
+  it("converts a region to fractions of its reference page", () => {
+    const box = anchorToEvidenceBox({
+      anchor: { x0Pt: 59.5, y0Pt: 200, x1Pt: 535.5, y1Pt: 300 },
+      referenceSize: A4,
+      page: 3,
+      tolerancePt: 0,
+    });
+    expect(box.page).toBe(3);
+    expect(box.x0).toBeCloseTo(0.1, 10);
+    expect(box.x1).toBeCloseTo(0.9, 10);
+    expect(box.y0).toBeCloseTo(200 / 842, 10);
+    expect(box.y1).toBeCloseTo(300 / 842, 10);
+  });
+
+  it("extends both vertical edges by the tolerance, and neither horizontal one", () => {
+    const anchor = { x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 300 };
+    const box = anchorToEvidenceBox({ anchor, referenceSize: A4, page: 1 });
+    expect(box.y0).toBeCloseTo((200 - ANCHOR_TOLERANCE_PT) / 842, 10);
+    expect(box.y1).toBeCloseTo((300 + ANCHOR_TOLERANCE_PT) / 842, 10);
+    // Horizontal drift measured under 6pt across a class, so x is untouched.
+    expect(box.x0).toBeCloseTo(50 / 595, 10);
+    expect(box.x1).toBeCloseTo(500 / 595, 10);
+  });
+
+  it("stops the downward tolerance at the expansion cap", () => {
+    // The cap is the next region's top. Growing past it is how a crop ends up
+    // showing the following part's answer -- the failure being fixed.
+    const anchor = { x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 300 };
+    const box = anchorToEvidenceBox({ anchor, referenceSize: A4, page: 1, maxY1Pt: 310 });
+    expect(box.y1).toBeCloseTo(310 / 842, 10);
+  });
+
+  it("never shrinks the region when the cap is tighter than its own bottom", () => {
+    const anchor = { x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 300 };
+    const box = anchorToEvidenceBox({ anchor, referenceSize: A4, page: 1, maxY1Pt: 250 });
+    expect(box.y1).toBeCloseTo(300 / 842, 10);
+  });
+
+  it("does not run off the top of the page", () => {
+    const box = anchorToEvidenceBox({
+      anchor: { x0Pt: 50, y0Pt: 5, x1Pt: 500, y1Pt: 60 },
+      referenceSize: A4,
+      page: 1,
+    });
+    expect(box.y0).toBe(0);
+  });
+
+  it("gives the same fractions whatever the scan's page size turns out to be", () => {
+    // The point of crossing through fractions: the stored box describes a
+    // proportion of the page, so the route can multiply it by whatever size
+    // the student's own scan page actually is.
+    const anchor = { x0Pt: 59.5, y0Pt: 210.5, x1Pt: 297.5, y1Pt: 421 };
+    const box = anchorToEvidenceBox({ anchor, referenceSize: A4, page: 1, tolerancePt: 0 });
+    expect(fractionBoxToPoints(box, A4)).toEqual({ x0Pt: 59.5, y0Pt: 210.5, x1Pt: 297.5, y1Pt: 421 });
+    // Same proportions, a Letter-sized scan: different points, same place.
+    const onLetter = fractionBoxToPoints(box, { widthPt: 612, heightPt: 792 });
+    expect(onLetter.x0Pt).toBeCloseTo(0.1 * 612, 8);
+    expect(onLetter.y0Pt).toBeCloseTo(0.25 * 792, 8);
   });
 });

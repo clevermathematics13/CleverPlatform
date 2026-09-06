@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { PDFDocument } from "pdf-lib";
-import { getApiTeacher } from "@/lib/auth";
+import { getApiTeacher, type ApiAuthOk } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
 import {
   AiGradeResponseSchema,
@@ -25,8 +25,10 @@ import type { GradingUnit, ValidatedGrade } from "@/lib/ai-grading";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { cropRegions, cvServiceEndpoint, type CropRegion } from "@/lib/cv-crop-service";
 import {
+  anchorToEvidenceBox,
   fractionBoxToPoints,
   padModelBox,
+  pointsToFractions,
   type EvidenceBox,
   type PageSizePt,
 } from "@/lib/evidence-crops";
@@ -54,28 +56,89 @@ interface ResultRow {
   accepted_by: string | null;
 }
 
-/** One rendered crop plus the (padded) box it was cut from. */
+/** One rendered crop, the box it was cut from, and where that box came from. */
 interface EvidenceCrop {
   buffer: Buffer;
   box: EvidenceBox;
+  source: "model" | "anchor";
+}
+
+interface LayoutRow {
+  id: string;
+  page_count: number;
+  reference_page_sizes: PageSizePt[];
+}
+
+interface AnchorRow {
+  question_number: number;
+  part_label: string | null;
+  page_index: number;
+  x0_pt: number;
+  y0_pt: number;
+  x1_pt: number;
+  y1_pt: number;
+  expand_max_x1_pt: number | null;
+  expand_max_y1_pt: number | null;
+}
+
+/** The natural key test_item_anchors is unique on. */
+const anchorKey = (questionNumber: number, partLabel: string | null) =>
+  `${questionNumber}|${partLabel ?? ""}`;
+
+/**
+ * The locked per-paper regions for this test, if there are any.
+ *
+ * Locked, not merely present: `anchors_locked` is the teacher's explicit
+ * confirmation that the geometry has been checked. A half-drawn draft layout
+ * must not start cutting crops for a whole class.
+ */
+async function loadLockedLayout(
+  supabase: ApiAuthOk["supabase"],
+  testId: string
+): Promise<{ layout: LayoutRow; anchors: Map<string, AnchorRow> } | null> {
+  const { data: layout } = await supabase
+    .from("test_paper_layouts")
+    .select("id, page_count, reference_page_sizes")
+    .eq("test_id", testId)
+    .eq("is_active", true)
+    .eq("anchors_locked", true)
+    .maybeSingle();
+  if (!layout) return null;
+
+  const { data: rows } = await supabase
+    .from("test_item_anchors")
+    .select(
+      "question_number, part_label, page_index, x0_pt, y0_pt, x1_pt, y1_pt, expand_max_x1_pt, expand_max_y1_pt"
+    )
+    .eq("layout_id", (layout as LayoutRow).id);
+  if (!rows || rows.length === 0) return null;
+
+  const anchors = new Map<string, AnchorRow>();
+  for (const r of rows as AnchorRow[]) anchors.set(anchorKey(r.question_number, r.part_label), r);
+  return { layout: layout as LayoutRow, anchors };
 }
 
 /**
- * Best-effort: renders one cropped PNG per graded part from the model's
- * reported evidenceBox, via the same Railway CV service the NA scan pipeline
- * uses (see app/api/na-review/packet-scans/[id]/crop/route.ts for the sibling
- * usage). Unlike that pipeline, regions here are per-request and AI-located
- * rather than pre-locked in the database.
+ * Best-effort: renders one cropped PNG per graded part, via the same Railway
+ * CV service the NA scan pipeline uses (see
+ * app/api/na-review/packet-scans/[id]/crop/route.ts for the sibling usage).
  *
- * A WORD ON HOW WELL THAT WORKS: audited in full against one 41-part paper,
- * 22 of the 33 crops this produced did not contain the work they were
- * captioned as evidence for. The cropper is exact -- all 33 reproduce
- * byte-for-byte from their recorded boxes -- but the model synthesises a
- * plausible page layout instead of measuring one, and lands above the real
- * answer every time. The padding below narrows that gap and does not close
- * it. A teacher can correct any individual part through
- * results/[resultId]/evidence-box, which is the repair path until per-paper
- * anchors replace the model's guess.
+ * TWO SOURCES FOR THE REGION, and which one was used is recorded per part in
+ * evidence_box_source:
+ *
+ *  - 'anchor': a region a teacher drew once for this paper and locked. Every
+ *    student sat the same printed booklet, so one set serves the class.
+ *  - 'model': the grading model's own reported evidenceBox, padded. Audited in
+ *    full against one 41-part paper, 22 of the 33 crops this produced did not
+ *    contain the work they were captioned as evidence for: the model
+ *    synthesises a plausible page layout rather than measuring one, and lands
+ *    above the real answer every time. It remains the fallback because it is
+ *    better than no crop, and because it is what every paper without a locked
+ *    layout still has.
+ *
+ * The anchor path applies per part, not per run: a part with no region drawn
+ * for it falls back to the model's box on its own, so a partly-drawn layout
+ * degrades part by part instead of failing the whole scan.
  *
  * Never throws: a crop is a nice-to-have alongside the suggested grade, not
  * something worth failing (or even warning on) a whole grading run over.
@@ -83,6 +146,8 @@ interface EvidenceCrop {
  * being unset (most local/dev environments).
  */
 async function fetchEvidenceCrops(
+  supabase: ApiAuthOk["supabase"],
+  testId: string,
   scanBase64: string,
   grades: ValidatedGrade[]
 ): Promise<Map<string, EvidenceCrop>> {
@@ -101,9 +166,69 @@ async function fetchEvidenceCrops(
     return byTestItemId;
   }
 
+  const locked = await loadLockedLayout(supabase, testId);
+
+  // Anchors map to a student's scan by page index, which only holds when the
+  // scan has at least the booklet's pages. A scan SHORTER than the paper has
+  // lost one, and every page after the gap is then a different page from the
+  // one the regions were drawn on -- so the whole scan falls back rather than
+  // cropping confidently wrong regions for it. Longer is fine and common:
+  // three of six sampled scans carried a trailing loose sheet after the
+  // booklet's own pages, in order.
+  const useAnchors = !!locked && pageCount >= locked.layout.page_count;
+
   const boxByQid = new Map<string, EvidenceBox>();
+  const sourceByQid = new Map<string, "model" | "anchor">();
   const regions: CropRegion[] = [];
+
   for (const g of grades) {
+    const anchor = useAnchors
+      ? locked!.anchors.get(anchorKey(g.unit.questionNumber, g.unit.partLabel || null))
+      : undefined;
+
+    if (anchor) {
+      const referenceSize = locked!.layout.reference_page_sizes?.[anchor.page_index];
+      const scanSize = pageSizePt[anchor.page_index];
+      if (referenceSize && scanSize) {
+        const box = anchorToEvidenceBox({
+          anchor: {
+            x0Pt: Number(anchor.x0_pt),
+            y0Pt: Number(anchor.y0_pt),
+            x1Pt: Number(anchor.x1_pt),
+            y1Pt: Number(anchor.y1_pt),
+          },
+          referenceSize,
+          page: anchor.page_index + 1,
+          // The tolerance may grow the region down, but not past the cap --
+          // which is the next region's top, so it cannot reach the next part.
+          maxY1Pt: anchor.expand_max_y1_pt === null ? undefined : Number(anchor.expand_max_y1_pt),
+        });
+        // The caps are points on the REFERENCE page, so they cross through
+        // fractions too -- passing them straight across would cap growth at
+        // the wrong place on a differently sized scan.
+        const capFractions = pointsToFractions(
+          {
+            x0Pt: 0,
+            y0Pt: 0,
+            x1Pt: Number(anchor.expand_max_x1_pt ?? referenceSize.widthPt),
+            y1Pt: Number(anchor.expand_max_y1_pt ?? referenceSize.heightPt),
+          },
+          referenceSize
+        );
+        boxByQid.set(g.unit.testItemId, box);
+        sourceByQid.set(g.unit.testItemId, "anchor");
+        regions.push({
+          qid: g.unit.testItemId,
+          pageIndex: anchor.page_index,
+          ...fractionBoxToPoints(box, scanSize),
+          expandMaxX1Pt: capFractions.x1 * scanSize.widthPt,
+          expandMaxY1Pt: capFractions.y1 * scanSize.heightPt,
+        });
+        continue;
+      }
+    }
+
+    // -- Fallback: the model's own box, padded, exactly as before -----------
     const reported = g.item.evidenceBox;
     if (!g.item.workFound || !reported) continue;
     const pageIndex = reported.page - 1;
@@ -111,6 +236,7 @@ async function fetchEvidenceCrops(
     const padded = padModelBox(reported);
     if (!padded) continue;
     boxByQid.set(g.unit.testItemId, padded);
+    sourceByQid.set(g.unit.testItemId, "model");
     regions.push({
       qid: g.unit.testItemId,
       pageIndex,
@@ -127,8 +253,9 @@ async function fetchEvidenceCrops(
 
   for (const crop of cropped.value) {
     const box = boxByQid.get(crop.qid);
-    if (crop.imageBase64 && box) {
-      byTestItemId.set(crop.qid, { buffer: Buffer.from(crop.imageBase64, "base64"), box });
+    const source = sourceByQid.get(crop.qid);
+    if (crop.imageBase64 && box && source) {
+      byTestItemId.set(crop.qid, { buffer: Buffer.from(crop.imageBase64, "base64"), box, source });
     }
   }
   return byTestItemId;
@@ -578,7 +705,7 @@ export async function POST(
   const { grades, warnings } = validation.outcome;
 
   // -- Evidence crops (best-effort; never blocks or fails the run) -----------
-  const crops = await fetchEvidenceCrops(scanBase64, grades);
+  const crops = await fetchEvidenceCrops(supabase, testId, scanBase64, grades);
   const evidenceImagePathByTestItemId = new Map<string, string>();
   for (const [testItemId, crop] of crops) {
     const storagePath = `${testId}/${studentId}/evidence/${run.id}/${testItemId}.png`;
@@ -644,7 +771,9 @@ export async function POST(
       // Kept in step with evidence_box: a row either has a model-located box
       // and is labelled as such, or has neither. A teacher redrawing the
       // region later overwrites both (see the evidence-box route).
-      evidence_box_source: evidenceImagePathByTestItemId.has(g.unit.testItemId) ? "model" : null,
+      evidence_box_source: evidenceImagePathByTestItemId.has(g.unit.testItemId)
+        ? crops.get(g.unit.testItemId)?.source ?? "model"
+        : null,
       mark_breakdown: g.item.markBreakdown,
       accepted: !!carried,
       accepted_at: carried?.accepted_at ?? null,

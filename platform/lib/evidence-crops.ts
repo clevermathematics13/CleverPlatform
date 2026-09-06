@@ -180,3 +180,153 @@ export function fractionBoxToPoints(box: EvidenceBox, size: PageSizePt): PointBo
 export function noExpansionCaps(points: PointBox): { expandMaxX1Pt: number; expandMaxY1Pt: number } {
   return { expandMaxX1Pt: points.x1Pt, expandMaxY1Pt: points.y1Pt };
 }
+
+/** One region on a reference page, as stored in test_item_anchors. */
+export interface AnchorRegion {
+  /** 0-indexed page of the reference PDF. */
+  pageIndex: number;
+  x0Pt: number;
+  y0Pt: number;
+  x1Pt: number;
+  y1Pt: number;
+}
+
+/**
+ * Gap left between a region's growth cap and the next region below it, in
+ * points. Small enough that a student writing slightly past their box is
+ * still captured, large enough that expansion stops before the next part's
+ * first line rather than clipping into it.
+ */
+export const EXPANSION_GAP_PT = 4;
+
+/**
+ * Growth caps for a set of per-paper anchors.
+ *
+ * Anchors are drawn ONCE for a whole class, so unlike a teacher's per-student
+ * redraw they must tolerate a student who writes more than the region allows.
+ * That is what the CV service's adaptive expansion is for -- it grows the
+ * right/bottom edge while ink is still touching it. Left uncapped it would
+ * happily run down into the next part's answer, so each region's bottom cap
+ * is the top of the nearest region below it on the same page.
+ *
+ * The rule existed only as prose in cv_crop_extract.py's docstring ("the next
+ * anchor's position, or the page edge"), and HANDOFF records it propagating a
+ * neighbour's measurement error into a cap when applied by hand. Computing it
+ * makes it checkable.
+ *
+ * The x cap is the page edge, deliberately. Regions on a written paper stack
+ * vertically; a region to the RIGHT is rare, and capping horizontally on one
+ * would truncate a long line of working for every student on the paper.
+ */
+export function computeExpansionCaps(
+  regions: AnchorRegion[],
+  pageSizes: PageSizePt[]
+): { expandMaxX1Pt: number; expandMaxY1Pt: number }[] {
+  return regions.map((region) => {
+    const page = pageSizes[region.pageIndex];
+    const pageWidthPt = page?.widthPt ?? region.x1Pt;
+    const pageHeightPt = page?.heightPt ?? region.y1Pt;
+
+    // The nearest region that starts below this one's bottom edge. Regions
+    // that merely overlap it are not "below" and must not cap it, or two
+    // slightly overlapping boxes would cap each other to nothing.
+    let nextTopPt: number | null = null;
+    for (const other of regions) {
+      if (other === region || other.pageIndex !== region.pageIndex) continue;
+      if (other.y0Pt >= region.y1Pt && (nextTopPt === null || other.y0Pt < nextTopPt)) {
+        nextTopPt = other.y0Pt;
+      }
+    }
+
+    // The gap is there to stop growth clipping into the NEXT REGION, so it
+    // applies only when there is one. Against the page edge there is nothing
+    // to keep clear of, and shaving it would cost the last region on a page
+    // the bottom of a long answer for no reason.
+    const ceilingPt = nextTopPt === null ? pageHeightPt : Math.min(pageHeightPt, nextTopPt - EXPANSION_GAP_PT);
+
+    return {
+      expandMaxX1Pt: pageWidthPt,
+      // Never below the region's own bottom edge: a cap inside the box would
+      // make the crop smaller than what was drawn.
+      expandMaxY1Pt: Math.max(region.y1Pt, ceilingPt),
+    };
+  });
+}
+
+/**
+ * How far a student's writing may sit from where a per-paper region puts it,
+ * in points.
+ *
+ * Measured across six classmates' scans of the same booklet: vertical offset
+ * between two students on the same printed page is bimodal -- either 0pt or
+ * about 27pt, never in between. It is a grey scanner band at the top of the
+ * image, present on some pages and not others, which shifts everything below
+ * it down. Horizontal drift over the same sample was under 6pt, so no
+ * corresponding x tolerance is warranted.
+ *
+ * Applied to BOTH edges. Adaptive expansion looked like it covered the
+ * downward direction, but it only grows while ink is still touching the edge,
+ * and the whitespace between two answers stops it dead -- verified by cropping
+ * one student's regions out of another's scan, where Q2(b) came back showing
+ * Q2(a)'s answer for exactly this reason. The downward tolerance is bounded by
+ * the region's expansion cap so it still cannot reach into the next part.
+ *
+ * This is deliberately not a detected per-scan offset: detecting one needs the
+ * page rasterised, and a fixed tolerance costs a line of extra context against
+ * a model error that measured 89pt on average.
+ */
+export const ANCHOR_TOLERANCE_PT = 28;
+
+/** Absolute points on a page -> fractions of that same page. */
+export function pointsToFractions(points: PointBox, size: PageSizePt): Omit<EvidenceBox, "page"> {
+  return {
+    x0: points.x0Pt / size.widthPt,
+    y0: points.y0Pt / size.heightPt,
+    x1: points.x1Pt / size.widthPt,
+    y1: points.y1Pt / size.heightPt,
+  };
+}
+
+/**
+ * Turn a stored per-paper region into the box to crop from one student's scan.
+ *
+ * Everything crosses through FRACTIONS of the reference page rather than being
+ * copied as points. That is what makes the geometry survive a student scanned
+ * at a different paper size or scanner scale: the same proportion of the page
+ * is cut either way, and the route multiplies the result by the actual scan
+ * page's own size. Copying points straight across is the gap na_anchors leaves
+ * open, where a Letter-vs-A4 scan would shift every crop with no signal.
+ *
+ * `page` is the 1-indexed page in the STUDENT's scan, which is the anchor's
+ * own page index plus one whenever the deterministic page mapping holds. The
+ * caller owns deciding whether it does.
+ */
+export function anchorToEvidenceBox(args: {
+  anchor: PointBox;
+  referenceSize: PageSizePt;
+  page: number;
+  tolerancePt?: number;
+  /** The region's growth cap in reference points; the downward tolerance stops here. */
+  maxY1Pt?: number;
+}): EvidenceBox {
+  const tolerance = args.tolerancePt ?? ANCHOR_TOLERANCE_PT;
+  const ceiling = args.maxY1Pt ?? args.referenceSize.heightPt;
+  const withTolerance: PointBox = {
+    ...args.anchor,
+    y0Pt: Math.max(0, args.anchor.y0Pt - tolerance),
+    // Grow down by the tolerance, but never past the cap (the next region's
+    // top) and never above the region's own bottom edge if the cap is tighter.
+    y1Pt: Math.min(
+      args.referenceSize.heightPt,
+      Math.max(args.anchor.y1Pt, Math.min(args.anchor.y1Pt + tolerance, ceiling))
+    ),
+  };
+  const fractions = pointsToFractions(withTolerance, args.referenceSize);
+  return {
+    page: args.page,
+    x0: clamp01(fractions.x0),
+    y0: clamp01(fractions.y0),
+    x1: clamp01(fractions.x1),
+    y1: clamp01(fractions.y1),
+  };
+}

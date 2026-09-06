@@ -112,3 +112,92 @@ export async function cropRegions(args: {
     clearTimeout(timeout);
   }
 }
+
+/**
+ * The CV service renders pages at CROP_DPI (300) as lossless PNG and returns
+ * them base64-encoded inside a JSON body. On a real scanned A4 page that is
+ * 2480x3508px of photocopier noise: measured across seven of one class's
+ * scans, the worst page is 7.85MB of PNG, or 10.5MB once base64'd -- past what
+ * a serverless function can return, so that page simply failed.
+ *
+ * Downscaling here rather than in the CV service keeps this inside the Next.js
+ * app; a `dpi` parameter there would need a Railway redeploy to take effect.
+ * The same worst-case page comes out at 0.26MB, and the red highlight stays
+ * crisp -- 2000px of height is still more than double what any viewer
+ * displays, so drawing precision is bounded by the screen, not by this.
+ */
+export const PAGE_VIEW_MAX_HEIGHT_PX = 2000;
+export const PAGE_VIEW_JPEG_QUALITY = 85;
+
+export interface RenderedPage {
+  imageBase64: string;
+  imageMediaType: string;
+}
+
+/**
+ * Render one page of a PDF, optionally with a region outlined in red, and
+ * downscale it to something a JSON response can carry.
+ *
+ * Never throws, same contract as cropRegions.
+ */
+export async function renderPageImage(args: {
+  pdfBase64: string;
+  /** 0-indexed, matching the CV service's PageImageRequest. */
+  pageIndex: number;
+  highlightBox?: { x0Pt: number; y0Pt: number; x1Pt: number; y1Pt: number } | null;
+  rotationHint?: number;
+  timeoutMs?: number;
+}): Promise<CvResult<RenderedPage>> {
+  const target = cvServiceEndpoint("/page-image");
+  if (!target) return { ok: false, error: "Full-page view is not configured on this deployment" };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), args.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  let pngBase64: string;
+  try {
+    const upstream = await fetch(target, {
+      method: "POST",
+      cache: "no-store",
+      headers: cvHeaders(),
+      body: JSON.stringify({
+        studentPdfBase64: args.pdfBase64,
+        pageIndex: args.pageIndex,
+        rotationHint: args.rotationHint ?? 0,
+        ...(args.highlightBox ? { highlightBox: args.highlightBox } : {}),
+      }),
+      signal: controller.signal,
+    });
+    if (!upstream.ok) {
+      const body = (await upstream.json().catch(() => ({}))) as { error?: string };
+      return { ok: false, error: body.error ?? `Page render returned status ${upstream.status}` };
+    }
+    const body = (await upstream.json()) as { imageBase64?: string };
+    if (!body.imageBase64) return { ok: false, error: "Page render returned no image" };
+    pngBase64 = body.imageBase64;
+  } catch (e) {
+    const aborted = e instanceof Error && e.name === "AbortError";
+    return {
+      ok: false,
+      error: aborted
+        ? "Page render timed out"
+        : `Page render failed: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  // Sharp is imported lazily and its absence falls back to the original PNG,
+  // matching lib/graph-raster-snap.ts. That fallback is the behaviour that
+  // shipped before downscaling existed, so a missing binary degrades to the
+  // old status quo rather than introducing a new failure.
+  try {
+    const sharp = (await import("sharp")).default;
+    const resized = await sharp(Buffer.from(pngBase64, "base64"))
+      .resize({ height: PAGE_VIEW_MAX_HEIGHT_PX, withoutEnlargement: true })
+      .jpeg({ quality: PAGE_VIEW_JPEG_QUALITY, mozjpeg: true })
+      .toBuffer();
+    return { ok: true, value: { imageBase64: resized.toString("base64"), imageMediaType: "image/jpeg" } };
+  } catch {
+    return { ok: true, value: { imageBase64: pngBase64, imageMediaType: "image/png" } };
+  }
+}
