@@ -478,8 +478,8 @@ Server-side Google OAuth token store. Replaces browser-cookie token storage so t
 | `test_item_id` | uuid |  |
 | `student_id` | uuid, nullable | FK profiles(id) — null for a change logged against an invited-only student; backfilled by `auto_enroll_from_invitations` on first login |
 | `changed_by` | uuid |  |
-| `old_marks` | integer, nullable |  |
-| `new_marks` | integer |  |
+| `old_marks` | integer, nullable | null means there was no mark on this item beforehand |
+| `new_marks` | integer, nullable | null means the mark was cleared (the student_marks row was deleted) — distinct from a recorded score of 0 |
 | `reason` | text, nullable |  |
 | `created_at` | timestamp with time zone | default `now()` |
 | `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null |

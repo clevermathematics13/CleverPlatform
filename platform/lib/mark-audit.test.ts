@@ -3,6 +3,7 @@ import {
   buildMarkChangeRows,
   describeAuditWarning,
   markKey,
+  readPriorMarks,
   type MarkChange,
 } from "./mark-audit";
 
@@ -186,5 +187,96 @@ describe("describeAuditWarning", () => {
     const w = describeAuditWarning({ priorReadFailed: true, missed: 2 });
     expect(w).toContain("2 changes");
     expect(w).not.toContain("first-time mark");
+  });
+});
+
+/**
+ * A stand-in for the supabase client that reproduces PostgREST's silent
+ * 1000-row cap: it serves whatever `.range()` asks for out of a fixed row
+ * set and never reports an error for a short page. An unpaged reader looks
+ * correct against a small fixture and only fails in production, so the
+ * fixture here is deliberately larger than the cap.
+ */
+function fakeSupabase(rows: Record<string, unknown>[], pageCap = 1000) {
+  const requests: { from: number; to: number }[] = [];
+  const client = {
+    from() {
+      const q = {
+        select: () => q,
+        in: () => q,
+        order: () => q,
+        range: (from: number, to: number) => {
+          requests.push({ from, to });
+          const span = Math.min(to - from + 1, pageCap);
+          return Promise.resolve({ data: rows.slice(from, from + span), error: null });
+        },
+      };
+      return q;
+    },
+  };
+  return { client, requests };
+}
+
+describe("readPriorMarks paging", () => {
+  const ITEMS = 41;
+  const STUDENTS = 50;
+
+  // 41 items x 50 students = 2050 rows, the real shape of Formative
+  // Assessment 1. A single request returns 1000 of them with error null, so
+  // the ~1050 missing priors would be logged as first-time marks.
+  const rows = Array.from({ length: ITEMS * STUDENTS }, (_, n) => ({
+    test_item_id: `item-${n % ITEMS}`,
+    student_id: null,
+    invited_student_id: `stu-${Math.floor(n / ITEMS)}`,
+    marks_awarded: 1,
+  }));
+
+  const targets = rows.map((r) => ({
+    testItemId: r.test_item_id as string,
+    subject: { kind: "invited" as const, id: r.invited_student_id as string },
+  }));
+
+  it("reads every prior mark past the 1000-row cap", async () => {
+    const { client, requests } = fakeSupabase(rows);
+    const { prior, failed } = await readPriorMarks(
+      client as unknown as Parameters<typeof readPriorMarks>[0],
+      targets
+    );
+
+    expect(failed).toBe(false);
+    expect(prior.size).toBe(ITEMS * STUDENTS);
+    // More than one request: a single unpaged read is the bug.
+    expect(requests.length).toBeGreaterThan(1);
+  });
+
+  it("reports a failed lookup rather than reading it as no prior mark", async () => {
+    const throwing = {
+      from() {
+        const q = {
+          select: () => q,
+          in: () => q,
+          order: () => q,
+          range: () => Promise.resolve({ data: null, error: { message: "boom" } }),
+        };
+        return q;
+      },
+    };
+    const { prior, failed } = await readPriorMarks(
+      throwing as unknown as Parameters<typeof readPriorMarks>[0],
+      targets.slice(0, 3)
+    );
+    expect(failed).toBe(true);
+    expect(prior.size).toBe(0);
+  });
+
+  it("makes no request at all for an empty target list", async () => {
+    const { client, requests } = fakeSupabase(rows);
+    const { prior, failed } = await readPriorMarks(
+      client as unknown as Parameters<typeof readPriorMarks>[0],
+      []
+    );
+    expect(requests).toHaveLength(0);
+    expect(prior.size).toBe(0);
+    expect(failed).toBe(false);
   });
 });

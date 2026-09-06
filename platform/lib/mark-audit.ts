@@ -1,4 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchAllRows } from "./na-scanning";
+
+/** Test items per prior-marks request. Bounds the GET query string, which
+ *  carries every id inline: a whole paper plus a whole class is ~90 uuids
+ *  before this splits them. */
+const PRIOR_MARK_ITEM_CHUNK = 40;
 
 /**
  * Audit-logging for Clev's Marks written outside the AI-grading flow.
@@ -78,9 +84,20 @@ export interface PriorMarksResult {
  * markKey. Read BEFORE the write, since it is the only way to know what a
  * value replaced.
  *
- * At most two round trips whatever the batch size -- one per identity kind
- * -- rather than one per cell, because a gradebook paste can easily cover a
- * whole class times a whole paper.
+ * Batched by identity kind and chunked by test item rather than read one
+ * cell at a time, because a gradebook paste can easily cover a whole class
+ * times a whole paper.
+ *
+ * Paged through fetchAllRows, and that is not optional. PostgREST caps a
+ * request at 1000 rows and reports no error when it stops, and the two
+ * .in() filters here match the whole rectangle of existing marks, not just
+ * the pasted cells: one 50-student assessment is already 2050 rows. An
+ * unpaged read would come back half empty with error null, every missing
+ * prior would read as "no mark here", and the audit would fill with
+ * first-time-mark rows for cells that already had marks -- fabricated
+ * history, written silently, since a truncation sets no error for the
+ * warning to report. The gradebook page that renders this very grid hit the
+ * same cap on 5 Sep 2026 (see its comment above the marks query).
  */
 export async function readPriorMarks(
   supabase: SupabaseClient,
@@ -95,30 +112,49 @@ export async function readPriorMarks(
     ...new Set(targets.filter((t) => t.subject.kind === kind).map((t) => t.subject.id)),
   ];
 
+  type Row = {
+    test_item_id: string;
+    student_id: string | null;
+    invited_student_id: string | null;
+    marks_awarded: number | null;
+  };
+
   for (const kind of ["profile", "invited"] as const) {
     const ids = idsOfKind(kind);
     if (ids.length === 0) continue;
     const column = kind === "profile" ? "student_id" : "invited_student_id";
 
-    const { data, error } = await supabase
-      .from("student_marks")
-      .select("test_item_id, student_id, invited_student_id, marks_awarded")
-      .in("test_item_id", testItemIds)
-      .in(column, ids);
-    // A failed read must not block the write it precedes: the edit is what
-    // the teacher asked for, and losing an audit row is better than losing
-    // their mark. It is recorded rather than swallowed, though -- the
-    // resulting rows would otherwise silently claim these were first-time
-    // marks.
-    if (error) {
-      failed = true;
-      continue;
-    }
+    for (let i = 0; i < testItemIds.length; i += PRIOR_MARK_ITEM_CHUNK) {
+      const itemChunk = testItemIds.slice(i, i + PRIOR_MARK_ITEM_CHUNK);
+      let rows: Row[];
+      try {
+        rows = await fetchAllRows<Row>((from, to) =>
+          supabase
+            .from("student_marks")
+            .select("test_item_id, student_id, invited_student_id, marks_awarded")
+            .in("test_item_id", itemChunk)
+            .in(column, ids)
+            // Paging without a deterministic order can skip and repeat
+            // rows across pages, which would put the fabricated history
+            // back by another route.
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+      } catch {
+        // A failed read must not block the write it precedes: the edit is
+        // what the teacher asked for, and losing an audit row is better
+        // than losing their mark. It is recorded rather than swallowed,
+        // though -- the resulting rows would otherwise silently claim these
+        // were first-time marks.
+        failed = true;
+        continue;
+      }
 
-    for (const row of data ?? []) {
-      const id = (kind === "profile" ? row.student_id : row.invited_student_id) as string | null;
-      if (!id || row.marks_awarded === null) continue;
-      prior.set(markKey(row.test_item_id as string, { kind, id }), row.marks_awarded as number);
+      for (const row of rows) {
+        const id = kind === "profile" ? row.student_id : row.invited_student_id;
+        if (!id || row.marks_awarded === null) continue;
+        prior.set(markKey(row.test_item_id, { kind, id }), row.marks_awarded);
+      }
     }
   }
 
