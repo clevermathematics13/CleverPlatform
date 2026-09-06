@@ -351,10 +351,15 @@ export async function POST(
   const allAnchorsCropped = totalSaved >= anchors.length;
 
   if (allAnchorsCropped && cvResponse.pageCountMismatch === null) {
+    // .neq('status','released') so re-cropping an already-released packet
+    // cannot demote it. The student's page reads na_packet_scans.status, so
+    // dropping a released scan back to 'cropped' would silently take
+    // published feedback away from a student who had already been shown it.
     await supabase
       .from("na_packet_scans")
       .update({ status: "cropped", updated_at: new Date().toISOString() })
-      .eq("id", packetScanId);
+      .eq("id", packetScanId)
+      .neq("status", "released");
   }
 
   return NextResponse.json({

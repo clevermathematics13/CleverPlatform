@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PDFDocument } from "pdf-lib";
 import { getApiTeacher } from "@/lib/auth";
-import { NA_SCAN_BUCKET } from "@/lib/na-scanning";
+import { NA_SCAN_BUCKET, loadInvitedProfileIds } from "@/lib/na-scanning";
 
 // Matches the Tests batch-grading split route's budget reasoning: this does
 // only the fast part (split the PDF, create one na_packet_scans row per
@@ -25,9 +25,11 @@ interface ConfirmedSegment {
  * every segment here needs an explicit invitedId; there is no roster
  * auto-match fallback at this step) and splits the batch PDF into one PDF
  * per student via pdf-lib. Each split PDF is uploaded to storage and one
- * na_packet_scans row is created per student, with invited_student_id set
- * (student_profile_id is left null here — that gets backfilled separately
- * once/if the student registers and invited_students.profile_id is set).
+ * na_packet_scans row is created per student, with invited_student_id set,
+ * plus student_profile_id whenever the roster row already has an account
+ * (loadInvitedProfileIds explains why this is set here and not left entirely
+ * to the sign-in backfill: that backfill only ever runs on a student's FIRST
+ * sign-in, so a packet scanned afterwards would never reach them).
  *
  * This route never calls the model and never extracts crops — see the
  * page-identity and crop-extraction stages, run per student after this.
@@ -149,6 +151,11 @@ export async function POST(
     error?: string;
   }[] = [];
 
+  // Roster rows that already have an account, so each new scan can be linked
+  // to its student straight away rather than waiting on a sign-in backfill
+  // that, for an already-registered student, has already run for good.
+  const profileIdByInvitedId = await loadInvitedProfileIds(supabase, invitedIds);
+
   for (const segment of segments) {
     try {
       const splitDoc = await PDFDocument.create();
@@ -175,11 +182,23 @@ export async function POST(
         .eq("invited_student_id", segment.invitedId)
         .maybeSingle();
 
+      // null when this student has no account yet -- the sign-in backfill
+      // picks those up, and null is the right value to store meanwhile.
+      const studentProfileId = profileIdByInvitedId[segment.invitedId] ?? null;
+
       let packetScanId = existing?.id;
       if (packetScanId) {
         const { error: updateErr } = await supabase
           .from("na_packet_scans")
-          .update({ split_storage_path: splitPath, status: "split", updated_at: new Date().toISOString() })
+          .update({
+            split_storage_path: splitPath,
+            status: "split",
+            // Only ever fills the link in, never clears it: a re-split must
+            // not undo a student_profile_id the sign-in backfill already set
+            // just because the roster row is read as null here.
+            ...(studentProfileId ? { student_profile_id: studentProfileId } : {}),
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", packetScanId);
         if (updateErr) throw new Error(`Could not update existing packet scan: ${updateErr.message}`);
       } else {
@@ -190,6 +209,7 @@ export async function POST(
             packet_version_id: batch.packet_version_id,
             packet_seq: results.length + 1,
             invited_student_id: segment.invitedId,
+            student_profile_id: studentProfileId,
             split_storage_path: splitPath,
             id_status: "confirmed",
             status: "split",

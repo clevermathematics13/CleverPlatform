@@ -573,3 +573,44 @@ export async function scanCoverPages(
 
   return { segments, pagesChecked, warnings };
 }
+
+// -----------------------------------------------------------------------------
+// Roster -> profile linkage for newly split packet scans
+// -----------------------------------------------------------------------------
+
+/** invited_students.profile_id for a set of roster ids, keyed by roster id.
+ *  Rows with no account yet map to null, and so does an id that no longer
+ *  resolves -- callers write the result straight into
+ *  na_packet_scans.student_profile_id, where null is the correct "no account
+ *  to attribute this to" value.
+ *
+ *  Why the split stage sets student_profile_id at all: the student-facing
+ *  read (getReleasedPacketScansForStudent) and every student/parent RLS
+ *  policy on the na_* tables key on na_packet_scans.student_profile_id, but
+ *  the scan pipeline only ever knows the roster row.
+ *  auto_enroll_from_invitations does backfill the column -- yet only for a
+ *  roster row whose profile_id is still null, i.e. only on a student's very
+ *  first sign-in. A packet scanned AFTER that student has already signed in
+ *  is therefore never linked to them and stays invisible on their own
+ *  feedback page for good. Setting it here closes that half: the sign-in
+ *  backfill covers scans that predate the account, this covers scans that
+ *  postdate it.
+ */
+export async function loadInvitedProfileIds(
+  supabase: SupabaseClient,
+  invitedIds: string[]
+): Promise<Record<string, string | null>> {
+  const unique = [...new Set(invitedIds.filter(Boolean))];
+  if (unique.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from("invited_students")
+    .select("id, profile_id")
+    .in("id", unique);
+  if (error) throw new Error(`Failed to load roster profile ids: ${error.message}`);
+
+  const byInvitedId: Record<string, string | null> = {};
+  for (const id of unique) byInvitedId[id] = null;
+  for (const r of data ?? []) byInvitedId[r.id as string] = (r.profile_id as string | null) ?? null;
+  return byInvitedId;
+}

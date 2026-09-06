@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ReleasedPacketScan, NaFeedbackItem } from "@/lib/na-feedback-service";
+import type { EmptyFeedbackPreviewCopy } from "@/lib/na-feedback-preview";
 import { CropImagePanel } from "@/components/na-feedback/CropImagePanel";
 
 interface NaFeedbackClientProps {
@@ -13,6 +14,18 @@ interface NaFeedbackClientProps {
   scans: ReleasedPacketScan[];
   selectedScanId: string | null;
   initialItems: NaFeedbackItem[];
+  /** True for the ?viewAs= preview -- a read-only simulation of the
+   *  student's own page, same convention as the Exam Reflection page. */
+  readOnlyPreview?: boolean;
+  /** The invited_students.id the preview is for. Kept so every navigation
+   *  this component makes carries ?viewAs= forward; dropping it silently
+   *  ended the impersonation mid-session. */
+  previewViewAsId?: string | null;
+  /** False when the previewed student has no login yet. */
+  previewHasAccount?: boolean;
+  /** Why the preview is empty, when it is. Null whenever there is feedback
+   *  to show, and always null for a student reading their own page. */
+  emptyPreview?: EmptyFeedbackPreviewCopy | null;
 }
 
 export function NaFeedbackClient({
@@ -22,6 +35,10 @@ export function NaFeedbackClient({
   scans,
   selectedScanId,
   initialItems,
+  readOnlyPreview = false,
+  previewViewAsId = null,
+  previewHasAccount = true,
+  emptyPreview = null,
 }: NaFeedbackClientProps) {
   const router = useRouter();
   const [openPanel, setOpenPanel] = useState<{ item: NaFeedbackItem; mode: "work" | "question" } | null>(null);
@@ -42,6 +59,10 @@ export function NaFeedbackClient({
     const params = new URLSearchParams();
     params.set("scanId", scanId);
     if (viewStudentId) params.set("viewStudent", viewStudentId);
+    // Carry the impersonation forward. Without this a teacher who switched
+    // packets inside a preview landed on the plain teacher view, which looks
+    // like the preview breaking on the second click.
+    if (previewViewAsId) params.set("viewAs", previewViewAsId);
     router.push(`/dashboard/na-feedback?${params.toString()}`);
   };
 
@@ -221,7 +242,10 @@ export function NaFeedbackClient({
     <div className="max-w-3xl">
       {isViewingStudent && (
         <div className="mb-4">
-          <Link href="/dashboard/na-feedback" className="text-sm text-da-accent hover:underline">
+          <Link
+            href={previewViewAsId ? `/dashboard?viewAs=${previewViewAsId}` : "/dashboard/na-feedback"}
+            className="text-sm text-da-accent hover:underline"
+          >
             ← Back to dashboard
           </Link>
         </div>
@@ -230,9 +254,31 @@ export function NaFeedbackClient({
         {isViewingStudent ? `${viewStudentName}'s Feedback` : "My Feedback"}
       </h1>
 
-      {scans.length === 0 && (
-        <p className="text-sm text-da-muted">No feedback has been released to you yet.</p>
+      {readOnlyPreview && (
+        <div className="mb-4 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          &#128065; Read-only preview — this is exactly what {viewStudentName} sees on their own Feedback page.
+          {previewHasAccount
+            ? ""
+            : ` ${viewStudentName} has not signed in yet, but that does not affect this page: released feedback is matched to their roster row, not to an account.`}{" "}
+          Flagging a misread is {viewStudentName}&apos;s own action and is disabled here.
+        </div>
       )}
+
+      {scans.length === 0 &&
+        (emptyPreview ? (
+          <div className="rounded-lg border border-da-border bg-da-surface px-4 py-3">
+            <p className="text-sm font-semibold text-da-text">{emptyPreview.headline}</p>
+            {emptyPreview.detail && <p className="mt-1 text-sm text-da-muted">{emptyPreview.detail}</p>}
+            <Link
+              href="/dashboard/na-review/scan-test"
+              className="mt-2 inline-block text-sm text-da-accent hover:underline"
+            >
+              Open Results by class →
+            </Link>
+          </div>
+        ) : (
+          <p className="text-sm text-da-muted">No feedback has been released to you yet.</p>
+        ))}
 
       {scans.length > 0 && (
         <>
