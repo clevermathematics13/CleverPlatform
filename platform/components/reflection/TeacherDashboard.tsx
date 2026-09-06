@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import type { ReflectionTest, StudentReflectionRow, ReflectionItem } from "@/lib/reflection-types";
 import { computeDisagreement } from "@/lib/reflection-utils";
 import { ScoreTable } from "@/components/reflection/ScoreTable";
+import { studentViewHref } from "@/lib/reflection-links";
 
 interface TeacherDashboardProps {
   tests: ReflectionTest[];
@@ -580,7 +581,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                   </a>
                 )}
                 <a
-                  href={`/dashboard/reflection?testId=${selectedTest}&viewStudent=${selectedStudentId}`}
+                  href={studentViewHref(selectedTest, selectedStudentId)}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="da-btn"

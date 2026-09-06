@@ -14,6 +14,11 @@ import type {
 
 export { computeDisagreement };
 
+/** Stands in for an empty id list. PostgREST renders `.in("col", [])` as
+ *  `in.()`, which is a syntax error rather than a match-nothing filter, so a
+ *  uuid that cannot exist is passed instead. */
+const NO_SUCH_UUID = "00000000-0000-0000-0000-000000000000";
+
 function computeReleaseTimestamp(
   testDate: string | null,
   examTime: string | null,
@@ -484,7 +489,7 @@ export async function getClassReflectionData(
   // paper is sat by the whole track: Formative Assessment 1 hangs off 9G and
   // has marks for 50 students across 9A, 9C and 9G. Scoping to the test's own
   // course would show 17 of them.
-  const { roster } = await loadInvitedRoster(supabase, test.course_id, {
+  const { roster, sourceCourseIds } = await loadInvitedRoster(supabase, test.course_id, {
     includeTrackSiblings: true,
   });
   if (roster.length === 0) return { items: itemsWithLabels, rows: [] };
@@ -534,20 +539,48 @@ export async function getClassReflectionData(
     markMap.get(invitedId)!.set(m.test_item_id, m.marks_awarded);
   }
 
+  // There are two independent hide flags with two independent toggles:
+  // invited_students.hidden (setInvitedStudentHidden), which loadInvitedRoster
+  // already filters, and students.hidden (setStudentHidden), which only
+  // exists once a student has enrolled. Reading the roster instead of the
+  // `students` table dropped the second one, so a student the teacher had
+  // deliberately hidden came back -- and could not be hidden again, because
+  // the Students page offers the invited toggle only for people who are NOT
+  // yet enrolled. Both flags are honoured, as the gradebook already does.
+  const { data: enrolled } = await supabase
+    .from("students")
+    .select("profile_id, hidden")
+    .in("course_id", sourceCourseIds)
+    .in("profile_id", profileIds.length ? profileIds : [NO_SUCH_UUID]);
+  const hiddenProfiles = new Set(
+    (enrolled ?? []).filter((e) => e.hidden).map((e) => e.profile_id as string)
+  );
+
   // Self-scores and corrections uploads stay profile-keyed: both are things
   // the student does in their own account, so a student who has never signed
   // in correctly has none rather than being missing data.
-  const { data: allSelf } = await supabase
-    .from("student_self_scores")
-    .select("student_id, test_item_id, self_marks")
-    .in("student_id", profileIds.length ? profileIds : ["00000000-0000-0000-0000-000000000000"])
-    .in("test_item_id", itemIds);
+  //
+  // Paged for the same reason the mark reads are: this used to cover one
+  // class and now covers a whole track, so it can outgrow PostgREST's silent
+  // 1000-row cap once a cohort actually self-assesses.
+  type SelfRow = { student_id: string; test_item_id: string; self_marks: number | null };
+  const allSelf = profileIds.length
+    ? await fetchAllRows<SelfRow>((from, to) =>
+        supabase
+          .from("student_self_scores")
+          .select("student_id, test_item_id, self_marks")
+          .in("student_id", profileIds)
+          .in("test_item_id", itemIds)
+          .order("id", { ascending: true })
+          .range(from, to)
+      )
+    : [];
 
   const { data: uploads } = await supabase
     .from("pdf_uploads")
     .select("student_id, storage_path, file_name")
     .eq("test_id", testId)
-    .in("student_id", profileIds.length ? profileIds : ["00000000-0000-0000-0000-000000000000"]);
+    .in("student_id", profileIds.length ? profileIds : [NO_SUCH_UUID]);
 
   const uploadMap = new Map(
     (uploads ?? []).map((u) => [u.student_id, u])
@@ -597,8 +630,7 @@ export async function getClassReflectionData(
       has_upload: !!upload,
       pdf_url,
       disagreement,
-      // loadInvitedRoster already excludes hidden roster rows.
-      hidden: false,
+      hidden: s.profileId ? hiddenProfiles.has(s.profileId) : false,
     };
   });
 
