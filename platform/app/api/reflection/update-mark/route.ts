@@ -50,10 +50,15 @@ export async function POST(request: NextRequest) {
   const clamped = Math.max(0, Math.min(Math.round(newMarks), testItem.max_marks));
 
   const subject = parseGradingSubject(studentId);
+  // Only ever fills the matching identity in, never nulls the other one. On
+  // an insert the omitted column defaults to null anyway; on an update it is
+  // preserved, so correcting a mark for a student who has since signed in
+  // does not strip the invited_student_id that auto_enroll_from_invitations
+  // leaves alongside their new student_id.
   const identity =
     subject.kind === "invited"
-      ? { student_id: null, invited_student_id: subject.id }
-      : { student_id: subject.id, invited_student_id: null };
+      ? { invited_student_id: subject.id }
+      : { student_id: subject.id };
   const conflictTarget =
     subject.kind === "invited" ? "test_item_id,invited_student_id" : "test_item_id,student_id";
   const identityColumn = subject.kind === "invited" ? "invited_student_id" : "student_id";
