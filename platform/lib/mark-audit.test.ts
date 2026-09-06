@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildMarkChangeRows, markKey, type MarkChange } from "./mark-audit";
+import {
+  buildMarkChangeRows,
+  describeAuditWarning,
+  markKey,
+  type MarkChange,
+} from "./mark-audit";
 
 const profile = { kind: "profile" as const, id: "p1" };
 const invited = { kind: "invited" as const, id: "i1" };
@@ -137,5 +142,49 @@ describe("buildMarkChangeRows", () => {
       expect(r.student_id === null || r.invited_student_id === null).toBe(true);
       expect(r.student_id !== null || r.invited_student_id !== null).toBe(true);
     }
+  });
+});
+
+describe("describeAuditWarning", () => {
+  it("says nothing when the trail is sound", () => {
+    expect(describeAuditWarning({ priorReadFailed: false, missed: 0 })).toBeNull();
+  });
+
+  // The failure is in the RECORD of the change, not the change. A teacher who
+  // reads this mid-marking as "my edit was lost" will re-enter marks that were
+  // never lost, so every wording states the save first.
+  it("leads with the marks being saved, whichever failure it is", () => {
+    const missed = describeAuditWarning({ priorReadFailed: false, missed: 1 });
+    const priorFailed = describeAuditWarning({ priorReadFailed: true, missed: 0 });
+    expect(missed).toMatch(/^Your marks are saved\./);
+    expect(priorFailed).toMatch(/^Your marks are saved\./);
+  });
+
+  it("never suggests the edit failed or should be redone", () => {
+    for (const w of [
+      describeAuditWarning({ priorReadFailed: false, missed: 3 }),
+      describeAuditWarning({ priorReadFailed: true, missed: 0 }),
+      describeAuditWarning({ priorReadFailed: true, missed: 3 }),
+    ]) {
+      expect(w).not.toMatch(/failed to save|not saved|re-enter|try again|lost/i);
+    }
+  });
+
+  it("reports unwritten audit rows, pluralised", () => {
+    expect(describeAuditWarning({ priorReadFailed: false, missed: 1 })).toContain("1 change");
+    expect(describeAuditWarning({ priorReadFailed: false, missed: 4 })).toContain("4 changes");
+  });
+
+  it("explains a failed prior read as a possibly-wrong history entry", () => {
+    const w = describeAuditWarning({ priorReadFailed: true, missed: 0 });
+    expect(w).toContain("first-time mark");
+  });
+
+  // A missing row is the worse fact: there is no history entry at all, versus
+  // one whose "before" value may be wrong. Report the worse one.
+  it("reports the missing rows when both failures happen at once", () => {
+    const w = describeAuditWarning({ priorReadFailed: true, missed: 2 });
+    expect(w).toContain("2 changes");
+    expect(w).not.toContain("first-time mark");
   });
 });

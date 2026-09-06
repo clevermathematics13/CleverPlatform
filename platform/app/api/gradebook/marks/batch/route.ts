@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { parseGradingSubject } from "@/lib/ai-grading";
-import { logMarkChanges, markKey, readPriorMarks, type MarkChange } from "@/lib/mark-audit";
+import {
+  describeAuditWarning,
+  logMarkChanges,
+  markKey,
+  readPriorMarks,
+  type MarkChange,
+} from "@/lib/mark-audit";
 
 const AUDIT_REASON = "Gradebook edit (batch)";
 
@@ -77,7 +83,7 @@ export async function POST(req: NextRequest) {
     testItemId: e.testItemId,
     subject: parseGradingSubject(e.studentId),
   }));
-  const prior = await readPriorMarks(supabase, targets);
+  const { prior, failed: priorReadFailed } = await readPriorMarks(supabase, targets);
 
   if (profileUpserts.length > 0) {
     const { error } = await supabase
@@ -117,7 +123,21 @@ export async function POST(req: NextRequest) {
         e.marksAwarded === null || e.marksAwarded === undefined ? null : e.marksAwarded,
     };
   });
-  await logMarkChanges(supabase, changes, user.id, AUDIT_REASON);
+  const audit = await logMarkChanges(supabase, changes, user.id, AUDIT_REASON);
 
-  return NextResponse.json({ ok: true });
+  // The marks are already written, so an incomplete trail is reported, not
+  // raised: logged for the server, and returned as a warning the gradebook
+  // shows without telling the teacher their paste failed.
+  if (audit.error || priorReadFailed) {
+    console.error("[gradebook] mark audit incomplete", {
+      action: "batch",
+      cells: entries.length,
+      missed: audit.missed,
+      priorReadFailed,
+      error: audit.error,
+    });
+  }
+  const warning = describeAuditWarning({ priorReadFailed, missed: audit.missed });
+
+  return NextResponse.json(warning ? { ok: true, auditWarning: warning } : { ok: true });
 }

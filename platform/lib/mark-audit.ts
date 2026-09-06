@@ -64,6 +64,15 @@ export function buildMarkChangeRows(
     }));
 }
 
+export interface PriorMarksResult {
+  prior: Map<string, number>;
+  /** True when a lookup failed, so `prior` is incomplete. Callers must not
+   *  treat a miss as "there was no mark here": the rows would be logged as
+   *  first-time writes, which is a false claim about what the teacher
+   *  replaced, and the no-op filter would stop suppressing unchanged cells. */
+  failed: boolean;
+}
+
 /**
  * The marks currently stored for the items about to be written, keyed by
  * markKey. Read BEFORE the write, since it is the only way to know what a
@@ -76,9 +85,10 @@ export function buildMarkChangeRows(
 export async function readPriorMarks(
   supabase: SupabaseClient,
   targets: { testItemId: string; subject: MarkSubject }[]
-): Promise<Map<string, number>> {
+): Promise<PriorMarksResult> {
   const prior = new Map<string, number>();
-  if (targets.length === 0) return prior;
+  let failed = false;
+  if (targets.length === 0) return { prior, failed };
 
   const testItemIds = [...new Set(targets.map((t) => t.testItemId))];
   const idsOfKind = (kind: MarkSubject["kind"]) => [
@@ -96,9 +106,14 @@ export async function readPriorMarks(
       .in("test_item_id", testItemIds)
       .in(column, ids);
     // A failed read must not block the write it precedes: the edit is what
-    // the teacher asked for, and losing one audit row is better than losing
-    // their mark. The rows simply read as first-time writes.
-    if (error) continue;
+    // the teacher asked for, and losing an audit row is better than losing
+    // their mark. It is recorded rather than swallowed, though -- the
+    // resulting rows would otherwise silently claim these were first-time
+    // marks.
+    if (error) {
+      failed = true;
+      continue;
+    }
 
     for (const row of data ?? []) {
       const id = (kind === "profile" ? row.student_id : row.invited_student_id) as string | null;
@@ -107,23 +122,66 @@ export async function readPriorMarks(
     }
   }
 
-  return prior;
+  return { prior, failed };
+}
+
+export interface MarkAuditResult {
+  /** Rows actually written to mark_changes. */
+  logged: number;
+  /** Rows that should have been written but were not. */
+  missed: number;
+  /** The insert error, for the server log. Null when nothing went wrong. */
+  error: string | null;
 }
 
 /**
- * Write the audit rows for a set of edits. Best-effort by design: called
- * after the marks are already saved, so a failure here must not turn a
- * successful edit into an error the teacher sees. Returns how many rows were
- * logged, which is what the tests assert on.
+ * Write the audit rows for a set of edits.
+ *
+ * Still never throws and never fails the request: it runs after the marks
+ * are saved, and a broken audit insert must not tell a teacher mid-marking
+ * that their edit failed when it did not. What it no longer does is stay
+ * quiet about it -- the caller gets the counts and the error so the gap can
+ * be logged server-side and shown to the teacher as a warning.
  */
 export async function logMarkChanges(
   supabase: SupabaseClient,
   changes: MarkChange[],
   changedBy: string,
   reason: string
-): Promise<number> {
+): Promise<MarkAuditResult> {
   const rows = buildMarkChangeRows(changes, changedBy, reason);
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) return { logged: 0, missed: 0, error: null };
+
   const { error } = await supabase.from("mark_changes").insert(rows);
-  return error ? 0 : rows.length;
+  if (error) return { logged: 0, missed: rows.length, error: error.message };
+  return { logged: rows.length, missed: 0, error: null };
+}
+
+/**
+ * The warning a teacher should see when the trail behind an edit is
+ * incomplete, or null when it is sound.
+ *
+ * Deliberately says the marks ARE saved first. The failure being reported is
+ * in the record of the change, not the change itself, and a teacher who
+ * reads a warning mid-marking as "my edit was lost" will re-enter marks that
+ * were never lost.
+ *
+ * Pure, so the wording and the precedence between the two failure modes can
+ * be tested without a database.
+ */
+export function describeAuditWarning(input: {
+  /** The prior-value lookup failed, so old_marks may be wrong. */
+  priorReadFailed: boolean;
+  /** Audit rows that could not be written. */
+  missed: number;
+}): string | null {
+  const saved = "Your marks are saved.";
+  if (input.missed > 0) {
+    const rows = input.missed === 1 ? "1 change" : `${input.missed} changes`;
+    return `${saved} ${rows} could not be written to the mark history, so this edit is not in the audit trail.`;
+  }
+  if (input.priorReadFailed) {
+    return `${saved} The previous marks could not be read, so the mark history may show this edit as a first-time mark rather than a change.`;
+  }
+  return null;
 }

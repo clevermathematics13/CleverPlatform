@@ -1,9 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { parseGradingSubject } from "@/lib/ai-grading";
-import { logMarkChanges, markKey, readPriorMarks } from "@/lib/mark-audit";
+import {
+  describeAuditWarning,
+  logMarkChanges,
+  markKey,
+  readPriorMarks,
+  type MarkAuditResult,
+} from "@/lib/mark-audit";
 
 const AUDIT_REASON = "Gradebook edit";
+
+/** The mark is already saved by the time this runs, so an incomplete audit
+ *  trail is reported rather than raised: logged for the server, and returned
+ *  as a warning the gradebook shows without claiming the edit failed. */
+function auditResponse(
+  audit: MarkAuditResult,
+  priorReadFailed: boolean,
+  context: Record<string, unknown>
+) {
+  if (audit.error || priorReadFailed) {
+    console.error("[gradebook] mark audit incomplete", {
+      ...context,
+      missed: audit.missed,
+      priorReadFailed,
+      error: audit.error,
+    });
+  }
+  const warning = describeAuditWarning({ priorReadFailed, missed: audit.missed });
+  return NextResponse.json(warning ? { ok: true, auditWarning: warning } : { ok: true });
+}
 
 export async function POST(req: NextRequest) {
   const auth = await getApiTeacher();
@@ -40,7 +66,9 @@ export async function POST(req: NextRequest) {
   // Read what is there now, before either branch overwrites it -- a mark
   // that is about to be replaced or deleted is the only place the old value
   // still exists.
-  const prior = await readPriorMarks(supabase, [{ testItemId, subject }]);
+  const { prior, failed: priorReadFailed } = await readPriorMarks(supabase, [
+    { testItemId, subject },
+  ]);
   const oldMarks = prior.get(markKey(testItemId, subject)) ?? null;
 
   // Delete mark (clear the cell)
@@ -51,13 +79,13 @@ export async function POST(req: NextRequest) {
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });
     // Logged as new_marks null: a cleared cell is not a score of 0.
-    await logMarkChanges(
+    const audit = await logMarkChanges(
       supabase,
       [{ testItemId, subject, oldMarks, newMarks: null }],
       user.id,
       AUDIT_REASON
     );
-    return NextResponse.json({ ok: true });
+    return auditResponse(audit, priorReadFailed, { testItemId, action: "clear" });
   }
 
   const marks = parseInt(String(marksAwarded), 10);
@@ -82,12 +110,12 @@ export async function POST(req: NextRequest) {
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await logMarkChanges(
+  const audit = await logMarkChanges(
     supabase,
     [{ testItemId, subject, oldMarks, newMarks: marks }],
     user.id,
     AUDIT_REASON
   );
 
-  return NextResponse.json({ ok: true });
+  return auditResponse(audit, priorReadFailed, { testItemId, action: "set" });
 }
