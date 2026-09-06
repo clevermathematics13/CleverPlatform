@@ -5,6 +5,7 @@ import type { ReflectionTest, StudentReflectionRow, ReflectionItem } from "@/lib
 import { computeDisagreement } from "@/lib/reflection-utils";
 import { ScoreTable } from "@/components/reflection/ScoreTable";
 import { studentViewHref } from "@/lib/reflection-links";
+import { resolveGrade, isApproximateGrade, type GradeBoundary } from "@/lib/grade-bands";
 
 interface TeacherDashboardProps {
   tests: ReflectionTest[];
@@ -20,6 +21,8 @@ interface ClassData {
     subtopic_labels: string[];
   }[];
   rows: StudentReflectionRow[];
+  totalMarks: number | null;
+  boundaries: GradeBoundary[] | null;
 }
 
 type CellKey = `${string}:${string}`;
@@ -32,6 +35,25 @@ interface Course {
 /** Wrap a field in quotes and escape embedded quotes only when needed. */
 function csvField(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+/** Same colour ramp the gradebook grid uses for a grade, so an achievement
+ *  level looks the same wherever a teacher meets it. */
+function gradeTextColor(grade: number | null): string {
+  if (grade === null) return "text-da-muted";
+  if (grade === 7) return "text-emerald-400";
+  if (grade === 6) return "text-green-400";
+  if (grade === 5) return "text-lime-400";
+  if (grade === 4) return "text-yellow-400";
+  if (grade === 3) return "text-orange-400";
+  if (grade === 2) return "text-red-400";
+  return "text-red-300";
+}
+
+/** Marks a student actually earned on this test. Cells with no mark count as
+ *  nothing rather than zero -- an unmarked question is not a zero. */
+function earnedTotal(row: StudentReflectionRow): number {
+  return row.items.reduce((sum, c) => sum + (c.marks_awarded ?? 0), 0);
 }
 
 /** Student-rows × question-part-columns matrix of teacher marks, as a 2D array. */
@@ -224,6 +246,15 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
     }
   };
 
+  // Mean of the totals actually earned, over students who have any mark.
+  // Students with none are left out rather than counted as zero.
+  const markedTotals = visibleRows
+    .filter((r) => r.items.some((c) => c.marks_awarded !== null))
+    .map(earnedTotal);
+  const classTotalAverage = markedTotals.length
+    ? markedTotals.reduce((a, b) => a + b, 0) / markedTotals.length
+    : null;
+
   const classAverageByItem = data?.items.map((item) => {
     const idx = data.items.findIndex((i) => i.id === item.id);
     const teacherVals = visibleRows
@@ -327,6 +358,23 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                 <th className="sticky left-0 bg-da-surface px-3 py-2 text-left font-bold text-da-amber min-w-45">
                   Student
                 </th>
+                <th className="px-3 py-2 text-center font-bold text-da-amber whitespace-nowrap">
+                  Level
+                  {isApproximateGrade(data.boundaries) && (
+                    <span
+                      className="block text-[10px] font-normal text-da-muted"
+                      title="No grade boundary set assigned to this test - approximate 10-point bands"
+                    >
+                      ~approx
+                    </span>
+                  )}
+                </th>
+                <th className="px-3 py-2 text-center font-bold text-da-amber whitespace-nowrap">
+                  Total
+                  {data.totalMarks ? (
+                    <span className="block text-xs font-normal text-da-muted">/{data.totalMarks}</span>
+                  ) : null}
+                </th>
                 {data.items.map((item) => (
                   <th key={item.id} className="px-3 py-2 text-center font-bold text-da-amber whitespace-nowrap">
                     Q{item.question_number}{item.part_label}
@@ -358,6 +406,30 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                       {row.display_name}
                     </button>
                   </td>
+
+                  {/* Achievement level and total earned */}
+                  {(() => {
+                    const earned = earnedTotal(row);
+                    const hasMarks = row.items.some((c) => c.marks_awarded !== null);
+                    const level =
+                      hasMarks && data.totalMarks
+                        ? resolveGrade((earned / data.totalMarks) * 100, data.boundaries)
+                        : null;
+                    return (
+                      <>
+                        <td className="px-3 py-2 text-center">
+                          {level === null ? (
+                            <span className="text-da-muted">—</span>
+                          ) : (
+                            <span className={`font-bold ${gradeTextColor(level)}`}>{level}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-center font-semibold text-da-text tabular-nums">
+                          {hasMarks ? earned : <span className="font-normal text-da-muted">—</span>}
+                        </td>
+                      </>
+                    );
+                  })()}
 
                   {/* Mark cells */}
                   {row.items.map((cell, i) => {
@@ -461,6 +533,10 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
               <tr className="border-t-2 border-da-border/60 bg-da-surface/70">
                 <td className="sticky left-0 z-10 bg-da-surface/70 px-3 py-2 font-bold text-da-amber">
                   Class Average
+                </td>
+                <td className="px-3 py-2 text-center text-da-muted">—</td>
+                <td className="px-3 py-2 text-center font-bold text-da-amber tabular-nums">
+                  {classTotalAverage === null ? "—" : classTotalAverage.toFixed(1)}
                 </td>
                 {classAverageByItem.map((avg, idx) => {
                   const diff = avg.teacherAvg !== null && avg.selfAvg !== null

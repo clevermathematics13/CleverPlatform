@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { computeDisagreement } from "@/lib/reflection-utils";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
+import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
   ReflectionTest,
   ReflectionItem,
@@ -441,7 +442,15 @@ export async function getStudentMastery(
 /** Get class-wide reflection data for teacher dashboard. */
 export async function getClassReflectionData(
   testId: string
-): Promise<{ items: { id: string; question_number: number; part_label: string; max_marks: number; subtopic_codes: string[]; subtopic_labels: string[] }[]; rows: StudentReflectionRow[] }> {
+): Promise<{
+  items: { id: string; question_number: number; part_label: string; max_marks: number; subtopic_codes: string[]; subtopic_labels: string[] }[];
+  rows: StudentReflectionRow[];
+  /** tests.total_marks, for the percentage behind each achievement level. */
+  totalMarks: number | null;
+  /** The test's grade boundaries, or null when it has no set assigned -- the
+   *  dashboard then falls back to generic bands and says so. */
+  boundaries: GradeBoundary[] | null;
+}> {
   const supabase = await createClient();
 
   // Get test items
@@ -467,16 +476,33 @@ export async function getClassReflectionData(
     ),
   }));
 
-  if (!itemsWithLabels.length) return { items: [], rows: [] };
+  if (!itemsWithLabels.length) return { items: [], rows: [], totalMarks: null, boundaries: null };
 
   // Get the test to find course
   const { data: test } = await supabase
     .from("tests")
-    .select("course_id")
+    .select("course_id, total_marks, boundary_set_id")
     .eq("id", testId)
     .single();
 
-  if (!test?.course_id) return { items: itemsWithLabels, rows: [] };
+  // Levels come from the test's own boundary set where it has one, so the
+  // dashboard and the gradebook never disagree about a student's grade.
+  let boundaries: GradeBoundary[] | null = null;
+  if (test?.boundary_set_id) {
+    const { data: rows } = await supabase
+      .from("grade_boundaries")
+      .select("grade, min_proportion")
+      .eq("set_id", test.boundary_set_id)
+      .order("grade", { ascending: true });
+    boundaries = (rows ?? []).map((b) => ({
+      grade: b.grade as number,
+      min_proportion: Number(b.min_proportion),
+    }));
+    if (boundaries.length === 0) boundaries = null;
+  }
+  const totalMarks = (test?.total_marks as number | null) ?? null;
+
+  if (!test?.course_id) return { items: itemsWithLabels, rows: [], totalMarks, boundaries };
 
   // The roster, not the accounts. This used to read the `students` table,
   // which only gains a row on a student's first sign-in -- so a class where
@@ -492,7 +518,7 @@ export async function getClassReflectionData(
   const { roster, sourceCourseIds } = await loadInvitedRoster(supabase, test.course_id, {
     includeTrackSiblings: true,
   });
-  if (roster.length === 0) return { items: itemsWithLabels, rows: [] };
+  if (roster.length === 0) return { items: itemsWithLabels, rows: [], totalMarks, boundaries };
 
   const itemIds = itemsWithLabels.map((i) => i.id);
   const invitedIds = roster.map((r) => r.invitedId);
@@ -635,7 +661,7 @@ export async function getClassReflectionData(
   });
 
   rows.sort((a, b) => a.display_name.localeCompare(b.display_name));
-  return { items: itemsWithLabels, rows };
+  return { items: itemsWithLabels, rows, totalMarks, boundaries };
 }
 
 /** Get heatmap data for class mastery. */

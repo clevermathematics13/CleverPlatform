@@ -1,6 +1,13 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import {
+  resolveGrade,
+  pctToGradeFallback,
+  type GradeBoundary,
+} from "@/lib/grade-bands";
+
+export type { GradeBoundary };
 
 // --- Types --------------------------------------------------------------------
 
@@ -14,10 +21,6 @@ export type TestItem = {
 };
 
 // A single grade threshold row from grade_boundaries table
-export type GradeBoundary = {
-  grade: number;        // 1–7
-  min_proportion: number; // e.g. 0.57 = 57%
-};
 
 export type Test = {
   id: string;
@@ -42,53 +45,6 @@ type MarksState = Record<string, Record<string, number | null>>;
 // --- Grade helpers -------------------------------------------------------------
 
 const COMPONENTS = ["P1", "P2", "P3", "IA"] as const;
-
-/**
- * Hardcoded fallback used when a test has no boundary set assigned.
- * Approximate IB-style 10-point bands. Shown with a '~' badge to
- * make clear these are estimates, not calibrated boundaries.
- */
-function pctToGradeFallback(pct: number): number {
-  if (pct >= 80) return 7;
-  if (pct >= 70) return 6;
-  if (pct >= 60) return 5;
-  if (pct >= 50) return 4;
-  if (pct >= 40) return 3;
-  if (pct >= 30) return 2;
-  return 1;
-}
-
-/**
- * Boundary-aware grade lookup.
- * `boundaries` is sorted grade 1→7. Each row specifies the minimum
- * proportion (0–1) needed to achieve that grade.
- * We walk from grade 7 down to 1 and return the first grade whose
- * min_proportion threshold the student meets.
- */
-function pctToGradeWithBoundaries(
-  pct: number,
-  boundaries: GradeBoundary[]
-): number {
-  // proportion form: pct is already a percentage, so convert
-  const proportion = pct / 100;
-  // Sort descending by grade so we check 7 first
-  const sorted = [...boundaries].sort((a, b) => b.grade - a.grade);
-  for (const row of sorted) {
-    if (proportion >= row.min_proportion) return row.grade;
-  }
-  return 1;
-}
-
-/** Resolve grade from pct, using boundaries if available or fallback if not. */
-function resolveGrade(
-  pct: number,
-  boundaries: GradeBoundary[] | null
-): number {
-  if (boundaries && boundaries.length > 0) {
-    return pctToGradeWithBoundaries(pct, boundaries);
-  }
-  return pctToGradeFallback(pct);
-}
 
 function gradeColor(grade: number | null): string {
   if (grade === null) return "text-da-muted";
