@@ -1,10 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
+  ANCHOR_TOLERANCE_PT,
   MIN_BOX_FRACTION,
   PAD_FLOOR,
   PAD_PROPORTION,
   fractionBoxToPoints,
   noExpansionCaps,
+  anchorToEvidenceBox,
   computeExpansionCaps,
   normalizeFractionBox,
   padModelBox,
@@ -225,5 +227,69 @@ describe("computeExpansionCaps", () => {
   it("falls back to the region's own edges when the page size is missing", () => {
     const regions = [{ pageIndex: 9, x0Pt: 50, y0Pt: 100, x1Pt: 500, y1Pt: 200 }];
     expect(computeExpansionCaps(regions, A4)[0]).toEqual({ expandMaxX1Pt: 500, expandMaxY1Pt: 200 });
+  });
+});
+
+describe("anchorToEvidenceBox", () => {
+  const A4 = { widthPt: 595, heightPt: 842 };
+
+  it("converts a region to fractions of its reference page", () => {
+    const box = anchorToEvidenceBox({
+      anchor: { x0Pt: 59.5, y0Pt: 200, x1Pt: 535.5, y1Pt: 300 },
+      referenceSize: A4,
+      page: 3,
+      tolerancePt: 0,
+    });
+    expect(box.page).toBe(3);
+    expect(box.x0).toBeCloseTo(0.1, 10);
+    expect(box.x1).toBeCloseTo(0.9, 10);
+    expect(box.y0).toBeCloseTo(200 / 842, 10);
+    expect(box.y1).toBeCloseTo(300 / 842, 10);
+  });
+
+  it("extends both vertical edges by the tolerance, and neither horizontal one", () => {
+    const anchor = { x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 300 };
+    const box = anchorToEvidenceBox({ anchor, referenceSize: A4, page: 1 });
+    expect(box.y0).toBeCloseTo((200 - ANCHOR_TOLERANCE_PT) / 842, 10);
+    expect(box.y1).toBeCloseTo((300 + ANCHOR_TOLERANCE_PT) / 842, 10);
+    // Horizontal drift measured under 6pt across a class, so x is untouched.
+    expect(box.x0).toBeCloseTo(50 / 595, 10);
+    expect(box.x1).toBeCloseTo(500 / 595, 10);
+  });
+
+  it("stops the downward tolerance at the expansion cap", () => {
+    // The cap is the next region's top. Growing past it is how a crop ends up
+    // showing the following part's answer -- the failure being fixed.
+    const anchor = { x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 300 };
+    const box = anchorToEvidenceBox({ anchor, referenceSize: A4, page: 1, maxY1Pt: 310 });
+    expect(box.y1).toBeCloseTo(310 / 842, 10);
+  });
+
+  it("never shrinks the region when the cap is tighter than its own bottom", () => {
+    const anchor = { x0Pt: 50, y0Pt: 200, x1Pt: 500, y1Pt: 300 };
+    const box = anchorToEvidenceBox({ anchor, referenceSize: A4, page: 1, maxY1Pt: 250 });
+    expect(box.y1).toBeCloseTo(300 / 842, 10);
+  });
+
+  it("does not run off the top of the page", () => {
+    const box = anchorToEvidenceBox({
+      anchor: { x0Pt: 50, y0Pt: 5, x1Pt: 500, y1Pt: 60 },
+      referenceSize: A4,
+      page: 1,
+    });
+    expect(box.y0).toBe(0);
+  });
+
+  it("gives the same fractions whatever the scan's page size turns out to be", () => {
+    // The point of crossing through fractions: the stored box describes a
+    // proportion of the page, so the route can multiply it by whatever size
+    // the student's own scan page actually is.
+    const anchor = { x0Pt: 59.5, y0Pt: 210.5, x1Pt: 297.5, y1Pt: 421 };
+    const box = anchorToEvidenceBox({ anchor, referenceSize: A4, page: 1, tolerancePt: 0 });
+    expect(fractionBoxToPoints(box, A4)).toEqual({ x0Pt: 59.5, y0Pt: 210.5, x1Pt: 297.5, y1Pt: 421 });
+    // Same proportions, a Letter-sized scan: different points, same place.
+    const onLetter = fractionBoxToPoints(box, { widthPt: 612, heightPt: 792 });
+    expect(onLetter.x0Pt).toBeCloseTo(0.1 * 612, 8);
+    expect(onLetter.y0Pt).toBeCloseTo(0.25 * 792, 8);
   });
 });

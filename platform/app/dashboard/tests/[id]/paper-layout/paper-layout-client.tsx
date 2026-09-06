@@ -227,10 +227,12 @@ export function PaperLayoutClient({ testId }: { testId: string }) {
       )}
       {status && <p className="text-sm text-green-300">{status}</p>}
 
-      <p className="rounded border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-        Regions are not in use yet. Saving them here records the layout; the marker
-        still locates each crop itself until the code that reads these regions
-        ships. Nothing you do on this page changes a mark.
+      <p className="rounded border border-da-border bg-da-surface px-3 py-2 text-xs text-da-muted">
+        Regions are used for marking runs once the layout is <strong className="text-da-text">locked</strong>
+        {" "}— a draft is ignored, so you can draw at your own pace. Any part without a
+        region falls back to the marker locating it itself, as it does today.
+        Nothing on this page changes a mark: crops are cut after marking is
+        finished and are never fed back into it.
       </p>
 
       {!layout ? (

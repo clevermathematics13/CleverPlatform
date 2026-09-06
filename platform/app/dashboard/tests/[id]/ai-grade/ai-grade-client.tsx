@@ -120,10 +120,11 @@ interface ResultRow {
   /** The fractional-page box `evidence_image_url` was cropped from, if any -- lets the UI fetch the full page for context. */
   evidence_box: { page: number; x0: number; y0: number; x1: number; y1: number } | null;
   /**
-   * Where that box came from: "model" (located by the grader, and wrong far
-   * more often than it looks), "teacher" (redrawn by hand), or null for rows
-   * graded before the column existed. Shown as a badge so a corrected crop is
-   * not mistaken for a guessed one.
+   * Where that box came from: "anchor" (this paper's locked layout), "teacher"
+   * (redrawn by hand on one student's scan), "model" (located by the grader,
+   * and wrong far more often than it looks), or null for rows graded before the
+   * column existed. Badged so a reliable region is not mistaken for a guessed
+   * one.
    */
   evidence_box_source: string | null;
   /** Question source image(s) from the PPQ bank, if any are on file for this part. */
@@ -1296,6 +1297,14 @@ export function AiGradeClient({ testId }: { testId: string }) {
                                             className="rounded border border-green-400/40 bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-green-300"
                                           >
                                             Region set by you
+                                          </span>
+                                        )}
+                                        {r.evidence_box_source === "anchor" && (
+                                          <span
+                                            title="Cut from this paper's locked layout, not located by the marker."
+                                            className="rounded border border-blue-400/40 bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-300"
+                                          >
+                                            Paper layout
                                           </span>
                                         )}
                                         {!r.evidence_image_url && (

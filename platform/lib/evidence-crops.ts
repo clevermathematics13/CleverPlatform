@@ -252,3 +252,81 @@ export function computeExpansionCaps(
     };
   });
 }
+
+/**
+ * How far a student's writing may sit from where a per-paper region puts it,
+ * in points.
+ *
+ * Measured across six classmates' scans of the same booklet: vertical offset
+ * between two students on the same printed page is bimodal -- either 0pt or
+ * about 27pt, never in between. It is a grey scanner band at the top of the
+ * image, present on some pages and not others, which shifts everything below
+ * it down. Horizontal drift over the same sample was under 6pt, so no
+ * corresponding x tolerance is warranted.
+ *
+ * Applied to BOTH edges. Adaptive expansion looked like it covered the
+ * downward direction, but it only grows while ink is still touching the edge,
+ * and the whitespace between two answers stops it dead -- verified by cropping
+ * one student's regions out of another's scan, where Q2(b) came back showing
+ * Q2(a)'s answer for exactly this reason. The downward tolerance is bounded by
+ * the region's expansion cap so it still cannot reach into the next part.
+ *
+ * This is deliberately not a detected per-scan offset: detecting one needs the
+ * page rasterised, and a fixed tolerance costs a line of extra context against
+ * a model error that measured 89pt on average.
+ */
+export const ANCHOR_TOLERANCE_PT = 28;
+
+/** Absolute points on a page -> fractions of that same page. */
+export function pointsToFractions(points: PointBox, size: PageSizePt): Omit<EvidenceBox, "page"> {
+  return {
+    x0: points.x0Pt / size.widthPt,
+    y0: points.y0Pt / size.heightPt,
+    x1: points.x1Pt / size.widthPt,
+    y1: points.y1Pt / size.heightPt,
+  };
+}
+
+/**
+ * Turn a stored per-paper region into the box to crop from one student's scan.
+ *
+ * Everything crosses through FRACTIONS of the reference page rather than being
+ * copied as points. That is what makes the geometry survive a student scanned
+ * at a different paper size or scanner scale: the same proportion of the page
+ * is cut either way, and the route multiplies the result by the actual scan
+ * page's own size. Copying points straight across is the gap na_anchors leaves
+ * open, where a Letter-vs-A4 scan would shift every crop with no signal.
+ *
+ * `page` is the 1-indexed page in the STUDENT's scan, which is the anchor's
+ * own page index plus one whenever the deterministic page mapping holds. The
+ * caller owns deciding whether it does.
+ */
+export function anchorToEvidenceBox(args: {
+  anchor: PointBox;
+  referenceSize: PageSizePt;
+  page: number;
+  tolerancePt?: number;
+  /** The region's growth cap in reference points; the downward tolerance stops here. */
+  maxY1Pt?: number;
+}): EvidenceBox {
+  const tolerance = args.tolerancePt ?? ANCHOR_TOLERANCE_PT;
+  const ceiling = args.maxY1Pt ?? args.referenceSize.heightPt;
+  const withTolerance: PointBox = {
+    ...args.anchor,
+    y0Pt: Math.max(0, args.anchor.y0Pt - tolerance),
+    // Grow down by the tolerance, but never past the cap (the next region's
+    // top) and never above the region's own bottom edge if the cap is tighter.
+    y1Pt: Math.min(
+      args.referenceSize.heightPt,
+      Math.max(args.anchor.y1Pt, Math.min(args.anchor.y1Pt + tolerance, ceiling))
+    ),
+  };
+  const fractions = pointsToFractions(withTolerance, args.referenceSize);
+  return {
+    page: args.page,
+    x0: clamp01(fractions.x0),
+    y0: clamp01(fractions.y0),
+    x1: clamp01(fractions.x1),
+    y1: clamp01(fractions.y1),
+  };
+}
