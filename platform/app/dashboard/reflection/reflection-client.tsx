@@ -18,6 +18,7 @@ import { UploadSection } from "@/components/reflection/UploadSection";
 import { TeacherDashboard } from "@/components/reflection/TeacherDashboard";
 import { DocPanel } from "@/components/reflection/DocPanel";
 import { createClient } from "@/lib/supabase/client";
+import { initialReflectionStep, isSelfGradeSkipped } from "@/lib/reflection-steps";
 
 interface ReflectionClientProps {
   profile: { id: string; role: string; display_name: string };
@@ -59,19 +60,27 @@ export function ReflectionClient({
   const hasTeacherMarks = items.some((i) => i.marks_awarded !== null);
   const disagreement = computeDisagreement(items);
 
-  const getInitialStep = (): ReflectionStep => {
-    if (pdfUpload) return 4;
-    if (hasSelfScores && hasTeacherMarks && disagreement === 0) return 3;
-    if (hasSelfScores && hasTeacherMarks) return 2;
-    if (hasSelfScores) return 2;
-    return 1;
-  };
+  // Currently selected test object (paper/mark scheme URLs, and whether this
+  // test gates Clev's Marks behind self-assessment). Read before the step
+  // state below, which depends on it.
+  const selectedTest = tests.find((t) => t.id === selectedTestId) ?? null;
+  const selfAssessmentRequired = selectedTest?.require_self_assessment ?? true;
 
-  const [step, setStep] = useState<ReflectionStep>(getInitialStep);
+  const [step, setStep] = useState<ReflectionStep>(() =>
+    initialReflectionStep({
+      hasUpload: !!pdfUpload,
+      hasSelfScores,
+      hasTeacherMarks,
+      disagreement,
+      selfAssessmentRequired,
+    })
+  );
   const [docPanel, setDocPanel] = useState<{ title: string; url: string } | null>(null);
 
-  // Currently selected test object (for paper/mark scheme URLs)
-  const selectedTest = tests.find((t) => t.id === selectedTestId) ?? null;
+  // Self-Grade is never taken away, only moved out of the way: when this test
+  // does not require it, the flow opens on Compare and the tracker offers the
+  // step back rather than ticking it off as done.
+  const selfGradeSkipped = isSelfGradeSkipped({ hasSelfScores, selfAssessmentRequired });
 
   const handleTestChange = (testId: string) => {
     router.push(`/dashboard/reflection?testId=${testId}`);
@@ -208,7 +217,11 @@ export function ReflectionClient({
       )}
 
       <HowItWorks />
-      <StepTracker current={step} />
+      <StepTracker
+        current={step}
+        onSelect={setStep}
+        skippedSteps={selfGradeSkipped ? [1] : []}
+      />
 
       {/* Step content */}
       {step === 1 && (
@@ -229,6 +242,25 @@ export function ReflectionClient({
             editable={!readOnlyPreview}
             onSave={readOnlyPreview ? undefined : handleSaveComparison}
           />
+
+          {selfGradeSkipped && (
+            <div className="rounded-lg border border-da-border bg-da-surface px-4 py-3 text-sm">
+              <p className="text-da-text">
+                Self-grading is optional for this test, so Clev&apos;s Marks are already here.
+              </p>
+              <p className="mt-1 text-da-muted">
+                You can still predict your own marks first if you want the disagreement score —
+                it only works out once you have.
+              </p>
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className="mt-2 rounded-lg bg-da-accent px-3 py-1.5 text-sm font-bold text-da-bg hover:bg-da-amber"
+              >
+                Self-grade this test
+              </button>
+            </div>
+          )}
 
           {!hasTeacherMarks && (
             <p className="text-sm text-da-muted">
