@@ -46,7 +46,19 @@ jobs:
       # it and recombined against the pooler. A secret that already points at
       # the pooler is passed through untouched, so switching it over later
       # needs no change here.
+      #
+      # working-directory matters as much as the connection does. The CLI reads
+      # `supabase/migrations` relative to where it runs, and this repo has TWO
+      # such directories: `platform/supabase/migrations` (the real one, 1:1 with
+      # the live ledger) and a root `supabase/` kept for the edge function that
+      # deploy-edge-functions.yml ships -- which still carries three 2024/2025
+      # migration files that predate the reconciliation and are in no ledger.
+      # Run from the root, the CLI read those three, saw none of the ledger's
+      # versions locally, and bailed with "Remote migration versions not found
+      # in local migrations directory" listing all 116. It has never once
+      # applied a migration from CI.
       - name: Apply production migrations
+        working-directory: platform
         env:
           SUPABASE_DB_URL: ${{ secrets.CLEVERPLATFORM_SUPABASE_DB_URL }}
           PROJECT_REF: qnawglgnoojrlaivylou
