@@ -435,3 +435,20 @@ export function summarizeRubricFindings(
     publishable: blocking === 0,
   };
 }
+
+/**
+ * Whether a save should be held back for review.
+ *
+ * `acknowledged` is compared against exactly `true` rather than tested for
+ * truthiness, because the value arrives from a JSON body and, on the client,
+ * from a click handler. `onClick={handleSave}` hands React's mouse event to
+ * the first parameter, and any truthy value there would wave a paper through
+ * on its first save without the teacher ever seeing a finding -- the one
+ * failure that would make this gate worthless while looking like it worked.
+ */
+export function shouldHoldForRubricReview(
+  findings: RubricFinding[],
+  acknowledged: unknown
+): boolean {
+  return !summarizeRubricFindings(findings).publishable && acknowledged !== true;
+}

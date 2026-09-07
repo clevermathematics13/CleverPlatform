@@ -34,6 +34,7 @@ import {
   buildFormativeAssessmentSystemPrompt,
   buildFormativeAssessmentUserPrompt,
 } from "@/lib/formative-assessment-prompt";
+import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 
 type CourseOption = { id: string; name: string };
@@ -114,6 +115,8 @@ export function FormativeAssessmentSandbox() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [rubricFindings, setRubricFindings] = useState<RubricFinding[]>([]);
+  const [rubricBlocked, setRubricBlocked] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -228,7 +231,13 @@ export function FormativeAssessmentSandbox() {
     }
   }
 
-  async function handleSave() {
+  /**
+   * `acknowledge` re-sends a save the rubric gate refused. The teacher has to
+   * have seen the findings to get the button that sets it, which is the whole
+   * point -- a defect that is merely logged somewhere gets marked against
+   * fifty students anyway.
+   */
+  async function handleSave(acknowledge = false) {
     if (!courseId) {
       setError("Select a course before saving -- this is what makes the assessment gradeable.");
       return;
@@ -236,19 +245,47 @@ export function FormativeAssessmentSandbox() {
     setIsSaving(true);
     setError(null);
     setNotice(null);
+    if (!acknowledge) setRubricBlocked(false);
     try {
       const res = await fetch("/api/formative-assessments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ testId: savedTestId ?? undefined, courseId, draft, requireSelfAssessment }),
+        body: JSON.stringify({
+          testId: savedTestId ?? undefined,
+          courseId,
+          draft,
+          requireSelfAssessment,
+          ...(acknowledge ? { acknowledgeRubricFindings: true } : {}),
+        }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? `Save failed (${res.status})`);
-      setSavedTestId((data as { test?: { id: string } }).test?.id ?? null);
-      setNotice(
-        (data as { testItems?: string }).testItems === "synced"
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        test?: { id: string };
+        testItems?: string;
+        rubric?: { findings: RubricFinding[]; summary: { blocking: number; warnings: number } };
+      };
+
+      setRubricFindings(data.rubric?.findings ?? []);
+
+      if (res.status === 422 && data.rubric) {
+        // Not an error the teacher caused -- a review step. Kept out of the
+        // red error box so it does not read as "your work was lost".
+        setRubricBlocked(true);
+        return;
+      }
+      if (!res.ok) throw new Error(data.error ?? `Save failed (${res.status})`);
+
+      setRubricBlocked(false);
+      setSavedTestId(data.test?.id ?? null);
+      const warnings = data.rubric?.summary.warnings ?? 0;
+      const saved =
+        data.testItems === "synced"
           ? "Saved -- ready to grade scanned student papers."
-          : "Saved, but syncing gradeable items failed -- try saving again.",
+          : "Saved, but syncing gradeable items failed -- try saving again.";
+      setNotice(
+        warnings > 0
+          ? `${saved} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
+          : saved,
       );
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -315,7 +352,7 @@ export function FormativeAssessmentSandbox() {
             />
             <button
               type="button"
-              onClick={handleSave}
+              onClick={() => handleSave()}
               disabled={isSaving}
               className="w-full rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -364,6 +401,58 @@ export function FormativeAssessmentSandbox() {
           </div>
 
           {error && <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
+
+          {rubricFindings.length > 0 && (
+            <div
+              className={`space-y-3 rounded-lg border px-3 py-3 ${
+                rubricBlocked
+                  ? "border-amber-500/50 bg-amber-500/10"
+                  : "border-da-border bg-da-surface/60"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-da-text">
+                    {rubricBlocked
+                      ? "Review the mark scheme before saving"
+                      : "Mark scheme notes"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-da-muted">
+                    {rubricBlocked
+                      ? "These make the paper hard to mark consistently. Fixing them now is far cheaper than after a class has sat it."
+                      : "Not blocking -- worth a look before the class sits it."}
+                  </p>
+                </div>
+                {rubricBlocked && (
+                  <button
+                    type="button"
+                    onClick={() => void handleSave(true)}
+                    disabled={isSaving}
+                    className="shrink-0 rounded-lg border border-da-border px-3 py-1.5 text-xs font-medium text-da-muted transition-colors hover:bg-da-hover disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSaving ? "Saving…" : "Save anyway"}
+                  </button>
+                )}
+              </div>
+
+              <ul className="space-y-1.5">
+                {rubricFindings.map((f, i) => (
+                  <li key={`${f.part}-${f.code}-${i}`} className="flex gap-2 text-xs">
+                    <span
+                      className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 font-mono text-[10px] uppercase ${
+                        f.severity === "block"
+                          ? "bg-amber-500/20 text-amber-200"
+                          : "bg-da-hover text-da-muted"
+                      }`}
+                    >
+                      {f.part}
+                    </span>
+                    <span className="text-da-muted">{f.message}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* -- Right panel: editable content -- */}

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { AssignmentDraft, AssignmentQuestion } from "./assignments";
-import { validateRubric, summarizeRubricFindings } from "./rubric-validator";
+import {
+  validateRubric,
+  summarizeRubricFindings,
+  shouldHoldForRubricReview,
+} from "./rubric-validator";
 
 /**
  * Every violating case here is copied verbatim from Formative Assessment 1,
@@ -347,6 +351,38 @@ describe("validateRubric", () => {
     );
     expect(blocked.blocking).toBeGreaterThan(0);
     expect(blocked.publishable).toBe(false);
+  });
+
+  // -- the save gate ---------------------------------------------------------
+  describe("shouldHoldForRubricReview", () => {
+    const blocking = validateRubric(
+      draftOf([{ prompt: "Write the GCF.", marks: 1, markScheme: "A1." }])
+    );
+    const clean = validateRubric(
+      draftOf([
+        { prompt: "Write the GCF.", marks: 1, markScheme: "A1. Accept 18 only; 18y earns 0." },
+      ])
+    );
+
+    it("holds a blocking draft until it is acknowledged", () => {
+      expect(shouldHoldForRubricReview(blocking, undefined)).toBe(true);
+      expect(shouldHoldForRubricReview(blocking, true)).toBe(false);
+    });
+
+    it("never holds a draft with nothing blocking", () => {
+      expect(summarizeRubricFindings(clean).blocking).toBe(0);
+      expect(shouldHoldForRubricReview(clean, undefined)).toBe(false);
+    });
+
+    it("requires exactly true, so a stray truthy value cannot wave a paper through", () => {
+      // The value reaches this from a JSON body and, on the client, from a
+      // click handler -- `onClick={handleSave}` would pass React's mouse
+      // event straight into it. Anything short of an explicit true would
+      // skip the review the gate exists to force.
+      for (const sneaky of ["true", 1, {}, [], "yes", new Date()]) {
+        expect(shouldHoldForRubricReview(blocking, sneaky)).toBe(true);
+      }
+    });
   });
 
   it("returns findings rather than throwing on a malformed draft", () => {
