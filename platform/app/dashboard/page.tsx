@@ -60,10 +60,13 @@ async function TeacherDashboard({
   `);
   if (!showHidden) studentsQuery = studentsQuery.eq("hidden", false);
 
+  // Every invitation counts toward "Enrolled (including not yet signed in)",
+  // whether or not the student has an account yet -- so this must not filter
+  // on registered, which now means exactly "has an account". Rows that also
+  // appear in `students` are deduplicated by email below.
   let invitedQuery = supabase
     .from("invited_students")
-    .select("id, email")
-    .eq("registered", true);
+    .select("id, email");
   if (!showHidden) invitedQuery = invitedQuery.eq("hidden", false);
 
   const [studentsRes, invitedRes, assignmentsRes, questionsRes, coursesRes] = await Promise.all([

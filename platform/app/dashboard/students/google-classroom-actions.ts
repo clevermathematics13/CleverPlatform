@@ -242,7 +242,12 @@ export async function importGoogleStudents(formData: FormData) {
       continue;
     }
 
-    // Upsert into invited_students (auto-register immediately)
+    // Upsert into invited_students. registered is deliberately not written
+    // here -- see the same note in actions.ts: it means "has an account", and
+    // only the profile lookup below (or auto_enroll_from_invitations on first
+    // sign-in) earns it. An import cannot know whether the student has ever
+    // signed in, and claiming so hides a whole class that cannot yet read
+    // anything the teacher publishes.
     const { error: inviteError } = await supabase
       .from("invited_students")
       .upsert(
@@ -250,7 +255,6 @@ export async function importGoogleStudents(formData: FormData) {
           email,
           full_name: fullName,
           course_id: courseId,
-          registered: true,
         },
         { onConflict: "email,course_id" }
       );
