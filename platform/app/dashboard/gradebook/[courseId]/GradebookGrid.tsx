@@ -22,6 +22,28 @@ export type TestItem = {
 
 // A single grade threshold row from grade_boundaries table
 
+/**
+ * A band of question numbers to sub-total inside an expanded test.
+ *
+ * An IB paper gets the standard Section A (Q1-8) / Section B (Q9+) split, which
+ * is real: those sections are short-response and extended-response, and the two
+ * percentages say whether marks are going on breadth or on sustained problems.
+ *
+ * A Formative Assessment gets its own LEVEL headings instead. Applying the Q8
+ * cut to one of those papers was actively misleading -- on Formative Assessment
+ * 1 it landed in the middle of LEVEL 3, so neither subtotal corresponded to
+ * anything the paper was built to measure. page.tsx derives these ranges.
+ */
+export type TestSection = {
+  /** Short column label, e.g. 'Sec A' or 'L1'. */
+  label: string;
+  /** Full name for the tooltip, e.g. 'LEVEL 3 -- CONNECT THE ALGEBRA'. */
+  title: string;
+  fromQ: number;
+  /** Inclusive upper bound; null means open-ended (the last section). */
+  toQ: number | null;
+};
+
 export type Test = {
   id: string;
   name: string;
@@ -29,8 +51,11 @@ export type Test = {
   total_marks: number;
   component: "P1" | "P2" | "P3" | "IA" | null;
   // null when no boundary set has been assigned to this test
+  boundary_set_id: string | null;
   boundary_set_name: string | null;  // e.g. 'A', 'B', 'C', 'D'
   boundaries: GradeBoundary[] | null; // sorted grade 1→7, null if unassigned
+  /** Subtotal bands for the expanded view, in display order. */
+  sections: TestSection[];
   items: TestItem[];
 };
 
@@ -121,42 +146,93 @@ function computeTestScore(
   return { grade: resolveGrade(pct, test.boundaries), earned, pct };
 }
 
+/**
+ * Band an aggregate percentage over several tests.
+ *
+ * The rule used to be "an aggregate always uses the generic fallback, because
+ * no single boundary set applies across tests". That is only true when the
+ * tests actually disagree. When every test a student sat carries the same set
+ * -- and with one assessment in a course, that is the common case -- the set
+ * plainly does apply, and ignoring it made the Overall column contradict the
+ * test column beside it: on 9G's Formative Assessment 1, 43 of 50 students
+ * read one level higher in Overall than in the column the marks came from,
+ * purely because Overall was banding 90%-for-a-7 marks against 80%-for-a-7.
+ *
+ * `contributing` is the tests the student actually has marks for, so a student
+ * who has only sat Grade 9 papers is banded as Grade 9 even if the course also
+ * holds a paper on some other set that they have not sat yet.
+ */
+function bandAggregate(
+  pct: number,
+  contributing: Test[]
+): { grade: number; approximate: boolean } {
+  const setIds = new Set(contributing.map((t) => t.boundary_set_id));
+  const [only] = [...setIds];
+  if (setIds.size === 1 && only !== null) {
+    const boundaries = contributing[0].boundaries;
+    if (boundaries && boundaries.length > 0) {
+      return { grade: resolveGrade(pct, boundaries), approximate: false };
+    }
+  }
+  return { grade: pctToGradeFallback(pct), approximate: true };
+}
+
 function computeComponentGrade(
   profileId: string,
   component: "P1" | "P2" | "P3" | "IA",
   tests: Test[],
   marks: MarksState
-): number | null {
+): { grade: number | null; pct: number | null; approximate: boolean } {
   const compTests = tests.filter((t) => t.component === component);
-  if (compTests.length === 0) return null;
+  if (compTests.length === 0) return { grade: null, pct: null, approximate: false };
   let totalEarned = 0;
   let totalPossible = 0;
-  let hasAny = false;
+  const contributing: Test[] = [];
   for (const test of compTests) {
     const { earned, pct } = computeTestScore(profileId, test, marks);
     if (pct !== null) {
       totalEarned += earned;
       totalPossible += test.total_marks;
-      hasAny = true;
+      contributing.push(test);
     }
   }
-  if (!hasAny || totalPossible === 0) return null;
-  // For component aggregates we use fallback (no single boundary set applies)
-  return pctToGradeFallback((totalEarned / totalPossible) * 100);
+  if (contributing.length === 0 || totalPossible === 0) {
+    return { grade: null, pct: null, approximate: false };
+  }
+  const pct = (totalEarned / totalPossible) * 100;
+  const { grade, approximate } = bandAggregate(pct, contributing);
+  return { grade, pct, approximate };
 }
 
-// IB standard: Section A = Q1–8, Section B = Q9+
-const SECTION_A_MAX_Q = 8;
+/** Tints for the section subtotal columns, cycled in order. The first two keep
+ *  the indigo/violet the Sec A / Sec B columns have always used. */
+const SECTION_TINTS = [
+  { bg: "bg-indigo-950/40", cellBg: "bg-indigo-950/30", edge: "border-indigo-800/40", head: "text-indigo-300/70", text: "text-indigo-300", soft: "text-indigo-200" },
+  { bg: "bg-violet-950/40", cellBg: "bg-violet-950/30", edge: "border-violet-800/40", head: "text-violet-300/70", text: "text-violet-300", soft: "text-violet-200" },
+  { bg: "bg-cyan-950/40", cellBg: "bg-cyan-950/30", edge: "border-cyan-800/40", head: "text-cyan-300/70", text: "text-cyan-300", soft: "text-cyan-200" },
+  { bg: "bg-fuchsia-950/40", cellBg: "bg-fuchsia-950/30", edge: "border-fuchsia-800/40", head: "text-fuchsia-300/70", text: "text-fuchsia-300", soft: "text-fuchsia-200" },
+];
 
-/** Columns an expanded test occupies: one per item, plus the Sec A and Sec B
- *  pairs when those sections exist. Shared by the "Abs" cell and the footer so
- *  the two cannot drift out of alignment with the header. */
-function expandedTestSpan(test: Test): number {
+function inSection(questionNumber: number, section: TestSection): boolean {
   return (
-    Math.max(1, test.items.length) +
-    (test.items.some((i) => i.question_number <= SECTION_A_MAX_Q) ? 2 : 0) +
-    (test.items.some((i) => i.question_number > SECTION_A_MAX_Q) ? 2 : 0)
+    questionNumber >= section.fromQ &&
+    (section.toQ === null || questionNumber <= section.toQ)
   );
+}
+
+/** The test's sections that actually contain marks, so an empty band (a paper
+ *  that stops at Q6 has no Section B) contributes no columns. */
+function presentSections(test: Test): TestSection[] {
+  return test.sections.filter((s) =>
+    test.items.some((i) => inSection(i.question_number, s))
+  );
+}
+
+/** Columns an expanded test occupies: one per item, plus a marks/% pair per
+ *  present section. Shared by the header, the "Abs" cell and the footer so the
+ *  three cannot drift out of alignment. */
+function expandedTestSpan(test: Test): number {
+  return Math.max(1, test.items.length) + 2 * presentSections(test).length;
 }
 
 interface SectionScore {
@@ -165,17 +241,18 @@ interface SectionScore {
   pct: number | null;
 }
 
+/** Earned / max / % for each of the test's present sections, in display order. */
 function computeSectionScores(
   profileId: string,
   test: Test,
   marks: MarksState
-): { secA: SectionScore | null; secB: SectionScore | null } {
-  const score = (items: TestItem[]): SectionScore | null => {
-    if (items.length === 0) return null;
+): SectionScore[] {
+  return presentSections(test).map((section) => {
     let earned = 0;
     let max = 0;
     let hasAny = false;
-    for (const item of items) {
+    for (const item of test.items) {
+      if (!inSection(item.question_number, section)) continue;
       max += item.max_marks;
       const m = marks[item.id]?.[profileId];
       if (m !== null && m !== undefined) {
@@ -184,33 +261,31 @@ function computeSectionScores(
       }
     }
     return { earned, max, pct: hasAny && max > 0 ? (earned / max) * 100 : null };
-  };
-  return {
-    secA: score(test.items.filter((i) => i.question_number <= SECTION_A_MAX_Q)),
-    secB: score(test.items.filter((i) => i.question_number > SECTION_A_MAX_Q)),
-  };
+  });
 }
 
 function computeOverallGrade(
   profileId: string,
   tests: Test[],
   marks: MarksState
-): { grade: number | null; pct: number | null } {
+): { grade: number | null; pct: number | null; approximate: boolean } {
   let totalEarned = 0;
   let totalPossible = 0;
-  let hasAny = false;
+  const contributing: Test[] = [];
   for (const test of tests) {
     const { earned, pct } = computeTestScore(profileId, test, marks);
     if (pct !== null) {
       totalEarned += earned;
       totalPossible += test.total_marks;
-      hasAny = true;
+      contributing.push(test);
     }
   }
-  if (!hasAny || totalPossible === 0) return { grade: null, pct: null };
+  if (contributing.length === 0 || totalPossible === 0) {
+    return { grade: null, pct: null, approximate: false };
+  }
   const pct = (totalEarned / totalPossible) * 100;
-  // Overall uses fallback — no single set applies across all tests
-  return { grade: pctToGradeFallback(pct), pct };
+  const { grade, approximate } = bandAggregate(pct, contributing);
+  return { grade, pct, approximate };
 }
 
 // --- Boundary set badge -------------------------------------------------------
@@ -497,7 +572,9 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
         kind: "levels",
         key: `comp:${comp}`,
         label: comp,
-        grades: students.map((s) => computeComponentGrade(s.profile_id, comp, tests, marks)),
+        grades: students.map(
+          (s) => computeComponentGrade(s.profile_id, comp, tests, marks).grade
+        ),
       });
     }
   } else {
@@ -606,14 +683,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                       </th>
                     );
                   }
-                  const aMax = test.items
-                    .filter((i) => i.question_number <= SECTION_A_MAX_Q)
-                    .reduce((s, i) => s + i.max_marks, 0);
-                  const bMax = test.items
-                    .filter((i) => i.question_number > SECTION_A_MAX_Q)
-                    .reduce((s, i) => s + i.max_marks, 0);
-                  const hasA = aMax > 0;
-                  const hasB = bMax > 0;
+                  const sections = presentSections(test);
 
                   return (
                     <React.Fragment key={test.id}>
@@ -650,30 +720,31 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                           </span>
                         </th>
                       ))}
-                      {hasA && (
-                        <>
-                          <th className={`${thBase} min-w-16 bg-indigo-950/40 border-l border-indigo-800/40`}>
-                            <span className="block text-[10px] text-indigo-300/70">Sec A</span>
-                            <span className="text-indigo-300">/{aMax}</span>
-                          </th>
-                          <th className={`${thBase} min-w-14 bg-indigo-950/40`}>
-                            <span className="block text-[10px] text-indigo-300/70">Sec A</span>
-                            <span className="text-indigo-300">%</span>
-                          </th>
-                        </>
-                      )}
-                      {hasB && (
-                        <>
-                          <th className={`${thBase} min-w-16 bg-violet-950/40 border-l border-violet-800/40`}>
-                            <span className="block text-[10px] text-violet-300/70">Sec B</span>
-                            <span className="text-violet-300">/{bMax}</span>
-                          </th>
-                          <th className={`${thBase} min-w-14 bg-violet-950/40 border-r border-violet-800/40`}>
-                            <span className="block text-[10px] text-violet-300/70">Sec B</span>
-                            <span className="text-violet-300">%</span>
-                          </th>
-                        </>
-                      )}
+                      {sections.map((section, sIdx) => {
+                        const tint = SECTION_TINTS[sIdx % SECTION_TINTS.length];
+                        const max = test.items
+                          .filter((i) => inSection(i.question_number, section))
+                          .reduce((s, i) => s + i.max_marks, 0);
+                        const isLast = sIdx === sections.length - 1;
+                        return (
+                          <React.Fragment key={section.label}>
+                            <th
+                              className={`${thBase} min-w-16 ${tint.bg} border-l ${tint.edge}`}
+                              title={section.title}
+                            >
+                              <span className={`block text-[10px] ${tint.head}`}>{section.label}</span>
+                              <span className={tint.text}>/{max}</span>
+                            </th>
+                            <th
+                              className={`${thBase} min-w-14 ${tint.bg} ${isLast ? `border-r ${tint.edge}` : ""}`}
+                              title={section.title}
+                            >
+                              <span className={`block text-[10px] ${tint.head}`}>{section.label}</span>
+                              <span className={tint.text}>%</span>
+                            </th>
+                          </React.Fragment>
+                        );
+                      })}
                     </React.Fragment>
                   );
                 }
@@ -724,8 +795,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
               const evenRow = rowIdx % 2 === 0;
               const rowBg = evenRow ? "bg-da-surface" : "bg-da-bg/50";
               const stickyBg = evenRow ? "bg-da-surface" : "bg-da-bg/65";
-              const { grade: overallGrade, pct: overallPct } =
-                computeOverallGrade(student.profile_id, tests, marks);
+              const {
+                grade: overallGrade,
+                pct: overallPct,
+                approximate: overallApprox,
+              } = computeOverallGrade(student.profile_id, tests, marks);
 
               return (
                 <tr key={student.profile_id} className={rowBg}>
@@ -739,7 +813,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                   {/* Overall / Components */}
                   {expandedOverall ? (
                     COMPONENTS.map((comp) => {
-                      const g = computeComponentGrade(
+                      const { grade: g, pct, approximate } = computeComponentGrade(
                         student.profile_id,
                         comp as "P1" | "P2" | "P3" | "IA",
                         tests,
@@ -749,6 +823,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                         <td
                           key={comp}
                           className={`${tdBase} font-bold text-base ${gradeColor(g)} ${gradeBg(g)}`}
+                          title={
+                            pct !== null
+                              ? `${pct.toFixed(1)}% · ${approximate ? "approximate bands" : "test's own boundaries"}`
+                              : undefined
+                          }
                         >
                           {g ?? "—"}
                         </td>
@@ -759,7 +838,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                       className={`${tdBase} font-bold text-lg ${gradeColor(overallGrade)} ${gradeBg(overallGrade)}`}
                       title={
                         overallPct !== null
-                          ? `${overallPct.toFixed(1)}%`
+                          ? `${overallPct.toFixed(1)}% · ${
+                              overallApprox
+                                ? "approximate bands (tests use different boundary sets)"
+                                : "the boundaries of the tests it covers"
+                            }`
                           : undefined
                       }
                     >
@@ -795,7 +878,8 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                           </td>
                         );
                       }
-                      const { secA, secB } = computeSectionScores(
+                      const sections = presentSections(test);
+                      const sectionScores = computeSectionScores(
                         student.profile_id,
                         test,
                         marks
@@ -857,28 +941,28 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                               </td>
                             );
                           })}
-                          {secA && (
-                            <>
-                              <td className={`${tdBase} font-semibold text-indigo-300 bg-indigo-950/30 border-l border-indigo-800/40`}>
-                                {secA.pct !== null ? secA.earned : "—"}
-                              </td>
-                              <td className={`${tdBase} text-indigo-200 bg-indigo-950/30`}
-                                title={secA.pct !== null ? `${secA.earned}/${secA.max}` : undefined}>
-                                {secA.pct !== null ? `${secA.pct.toFixed(0)}%` : "—"}
-                              </td>
-                            </>
-                          )}
-                          {secB && (
-                            <>
-                              <td className={`${tdBase} font-semibold text-violet-300 bg-violet-950/30 border-l border-violet-800/40`}>
-                                {secB.pct !== null ? secB.earned : "—"}
-                              </td>
-                              <td className={`${tdBase} text-violet-200 bg-violet-950/30 border-r border-violet-800/40`}
-                                title={secB.pct !== null ? `${secB.earned}/${secB.max}` : undefined}>
-                                {secB.pct !== null ? `${secB.pct.toFixed(0)}%` : "—"}
-                              </td>
-                            </>
-                          )}
+                          {sections.map((section, sIdx) => {
+                            const tint = SECTION_TINTS[sIdx % SECTION_TINTS.length];
+                            const score = sectionScores[sIdx];
+                            const isLast = sIdx === sections.length - 1;
+                            return (
+                              <React.Fragment key={section.label}>
+                                <td className={`${tdBase} font-semibold ${tint.text} ${tint.cellBg} border-l ${tint.edge}`}>
+                                  {score.pct !== null ? score.earned : "—"}
+                                </td>
+                                <td
+                                  className={`${tdBase} ${tint.soft} ${tint.cellBg} ${isLast ? `border-r ${tint.edge}` : ""}`}
+                                  title={
+                                    score.pct !== null
+                                      ? `${section.title}: ${score.earned}/${score.max}`
+                                      : section.title
+                                  }
+                                >
+                                  {score.pct !== null ? `${score.pct.toFixed(0)}%` : "—"}
+                                </td>
+                              </React.Fragment>
+                            );
+                          })}
                         </React.Fragment>
                       );
                     }

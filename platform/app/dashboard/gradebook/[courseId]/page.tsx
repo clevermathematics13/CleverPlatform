@@ -2,10 +2,62 @@ import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
-import { GradebookGrid } from "./GradebookGrid";
+import { GradebookGrid, type TestSection } from "./GradebookGrid";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { loadTrackLinks, trackFamilyCourseIds } from "@/lib/track-courses";
+
+/** The IB split, and the default for any paper that does not carry its own
+ *  structure: Section A is short response, Section B extended response. */
+const IB_SECTIONS: TestSection[] = [
+  { label: "Sec A", title: "Section A - short response (Q1-8)", fromQ: 1, toQ: 8 },
+  { label: "Sec B", title: "Section B - extended response (Q9+)", fromQ: 9, toQ: null },
+];
+
+/** "LEVEL 3 -- CONNECT THE ALGEBRA" -> "L3", to fit a gradebook column. */
+function shortSectionLabel(heading: string, index: number): string {
+  const level = /^\s*LEVEL\s+(\d+)/i.exec(heading);
+  if (level) return `L${level[1]}`;
+  const firstWord = heading.trim().split(/[\s—-]+/)[0];
+  return firstWord && firstWord.length <= 6 ? firstWord : `S${index + 1}`;
+}
+
+/**
+ * Section ranges for a Formative Assessment, from the LEVEL headings it was
+ * authored with. Question numbering is global across sections (see
+ * deriveTestItems in lib/formative-assessment-bridge.ts), so each section owns
+ * a contiguous run of question numbers and only the per-section question
+ * *count* is needed to find it.
+ *
+ * That count is the only thing wanted from a ~17 kB draft, and PostgREST
+ * cannot aggregate inside JSONB, so the whole blob is fetched and thrown away.
+ * Fine while a course holds a handful of assessments; if that stops being true,
+ * put the section on test_items at write time rather than deriving it here.
+ */
+function sectionsFromCustomContent(customContent: unknown): TestSection[] | null {
+  const raw = (customContent as { sections?: unknown } | null)?.sections;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  const out: TestSection[] = [];
+  let lastQ = 0;
+  raw.forEach((entry, i) => {
+    const section = entry as { heading?: unknown; questions?: unknown };
+    const count = Array.isArray(section.questions) ? section.questions.length : 0;
+    if (count === 0) return; // consumes no question numbers, so lastQ is untouched
+    const heading =
+      typeof section.heading === "string" && section.heading.trim()
+        ? section.heading.trim()
+        : `Section ${i + 1}`;
+    out.push({
+      label: shortSectionLabel(heading, i),
+      title: heading,
+      fromQ: lastQ + 1,
+      toQ: lastQ + count,
+    });
+    lastQ += count;
+  });
+  return out.length > 0 ? out : null;
+}
 
 function inferComponent(name: string): "P1" | "P2" | "P3" | "IA" | null {
   const u = name.toUpperCase();
@@ -74,7 +126,7 @@ export default async function GradebookCoursePage({
   const testCourseIds = trackFamilyCourseIds(courseId, await loadTrackLinks(supabase, courseId));
   const { data: rawTests } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks, boundary_set_id")
+    .select("id, name, test_date, total_marks, boundary_set_id, custom_content")
     .in("course_id", testCourseIds)
     .order("test_date", { ascending: false });
 
@@ -200,8 +252,10 @@ export default async function GradebookCoursePage({
       test_date: t.test_date as string | null,
       total_marks: t.total_marks ?? 0,
       component: inferComponent(t.name),
+      boundary_set_id: setId,
       boundary_set_name: setId ? (setNameById[setId] ?? null) : null,
       boundaries: setId ? (boundariesBySetId[setId] ?? null) : null,
+      sections: sectionsFromCustomContent(t.custom_content) ?? IB_SECTIONS,
       items: (itemsByTest[t.id] ?? []).map((item) => ({
         id: item.id,
         question_number: item.question_number,
