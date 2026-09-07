@@ -12,6 +12,10 @@ to this agent environment and the Railway domain was allowed in the network poli
 This changed §6 materially - see the corrected table below. The Q26(a) backfill
 (§9, previously blocked on exactly this) is now done.
 
+**§4 was corrected on 7 Sep 2026** - the file/row counts, and everything it said
+about `CLEVERPLATFORM_SUPABASE_DB_URL`, which is now set and whose workflow had
+been failing on every merge. See §13.
+
 ---
 
 ## 1. What this is
@@ -99,10 +103,12 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo now agree exactly: 83 files, 83 rows,
-byte-identical.** Read `platform/supabase/migrations/README.md` before touching
-anything in that directory - it documents the invariant and how to add a migration
-without breaking it.
+**The migration ledger and the repo now agree exactly: 116 files, 116 rows,
+byte-identical** (verified 7 Sep 2026; it read 83/83 when this handoff was written
+and 95/95 after the second reconciliation). Read
+`platform/supabase/migrations/README.md` before touching anything in that
+directory - it documents the invariant and how to add a migration without
+breaking it.
 
 History, because it matters: files `001_*`..`057_*` were never recorded in the
 ledger, while ~4 months of changes applied via MCP existed only in the database. The
@@ -110,15 +116,55 @@ Supabase CLI matches `^([0-9]+)_(.*)\.sql$` - `[0-9]+`, not a 14-digit timestamp
 `001_initial_schema.sql` parsed as version `001` and counted as pending. Several of
 those files are destructive (`014_016_combined.sql` drops the seating tables;
 `023_reset_aahl_students.sql` deletes student enrolment rows). Nothing was ever
-applied only because `CLEVERPLATFORM_SUPABASE_DB_URL` is unset, which makes the
-workflow's push step skip and exit 0 - all 23 "successful" runs were no-ops.
+applied only because `CLEVERPLATFORM_SUPABASE_DB_URL` was unset at the time, which
+made the workflow's push step skip and exit 0 - all 23 "successful" runs to that
+point were no-ops.
 
 Those 64 files now live in `platform/supabase/migrations-legacy/` and
 `--include-all` has been dropped from the workflow.
 
-**Setting `CLEVERPLATFORM_SUPABASE_DB_URL` is safe once the reconciliation is merged
-to `main`, and worthwhile - the workflow currently reports green while doing
-nothing. Do not set it before that merge.**
+**`CLEVERPLATFORM_SUPABASE_DB_URL` is now set, and the advice this paragraph used
+to give ("do not set it before the reconciliation merges") is spent.** What
+replaced the silent no-op was a silent failure: from 6 Sep 2026 every run of
+`platform-supabase-migrations.yml` failed, because the secret holds the direct
+connection string and `db.<ref>.supabase.co` resolves to IPv6 only - Supabase's
+own docs list GitHub Actions among the platforms that cannot reach it. The job
+died on `dial error (connect ECONNREFUSED <v6 addr>:5432)` before touching
+anything.
+
+Fixed 7 Sep 2026: the workflow now lifts the password out of that secret and
+reconnects through Supavisor session mode
+(`postgres.<ref>@aws-1-sa-east-1.pooler.supabase.com:5432`), which always has an
+IPv4 address. Transaction mode (6543) will not do - it does not speak enough of
+the protocol for migrations. A secret that already points at the pooler is used
+unchanged, so switching it over later needs no workflow edit.
+
+**Fixing that uncovered a second fault, and the honest summary is that this
+workflow had never once applied a migration.** The Supabase CLI reads
+`supabase/migrations` relative to its working directory, and the push step had
+none - so it ran at the repo root, where a *second* `supabase/` directory lives
+(kept for the edge function `deploy-edge-functions.yml` ships). That one still
+holds three 2024/2025 migration files predating both reconciliations, in no
+ledger. The CLI compared the live ledger against those three, found none of its
+116 versions locally, and refused with "Remote migration versions not found in
+local migrations directory". It fails safe - it will not push when local and
+remote disagree that badly, so it never tried to apply those three to
+production - but combined with the connection fault it means CI has never
+applied anything. The step now runs from `platform/`. Do not delete the root
+`supabase/` directory: the edge function deploy needs it. Its `migrations/`
+subdirectory is dead weight and worth removing on its own.
+
+Verified 7 Sep 2026 by `workflow_dispatch` on a branch: "Reached the database
+through aws-1-sa-east-1.pooler.supabase.com (session mode)" / "Remote database
+is up to date", schema probe green, ledger untouched at 116 rows.
+
+Note what this workflow is and is not. Because migrations are normally applied
+through MCP `apply_migration` first (see the README), the ledger usually already
+carries them by the time `main` moves, so `supabase db push` finds nothing pending
+and is a no-op **by design**. It is the safety net for a migration file that
+reaches `main` without having been applied - not the usual path. A green run here
+does not mean it did anything; a red one means production may be missing a
+migration that is in the repo.
 
 Tables you will touch most: `na_scan_batches`, `na_packet_scans`,
 `na_response_crops`, `na_feedback`, `na_anchors`, `na_rubric_items`,
@@ -1067,3 +1113,58 @@ each part is an ordinary batch whose `file_name` reads
 "scan.pdf (part 2 of 3, pages 98-190)". The Batch tab segments the parts one
 request at a time and renders one review-and-grade panel per part. Page
 numbers inside a part's panel count from 1 within that part.
+
+## 13. Self-assessment submit, and the migrations workflow (7 Sep 2026)
+
+**Students could not submit their self-assessed scores** (#149). The self-grade
+form tells them to leave a box blank if they made no attempt and sends that box
+as `NULL`; `student_self_scores.self_marks` was `NOT NULL DEFAULT 0`, so Postgres
+rejected it with `23502`. Only a student who filled in every single box got
+through, which is why the table had rows at all and why the failure looked
+intermittent rather than total. Migration `20260907152544` drops the `NOT NULL`
+and the default: `NULL` now means "did not attempt", `0` means "attempted and
+earned nothing", and those are different facts about a student.
+
+The client made it worse by upserting one row per question in a loop and throwing
+on the first error, so every question before the blank was already committed - an
+error message *and* a half-saved self-assessment, which counts as having
+self-graded and moves the student off the Self-Grade step. It now sends the whole
+assessment as one upsert (`lib/reflection-self-scores.ts`): all rows land or none
+do. That also fixes a second failure seen live during the session - a submit that
+wrote 35 of 41 questions over 24 seconds and then simply stopped, losing six
+answers with nothing told to the student. Forty-one sequential round trips is
+forty-one chances to lose the tab.
+
+Two consequences of making blanks storable, both handled: `computeDisagreement()`
+reads a blank as a claim of zero marks *once the student has self-graded* (Upload
+Corrections only unlocks at 0%, so counting it as full disagreement locked them
+out for following the form's instructions), and the Compare table no longer seeds
+a blank box with `0` or files that `0` when Save Changes is pressed. A student who
+has not self-graded at all still reads as 100% disagreement, unchanged.
+
+**Known-lossy, not fixed:** the teacher Override Scores modal
+(`components/reflection/OverrideModal.tsx`) still types self-marks as plain
+numbers, so opening and saving it turns a student's blanks into `0`s.
+
+**Two data items left alone deliberately.** One student on Formative Assessment 1
+is missing her last six answers from the truncated submit; they cannot be
+reconstructed and she has to refill them. Three rows showing 18 of 19 items on
+"27AH [K06] P1" are *not* corruption, despite looking like it: `test_items
+.created_at` shows Q6(b) was added on 2026-05-23 22:00:02, three days after the
+other 18, and the submission times split cleanly around it. Those students graded
+every question that existed. Writing marks for a question they were never shown
+would fabricate a judgement they never made. They currently read as claiming 0 on
+it; self-grading it themselves is the fix.
+
+**`platform-supabase-migrations.yml` had been failing on every merge since 6 Sep**
+and nobody noticed, because it only runs on push to `main` and so never appears as
+a PR check. Two independent faults, both fixed and both detailed in §4: the direct
+database host is IPv6-only and GitHub Actions cannot reach it, and the push step
+ran from the repo root, where a second `supabase/` directory shadowed the real
+migrations. Either alone was enough to break it, which is why the plain reading
+("it worked until 6 Sep") is wrong - it had never applied a migration from CI at
+all.
+
+The thing to remember: it is a safety net for a migration file that reaches `main`
+unapplied, not the usual path - migrations normally go through MCP
+`apply_migration` first, so a green run here usually means it found nothing to do.
