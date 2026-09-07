@@ -68,6 +68,38 @@ function gradeBg(grade: number | null): string {
   return "bg-red-950/50";
 }
 
+/** Stronger tint than gradeBg(), for the distribution bars where the fill is
+ *  carrying the meaning rather than just shading a cell. */
+function gradeBarBg(grade: number): string {
+  if (grade === 7) return "bg-emerald-500/30";
+  if (grade === 6) return "bg-green-500/30";
+  if (grade === 5) return "bg-lime-500/30";
+  if (grade === 4) return "bg-yellow-500/30";
+  if (grade === 3) return "bg-orange-500/30";
+  if (grade === 2) return "bg-red-500/30";
+  return "bg-red-400/30";
+}
+
+const LEVELS = [7, 6, 5, 4, 3, 2, 1] as const;
+
+/** How many students sit at each level in one column of grades. Ungraded
+ *  students are counted in `total` but not in any level, so the bars read as a
+ *  share of the work actually marked. */
+function tallyLevels(grades: (number | null)[]): {
+  counts: Record<number, number>;
+  graded: number;
+  total: number;
+} {
+  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
+  let graded = 0;
+  for (const g of grades) {
+    if (g === null) continue;
+    counts[g] = (counts[g] ?? 0) + 1;
+    graded++;
+  }
+  return { counts, graded, total: grades.length };
+}
+
 function computeTestScore(
   profileId: string,
   test: Test,
@@ -115,6 +147,17 @@ function computeComponentGrade(
 
 // IB standard: Section A = Q1–8, Section B = Q9+
 const SECTION_A_MAX_Q = 8;
+
+/** Columns an expanded test occupies: one per item, plus the Sec A and Sec B
+ *  pairs when those sections exist. Shared by the "Abs" cell and the footer so
+ *  the two cannot drift out of alignment with the header. */
+function expandedTestSpan(test: Test): number {
+  return (
+    Math.max(1, test.items.length) +
+    (test.items.some((i) => i.question_number <= SECTION_A_MAX_Q) ? 2 : 0) +
+    (test.items.some((i) => i.question_number > SECTION_A_MAX_Q) ? 2 : 0)
+  );
+}
 
 interface SectionScore {
   earned: number;
@@ -207,6 +250,7 @@ interface Props {
 export function GradebookGrid({ tests, students, initialMarks, absences = {} }: Props) {
   const [expandedOverall, setExpandedOverall] = useState(false);
   const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
+  const [showDistribution, setShowDistribution] = useState(false);
 
   // Build mutable marks state from server-provided initial data
   const [marks, setMarks] = useState<MarksState>(() => {
@@ -416,6 +460,12 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
     "px-2 py-2 text-center text-xs font-medium text-da-muted bg-da-surface border-b border-da-border whitespace-nowrap select-none";
   const thBtn = `${thBase} cursor-pointer hover:bg-da-hover hover:text-da-accent transition-colors`;
   const tdBase = "px-2 py-2 text-center text-sm border-b border-da-border/50";
+  // Footer cells deliberately do not reuse thBase/tdBase: those carry a bottom
+  // border, and Tailwind resolves a border-b / border-b-0 clash by stylesheet
+  // order rather than class order, so overriding it would be a coin flip.
+  const tdFoot = "px-2 py-1 text-center align-middle";
+  const thFoot =
+    "px-4 py-1 text-left text-xs font-medium text-da-muted whitespace-nowrap select-none sticky left-0 z-20 bg-da-surface border-r border-da-border";
 
   // -- Render -------------------------------------------------------------------
 
@@ -430,6 +480,56 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
       }
     }
   }
+
+  // -- Footer columns -----------------------------------------------------------
+  // One descriptor per column right of the name, in header order, so the footer
+  // stays aligned however the grid is expanded. Only columns that actually show
+  // a level get a tally; an expanded test shows per-question marks, so its block
+  // is spanned blank rather than being summarised as something it is not.
+  type FooterColumn =
+    | { kind: "levels"; key: string; label: string; grades: (number | null)[] }
+    | { kind: "blank"; key: string; span: number };
+
+  const footerColumns: FooterColumn[] = [];
+  if (expandedOverall) {
+    for (const comp of COMPONENTS) {
+      footerColumns.push({
+        kind: "levels",
+        key: `comp:${comp}`,
+        label: comp,
+        grades: students.map((s) => computeComponentGrade(s.profile_id, comp, tests, marks)),
+      });
+    }
+  } else {
+    footerColumns.push({
+      kind: "levels",
+      key: "overall",
+      label: "Overall",
+      grades: students.map((s) => computeOverallGrade(s.profile_id, tests, marks).grade),
+    });
+  }
+  for (const test of tests) {
+    if (expandedTests.has(test.id)) {
+      footerColumns.push({ kind: "blank", key: test.id, span: expandedTestSpan(test) });
+      continue;
+    }
+    footerColumns.push({
+      kind: "levels",
+      key: test.id,
+      label: test.name,
+      // A student recorded absent reads "Abs" in the grid, not a level, so they
+      // are not part of this test's cohort at all -- counting them as ungraded
+      // would understate how much of the class has actually been marked.
+      grades: students
+        .filter((s) => !absences[test.id]?.includes(s.profile_id))
+        .map((s) => computeTestScore(s.profile_id, test, marks).grade),
+    });
+  }
+  const footerTallies = new Map(
+    footerColumns
+      .filter((c): c is Extract<FooterColumn, { kind: "levels" }> => c.kind === "levels")
+      .map((c) => [c.key, tallyLevels(c.grades)])
+  );
 
   return (
     <div className="overflow-hidden rounded-xl border border-da-border bg-da-surface/85 shadow-sm shadow-black/25">
@@ -674,11 +774,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                     // Recorded absent: one "Abs" cell in place of the marks,
                     // so an empty row no longer reads as "not graded yet".
                     if (absences[test.id]?.includes(student.profile_id)) {
-                      const span = isExp
-                        ? Math.max(1, test.items.length) +
-                          (test.items.some((i) => i.question_number <= SECTION_A_MAX_Q) ? 2 : 0) +
-                          (test.items.some((i) => i.question_number > SECTION_A_MAX_Q) ? 2 : 0)
-                        : 1;
+                      const span = isExp ? expandedTestSpan(test) : 1;
                       return (
                         <td
                           key={test.id}
@@ -813,6 +909,92 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
               );
             })}
           </tbody>
+
+          {/* -- Footer: level distribution ------------------------------- */}
+          {students.length > 0 && (
+            <tfoot className="bg-da-surface">
+              <tr className="border-t-2 border-da-border">
+                <th
+                  className={`${thFoot} cursor-pointer hover:text-da-accent transition-colors`}
+                  onClick={() => setShowDistribution((v) => !v)}
+                  title={
+                    showDistribution
+                      ? "Hide the level distribution"
+                      : "Show how many students sit at each level"
+                  }
+                >
+                  Level distribution
+                  <span className="ml-1 text-da-accent">
+                    {showDistribution ? "▾" : "▸"}
+                  </span>
+                </th>
+                {footerColumns.map((col) => {
+                  if (col.kind === "blank") {
+                    return <td key={col.key} colSpan={col.span} className={tdFoot} />;
+                  }
+                  const t = footerTallies.get(col.key)!;
+                  return (
+                    <td
+                      key={col.key}
+                      className={`${tdFoot} text-[11px] tabular-nums ${
+                        t.graded === 0 ? "text-da-muted/40" : "text-da-muted"
+                      }`}
+                      title={`${col.label} — ${t.graded} of ${t.total} graded`}
+                    >
+                      {t.graded}/{t.total}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {showDistribution &&
+                LEVELS.map((level) => (
+                  <tr key={level}>
+                    <th className={`${thFoot} font-normal`}>
+                      <span className={`font-bold ${gradeColor(level)}`}>{level}</span>
+                    </th>
+                    {footerColumns.map((col) => {
+                      if (col.kind === "blank") {
+                        return <td key={col.key} colSpan={col.span} className={tdFoot} />;
+                      }
+                      const t = footerTallies.get(col.key)!;
+                      const n = t.counts[level] ?? 0;
+                      const share = t.graded > 0 ? (n / t.graded) * 100 : 0;
+                      return (
+                        <td
+                          key={col.key}
+                          className={`${tdFoot} px-1`}
+                          title={
+                            t.graded === 0
+                              ? `${col.label} — nothing graded yet`
+                              : `${col.label} — level ${level}: ${n} of ${t.graded} graded (${share.toFixed(0)}%)`
+                          }
+                        >
+                          <div
+                            className={`relative mx-auto h-5 w-full max-w-24 overflow-hidden rounded-sm ${
+                              t.graded > 0 ? "bg-da-bg/60" : ""
+                            }`}
+                          >
+                            <div
+                              className={`absolute inset-y-0 left-0 ${gradeBarBg(level)}`}
+                              style={{ width: `${share}%` }}
+                              aria-hidden="true"
+                            />
+                            <span
+                              className={`absolute inset-0 flex items-center justify-center text-xs tabular-nums ${
+                                n > 0 ? "font-semibold text-da-text" : "text-da-muted/40"
+                              }`}
+                            >
+                              {n > 0 ? n : "·"}
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+            </tfoot>
+          )}
         </table>
       </div>
 
@@ -835,6 +1017,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
         <span>= approximate (no set assigned)</span>
         <span className="text-da-border">|</span>
         <span>Hover grade cells for % and set. Enter marks and press Tab/Enter to save.</span>
+        <span className="text-da-border">|</span>
+        <span>
+          <span className="text-da-text">Level distribution</span> at the foot of each
+          grade column counts students per level; bars are a share of what is graded.
+        </span>
         <span className="text-da-border">|</span>
         <span>Expand a test, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
       </div>
