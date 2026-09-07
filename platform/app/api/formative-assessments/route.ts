@@ -19,6 +19,11 @@
 import { NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { syncTestItems, computeTotalMarks } from "@/lib/formative-assessment-bridge";
+import {
+  validateRubric,
+  summarizeRubricFindings,
+  shouldHoldForRubricReview,
+} from "@/lib/rubric-validator";
 import type { AssignmentDraft } from "@/lib/assignments";
 
 export const runtime = "nodejs";
@@ -28,6 +33,13 @@ type SaveBody = {
   courseId?: unknown;
   draft?: unknown;
   requireSelfAssessment?: unknown;
+  /**
+   * Set once the teacher has seen the rubric findings and chosen to save
+   * regardless. Deliberately not a "skip validation" flag: the findings are
+   * still computed and returned, so the record of what was overridden is the
+   * same either way.
+   */
+  acknowledgeRubricFindings?: unknown;
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -57,6 +69,31 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "draft must have a title and a non-empty sections array" },
       { status: 400 },
+    );
+  }
+
+  // -- Rubric quality gate -------------------------------------------------
+  // A mark scheme that contradicts itself, or asks for units it never
+  // requires, is only cheap to fix before a class sits the paper. Formative
+  // Assessment 1 shipped with three such defects and they were not found
+  // until fifty students had been marked against them.
+  //
+  // This stops a first save rather than forbidding one: the teacher sees the
+  // findings, and may save anyway by re-posting with
+  // acknowledgeRubricFindings. Warnings never stop anything. A rubric is
+  // professional judgement, so the gate's job is to make sure a defect was
+  // seen -- not to overrule the person who wrote it.
+  const rubricFindings = validateRubric(draft);
+  const rubric = { findings: rubricFindings, summary: summarizeRubricFindings(rubricFindings) };
+  if (shouldHoldForRubricReview(rubricFindings, body.acknowledgeRubricFindings)) {
+    return NextResponse.json(
+      {
+        error:
+          `${rubric.summary.blocking} mark scheme issue(s) would make this paper hard to mark ` +
+          "consistently. Review them, or save anyway.",
+        rubric,
+      },
+      { status: 422 },
     );
   }
 
@@ -104,10 +141,16 @@ export async function POST(req: Request) {
   const syncResult = await syncTestItems(supabase, saved.id, draft.sections);
   if (!syncResult.ok) {
     return NextResponse.json(
-      { test: saved, testItems: "failed", testItemsError: syncResult.error },
+      { test: saved, testItems: "failed", testItemsError: syncResult.error, rubric },
       { status: 207 },
     );
   }
 
-  return NextResponse.json({ test: saved, testItems: "synced", synced: syncResult.synced }, { status: 200 });
+  // Findings ride along on success too: warnings never blocked the save, and
+  // a teacher who overrode a blocking finding should still see what they
+  // overrode rather than have it disappear on the way through.
+  return NextResponse.json(
+    { test: saved, testItems: "synced", synced: syncResult.synced, rubric },
+    { status: 200 },
+  );
 }
