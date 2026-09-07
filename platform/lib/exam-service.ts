@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { computeDisagreement } from "@/lib/reflection-utils";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
+import { buildSelfScoreRows, SELF_SCORE_CONFLICT_TARGET } from "@/lib/reflection-self-scores";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
@@ -248,7 +249,12 @@ export async function getReflectionItemsForInvitedStudent(
   }));
 }
 
-/** Submit student self-assessment scores. */
+/** Submit student self-assessment scores.
+ *
+ *  One upsert for the whole assessment, for the reason spelled out in
+ *  lib/reflection-self-scores.ts: a row-at-a-time loop that fails partway
+ *  leaves a half-saved self-assessment behind, and a half-saved one is worse
+ *  than none. */
 export async function submitSelfScores(
   studentId: string,
   testId: string,
@@ -256,19 +262,12 @@ export async function submitSelfScores(
 ): Promise<void> {
   const supabase = await createClient();
 
-  // Upsert each score
-  for (const score of scores) {
-    const { error } = await supabase.from("student_self_scores").upsert(
-      {
-        test_item_id: score.test_item_id,
-        student_id: studentId,
-        self_marks: score.self_marks,
-        submitted_at: new Date().toISOString(),
-      },
-      { onConflict: "test_item_id,student_id" }
-    );
-    if (error) throw error;
-  }
+  const { error } = await supabase
+    .from("student_self_scores")
+    .upsert(buildSelfScoreRows(scores, studentId), {
+      onConflict: SELF_SCORE_CONFLICT_TARGET,
+    });
+  if (error) throw error;
 }
 
 /** Upload a PDF to Supabase Storage. */
