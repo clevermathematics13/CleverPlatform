@@ -152,7 +152,9 @@ remote disagree that badly, so it never tried to apply those three to
 production - but combined with the connection fault it means CI has never
 applied anything. The step now runs from `platform/`. Do not delete the root
 `supabase/` directory: the edge function deploy needs it. Its `migrations/`
-subdirectory is dead weight and worth removing on its own.
+subdirectory was deleted on 7 Sep 2026, but `working-directory: platform` still
+has to stay - the root `supabase/` still exists, so running from there finds no
+ledger version locally and fails the same way.
 
 Verified 7 Sep 2026 by `workflow_dispatch` on a branch: "Reached the database
 through aws-1-sa-east-1.pooler.supabase.com (session mode)" / "Remote database
@@ -1168,3 +1170,31 @@ all.
 The thing to remember: it is a safety net for a migration file that reaches `main`
 unapplied, not the usual path - migrations normally go through MCP
 `apply_migration` first, so a green run here usually means it found nothing to do.
+
+**Root `supabase/migrations/` deleted, and a broken feature it uncovered.** The
+three files there were in no ledger and sat exactly where the CLI looks when run
+from the repo root. Two (`20250606_create_assignment_templates`,
+`20250606_add_answer_line_height`) were redundant - `assignment_templates` is
+live and the reconciled set here covers it seven times over. The third was not.
+
+`20240601_mastery_analyses.sql` was the only record in the repo of
+`public.mastery_analyses`, **and that table does not exist in production** - not
+in `public`, not in any schema. Two code paths use it and both swallow the
+failure:
+
+- `app/api/mastery/analysis/route.ts` upserts the generated analysis and only
+  `console.error`s on failure, returning the text anyway. So "Generate Analysis"
+  pays for the AI call, shows the result once, and never saves it.
+- `app/dashboard/mastery/page.tsx` reads it through `.maybeSingle()` and
+  `data ?? null`, so the error is indistinguishable from "not yet generated".
+  The page always reads as if no analysis has ever been made.
+
+Nothing was fixed here beyond deleting the files - restoring the feature means
+applying that DDL as a proper migration under
+`platform/supabase/migrations/`, which is a schema change to production and was
+not in scope. The SQL is in git history at
+`supabase/migrations/20240601_mastery_analyses.sql` (last present in `ef87519`):
+a `mastery_analyses` table keyed unique on `student_id`, with RLS for
+student-reads-own and teacher-reads-all. Decide whether the feature is wanted
+before applying it - it may simply be abandoned, in which case the two call
+sites should go instead.
