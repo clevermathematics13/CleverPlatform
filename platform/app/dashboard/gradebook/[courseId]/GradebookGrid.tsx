@@ -228,11 +228,23 @@ function presentSections(test: Test): TestSection[] {
   );
 }
 
-/** Columns an expanded test occupies: one per item, plus a marks/% pair per
- *  present section. Shared by the header, the "Abs" cell and the footer so the
- *  three cannot drift out of alignment. */
-function expandedTestSpan(test: Test): number {
-  return Math.max(1, test.items.length) + 2 * presentSections(test).length;
+/** How an opened test column is showing itself. */
+export type TestView = "levels" | "marks";
+
+/** Columns an opened test occupies: a marks/% pair per present section, plus
+ *  one per question in the "marks" view. Shared by the header, the "Abs" cell
+ *  and the footer so the three cannot drift out of alignment. */
+function expandedTestSpan(test: Test, view: TestView): number {
+  const sectionCols = 2 * presentSections(test).length;
+  if (view === "levels") return Math.max(1, sectionCols);
+  return Math.max(1, test.items.length) + sectionCols;
+}
+
+/** Which views are worth offering. A paper with no items cannot be opened at
+ *  all, and one whose sections hold no items has no subtotals to show. */
+function availableViews(test: Test): TestView[] {
+  if (test.items.length === 0) return [];
+  return presentSections(test).length > 0 ? ["levels", "marks"] : ["marks"];
 }
 
 interface SectionScore {
@@ -312,6 +324,55 @@ function SetBadge({ name }: { name: string | null }) {
   );
 }
 
+// --- View switcher ------------------------------------------------------------
+
+const VIEW_LABEL: Record<TestView, string> = { levels: "Levels", marks: "Marks" };
+const VIEW_TITLE: Record<TestView, string> = {
+  levels: "Open this test as section subtotals only",
+  marks: "Open this test as per-question marks",
+};
+
+/** The Levels / Marks pills. Shown in a collapsed test header to choose how to
+ *  open it, and in an opened one to switch between the two. */
+function ViewPills({
+  test,
+  view,
+  onSet,
+}: {
+  test: Test;
+  view: TestView | null;
+  onSet: (view: TestView | null) => void;
+}) {
+  const views = availableViews(test);
+  if (views.length === 0) return null;
+  return (
+    <span className="mt-0.5 flex items-center justify-center gap-1">
+      {views.map((v) => {
+        const active = view === v;
+        return (
+          <button
+            key={v}
+            type="button"
+            aria-pressed={active}
+            title={active ? "Click to collapse" : VIEW_TITLE[v]}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSet(active ? null : v);
+            }}
+            className={`rounded px-1 py-px text-[9px] font-medium leading-none transition-colors ${
+              active
+                ? "bg-da-accent/25 text-da-accent"
+                : "bg-da-bg/60 text-da-muted hover:bg-da-hover hover:text-da-accent"
+            }`}
+          >
+            {VIEW_LABEL[v]}
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
 // --- Component ----------------------------------------------------------------
 
 interface Props {
@@ -324,7 +385,12 @@ interface Props {
 
 export function GradebookGrid({ tests, students, initialMarks, absences = {} }: Props) {
   const [expandedOverall, setExpandedOverall] = useState(false);
-  const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
+  // A test opens two ways. "levels" is the section subtotals alone -- on a
+  // 14-question paper that is 8 columns instead of 22, so the level profile is
+  // readable without scrolling past every question. "marks" is the per-question
+  // inputs, with those same subtotals kept alongside so they move as you type.
+  // Absent from the record means collapsed.
+  const [testViews, setTestViews] = useState<Record<string, TestView>>({});
   const [showDistribution, setShowDistribution] = useState(false);
 
   // Build mutable marks state from server-provided initial data
@@ -348,11 +414,12 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
   // -- Handlers ----------------------------------------------------------------
 
-  const toggleTest = useCallback((testId: string) => {
-    setExpandedTests((prev) => {
-      const next = new Set(prev);
-      if (next.has(testId)) next.delete(testId);
-      else next.add(testId);
+  /** Open a test in a view, or pass null to collapse it. */
+  const setTestView = useCallback((testId: string, view: TestView | null) => {
+    setTestViews((prev) => {
+      const next = { ...prev };
+      if (view === null) delete next[testId];
+      else next[testId] = view;
       return next;
     });
   }, []);
@@ -435,7 +502,9 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
       const visibleItems: { itemId: string; maxMarks: number }[] = [];
       for (const test of tests) {
-        if (expandedTests.has(test.id)) {
+        // Only the "marks" view has cells to paste into; a test showing section
+        // subtotals contributes no columns to the paste target.
+        if (testViews[test.id] === "marks") {
           for (const item of test.items) {
             visibleItems.push({ itemId: item.id, maxMarks: item.max_marks });
           }
@@ -526,7 +595,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
           });
         });
     },
-    [tests, expandedTests, students, saveCell]
+    [tests, testViews, students, saveCell]
   );
 
   // -- Styles -------------------------------------------------------------------
@@ -556,7 +625,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
   {
     let col = 0;
     for (const test of tests) {
-      if (expandedTests.has(test.id)) {
+      if (testViews[test.id] === "marks") {
         for (const item of test.items) {
           itemColMap.set(item.id, col++);
         }
@@ -594,8 +663,9 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
     });
   }
   for (const test of tests) {
-    if (expandedTests.has(test.id)) {
-      footerColumns.push({ kind: "blank", key: test.id, span: expandedTestSpan(test) });
+    const view = testViews[test.id];
+    if (view) {
+      footerColumns.push({ kind: "blank", key: test.id, span: expandedTestSpan(test, view) });
       continue;
     }
     footerColumns.push({
@@ -683,58 +753,55 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
               {/* Test columns */}
               {tests.map((test) => {
-                const isExp = expandedTests.has(test.id);
+                const view = testViews[test.id] ?? null;
 
-                if (isExp) {
-                  if (test.items.length === 0) {
-                    return (
-                      <th
-                        key={test.id}
-                        className={thBtn}
-                        onClick={() => toggleTest(test.id)}
-                      >
-                        {test.name}
-                        <span className="block text-[10px] text-da-accent">◂</span>
-                      </th>
-                    );
-                  }
+                if (view) {
                   const sections = presentSections(test);
+                  // Whichever block comes first carries the name, the way back
+                  // out, and the switch to the other view.
+                  const control = (
+                    <>
+                      <span
+                        className="block max-w-25 cursor-pointer truncate text-[10px] text-da-accent/70 hover:text-da-accent"
+                        onClick={() => setTestView(test.id, null)}
+                        title="Click to collapse"
+                      >
+                        ◂ {test.name}
+                      </span>
+                      <ViewPills
+                        test={test}
+                        view={view}
+                        onSet={(v) => setTestView(test.id, v)}
+                      />
+                    </>
+                  );
 
                   return (
                     <React.Fragment key={test.id}>
-                      {test.items.map((item, idx) => (
-                        <th
-                          key={item.id}
-                          className={`${thBtn} min-w-13`}
-                          title={idx === 0 ? "Click to collapse" : item.question_code ? `Open ${item.question_code} in question editor` : undefined}
-                        >
-                          {idx === 0 && (
-                            <span
-                              className="block text-[10px] text-da-accent/70 max-w-25 truncate cursor-pointer"
-                              onClick={() => toggleTest(test.id)}
-                              title="Click to collapse"
-                            >
-                              ◂ {test.name}
-                            </span>
-                          )}
-                          <span
-                            className={item.question_code ? "cursor-pointer hover:underline" : ""}
-                            onClick={() => {
-                              if (item.question_code) {
-                                window.open(`/dashboard/questions?search=${encodeURIComponent(item.question_code)}`, "_blank");
-                              } else {
-                                toggleTest(test.id);
-                              }
-                            }}
+                      {view === "marks" &&
+                        test.items.map((item, idx) => (
+                          <th
+                            key={item.id}
+                            className={`${thBase} min-w-13`}
+                            title={item.question_code ? `Open ${item.question_code} in question editor` : undefined}
                           >
-                            Q{item.question_number}
-                            {item.part_label ? item.part_label : ""}
-                          </span>
-                          <span className="block text-[10px] text-da-muted">
-                            /{item.max_marks}
-                          </span>
-                        </th>
-                      ))}
+                            {idx === 0 && control}
+                            <span
+                              className={item.question_code ? "cursor-pointer hover:underline" : ""}
+                              onClick={() => {
+                                if (item.question_code) {
+                                  window.open(`/dashboard/questions?search=${encodeURIComponent(item.question_code)}`, "_blank");
+                                }
+                              }}
+                            >
+                              Q{item.question_number}
+                              {item.part_label ? item.part_label : ""}
+                            </span>
+                            <span className="block text-[10px] text-da-muted">
+                              /{item.max_marks}
+                            </span>
+                          </th>
+                        ))}
                       {sections.map((section, sIdx) => {
                         const tint = SECTION_TINTS[sIdx % SECTION_TINTS.length];
                         const max = test.items
@@ -747,6 +814,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                               className={`${thBase} min-w-16 ${tint.bg} border-l ${tint.edge}`}
                               title={section.title}
                             >
+                              {view === "levels" && sIdx === 0 && control}
                               <span className={`block text-[10px] ${tint.head}`}>{section.label}</span>
                               <span className={tint.text}>/{max}</span>
                             </th>
@@ -764,15 +832,16 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                   );
                 }
 
-                // -- Collapsed test header — show name + date + set badge --
+                // -- Collapsed test header — name, date, set badge, and the two
+                //    ways in. The cell itself is no longer one big toggle: with
+                //    two destinations, "click somewhere" would have to guess.
                 return (
                   <th
                     key={test.id}
-                    className={`${thBtn} min-w-22.5 max-w-32.5`}
-                    onClick={() => toggleTest(test.id)}
+                    className={`${thBase} min-w-22.5 max-w-32.5`}
                     title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nBoundary set: ${
                       test.boundary_set_name ?? "unassigned (approx.)"
-                    }\nClick to expand`}
+                    }`}
                   >
                     <span className="block truncate">{test.name}</span>
                     {test.test_date && (
@@ -783,10 +852,14 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                         )}
                       </span>
                     )}
-                    <span className="flex items-center justify-center gap-1 mt-0.5">
+                    <span className="mt-0.5 flex items-center justify-center gap-1">
                       <SetBadge name={test.boundary_set_name} />
-                      <span className="text-[10px] text-da-accent">▸</span>
                     </span>
+                    <ViewPills
+                      test={test}
+                      view={null}
+                      onSet={(v) => setTestView(test.id, v)}
+                    />
                   </th>
                 );
               })}
@@ -867,12 +940,12 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
                   {/* Test cells */}
                   {tests.map((test) => {
-                    const isExp = expandedTests.has(test.id);
+                    const view = testViews[test.id] ?? null;
 
                     // Recorded absent: one "Abs" cell in place of the marks,
                     // so an empty row no longer reads as "not graded yet".
                     if (absences[test.id]?.includes(student.profile_id)) {
-                      const span = isExp ? expandedTestSpan(test) : 1;
+                      const span = view ? expandedTestSpan(test, view) : 1;
                       return (
                         <td
                           key={test.id}
@@ -885,14 +958,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                       );
                     }
 
-                    if (isExp) {
-                      if (test.items.length === 0) {
-                        return (
-                          <td key={test.id} className={`${tdBase} text-da-muted`}>
-                            —
-                          </td>
-                        );
-                      }
+                    if (view) {
                       const sections = presentSections(test);
                       const sectionScores = computeSectionScores(
                         student.profile_id,
@@ -901,7 +967,8 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                       );
                       return (
                         <React.Fragment key={test.id}>
-                          {test.items.map((item) => {
+                          {view === "marks" &&
+                            test.items.map((item) => {
                             const cellKey = `${item.id}:${student.profile_id}`;
                             const val =
                               marks[item.id]?.[student.profile_id] ??
@@ -1099,7 +1166,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
       {/* Legend */}
       <div className="px-4 py-3 border-t border-da-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-da-muted">
-        <span>Click column headers to expand / collapse.</span>
+        <span>
+          Open a test as <span className="text-da-text">Levels</span> (section
+          subtotals) or <span className="text-da-text">Marks</span> (per-question);
+          click the active one again to collapse.
+        </span>
         <span className="text-da-border">|</span>
         <span>Levels:</span>
         {([7, 6, 5, 4, 3, 2, 1] as const).map((g) => (
@@ -1122,7 +1193,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
           grade column counts students per level; bars are a share of what is graded.
         </span>
         <span className="text-da-border">|</span>
-        <span>Expand a test, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
+        <span>Open a test as Marks, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
       </div>
     </div>
   );
