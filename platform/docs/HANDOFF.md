@@ -134,10 +134,29 @@ anything.
 
 Fixed 7 Sep 2026: the workflow now lifts the password out of that secret and
 reconnects through Supavisor session mode
-(`postgres.<ref>@aws-N-sa-east-1.pooler.supabase.com:5432`), which always has an
+(`postgres.<ref>@aws-1-sa-east-1.pooler.supabase.com:5432`), which always has an
 IPv4 address. Transaction mode (6543) will not do - it does not speak enough of
 the protocol for migrations. A secret that already points at the pooler is used
 unchanged, so switching it over later needs no workflow edit.
+
+**Fixing that uncovered a second fault, and the honest summary is that this
+workflow had never once applied a migration.** The Supabase CLI reads
+`supabase/migrations` relative to its working directory, and the push step had
+none - so it ran at the repo root, where a *second* `supabase/` directory lives
+(kept for the edge function `deploy-edge-functions.yml` ships). That one still
+holds three 2024/2025 migration files predating both reconciliations, in no
+ledger. The CLI compared the live ledger against those three, found none of its
+116 versions locally, and refused with "Remote migration versions not found in
+local migrations directory". It fails safe - it will not push when local and
+remote disagree that badly, so it never tried to apply those three to
+production - but combined with the connection fault it means CI has never
+applied anything. The step now runs from `platform/`. Do not delete the root
+`supabase/` directory: the edge function deploy needs it. Its `migrations/`
+subdirectory is dead weight and worth removing on its own.
+
+Verified 7 Sep 2026 by `workflow_dispatch` on a branch: "Reached the database
+through aws-1-sa-east-1.pooler.supabase.com (session mode)" / "Remote database
+is up to date", schema probe green, ledger untouched at 116 rows.
 
 Note what this workflow is and is not. Because migrations are normally applied
 through MCP `apply_migration` first (see the README), the ledger usually already
@@ -1139,7 +1158,13 @@ it; self-grading it themselves is the fix.
 
 **`platform-supabase-migrations.yml` had been failing on every merge since 6 Sep**
 and nobody noticed, because it only runs on push to `main` and so never appears as
-a PR check. Cause and fix are in §4. The thing to remember: it is a safety net for
-a migration file that reaches `main` unapplied, not the usual path - migrations
-normally go through MCP `apply_migration` first, so a green run here usually means
-it found nothing to do.
+a PR check. Two independent faults, both fixed and both detailed in §4: the direct
+database host is IPv6-only and GitHub Actions cannot reach it, and the push step
+ran from the repo root, where a second `supabase/` directory shadowed the real
+migrations. Either alone was enough to break it, which is why the plain reading
+("it worked until 6 Sep") is wrong - it had never applied a migration from CI at
+all.
+
+The thing to remember: it is a safety net for a migration file that reaches `main`
+unapplied, not the usual path - migrations normally go through MCP
+`apply_migration` first, so a green run here usually means it found nothing to do.

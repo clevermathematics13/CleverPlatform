@@ -70,3 +70,23 @@ comm -3 /tmp/ledger /tmp/files
 
 Historical record only. These are superseded by the schema currently live, are not
 recorded in the ledger, and must not be moved back into this directory.
+
+## The other `supabase/` directory
+
+There are two `supabase/` directories in this repo, and only this one is real:
+
+- `platform/supabase/migrations/` - these files, 1:1 with the live ledger.
+- `supabase/` at the repo root - kept because `deploy-edge-functions.yml` ships
+  `supabase/functions/process-correction`. Its `migrations/` subdirectory holds
+  three 2024/2025 files that predate both reconciliations and are in no ledger.
+
+The Supabase CLI resolves `supabase/migrations` relative to wherever it runs, so
+`supabase db push` from the repo root reads those three and none of these. That
+is exactly what `platform-supabase-migrations.yml` did until 7 Sep 2026, and why
+it had never applied a migration from CI. **Run the CLI from `platform/`.**
+
+It fails safe if you forget - the CLI refuses to push when local and remote
+disagree that badly, with "Remote migration versions not found in local
+migrations directory" - but the error names every ledger version and reads like
+catastrophic drift when nothing is actually wrong. Check your working directory
+before believing it.
