@@ -30,15 +30,77 @@ jobs:
         uses: supabase/setup-cli@v1
         with:
           version: latest
+      # Supabase's direct database host (db.<ref>.supabase.co) resolves to an
+      # IPv6 address unless the paid IPv4 add-on is enabled, and GitHub-hosted
+      # runners have no IPv6 egress -- Supabase's own docs list GitHub Actions
+      # as IPv4-only. So `--db-url` against the direct host fails here every
+      # time with "dial error (connect ECONNREFUSED <v6 addr>:5432)", which is
+      # what every run of this workflow did from 6 Sep 2026 onwards.
+      #
+      # Supavisor, the pooler, always has an IPv4 address. Session mode (port
+      # 5432) is the one to use: transaction mode (6543) does not speak enough
+      # of the protocol for migrations. See
+      # https://supabase.com/docs/guides/platform/ipv4-address
+      #
+      # The secret still holds the direct URL, so the password is lifted out of
+      # it and recombined against the pooler. A secret that already points at
+      # the pooler is passed through untouched, so switching it over later
+      # needs no change here.
       - name: Apply production migrations
         env:
           SUPABASE_DB_URL: ${{ secrets.CLEVERPLATFORM_SUPABASE_DB_URL }}
+          PROJECT_REF: qnawglgnoojrlaivylou
+          PROJECT_REGION: sa-east-1
         run: |
+          set -euo pipefail
+
           if [[ -z "$SUPABASE_DB_URL" ]]; then
-            echo "Skipping migration push because CLEVERPLATFORM_SUPABASE_DB_URL is not configured."
+            echo "::warning::CLEVERPLATFORM_SUPABASE_DB_URL is not configured -- no migrations were applied. This job is green but did nothing."
             exit 0
           fi
-          supabase db push --db-url "$SUPABASE_DB_URL"
+
+          if [[ "$SUPABASE_DB_URL" == *pooler.supabase.com* ]]; then
+            echo "Secret already points at Supavisor; using it as-is."
+            supabase db push --db-url "$SUPABASE_DB_URL"
+            exit 0
+          fi
+
+          # Split on the LAST '@': everything before it is scheme://user:password,
+          # so a percent-encoded password containing '@' or ':' survives intact.
+          userinfo="${SUPABASE_DB_URL%@*}"
+          password="${userinfo#*://}"
+          password="${password#*:}"
+          if [[ -z "$password" || "$password" == "$userinfo" ]]; then
+            echo "::error::Could not read a password out of CLEVERPLATFORM_SUPABASE_DB_URL. Expected postgresql://user:password@host:5432/postgres."
+            exit 1
+          fi
+          # The derived URLs are not the secret GitHub knows to redact, so mask
+          # the password before it can reach a log line.
+          echo "::add-mask::$password"
+
+          # Supabase runs more than one Supavisor cluster per region and a
+          # project's pooler host is not derivable from its ref, so try each in
+          # turn. A failed connection applies nothing, which makes this safe to
+          # retry. Only the hostname is ever echoed.
+          db_url=""
+          for cluster in "aws-1-${PROJECT_REGION}" "aws-0-${PROJECT_REGION}"; do
+            host="${cluster}.pooler.supabase.com"
+            candidate="postgresql://postgres.${PROJECT_REF}:${password}@${host}:5432/postgres"
+            echo "::add-mask::$candidate"
+            if psql "$candidate" -Atqc 'select 1' >/dev/null 2>&1; then
+              echo "Reached the database through ${host} (session mode)."
+              db_url="$candidate"
+              break
+            fi
+            echo "No route through ${host}; trying the next cluster."
+          done
+
+          if [[ -z "$db_url" ]]; then
+            echo "::error::Could not reach the production database over IPv4 through any Supavisor cluster in ${PROJECT_REGION}. Check the password in CLEVERPLATFORM_SUPABASE_DB_URL, and confirm the project's pooler host on the Supabase dashboard connect page."
+            exit 1
+          fi
+
+          supabase db push --db-url "$db_url"
       - name: Verify production schema after migrations
         working-directory: platform
         env:
