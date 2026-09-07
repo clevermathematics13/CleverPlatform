@@ -88,6 +88,21 @@ must exercise Server Actions.
   `lambdaRuntimeStats` are both present.** Bare READY is insufficient.
 - **CV service:** `opencv-python-headless==4.11.0.86` (no libGL on Railway),
   `pymupdf==1.24.14`, guarded by `CV_SERVICE_SECRET`.
+- **The 1-7 Level from `lib/grade-bands.ts` is the only achievement scale in use.**
+  It is what the gradebook grid and the Exam Reflection dashboard show. Boundary
+  sets `A`-`D` are DP course-progression sets (a 7 at 76-82%) and do not apply to
+  Grade 9, which is a course of the teacher's own design that borrows the 1-7 scale
+  to prepare students for DP - it is not an IB course, so do not "correct" its
+  boundaries toward official IB ones. Grade 9's set is `Grade 9` (a 7 at 90%);
+  assign it to every new Grade 9 test, or the Level falls back to the generic bands
+  in `pctToGradeFallback()` and the column renders a `~approx` badge.
+- **Formative Assessments no longer carry an achievement-band table.** A
+  Criterion-A-style `achievementBands` table used to be generated into every draft,
+  editable in the sandbox and printed on the teacher mark scheme; nobody used it and
+  nothing ever computed a band from it, so it was removed end to end (draft type,
+  Zod schemas, generator prompt, sandbox editor, mark-scheme HTML and CSS) and
+  stripped from the one stored draft that had one. The reteach guide beside it is
+  still live - do not remove that too.
 
 ### Corrected from the previous handoff
 

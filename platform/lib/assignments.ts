@@ -106,8 +106,6 @@ export type AssignmentSection = {
 
 // ---- Formative Assessment enrichments ----
 
-/** One row of a Criterion-A-style achievement-band table, e.g. "7-8: 42-50 marks: ...". */
-export type AchievementBand = { band: string; marksRange: string; description: string };
 /** One row of a "if marks were lost here, reteach this" table. */
 export type ReteachGuideEntry = { questions: string; topic: string };
 
@@ -129,8 +127,6 @@ export type AssignmentDraft = {
   reflectionQuestions?: string[];
   /** Formative Assessment: general marking rules, e.g. "Accept equivalent correct forms". */
   markingPrinciples?: string[];
-  /** Formative Assessment: mark-scheme-PDF-only achievement-band table. */
-  achievementBands?: AchievementBand[];
   /** Formative Assessment: mark-scheme-PDF-only "if marks were lost here, reteach this" table. */
   reteachGuide?: ReteachGuideEntry[];
   /** Formative Assessment: render a per-section "Score: ___/N" summary box on the title page. */
@@ -485,9 +481,6 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
       : {}),
     ...(Array.isArray(draft.markingPrinciples) && draft.markingPrinciples.length > 0
       ? { markingPrinciples: draft.markingPrinciples }
-      : {}),
-    ...(Array.isArray(draft.achievementBands) && draft.achievementBands.length > 0
-      ? { achievementBands: draft.achievementBands }
       : {}),
     ...(Array.isArray(draft.reteachGuide) && draft.reteachGuide.length > 0
       ? { reteachGuide: draft.reteachGuide }
