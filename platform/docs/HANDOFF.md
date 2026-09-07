@@ -88,6 +88,16 @@ must exercise Server Actions.
   `lambdaRuntimeStats` are both present.** Bare READY is insufficient.
 - **CV service:** `opencv-python-headless==4.11.0.86` (no libGL on Railway),
   `pymupdf==1.24.14`, guarded by `CV_SERVICE_SECRET`.
+- **The 1-7 Level from `lib/grade-bands.ts` is the only achievement scale in use.**
+  It is what the gradebook grid and the Exam Reflection dashboard show. Two things
+  that look like rivals are not: the `achievementBands` table on a Formative
+  Assessment (`tests.custom_content`, printed on the teacher mark scheme, MYP
+  Criterion-A shaped 0-8) is **not used** and nothing computes a band from it; and
+  boundary sets `A`-`D` are DP course-progression sets (a 7 at 76-82%) that do not
+  apply to Grade 9. Grade 9 is a course of the teacher's own design that borrows
+  the 1-7 scale to prepare students for DP - it is not an IB course, so do not
+  "correct" its boundaries toward official IB ones. Its set is `FA1 - strict`
+  (a 7 at 90%), currently on Formative Assessment 1 only.
 
 ### Corrected from the previous handoff
 

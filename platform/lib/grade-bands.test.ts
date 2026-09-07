@@ -11,6 +11,14 @@ import {
  * *_fa1_strict_grade_boundaries.sql). Duplicated here on purpose: these are
  * the numbers a student's reported Level hangs on, so a silent edit to the
  * live set should show up as a failing test, not as a quietly different grade.
+ *
+ * FA1 belongs to Grade 9 -- a course of the teacher's own design that borrows
+ * the 1-7 scale so students meet it before DP, NOT an IB course. Do not
+ * reconcile these numbers against official IB boundaries, and do not fold this
+ * set into the A-D sets: those model DP course progression (a 7 at 76-82%) and
+ * have no bearing on Grade 9. The applied migration's own header predates that
+ * correction and reads as though the two scales were comparable; this is the
+ * accurate account.
  */
 const FA1_STRICT: GradeBoundary[] = [
   { grade: 1, min_proportion: 0.01 },
