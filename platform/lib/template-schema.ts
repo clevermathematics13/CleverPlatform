@@ -122,12 +122,6 @@ export const InternationalMindednessBoxSchema = z.object({
 
 // -- Formative Assessment enrichments -------------------------------------------
 
-export const AchievementBandSchema = z.object({
-  band: z.string().min(1),
-  marksRange: z.string().min(1),
-  description: z.string().min(1),
-});
-
 export const ReteachGuideEntrySchema = z.object({
   questions: z.string().min(1),
   topic: z.string().min(1),
@@ -156,7 +150,6 @@ export const AssignmentDraftSchema = z.object({
   internationalMindedness: InternationalMindednessBoxSchema.optional(),
   // Optional Formative Assessment fields
   markingPrinciples: z.array(z.string().min(1)).optional(),
-  achievementBands: z.array(AchievementBandSchema).optional(),
   reteachGuide: z.array(ReteachGuideEntrySchema).optional(),
   showSectionScoreSummary: z.boolean().optional(),
 });
@@ -222,7 +215,6 @@ export const AssignmentPdfRequestSchema = z.object({
   internationalMindedness: InternationalMindednessBoxSchema.optional(),
   // Formative Assessment fields — see the "Formative Assessment enrichments" schemas above.
   markingPrinciples: z.array(z.string().min(1)).optional(),
-  achievementBands: z.array(AchievementBandSchema).optional(),
   reteachGuide: z.array(ReteachGuideEntrySchema).optional(),
   showSectionScoreSummary: z.boolean().optional(),
 });
