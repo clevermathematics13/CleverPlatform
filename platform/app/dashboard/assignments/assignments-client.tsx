@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState, type ReactElement } from "react";
 import { Grade9PdfSandbox } from "./grade9-pdf-sandbox";
 import { Grade10PdfSandbox } from "./grade10-pdf-sandbox";
 import { Grade11PdfSandbox } from "./grade11-pdf-sandbox";
@@ -9,34 +9,46 @@ import { DPQuestionDesigner } from "./dp-question-designer";
 import { NuancedAnalysisSandbox } from "./nuanced-analysis-sandbox";
 import { NuancedAnalysisManage } from "./nuanced-analysis-manage";
 import { FormativeAssessmentSandbox } from "./formative-assessment-sandbox";
+import { TABS, INITIAL_TAB, shouldRenderTab, visitTab, type TabId } from "./tab-visibility";
 
-type TabId = "dp-designer" | "nuanced-analysis" | "manage-nuanced-analysis" | "formative-assessment" | "grade9" | "grade10" | "grade11" | "grade12";
-
-type TabOption = {
-  id: TabId;
-  label: string;
-  emoji: string;
-};
-
-// "Nuanced Analysis" has its OWN grade/course/section picker inside it
-// (covering Grade 9-12), so the plain "Grade N" tabs are a different,
-// older, generic PDF sandbox with no continuity awareness. Labelled
-// "(generic PDF)" here specifically so a person working on Grade 9
-// Nuanced Analysis content doesn't land on this tab by habit and lose
-// the continuity context that only the Nuanced Analysis tab builds.
-const TABS: TabOption[] = [
-  { id: "dp-designer",               label: "DP Designer",             emoji: "🎓" },
-  { id: "nuanced-analysis",          label: "Nuanced Analysis",         emoji: "🔬" },
-  { id: "manage-nuanced-analysis",   label: "Manage Saved Packets",     emoji: "🗂️" },
-  { id: "formative-assessment",      label: "Formative Assessment",     emoji: "📝" },
-  { id: "grade9",                    label: "Grade 9 (generic PDF)",    emoji: "9️⃣" },
-  { id: "grade10",                   label: "Grade 10 (generic PDF)",   emoji: "🔟" },
-  { id: "grade11",                   label: "Grade 11 (generic PDF)",   emoji: "11" },
-  { id: "grade12",                   label: "Grade 12 (generic PDF)",   emoji: "12" },
-];
-
+/**
+ * Tabs mount on first visit and then stay mounted, hidden with CSS, rather
+ * than unmounting when you switch away. See tab-visibility.ts for the rule
+ * and why it exists.
+ *
+ * Lazy rather than mounting all eight upfront: four of these tabs fetch on
+ * mount (courses, continuity, Drive status, saved packets), and none of that
+ * should be paid for by someone who never opens the tab.
+ *
+ * Each panel element is memoised so that switching tabs - which re-renders
+ * this component - does not re-render every previously visited tab. React
+ * bails out of a subtree whose element is referentially identical, which
+ * matters here because these subtrees render whole document previews. This
+ * does not defeat remountOnShow: a tab that leaves the tree gets a fresh
+ * component instance when it returns, memoised element or not.
+ */
 export function AssignmentsClient() {
-  const [activeTab, setActiveTab] = useState<TabId>("nuanced-analysis");
+  const [activeTab, setActiveTab] = useState<TabId>(INITIAL_TAB);
+  const [visited, setVisited] = useState<ReadonlySet<TabId>>(() => new Set([INITIAL_TAB]));
+
+  function openTab(id: TabId) {
+    setActiveTab(id);
+    setVisited((prev) => visitTab(prev, id));
+  }
+
+  const panels = useMemo<Record<TabId, ReactElement>>(
+    () => ({
+      "dp-designer": <DPQuestionDesigner />,
+      "nuanced-analysis": <NuancedAnalysisSandbox />,
+      "manage-nuanced-analysis": <NuancedAnalysisManage />,
+      "formative-assessment": <FormativeAssessmentSandbox />,
+      grade9: <Grade9PdfSandbox />,
+      grade10: <Grade10PdfSandbox />,
+      grade11: <Grade11PdfSandbox />,
+      grade12: <Grade12PdfSandbox />,
+    }),
+    []
+  );
 
   return (
     <div className="space-y-6">
@@ -44,7 +56,7 @@ export function AssignmentsClient() {
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => openTab(tab.id)}
             className={`rounded-lg border px-4 py-2 font-semibold transition-colors ${
               activeTab === tab.id
                 ? "border-da-accent bg-da-accent/20 text-da-accent"
@@ -64,14 +76,14 @@ export function AssignmentsClient() {
         ))}
       </div>
 
-      {activeTab === "dp-designer"               && <DPQuestionDesigner />}
-      {activeTab === "nuanced-analysis"          && <NuancedAnalysisSandbox />}
-      {activeTab === "manage-nuanced-analysis"   && <NuancedAnalysisManage />}
-      {activeTab === "formative-assessment"      && <FormativeAssessmentSandbox />}
-      {activeTab === "grade9"                    && <Grade9PdfSandbox />}
-      {activeTab === "grade10"                   && <Grade10PdfSandbox />}
-      {activeTab === "grade11"                   && <Grade11PdfSandbox />}
-      {activeTab === "grade12"                   && <Grade12PdfSandbox />}
+      {TABS.map((tab) => {
+        if (!shouldRenderTab(tab, activeTab, visited)) return null;
+        return (
+          <div key={tab.id} className={activeTab === tab.id ? undefined : "hidden"}>
+            {panels[tab.id]}
+          </div>
+        );
+      })}
     </div>
   );
 }
