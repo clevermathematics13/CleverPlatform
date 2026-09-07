@@ -29,6 +29,13 @@ jobs:
       - name: Install platform dependencies
         working-directory: platform
         run: npm ci
+      # Ahead of the build because the suite finishes in seconds where the
+      # build takes about half a minute, so a broken test reports sooner.
+      # vitest does not typecheck, so this does not overlap what the build
+      # catches - both steps are load-bearing.
+      - name: Test platform
+        working-directory: platform
+        run: npm test
       - name: Build platform
         working-directory: platform
         run: npm run build
