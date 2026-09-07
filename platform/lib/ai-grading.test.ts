@@ -239,6 +239,126 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.warnings.some((w) => w.includes("its own breakdown only awards"))).toBe(true);
   });
 
+  // The disagreement is not symmetric. A token wrongly flagged awarded
+  // INVENTS a mark; a token wrongly flagged not-awarded merely withholds one.
+  // Measured over a full class the rule fired 21 times, and both of the two
+  // upward corrections were wrong -- in each the model's own suggestedMarks
+  // was right and a breakdown token was not, with the prose reasoning siding
+  // with suggestedMarks. Both put unearned marks into Clev's Marks.
+  it("never raises a mark to match a breakdown that awards more than the model proposed", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "M1", awarded: true, note: "Both expressions substituted" },
+            { token: "A1", awarded: true, note: "Correct values: 108 and 156" },
+          ],
+          reasoning: "The student made an arithmetic error on the first expression.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // The model's own number stands; the breakdown does not get to add a mark.
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.grades[0].confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("never used to raise a mark"))
+    ).toBe(true);
+    // It must not report the downward correction's wording, which would read
+    // as "only awards 2" for a breakdown that awards MORE than was proposed.
+    expect(
+      result.outcome.warnings.some((w) => w.includes("its own breakdown only awards"))
+    ).toBe(false);
+  });
+
+  // The two upward paths can collide in one breakdown: a token this pass
+  // granted deterministically (legitimate, +1) alongside a token the model
+  // itself wrongly flagged awarded (phantom). The grant must still land and
+  // the phantom must not.
+  it("raises only by what it granted when a real grant and a phantom token collide", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "Value is incorrect.",
+              numericCheck: {
+                reportedValue: "8.515",
+                referenceValue: "8.51693",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+            { token: "M1", awarded: true, note: "phantom: model proposed 0 marks overall" },
+          ],
+          reasoning: "A0.",
+          evidence: "8.515",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    // 2 tokens read as awarded, but only 1 of them is this pass's own doing,
+    // so the mark rises by exactly 1 -- not to 2.
+    expect(grade.item.markBreakdown[0].awarded).toBe(true);
+    expect(grade.clampedMarks).toBe(1);
+    expect(grade.confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("granted on deterministic re-check"))
+    ).toBe(true);
+    expect(
+      result.outcome.warnings.some((w) => w.includes("never used to raise a mark"))
+    ).toBe(true);
+  });
+
+  it("still lowers a mark when the breakdown awards fewer tokens than proposed", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 2,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "A1", awarded: true, note: "" },
+            { token: "A1", awarded: false, note: "product written as d² instead of 1" },
+          ],
+          reasoning: "Second A1 not awarded.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.grades[0].confidence).toBe("low");
+    expect(
+      result.outcome.warnings.some((w) => w.includes("its own breakdown only awards"))
+    ).toBe(true);
+  });
+
   it("leaves suggestedMarks untouched when it already matches the breakdown", () => {
     const raw = JSON.stringify({
       items: [

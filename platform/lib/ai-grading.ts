@@ -451,6 +451,11 @@ export function validateGradeResponse(
     // never invents a check the model didn't report, so a mark withheld for
     // a real, non-numeric reason (contradicted by working, wrong method)
     // is untouched, since those entries carry no such field to re-verify.
+    // Counted because these grants are the one legitimate way the breakdown
+    // may end up awarding MORE than suggestedMarks: each one is a mark this
+    // pass added deterministically, so the consistency rule below must let
+    // the total rise by exactly this many and no further.
+    let grantedCount = 0;
     for (const entry of item.markBreakdown) {
       if (entry.awarded) continue;
       let grant: string | null = null;
@@ -469,6 +474,7 @@ export function validateGradeResponse(
         }
       }
       if (grant) {
+        grantedCount += 1;
         entry.awarded = true;
         entry.note = entry.note ? `${entry.note} (corrected: ${grant})` : `Corrected: ${grant}`;
         reasoningCorrections.push(`${entry.token} was granted on deterministic re-check — ${grant}.`);
@@ -484,18 +490,48 @@ export function validateGradeResponse(
     // The model is instructed that awarded mark_breakdown tokens must sum to
     // suggestedMarks (every token here is a single mark — M1/A1/R1/AG, never
     // M2/A2), but it doesn't always follow its own arithmetic. When it
-    // disagrees with itself, the itemised breakdown is the more trustworthy
-    // number (it's auditable per-token against the mark scheme, where a bare
-    // suggestedMarks is not), so that's what gets kept — always flagged low
-    // confidence, since an internal inconsistency means something about the
-    // grading went wrong regardless of which number was "right".
+    // disagrees with itself the result is always flagged low confidence: an
+    // internal inconsistency means something about the grading went wrong
+    // regardless of which number was "right".
+    //
+    // Which number to keep depends on the DIRECTION of the disagreement, and
+    // that is not symmetric. The breakdown was originally trusted outright,
+    // on the reasoning that it is auditable per-token against the mark scheme
+    // where a bare suggestedMarks is not. Measured over a full class (2337
+    // parts, Formative Assessment 1) the rule fired 21 times: 19 downward,
+    // all sound, and 2 upward -- BOTH of which were wrong, and both of which
+    // put marks a student had not earned into Clev's Marks.
+    //
+    // In both upward cases the model's own suggestedMarks was correct and a
+    // breakdown token was wrongly flagged awarded, with the prose reasoning
+    // agreeing with suggestedMarks against the token it carried. That is the
+    // asymmetry: a token wrongly marked awarded invents a mark, while a token
+    // wrongly marked not-awarded only withholds one the prose still argues
+    // for.
+    //
+    // So the breakdown may LOWER a mark freely, but may raise one only by the
+    // number of marks the deterministic re-check above just granted -- those
+    // are this pass's own doing, verified against a numeric claim the model
+    // itself reported, and the grant loop depends on the raise to take
+    // effect. Any excess beyond that is the model disagreeing with itself:
+    // suggestedMarks stands and a human is asked instead.
     if (item.markBreakdown.length > 0) {
       const awardedCount = item.markBreakdown.filter((b) => b.awarded).length;
-      if (awardedCount !== clampedMarks) {
+      const raiseCeiling = Math.min(clampedMarks + grantedCount, unit.maxMarks);
+      if (awardedCount < clampedMarks) {
         warnings.push(
           `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown only awards ${awardedCount} token(s); corrected to ${awardedCount} and flagged low confidence`
         );
         clampedMarks = Math.min(awardedCount, unit.maxMarks);
+        confidence = "low";
+      } else if (awardedCount > clampedMarks) {
+        const raised = Math.min(awardedCount, raiseCeiling);
+        if (awardedCount > raiseCeiling) {
+          warnings.push(
+            `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown awards ${awardedCount} token(s); kept ${raised} — a breakdown is never used to raise a mark beyond what this pass granted — and flagged for teacher review`
+          );
+        }
+        clampedMarks = raised;
         confidence = "low";
       }
     }
