@@ -305,7 +305,7 @@ function SetBadge({ name }: { name: string | null }) {
   return (
     <span
       className="inline-block text-[9px] font-mono font-bold px-1 py-px rounded bg-da-accent/15 text-da-accent leading-none"
-      title={`Grade boundaries: Set ${name}`}
+      title={`Grade boundaries: ${name}`}
     >
       {name}
     </span>
@@ -544,6 +544,14 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
   // -- Render -------------------------------------------------------------------
 
+  // P1/P2/P3/IA are DP paper components, inferred from test names. A Grade 9
+  // course has none of them, and expanding Overall into four permanently empty
+  // columns invented a DP structure the course does not have. Only offer the
+  // components this course's tests actually carry, and when there are none,
+  // Overall is not expandable at all.
+  const presentComponents = COMPONENTS.filter((c) => tests.some((t) => t.component === c));
+  const showComponents = expandedOverall && presentComponents.length > 0;
+
   const itemColMap = new Map<string, number>();
   {
     let col = 0;
@@ -566,8 +574,8 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
     | { kind: "blank"; key: string; span: number };
 
   const footerColumns: FooterColumn[] = [];
-  if (expandedOverall) {
-    for (const comp of COMPONENTS) {
+  if (showComponents) {
+    for (const comp of presentComponents) {
       footerColumns.push({
         kind: "levels",
         key: `comp:${comp}`,
@@ -638,9 +646,9 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                 Student
               </th>
 
-              {/* Overall ← or P1/P2/P3/IA columns */}
-              {expandedOverall ? (
-                COMPONENTS.map((comp, i) => (
+              {/* Overall ← or the DP component columns this course actually has */}
+              {showComponents ? (
+                presentComponents.map((comp, i) => (
                   <th
                     key={comp}
                     className={thBtn}
@@ -655,14 +663,21 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                     {comp}
                   </th>
                 ))
-              ) : (
+              ) : presentComponents.length > 0 ? (
                 <th
                   className={`${thBtn} min-w-20`}
-                  title="Click to expand into P1, P2, P3, IA"
+                  title={`Click to expand into ${presentComponents.join(", ")}`}
                   onClick={() => setExpandedOverall(true)}
                 >
                   Overall
                   <span className="block text-[10px] text-da-accent">▸</span>
+                </th>
+              ) : (
+                <th
+                  className={`${thBase} min-w-20`}
+                  title="Every assessment across this course"
+                >
+                  Overall
                 </th>
               )}
 
@@ -756,7 +771,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                     className={`${thBtn} min-w-22.5 max-w-32.5`}
                     onClick={() => toggleTest(test.id)}
                     title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nBoundary set: ${
-                      test.boundary_set_name ? "Set " + test.boundary_set_name : "unassigned (approx.)"
+                      test.boundary_set_name ?? "unassigned (approx.)"
                     }\nClick to expand`}
                   >
                     <span className="block truncate">{test.name}</span>
@@ -811,8 +826,8 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                   </td>
 
                   {/* Overall / Components */}
-                  {expandedOverall ? (
-                    COMPONENTS.map((comp) => {
+                  {showComponents ? (
+                    presentComponents.map((comp) => {
                       const { grade: g, pct, approximate } = computeComponentGrade(
                         student.profile_id,
                         comp as "P1" | "P2" | "P3" | "IA",
@@ -979,8 +994,8 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                         className={`${tdBase} font-semibold text-base ${gradeColor(grade)} ${gradeBg(grade)}`}
                         title={
                           pct !== null
-                            ? `${pct.toFixed(1)}% · Set ${
-                                test.boundary_set_name ?? "unassigned"
+                            ? `${pct.toFixed(1)}% · ${
+                                test.boundary_set_name ?? "no boundary set"
                               }`
                             : undefined
                         }
@@ -1086,7 +1101,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
       <div className="px-4 py-3 border-t border-da-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-da-muted">
         <span>Click column headers to expand / collapse.</span>
         <span className="text-da-border">|</span>
-        <span>IB bands:</span>
+        <span>Levels:</span>
         {([7, 6, 5, 4, 3, 2, 1] as const).map((g) => (
           <span key={g} className={`font-bold ${gradeColor(g)}`}>
             {g}

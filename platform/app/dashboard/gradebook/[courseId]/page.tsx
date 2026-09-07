@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
 import { GradebookGrid, type TestSection } from "./GradebookGrid";
+import { CoursePicker } from "./CoursePicker";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { loadTrackLinks, trackFamilyCourseIds } from "@/lib/track-courses";
@@ -86,6 +87,19 @@ export default async function GradebookCoursePage({
     .single();
 
   if (!course) notFound();
+
+  // Classes the title can switch to -- the same non-archived list the gradebook
+  // index shows. An archived course's gradebook is still reachable by URL, so
+  // pin the current one in when it is not in that set.
+  const { data: switchableCourses } = await supabase
+    .from("courses")
+    .select("id, name")
+    .eq("archived", false)
+    .order("name");
+  const courseOptions = switchableCourses ?? [];
+  const pickerCourses = courseOptions.some((c) => c.id === course.id)
+    ? courseOptions
+    : [{ id: course.id, name: course.name }, ...courseOptions];
 
   // All boundary sets (small table — fetch once, pass to client)
   const { data: rawSets } = await supabase
@@ -273,7 +287,10 @@ export default async function GradebookCoursePage({
         <p className="text-da-muted text-xs font-medium uppercase tracking-widest mb-1">
           Gradebook
         </p>
-        <h1 className="text-3xl font-bold text-da-text font-serif">{course.name}</h1>
+        <CoursePicker
+          current={{ id: course.id, name: course.name }}
+          courses={pickerCourses}
+        />
         <p className="text-da-muted text-sm mt-1">
           {students.length} student{students.length !== 1 ? "s" : ""} ·{" "}
           {tests.length} assessment{tests.length !== 1 ? "s" : ""}
