@@ -23,11 +23,16 @@ interface ScoreTableProps {
 }
 
 export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }: ScoreTableProps) {
-  const [editedScores, setEditedScores] = useState<Record<string, number>>(
+  // "" is a question the student left blank -- no attempt -- which the
+  // self-grade form treats as distinct from a 0 they earned, and which
+  // student_self_scores now stores as NULL. Seeding these boxes with 0 would
+  // turn "I didn't attempt it" into "I attempted it and got nothing" the
+  // moment anyone pressed Save Changes.
+  const [editedScores, setEditedScores] = useState<Record<string, number | "">>(
     () => {
-      const init: Record<string, number> = {};
+      const init: Record<string, number | ""> = {};
       for (const item of items) {
-        init[item.test_item_id] = item.self_marks ?? 0;
+        init[item.test_item_id] = item.self_marks ?? "";
       }
       return init;
     }
@@ -36,14 +41,21 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
   const [saveError, setSaveError] = useState<string | null>(null);
   const [openQuestionMenuFor, setOpenQuestionMenuFor] = useState<string | null>(null);
 
+  /** What the student currently claims for an item: a number, or null for a
+   *  question they left blank (no attempt). */
+  const selfMarkFor = (item: ReflectionItem): number | null => {
+    const edited = editedScores[item.test_item_id];
+    if (edited === "") return null;
+    return edited ?? item.self_marks ?? null;
+  };
+
   const totalTeacher = items.reduce(
     (sum, i) => sum + (i.marks_awarded ?? 0),
     0
   );
-  const totalSelf = items.reduce(
-    (sum, i) => sum + (editedScores[i.test_item_id] ?? i.self_marks ?? 0),
-    0
-  );
+  // A blank question earned nothing, so it adds nothing to the total -- the
+  // blank says something about the attempt, not about the marks.
+  const totalSelf = items.reduce((sum, i) => sum + (selfMarkFor(i) ?? 0), 0);
   const totalMax = items.reduce((sum, i) => sum + i.max_marks, 0);
 
   // Compute live disagreement from current edited scores. Skipped entirely
@@ -51,7 +63,7 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
   // with, and computing one anyway just restates the student's score.
   const liveItems: ReflectionItem[] = items.map((item) => ({
     ...item,
-    self_marks: editedScores[item.test_item_id] ?? item.self_marks,
+    self_marks: selfMarkFor(item),
   }));
   const disagreement = selfMarksEntered ? computeDisagreement(liveItems) : null;
 
@@ -62,7 +74,7 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
     try {
       const scores: SelfScore[] = items.map((item) => ({
         test_item_id: item.test_item_id,
-        self_marks: editedScores[item.test_item_id] ?? item.self_marks ?? 0,
+        self_marks: selfMarkFor(item),
       }));
       await onSave(scores);
     } catch (error) {
@@ -72,10 +84,13 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
     }
   };
 
-  const getDiffClass = (teacher: number | null, self: number) => {
+  const getDiffClass = (teacher: number | null, self: number | null) => {
     if (teacher === null) return "";
-    if (self === teacher) return "bg-green-900/20";
-    if (self > teacher) return "bg-yellow-900/20";
+    // A blank question is a claim of no marks, so it shades against the
+    // teacher's mark the same way an explicit 0 does.
+    const claimed = self ?? 0;
+    if (claimed === teacher) return "bg-green-900/20";
+    if (claimed > teacher) return "bg-yellow-900/20";
     return "bg-red-900/20";
   };
 
@@ -128,13 +143,14 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
           </thead>
           <tbody>
             {items.map((item) => {
-              const self =
-                editedScores[item.test_item_id] ?? item.self_marks ?? 0;
+              const self = selfMarkFor(item);
               // Nothing self-graded: the row has no self mark and therefore
-              // no difference to report, rather than a difference from 0.
+              // no difference to report, rather than a difference from 0. A
+              // question left blank within a real self-assessment does have
+              // one -- the student claimed no marks on it.
               const diff =
                 selfMarksEntered && item.marks_awarded !== null
-                  ? self - item.marks_awarded
+                  ? (self ?? 0) - item.marks_awarded
                   : null;
               return (
                 <tr
@@ -182,8 +198,18 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
                         type="number"
                         min={0}
                         max={item.max_marks}
-                        value={self}
+                        value={self ?? ""}
+                        placeholder="–"
                         onChange={(e) => {
+                          // Clearing the box puts the question back to "no
+                          // attempt" rather than pinning it to 0.
+                          if (e.target.value === "") {
+                            setEditedScores((prev) => ({
+                              ...prev,
+                              [item.test_item_id]: "",
+                            }));
+                            return;
+                          }
                           const val = Math.max(
                             0,
                             Math.min(
@@ -199,7 +225,10 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
                         className="w-16 rounded border-2 border-da-border bg-da-surface px-2 py-1 text-center text-da-text font-bold focus:ring-2 focus:ring-da-accent focus:border-da-accent [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     ) : selfMarksEntered ? (
-                      self
+                      // A blank stays a blank in the read-only view too: the
+                      // student said they made no attempt, not that they
+                      // scored zero.
+                      (self ?? "\u2013")
                     ) : (
                       "\u2014"
                     )}
