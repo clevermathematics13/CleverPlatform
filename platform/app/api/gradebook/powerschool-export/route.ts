@@ -15,6 +15,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getApiTeacher } from "@/lib/auth";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
@@ -23,37 +24,40 @@ import {
   buildPowerSchoolCsv,
   powerSchoolFilename,
   rowsMissingStudentNumber,
+  scoreCell,
   type PowerSchoolScoreRow,
 } from "@/lib/powerschool-export";
+import { fillPstScores, PstFormatError } from "@/lib/pst-fill";
 
-export async function GET(req: NextRequest) {
-  const auth = await getApiTeacher();
-  if (!auth.ok) return auth.response;
-  const { supabase } = auth;
+type BuiltRows = {
+  rows: PowerSchoolScoreRow[];
+  notSelfAssessed: number;
+  testName: string;
+  courseName: string;
+};
 
-  const testId = req.nextUrl.searchParams.get("testId");
-  const courseId = req.nextUrl.searchParams.get("courseId");
-  // Defaults to the narrower set: a file that wrongly omits a student is
-  // noticed, one that wrongly includes them lands a level in PowerSchool for
-  // work the student never reviewed.
-  const selfAssessedOnly = req.nextUrl.searchParams.get("scope") !== "all";
-  if (!testId || !courseId) {
-    return NextResponse.json({ error: "testId and courseId are required" }, { status: 400 });
-  }
-
+/** Everything both handlers need: the scored roster for one test, already
+ *  narrowed to the requested scope. Shared so the file the teacher downloads
+ *  and the template we fill in cannot disagree about a level. */
+async function buildScoreRows(
+  supabase: SupabaseClient,
+  testId: string,
+  courseId: string,
+  selfAssessedOnly: boolean
+): Promise<BuiltRows | { error: string; status: number }> {
   const { data: test } = await supabase
     .from("tests")
     .select("id, name, total_marks, boundary_set_id")
     .eq("id", testId)
     .single();
-  if (!test) return NextResponse.json({ error: "Test not found" }, { status: 404 });
+  if (!test) return { error: "Test not found", status: 404 };
 
   const { data: course } = await supabase
     .from("courses")
     .select("id, name")
     .eq("id", courseId)
     .single();
-  if (!course) return NextResponse.json({ error: "Course not found" }, { status: 404 });
+  if (!course) return { error: "Course not found", status: 404 };
 
   let boundaries: GradeBoundary[] | null = null;
   if (test.boundary_set_id) {
@@ -210,8 +214,36 @@ export async function GET(req: NextRequest) {
       };
     });
 
+  return {
+    rows,
+    notSelfAssessed,
+    testName: test.name as string,
+    courseName: course.name as string,
+  };
+}
+
+export async function GET(req: NextRequest) {
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+
+  const testId = req.nextUrl.searchParams.get("testId");
+  const courseId = req.nextUrl.searchParams.get("courseId");
+  // Defaults to the narrower set: a file that wrongly omits a student is
+  // noticed, one that wrongly includes them lands a level in PowerSchool for
+  // work the student never reviewed.
+  const selfAssessedOnly = req.nextUrl.searchParams.get("scope") !== "all";
+  if (!testId || !courseId) {
+    return NextResponse.json({ error: "testId and courseId are required" }, { status: 400 });
+  }
+
+  const built = await buildScoreRows(auth.supabase, testId, courseId, selfAssessedOnly);
+  if ("error" in built) {
+    return NextResponse.json({ error: built.error }, { status: built.status });
+  }
+  const { rows, notSelfAssessed, testName, courseName } = built;
+
   const csv = buildPowerSchoolCsv(rows);
-  const filename = powerSchoolFilename(course.name as string, test.name as string);
+  const filename = powerSchoolFilename(courseName, testName);
   const missing = rowsMissingStudentNumber(rows).length;
 
   return new NextResponse(csv, {
@@ -226,6 +258,78 @@ export async function GET(req: NextRequest) {
       // Students who have not self-assessed: excluded from the file under
       // scope=self, included but unreviewed under scope=all.
       "X-Not-Self-Assessed": String(notSelfAssessed),
+    },
+  });
+}
+
+/**
+ * POST /api/gradebook/powerschool-export
+ * multipart form: file (the PST), testId, courseId, scope
+ *
+ * Fills the Score column of a PowerTeacher Scores Template exported from the
+ * assignment in PowerTeacher Pro, and hands it straight back.
+ *
+ * This is the better half of the feature. The template already names the
+ * assignment PowerSchool expects, lists exactly the section being graded, and
+ * carries whatever identifiers PowerSchool believes in -- so nothing has to be
+ * guessed at, and matching on Student Num means the name differences that
+ * would otherwise break it ("Roberto GAMIO" against "Roberto Aurelio Gamio")
+ * never come up.
+ */
+export async function POST(req: NextRequest) {
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return NextResponse.json({ error: "Expected a multipart upload" }, { status: 400 });
+  }
+
+  const file = form.get("file");
+  const testId = form.get("testId");
+  const courseId = form.get("courseId");
+  const selfAssessedOnly = form.get("scope") !== "all";
+  if (!(file instanceof File)) {
+    return NextResponse.json({ error: "No template file was uploaded" }, { status: 400 });
+  }
+  if (typeof testId !== "string" || typeof courseId !== "string") {
+    return NextResponse.json({ error: "testId and courseId are required" }, { status: 400 });
+  }
+
+  const built = await buildScoreRows(auth.supabase, testId, courseId, selfAssessedOnly);
+  if ("error" in built) {
+    return NextResponse.json({ error: built.error }, { status: built.status });
+  }
+
+  // Only students carrying a number can be placed in the template at all; the
+  // rest are reported as unfilled rows on the far side.
+  const scoreByNumber = new Map<string, string>();
+  for (const row of built.rows) {
+    const number = row.studentNumber?.trim();
+    if (number) scoreByNumber.set(number, scoreCell(row));
+  }
+
+  let result;
+  try {
+    result = fillPstScores(await file.text(), scoreByNumber);
+  } catch (e) {
+    const message = e instanceof PstFormatError ? e.message : "Could not read that file as a scores template.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  return new NextResponse(result.csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${file.name.replace(/\.csv$/i, "")}-filled.csv"`,
+      "X-Filled": String(result.filled),
+      "X-Unfilled": String(result.unfilled.length),
+      // Students we scored whose number the template does not list -- normally
+      // another section of the same course, worth saying rather than dropping.
+      "X-Not-In-Template": String(result.notInTemplate.length),
+      "X-Scope": selfAssessedOnly ? "self" : "all",
+      "X-Not-Self-Assessed": String(built.notSelfAssessed),
     },
   });
 }
