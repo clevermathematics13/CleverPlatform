@@ -19,16 +19,16 @@ function row(over: Partial<PowerSchoolScoreRow> = {}): PowerSchoolScoreRow {
 
 describe("buildPowerSchoolCsv", () => {
   it("leads with the header row PowerSchool's column mapping expects", () => {
-    expect(buildPowerSchoolCsv([]).split("\r\n")[0]).toBe("Student Number,Student Name,Level");
+    expect(buildPowerSchoolCsv([]).split("\r\n")[0]).toBe("Student Num,Student Name,Score");
   });
 
   it("uses CRLF line endings and terminates the final row", () => {
     const csv = buildPowerSchoolCsv([row()]);
-    expect(csv).toBe('Student Number,Student Name,Level\r\n120451,"Caipo, Santiago",4\r\n');
+    expect(csv).toBe('Student Num,Student Name,Score\r\n120451,"Caipo, Santiago",4\r\n');
   });
 
   // Every name on this roster is "Surname, Given", so an unquoted name column
-  // would shift the Level into a fourth column for every single student.
+  // would shift the Score into a fourth column for every single student.
   it("quotes a name containing a comma", () => {
     expect(buildPowerSchoolCsv([row()])).toContain('"Caipo, Santiago"');
   });
@@ -54,7 +54,7 @@ describe("buildPowerSchoolCsv", () => {
   // student sat the paper and earned nothing.
   it("leaves the score empty for an ungraded student", () => {
     const csv = buildPowerSchoolCsv([row({ level: null })]);
-    expect(csv).toBe('Student Number,Student Name,Level\r\n120451,"Caipo, Santiago",\r\n');
+    expect(csv).toBe('Student Num,Student Name,Score\r\n120451,"Caipo, Santiago",\r\n');
   });
 
   it("keeps a row for a student with no number, so the gap is visible", () => {
@@ -72,7 +72,7 @@ describe("buildPowerSchoolCsv", () => {
       row({ studentName: "Beta", studentNumber: "2", level: 1 }),
     ]);
     expect(csv.split("\r\n").filter(Boolean)).toEqual([
-      "Student Number,Student Name,Level",
+      "Student Num,Student Name,Score",
       "1,Alpha,7",
       "2,Beta,1",
     ]);

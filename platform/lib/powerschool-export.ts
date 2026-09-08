@@ -17,12 +17,14 @@
  *   treated as headers.
  * - The field separator defaults to a comma.
  * - Several score columns are allowed in a CSV and the teacher maps one at
- *   import time. We emit a single Level column, because that is the number
- *   this platform is authoritative about.
- * - "File Score Type" is declared in the dialog, not in the file. A 1-7 level
- *   goes in as Points, so the PowerSchool assignment must be worth 7 points
- *   for the values to land unchanged; PowerSchool will otherwise translate
- *   them to whatever the assignment's score type is.
+ *   import time. We emit a single Score column, because the achievement level
+ *   is the number this platform is authoritative about.
+ * - "File Score Type" is declared in the dialog, not in the file, and has to
+ *   match how the assignment is set up. A real PST from this school's
+ *   PowerSchool reads "Points Possible: 7.0" and "Score Type: GRADESCALE", so
+ *   a 1-7 level lands unchanged there; against a differently configured
+ *   assignment PowerSchool translates the value into whatever that assignment
+ *   uses, which is rarely what anyone wanted.
  * - ABS is one of PowerTeacher Pro's default special codes (alongside INC and
  *   MIS). Typed into a score field it sets the Absent flag and exempts the
  *   assignment from the student's total, which is exactly what a recorded
@@ -36,7 +38,14 @@
 /** PowerTeacher Pro's default special code for an absence. */
 export const POWERSCHOOL_ABSENT_CODE = "ABS";
 
-export const POWERSCHOOL_HEADERS = ["Student Number", "Student Name", "Level"] as const;
+/**
+ * Spelled the way PowerSchool spells them. A real PST exported from
+ * PowerTeacher Pro heads its columns "Student Num,Student Name,Score", so
+ * matching that wording gives the import dialog the best chance of mapping
+ * them without being told, and gives the teacher nothing to translate when it
+ * asks. The values are unchanged: Score holds the 1-7 achievement level.
+ */
+export const POWERSCHOOL_HEADERS = ["Student Num", "Student Name", "Score"] as const;
 
 export type PowerSchoolScoreRow = {
   /** students.student_number / invited_students.student_number. */
@@ -65,7 +74,7 @@ function csvField(value: string): string {
  * PowerSchool, which is what "not graded yet" should do -- writing 0 would be
  * a claim about the student.
  */
-function scoreCell(row: PowerSchoolScoreRow): string {
+export function scoreCell(row: PowerSchoolScoreRow): string {
   if (row.absent) return POWERSCHOOL_ABSENT_CODE;
   return row.level === null ? "" : String(row.level);
 }
