@@ -64,6 +64,16 @@ describe("fillPstScores", () => {
     expect(r.csv).toContain("30246,Freya DELISLE,");
   });
 
+  // A student with no marks arrives as "" (scoreCell). Writing it would change
+  // nothing, so it must not be counted as a fill or the banner overstates.
+  it("treats an empty score as unfilled, and leaves the row byte-identical", () => {
+    const r = fillPstScores(PST, scores({ "30017": "4", "30247": "" }));
+    expect(r.filled).toBe(1);
+    expect(r.unfilled.map((u) => u.studentNumber)).toEqual(["30246", "30247", "30252"]);
+    expect(r.csv).toContain("30247,Kaito FUJII,");
+    expect(r.notInTemplate).toEqual([]);
+  });
+
   it("reports scores for students the template does not list", () => {
     const r = fillPstScores(PST, scores({ "30017": "4", "99999": "7" }));
     expect(r.notInTemplate).toEqual(["99999"]);

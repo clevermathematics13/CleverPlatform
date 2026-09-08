@@ -1,16 +1,15 @@
 /**
- * GET /api/gradebook/powerschool-export?testId=…&courseId=…[&format=pst]
+ * GET /api/gradebook/powerschool-export?testId=…&courseId=…
  *
- * The achievement levels for one test. Two shapes:
+ * The achievement levels for one test, as the PowerTeacher Scores Template
+ * stored for this course with the Score column filled in. PowerSchool gets its
+ * own file, with its own roster and its own student numbers, and the import
+ * dialog has nothing to ask about. 404 until a template has been uploaded once
+ * via POST.
  *
- * - format=pst fills in the PowerTeacher Scores Template stored for this
- *   course and hands it back. This is the one to use: PowerSchool gets its own
- *   file, with its own roster and its own student numbers, and the import
- *   dialog has nothing to ask about. 404 until a template has been uploaded
- *   once via POST.
- * - Without it, a plain three-column CSV, for reading or for an import whose
- *   columns you map by hand. Format decisions and their sources are documented
- *   in lib/powerschool-export.ts.
+ * There used to be a second shape here, a bare three-column CSV. PowerSchool's
+ * import does not read that as data at all (see lib/powerschool-export.ts), so
+ * it is gone: the only file this route hands out is one that imports.
  *
  * scope=self (the default) includes only students who completed the
  * self-assessment; scope=all includes everyone on the roster. See the
@@ -28,7 +27,6 @@ import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { resolveGrade, type GradeBoundary } from "@/lib/grade-bands";
 import {
-  buildPowerSchoolCsv,
   powerSchoolFilename,
   rowsMissingStudentNumber,
   scoreCell,
@@ -307,64 +305,46 @@ export async function GET(req: NextRequest) {
   }
   const { rows, notSelfAssessed, testName, testDate, courseName } = built;
 
-  if (req.nextUrl.searchParams.get("format") === "pst") {
-    const stored = await loadStoredTemplate(auth.supabase, courseId);
-    if (!stored) {
-      return NextResponse.json(
-        {
-          error:
-            "No scores template stored for this class yet. Upload one once with Fill PST and it will be reused from then on.",
-        },
-        { status: 404 }
-      );
-    }
-
-    // Re-exporting the test the template came from leaves the file exactly as
-    // PowerSchool wrote it. For any other test the stored assignment name and
-    // due date are known to be wrong, so they are rewritten -- a file whose
-    // header names one assignment while its Score column holds another's
-    // levels is a trap for whoever opens it next. See retargetPst.
-    const aimed =
-      stored.source_test_id === testId
-        ? stored.template
-        : retargetPst(stored.template, { assignmentName: testName, dueDate: testDate });
-
-    let result;
-    try {
-      result = fillPstScores(aimed, scoreMapFor(rows));
-    } catch (e) {
-      const message =
-        e instanceof PstFormatError
-          ? `The stored template for this class could not be read (${e.message}) -- upload it again.`
-          : "Could not fill the stored scores template.";
-      return NextResponse.json({ error: message }, { status: 500 });
-    }
-
-    return new NextResponse(result.csv, {
-      headers: {
-        "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="${powerSchoolFilename(courseName, testName, "pst")}"`,
-        ...fillHeaders(result, selfAssessedOnly, notSelfAssessed),
+  const stored = await loadStoredTemplate(auth.supabase, courseId);
+  if (!stored) {
+    return NextResponse.json(
+      {
+        error:
+          "No scores template stored for this class yet. Upload one once with Fill PST and it will be reused from then on.",
       },
-    });
+      { status: 404 }
+    );
   }
 
-  const csv = buildPowerSchoolCsv(rows);
-  const filename = powerSchoolFilename(courseName, testName);
-  const missing = rowsMissingStudentNumber(rows).length;
+  // Re-exporting the test the template came from leaves the file exactly as
+  // PowerSchool wrote it. For any other test the stored assignment name and
+  // due date are known to be wrong, so they are rewritten -- a file whose
+  // header names one assignment while its Score column holds another's
+  // levels is a trap for whoever opens it next. See retargetPst.
+  const aimed =
+    stored.source_test_id === testId
+      ? stored.template
+      : retargetPst(stored.template, { assignmentName: testName, dueDate: testDate });
 
-  return new NextResponse(csv, {
+  let result;
+  try {
+    result = fillPstScores(aimed, scoreMapFor(rows));
+  } catch (e) {
+    const message =
+      e instanceof PstFormatError
+        ? `The stored template for this class could not be read (${e.message}) -- upload it again.`
+        : "Could not fill the stored scores template.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  return new NextResponse(result.csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      // Read by the client so it can say what will not match in PowerSchool
-      // before the teacher gets there.
-      "X-Missing-Student-Numbers": String(missing),
-      "X-Row-Count": String(rows.length),
-      "X-Scope": selfAssessedOnly ? "self" : "all",
-      // Students who have not self-assessed: excluded from the file under
-      // scope=self, included but unreviewed under scope=all.
-      "X-Not-Self-Assessed": String(notSelfAssessed),
+      "Content-Disposition": `attachment; filename="${powerSchoolFilename(courseName, testName)}"`,
+      ...fillHeaders(result, selfAssessedOnly, notSelfAssessed),
+      // Scored students with no number at all: they could not be placed in
+      // the template, so they are not among its unfilled rows either.
+      "X-Missing-Student-Numbers": String(rowsMissingStudentNumber(rows).length),
     },
   });
 }
@@ -385,7 +365,7 @@ export async function GET(req: NextRequest) {
  * never come up.
  *
  * Storing it makes the upload a one-off: every assignment after this one is a
- * GET with format=pst. Without a testId this only stores -- that is the
+ * plain GET. Without a testId this only stores -- that is the
  * "replace the stored template" case, which is not an export and should not
  * hand back a file for some arbitrary assignment.
  */
