@@ -1,6 +1,7 @@
 "use client";
 
 import { createClient } from "@/lib/supabase/client";
+import { startGoogleSignIn } from "@/lib/supabase/google-sign-in";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
@@ -59,12 +60,14 @@ function LoginForm() {
       callbackParams.set("invitedEmail", invitedEmail);
     }
 
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?${callbackParams.toString()}`,
-      },
-    });
+    // Not signInWithOAuth directly: a stale session still being recovered in
+    // the background deletes the PKCE verifier this call writes, which is the
+    // "fails the first time, works the second" failure.
+    // See lib/supabase/google-sign-in.ts.
+    await startGoogleSignIn(
+      supabase,
+      `${window.location.origin}/auth/callback?${callbackParams.toString()}`
+    );
   };
 
   const getErrorMessage = (value: string) => {

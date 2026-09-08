@@ -51,6 +51,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
   // Deleting
   const [deleting, setDeleting] = useState<string | null>(null);
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null);
+  const [updatingGradebookVisibility, setUpdatingGradebookVisibility] = useState<string | null>(null);
   const [updatingSelfAssessment, setUpdatingSelfAssessment] = useState<string | null>(null);
   const [savingShortName, setSavingShortName] = useState<string | null>(null);
 
@@ -70,7 +71,12 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
     const detail = await detailRes.json();
     if (detailRes.ok) {
       setTests((prev) => [
-        { ...detail, hidden: detail.hidden ?? false, require_self_assessment: detail.require_self_assessment ?? true } as TestRow,
+        {
+          ...detail,
+          hidden: detail.hidden ?? false,
+          hidden_from_gradebook: detail.hidden_from_gradebook ?? false,
+          require_self_assessment: detail.require_self_assessment ?? true,
+        } as TestRow,
         ...prev,
       ]);
     }
@@ -152,6 +158,26 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
       setTests((prev) => prev.map((t) => (t.id === testId ? { ...t, hidden } : t)));
     } finally {
       setUpdatingVisibility(null);
+    }
+  };
+
+  // Separate from handleToggleHidden on purpose: one is about students, the
+  // other about the teacher's own grid. See the migration for why they are not
+  // the same switch.
+  const handleToggleHiddenFromGradebook = async (testId: string, hiddenFromGradebook: boolean) => {
+    setUpdatingGradebookVisibility(testId);
+    try {
+      const res = await fetch(`/api/tests/${testId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hidden_from_gradebook: hiddenFromGradebook }),
+      });
+      if (!res.ok) return;
+      setTests((prev) =>
+        prev.map((t) => (t.id === testId ? { ...t, hidden_from_gradebook: hiddenFromGradebook } : t))
+      );
+    } finally {
+      setUpdatingGradebookVisibility(null);
     }
   };
 
@@ -427,7 +453,15 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
             >
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <div>
-                  <p className="font-bold text-da-text">{test.name}</p>
+                  {/* Same destination as the gradebook's column header, so the
+                      assessment has one page reachable from both places it is
+                      named. */}
+                  <a
+                    href={`/dashboard/tests/${test.id}`}
+                    className="font-bold text-da-text hover:text-da-accent hover:underline"
+                  >
+                    {test.name}
+                  </a>
                   <p className="text-xs text-da-muted">
                     {test.courses?.name ?? "—"}
                     {test.test_date && ` · ${test.test_date}`}
@@ -442,6 +476,15 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                       onChange={(e) => handleToggleHidden(test.id, e.target.checked)}
                     />
                     Hide this exam from student reflection dropdown
+                  </label>
+                  <label className="mt-1 inline-flex items-center gap-2 text-xs text-da-muted">
+                    <input
+                      type="checkbox"
+                      checked={test.hidden_from_gradebook}
+                      disabled={updatingGradebookVisibility === test.id}
+                      onChange={(e) => handleToggleHiddenFromGradebook(test.id, e.target.checked)}
+                    />
+                    Hide this exam from my gradebook
                   </label>
                   <label className="mt-1 flex items-center gap-2 text-xs text-da-muted">
                     <input

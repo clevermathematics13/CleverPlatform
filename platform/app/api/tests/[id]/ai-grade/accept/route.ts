@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { markExportsStale } from "@/lib/self-assessment-export";
 
 /**
  * POST /api/tests/[id]/ai-grade/accept
@@ -29,7 +30,11 @@ export async function POST(
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    // Clev's Marks just changed, so the stored PowerSchool export no longer
+  // matches it.
+  await markExportsStale({ testId });
+
+  return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const runId = typeof body.runId === "string" ? body.runId.trim() : "";

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { MULTI_ROLE_TEST_EMAILS } from "@/lib/test-accounts";
 
@@ -33,6 +34,21 @@ export async function GET(request: Request) {
 
     if (exchangeError) {
       console.error("Auth code exchange failed:", exchangeError.message);
+
+      // Cookie NAMES only, never values. A failed exchange has two very
+      // different causes and the log alone could not tell them apart: the
+      // verifier never arrived (deleted in the browser before the redirect --
+      // see lib/supabase/google-sign-in.ts) or it arrived and something on
+      // this request removed it. The names answer that in one line.
+      console.error(
+        "Auth cookies on this request:",
+        (await cookies())
+          .getAll()
+          .map((c) => c.name)
+          .filter((name) => name.startsWith("sb-"))
+          .join(", ") || "(none)"
+      );
+
       // Code may have already been exchanged (proxy retry).
       // Check if we have a session anyway.
       const {
