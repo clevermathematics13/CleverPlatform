@@ -107,11 +107,26 @@ export function ReflectionClient({
           onConflict: SELF_SCORE_CONFLICT_TARGET,
         });
       if (error) throw new Error(selfScoreSubmitMessage(error));
+
+      // Finishing the self-assessment is what moves the class's count, so it
+      // is what regenerates the teacher's PowerSchool file (9C_Form1_6.csv).
+      // Deliberately not awaited and deliberately silent: the student has
+      // submitted, and a problem writing a file they will never see is not
+      // theirs to wait for or to be told about. The route returns nothing
+      // about the file for the same reason.
+      if (selectedTestId) {
+        void fetch("/api/gradebook/self-assessment-export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ testId: selectedTestId }),
+        }).catch(() => {});
+      }
+
       // Refresh server component so teacher marks are now transmitted
       router.refresh();
       setStep(2);
     },
-    [router, targetStudentId, readOnlyPreview]
+    [router, targetStudentId, readOnlyPreview, selectedTestId]
   );
 
   const handleSaveComparison = useCallback(

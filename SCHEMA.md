@@ -925,6 +925,41 @@ One row per uploaded scanned placement-test PDF. student_name is manually tagged
 | `created_at` | timestamp with time zone | default `now()` |
 | `updated_at` | timestamp with time zone | default `now()` |
 
+### `powerschool_export_files`
+
+The PowerSchool scores file rebuilt each time a student in the class finishes
+that assessment's self-assessment. One row per (course, test), overwritten; the
+object lives in the private `powerschool-exports` bucket at `storage_path`.
+Written by the service role only (no INSERT/UPDATE policy); read by teachers.
+
+| column | type | default |
+|---|---|---|
+| `course_id` | uuid | part of primary key, FK courses(id) on delete cascade |
+| `test_id` | uuid | part of primary key, FK tests(id) on delete cascade |
+| `storage_path` | text | `<course_id>/<test_id>.csv` — stable, so an update is an upsert rather than a delete-and-recreate |
+| `filename` | text | what the download is called: `[class]_[short name]_[completed count].csv`, e.g. `9C_Form1_6.csv` |
+| `completed_count` | integer | students in this course with at least one non-null `self_marks` for this test — the number in the filename |
+| `roster_count` | integer | everyone on the course roster, the denominator in "9 of 20" |
+| `filled_count` | integer | Score cells actually written |
+| `updated_at` | timestamp with time zone | default `now()` |
+
+### `powerschool_templates`
+
+The PowerTeacher Scores Template for one class, uploaded once and re-filled for
+every assignment. `template` is stored with its Score column blank.
+
+| column | type | default |
+|---|---|---|
+| `course_id` | uuid | primary key, FK courses(id) on delete cascade |
+| `template` | text |  |
+| `source_test_id` | uuid, nullable | FK tests(id) on delete set null — the test it was uploaded against; that one test keeps PowerSchool's own metadata, any other gets its assignment name and due date rewritten |
+| `source_filename` | text, nullable |  |
+| `assignment_name` | text, nullable | read from the template's metadata block |
+| `class_name` | text, nullable | read from the template's metadata block |
+| `student_count` | integer, nullable |  |
+| `updated_at` | timestamp with time zone | default `now()` |
+| `updated_by` | uuid, nullable | FK profiles(id) |
+
 ### `profiles`
 
 | column | type | default |
@@ -1344,6 +1379,7 @@ Unique on `(test_id, question_number, part_label)`.
 | `custom_content` | jsonb, nullable | full authored draft for a Formative-Assessment-creator test; null for IB-bank/external tests |
 | `release_at` | timestamp with time zone, nullable |  |
 | `require_self_assessment` | boolean | default `true` — when false, app/dashboard/reflection reveals marks to a student without requiring a self-assessment submission first |
+| `short_name` | text, nullable | short label for generated filenames, e.g. `Form1` for "Formative Assessment 1"; falls back to an abbreviation of `name` (lib/assessment-short-name.ts) |
 
 ### `topics`
 

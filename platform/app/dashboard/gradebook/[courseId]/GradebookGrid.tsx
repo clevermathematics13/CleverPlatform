@@ -346,14 +346,22 @@ function ViewPills({
   view,
   onSet,
   onFill,
-  onDownload,
+  onGenerated,
+  generated,
+  hasTemplate,
   busy,
 }: {
   test: Test;
   view: TestView | null;
   onSet: (view: TestView | null) => void;
   onFill: () => void;
-  onDownload: () => void;
+  onGenerated: () => void;
+  /** The file last written when a student finished this self-assessment, if
+   *  any has been. */
+  generated: GeneratedFile | null;
+  /** True once a scores template is stored for this class, which turns the
+   *  upload into a plain download. */
+  hasTemplate: boolean;
   busy: boolean;
 }) {
   const views = availableViews(test);
@@ -367,27 +375,33 @@ function ViewPills({
         <button
           type="button"
           disabled={busy}
-          title="Upload the PowerSchool scores template for this assignment; it comes back with the Score column filled in"
+          title={
+            hasTemplate
+              ? "Download this class's PowerSchool scores template with the Score column filled in -- import it as-is, nothing to map"
+              : "Upload the PowerSchool scores template for this assignment. It comes back with the Score column filled in, and is kept for this class so you only have to do this once"
+          }
           onClick={(e) => {
             e.stopPropagation();
             onFill();
           }}
           className={`${pill} ${idle}`}
         >
-          {busy ? "…" : "↥ Fill PST"}
+          {busy ? "…" : hasTemplate ? "↧ PST" : "↥ Fill PST"}
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          title="Download the levels as a plain CSV (Student Num, Student Name, Score) -- for reading, or for an import where you pick the columns yourself"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDownload();
-          }}
-          className={`${pill} ${idle}`}
-        >
-          ↧ CSV
-        </button>
+        {generated && (
+          <button
+            type="button"
+            disabled={busy}
+            title={`${generated.filename} — written automatically when a student last finished this self-assessment (${generated.completedCount} of ${generated.rosterCount} have). The PST button above is always live; this one is that saved snapshot.`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onGenerated();
+            }}
+            className={`${pill} ${idle}`}
+          >
+            {generated.completedCount}/{generated.rosterCount}
+          </button>
+        )}
       </span>
       <span className="flex items-center justify-center gap-1">
         {views.map((v) => {
@@ -423,9 +437,36 @@ interface Props {
   initialMarks: Record<string, Record<string, number>>;
   /** testId -> subject ids recorded as absent (table test_absences); shown as "Abs". */
   absences?: Record<string, string[]>;
+  /** Summary of the PowerTeacher Scores Template stored for this class, or
+   *  null when none has been uploaded yet. */
+  initialTemplate?: TemplateSummary | null;
+  /** testId -> the file written the last time a student in this class finished
+   *  that assessment's self-assessment. */
+  generatedFiles?: Record<string, GeneratedFile>;
 }
 
-export function GradebookGrid({ courseId, tests, students, initialMarks, absences = {} }: Props) {
+/** One auto-generated PowerSchool file, as the gradebook needs to describe it.
+ *  Written by /api/gradebook/self-assessment-export on a student's submit. */
+export type GeneratedFile = {
+  filename: string;
+  completedCount: number;
+  rosterCount: number;
+  updatedAt: string | null;
+};
+
+/** What the gradebook knows about the stored template -- enough to say which
+ *  assignment it came from, never the roster itself. */
+export type TemplateSummary = { assignmentName: string | null; studentCount: number | null };
+
+export function GradebookGrid({
+  courseId,
+  tests,
+  students,
+  initialMarks,
+  absences = {},
+  initialTemplate = null,
+  generatedFiles = {},
+}: Props) {
   const [expandedOverall, setExpandedOverall] = useState(false);
   // A test opens two ways. "levels" is the section subtotals alone -- on a
   // 14-question paper that is 8 columns instead of 22, so the level profile is
@@ -457,20 +498,15 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
   // -- Handlers ----------------------------------------------------------------
 
   const [exportingTestId, setExportingTestId] = useState<string | null>(null);
-  // Which students a CSV export covers. Defaults to the narrower set: a file
+  // Which students an export covers. Defaults to the narrower set: a file
   // that wrongly omits a student is noticed, one that wrongly includes them
   // lands a level in PowerSchool for work the student never reviewed.
   const [exportScope, setExportScope] = useState<"self" | "all">("self");
+  // The stored template, kept in state so uploading one turns every ".. Fill
+  // PST" button into a plain download without a page reload.
+  const [template, setTemplate] = useState<TemplateSummary | null>(initialTemplate);
 
-  /**
-   * Download one test's levels as a PowerSchool import CSV. The response's
-   * X-Missing-Student-Numbers header says how many rows PowerSchool will not be
-   * able to match; that is worth saying here rather than letting the teacher
-   * discover it inside PowerTeacher Pro, so it is surfaced in the same banner
-   * the mark audit uses.
-   */
-  /** Save a CSV response to disk. Shared so both export paths name the file
-   *  the way the server named it. */
+  /** Save a CSV response to disk, under the name the server gave it. */
   const saveCsv = useCallback(async (res: Response, fallbackName: string) => {
     const disposition = res.headers.get("Content-Disposition") ?? "";
     const named = /filename="([^"]+)"/.exec(disposition)?.[1];
@@ -486,13 +522,50 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
   }, []);
 
   /**
-   * Download the levels as a plain CSV: Student Num, Student Name, Score --
-   * PowerSchool's own column names, so the import dialog has the best chance
-   * of mapping them unaided.
-   * Not the PowerSchool template -- this is for reading, or for an import whose
-   * columns you map by hand.
+   * What a fill did, in a sentence. Every row the template listed but we could
+   * not score is a row that will import as blank, so say so here rather than
+   * leaving it to be noticed in PowerSchool.
    */
-  const downloadCsv = useCallback(
+  const describeFill = useCallback(
+    (res: Response, testName: string) => {
+      const filled = Number(res.headers.get("X-Filled") ?? "0");
+      const unfilled = Number(res.headers.get("X-Unfilled") ?? "0");
+      const notInTemplate = Number(res.headers.get("X-Not-In-Template") ?? "0");
+      const notSelfAssessed = Number(res.headers.get("X-Not-Self-Assessed") ?? "0");
+      const scope = res.headers.get("X-Scope") ?? exportScope;
+
+      const notes: string[] = [];
+      if (unfilled > 0) {
+        notes.push(
+          `${unfilled} row${unfilled === 1 ? "" : "s"} left blank` +
+            (notSelfAssessed > 0 && scope === "self"
+              ? ` (${notSelfAssessed} student${notSelfAssessed === 1 ? " has" : "s have"} not completed the self-assessment; students who have never signed in cannot).`
+              : " — no mark, no student number, or not in this course.")
+        );
+      }
+      if (notInTemplate > 0) {
+        notes.push(
+          `${notInTemplate} scored student${notInTemplate === 1 ? " is" : "s are"} not in this template, so they were not written anywhere.`
+        );
+      }
+      return (
+        `${testName}: filled ${filled} score${filled === 1 ? "" : "s"}.` +
+        (notes.length > 0 ? ` ${notes.join(" ")}` : "")
+      );
+    },
+    [exportScope]
+  );
+
+  /**
+   * Download the stored scores template with this test's levels written in.
+   *
+   * The template was uploaded once; from then on this is a plain download.
+   * Matching is on Student Num, so PowerSchool's "Roberto GAMIO" never has to
+   * be reconciled with this platform's "Roberto Aurelio Gamio", and the five
+   * metadata lines that describe the class stay exactly as PowerSchool wrote
+   * them.
+   */
+  const downloadPst = useCallback(
     async (testId: string, testName: string) => {
       setExportingTestId(testId);
       try {
@@ -501,49 +574,57 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
         );
         if (!res.ok) {
           const d = (await res.json().catch(() => ({}))) as { error?: string };
-          setAuditWarning(`Could not export ${testName}: ${d.error ?? res.statusText}`);
+          setAuditWarning(`Could not build the template for ${testName}: ${d.error ?? res.statusText}`);
           return;
         }
-        const rowCount = Number(res.headers.get("X-Row-Count") ?? "0");
-        const missing = Number(res.headers.get("X-Missing-Student-Numbers") ?? "0");
-        const notSelfAssessed = Number(res.headers.get("X-Not-Self-Assessed") ?? "0");
-        const scope = res.headers.get("X-Scope") ?? exportScope;
-        await saveCsv(res, "levels.csv");
-
-        const notes: string[] = [];
-        if (notSelfAssessed > 0) {
-          notes.push(
-            scope === "self"
-              ? `${notSelfAssessed} student${notSelfAssessed === 1 ? " was" : "s were"} left out for not having completed the self-assessment (students who have never signed in cannot).`
-              : `${notSelfAssessed} of the exported row${notSelfAssessed === 1 ? " is for a student who has" : "s are for students who have"} not completed the self-assessment.`
-          );
-        }
-        if (missing > 0) {
-          notes.push(
-            `${missing} of the exported row${missing === 1 ? " has" : "s have"} no student number.`
-          );
-        }
-        setAuditWarning(
-          `${testName}: downloaded ${rowCount} student${rowCount === 1 ? "" : "s"}.` +
-            (notes.length > 0 ? ` ${notes.join(" ")}` : "")
-        );
+        const note = describeFill(res, testName);
+        await saveCsv(res, "scores-filled.csv");
+        setAuditWarning(note);
       } catch {
-        setAuditWarning(`Could not export ${testName}: network error.`);
+        setAuditWarning(`Could not build the template for ${testName}: network error.`);
       } finally {
         setExportingTestId(null);
       }
     },
-    [courseId, exportScope, saveCsv]
+    [courseId, exportScope, saveCsv, describeFill]
+  );
+
+  /** Download the file written the last time a student finished this
+   *  assessment's self-assessment. */
+  const downloadGenerated = useCallback(
+    async (testId: string, testName: string) => {
+      setExportingTestId(testId);
+      try {
+        const res = await fetch(
+          `/api/gradebook/self-assessment-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}`
+        );
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          setAuditWarning(`Could not download the saved file for ${testName}: ${d.error ?? res.statusText}`);
+          return;
+        }
+        const completed = Number(res.headers.get("X-Completed-Count") ?? "0");
+        const roster = Number(res.headers.get("X-Roster-Count") ?? "0");
+        await saveCsv(res, "levels.csv");
+        setAuditWarning(
+          `${testName}: downloaded the saved file — ${completed} of ${roster} student${roster === 1 ? " has" : "s have"} completed the self-assessment.`
+        );
+      } catch {
+        setAuditWarning(`Could not download the saved file for ${testName}: network error.`);
+      } finally {
+        setExportingTestId(null);
+      }
+    },
+    [courseId, saveCsv]
   );
 
   /**
-   * Fill in a PowerTeacher Scores Template.
+   * Upload a PowerTeacher Scores Template: fills it, and keeps it.
    *
    * The teacher exports the blank template from the assignment in PowerTeacher
-   * Pro; we write the Score column and hand it straight back. Matching is on
-   * Student Num, so PowerSchool's "Roberto GAMIO" never has to be reconciled
-   * with this platform's "Roberto Aurelio Gamio", and the assignment metadata
-   * PowerSchool wrote stays exactly as it wrote it.
+   * Pro. We write the Score column, hand it straight back, and store the blank
+   * copy against this class -- the roster and the identifiers are the same for
+   * every assignment in the section, so this only has to happen once.
    */
   const fillTemplate = useCallback(
     async (file: File, testId: string, testName: string) => {
@@ -560,33 +641,20 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
           setAuditWarning(`Could not fill the template for ${testName}: ${d.error ?? res.statusText}`);
           return;
         }
-        const filled = Number(res.headers.get("X-Filled") ?? "0");
-        const unfilled = Number(res.headers.get("X-Unfilled") ?? "0");
-        const notInTemplate = Number(res.headers.get("X-Not-In-Template") ?? "0");
-        const notSelfAssessed = Number(res.headers.get("X-Not-Self-Assessed") ?? "0");
-        const scope = res.headers.get("X-Scope") ?? exportScope;
+        const stored = res.headers.get("X-Template-Stored") === "1";
+        const assignmentName = decodeURIComponent(res.headers.get("X-Template-Assignment") ?? "");
+        const studentCount = Number(res.headers.get("X-Template-Students") ?? "0");
+        const note = describeFill(res, testName);
         await saveCsv(res, "scores-filled.csv");
 
-        // Every row the template listed but we could not score is a row that
-        // will import as blank, so say so rather than leaving it to be noticed
-        // in PowerSchool.
-        const notes: string[] = [];
-        if (unfilled > 0) {
-          notes.push(
-            `${unfilled} row${unfilled === 1 ? "" : "s"} left blank` +
-              (notSelfAssessed > 0 && scope === "self"
-                ? ` (${notSelfAssessed} student${notSelfAssessed === 1 ? " has" : "s have"} not completed the self-assessment; students who have never signed in cannot).`
-                : " — no mark, no student number, or not in this course.")
-          );
-        }
-        if (notInTemplate > 0) {
-          notes.push(
-            `${notInTemplate} scored student${notInTemplate === 1 ? " is" : "s are"} not in this template, so they were not written anywhere.`
-          );
+        if (stored) {
+          setTemplate({ assignmentName: assignmentName || null, studentCount });
         }
         setAuditWarning(
-          `${testName}: filled ${filled} score${filled === 1 ? "" : "s"}.` +
-            (notes.length > 0 ? ` ${notes.join(" ")}` : "")
+          note +
+            (stored
+              ? " Template saved for this class — from now on the button downloads it directly."
+              : " The template could not be saved for reuse, so it will be needed again next time.")
         );
       } catch {
         setAuditWarning(`Could not fill the template for ${testName}: network error.`);
@@ -594,18 +662,55 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
         setExportingTestId(null);
       }
     },
-    [courseId, exportScope, saveCsv]
+    [courseId, exportScope, saveCsv, describeFill]
   );
 
   // One input, retargeted per test: a file picker per column would be dozens of
-  // hidden inputs for a control only ever used one at a time.
+  // hidden inputs for a control only ever used one at a time. A null target is
+  // the toolbar's "replace" -- store the template without exporting anything.
   const templateInputRef = useRef<HTMLInputElement>(null);
   const pendingTemplateTest = useRef<{ id: string; name: string } | null>(null);
 
-  const chooseTemplate = useCallback((testId: string, testName: string) => {
-    pendingTemplateTest.current = { id: testId, name: testName };
+  const chooseTemplate = useCallback((target: { id: string; name: string } | null) => {
+    pendingTemplateTest.current = target;
     templateInputRef.current?.click();
   }, []);
+
+  /** Store a template without exporting anything: the toolbar's Replace. */
+  const storeTemplate = useCallback(
+    async (file: File) => {
+      setExportingTestId("template");
+      try {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("courseId", courseId);
+        const res = await fetch("/api/gradebook/powerschool-export", { method: "POST", body });
+        const d = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          assignmentName?: string | null;
+          studentCount?: number;
+        };
+        if (!res.ok) {
+          setAuditWarning(`Could not save the template: ${d.error ?? res.statusText}`);
+          return;
+        }
+        setTemplate({
+          assignmentName: d.assignmentName ?? null,
+          studentCount: d.studentCount ?? null,
+        });
+        setAuditWarning(
+          `Scores template saved for this class${
+            d.studentCount ? ` (${d.studentCount} students)` : ""
+          }.`
+        );
+      } catch {
+        setAuditWarning("Could not save the template: network error.");
+      } finally {
+        setExportingTestId(null);
+      }
+    },
+    [courseId]
+  );
 
   /** Open a test in a view, or pass null to collapse it. */
   const setTestView = useCallback((testId: string, view: TestView | null) => {
@@ -899,7 +1004,7 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
       )}
       {/* PowerSchool export scope. Lives above the scroll container so it is
           visible whatever the grid is scrolled to, and so the choice is made
-          before the CSV button rather than being buried in the file. */}
+          before the export button rather than being buried in the file. */}
       <input
         ref={templateInputRef}
         type="file"
@@ -911,12 +1016,14 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
           // Reset first, so choosing the same file twice still fires onChange.
           e.target.value = "";
           pendingTemplateTest.current = null;
-          if (file && target) void fillTemplate(file, target.id, target.name);
+          if (!file) return;
+          if (target) void fillTemplate(file, target.id, target.name);
+          else void storeTemplate(file);
         }}
       />
 
       <div className="flex flex-wrap items-center gap-2 border-b border-da-border px-4 py-2 text-xs">
-        <span className="text-da-muted">CSV export covers:</span>
+        <span className="text-da-muted">PowerSchool export covers:</span>
         <div className="inline-flex overflow-hidden rounded-md border border-da-border">
           {([
             ["self", "Self-assessed only"],
@@ -943,13 +1050,51 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
           ))}
         </div>
         <span className="text-da-border">|</span>
-        <span className="text-da-muted">
-          <span className="text-da-text">↥ Fill PST</span> takes the scores template
-          you exported from that assignment in PowerTeacher Pro and returns it with
-          the Score column filled — nothing to map.{" "}
-          <span className="text-da-text">↧ CSV</span> downloads the levels as a plain
-          file instead.
-        </span>
+        {template ? (
+          <span className="text-da-muted">
+            <span className="text-da-text">↧ PST</span> downloads this class&rsquo;s
+            PowerSchool scores template with the levels written in. Import it as-is —
+            it is the one file PowerSchool&rsquo;s import reads without asking anything.
+            The <span className="text-da-text">6/14</span> pill beside it is the same
+            file saved automatically the last time a student finished this
+            self-assessment, and says how many of the class have.
+          </span>
+        ) : (
+          <span className="text-da-muted">
+            <span className="text-da-text">↥ Fill PST</span> takes the scores template
+            you exported from that assignment in PowerTeacher Pro and returns it with
+            the Score column filled. It is kept for this class, so every assignment
+            after this one is a plain download.
+          </span>
+        )}
+        {template && (
+          <>
+            <span className="text-da-border">|</span>
+            <span
+              className="text-da-muted"
+              title={
+                template.assignmentName
+                  ? `Uploaded from "${template.assignmentName}". Its roster and student numbers are reused for every assignment; the assignment name and due date are rewritten to match whichever test you export.`
+                  : "Reused for every assignment in this class."
+              }
+            >
+              Template:{" "}
+              <span className="text-da-text">
+                {template.assignmentName ?? "saved"}
+                {template.studentCount ? ` · ${template.studentCount} students` : ""}
+              </span>
+            </span>
+            <button
+              type="button"
+              disabled={exportingTestId !== null}
+              onClick={() => chooseTemplate(null)}
+              title="Upload a fresh scores template for this class — do this if the class roster changed in PowerSchool"
+              className="rounded border border-da-border px-2 py-0.5 font-medium text-da-muted transition-colors hover:bg-da-hover hover:text-da-text disabled:opacity-50"
+            >
+              Replace
+            </button>
+          </>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -1020,8 +1165,14 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
                         test={test}
                         view={view}
                         onSet={(v) => setTestView(test.id, v)}
-                        onFill={() => chooseTemplate(test.id, test.name)}
-                        onDownload={() => downloadCsv(test.id, test.name)}
+                        onFill={() =>
+                          template
+                            ? downloadPst(test.id, test.name)
+                            : chooseTemplate({ id: test.id, name: test.name })
+                        }
+                        onGenerated={() => downloadGenerated(test.id, test.name)}
+                        generated={generatedFiles[test.id] ?? null}
+                        hasTemplate={template !== null}
                         busy={exportingTestId === test.id}
                       />
                     </>
@@ -1110,8 +1261,14 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
                       test={test}
                       view={null}
                       onSet={(v) => setTestView(test.id, v)}
-                      onFill={() => chooseTemplate(test.id, test.name)}
-                      onDownload={() => downloadCsv(test.id, test.name)}
+                      onFill={() =>
+                        template
+                          ? downloadPst(test.id, test.name)
+                          : chooseTemplate({ id: test.id, name: test.name })
+                      }
+                      onGenerated={() => downloadGenerated(test.id, test.name)}
+                      generated={generatedFiles[test.id] ?? null}
+                      hasTemplate={template !== null}
                       busy={exportingTestId === test.id}
                     />
                   </th>
