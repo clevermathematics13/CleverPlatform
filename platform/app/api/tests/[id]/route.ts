@@ -21,7 +21,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("tests")
     .select(`
-      id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, custom_content, require_self_assessment,
+      id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, hidden_from_gradebook, custom_content, require_self_assessment,
       courses!tests_course_id_fkey(name),
       test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order)
     `)
@@ -45,7 +45,7 @@ export async function PATCH(
   const { id } = await params;
 
   const body = await request.json();
-  const { name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, require_self_assessment } = body;
+  const { name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, hidden_from_gradebook, require_self_assessment } = body;
 
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
@@ -61,6 +61,7 @@ export async function PATCH(
   if (total_marks !== undefined) updates.total_marks = total_marks;
   if (course_id !== undefined) updates.course_id = course_id;
   if (hidden !== undefined) updates.hidden = hidden;
+  if (hidden_from_gradebook !== undefined) updates.hidden_from_gradebook = hidden_from_gradebook;
   if (require_self_assessment !== undefined) updates.require_self_assessment = require_self_assessment;
 
   const { data, error } = await supabase

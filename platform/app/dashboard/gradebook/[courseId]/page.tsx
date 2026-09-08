@@ -139,10 +139,16 @@ export default async function GradebookCoursePage({
   // the whole track, so it belongs on every member's gradebook and the
   // track's own.
   const testCourseIds = trackFamilyCourseIds(courseId, await loadTrackLinks(supabase, courseId));
+  //
+  // hidden_from_gradebook, not hidden: the latter keeps a test out of the
+  // students' reflection dropdown, which is a separate decision. A paper with
+  // an approximate boundary set is exactly the case where the teacher wants it
+  // out of the students' hands and still in front of them here.
   const { data: rawTests } = await supabase
     .from("tests")
     .select("id, name, test_date, total_marks, boundary_set_id, custom_content")
     .in("course_id", testCourseIds)
+    .eq("hidden_from_gradebook", false)
     .order("test_date", { ascending: false });
 
   const testList = rawTests ?? [];

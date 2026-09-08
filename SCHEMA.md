@@ -1381,13 +1381,14 @@ Unique on `(test_id, question_number, part_label)`.
 | `created_at` | timestamp with time zone | default `now()` |
 | `paper_url` | text, nullable |  |
 | `mark_scheme_url` | text, nullable |  |
-| `hidden` | boolean | default `false` |
+| `hidden` | boolean | default `false` — keeps the test out of the **student** reflection dropdown (lib/exam-service.ts) |
 | `boundary_set_id` | uuid, nullable |  |
 | `exam_time` | time without time zone, nullable |  |
 | `custom_content` | jsonb, nullable | full authored draft for a Formative-Assessment-creator test; null for IB-bank/external tests |
 | `release_at` | timestamp with time zone, nullable |  |
 | `require_self_assessment` | boolean | default `true` — when false, app/dashboard/reflection reveals marks to a student without requiring a self-assessment submission first |
 | `short_name` | text, nullable | short label for generated filenames, e.g. `Form1` for "Formative Assessment 1"; falls back to an abbreviation of `name` (lib/assessment-short-name.ts) |
+| `hidden_from_gradebook` | boolean | default `false` — omits the test's column from the **teacher** gradebook grid. Deliberately separate from `hidden`: a paper with an approximate boundary set belongs out of the students' hands and still in front of the teacher, and vice versa |
 
 ### `topics`
 
