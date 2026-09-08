@@ -83,6 +83,25 @@ export async function buildScoreRows(
     .in("course_id", sourceCourseIds)
     .eq("hidden", false);
 
+  // The same student's number lives in two places, and only one of them is
+  // filled reliably. A students row is created on first sign-in without a
+  // number; invited_students carries the one the teacher entered. Reading
+  // only the students row meant a class where everyone had signed in
+  // recently exported with EVERY score blank -- 9G, 17 rows, nothing filled,
+  // and PowerSchool's dialog said "0 of 17 scores will be imported" without
+  // being able to say why. Nothing warns, because a row with no number is
+  // simply one the template never matches.
+  const { data: invitedNumbers } = await supabase
+    .from("invited_students")
+    .select("profile_id, student_number")
+    .in("course_id", sourceCourseIds)
+    .not("profile_id", "is", null);
+  const numberByProfile = new Map(
+    (invitedNumbers ?? [])
+      .filter((r) => r.student_number)
+      .map((r) => [r.profile_id as string, r.student_number as string])
+  );
+
   const subjects: { subjectId: string; name: string; studentNumber: string | null }[] = (
     rawStudents ?? []
   ).map((s) => {
@@ -96,7 +115,10 @@ export async function buildScoreRows(
     return {
       subjectId: s.profile_id as string,
       name: displayName ?? "Unknown",
-      studentNumber: (s.student_number as string | null) ?? null,
+      studentNumber:
+        (s.student_number as string | null) ??
+        numberByProfile.get(s.profile_id as string) ??
+        null,
     };
   });
 
