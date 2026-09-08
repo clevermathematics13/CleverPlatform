@@ -16,11 +16,13 @@ export async function GET(
   const { supabase } = auth;
   const { id } = await params;
 
+  // courses!tests_course_id_fkey, not a bare courses(name) -- see
+  // app/dashboard/tests/page.tsx for why the bare form fails.
   const { data, error } = await supabase
     .from("tests")
     .select(`
       id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, custom_content, require_self_assessment,
-      courses(name),
+      courses!tests_course_id_fkey(name),
       test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order)
     `)
     .eq("id", id)
