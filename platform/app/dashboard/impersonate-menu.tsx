@@ -18,17 +18,22 @@ export function ImpersonateMenu({
   viewingCourse,
   viewingHasAccount,
   options,
+  autoOpen = false,
 }: {
   currentRole: string;
   viewingName: string | null;
   viewingCourse: string | null;
   viewingHasAccount: boolean;
   options: ViewAsOption[];
+  /** Start expanded. Set when arriving from the "View as a student" shortcut,
+   *  which switched role to get here and should not then make the teacher
+   *  hunt for the list it switched them for. */
+  autoOpen?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const [query, setQuery] = useState("");
 
   if (currentRole !== "teacher") return null;
@@ -42,6 +47,9 @@ export function ImpersonateMenu({
     // on entering or leaving rather than carried into the wrong context.
     params.delete("scanId");
     params.delete("viewStudent");
+    // The shortcut that opened this list has done its job; leaving it on
+    // the URL would reopen the picker on every later navigation.
+    params.delete("pickStudent");
     const qs = params.toString();
     setOpen(false);
     setQuery("");

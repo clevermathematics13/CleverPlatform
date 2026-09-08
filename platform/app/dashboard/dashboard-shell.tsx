@@ -82,6 +82,10 @@ export function DashboardShell({
   // client component reading useSearchParams re-renders every time.
   const params = useSearchParams();
   const viewAsId = params.get("viewAs");
+  // Set by the "View as a student" shortcut, which has just switched this
+  // account back to Teacher. It means "land with the picker already open",
+  // so the switch and the choice read as one action rather than two.
+  const pickStudent = params.get("pickStudent") === "1";
   // Swap the whole menu to the student's own while viewing as them, so the
   // preview shows the nav they actually get rather than the teacher's.
   const { viewing, navigation, settingsNavigation } = deriveDashboardView({
@@ -216,6 +220,19 @@ export function DashboardShell({
         : { bottom: window.innerHeight - rect.top, right },
     );
   };
+
+  // Declared after placePopover so a top/bottom bar's popover is measured
+  // rather than left at whatever the last hover set.
+  useEffect(() => {
+    if (!pickStudent) return;
+    setSidebarVisible(true);
+    setSettingsOpen(true);
+    placePopover();
+    // placePopover reads a ref that is populated by the same render; running
+    // it once on the param is enough, and re-running on every render would
+    // fight the hover handlers.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickStudent]);
 
   const navLinkClass =
     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-da-text/80 transition-colors hover:bg-da-hover hover:text-da-accent";
@@ -439,6 +456,7 @@ export function DashboardShell({
 
                   <div className="pt-2 border-t border-da-border mt-1">
                     <ImpersonateMenu
+                      autoOpen={pickStudent}
                       currentRole={profile.role}
                       viewingName={viewing?.name ?? null}
                       viewingCourse={viewing?.courseName ?? null}
