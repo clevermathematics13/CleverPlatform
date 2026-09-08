@@ -15,7 +15,7 @@ export default async function SettingsPage() {
   // before the mirror existed answers yes to the first and no to the second,
   // which is the state that produced "The Drive connection is read-only" with
   // no obvious place to fix it.
-  const [driveRead, driveWrite, { data: settings }] = await Promise.all([
+  const [driveRead, driveWrite, { data: settings }, { data: testRows }] = await Promise.all([
     getDriveConnectionStatus(),
     getDriveWriteStatus(),
     supabase
@@ -23,7 +23,29 @@ export default async function SettingsPage() {
       .select("powerschool_drive_folder_id")
       .eq("teacher_id", profile.id)
       .maybeSingle(),
+    supabase.from("tests").select("teacher_id").limit(200),
   ]);
+
+  // Whose Drive connection the PowerSchool mirror will actually use: the
+  // teacher who owns the tests, which is not necessarily whoever is signed in.
+  //
+  // A Drive token is stored per profile, and google_oauth_tokens is readable
+  // only for your own row -- so this page cannot report on another account's
+  // connection, only name it. Worth naming: connecting Drive while signed in
+  // on one of the test accounts files a perfectly good token under that
+  // profile, where the exports never look, and every screen says "Connected"
+  // while the mirror stays broken. That happened.
+  const ownerIds = [...new Set((testRows ?? []).map((t) => t.teacher_id as string))];
+  const ownerId = ownerIds.length === 1 ? ownerIds[0] : null;
+  let exportOwnerEmail: string | null = null;
+  if (ownerId && ownerId !== profile.id) {
+    const { data: owner } = await supabase
+      .from("profiles")
+      .select("email")
+      .eq("id", ownerId)
+      .maybeSingle();
+    exportOwnerEmail = (owner?.email as string | null) ?? "another account";
+  }
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -41,6 +63,7 @@ export default async function SettingsPage() {
           initialDriveFolderId={
             (settings?.powerschool_drive_folder_id as string | null) ?? ""
           }
+          exportOwnerEmail={exportOwnerEmail}
         />
       </div>
     </div>

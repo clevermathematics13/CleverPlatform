@@ -20,10 +20,14 @@ export function SettingsClient({
   initialShowHiddenStudents,
   drive,
   initialDriveFolderId,
+  exportOwnerEmail,
 }: {
   initialShowHiddenStudents: boolean;
   drive: DriveStatus;
   initialDriveFolderId: string;
+  /** Set only when the PowerSchool exports belong to a DIFFERENT account than
+   *  the one signed in -- then this card is not the connection they use. */
+  exportOwnerEmail: string | null;
 }) {
   const router = useRouter();
   const [showHiddenStudents, setShowHiddenStudents] = useState(initialShowHiddenStudents);
@@ -104,6 +108,22 @@ export function SettingsClient({
                 : "Not connected"}
           </span>
         </div>
+
+        {exportOwnerEmail && (
+          <div className="mt-3 rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+            <p className="font-medium text-amber-300">
+              This is not the connection the PowerSchool exports use.
+            </p>
+            <p className="mt-1 leading-snug">
+              A Drive connection belongs to the account that made it, and the exports
+              use <span className="font-medium">{exportOwnerEmail}</span>&apos;s &mdash;
+              the teacher who owns the tests. Connecting or reconnecting here files the
+              token against the account you are signed in as now, where the exports
+              never look. Sign in as{" "}
+              <span className="font-medium">{exportOwnerEmail}</span> to fix that one.
+            </p>
+          </div>
+        )}
 
         {drive.email && (
           <p className="mt-1 text-xs text-da-muted">
