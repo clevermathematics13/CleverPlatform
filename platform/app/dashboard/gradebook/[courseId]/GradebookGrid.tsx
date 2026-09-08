@@ -346,6 +346,8 @@ function ViewPills({
   view,
   onSet,
   onFill,
+  onGenerated,
+  generated,
   hasTemplate,
   busy,
 }: {
@@ -353,6 +355,10 @@ function ViewPills({
   view: TestView | null;
   onSet: (view: TestView | null) => void;
   onFill: () => void;
+  onGenerated: () => void;
+  /** The file last written when a student finished this self-assessment, if
+   *  any has been. */
+  generated: GeneratedFile | null;
   /** True once a scores template is stored for this class, which turns the
    *  upload into a plain download. */
   hasTemplate: boolean;
@@ -382,6 +388,20 @@ function ViewPills({
         >
           {busy ? "…" : hasTemplate ? "↧ PST" : "↥ Fill PST"}
         </button>
+        {generated && (
+          <button
+            type="button"
+            disabled={busy}
+            title={`${generated.filename} — written automatically when a student last finished this self-assessment (${generated.completedCount} of ${generated.rosterCount} have). The PST button above is always live; this one is that saved snapshot.`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onGenerated();
+            }}
+            className={`${pill} ${idle}`}
+          >
+            {generated.completedCount}/{generated.rosterCount}
+          </button>
+        )}
       </span>
       <span className="flex items-center justify-center gap-1">
         {views.map((v) => {
@@ -420,7 +440,19 @@ interface Props {
   /** Summary of the PowerTeacher Scores Template stored for this class, or
    *  null when none has been uploaded yet. */
   initialTemplate?: TemplateSummary | null;
+  /** testId -> the file written the last time a student in this class finished
+   *  that assessment's self-assessment. */
+  generatedFiles?: Record<string, GeneratedFile>;
 }
+
+/** One auto-generated PowerSchool file, as the gradebook needs to describe it.
+ *  Written by /api/gradebook/self-assessment-export on a student's submit. */
+export type GeneratedFile = {
+  filename: string;
+  completedCount: number;
+  rosterCount: number;
+  updatedAt: string | null;
+};
 
 /** What the gradebook knows about the stored template -- enough to say which
  *  assignment it came from, never the roster itself. */
@@ -433,6 +465,7 @@ export function GradebookGrid({
   initialMarks,
   absences = {},
   initialTemplate = null,
+  generatedFiles = {},
 }: Props) {
   const [expandedOverall, setExpandedOverall] = useState(false);
   // A test opens two ways. "levels" is the section subtotals alone -- on a
@@ -554,6 +587,35 @@ export function GradebookGrid({
       }
     },
     [courseId, exportScope, saveCsv, describeFill]
+  );
+
+  /** Download the file written the last time a student finished this
+   *  assessment's self-assessment. */
+  const downloadGenerated = useCallback(
+    async (testId: string, testName: string) => {
+      setExportingTestId(testId);
+      try {
+        const res = await fetch(
+          `/api/gradebook/self-assessment-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}`
+        );
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          setAuditWarning(`Could not download the saved file for ${testName}: ${d.error ?? res.statusText}`);
+          return;
+        }
+        const completed = Number(res.headers.get("X-Completed-Count") ?? "0");
+        const roster = Number(res.headers.get("X-Roster-Count") ?? "0");
+        await saveCsv(res, "levels.csv");
+        setAuditWarning(
+          `${testName}: downloaded the saved file — ${completed} of ${roster} student${roster === 1 ? " has" : "s have"} completed the self-assessment.`
+        );
+      } catch {
+        setAuditWarning(`Could not download the saved file for ${testName}: network error.`);
+      } finally {
+        setExportingTestId(null);
+      }
+    },
+    [courseId, saveCsv]
   );
 
   /**
@@ -993,6 +1055,9 @@ export function GradebookGrid({
             <span className="text-da-text">↧ PST</span> downloads this class&rsquo;s
             PowerSchool scores template with the levels written in. Import it as-is —
             it is the one file PowerSchool&rsquo;s import reads without asking anything.
+            The <span className="text-da-text">6/14</span> pill beside it is the same
+            file saved automatically the last time a student finished this
+            self-assessment, and says how many of the class have.
           </span>
         ) : (
           <span className="text-da-muted">
@@ -1105,6 +1170,8 @@ export function GradebookGrid({
                             ? downloadPst(test.id, test.name)
                             : chooseTemplate({ id: test.id, name: test.name })
                         }
+                        onGenerated={() => downloadGenerated(test.id, test.name)}
+                        generated={generatedFiles[test.id] ?? null}
                         hasTemplate={template !== null}
                         busy={exportingTestId === test.id}
                       />
@@ -1199,6 +1266,8 @@ export function GradebookGrid({
                           ? downloadPst(test.id, test.name)
                           : chooseTemplate({ id: test.id, name: test.name })
                       }
+                      onGenerated={() => downloadGenerated(test.id, test.name)}
+                      generated={generatedFiles[test.id] ?? null}
                       hasTemplate={template !== null}
                       busy={exportingTestId === test.id}
                     />

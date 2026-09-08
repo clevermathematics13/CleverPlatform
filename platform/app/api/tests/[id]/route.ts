@@ -19,7 +19,7 @@ export async function GET(
   const { data, error } = await supabase
     .from("tests")
     .select(`
-      id, name, test_date, exam_time, release_at, total_marks, course_id, hidden, custom_content, require_self_assessment,
+      id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, custom_content, require_self_assessment,
       courses(name),
       test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order)
     `)
@@ -43,10 +43,16 @@ export async function PATCH(
   const { id } = await params;
 
   const body = await request.json();
-  const { name, test_date, exam_time, release_at, total_marks, course_id, hidden, require_self_assessment } = body;
+  const { name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, require_self_assessment } = body;
 
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
+  // Blank means "no short name", not an empty one: assessmentShortName falls
+  // back to abbreviating the full name, which is better than a filename with
+  // an empty middle.
+  if (short_name !== undefined) {
+    updates.short_name = typeof short_name === "string" && short_name.trim() !== "" ? short_name.trim() : null;
+  }
   if (test_date !== undefined) updates.test_date = test_date;
   if (exam_time !== undefined) updates.exam_time = exam_time;
   if (release_at !== undefined) updates.release_at = release_at;

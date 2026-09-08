@@ -1,0 +1,102 @@
+/**
+ * Rebuilding the PowerSchool file a class's self-assessment progress is named
+ * after.
+ *
+ * Called on the student's submit (app/api/gradebook/self-assessment-export)
+ * and nowhere else, but it lives here rather than in the route so the thing
+ * that writes the file can be run and checked directly -- a verification
+ * script that recomposed these steps itself would drift from what production
+ * does, silently, and only be found out once it had written a wrong file.
+ */
+
+import { createClient as createServiceClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { selfAssessmentExportFilename } from "@/lib/assessment-short-name";
+import { buildScoreRows, loadStoredTemplate, scoreMapFor } from "@/lib/powerschool-rows";
+import { fillPstScores, retargetPst, PstFormatError } from "@/lib/pst-fill";
+
+export const BUCKET = "powerschool-exports";
+
+/** Built inside the handler, not at module scope, so `next build`'s page-data
+ *  collection does not throw where the service key is absent. */
+export function serviceClient(): SupabaseClient {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+/** Stable per class and assessment: the count lives in the recorded filename,
+ *  so the object is overwritten rather than piling up one file per submit. */
+export const storagePathFor = (courseId: string, testId: string) => `${courseId}/${testId}.csv`;
+
+/**
+ * Rebuild and store the file for one class and assessment.
+ *
+ * Always scope=self. The whole point of the name is that the number in it says
+ * how many students the file covers, and a file that also carried levels for
+ * students who have not reviewed their marks would make that number a lie.
+ *
+ * Returns null when there is nothing to write: no stored template for the
+ * class (the teacher has not uploaded one yet), or a template we cannot parse.
+ * Neither is the student's problem, and neither should fail their submit.
+ */
+export async function regenerateSelfAssessmentExport(
+  service: SupabaseClient,
+  courseId: string,
+  testId: string
+): Promise<{ filename: string; completedCount: number } | null> {
+  const built = await buildScoreRows(service, testId, courseId, true);
+  if ("error" in built) return null;
+
+  const stored = await loadStoredTemplate(service, courseId);
+  if (!stored) return null;
+
+  const aimed =
+    stored.source_test_id === testId
+      ? stored.template
+      : retargetPst(stored.template, {
+          assignmentName: built.testName,
+          dueDate: built.testDate,
+        });
+
+  let result;
+  try {
+    result = fillPstScores(aimed, scoreMapFor(built.rows));
+  } catch (e) {
+    if (e instanceof PstFormatError) return null;
+    throw e;
+  }
+
+  const filename = selfAssessmentExportFilename(
+    built.courseName,
+    { name: built.testName, short_name: built.testShortName },
+    built.completedCount
+  );
+  const storagePath = storagePathFor(courseId, testId);
+
+  const { error: uploadError } = await service.storage
+    .from(BUCKET)
+    .upload(storagePath, new Blob([result.csv], { type: "text/csv" }), {
+      upsert: true,
+      contentType: "text/csv",
+    });
+  if (uploadError) throw new Error(`Could not store the export: ${uploadError.message}`);
+
+  const { error: rowError } = await service.from("powerschool_export_files").upsert(
+    {
+      course_id: courseId,
+      test_id: testId,
+      storage_path: storagePath,
+      filename,
+      completed_count: built.completedCount,
+      roster_count: built.rosterCount,
+      filled_count: result.filled,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "course_id,test_id" }
+  );
+  if (rowError) throw new Error(`Could not record the export: ${rowError.message}`);
+
+  return { filename, completedCount: built.completedCount };
+}
