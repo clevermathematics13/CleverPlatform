@@ -1345,9 +1345,17 @@ export function GradebookGrid({
                     className={`${thBase} min-w-22.5 max-w-32.5`}
                     title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nBoundary set: ${
                       test.boundary_set_name ?? "unassigned (approx.)"
-                    }`}
+                    }\nClick the name to open this assessment`}
                   >
-                    <span className="block truncate">{test.name}</span>
+                    {/* The name is the way in to the assessment itself -- where
+                        the boundary set this header reports on can actually be
+                        assigned. The pills below stay what they were. */}
+                    <a
+                      href={`/dashboard/tests/${test.id}`}
+                      className="block truncate hover:text-da-accent hover:underline"
+                    >
+                      {test.name}
+                    </a>
                     {test.test_date && (
                       <span className="block text-[10px] text-da-muted">
                         {new Date(test.test_date + "T00:00:00").toLocaleDateString(
