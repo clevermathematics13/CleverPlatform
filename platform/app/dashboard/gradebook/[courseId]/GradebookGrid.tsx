@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   resolveGrade,
   pctToGradeFallback,
@@ -589,6 +589,55 @@ export function GradebookGrid({
     [courseId, exportScope, saveCsv, describeFill]
   );
 
+  /**
+   * Ask the server to rebuild the stored PowerSchool file for an assessment,
+   * a few seconds after the last mark save rather than on each one.
+   *
+   * The routes that write marks only flag the file as stale, because the
+   * gradebook saves a cell at a time and a 41-question paper for 20 students
+   * is 820 saves. This is the trailing edge: one rebuild once the teacher
+   * stops typing, so the file on disk matches the grid without anyone asking.
+   * Missing it is not a correctness problem -- the download rebuilds a stale
+   * file before serving it -- so this is fire-and-forget and silent.
+   */
+  const rebuildTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rebuildPending = useRef<Set<string>>(new Set());
+
+  const scheduleRebuild = useCallback(
+    (testId: string | null) => {
+      if (!testId) return;
+      rebuildPending.current.add(testId);
+      if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
+      rebuildTimer.current = setTimeout(() => {
+        const ids = [...rebuildPending.current];
+        rebuildPending.current.clear();
+        rebuildTimer.current = null;
+        for (const id of ids) {
+          void fetch("/api/gradebook/self-assessment-export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ testId: id, courseId }),
+          }).catch(() => {});
+        }
+      }, 3000);
+    },
+    [courseId]
+  );
+
+  // A pending rebuild must not fire into a page that has gone away.
+  useEffect(() => {
+    return () => {
+      if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
+    };
+  }, []);
+
+  /** Which assessment a question belongs to, for the rebuild above. */
+  const testIdByItem = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of tests) for (const item of t.items) map[item.id] = t.id;
+    return map;
+  }, [tests]);
+
   /** Download the file written the last time a student finished this
    *  assessment's self-assessment. */
   const downloadGenerated = useCallback(
@@ -762,8 +811,9 @@ export function GradebookGrid({
         if (!res.ok) {
           setCellErrors((prev) => ({ ...prev, [key]: "Save failed" }));
           console.error("Mark save error:", d.error);
-        } else if (d.auditWarning) {
-          setAuditWarning(d.auditWarning);
+        } else {
+          scheduleRebuild(testIdByItem[itemId] ?? null);
+          if (d.auditWarning) setAuditWarning(d.auditWarning);
         }
       } catch {
         setCellErrors((prev) => ({ ...prev, [key]: "Network error" }));
@@ -775,7 +825,7 @@ export function GradebookGrid({
         });
       }
     },
-    []
+    [scheduleRebuild, testIdByItem]
   );
 
   const handleBlur = useCallback(
@@ -865,6 +915,11 @@ export function GradebookGrid({
             error?: string;
             auditWarning?: string;
           };
+          if (res.ok) {
+            for (const id of new Set(updates.map((u) => testIdByItem[u.itemId]))) {
+              scheduleRebuild(id ?? null);
+            }
+          }
           if (!res.ok) {
             console.error("Mark paste error:", d.error);
             setCellErrors((prev) => {

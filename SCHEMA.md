@@ -941,6 +941,7 @@ Written by the service role only (no INSERT/UPDATE policy); read by teachers.
 | `completed_count` | integer | students in this course with at least one non-null `self_marks` for this test — the number in the filename |
 | `roster_count` | integer | everyone on the course roster, the denominator in "9 of 20" |
 | `filled_count` | integer | Score cells actually written |
+| `stale` | boolean | default `false` — set when marks change after the file was written; the download regenerates before serving rather than hand back a file known to be out of date |
 | `updated_at` | timestamp with time zone | default `now()` |
 
 ### `powerschool_templates`

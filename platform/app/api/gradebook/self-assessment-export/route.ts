@@ -34,6 +34,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher, getApiUser } from "@/lib/auth";
 import {
   BUCKET,
+  regenerateIfStale,
   regenerateSelfAssessmentExport,
   serviceClient,
 } from "@/lib/self-assessment-export";
@@ -43,13 +44,28 @@ export async function POST(req: NextRequest) {
   if (!auth.ok) return auth.response;
 
   let testId: unknown;
+  let courseId: unknown;
   try {
-    ({ testId } = (await req.json()) as { testId?: unknown });
+    ({ testId, courseId } = (await req.json()) as { testId?: unknown; courseId?: unknown });
   } catch {
     return NextResponse.json({ error: "Expected a JSON body" }, { status: 400 });
   }
   if (typeof testId !== "string" || testId === "") {
     return NextResponse.json({ error: "testId is required" }, { status: 400 });
+  }
+
+  // A teacher asking for a rebuild after changing marks. They can already see
+  // every level in the file, so there is nothing to establish beyond the role
+  // getApiUser already read -- and unlike the student path below, they name
+  // the class rather than being placed in one.
+  if (auth.profile.role === "teacher") {
+    if (typeof courseId !== "string" || courseId === "") {
+      return NextResponse.json({ error: "courseId is required" }, { status: 400 });
+    }
+    const out = await regenerateSelfAssessmentExport(serviceClient(), courseId, testId);
+    return NextResponse.json(
+      out ? { ok: true, ...out } : { ok: true, skipped: "no scores template stored for this class" }
+    );
   }
 
   // Which classes this caller is in. Read through their own client, so RLS
@@ -110,12 +126,21 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "testId and courseId are required" }, { status: 400 });
   }
 
-  const { data: row } = await auth.supabase
-    .from("powerschool_export_files")
-    .select("storage_path, filename, completed_count, roster_count, filled_count")
-    .eq("course_id", courseId)
-    .eq("test_id", testId)
-    .maybeSingle();
+  const read = () =>
+    auth.supabase
+      .from("powerschool_export_files")
+      .select("storage_path, filename, completed_count, roster_count, filled_count, stale")
+      .eq("course_id", courseId)
+      .eq("test_id", testId)
+      .maybeSingle();
+
+  let { data: row } = await read();
+  // Marks moved after this file was written. Rebuild before serving rather
+  // than hand back something the gradebook already disagrees with -- this is
+  // the backstop for every mark-write path, which only sets the flag.
+  if (row?.stale && (await regenerateIfStale(courseId, testId, true))) {
+    ({ data: row } = await read());
+  }
   if (!row) {
     return NextResponse.json(
       {
