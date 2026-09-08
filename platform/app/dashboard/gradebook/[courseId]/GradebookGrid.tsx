@@ -454,6 +454,8 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
           return;
         }
         const missing = Number(res.headers.get("X-Missing-Student-Numbers") ?? "0");
+        const rowCount = Number(res.headers.get("X-Row-Count") ?? "0");
+        const excluded = Number(res.headers.get("X-Excluded-Not-Self-Assessed") ?? "0");
         const disposition = res.headers.get("Content-Disposition") ?? "";
         const named = /filename="([^"]+)"/.exec(disposition)?.[1];
         const blob = await res.blob();
@@ -465,9 +467,23 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
+        // The file only holds students who self-assessed, so a short file is
+        // expected -- say why, and say separately if some of the rows that ARE
+        // in it cannot match in PowerSchool.
+        const notes: string[] = [];
+        if (excluded > 0) {
+          notes.push(
+            `${excluded} student${excluded === 1 ? " was" : "s were"} left out for not having completed the self-assessment (students who have never signed in cannot).`
+          );
+        }
+        if (missing > 0) {
+          notes.push(
+            `${missing} of the exported row${missing === 1 ? " has" : "s have"} no student number, and PowerSchool matches on that alone — add them on the Students page or those rows will not import.`
+          );
+        }
         setAuditWarning(
-          missing > 0
-            ? `${testName} exported, but ${missing} student${missing === 1 ? " has" : "s have"} no student number. PowerSchool matches on that number alone, so those rows will not import until you add them on the Students page.`
+          notes.length > 0
+            ? `${testName}: exported ${rowCount} student${rowCount === 1 ? "" : "s"}. ${notes.join(" ")}`
             : null
         );
       } catch {

@@ -5,6 +5,9 @@
  * per-assignment "Import Scores" reads. Format decisions and their sources are
  * documented in lib/powerschool-export.ts.
  *
+ * Only students who completed the self-assessment are included -- see the
+ * selfAssessed set below for what counts and what that excludes.
+ *
  * Levels are resolved with the same resolveGrade() the gradebook grid and the
  * Exam Reflection dashboard use, against the test's own boundary set, so the
  * file cannot disagree with the screen it was exported from.
@@ -133,6 +136,37 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // Only students who completed the self-assessment are exported.
+  //
+  // The platform's own test for that is hasSelfScores in reflection-client:
+  // at least one non-null self_marks for the test. A submit writes every item
+  // in a single upsert (buildSelfScoreRows), so rows exist or they do not; the
+  // non-null part additionally excludes a submission left blank end to end,
+  // which is what computeDisagreement already treats as "has not self-graded".
+  // Uploading corrections is a later step and deliberately not required here.
+  //
+  // student_self_scores keys on student_id and has no invited-student
+  // fallback, correctly: a student who has never signed in has no account to
+  // have submitted one. Those students can therefore never satisfy this and
+  // never appear in the file -- which is the intended reading of "completed
+  // the self-assessment", but it is also why the excluded count is reported
+  // rather than left for the teacher to notice from a short file.
+  //
+  // Paged: 50 students x 41 items is past PostgREST's silent 1000-row cap.
+  const selfRows =
+    itemIds.length > 0
+      ? await fetchAllRows<{ student_id: string }>((from, to) =>
+          supabase
+            .from("student_self_scores")
+            .select("student_id")
+            .in("test_item_id", itemIds)
+            .not("self_marks", "is", null)
+            .order("id", { ascending: true })
+            .range(from, to)
+        )
+      : [];
+  const selfAssessed = new Set(selfRows.map((r) => r.student_id));
+
   const { data: rawAbsences } = await supabase
     .from("test_absences")
     .select("profile_id, invited_student_id")
@@ -147,7 +181,9 @@ export async function GET(req: NextRequest) {
 
   const totalMarks = test.total_marks ?? 0;
   const lastName = (n: string) => n.trim().split(/\s+/).slice(-1)[0] ?? n;
-  const rows: PowerSchoolScoreRow[] = subjects
+  const included = subjects.filter((s) => selfAssessed.has(s.subjectId));
+  const excluded = subjects.length - included.length;
+  const rows: PowerSchoolScoreRow[] = included
     .sort((a, b) => lastName(a.name).localeCompare(lastName(b.name)) || a.name.localeCompare(b.name))
     .map((s) => {
       const marks = earned[s.subjectId];
@@ -175,6 +211,9 @@ export async function GET(req: NextRequest) {
       // before the teacher gets there.
       "X-Missing-Student-Numbers": String(missing),
       "X-Row-Count": String(rows.length),
+      // Students left out for not having self-assessed. Reported so a short
+      // file is explained rather than merely short.
+      "X-Excluded-Not-Self-Assessed": String(excluded),
     },
   });
 }
