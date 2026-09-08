@@ -5,8 +5,9 @@
  * per-assignment "Import Scores" reads. Format decisions and their sources are
  * documented in lib/powerschool-export.ts.
  *
- * Only students who completed the self-assessment are included -- see the
- * selfAssessed set below for what counts and what that excludes.
+ * scope=self (the default) includes only students who completed the
+ * self-assessment; scope=all includes everyone on the roster. See the
+ * selfAssessed set below for what counts as completed and what that excludes.
  *
  * Levels are resolved with the same resolveGrade() the gradebook grid and the
  * Exam Reflection dashboard use, against the test's own boundary set, so the
@@ -32,6 +33,10 @@ export async function GET(req: NextRequest) {
 
   const testId = req.nextUrl.searchParams.get("testId");
   const courseId = req.nextUrl.searchParams.get("courseId");
+  // Defaults to the narrower set: a file that wrongly omits a student is
+  // noticed, one that wrongly includes them lands a level in PowerSchool for
+  // work the student never reviewed.
+  const selfAssessedOnly = req.nextUrl.searchParams.get("scope") !== "all";
   if (!testId || !courseId) {
     return NextResponse.json({ error: "testId and courseId are required" }, { status: 400 });
   }
@@ -136,7 +141,9 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // Only students who completed the self-assessment are exported.
+  // Who counts as having completed the self-assessment. Gathered even when
+  // exporting everyone, so scope=all can still report how many of its rows are
+  // unreviewed rather than presenting the two files as equivalent.
   //
   // The platform's own test for that is hasSelfScores in reflection-client:
   // at least one non-null self_marks for the test. A submit writes every item
@@ -148,9 +155,9 @@ export async function GET(req: NextRequest) {
   // student_self_scores keys on student_id and has no invited-student
   // fallback, correctly: a student who has never signed in has no account to
   // have submitted one. Those students can therefore never satisfy this and
-  // never appear in the file -- which is the intended reading of "completed
-  // the self-assessment", but it is also why the excluded count is reported
-  // rather than left for the teacher to notice from a short file.
+  // never appear under scope=self -- which is the intended reading of
+  // "completed the self-assessment", but it is also why the excluded count is
+  // reported rather than left for the teacher to notice from a short file.
   //
   // Paged: 50 students x 41 items is past PostgREST's silent 1000-row cap.
   const selfRows =
@@ -181,8 +188,12 @@ export async function GET(req: NextRequest) {
 
   const totalMarks = test.total_marks ?? 0;
   const lastName = (n: string) => n.trim().split(/\s+/).slice(-1)[0] ?? n;
-  const included = subjects.filter((s) => selfAssessed.has(s.subjectId));
-  const excluded = subjects.length - included.length;
+  const included = selfAssessedOnly
+    ? subjects.filter((s) => selfAssessed.has(s.subjectId))
+    : subjects;
+  // Under scope=self this is who was left out; under scope=all it is who is in
+  // the file without having reviewed their marks. Both are worth saying.
+  const notSelfAssessed = subjects.filter((s) => !selfAssessed.has(s.subjectId)).length;
   const rows: PowerSchoolScoreRow[] = included
     .sort((a, b) => lastName(a.name).localeCompare(lastName(b.name)) || a.name.localeCompare(b.name))
     .map((s) => {
@@ -211,9 +222,10 @@ export async function GET(req: NextRequest) {
       // before the teacher gets there.
       "X-Missing-Student-Numbers": String(missing),
       "X-Row-Count": String(rows.length),
-      // Students left out for not having self-assessed. Reported so a short
-      // file is explained rather than merely short.
-      "X-Excluded-Not-Self-Assessed": String(excluded),
+      "X-Scope": selfAssessedOnly ? "self" : "all",
+      // Students who have not self-assessed: excluded from the file under
+      // scope=self, included but unreviewed under scope=all.
+      "X-Not-Self-Assessed": String(notSelfAssessed),
     },
   });
 }

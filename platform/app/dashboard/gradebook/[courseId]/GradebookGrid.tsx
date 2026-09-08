@@ -433,6 +433,10 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
   // -- Handlers ----------------------------------------------------------------
 
   const [exportingTestId, setExportingTestId] = useState<string | null>(null);
+  // Which students a CSV export covers. Defaults to the narrower set: a file
+  // that wrongly omits a student is noticed, one that wrongly includes them
+  // lands a level in PowerSchool for work the student never reviewed.
+  const [exportScope, setExportScope] = useState<"self" | "all">("self");
 
   /**
    * Download one test's levels as a PowerSchool import CSV. The response's
@@ -446,7 +450,7 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
       setExportingTestId(testId);
       try {
         const res = await fetch(
-          `/api/gradebook/powerschool-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}`
+          `/api/gradebook/powerschool-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}&scope=${exportScope}`
         );
         if (!res.ok) {
           const d = (await res.json().catch(() => ({}))) as { error?: string };
@@ -455,7 +459,8 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
         }
         const missing = Number(res.headers.get("X-Missing-Student-Numbers") ?? "0");
         const rowCount = Number(res.headers.get("X-Row-Count") ?? "0");
-        const excluded = Number(res.headers.get("X-Excluded-Not-Self-Assessed") ?? "0");
+        const notSelfAssessed = Number(res.headers.get("X-Not-Self-Assessed") ?? "0");
+        const scope = res.headers.get("X-Scope") ?? exportScope;
         const disposition = res.headers.get("Content-Disposition") ?? "";
         const named = /filename="([^"]+)"/.exec(disposition)?.[1];
         const blob = await res.blob();
@@ -471,9 +476,11 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
         // expected -- say why, and say separately if some of the rows that ARE
         // in it cannot match in PowerSchool.
         const notes: string[] = [];
-        if (excluded > 0) {
+        if (notSelfAssessed > 0) {
           notes.push(
-            `${excluded} student${excluded === 1 ? " was" : "s were"} left out for not having completed the self-assessment (students who have never signed in cannot).`
+            scope === "self"
+              ? `${notSelfAssessed} student${notSelfAssessed === 1 ? " was" : "s were"} left out for not having completed the self-assessment (students who have never signed in cannot).`
+              : `${notSelfAssessed} of the exported row${notSelfAssessed === 1 ? " is for a student who has" : "s are for students who have"} not completed the self-assessment.`
           );
         }
         if (missing > 0) {
@@ -492,7 +499,7 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
         setExportingTestId(null);
       }
     },
-    [courseId]
+    [courseId, exportScope]
   );
 
   /** Open a test in a view, or pass null to collapse it. */
@@ -785,6 +792,38 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
           </button>
         </div>
       )}
+      {/* PowerSchool export scope. Lives above the scroll container so it is
+          visible whatever the grid is scrolled to, and so the choice is made
+          before the CSV button rather than being buried in the file. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-da-border px-4 py-2 text-xs">
+        <span className="text-da-muted">CSV export covers:</span>
+        <div className="inline-flex overflow-hidden rounded-md border border-da-border">
+          {([
+            ["self", "Self-assessed only"],
+            ["all", "All students"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={exportScope === value}
+              onClick={() => setExportScope(value)}
+              title={
+                value === "self"
+                  ? "Only students who completed the self-assessment. Students who have never signed in cannot, so they are never included."
+                  : "Every student on the roster, whether or not they reviewed their marks."
+              }
+              className={`px-2.5 py-1 font-medium transition-colors ${
+                exportScope === value
+                  ? "bg-da-accent/20 text-da-accent"
+                  : "text-da-muted hover:bg-da-hover hover:text-da-text"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="overflow-x-auto">
         <table className="border-collapse min-w-full text-da-text text-sm">
           {/* -- Header --------------------------------------------------- */}
