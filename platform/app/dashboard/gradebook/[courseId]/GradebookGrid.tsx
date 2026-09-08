@@ -379,7 +379,7 @@ function ViewPills({
         <button
           type="button"
           disabled={busy}
-          title="Download the levels as a plain CSV (Student Number, Student Name, Level) -- for reading, or for an import you map by hand"
+          title="Download the levels as a plain CSV (Student Num, Student Name, Score) -- for reading, or for an import where you pick the columns yourself"
           onClick={(e) => {
             e.stopPropagation();
             onDownload();
@@ -486,7 +486,9 @@ export function GradebookGrid({ courseId, tests, students, initialMarks, absence
   }, []);
 
   /**
-   * Download the levels as a plain CSV: Student Number, Student Name, Level.
+   * Download the levels as a plain CSV: Student Num, Student Name, Score --
+   * PowerSchool's own column names, so the import dialog has the best chance
+   * of mapping them unaided.
    * Not the PowerSchool template -- this is for reading, or for an import whose
    * columns you map by hand.
    */
