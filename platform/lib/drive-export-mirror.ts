@@ -138,3 +138,46 @@ function describeDriveError(e: unknown): string {
   }
   return `Drive sync failed: ${message}`;
 }
+
+
+/**
+ * Put a one-off file in the same folder -- the zip of a download batch.
+ *
+ * Unlike the per-class CSVs this always creates rather than updates: each
+ * batch is a record of what was taken at one moment, not a living document, so
+ * they accumulate deliberately and each carries its own timestamp in the name.
+ */
+export async function uploadFileToDrive(opts: {
+  supabase: SupabaseClient;
+  teacherId: string;
+  folderId: string;
+  filename: string;
+  mimeType: string;
+  content: Uint8Array;
+}): Promise<DriveMirrorResult> {
+  const { supabase, teacherId, folderId, filename, mimeType, content } = opts;
+  try {
+    const write = await getDriveWriteStatusFor(supabase, teacherId);
+    if (!write.connected) return { ok: false, error: "Google Drive is not connected." };
+    if (write.missingScopes.length > 0) {
+      return {
+        ok: false,
+        error:
+          "The Drive connection is read-only. Reconnect Google Drive to let the app write these files.",
+      };
+    }
+    const auth = await getDriveAuthClientFor(supabase, teacherId);
+    if (!auth) return { ok: false, error: "Google Drive is not connected." };
+
+    const created = await google.drive({ version: "v3", auth }).files.create({
+      requestBody: { name: filename, parents: [folderId], mimeType },
+      media: { mimeType, body: Readable.from([Buffer.from(content)]) },
+      fields: "id",
+    });
+    const id = created.data.id;
+    if (!id) return { ok: false, error: "Drive accepted the file but returned no id." };
+    return { ok: true, fileId: id };
+  } catch (e) {
+    return { ok: false, error: describeDriveError(e) };
+  }
+}

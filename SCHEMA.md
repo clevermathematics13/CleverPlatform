@@ -945,6 +945,9 @@ Written by the service role only (no INSERT/UPDATE policy); read by teachers.
 | `drive_file_id` | text, nullable | the Drive file this export is mirrored to; reused every sync so Drive keeps revision history instead of accumulating one file per rebuild |
 | `drive_synced_at` | timestamp with time zone, nullable | when the Drive copy was last written |
 | `drive_error` | text, nullable | why the last Drive sync failed, or null; never fatal — Storage is the source of truth |
+| `content_sha` | text, nullable | sha256 of the CSV as last written; compared against `downloaded_sha` to decide whether this class has scores the teacher has not taken yet |
+| `downloaded_sha` | text, nullable | `content_sha` at the moment the file was last included in a "Download new scores" batch; null until the first download |
+| `downloaded_at` | timestamp with time zone, nullable | when this file was last included in a download batch |
 | `updated_at` | timestamp with time zone | default `now()` |
 
 ### `powerschool_templates`

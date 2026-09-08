@@ -4,6 +4,7 @@ import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
 import { GradebookGrid, type GeneratedFile, type TestSection } from "./GradebookGrid";
 import { CoursePicker } from "./CoursePicker";
+import { NewScoresButton } from "./NewScoresButton";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { loadTrackLinks, trackFamilyCourseIds } from "@/lib/track-courses";
@@ -325,10 +326,15 @@ export default async function GradebookCoursePage({
           current={{ id: course.id, name: course.name }}
           courses={pickerCourses}
         />
-        <p className="text-da-muted text-sm mt-1">
-          {students.length} student{students.length !== 1 ? "s" : ""} ·{" "}
-          {tests.length} assessment{tests.length !== 1 ? "s" : ""}
-        </p>
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-da-muted text-sm">
+            {students.length} student{students.length !== 1 ? "s" : ""} ·{" "}
+            {tests.length} assessment{tests.length !== 1 ? "s" : ""}
+          </p>
+          {/* Beside the class picker rather than in the grid: the batch spans
+              every class, not the one being looked at. */}
+          <NewScoresButton />
+        </div>
       </div>
 
       <GradebookGrid

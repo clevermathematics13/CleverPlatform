@@ -19,6 +19,7 @@
  *   typing stops, or at the download if nothing got round to it first.
  */
 
+import { createHash } from "node:crypto";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { selfAssessmentExportFilename } from "@/lib/assessment-short-name";
@@ -64,6 +65,11 @@ async function driveTargetFor(
   const folderId = (settings?.powerschool_drive_folder_id as string | null)?.trim();
   if (!folderId) return null;
   return { teacherId: test.teacher_id as string, folderId };
+}
+
+/** The bytes that would be imported, identified. */
+export function sha256(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
 /** Stable per class and assessment: the count lives in the recorded filename,
@@ -169,6 +175,10 @@ export async function regenerateSelfAssessmentExport(
       completed_count: built.completedCount,
       roster_count: built.rosterCount,
       filled_count: result.filled,
+      // What the file now says. The Download new scores button compares this
+      // against downloaded_sha; see the migration for why it is a hash of the
+      // bytes rather than a timestamp.
+      content_sha: sha256(result.csv),
       stale: false,
       drive_file_id: driveFileId,
       // Left at its previous value when the sync failed, so the gradebook can
