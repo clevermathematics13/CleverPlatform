@@ -24,6 +24,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { selfAssessmentExportFilename } from "@/lib/assessment-short-name";
 import { buildScoreRows, loadStoredTemplate, scoreMapFor } from "@/lib/powerschool-rows";
 import { fillPstScores, retargetPst, PstFormatError } from "@/lib/pst-fill";
+import { mirrorExportToDrive } from "@/lib/drive-export-mirror";
 
 export const BUCKET = "powerschool-exports";
 
@@ -34,6 +35,35 @@ export function serviceClient(): SupabaseClient {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+}
+
+/**
+ * Where this test's teacher wants their exports mirrored, or null when they
+ * have not set a folder -- in which case the mirror is simply skipped and the
+ * file still lives in Storage.
+ *
+ * Read from the test's own teacher rather than a global, because it is a
+ * property of whose Drive it is going into.
+ */
+async function driveTargetFor(
+  service: SupabaseClient,
+  testId: string
+): Promise<{ teacherId: string; folderId: string } | null> {
+  const { data: test } = await service
+    .from("tests")
+    .select("teacher_id")
+    .eq("id", testId)
+    .maybeSingle();
+  if (!test?.teacher_id) return null;
+
+  const { data: settings } = await service
+    .from("teacher_settings")
+    .select("powerschool_drive_folder_id")
+    .eq("teacher_id", test.teacher_id as string)
+    .maybeSingle();
+  const folderId = (settings?.powerschool_drive_folder_id as string | null)?.trim();
+  if (!folderId) return null;
+  return { teacherId: test.teacher_id as string, folderId };
 }
 
 /** Stable per class and assessment: the count lives in the recorded filename,
@@ -55,7 +85,7 @@ export async function regenerateSelfAssessmentExport(
   service: SupabaseClient,
   courseId: string,
   testId: string
-): Promise<{ filename: string; completedCount: number } | null> {
+): Promise<{ filename: string; completedCount: number; driveError: string | null } | null> {
   const built = await buildScoreRows(service, testId, courseId, true);
   if ("error" in built) return null;
 
@@ -93,6 +123,43 @@ export async function regenerateSelfAssessmentExport(
     });
   if (uploadError) throw new Error(`Could not store the export: ${uploadError.message}`);
 
+  // Mirror the same bytes into the teacher's Drive folder, updating the file
+  // written last time so Drive keeps the versions. Deliberately after the
+  // upload and before the row write, so whatever happened -- an id, or a
+  // reason it failed -- is recorded in the same upsert.
+  //
+  // Never fatal. Storage is the source of truth and the download works with
+  // Drive unreachable; a failure here is something to tell the teacher, not
+  // something to lose the export over.
+  const { data: existing } = await service
+    .from("powerschool_export_files")
+    .select("drive_file_id")
+    .eq("course_id", courseId)
+    .eq("test_id", testId)
+    .maybeSingle();
+
+  const target = await driveTargetFor(service, testId);
+  let driveFileId = (existing?.drive_file_id as string | null) ?? null;
+  let driveError: string | null = null;
+  let driveSyncedAt: string | null = null;
+
+  if (target) {
+    const mirrored = await mirrorExportToDrive({
+      supabase: service,
+      teacherId: target.teacherId,
+      folderId: target.folderId,
+      filename,
+      csv: result.csv,
+      existingFileId: driveFileId,
+    });
+    if (mirrored.ok) {
+      driveFileId = mirrored.fileId;
+      driveSyncedAt = new Date().toISOString();
+    } else {
+      driveError = mirrored.error;
+    }
+  }
+
   const { error: rowError } = await service.from("powerschool_export_files").upsert(
     {
       course_id: courseId,
@@ -103,13 +170,18 @@ export async function regenerateSelfAssessmentExport(
       roster_count: built.rosterCount,
       filled_count: result.filled,
       stale: false,
+      drive_file_id: driveFileId,
+      // Left at its previous value when the sync failed, so the gradebook can
+      // still say when the Drive copy was last good.
+      ...(driveSyncedAt ? { drive_synced_at: driveSyncedAt } : {}),
+      drive_error: driveError,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "course_id,test_id" }
   );
   if (rowError) throw new Error(`Could not record the export: ${rowError.message}`);
 
-  return { filename, completedCount: built.completedCount };
+  return { filename, completedCount: built.completedCount, driveError };
 }
 
 /**

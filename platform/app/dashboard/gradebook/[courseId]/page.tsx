@@ -271,7 +271,7 @@ export default async function GradebookCoursePage({
   // /api/gradebook/self-assessment-export.
   const { data: exportFileRows } = await supabase
     .from("powerschool_export_files")
-    .select("test_id, filename, completed_count, roster_count, updated_at")
+    .select("test_id, filename, completed_count, roster_count, updated_at, drive_synced_at, drive_error")
     .eq("course_id", courseId);
   const generatedFiles: Record<string, GeneratedFile> = {};
   for (const r of exportFileRows ?? []) {
@@ -280,6 +280,8 @@ export default async function GradebookCoursePage({
       completedCount: (r.completed_count as number) ?? 0,
       rosterCount: (r.roster_count as number) ?? 0,
       updatedAt: (r.updated_at as string) ?? null,
+      driveSyncedAt: (r.drive_synced_at as string | null) ?? null,
+      driveError: (r.drive_error as string | null) ?? null,
     };
   }
 

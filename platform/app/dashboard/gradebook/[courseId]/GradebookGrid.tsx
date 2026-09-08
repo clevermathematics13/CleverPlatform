@@ -392,14 +392,24 @@ function ViewPills({
           <button
             type="button"
             disabled={busy}
-            title={`${generated.filename} — written automatically when a student last finished this self-assessment (${generated.completedCount} of ${generated.rosterCount} have). The PST button above is always live; this one is that saved snapshot.`}
+            title={
+              `${generated.filename} — rebuilt automatically whenever a student finishes this self-assessment or its marks change ` +
+              `(${generated.completedCount} of ${generated.rosterCount} have completed it). ` +
+              `The PST button above is always live; this one is that saved copy.\n\n` +
+              (generated.driveError
+                ? `Google Drive: ${generated.driveError}`
+                : generated.driveSyncedAt
+                ? `Google Drive: copied ${new Date(generated.driveSyncedAt).toLocaleString()}`
+                : "Google Drive: not mirrored yet.")
+            }
             onClick={(e) => {
               e.stopPropagation();
               onGenerated();
             }}
-            className={`${pill} ${idle}`}
+            className={`${pill} ${generated.driveError ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25" : idle}`}
           >
             {generated.completedCount}/{generated.rosterCount}
+            {generated.driveError ? " !" : ""}
           </button>
         )}
       </span>
@@ -452,6 +462,11 @@ export type GeneratedFile = {
   completedCount: number;
   rosterCount: number;
   updatedAt: string | null;
+  /** When the Drive copy was last written, or null if it never has been. */
+  driveSyncedAt: string | null;
+  /** Why the last Drive mirror failed. The file itself is fine either way --
+   *  Drive is a copy, not the source. */
+  driveError: string | null;
 };
 
 /** What the gradebook knows about the stored template -- enough to say which
@@ -630,6 +645,18 @@ export function GradebookGrid({
       if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
     };
   }, []);
+
+  /**
+   * The Drive problem worth putting in the toolbar, if any. One message, not
+   * one per assessment: every export shares a folder and a connection, so when
+   * Drive is unhappy they all say the same thing.
+   */
+  const driveTrouble = useMemo(() => {
+    const errors = Object.values(generatedFiles)
+      .map((f) => f.driveError)
+      .filter((e): e is string => Boolean(e));
+    return errors.length > 0 ? errors[0] : null;
+  }, [generatedFiles]);
 
   /** Which assessment a question belongs to, for the rebuild above. */
   const testIdByItem = useMemo(() => {
@@ -1121,6 +1148,26 @@ export function GradebookGrid({
             the Score column filled. It is kept for this class, so every assignment
             after this one is a plain download.
           </span>
+        )}
+        {driveTrouble && (
+          <>
+            <span className="text-da-border">|</span>
+            <span
+              className="text-amber-300"
+              title="These files are still complete and downloadable -- only the Google Drive copy is behind."
+            >
+              Drive: {driveTrouble}
+            </span>
+            {/* The fix for every message this can show is the same consent
+                screen, so offer it here rather than sending the teacher to
+                the Question Bank to find the button. */}
+            <a
+              href="/api/questions/connect-drive"
+              className="rounded border border-amber-400/40 px-2 py-0.5 font-medium text-amber-300 transition-colors hover:bg-amber-500/15"
+            >
+              Reconnect Drive
+            </a>
+          </>
         )}
         {template && (
           <>
