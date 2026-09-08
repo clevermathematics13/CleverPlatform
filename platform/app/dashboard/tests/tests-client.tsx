@@ -453,7 +453,15 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
             >
               <div className="flex items-center justify-between gap-3 px-4 py-3">
                 <div>
-                  <p className="font-bold text-da-text">{test.name}</p>
+                  {/* Same destination as the gradebook's column header, so the
+                      assessment has one page reachable from both places it is
+                      named. */}
+                  <a
+                    href={`/dashboard/tests/${test.id}`}
+                    className="font-bold text-da-text hover:text-da-accent hover:underline"
+                  >
+                    {test.name}
+                  </a>
                   <p className="text-xs text-da-muted">
                     {test.courses?.name ?? "—"}
                     {test.test_date && ` · ${test.test_date}`}
