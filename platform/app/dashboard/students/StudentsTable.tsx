@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { NameCell } from "./NameCell";
 import { NicknameCell } from "./NicknameCell";
+import { StudentNumberCell } from "./StudentNumberCell";
 import {
   setStudentExtraTime,
   setInvitedStudentExtraTime,
@@ -27,6 +28,9 @@ export interface StudentRow {
   hidden: boolean;
   extraTime: number;
   supportsExtraTime: boolean;
+  /** School-defined student number, as PowerSchool knows it. Null until set;
+   *  a PowerSchool score import cannot match the student without it. */
+  studentNumber: string | null;
   signedIn: boolean;
 }
 
@@ -143,6 +147,12 @@ export function StudentsTable({ rows }: Props) {
             <th className={thClass("nickname")} onClick={() => handleHeader("nickname")}>
               Nickname <SortIcon col="nickname" active={sortCol} dir={sortDir} />
             </th>
+            <th
+              className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-da-muted"
+              title="School-defined student number. PowerSchool matches imported scores on this alone."
+            >
+              Student no.
+            </th>
             <th className={thClass("course")} onClick={() => handleHeader("course")}>
               Course <SortIcon col="course" active={sortCol} dir={sortDir} />
             </th>
@@ -182,6 +192,15 @@ export function StudentsTable({ rows }: Props) {
                   invitedId={row.invitedId}
                   nickname={row.nickname}
                   fullName={row.name}
+                />
+              </td>
+
+              {/* Student number -- PowerSchool's only matching key */}
+              <td className="whitespace-nowrap px-6 py-2">
+                <StudentNumberCell
+                  studentId={row.studentId}
+                  invitedId={row.invitedId}
+                  studentNumber={row.studentNumber}
                 />
               </td>
 

@@ -96,6 +96,18 @@ must exercise Server Actions.
   boundaries toward official IB ones. Grade 9's set is `Grade 9` (a 7 at 90%);
   assign it to every new Grade 9 test, or the Level falls back to the generic bands
   in `pctToGradeFallback()` and the column renders a `~approx` badge.
+- **PowerSchool matches imported scores on the student number, and nothing else.**
+  `students.student_number` / `invited_students.student_number` exist only for
+  that: PowerTeacher Pro's per-assignment score import keys on the school-defined
+  number, and accepts a name column purely for its "Validate Student Names" check
+  (name against number), never as a matching key. A student without a number does
+  not import. Fill them from the Students page - there is a paste box that takes a
+  PowerSchool roster export and matches on a normalised token set, so "Caipo,
+  Santiago" finds "Santiago Caipo". The CSV itself is built in
+  `lib/powerschool-export.ts`, whose header comment records the format decisions
+  and why; `ABS` in the score column is PowerTeacher Pro's own default absence
+  code, which exempts the assignment. Levels export as 1-7, so the PowerSchool
+  assignment must be worth 7 points with File Score Type = Points.
 - **Formative Assessments no longer carry an achievement-band table.** A
   Criterion-A-style `achievementBands` table used to be generated into every draft,
   editable in the sandbox and printed on the teacher mark scheme; nobody used it and

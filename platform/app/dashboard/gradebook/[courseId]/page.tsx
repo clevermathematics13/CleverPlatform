@@ -298,6 +298,7 @@ export default async function GradebookCoursePage({
       </div>
 
       <GradebookGrid
+        courseId={courseId}
         tests={tests}
         students={students}
         initialMarks={marksMap}
