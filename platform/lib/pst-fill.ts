@@ -272,7 +272,10 @@ export function fillPstScores(
 
     if (studentNumber) seen.add(studentNumber);
 
-    if (score === undefined) {
+    // An empty score is not a score. A student with no marks reaches here as
+    // "" (see scoreCell), and writing that would leave the cell exactly as it
+    // is -- so report the row as unfilled rather than count it as a fill.
+    if (score === undefined || score === "") {
       unfilled.push({
         studentNumber,
         studentName: (fields[scoreCol > numCol ? numCol + 1 : numCol - 1] ?? "").trim(),

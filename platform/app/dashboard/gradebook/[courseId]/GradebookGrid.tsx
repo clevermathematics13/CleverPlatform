@@ -346,7 +346,6 @@ function ViewPills({
   view,
   onSet,
   onFill,
-  onDownload,
   hasTemplate,
   busy,
 }: {
@@ -354,7 +353,6 @@ function ViewPills({
   view: TestView | null;
   onSet: (view: TestView | null) => void;
   onFill: () => void;
-  onDownload: () => void;
   /** True once a scores template is stored for this class, which turns the
    *  upload into a plain download. */
   hasTemplate: boolean;
@@ -383,18 +381,6 @@ function ViewPills({
           className={`${pill} ${idle}`}
         >
           {busy ? "…" : hasTemplate ? "↧ PST" : "↥ Fill PST"}
-        </button>
-        <button
-          type="button"
-          disabled={busy}
-          title="Download the levels as a plain CSV (Student Num, Student Name, Score) -- for reading, or for an import where you pick the columns yourself"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDownload();
-          }}
-          className={`${pill} ${idle}`}
-        >
-          ↧ CSV
         </button>
       </span>
       <span className="flex items-center justify-center gap-1">
@@ -479,7 +465,7 @@ export function GradebookGrid({
   // -- Handlers ----------------------------------------------------------------
 
   const [exportingTestId, setExportingTestId] = useState<string | null>(null);
-  // Which students a CSV export covers. Defaults to the narrower set: a file
+  // Which students an export covers. Defaults to the narrower set: a file
   // that wrongly omits a student is noticed, one that wrongly includes them
   // lands a level in PowerSchool for work the student never reviewed.
   const [exportScope, setExportScope] = useState<"self" | "all">("self");
@@ -487,15 +473,7 @@ export function GradebookGrid({
   // PST" button into a plain download without a page reload.
   const [template, setTemplate] = useState<TemplateSummary | null>(initialTemplate);
 
-  /**
-   * Download one test's levels as a PowerSchool import CSV. The response's
-   * X-Missing-Student-Numbers header says how many rows PowerSchool will not be
-   * able to match; that is worth saying here rather than letting the teacher
-   * discover it inside PowerTeacher Pro, so it is surfaced in the same banner
-   * the mark audit uses.
-   */
-  /** Save a CSV response to disk. Shared so both export paths name the file
-   *  the way the server named it. */
+  /** Save a CSV response to disk, under the name the server gave it. */
   const saveCsv = useCallback(async (res: Response, fallbackName: string) => {
     const disposition = res.headers.get("Content-Disposition") ?? "";
     const named = /filename="([^"]+)"/.exec(disposition)?.[1];
@@ -509,57 +487,6 @@ export function GradebookGrid({
     a.remove();
     URL.revokeObjectURL(url);
   }, []);
-
-  /**
-   * Download the levels as a plain CSV: Student Num, Student Name, Score --
-   * PowerSchool's own column names, so the import dialog has the best chance
-   * of mapping them unaided.
-   * Not the PowerSchool template -- this is for reading, or for an import whose
-   * columns you map by hand.
-   */
-  const downloadCsv = useCallback(
-    async (testId: string, testName: string) => {
-      setExportingTestId(testId);
-      try {
-        const res = await fetch(
-          `/api/gradebook/powerschool-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}&scope=${exportScope}`
-        );
-        if (!res.ok) {
-          const d = (await res.json().catch(() => ({}))) as { error?: string };
-          setAuditWarning(`Could not export ${testName}: ${d.error ?? res.statusText}`);
-          return;
-        }
-        const rowCount = Number(res.headers.get("X-Row-Count") ?? "0");
-        const missing = Number(res.headers.get("X-Missing-Student-Numbers") ?? "0");
-        const notSelfAssessed = Number(res.headers.get("X-Not-Self-Assessed") ?? "0");
-        const scope = res.headers.get("X-Scope") ?? exportScope;
-        await saveCsv(res, "levels.csv");
-
-        const notes: string[] = [];
-        if (notSelfAssessed > 0) {
-          notes.push(
-            scope === "self"
-              ? `${notSelfAssessed} student${notSelfAssessed === 1 ? " was" : "s were"} left out for not having completed the self-assessment (students who have never signed in cannot).`
-              : `${notSelfAssessed} of the exported row${notSelfAssessed === 1 ? " is for a student who has" : "s are for students who have"} not completed the self-assessment.`
-          );
-        }
-        if (missing > 0) {
-          notes.push(
-            `${missing} of the exported row${missing === 1 ? " has" : "s have"} no student number.`
-          );
-        }
-        setAuditWarning(
-          `${testName}: downloaded ${rowCount} student${rowCount === 1 ? "" : "s"}.` +
-            (notes.length > 0 ? ` ${notes.join(" ")}` : "")
-        );
-      } catch {
-        setAuditWarning(`Could not export ${testName}: network error.`);
-      } finally {
-        setExportingTestId(null);
-      }
-    },
-    [courseId, exportScope, saveCsv]
-  );
 
   /**
    * What a fill did, in a sentence. Every row the template listed but we could
@@ -610,7 +537,7 @@ export function GradebookGrid({
       setExportingTestId(testId);
       try {
         const res = await fetch(
-          `/api/gradebook/powerschool-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}&scope=${exportScope}&format=pst`
+          `/api/gradebook/powerschool-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}&scope=${exportScope}`
         );
         if (!res.ok) {
           const d = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1015,7 +942,7 @@ export function GradebookGrid({
       )}
       {/* PowerSchool export scope. Lives above the scroll container so it is
           visible whatever the grid is scrolled to, and so the choice is made
-          before the CSV button rather than being buried in the file. */}
+          before the export button rather than being buried in the file. */}
       <input
         ref={templateInputRef}
         type="file"
@@ -1034,7 +961,7 @@ export function GradebookGrid({
       />
 
       <div className="flex flex-wrap items-center gap-2 border-b border-da-border px-4 py-2 text-xs">
-        <span className="text-da-muted">CSV export covers:</span>
+        <span className="text-da-muted">PowerSchool export covers:</span>
         <div className="inline-flex overflow-hidden rounded-md border border-da-border">
           {([
             ["self", "Self-assessed only"],
@@ -1064,19 +991,15 @@ export function GradebookGrid({
         {template ? (
           <span className="text-da-muted">
             <span className="text-da-text">↧ PST</span> downloads this class&rsquo;s
-            PowerSchool scores template with the levels written in — import it as-is,
-            nothing to map.{" "}
-            <span className="text-da-text">↧ CSV</span> downloads the levels as a plain
-            file instead.
+            PowerSchool scores template with the levels written in. Import it as-is —
+            it is the one file PowerSchool&rsquo;s import reads without asking anything.
           </span>
         ) : (
           <span className="text-da-muted">
             <span className="text-da-text">↥ Fill PST</span> takes the scores template
             you exported from that assignment in PowerTeacher Pro and returns it with
-            the Score column filled — nothing to map. It is kept for this class, so
-            every assignment after this one is a plain download.{" "}
-            <span className="text-da-text">↧ CSV</span> downloads the levels as a plain
-            file instead.
+            the Score column filled. It is kept for this class, so every assignment
+            after this one is a plain download.
           </span>
         )}
         {template && (
@@ -1182,7 +1105,6 @@ export function GradebookGrid({
                             ? downloadPst(test.id, test.name)
                             : chooseTemplate({ id: test.id, name: test.name })
                         }
-                        onDownload={() => downloadCsv(test.id, test.name)}
                         hasTemplate={template !== null}
                         busy={exportingTestId === test.id}
                       />
@@ -1277,7 +1199,6 @@ export function GradebookGrid({
                           ? downloadPst(test.id, test.name)
                           : chooseTemplate({ id: test.id, name: test.name })
                       }
-                      onDownload={() => downloadCsv(test.id, test.name)}
                       hasTemplate={template !== null}
                       busy={exportingTestId === test.id}
                     />
