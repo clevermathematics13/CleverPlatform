@@ -6,6 +6,7 @@ import { GoogleClassroomLinks } from "./google-classroom-links";
 import { isGoogleConnected, fetchClassroomLinks } from "./google-classroom-actions";
 import { StudentsTable, type StudentRow } from "./StudentsTable";
 import { CourseFilterBar } from "./CourseFilterBar";
+import { StudentNumberPaste } from "./StudentNumberPaste";
 import Link from "next/link";
 
 export default async function StudentsPage({
@@ -31,6 +32,7 @@ export default async function StudentsPage({
       created_at,
       hidden,
       extra_time,
+      student_number,
       profiles:profile_id ( id, email, display_name, nickname ),
       courses:course_id ( id, name )
     `)
@@ -48,6 +50,7 @@ export default async function StudentsPage({
         id,
         created_at,
         hidden,
+        student_number,
         profiles:profile_id ( id, email, display_name, nickname ),
         courses:course_id ( id, name )
       `)
@@ -70,6 +73,7 @@ export default async function StudentsPage({
       nickname,
       hidden,
       extra_time,
+      student_number,
       created_at,
       courses:course_id ( id, name )
     `)
@@ -90,6 +94,7 @@ export default async function StudentsPage({
         full_name,
         nickname,
         hidden,
+        student_number,
         created_at,
         courses:course_id ( id, name )
       `)
@@ -194,6 +199,7 @@ export default async function StudentsPage({
           hidden: student.hidden ?? false,
           extraTime: student.extra_time ?? 0,
           supportsExtraTime,
+          studentNumber: (student as unknown as { student_number: string | null }).student_number ?? null,
           signedIn: false,
         };
       }),
@@ -219,6 +225,7 @@ export default async function StudentsPage({
           hidden: inv.hidden ?? false,
           extraTime: inv.extra_time ?? 0,
           supportsExtraTime: supportsInvitedExtraTime,
+          studentNumber: (inv as unknown as { student_number: string | null }).student_number ?? null,
           signedIn: false,
         };
       }),
@@ -253,6 +260,11 @@ export default async function StudentsPage({
         classMemberCount={classMemberCount}
         classIsFullyArchived={classIsFullyArchived}
       />
+
+      {/* Student numbers, which PowerSchool score import matches on */}
+      <div className="mt-6">
+        <StudentNumberPaste courseId={courseFilter ?? null} />
+      </div>
 
       <div className="mt-6 rounded-xl border border-blue-400/40 bg-blue-500/15 p-6">
         <h2 className="text-xl font-bold text-blue-300">
