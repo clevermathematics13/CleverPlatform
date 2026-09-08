@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ImpersonateMenu } from "./impersonate-menu";
+import { RoleSwitcher } from "./role-switcher";
 import type { ViewAsOption } from "@/lib/view-as";
 import { useSearchParams } from "next/navigation";
 import { deriveDashboardView } from "@/lib/dashboard-nav";
@@ -33,6 +34,9 @@ interface DashboardShellProps {
     avatar_url: string | null;
   };
   viewAsOptions: ViewAsOption[];
+  /** True for the two multi-role test accounts, which may change their own
+   *  role from Settings. Everyone else never sees the control. */
+  canSwitchRole?: boolean;
   /** Edge the navigation docks to; the layout reads it from the cookie. */
   navPosition?: NavPosition;
 }
@@ -69,6 +73,7 @@ export function DashboardShell({
   navigation: teacherNavigation,
   settingsNavigation: teacherSettingsNavigation,
   viewAsOptions,
+  canSwitchRole = false,
   navPosition: initialNavPosition = DEFAULT_NAV_POSITION,
 }: DashboardShellProps) {
   // The viewed student is resolved HERE, on the client, from the URL --
@@ -429,6 +434,8 @@ export function DashboardShell({
                       })}
                     </div>
                   </div>
+
+                  {canSwitchRole && <RoleSwitcher currentRole={profile.role} />}
 
                   <div className="pt-2 border-t border-da-border mt-1">
                     <ImpersonateMenu
