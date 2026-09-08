@@ -925,6 +925,23 @@ One row per uploaded scanned placement-test PDF. student_name is manually tagged
 | `created_at` | timestamp with time zone | default `now()` |
 | `updated_at` | timestamp with time zone | default `now()` |
 
+### `powerschool_templates`
+
+The PowerTeacher Scores Template for one class, uploaded once and re-filled for
+every assignment. `template` is stored with its Score column blank.
+
+| column | type | default |
+|---|---|---|
+| `course_id` | uuid | primary key, FK courses(id) on delete cascade |
+| `template` | text |  |
+| `source_test_id` | uuid, nullable | FK tests(id) on delete set null — the test it was uploaded against; that one test keeps PowerSchool's own metadata, any other gets its assignment name and due date rewritten |
+| `source_filename` | text, nullable |  |
+| `assignment_name` | text, nullable | read from the template's metadata block |
+| `class_name` | text, nullable | read from the template's metadata block |
+| `student_count` | integer, nullable |  |
+| `updated_at` | timestamp with time zone | default `now()` |
+| `updated_by` | uuid, nullable | FK profiles(id) |
+
 ### `profiles`
 
 | column | type | default |

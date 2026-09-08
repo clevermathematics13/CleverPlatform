@@ -100,8 +100,19 @@ export function buildPowerSchoolCsv(rows: PowerSchoolScoreRow[]): string {
   return lines.join("\r\n") + "\r\n";
 }
 
-/** A filename that survives a Content-Disposition header and a Finder window. */
-export function powerSchoolFilename(courseName: string, testName: string): string {
+/**
+ * A filename that survives a Content-Disposition header and a Finder window.
+ *
+ * The suffix says which of the two files this is: "levels" for the plain CSV,
+ * "pst" for a filled scores template. Both are named after the test in this
+ * platform rather than the assignment in PowerSchool, because the name in
+ * Finder is the one the teacher has to recognise.
+ */
+export function powerSchoolFilename(
+  courseName: string,
+  testName: string,
+  suffix = "levels"
+): string {
   const slug = (s: string) =>
     s
       .normalize("NFKD")
@@ -109,6 +120,6 @@ export function powerSchoolFilename(courseName: string, testName: string): strin
       .replace(/[^A-Za-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 60);
-  const parts = [slug(courseName), slug(testName), "levels"].filter(Boolean);
+  const parts = [slug(courseName), slug(testName), slug(suffix)].filter(Boolean);
   return `${parts.join("-")}.csv`;
 }
