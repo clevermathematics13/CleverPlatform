@@ -32,8 +32,7 @@ export function RoleSwitcher({ currentRole }: { currentRole: string }) {
   const [switching, setSwitching] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const choose = async (role: string) => {
-    if (switching || role === currentRole) return;
+  const switchTo = async (role: string, next: string) => {
     setSwitching(role);
     setError(null);
     const supabase = createClient();
@@ -46,8 +45,13 @@ export function RoleSwitcher({ currentRole }: { currentRole: string }) {
     // Back to /dashboard rather than staying put: the page currently open may
     // belong to the role being left behind, and landing on a redirect to
     // /login reads as the switch having failed.
-    router.push("/dashboard");
+    router.push(next);
     router.refresh();
+  };
+
+  const choose = (role: string) => {
+    if (switching || role === currentRole) return;
+    void switchTo(role, "/dashboard");
   };
 
   return (
@@ -81,6 +85,30 @@ export function RoleSwitcher({ currentRole }: { currentRole: string }) {
       <p className="mt-1 text-[11px] leading-snug text-da-muted">
         Changes this account&apos;s role everywhere, not just this tab.
       </p>
+
+      {/* The Student role above is this account's own dashboard -- a dummy
+          student with no marks. Looking at a REAL student's pages is a
+          different thing, and it has to happen in the teacher role: every
+          page reads with the signed-in account's own permissions, and RLS
+          confines a student to their own marks and self-scores. So the
+          shortcut switches role first and arrives with the picker open,
+          rather than offering a list that would render empty pages. */}
+      {currentRole !== "teacher" && (
+        <button
+          type="button"
+          disabled={switching !== null}
+          onClick={() => switching === null && switchTo("teacher", "/dashboard?pickStudent=1")}
+          className="mt-2 w-full rounded-md border border-da-border px-2 py-1.5 text-[11px] font-medium text-da-muted transition-colors hover:bg-da-hover hover:text-da-text disabled:opacity-60"
+        >
+          {switching === "teacher" ? "Switching…" : "View as a real student…"}
+        </button>
+      )}
+      {currentRole !== "teacher" && (
+        <p className="mt-1 text-[11px] leading-snug text-da-muted">
+          Switches to Teacher and opens the class list, because a student
+          account cannot read another student&apos;s work.
+        </p>
+      )}
       {error && <p className="mt-1 text-[11px] text-red-300">{error}</p>}
     </div>
   );
