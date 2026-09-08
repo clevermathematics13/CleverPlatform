@@ -941,6 +941,13 @@ Written by the service role only (no INSERT/UPDATE policy); read by teachers.
 | `completed_count` | integer | students in this course with at least one non-null `self_marks` for this test — the number in the filename |
 | `roster_count` | integer | everyone on the course roster, the denominator in "9 of 20" |
 | `filled_count` | integer | Score cells actually written |
+| `stale` | boolean | default `false` — set when marks change after the file was written; the download regenerates before serving rather than hand back a file known to be out of date |
+| `drive_file_id` | text, nullable | the Drive file this export is mirrored to; reused every sync so Drive keeps revision history instead of accumulating one file per rebuild |
+| `drive_synced_at` | timestamp with time zone, nullable | when the Drive copy was last written |
+| `drive_error` | text, nullable | why the last Drive sync failed, or null; never fatal — Storage is the source of truth |
+| `content_sha` | text, nullable | sha256 of the CSV as last written; compared against `downloaded_sha` to decide whether this class has scores the teacher has not taken yet |
+| `downloaded_sha` | text, nullable | `content_sha` at the moment the file was last included in a "Download new scores" batch; null until the first download |
+| `downloaded_at` | timestamp with time zone, nullable | when this file was last included in a download batch |
 | `updated_at` | timestamp with time zone | default `now()` |
 
 ### `powerschool_templates`
@@ -1292,6 +1299,7 @@ A student who did not sit a test. The AI grader roster and the gradebook show "A
 | `teacher_id` | uuid |  |
 | `show_corrections` | boolean | default `false` |
 | `show_feedback` | boolean | default `false` |
+| `powerschool_drive_folder_id` | text, nullable | Google Drive folder that PowerSchool exports are mirrored into; null disables the mirror (the files still live in the `powerschool-exports` bucket) |
 | `updated_at` | timestamp with time zone | default `now()` |
 
 ### `test_item_anchors`

@@ -16,6 +16,8 @@ export async function GET(_request: NextRequest) {
   if (!auth.ok) return auth.response;
   const { supabase } = auth;
 
+  // courses!tests_course_id_fkey, not a bare courses(name) -- see
+  // app/dashboard/tests/page.tsx for why the bare form fails.
   const { data, error } = await supabase
     .from("tests")
     .select(`
@@ -26,7 +28,7 @@ export async function GET(_request: NextRequest) {
       release_at,
       total_marks,
       course_id,
-      courses(name),
+      courses!tests_course_id_fkey(name),
       test_items(count)
     `)
     .order("test_date", { ascending: false });

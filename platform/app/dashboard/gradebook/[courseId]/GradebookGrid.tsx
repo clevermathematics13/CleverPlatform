@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   resolveGrade,
   pctToGradeFallback,
@@ -392,14 +392,24 @@ function ViewPills({
           <button
             type="button"
             disabled={busy}
-            title={`${generated.filename} — written automatically when a student last finished this self-assessment (${generated.completedCount} of ${generated.rosterCount} have). The PST button above is always live; this one is that saved snapshot.`}
+            title={
+              `${generated.filename} — rebuilt automatically whenever a student finishes this self-assessment or its marks change ` +
+              `(${generated.completedCount} of ${generated.rosterCount} have completed it). ` +
+              `The PST button above is always live; this one is that saved copy.\n\n` +
+              (generated.driveError
+                ? `Google Drive: ${generated.driveError}`
+                : generated.driveSyncedAt
+                ? `Google Drive: copied ${new Date(generated.driveSyncedAt).toLocaleString()}`
+                : "Google Drive: not mirrored yet.")
+            }
             onClick={(e) => {
               e.stopPropagation();
               onGenerated();
             }}
-            className={`${pill} ${idle}`}
+            className={`${pill} ${generated.driveError ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25" : idle}`}
           >
             {generated.completedCount}/{generated.rosterCount}
+            {generated.driveError ? " !" : ""}
           </button>
         )}
       </span>
@@ -452,6 +462,11 @@ export type GeneratedFile = {
   completedCount: number;
   rosterCount: number;
   updatedAt: string | null;
+  /** When the Drive copy was last written, or null if it never has been. */
+  driveSyncedAt: string | null;
+  /** Why the last Drive mirror failed. The file itself is fine either way --
+   *  Drive is a copy, not the source. */
+  driveError: string | null;
 };
 
 /** What the gradebook knows about the stored template -- enough to say which
@@ -588,6 +603,67 @@ export function GradebookGrid({
     },
     [courseId, exportScope, saveCsv, describeFill]
   );
+
+  /**
+   * Ask the server to rebuild the stored PowerSchool file for an assessment,
+   * a few seconds after the last mark save rather than on each one.
+   *
+   * The routes that write marks only flag the file as stale, because the
+   * gradebook saves a cell at a time and a 41-question paper for 20 students
+   * is 820 saves. This is the trailing edge: one rebuild once the teacher
+   * stops typing, so the file on disk matches the grid without anyone asking.
+   * Missing it is not a correctness problem -- the download rebuilds a stale
+   * file before serving it -- so this is fire-and-forget and silent.
+   */
+  const rebuildTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rebuildPending = useRef<Set<string>>(new Set());
+
+  const scheduleRebuild = useCallback(
+    (testId: string | null) => {
+      if (!testId) return;
+      rebuildPending.current.add(testId);
+      if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
+      rebuildTimer.current = setTimeout(() => {
+        const ids = [...rebuildPending.current];
+        rebuildPending.current.clear();
+        rebuildTimer.current = null;
+        for (const id of ids) {
+          void fetch("/api/gradebook/self-assessment-export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ testId: id, courseId }),
+          }).catch(() => {});
+        }
+      }, 3000);
+    },
+    [courseId]
+  );
+
+  // A pending rebuild must not fire into a page that has gone away.
+  useEffect(() => {
+    return () => {
+      if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
+    };
+  }, []);
+
+  /**
+   * The Drive problem worth putting in the toolbar, if any. One message, not
+   * one per assessment: every export shares a folder and a connection, so when
+   * Drive is unhappy they all say the same thing.
+   */
+  const driveTrouble = useMemo(() => {
+    const errors = Object.values(generatedFiles)
+      .map((f) => f.driveError)
+      .filter((e): e is string => Boolean(e));
+    return errors.length > 0 ? errors[0] : null;
+  }, [generatedFiles]);
+
+  /** Which assessment a question belongs to, for the rebuild above. */
+  const testIdByItem = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of tests) for (const item of t.items) map[item.id] = t.id;
+    return map;
+  }, [tests]);
 
   /** Download the file written the last time a student finished this
    *  assessment's self-assessment. */
@@ -762,8 +838,9 @@ export function GradebookGrid({
         if (!res.ok) {
           setCellErrors((prev) => ({ ...prev, [key]: "Save failed" }));
           console.error("Mark save error:", d.error);
-        } else if (d.auditWarning) {
-          setAuditWarning(d.auditWarning);
+        } else {
+          scheduleRebuild(testIdByItem[itemId] ?? null);
+          if (d.auditWarning) setAuditWarning(d.auditWarning);
         }
       } catch {
         setCellErrors((prev) => ({ ...prev, [key]: "Network error" }));
@@ -775,7 +852,7 @@ export function GradebookGrid({
         });
       }
     },
-    []
+    [scheduleRebuild, testIdByItem]
   );
 
   const handleBlur = useCallback(
@@ -865,6 +942,11 @@ export function GradebookGrid({
             error?: string;
             auditWarning?: string;
           };
+          if (res.ok) {
+            for (const id of new Set(updates.map((u) => testIdByItem[u.itemId]))) {
+              scheduleRebuild(id ?? null);
+            }
+          }
           if (!res.ok) {
             console.error("Mark paste error:", d.error);
             setCellErrors((prev) => {
@@ -1066,6 +1148,26 @@ export function GradebookGrid({
             the Score column filled. It is kept for this class, so every assignment
             after this one is a plain download.
           </span>
+        )}
+        {driveTrouble && (
+          <>
+            <span className="text-da-border">|</span>
+            <span
+              className="text-amber-300"
+              title="These files are still complete and downloadable -- only the Google Drive copy is behind."
+            >
+              Drive: {driveTrouble}
+            </span>
+            {/* The fix for every message this can show is the same consent
+                screen, so offer it here rather than sending the teacher to
+                the Question Bank to find the button. */}
+            <a
+              href="/api/questions/connect-drive"
+              className="rounded border border-amber-400/40 px-2 py-0.5 font-medium text-amber-300 transition-colors hover:bg-amber-500/15"
+            >
+              Reconnect Drive
+            </a>
+          </>
         )}
         {template && (
           <>
