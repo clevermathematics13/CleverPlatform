@@ -338,15 +338,31 @@ function ViewPills({
   test,
   view,
   onSet,
+  onExport,
+  exporting,
 }: {
   test: Test;
   view: TestView | null;
   onSet: (view: TestView | null) => void;
+  onExport: () => void;
+  exporting: boolean;
 }) {
   const views = availableViews(test);
   if (views.length === 0) return null;
   return (
     <span className="mt-0.5 flex items-center justify-center gap-1">
+      <button
+        type="button"
+        disabled={exporting}
+        title="Download achievement levels as a PowerSchool import CSV"
+        onClick={(e) => {
+          e.stopPropagation();
+          onExport();
+        }}
+        className="rounded bg-da-bg/60 px-1 py-px text-[9px] font-medium leading-none text-da-muted transition-colors hover:bg-da-hover hover:text-da-accent disabled:opacity-50"
+      >
+        {exporting ? "…" : "CSV"}
+      </button>
       {views.map((v) => {
         const active = view === v;
         return (
@@ -376,6 +392,8 @@ function ViewPills({
 // --- Component ----------------------------------------------------------------
 
 interface Props {
+  /** The gradebook's own course, for the PowerSchool export. */
+  courseId: string;
   tests: Test[];
   students: Student[];
   initialMarks: Record<string, Record<string, number>>;
@@ -383,7 +401,7 @@ interface Props {
   absences?: Record<string, string[]>;
 }
 
-export function GradebookGrid({ tests, students, initialMarks, absences = {} }: Props) {
+export function GradebookGrid({ courseId, tests, students, initialMarks, absences = {} }: Props) {
   const [expandedOverall, setExpandedOverall] = useState(false);
   // A test opens two ways. "levels" is the section subtotals alone -- on a
   // 14-question paper that is 8 columns instead of 22, so the level profile is
@@ -413,6 +431,53 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
   const [auditWarning, setAuditWarning] = useState<string | null>(null);
 
   // -- Handlers ----------------------------------------------------------------
+
+  const [exportingTestId, setExportingTestId] = useState<string | null>(null);
+
+  /**
+   * Download one test's levels as a PowerSchool import CSV. The response's
+   * X-Missing-Student-Numbers header says how many rows PowerSchool will not be
+   * able to match; that is worth saying here rather than letting the teacher
+   * discover it inside PowerTeacher Pro, so it is surfaced in the same banner
+   * the mark audit uses.
+   */
+  const exportPowerSchool = useCallback(
+    async (testId: string, testName: string) => {
+      setExportingTestId(testId);
+      try {
+        const res = await fetch(
+          `/api/gradebook/powerschool-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}`
+        );
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          setAuditWarning(`Could not export ${testName}: ${d.error ?? res.statusText}`);
+          return;
+        }
+        const missing = Number(res.headers.get("X-Missing-Student-Numbers") ?? "0");
+        const disposition = res.headers.get("Content-Disposition") ?? "";
+        const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = named ?? "levels.csv";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setAuditWarning(
+          missing > 0
+            ? `${testName} exported, but ${missing} student${missing === 1 ? " has" : "s have"} no student number. PowerSchool matches on that number alone, so those rows will not import until you add them on the Students page.`
+            : null
+        );
+      } catch {
+        setAuditWarning(`Could not export ${testName}: network error.`);
+      } finally {
+        setExportingTestId(null);
+      }
+    },
+    [courseId]
+  );
 
   /** Open a test in a view, or pass null to collapse it. */
   const setTestView = useCallback((testId: string, view: TestView | null) => {
@@ -772,6 +837,8 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                         test={test}
                         view={view}
                         onSet={(v) => setTestView(test.id, v)}
+                        onExport={() => exportPowerSchool(test.id, test.name)}
+                        exporting={exportingTestId === test.id}
                       />
                     </>
                   );
@@ -859,6 +926,8 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                       test={test}
                       view={null}
                       onSet={(v) => setTestView(test.id, v)}
+                      onExport={() => exportPowerSchool(test.id, test.name)}
+                      exporting={exportingTestId === test.id}
                     />
                   </th>
                 );
