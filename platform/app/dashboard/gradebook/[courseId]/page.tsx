@@ -2,7 +2,7 @@ import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
-import { GradebookGrid, type TestSection } from "./GradebookGrid";
+import { GradebookGrid, type GeneratedFile, type TestSection } from "./GradebookGrid";
 import { CoursePicker } from "./CoursePicker";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
@@ -266,6 +266,23 @@ export default async function GradebookCoursePage({
       }
     : null;
 
+  // The files written as students finish their self-assessments, one per
+  // assessment. Just the summary -- the object itself is served by
+  // /api/gradebook/self-assessment-export.
+  const { data: exportFileRows } = await supabase
+    .from("powerschool_export_files")
+    .select("test_id, filename, completed_count, roster_count, updated_at")
+    .eq("course_id", courseId);
+  const generatedFiles: Record<string, GeneratedFile> = {};
+  for (const r of exportFileRows ?? []) {
+    generatedFiles[r.test_id as string] = {
+      filename: r.filename as string,
+      completedCount: (r.completed_count as number) ?? 0,
+      rosterCount: (r.roster_count as number) ?? 0,
+      updatedAt: (r.updated_at as string) ?? null,
+    };
+  }
+
   // Group items by test
   const itemsByTest: Record<string, typeof allItems> = {};
   for (const item of allItems) {
@@ -319,6 +336,7 @@ export default async function GradebookCoursePage({
         initialMarks={marksMap}
         absences={absencesByTest}
         initialTemplate={powerSchoolTemplate}
+        generatedFiles={generatedFiles}
       />
     </div>
   );

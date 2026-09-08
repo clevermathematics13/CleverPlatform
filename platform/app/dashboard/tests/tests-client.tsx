@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { TestRow } from "./page";
 import { ImportFromPpqModal } from "./import-from-ppq-modal";
+import { abbreviateAssessmentName, assessmentShortName } from "@/lib/assessment-short-name";
 
 interface Course {
   id: string;
@@ -51,6 +52,7 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [updatingVisibility, setUpdatingVisibility] = useState<string | null>(null);
   const [updatingSelfAssessment, setUpdatingSelfAssessment] = useState<string | null>(null);
+  const [savingShortName, setSavingShortName] = useState<string | null>(null);
 
   const formattedExamTime = (value: string | null) => {
     if (!value) return null;
@@ -167,6 +169,26 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
       );
     } finally {
       setUpdatingSelfAssessment(null);
+    }
+  };
+
+  /** Save the short name on blur rather than per keystroke: it is a handful of
+   *  characters typed once, and a PATCH per keypress would be noise. */
+  const handleShortNameBlur = async (testId: string, shortName: string) => {
+    const next = shortName.trim() === "" ? null : shortName.trim();
+    const current = tests.find((t) => t.id === testId)?.short_name ?? null;
+    if (next === current) return;
+    setSavingShortName(testId);
+    try {
+      const res = await fetch(`/api/tests/${testId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ short_name: next }),
+      });
+      if (!res.ok) return;
+      setTests((prev) => prev.map((t) => (t.id === testId ? { ...t, short_name: next } : t)));
+    } finally {
+      setSavingShortName(null);
     }
   };
 
@@ -429,6 +451,25 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                       onChange={(e) => handleToggleRequireSelfAssessment(test.id, e.target.checked)}
                     />
                     Require self-assessment before releasing Clev&apos;s Marks
+                  </label>
+                  {/* Names the file written each time a student in this class
+                      finishes the self-assessment: 9C_Form1_6.csv. Left blank,
+                      it is abbreviated from the assessment name. */}
+                  <label className="mt-1 flex items-center gap-2 text-xs text-da-muted">
+                    <span>Short name for exports</span>
+                    <input
+                      type="text"
+                      defaultValue={test.short_name ?? ""}
+                      disabled={savingShortName === test.id}
+                      placeholder={abbreviateAssessmentName(test.name) || "Form1"}
+                      maxLength={24}
+                      onBlur={(e) => handleShortNameBlur(test.id, e.target.value)}
+                      className="w-28 rounded border border-da-border bg-da-bg px-2 py-0.5 text-da-text disabled:opacity-50"
+                    />
+                    <span className="text-da-muted">
+                      {test.courses?.name ?? "9C"}_
+                      {assessmentShortName(test) || "Form1"}_6.csv
+                    </span>
                   </label>
                 </div>
                 <div className="flex items-center gap-2">
