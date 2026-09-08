@@ -111,4 +111,10 @@ describe("powerSchoolFilename", () => {
   it("survives a name that slugs to nothing", () => {
     expect(powerSchoolFilename("", "***")).toBe("levels.csv");
   });
+
+  it("takes a suffix, so the two export shapes do not share a filename", () => {
+    expect(powerSchoolFilename("9A", "Formative Assessment 1", "pst")).toBe(
+      "9A-Formative-Assessment-1-pst.csv"
+    );
+  });
 });

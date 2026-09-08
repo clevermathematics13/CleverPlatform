@@ -251,6 +251,21 @@ export default async function GradebookCoursePage({
     }
   }
 
+  // The PowerTeacher Scores Template stored for this class, if the teacher has
+  // ever uploaded one. Only the summary: the template itself is filled server
+  // side and never needs to reach the browser.
+  const { data: templateRow } = await supabase
+    .from("powerschool_templates")
+    .select("assignment_name, student_count, updated_at")
+    .eq("course_id", courseId)
+    .maybeSingle();
+  const powerSchoolTemplate = templateRow
+    ? {
+        assignmentName: (templateRow.assignment_name as string | null) ?? null,
+        studentCount: (templateRow.student_count as number | null) ?? null,
+      }
+    : null;
+
   // Group items by test
   const itemsByTest: Record<string, typeof allItems> = {};
   for (const item of allItems) {
@@ -303,6 +318,7 @@ export default async function GradebookCoursePage({
         students={students}
         initialMarks={marksMap}
         absences={absencesByTest}
+        initialTemplate={powerSchoolTemplate}
       />
     </div>
   );

@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { fillPstScores, PstFormatError } from "./pst-fill";
+import {
+  fillPstScores,
+  clearPstScores,
+  readPstMetadata,
+  retargetPst,
+  PstFormatError,
+} from "./pst-fill";
 
 /** A real PST, trimmed to four students. Taken verbatim from the 9A export of
  *  "Unit 1 Formative Assessment", including the caps-surname name style and the
@@ -121,5 +127,129 @@ describe("fillPstScores", () => {
 
   it("rejects an empty file", () => {
     expect(() => fillPstScores("   ", scores({}))).toThrow(PstFormatError);
+  });
+});
+
+describe("readPstMetadata", () => {
+  it("reads the block PowerSchool writes above the header", () => {
+    expect(readPstMetadata(PST)).toEqual({
+      teacherName: "Pablo Clevenger",
+      className: "Extended Mathematics 09",
+      assignmentName: "Unit 1 Formative Assessment",
+      dueDate: "2026-08-25",
+      pointsPossible: "7.0",
+      scoreType: "GRADESCALE",
+      studentCount: 4,
+    });
+  });
+
+  // The trailing blank line PowerSchool writes is structure, not a student.
+  it("does not count the trailing blank line as a student", () => {
+    expect(readPstMetadata(PST).studentCount).toBe(4);
+    expect(readPstMetadata(PST.replace(/\n$/, "")).studentCount).toBe(4);
+  });
+
+  it("reports a label the template does not carry as null", () => {
+    const noDueDate = PST.replace("Due Date:,2026-08-25,\n", "");
+    expect(readPstMetadata(noDueDate).dueDate).toBeNull();
+  });
+
+  it("reads an empty value as null rather than an empty string", () => {
+    expect(readPstMetadata(PST.replace("2026-08-25", "")).dueDate).toBeNull();
+  });
+
+  it("rejects a file with no recognisable header row", () => {
+    expect(() => readPstMetadata("some,other,file\n1,2,3")).toThrow(PstFormatError);
+  });
+});
+
+describe("clearPstScores", () => {
+  // The normal case: the template arrives blank and must come back untouched,
+  // because it is stored and re-served for months afterwards.
+  it("leaves an already-blank template byte-identical", () => {
+    expect(clearPstScores(PST)).toBe(PST);
+  });
+
+  it("empties a Score cell that arrived with a score in it", () => {
+    const filled = fillPstScores(PST, scores({ "30017": "4", "30246": "5" })).csv;
+    expect(clearPstScores(filled)).toBe(PST);
+  });
+
+  it("keeps the metadata and the roster", () => {
+    const filled = fillPstScores(PST, scores({ "30017": "4" })).csv;
+    const cleared = clearPstScores(filled);
+    expect(cleared).toContain("Assignment Name:,Unit 1 Formative Assessment,");
+    expect(cleared).toContain("30017,Santiago CAIPO,");
+    expect(cleared).not.toContain("30017,Santiago CAIPO,4");
+  });
+
+  it("preserves CRLF", () => {
+    const crlf = PST.replace(/\n/g, "\r\n");
+    expect(clearPstScores(crlf)).toBe(crlf);
+  });
+});
+
+describe("retargetPst", () => {
+  it("rewrites the assignment name and due date, leaving the rest alone", () => {
+    const r = retargetPst(PST, {
+      assignmentName: "Unit 2 Formative Assessment",
+      dueDate: "2026-10-02",
+    });
+    expect(r.split("\n").slice(0, 8)).toEqual([
+      "Teacher Name:,Pablo Clevenger,",
+      "Class:,Extended Mathematics 09,",
+      "Assignment Name:,Unit 2 Formative Assessment,",
+      "Due Date:,2026-10-02,",
+      "Points Possible:,7.0,",
+      "Extra Points:,0.0,",
+      "Score Type:,GRADESCALE,",
+      "Student Num,Student Name,Score",
+    ]);
+  });
+
+  // Points Possible is 7.0 because the Score column holds a 1-7 achievement
+  // level, not a raw mark out of the paper's total. Rewriting it from the
+  // test's total_marks would misdescribe every score in the file.
+  it("does not touch points possible or score type", () => {
+    const r = retargetPst(PST, { assignmentName: "Anything" });
+    expect(r).toContain("Points Possible:,7.0,");
+    expect(r).toContain("Score Type:,GRADESCALE,");
+  });
+
+  it("leaves the roster untouched", () => {
+    const r = retargetPst(PST, { assignmentName: "Unit 2" });
+    expect(r).toContain("30252,Roberto GAMIO,");
+    expect(r.split("\n").length).toBe(PST.split("\n").length);
+  });
+
+  it("leaves a field alone when there is nothing to write", () => {
+    const r = retargetPst(PST, { assignmentName: "Unit 2", dueDate: null });
+    expect(r).toContain("Due Date:,2026-08-25,");
+  });
+
+  it("returns the template unchanged when given nothing at all", () => {
+    expect(retargetPst(PST, {})).toBe(PST);
+  });
+
+  // A metadata line below the header would be a student row, and rewriting one
+  // would corrupt the roster.
+  it("only rewrites lines above the header row", () => {
+    const odd = PST.replace(
+      "30247,Kaito FUJII,",
+      "Assignment Name:,not a metadata line,"
+    );
+    const r = retargetPst(odd, { assignmentName: "Unit 2" });
+    expect(r).toContain("Assignment Name:,not a metadata line,");
+  });
+
+  it("quotes a rewritten value that contains a comma", () => {
+    const r = retargetPst(PST, { assignmentName: "Unit 2, revisited" });
+    expect(r).toContain('Assignment Name:,"Unit 2, revisited",');
+  });
+
+  it("preserves CRLF", () => {
+    const r = retargetPst(PST.replace(/\n/g, "\r\n"), { assignmentName: "Unit 2" });
+    expect(r).toContain("\r\n");
+    expect(r.split("\r\n")[2]).toBe("Assignment Name:,Unit 2,");
   });
 });
