@@ -65,7 +65,7 @@ function csvField(value: string): string {
  * PowerSchool, which is what "not graded yet" should do -- writing 0 would be
  * a claim about the student.
  */
-function scoreCell(row: PowerSchoolScoreRow): string {
+export function scoreCell(row: PowerSchoolScoreRow): string {
   if (row.absent) return POWERSCHOOL_ABSENT_CODE;
   return row.level === null ? "" : String(row.level);
 }
