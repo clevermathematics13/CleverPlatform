@@ -72,6 +72,7 @@ export default async function DashboardLayout({
         avatar_url: profile.avatar_url,
       }}
       viewAsOptions={viewAsOptions}
+      canSwitchRole={MULTI_ROLE_TEST_PROFILE_IDS.includes(profile.id)}
     >
       {children}
     </DashboardShell>
