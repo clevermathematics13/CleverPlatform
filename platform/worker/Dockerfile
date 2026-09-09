@@ -43,4 +43,14 @@ COPY feedback_voice ./feedback_voice
 # reachable from this worker with the identical non-obvious crashloop.
 COPY grading_policies ./grading_policies
 
-CMD ["npx", "tsx", "worker/index.ts"]
+# node directly, NOT `npx tsx`. With npx in front, npx is PID 1 and the
+# worker is its grandchild: Railway's SIGTERM stops the container without
+# ever reaching the worker's own handler, so a platform stop looked exactly
+# like a crash -- the container died leaving `npm error signal SIGTERM` and
+# nothing from the worker at all, which is what made the 6 Sep restarts so
+# hard to read. Verified both ways: under `npx tsx` the shutdown line never
+# prints, under this CMD it does.
+#
+# tsx is a devDependency, which the `npm ci` above installs because it runs
+# without --omit=dev. Adding that flag would break this line.
+CMD ["node", "--import", "tsx", "worker/index.ts"]
