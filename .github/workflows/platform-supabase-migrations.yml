@@ -48,15 +48,18 @@ jobs:
       # needs no change here.
       #
       # working-directory matters as much as the connection does. The CLI reads
-      # `supabase/migrations` relative to where it runs, and this repo has TWO
-      # such directories: `platform/supabase/migrations` (the real one, 1:1 with
-      # the live ledger) and a root `supabase/` kept for the edge function that
-      # deploy-edge-functions.yml ships -- which still carries three 2024/2025
-      # migration files that predate the reconciliation and are in no ledger.
-      # Run from the root, the CLI read those three, saw none of the ledger's
-      # versions locally, and bailed with "Remote migration versions not found
-      # in local migrations directory" listing all 116. It has never once
-      # applied a migration from CI.
+      # `supabase/migrations` relative to where it runs, and the real one is
+      # `platform/supabase/migrations` (1:1 with the live ledger). This step had
+      # no working-directory, so it ran at the repo root, where a second
+      # `supabase/` lives for the edge function deploy-edge-functions.yml ships.
+      # That directory used to carry three 2024/2025 migration files in no
+      # ledger; the CLI read those, saw none of the ledger's versions locally,
+      # and bailed with "Remote migration versions not found in local migrations
+      # directory" listing all 116. It had never once applied a migration.
+      #
+      # Those three files are gone now, but this line still has to stay: the
+      # root `supabase/` remains (functions/), so running from there still finds
+      # no ledger version locally and fails the same way.
       - name: Apply production migrations
         working-directory: platform
         env:

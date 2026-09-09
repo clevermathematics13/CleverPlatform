@@ -73,17 +73,26 @@ recorded in the ledger, and must not be moved back into this directory.
 
 ## The other `supabase/` directory
 
-There are two `supabase/` directories in this repo, and only this one is real:
+There are two `supabase/` directories in this repo, and only this one holds
+migrations:
 
 - `platform/supabase/migrations/` - these files, 1:1 with the live ledger.
 - `supabase/` at the repo root - kept because `deploy-edge-functions.yml` ships
-  `supabase/functions/process-correction`. Its `migrations/` subdirectory holds
-  three 2024/2025 files that predate both reconciliations and are in no ledger.
+  `supabase/functions/process-correction`. It has no `migrations/` any more.
 
 The Supabase CLI resolves `supabase/migrations` relative to wherever it runs, so
-`supabase db push` from the repo root reads those three and none of these. That
-is exactly what `platform-supabase-migrations.yml` did until 7 Sep 2026, and why
-it had never applied a migration from CI. **Run the CLI from `platform/`.**
+running it from the repo root does not find these. That is what
+`platform-supabase-migrations.yml` did until 7 Sep 2026, and why it had never
+applied a migration from CI. **Run the CLI from `platform/`.**
+
+Until 7 Sep 2026 the root directory also held three 2024/2025 migration files
+(`20240601_mastery_analyses`, `20250606_create_assignment_templates`,
+`20250606_add_answer_line_height`) that were in no ledger, so the CLI compared
+the live ledger against those instead. They were deleted once the workflow was
+fixed; the two `assignment_templates` ones were already covered by the
+reconciled set here, and `20240601_mastery_analyses.sql` describes a table that
+does not exist in production at all (see HANDOFF §13). Recover any of them from
+git history if needed.
 
 It fails safe if you forget - the CLI refuses to push when local and remote
 disagree that badly, with "Remote migration versions not found in local
