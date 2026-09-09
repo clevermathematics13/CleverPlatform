@@ -301,8 +301,8 @@ export default async function NaReviewPage({
           {truncationHotspots.length > 0 && (
             <div className="rounded-xl border border-amber-400/60 bg-amber-500/5 p-4">
               <p className="text-sm font-medium text-amber-500">
-                {truncationHotspots.length} anchor{truncationHotspots.length === 1 ? "" : "s"} may be cropping some
-                students&apos; work too tight
+                {truncationHotspots.length} anchor{truncationHotspots.length === 1 ? "" : "s"}{" "}
+                may be cropping some students&apos; work too tight
               </p>
               <p className="mt-1 text-xs text-da-muted">
                 Stage 4&apos;s crop expansion hit its configured limit while ink was still touching the edge -- these
