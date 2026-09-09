@@ -1,0 +1,65 @@
+{
+  "_": "A.2 'What Undoing Really Means' -- the worked example for na_derive_anchors.py and na_prompt_crops.py. Regenerating from this reproduces migration 20260909124540 exactly. See HANDOFF.md ss15.",
+
+  "packet_version_id": "2f8a4c31-6b7e-4d92-a1f5-8c3e07b9d240",
+  "nuanced_analysis_id": "41e8ca4e-087d-4146-b364-19139d659343",
+  "version_label": "A.2 v1 (print master)",
+  "anchor_source": "auto_fillrect",
+  "supabase_url": "https://qnawglgnoojrlaivylou.supabase.co",
+
+  "_page_count": "The PRINTED length, not the 23 the document's own footer claims. The Extension section is generated but never printed. This is the stride the batch segmenter uses to find where each student's copy begins.",
+  "page_count": 20,
+
+  "_uuid_namespace": "Rubric-item ids are uuid5(namespace, 'rubric:' + qid), so re-running the tool proposes the same ids instead of orphaning the anchors that point at them. Generate a fresh namespace per packet.",
+  "uuid_namespace": "7b3d1c8e-4a55-4f21-9c6e-2d80b1a4e937",
+
+  "_rubric_source": "Deliberately not 'generated'. lib/na-rubric-bridge.ts derives rubric rows keyed on the parts[] ordinal -- which is off by one from the printed numbering here -- and skips any row whose source is not 'generated'. This marker is what stops a later packet re-save from overwriting these with differently-numbered rows.",
+  "rubric_source": "authored_from_print",
+
+  "_question_map": "printed question number -> 1-based ordinal in the flattened parts[]. The Part 0 Desmos activity fills parts[] slot 2 but prints unnumbered, so the two run one apart from Q2 on. --sql checks every entry against the printed 'Clev's Marks: N' pill and refuses to emit if any disagrees; all 21 agree.",
+  "question_map": {
+    "1": 1, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "7": 8,
+    "8": 9, "9": 10, "10": 11, "11": 12, "12": 13, "13": 14,
+    "14": 15, "15": 16, "16": 17, "17": 18, "18": 19, "19": 20,
+    "20": 21, "21": 22
+  },
+
+  "_mark_splits": "How a question's printed total divides across its own answer boxes. parts[] records one total per question and no per-sub-part breakdown, so these were read off the printed sub-parts and their answer keys; each list must sum to the question's total, which --sql enforces. This is the one genuinely pedagogical judgment in the file and the thing a teacher is most likely to want to move. Questions printed with a single box are absent and take their whole total.",
+  "mark_splits": {
+    "1": [3, 1],
+    "3": [2, 4],
+    "5": [2, 3],
+    "13": [1, 3],
+    "14": [1, 2, 2, 1],
+    "17": [3, 2],
+    "18": [1, 2, 3]
+  },
+
+  "_open_rubric": "Only for questions with no fixed answer in parts[] that still need something to mark against. A.1 wrote one for its Q28 listing table and left Q29/Q30 to be marked from their prompt alone; A.2's Q20 and Q21 are the same shape and are likewise absent here.",
+  "open_rubric": {
+    "19": "List at least five ideas, words or results this analysis confirmed or connected, using the 3-column table (the idea / where it appeared, by Q number / what it connected to). At least one row must reference Section A.1. Grade on: (a) count >= 5, (b) each row cites a real Q number from this packet, (c) >= 1 row references A.1, (d) the stated connection is mathematically sensible -- not on matching a fixed answer."
+  },
+
+  "_overrides": "Answer boxes that are not a numbered question. Keyed by page and the box's own y0. An activity box must end up with no marks and no key of any kind, or lib/na-assessment.ts's isUngradedAnchor() will not skip it and stage 5 will invent a verdict for a thinking space.",
+  "overrides": [
+    {
+      "page": 3,
+      "y0": 670.90,
+      "activity_label": "MY NOTICINGS FROM THE SANDBOX",
+      "question_text": "Desmos slider sandbox: write down what you notice about n - 4 and n + (-4) as the slider moves. Thinking space, not marked."
+    }
+  ],
+
+  "_manual_anchors": "Answer regions fill-rect detection cannot see. Q19's reflection grid is ruled, not filled, so only its header row registers; this box covers the whole table, header rule at 255.82 down to just past the last body rule at 465.9. Same blind spot that hid A.1's Q9 table and its Q26(a) coordinate grid. Drawn by hand against the rendered page, then checked with --annotate.",
+  "manual_anchors": [
+    {
+      "page": 18,
+      "printed_q": 19,
+      "x0": 50.83,
+      "y0": 255.82,
+      "x1": 544.50,
+      "y1": 470.00,
+      "source": "manual_table"
+    }
+  ]
+}

@@ -1359,6 +1359,34 @@ Q17's), and the anchors themselves DO (without that, Q20's crop opened with the
 five empty rows of Q19's table). The 10 skipped are sub-part boxes whose prompt
 is printed in the shared block above their question's first box.
 
+### The tooling, for A.3 onwards
+
+The method above is now two scripts, cleaned up out of the one-off A.2 session
+so the next packet does not start from scratch:
+
+- `platform/scripts/na_derive_anchors.py` — `--layout` (per-page text with box
+  boundaries, the read you do first), `--candidates` (proposed anchors plus an
+  x-signature census, so a template change shows up as an unfamiliar signature
+  instead of as missing anchors), `--annotate` (the anchors drawn over the
+  master — look at this), `--sql` (the migration body).
+- `platform/scripts/na_prompt_crops.py` — renders, uploads and records the
+  printed-prompt crops. Run it after the anchor migration is applied, since it
+  needs the anchors' real ids.
+
+`platform/scripts/na_packet_a2.json` is A.2's config, kept as the worked
+example. Regenerating from it reproduces all 70 data lines of migration
+`20260909124540` and all 22 prompt crops byte-for-byte, which is how the
+scripts were checked — if that ever stops being true, the tool changed
+behaviour and A.3 should not be authored with it until you know why.
+
+The packet-specific judgments live in the config, not the code: the printed-to-
+`parts[]` question map, the mark splits, any `open_rubric`, the ungraded
+activity boxes, and anchors fill-rect detection cannot see. `--sql` verifies the
+map against every printed "Clev's Marks: N" pill and checks that each split sums
+to its question's total, and **refuses to write anything if either disagrees** —
+that check is what proved A.2's off-by-one mapping rather than assuming it, so
+do not work around it.
+
 ### What a teacher should check before the first scan upload
 
 - **The per-box mark splits.** `parts[]` records one total per question, not a
