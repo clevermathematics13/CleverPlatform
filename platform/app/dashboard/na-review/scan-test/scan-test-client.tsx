@@ -1275,12 +1275,16 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     }
   };
 
-  // Phase-1 pilot cap on how many files one bulk upload can queue at once --
-  // deliberately low while this feature is new (see platform/worker/README.md's
-  // rollout notes), raise once the worker has run clean against real data.
+  // Cap on how many files one bulk upload can queue at once. This was 3
+  // during the phase-1 pilot ("raise once the worker has run clean against
+  // real data" -- see platform/worker/README.md's rollout notes); it was
+  // raised to 15 on 9 Sep 2026 once that condition was met, by A.2's first
+  // real batch: 3 students, 32/32 anchors cropped for each, all 93 gradable
+  // crops assessed with zero validation errors.
   // The bulk-create API (POST /api/na-review/batch/bulk) caps at 50
-  // regardless, as defense in depth beyond this client-side check.
-  const MAX_BULK_UPLOAD_FILES = 3;
+  // regardless, as defense in depth beyond this client-side check -- that
+  // is the real guard rail, and it is deliberately left alone.
+  const MAX_BULK_UPLOAD_FILES = 15;
 
   /** Queues several scans at once for the bulk-upload worker to process
    *  unattended -- no per-batch segment/split/crop/assess loop runs in this
@@ -2838,7 +2842,8 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
         )}
         {version && version.pageCount == null && (
           <p className="mt-2 text-xs text-da-warning">
-            This packet version has no known page count — a large scan can&apos;t be auto pre-split without it.
+            This packet version has no known page count — uploads will be refused, because the page
+            count is the stride used to find where each student&apos;s packet begins.
           </p>
         )}
       </section>
@@ -2848,8 +2853,8 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
           <h2 className="text-lg font-bold text-da-text">Upload a batch scan</h2>
           <p className="mt-1 text-sm text-da-muted">
             One PDF covering multiple students of this packet, each starting with a page showing
-            their name. A scan larger than Anthropic&apos;s 100-page limit is split automatically
-            into whole-packet chunks — no need to cut it up yourself.
+            their name. There is no page limit — segmentation reads one page at a time, so a whole
+            class in a single file is fine. Uploads are capped at 500 MB per file.
           </p>
           <p className="mt-1 text-sm text-da-muted">
             Or select up to {MAX_BULK_UPLOAD_FILES} scans at once — each can cover any number of
