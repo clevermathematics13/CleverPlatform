@@ -62,6 +62,22 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `source_sha256` | text, nullable |  |
 | `read_mode` | text | default `'deep'::text` — how `proposed_segments` were produced: `quick` = one Haiku cover-page check per page (`lib/cover-page-segmentation.ts`, ~0.3 cents/page), `deep` = the whole PDF read by the segmentation model (~1 cent/page). `deep` is the default because every row predating the column was read that way; the upload UI offers quick and makes deep the opt-in. The `source_sha256` dedupe is deliberately asymmetric: a quick request may reuse a `quick` or `deep` proposal, a deep request only a `deep` one |
 
+### `worker_heartbeats`
+
+Liveness for the background workers. One row per worker process, rewritten
+every pipeline tick whether or not the tick found work, so a stale
+`last_seen_at` means the worker is gone. Added after the 6 Sep 2026 Railway
+restarts, when an idle worker and a dead one were indistinguishable from
+here. Teachers may read it; only the service role writes it.
+
+| column | type | default |
+|---|---|---|
+| `worker_id` | text, primary key |  |
+| `service` | text | default `'bulk-upload-worker'::text` |
+| `started_at` | timestamp with time zone | default `now()` |
+| `last_seen_at` | timestamp with time zone | default `now()` |
+| `detail` | jsonb | default `'{}'::jsonb` — uptime, concurrency, interval config, last assess poll |
+
 ### `ai_grade_message_batches`
 
 One submission to Anthropic's Message Batches API -- overnight marking, half price on

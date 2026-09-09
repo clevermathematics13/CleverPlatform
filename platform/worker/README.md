@@ -131,8 +131,19 @@ cause:
    be spelled exactly that -- `GRADING_ANTHROPIC_API_KEY` silently does
    nothing, and has cost a day once already.
 
-To confirm it is alive without opening Railway, open the service's public
-URL at `/health`. `status: "running"` with a recent `lastPipelineTickAt` is
+To confirm it is alive without opening Railway at all, query the database:
+
+```sql
+select worker_id, last_seen_at, now() - last_seen_at as stale_for, started_at, detail
+from public.worker_heartbeats order by last_seen_at desc;
+```
+
+Every pipeline tick rewrites that row whether or not there was work to do,
+so `stale_for` under a minute means the worker is running. No rows, or a
+`stale_for` of hours, means it is not. A `started_at` that keeps moving
+while `last_seen_at` stays fresh is a restart loop.
+
+Or open the service's public URL at `/health`. `status: "running"` with a recent `lastPipelineTickAt` is
 a working worker; `status: "failed"` names the variable to fix.
 
 ## Rollout safety

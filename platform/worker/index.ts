@@ -115,7 +115,7 @@ async function main() {
   await new Promise<void>((resolve) => health.listen(PORT, resolve));
   log(`health endpoint listening on ${PORT}`);
 
-  let supabase;
+  let supabase: ReturnType<typeof createWorkerClient>;
   let anthropic;
   try {
     supabase = createWorkerClient();
@@ -149,6 +149,29 @@ async function main() {
       lastPipelineTickAt = new Date().toISOString();
       pipelineRunning = false;
     }
+    // After the pass, and unconditionally: the point of the heartbeat is
+    // that it is written whether or not there was anything to do. A worker
+    // with an empty queue writes nothing else at all, which is exactly why
+    // ten days of silence could not be told apart from ten days of being
+    // dead. Failures here are logged and dropped -- a heartbeat that could
+    // not be recorded must never take down the pass that just succeeded.
+    const { error: beatErr } = await supabase.from("worker_heartbeats").upsert(
+      {
+        worker_id: WORKER_ID,
+        service: "bulk-upload-worker",
+        started_at: STARTED_AT.toISOString(),
+        last_seen_at: new Date().toISOString(),
+        detail: {
+          uptimeSeconds: uptimeSeconds(),
+          concurrency: WORKER_CONCURRENCY,
+          pipelineIntervalMs: PIPELINE_INTERVAL_MS,
+          assessPollIntervalMs: ASSESS_POLL_INTERVAL_MS,
+          lastAssessPollAt,
+        },
+      },
+      { onConflict: "worker_id" }
+    );
+    if (beatErr) log("heartbeat write failed (ignored):", beatErr.message);
   };
 
   const runAssessPollTick = async () => {
