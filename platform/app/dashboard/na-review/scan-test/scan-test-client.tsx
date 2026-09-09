@@ -1275,12 +1275,16 @@ export function ScanTestClient({ versions }: { versions: PacketVersionOption[] }
     }
   };
 
-  // Phase-1 pilot cap on how many files one bulk upload can queue at once --
-  // deliberately low while this feature is new (see platform/worker/README.md's
-  // rollout notes), raise once the worker has run clean against real data.
+  // Cap on how many files one bulk upload can queue at once. This was 3
+  // during the phase-1 pilot ("raise once the worker has run clean against
+  // real data" -- see platform/worker/README.md's rollout notes); it was
+  // raised to 15 on 9 Sep 2026 once that condition was met, by A.2's first
+  // real batch: 3 students, 32/32 anchors cropped for each, all 93 gradable
+  // crops assessed with zero validation errors.
   // The bulk-create API (POST /api/na-review/batch/bulk) caps at 50
-  // regardless, as defense in depth beyond this client-side check.
-  const MAX_BULK_UPLOAD_FILES = 3;
+  // regardless, as defense in depth beyond this client-side check -- that
+  // is the real guard rail, and it is deliberately left alone.
+  const MAX_BULK_UPLOAD_FILES = 15;
 
   /** Queues several scans at once for the bulk-upload worker to process
    *  unattended -- no per-batch segment/split/crop/assess loop runs in this
