@@ -295,6 +295,59 @@ describe("validateRubric", () => {
     expect(codesOf(findings)).not.toContain("working-command-without-bare-answer-rule");
   });
 
+  // -- Rule 10 --------------------------------------------------------------
+  it("catches a scheme crediting the unsimplified form the question never asked for", () => {
+    // FA1 Q8(a), verbatim. 42 students wrote 6k - 12 + 5k - 6; 24 were given
+    // the mark and 18 were refused it for also writing 11k - 18 on the answer
+    // line, a rule that appears nowhere in the question or the scheme.
+    const findings = validateRubric(
+      draftOf([
+        {
+          prompt: "Expand the brackets in 3(2k-4)+5k-6. Write the result.",
+          marks: 1,
+          markScheme: "A1 for the correctly distributed, unsimplified expression 6k - 12 + 5k - 6.",
+        },
+      ])
+    );
+    expect(codesOf(findings)).toContain("unsimplified-required-not-asked");
+    expect(findings.find((f) => f.rule === 10)?.severity).toBe("block");
+  });
+
+  it("catches a question forbidding simplification whose scheme never marks it", () => {
+    // FA1 Q7(a): the question says "Do not simplify further" and the scheme
+    // is silent on what a simplified answer earns -- the mirror of Q8(a), and
+    // the one mistake that instruction invites.
+    const findings = validateRubric(
+      draftOf([
+        {
+          prompt:
+            "Use the distributive property to rewrite the expression. Multiply -2 by each term inside the brackets. Do not simplify further.",
+          marks: 1,
+          markScheme: "A1. '8 - 6z + 10 + 4z' is the diagnostic error here -- 0 for (a), but FT through (b).",
+        },
+      ])
+    );
+    expect(codesOf(findings)).toContain("no-simplify-asked-not-marked");
+  });
+
+  it("passes a part where the question and the scheme agree about simplifying", () => {
+    const findings = validateRubric(
+      draftOf([
+        {
+          prompt: "Expand the brackets. Do not simplify further.",
+          marks: 1,
+          markScheme: "A1 for the unsimplified expansion 6k - 12 + 5k - 6; a simplified 11k - 18 earns 0.",
+        },
+        {
+          prompt: "Now simplify your expression from part (a) as far as possible.",
+          marks: 2,
+          markScheme: "M1 for like terms collected. A1 for -2z - 2.",
+        },
+      ])
+    );
+    expect(findings.filter((f) => f.rule === 10)).toHaveLength(0);
+  });
+
   // -- Rule 8 ---------------------------------------------------------------
   it("counts allocated codes without counting codes named in an exception", () => {
     // FA1 Q8(b) mentions R1 three times but allocates M1 + R1 = 2, which matches.
