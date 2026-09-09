@@ -73,6 +73,23 @@ describe("buildZip, read back by unzip", () => {
     }
   })();
 
+  /**
+   * Info-ZIP UnZip 6.00 decodes a UTF-8-flagged name and then translates it
+   * AGAIN for the local charset. Under LC_ALL=C.UTF-8 specifically, that
+   * second step writes "Tomás_Évaluation.csv" to disk as
+   * "Tom\u251c\u2562s_\u251c\u0419valuation.csv". GitHub-hosted runners set
+   * C.UTF-8, so this suite passed on every developer machine and failed only
+   * in CI, the first time CI ran the tests at all.
+   *
+   * The archive is byte-identical either way -- `unzip -t` is clean and the
+   * stored name is correct UTF-8 in both headers -- so the fix is to pin the
+   * extractor's locale, not to weaken what is asserted or drop the accented
+   * name. C is the one locale guaranteed to exist everywhere, and under it
+   * unzip writes the archive's name bytes through untouched. Verified against
+   * unset, C, C.UTF-8 and en_US.UTF-8: only C.UTF-8 mangles.
+   */
+  const UNZIP_ENV = { ...process.env, LC_ALL: "C" };
+
   it.runIf(hasUnzip)("round-trips several files, contents intact", () => {
     const files = [
       { name: "9A_Form1_3.csv", content: "Student Num,Student Name,Score\r\n30017,Santiago CAIPO,4\r\n" },
@@ -87,10 +104,10 @@ describe("buildZip, read back by unzip", () => {
       fs.writeFileSync(archive, zip);
 
       // -t is unzip's own integrity check: CRCs, headers, offsets.
-      const tested = execFileSync("unzip", ["-t", archive], { encoding: "utf8" });
+      const tested = execFileSync("unzip", ["-t", archive], { encoding: "utf8", env: UNZIP_ENV });
       expect(tested).toContain("No errors detected");
 
-      execFileSync("unzip", ["-q", "-o", archive, "-d", dir]);
+      execFileSync("unzip", ["-q", "-o", archive, "-d", dir], { env: UNZIP_ENV });
       for (const f of files) {
         expect(fs.readFileSync(path.join(dir, f.name), "utf8")).toBe(f.content);
       }
@@ -105,7 +122,7 @@ describe("buildZip, read back by unzip", () => {
     try {
       const archive = path.join(dir, "crlf.zip");
       fs.writeFileSync(archive, buildZip([{ name: "x.csv", content, date: WHEN }]));
-      execFileSync("unzip", ["-q", "-o", archive, "-d", dir]);
+      execFileSync("unzip", ["-q", "-o", archive, "-d", dir], { env: UNZIP_ENV });
       expect(fs.readFileSync(path.join(dir, "x.csv"), "utf8")).toBe(content);
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
