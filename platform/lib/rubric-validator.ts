@@ -328,6 +328,58 @@ function ruleBareAnswerRule(part: FlatPart, out: RubricFinding[]): void {
   });
 }
 
+/** A question telling the student to stop before collecting like terms. */
+const NO_SIMPLIFY_IN_QUESTION =
+  /\b(?:do not|don't|without|never)\s+(?:simplify|simplifying|collect|collecting)\b|\bleave\s+(?:it\s+|the answer\s+)?unsimplified\b|\bunsimplified\b/i;
+
+/** A scheme whose credited answer is the unsimplified form. */
+const UNSIMPLIFIED_IN_SCHEME =
+  /\bunsimplified\b|\bnot simplified\b|\bdo not simplify\b|\bwithout simplif/i;
+
+/**
+ * Rule 10: an "unsimplified" requirement must appear on both sides.
+ *
+ * FA1 Q8(a) credited "the correctly distributed, unsimplified expression
+ * 6k - 12 + 5k - 6" while its question said only "Expand the brackets. Write
+ * the result." 42 students produced that expression; 24 were given the mark
+ * and 18 were refused it for having gone on to write 11k - 18 on the answer
+ * line -- a rule neither the question nor the scheme states. Q7(a), one page
+ * earlier, does say "Do not simplify further", which is what makes the
+ * omission at Q8(a) a slip rather than a house style.
+ *
+ * Checked in both directions for the same reason as rule 2: a student cannot
+ * obey an instruction they were not given, and a marker should not have to
+ * invent what a simplified answer earns when the question forbade it.
+ */
+function ruleSimplifyAlignment(part: FlatPart, out: RubricFinding[]): void {
+  const questionForbids = NO_SIMPLIFY_IN_QUESTION.test(part.question);
+  const schemeWantsUnsimplified = UNSIMPLIFIED_IN_SCHEME.test(part.scheme);
+
+  if (schemeWantsUnsimplified && !questionForbids) {
+    out.push({
+      rule: 10,
+      code: "unsimplified-required-not-asked",
+      severity: "block",
+      part: part.label,
+      message:
+        "The scheme credits the unsimplified form, but the question never tells the student " +
+        "to stop there. A student who expands and then tidies up has done what was asked and " +
+        "more -- say \"do not simplify further\" in the question, or accept the simplified form.",
+    });
+  } else if (questionForbids && !schemeWantsUnsimplified) {
+    out.push({
+      rule: 10,
+      code: "no-simplify-asked-not-marked",
+      severity: "block",
+      part: part.label,
+      message:
+        "The question tells the student not to simplify, but the scheme never says what a " +
+        "simplified answer earns. That is the one mistake this instruction invites, and every " +
+        "marker will have to decide it alone.",
+    });
+  }
+}
+
 /** Rule 8: allocated codes must sum to the part's marks. */
 function ruleCodeSum(part: FlatPart, out: RubricFinding[]): void {
   const codes = allocatedCodes(part.scheme);
@@ -411,6 +463,7 @@ export function validateRubric(draft: AssignmentDraft): RubricFinding[] {
     ruleBareScheme(part, findings);
     ruleExplanationExclusion(part, findings);
     ruleBareAnswerRule(part, findings);
+    ruleSimplifyAlignment(part, findings);
     ruleCodeSum(part, findings);
     ruleConjunctOnOneMark(part, findings);
   }
