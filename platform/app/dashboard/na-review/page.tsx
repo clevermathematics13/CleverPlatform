@@ -1,6 +1,6 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { fetchAllRows } from "@/lib/na-scanning";
+import { fetchAllRows, transcriptionHasUnreadableGap } from "@/lib/na-scanning";
 import Link from "next/link";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -20,6 +20,12 @@ type CropRow = {
   is_blank: boolean | null;
   possibly_truncated: boolean | null;
   na_feedback: { approved_at: string | null } | { approved_at: string | null }[] | null;
+};
+
+type FlaggedRow = {
+  id: string;
+  anchor_id: string;
+  na_feedback: { ai_transcription: string | null } | { ai_transcription: string | null }[] | null;
 };
 
 type ScanRow = {
@@ -94,7 +100,7 @@ export default async function NaReviewPage({
     marks_available: number | null;
     command_term: string | null;
     sort_order: number;
-    progress: { total: number; reviewed: number; blank: number; possiblyTruncated: number };
+    progress: { total: number; reviewed: number; blank: number; possiblyTruncated: number; gaps: number };
   }[] = [];
   let scanStats: { scans: number; students: number; duplicated: number; unidentified: number } | null = null;
   let loadError: string | null = null;
@@ -138,9 +144,9 @@ export default async function NaReviewPage({
 
       const byAnchor = new Map<
         string,
-        { total: number; reviewed: number; blank: number; possiblyTruncated: number }
+        { total: number; reviewed: number; blank: number; possiblyTruncated: number; gaps: number }
       >();
-      for (const a of anchors) byAnchor.set(a.id, { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0 });
+      for (const a of anchors) byAnchor.set(a.id, { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0, gaps: 0 });
       for (const crop of crops) {
         const bucket = byAnchor.get(crop.anchor_id);
         if (!bucket) continue;
@@ -151,9 +157,35 @@ export default async function NaReviewPage({
         if (fb?.approved_at) bucket.reviewed += 1;
       }
 
+      // The transcriptions only matter for crops the flag already caught, so
+      // fetch just those rather than dragging ~2000 transcriptions through the
+      // main query to read a few hundred of them.
+      if (crops.some((c) => c.possibly_truncated)) {
+        try {
+          const flagged = await fetchAllRows<FlaggedRow>((from, to) =>
+            supabase
+              .from("na_response_crops")
+              .select("id, anchor_id, na_feedback(ai_transcription)")
+              .in("anchor_id", anchorIds)
+              .eq("possibly_truncated", true)
+              .order("id", { ascending: true })
+              .range(from, to)
+          );
+          for (const row of flagged) {
+            const fb = Array.isArray(row.na_feedback) ? row.na_feedback[0] : row.na_feedback;
+            if (!transcriptionHasUnreadableGap(fb?.ai_transcription)) continue;
+            const bucket = byAnchor.get(row.anchor_id);
+            if (bucket) bucket.gaps += 1;
+          }
+        } catch {
+          // Ranking signal only -- without it the banner falls back to
+          // ordering by raw flag count, which is where it started.
+        }
+      }
+
       questions = anchors.map((a) => ({
         ...a,
-        progress: byAnchor.get(a.id) ?? { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0 },
+        progress: byAnchor.get(a.id) ?? { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0, gaps: 0 },
       }));
 
       // A student who was re-scanned has more than one packet scan against this
@@ -214,9 +246,21 @@ export default async function NaReviewPage({
   // automated here, since a past attempt at automatically loosening this
   // cap (see HANDOFF.md, "bridge ruled-paper gaps") let one anchor's crop
   // swallow the next question's printed answer key and had to be reverted.
+  // Ranked by gaps, not by flag count. possibly_truncated fires on anything
+  // touching the crop edge, printed rules and axis captions included, so its
+  // raw count ranks the loudest anchor rather than the worst one: on A.1 it
+  // put Q26(a) top with 42 of 47 students flagged, of which exactly one has a
+  // transcription the assessor had to guess at, while Q4 (16 of 20 with gaps,
+  // and the real problem) sat third. Flag count still breaks ties, and
+  // anchors with no gaps stay listed -- the heuristic ranks, it does not
+  // adjudicate.
   const truncationHotspots = questions
     .filter((q) => q.progress.possiblyTruncated > 0)
-    .sort((a, b) => b.progress.possiblyTruncated - a.progress.possiblyTruncated);
+    .sort(
+      (a, b) =>
+        b.progress.gaps - a.progress.gaps || b.progress.possiblyTruncated - a.progress.possiblyTruncated
+    );
+  const anchorsWithGaps = truncationHotspots.filter((q) => q.progress.gaps > 0).length;
 
   return (
     <div className="space-y-6">
@@ -301,15 +345,27 @@ export default async function NaReviewPage({
           {truncationHotspots.length > 0 && (
             <div className="rounded-xl border border-amber-400/60 bg-amber-500/5 p-4">
               <p className="text-sm font-medium text-amber-500">
-                {truncationHotspots.length} anchor{truncationHotspots.length === 1 ? "" : "s"}{" "}
-                may be cropping some students&apos; work too tight
+                {anchorsWithGaps > 0
+                  ? `${anchorsWithGaps} anchor${anchorsWithGaps === 1 ? "" : "s"} look${
+                      anchorsWithGaps === 1 ? "s" : ""
+                    } to be cropping students' work too tight`
+                  : `${truncationHotspots.length} anchor${
+                      truncationHotspots.length === 1 ? "" : "s"
+                    } touched their crop limit, none with unreadable work`}
               </p>
               <p className="mt-1 text-xs text-da-muted">
                 Stage 4&apos;s crop expansion hit its configured limit while ink was still touching the edge -- these
                 crops may be missing content. This is a read-only report over data already collected (no new AI
-                calls); nothing here re-crops or re-grades automatically. Worth a look, worst first -- if a box is
-                genuinely too tight, the fix is widening that anchor&apos;s expand_max_x1_pt/expand_max_y1_pt in
-                na_anchors, then re-cropping and re-grading just that anchor&apos;s affected students.
+                calls); nothing here re-crops or re-grades automatically.
+              </p>
+              <p className="mt-1 text-xs text-da-muted">
+                Ordered by how many of those crops the assessor had to <em>guess at</em> -- a transcription with
+                bracketed gaps like &quot;the express[ions are equivalent]&quot; is much stronger evidence than the
+                flag alone, which also fires on printed rules and axis captions that touch the crop edge. An anchor
+                with many flags and no gaps is usually a printed element, not a student running out of room. If a
+                box is genuinely too tight, the fix is widening that anchor&apos;s
+                expand_max_x1_pt/expand_max_y1_pt in na_anchors, then re-cropping and re-grading just that
+                anchor&apos;s affected students.
               </p>
               <ul className="mt-3 divide-y divide-da-border/40">
                 {truncationHotspots.map((q) => (
@@ -320,9 +376,12 @@ export default async function NaReviewPage({
                     >
                       {q.qid}
                     </Link>
-                    <span className="text-xs text-amber-300">
-                      {q.progress.possiblyTruncated} / {q.progress.total} crop
-                      {q.progress.possiblyTruncated === 1 ? "" : "s"} may be cut off
+                    <span className={`text-xs ${q.progress.gaps > 0 ? "text-amber-300" : "text-da-muted"}`}>
+                      {q.progress.gaps > 0
+                        ? `${q.progress.gaps} of ${q.progress.possiblyTruncated} flagged crop${
+                            q.progress.possiblyTruncated === 1 ? "" : "s"
+                          } ${q.progress.gaps === 1 ? "has an unreadable gap" : "have unreadable gaps"}`
+                        : `${q.progress.possiblyTruncated} flagged, no unreadable gaps`}
                     </span>
                   </li>
                 ))}
@@ -367,10 +426,14 @@ export default async function NaReviewPage({
                   {q.progress.blank > 0 && (
                     <p className="mt-1.5 text-[11px] text-da-muted">{q.progress.blank} blank</p>
                   )}
-                  {q.progress.possiblyTruncated > 0 && (
-                    <p className="mt-1.5 text-[11px] text-amber-500">
-                      ⚠ {q.progress.possiblyTruncated} may be cut off
-                    </p>
+                  {q.progress.gaps > 0 ? (
+                    <p className="mt-1.5 text-[11px] text-amber-500">⚠ {q.progress.gaps} may be cut off</p>
+                  ) : (
+                    q.progress.possiblyTruncated > 0 && (
+                      <p className="mt-1.5 text-[11px] text-da-muted">
+                        {q.progress.possiblyTruncated} touched the crop limit
+                      </p>
+                    )
                   )}
                 </Link>
               );
