@@ -26,8 +26,10 @@ import {
   buildCoverPageCheckUserPrompt,
   loadInvitedRoster,
   validateCoverPageCheck,
+  type CoverPageCheck,
 } from "@/lib/na-scanning";
-import { chunkFileName, needsChunking, planBatchChunks } from "@/lib/batch-chunking";
+import { QUICK_READ_MAX_PAGES, segmentByCoverPages } from "@/lib/cover-page-segmentation";
+import { chunkFileName, needsChunking, planBatchChunks, type ChunkLimits } from "@/lib/batch-chunking";
 import { applyBlankPages, detectBlankPages } from "@/lib/blank-pages";
 
 export const maxDuration = 300;
@@ -38,23 +40,42 @@ export const maxDuration = 300;
  * "Batch upload" tab to show prior batches and their segmentation status.
  *
  * POST /api/tests/[id]/ai-grade/batch
- * Body: { storagePath: string, fileName?: string }
+ * Body: { storagePath: string, fileName?: string, readMode?: "quick" | "deep" }
  *
  * The client uploads the raw PDF directly to Supabase Storage (bucket
  * "exam-scans", path "batches/<uuid>/<fileName>") BEFORE calling this route —
  * a batch scan can run to hundreds of megabytes, far past what a serverless
  * function's request body can carry as JSON. This route receives only the
- * storage path, downloads it server-side, and runs one segmentation pass:
- * a single vision call over the whole document proposing which pages belong
- * to which student. It does not grade anything and does not split the PDF —
+ * storage path, downloads it server-side, and proposes which pages belong to
+ * which student. It does not grade anything and does not split the PDF —
  * see POST .../batch/[batchId]/split for that, which runs only after the
  * teacher confirms the mapping this route proposes.
  *
- * Oversized uploads. That single whole-document call is bounded by
+ * There are two ways of reading the scan, and the body's readMode picks one.
+ *
+ * "quick" is the DEFAULT, and what a missing or unrecognised readMode means.
+ * Every page is checked on its own with the cheap single-page Haiku
+ * cover-page check the NA pipeline already uses, and each student runs from
+ * their cover page to the page before the next cover
+ * (lib/cover-page-segmentation.ts). It defaults because the whole-document
+ * read is about a third of what an upload costs (~$1.00 of ~$3.00 on an
+ * 84-page scan) while the ordinary pile -- stapled scripts, scanned in
+ * order -- only ever poses the question "where does each one start?", which
+ * is exactly what a cover-page check answers.
+ *
+ * "deep" is the original behaviour: the whole PDF goes to SEGMENTATION_MODEL
+ * in one vision call, which can attribute a loose sheet to a student whose
+ * cover page is pages away. That is what it is for -- unstapled sheets
+ * shuffled out of order -- and it stays opt-in because it is also the
+ * teacher's "the quick read got a loose sheet wrong" retry.
+ *
+ * Oversized uploads. A deep read's single whole-document call is bounded by
  * Anthropic's 100-page document limit and 32MB request limit, and a full
- * class of a Grade 9 formative assessment breaks the page limit easily.
- * Rather than rejecting such an upload, this route cuts it into parts
- * (lib/batch-chunking.ts): each hard boundary is pulled back to the nearest
+ * class of a Grade 9 formative assessment breaks the page limit easily. A
+ * quick read sends one page per request, so no byte total can break it and
+ * only QUICK_READ_MAX_PAGES applies -- see chunkLimitsFor.
+ * Rather than rejecting an upload past its mode's limits, this route cuts it
+ * into parts (lib/batch-chunking.ts): each hard boundary is pulled back to the nearest
  * cover page, found with the NA pipeline's cheap single-page Haiku check, so
  * no student's script straddles a part. Each part is written back to
  * Storage next to the original and the response lists them
@@ -114,7 +135,7 @@ export async function GET(
   const { data: batches, error } = await supabase
     .from("ai_grade_batches")
     .select(
-      "id, test_id, status, source_storage_path, file_name, page_count, proposed_segments, confirmed_segments, unassigned_pages, blank_pages, error, created_at, segmented_at, split_at"
+      "id, test_id, status, read_mode, source_storage_path, file_name, page_count, proposed_segments, confirmed_segments, unassigned_pages, blank_pages, error, created_at, segmented_at, split_at"
     )
     .eq("test_id", testId)
     .order("created_at", { ascending: false })
@@ -166,10 +187,50 @@ export async function GET(
   });
 }
 
+type ReadMode = "quick" | "deep";
+
 /**
- * Cut an upload that is too large for one segmentation call into parts,
- * each stored as its own PDF next to the original. See the route comment
- * and lib/batch-chunking.ts for why the cuts land on cover pages.
+ * One page of `sourceDoc` on its own, as base64 PDF bytes. One page per
+ * request is what keeps every cover-page check clear of both Anthropic
+ * limits -- the 100-page document block and the 32MB request body --
+ * whatever the upload's size or the scanner's resolution, which is why a
+ * quick read has no byte ceiling at all. The same trick the NA batch route
+ * uses for its whole segmentation. Shared by the oversized-upload chunker
+ * and the quick read below, which ask about the same page for different
+ * reasons.
+ */
+async function singlePagePdf(sourceDoc: PDFDocument, page: number): Promise<string> {
+  const doc = await PDFDocument.create();
+  const [copied] = await doc.copyPages(sourceDoc, [page - 1]);
+  doc.addPage(copied);
+  return Buffer.from(await doc.save()).toString("base64");
+}
+
+/**
+ * The ceilings a part is planned against. A deep read hands a whole part to
+ * the segmentation model in one request, so both of Anthropic's limits bind
+ * and the module defaults (MAX_BATCH_PAGES/MAX_SCAN_BYTES) are right. A
+ * quick read walks a part one page at a time, so its bytes never reach a
+ * request: the only ceiling left is how many single-page checks one upload
+ * may fan out into.
+ *
+ * Dropping the byte ceiling for quick reads is deliberate -- it is most of
+ * the point of the mode -- but it does mean a quick-read part is no longer
+ * bounded at 32MB, and this route still buffers the whole upload and loads
+ * it with pdf-lib. The binding limit is now the function's memory rather
+ * than any API limit; if a very large scan ever fails here, that is where
+ * to look, not at a rejected request.
+ */
+function chunkLimitsFor(readMode: ReadMode): ChunkLimits {
+  return readMode === "quick"
+    ? { maxPages: QUICK_READ_MAX_PAGES, maxBytes: Number.MAX_SAFE_INTEGER }
+    : {};
+}
+
+/**
+ * Cut an upload that is too large for one read into parts, each stored as
+ * its own PDF next to the original. See the route comment and
+ * lib/batch-chunking.ts for why the cuts land on cover pages.
  */
 async function chunkOversizedUpload(args: {
   supabase: SupabaseClient;
@@ -180,18 +241,9 @@ async function chunkOversizedUpload(args: {
   storagePath: string;
   fileName: string;
   rosterNames: string[];
+  readMode: ReadMode;
 }) {
-  const { supabase, anthropic, sourceDoc, buffer, pageCount, storagePath, fileName, rosterNames } = args;
-
-  // One page as its own PDF, so the check is never near either limit
-  // whatever the upload's size or scan resolution -- the same trick the
-  // NA batch route uses for its whole segmentation.
-  const singlePagePdf = async (page: number): Promise<string> => {
-    const doc = await PDFDocument.create();
-    const [copied] = await doc.copyPages(sourceDoc, [page - 1]);
-    doc.addPage(copied);
-    return Buffer.from(await doc.save()).toString("base64");
-  };
+  const { supabase, anthropic, sourceDoc, buffer, pageCount, storagePath, fileName, rosterNames, readMode } = args;
 
   const isCoverPage = async (page: number): Promise<boolean> => {
     const message = await anthropic.messages.create({
@@ -204,7 +256,7 @@ async function chunkOversizedUpload(args: {
           content: [
             {
               type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: await singlePagePdf(page) },
+              source: { type: "base64", media_type: "application/pdf", data: await singlePagePdf(sourceDoc, page) },
             },
             { type: "text", text: buildCoverPageCheckUserPrompt(rosterNames) },
           ],
@@ -223,7 +275,12 @@ async function chunkOversizedUpload(args: {
     return validated.ok && validated.result.isCoverPage;
   };
 
-  const plan = await planBatchChunks({ pageCount, byteLength: buffer.length, isCoverPage });
+  const plan = await planBatchChunks({
+    pageCount,
+    byteLength: buffer.length,
+    isCoverPage,
+    ...chunkLimitsFor(readMode),
+  });
 
   const folder = storagePath.slice(0, storagePath.lastIndexOf("/"));
   const chunks: {
@@ -249,7 +306,10 @@ async function chunkOversizedUpload(args: {
     for (const page of copied) doc.addPage(page);
     const bytes = Buffer.from(await doc.save());
 
-    if (bytes.length > MAX_SCAN_BYTES) {
+    // Only a deep read has to fit a whole part into one 32MB request, so
+    // only a deep read can be defeated by a part that is still too heavy.
+    // A quick read reads the part a page at a time and does not care.
+    if (readMode === "deep" && bytes.length > MAX_SCAN_BYTES) {
       return NextResponse.json(
         {
           error: `Part ${chunk.index + 1} (pages ${chunk.firstPage}-${chunk.lastPage}) is still ${(bytes.length / 1024 / 1024).toFixed(1)}MB after splitting, past the 32MB request limit. Rescan at a lower resolution (or in grayscale/black-and-white) and upload again.`,
@@ -281,6 +341,9 @@ async function chunkOversizedUpload(args: {
     });
   }
 
+  // No readMode in the response: the client re-posts each part's
+  // storagePath with the same readMode it sent for the parent, so every
+  // part is read the way the whole upload was asked to be.
   return NextResponse.json({
     chunked: true,
     pageCount,
@@ -299,7 +362,7 @@ export async function POST(
   const { supabase, user } = auth;
   const { id: testId } = await params;
 
-  let body: { storagePath?: unknown; fileName?: unknown; forceResegment?: unknown };
+  let body: { storagePath?: unknown; fileName?: unknown; forceResegment?: unknown; readMode?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -365,6 +428,11 @@ export async function POST(
   const fileName =
     typeof body.fileName === "string" && body.fileName.trim() ? body.fileName.trim() : "batch-scan.pdf";
 
+  // Anything that isn't an explicit "deep" reads as quick, so a client that
+  // predates the checkbox (or sends nothing at all) gets the cheap read
+  // rather than silently paying for the whole-document one.
+  const readMode: ReadMode = body.readMode === "deep" ? "deep" : "quick";
+
   // -- Load the class roster ---------------------------------------------------
   // See loadGradingRoster. Loaded before segmentation because the
   // oversized-upload path also hands the name list to its cover-page checks
@@ -374,10 +442,16 @@ export async function POST(
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  // -- Too big for one segmentation call: cut into parts ----------------------
-  if (needsChunking(pageCount, buffer.length)) {
+  // -- Too big for one read: cut into parts -----------------------------------
+  // What counts as too big is the mode's, not the file's: a deep read is
+  // capped at 100 pages and 32MB because it sends the document in one
+  // request, while a quick read only has QUICK_READ_MAX_PAGES to answer to,
+  // so a 200-page 60MB scan goes through it whole (see chunkLimitsFor).
+  if (needsChunking(pageCount, buffer.length, chunkLimitsFor(readMode))) {
     if (pageCount === 1) {
-      // A single page can't be cut any smaller; only a rescan helps.
+      // A single page can't be cut any smaller; only a rescan helps. Deep
+      // read only reaches this in practice -- one page is never over the
+      // quick read's page ceiling, and it has no byte ceiling to breach.
       return NextResponse.json(
         {
           error: `This scan is ${(buffer.length / 1024 / 1024).toFixed(1)}MB for a single page; Anthropic's API caps a request at 32MB. Rescan at a lower resolution (or in grayscale/black-and-white).`,
@@ -395,6 +469,7 @@ export async function POST(
         storagePath,
         fileName,
         rosterNames: roster.map((r) => r.displayName),
+        readMode,
       });
     } catch (e) {
       return NextResponse.json(
@@ -413,13 +488,22 @@ export async function POST(
   // earlier proposal onto the new batch row and skip the model. The teacher
   // still confirms the mapping before anything is split or graded, exactly
   // as for a fresh proposal. forceResegment: true opts out.
+  //
+  // The read_mode filter is asymmetric on purpose. A deep proposal is at
+  // least as good as a quick one -- the whole-document read finds every
+  // cover page the per-page check does, and the loose sheets it misses --
+  // so a quick request may be served either. A deep request may only be
+  // served a deep proposal: asking for a deep read IS the teacher's "the
+  // quick read got a loose sheet wrong" retry, and handing back the quick
+  // proposal it is meant to replace would silently ignore the request.
   const sourceSha256 = createHash("sha256").update(buffer).digest("hex");
   if (body.forceResegment !== true) {
     const { data: prior } = await supabase
       .from("ai_grade_batches")
-      .select("id, proposed_segments, unassigned_pages, blank_pages")
+      .select("id, read_mode, proposed_segments, unassigned_pages, blank_pages")
       .eq("test_id", testId)
       .eq("source_sha256", sourceSha256)
+      .in("read_mode", readMode === "deep" ? ["deep"] : ["quick", "deep"])
       .in("status", ["segmented", "split"])
       .not("proposed_segments", "is", null)
       .order("created_at", { ascending: false })
@@ -439,6 +523,10 @@ export async function POST(
           file_name: fileName,
           page_count: pageCount,
           source_sha256: sourceSha256,
+          // The PRIOR's mode, not the requested one: the row records how
+          // these segments were actually produced, so a later deep request
+          // can tell a copied quick proposal from a deep one.
+          read_mode: prior.read_mode,
           proposed_segments: prior.proposed_segments,
           unassigned_pages: unassignedPages,
           blank_pages: blankPages,
@@ -479,6 +567,7 @@ export async function POST(
       file_name: fileName,
       page_count: pageCount,
       source_sha256: sourceSha256,
+      read_mode: readMode,
     })
     .select("id")
     .single();
@@ -496,82 +585,157 @@ export async function POST(
   };
 
   // -- Segment ------------------------------------------------------------------
-  // Structured output (the same zod schema the validator uses) plus one
-  // retry on a malformed/invalid response -- same shape as the grading
-  // route. A whole-batch call is the most expensive request in the app, so a
-  // second attempt is still far cheaper than a teacher re-uploading.
-  const segmentationRequest: Anthropic.MessageCreateParamsNonStreaming = {
-    model: SEGMENTATION_MODEL,
-    max_tokens: 8192,
-    system: SEGMENTATION_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: buffer.toString("base64") },
-          },
-          { type: "text", text: buildSegmentationUserPrompt(pageCount) },
-        ],
-      },
-    ],
-  };
+  // Both reads end at the same place: proposed segments, unassigned pages,
+  // the read's own blank-page list and its warnings. Everything below the
+  // branch -- the blank-page second look, the row update and the response --
+  // is shared, so the two modes differ only in how the mapping is found.
+  let proposedSegments: ProposedSegment[];
+  let unassignedPages: number[];
+  let modelBlankPages: number[];
+  let warnings: string[];
 
-  let validation: ReturnType<typeof validateSegmentationResponse> | null = null;
-  let lastError = "Model returned an empty segmentation response";
-  for (let attempt = 1; attempt <= 2 && !validation; attempt++) {
-    let responseText: string;
-    try {
-      const message = await anthropic.messages.parse({
-        ...segmentationRequest,
-        output_config: { format: zodOutputFormat(SegmentationResponseSchema) },
+  if (readMode === "quick") {
+    // -- Quick read: one cover-page check per page ---------------------------
+    // The same single-page Haiku call the chunker makes above, but keeping
+    // the whole verdict rather than just the boolean: the cover page's name
+    // is read in the SAME request as the is-this-a-cover decision, so
+    // asking "whose is it?" separately would double the cost of the read.
+    const rosterNames = roster.map((r) => r.displayName);
+    const checkPage = async (page: number): Promise<CoverPageCheck> => {
+      const message = await anthropic.messages.create({
+        model: COVER_PAGE_CHECK_MODEL,
+        max_tokens: 512,
+        system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "document",
+                source: { type: "base64", media_type: "application/pdf", data: await singlePagePdf(sourceDoc, page) },
+              },
+              { type: "text", text: buildCoverPageCheckUserPrompt(rosterNames) },
+            ],
+          },
+        ],
       });
       await recordUsage(supabase, {
-        pipeline: "ai_grade_segment",
-        model: SEGMENTATION_MODEL,
+        pipeline: "ai_grade_cover_page",
+        model: COVER_PAGE_CHECK_MODEL,
         usage: message.usage,
         ref: { type: "ai_grade_batch", id: batch.id },
       });
-      if (message.stop_reason === "max_tokens") {
-        lastError = "Model response was cut off at max_tokens";
+      const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+      const validated = validateCoverPageCheck(text);
+      // Throw rather than report "not a cover page": an unreadable answer is
+      // no evidence about the page, and swallowing it would fold a student's
+      // script silently into the student before them. segmentByCoverPages
+      // records the throw as checkFailed and warns about that page instead.
+      if (!validated.ok) throw new Error(validated.error);
+      return validated.result;
+    };
+
+    const plan = await segmentByCoverPages({ pageCount, checkPage });
+    if (plan.students.length === 0) {
+      return failBatch(
+        "No cover pages were found in this scan. Each student's script must start with a cover page bearing their name — tick Deep read to have the whole document read instead.",
+        502
+      );
+    }
+    proposedSegments = matchSegmentsToRoster(plan.students, roster);
+    unassignedPages = plan.unassignedPages;
+    // A quick read has no blank list of its own: every page is claimed by
+    // construction (each student runs to the page before the next cover),
+    // and the detectBlankPages pass below still covers whatever the plan
+    // did leave unassigned.
+    modelBlankPages = [];
+    warnings = plan.warnings;
+  } else {
+    // -- Deep read: one whole-document call ----------------------------------
+    // Structured output (the same zod schema the validator uses) plus one
+    // retry on a malformed/invalid response -- same shape as the grading
+    // route. A whole-batch call is the most expensive request in the app, so a
+    // second attempt is still far cheaper than a teacher re-uploading.
+    const segmentationRequest: Anthropic.MessageCreateParamsNonStreaming = {
+      model: SEGMENTATION_MODEL,
+      max_tokens: 8192,
+      system: SEGMENTATION_SYSTEM_PROMPT,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: buffer.toString("base64") },
+            },
+            { type: "text", text: buildSegmentationUserPrompt(pageCount) },
+          ],
+        },
+      ],
+    };
+
+    let validation: ReturnType<typeof validateSegmentationResponse> | null = null;
+    let lastError = "Model returned an empty segmentation response";
+    for (let attempt = 1; attempt <= 2 && !validation; attempt++) {
+      let responseText: string;
+      try {
+        const message = await anthropic.messages.parse({
+          ...segmentationRequest,
+          output_config: { format: zodOutputFormat(SegmentationResponseSchema) },
+        });
+        await recordUsage(supabase, {
+          pipeline: "ai_grade_segment",
+          model: SEGMENTATION_MODEL,
+          usage: message.usage,
+          ref: { type: "ai_grade_batch", id: batch.id },
+        });
+        if (message.stop_reason === "max_tokens") {
+          lastError = "Model response was cut off at max_tokens";
+          continue;
+        }
+        responseText = message.parsed_output
+          ? JSON.stringify(message.parsed_output)
+          : message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
+      } catch (e) {
+        return failBatch(`Segmentation request failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
+      if (!responseText.trim()) {
+        lastError = "Model returned an empty segmentation response";
         continue;
       }
-      responseText = message.parsed_output
-        ? JSON.stringify(message.parsed_output)
-        : message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-    } catch (e) {
-      return failBatch(`Segmentation request failed: ${e instanceof Error ? e.message : String(e)}`);
+      const attemptValidation = validateSegmentationResponse(responseText, pageCount);
+      if (attemptValidation.ok) validation = attemptValidation;
+      else lastError = attemptValidation.error;
     }
+    if (!validation || !validation.ok) return failBatch(lastError, 502);
 
-    if (!responseText.trim()) {
-      lastError = "Model returned an empty segmentation response";
-      continue;
-    }
-    const attemptValidation = validateSegmentationResponse(responseText, pageCount);
-    if (attemptValidation.ok) validation = attemptValidation;
-    else lastError = attemptValidation.error;
+    // -- Match against the class roster --------------------------------------
+    proposedSegments = matchSegmentsToRoster(validation.response.students, roster);
+    unassignedPages = [
+      ...new Set([
+        ...validation.response.unassignedPages,
+        ...validation.warnings.flatMap((w) => {
+          const m = w.match(/^Page\(s\) (.+) were not mentioned/);
+          return m ? m[1].split(", ").map(Number) : [];
+        }),
+      ]),
+    ].sort((a, b) => a - b);
+    modelBlankPages = [...validation.response.blankPages].sort((a, b) => a - b);
+    warnings = validation.warnings;
   }
-  if (!validation || !validation.ok) return failBatch(lastError, 502);
-
-  // -- Match against the class roster --------------------------------------
-  const proposedSegments = matchSegmentsToRoster(validation.response.students, roster);
-  const unassignedPages = [
-    ...new Set([
-      ...validation.response.unassignedPages,
-      ...validation.warnings.flatMap((w) => {
-        const m = w.match(/^Page\(s\) (.+) were not mentioned/);
-        return m ? m[1].split(", ").map(Number) : [];
-      }),
-    ]),
-  ].sort((a, b) => a - b);
-  const modelBlankPages = [...validation.response.blankPages].sort((a, b) => a - b);
 
   // -- Second look at unassigned pages ---------------------------------------
   // The whole-document read misses blank back pages often enough that a
   // 4-booklet scan came back with all four flagged as unassigned. Each
   // page the model left out gets its own cheap single-page question, and
   // a confident "blank" moves it out of the teacher's way (lib/blank-pages.ts).
+  // A quick read leaves almost nothing here to check: it claims every page
+  // from a cover to the page before the next one, so the only unassigned
+  // pages it can produce are the ones before the FIRST cover. A blank back
+  // page mid-script stays with its student, which is the right outcome --
+  // it is claimed, so the review UI never asks the teacher about it, and a
+  // blank page inside a student's PDF costs nothing at marking time.
   let { blankPages, unassignedPages: stillUnassigned } = applyBlankPages(
     { blankPages: modelBlankPages, unassignedPages },
     []
@@ -609,6 +773,6 @@ export async function POST(
     segments: proposedSegments,
     unassignedPages: stillUnassigned,
     blankPages,
-    warnings: validation.warnings,
+    warnings,
   });
 }

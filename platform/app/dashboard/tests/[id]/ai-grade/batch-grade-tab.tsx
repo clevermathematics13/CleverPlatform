@@ -22,6 +22,14 @@ const MAX_CONCURRENT_PARTS = 4;
 type Confidence = "high" | "medium" | "low";
 type BatchStatus = "uploaded" | "segmenting" | "segmented" | "failed" | "split";
 
+/**
+ * How the server reads a scan. "quick" checks every page on its own with the
+ * cover-page model and runs each student from their cover page to the next;
+ * "deep" sends the whole PDF to Opus in one call, which costs roughly three
+ * times as much but can place a loose sheet scanned out of order.
+ */
+type ReadMode = "quick" | "deep";
+
 interface StudentOption {
   profile_id: string;
   display_name: string;
@@ -91,6 +99,13 @@ interface PartState {
   status: "pending" | "segmenting" | "segmented" | "failed";
   batch: BatchRow | null;
   reused: boolean;
+  /**
+   * Warnings from this part's own read -- a quick read reports pages before
+   * the first cover page, a cover page whose name it could not read, and any
+   * page whose check failed. Empty when the mapping was reused: that response's
+   * only "warning" is the dedupe notice the panel's status line already gives.
+   */
+  warnings: string[];
   error: string | null;
   /**
    * Set when this part came back from the server on page load rather than
@@ -104,6 +119,13 @@ interface PartState {
 interface UploadState {
   key: string;
   fileName: string;
+  /**
+   * Fixed when this upload starts rather than read from the checkbox at
+   * request time: toggling it while a stack is being read -- or before "Read
+   * this part again" on a failed part -- must not change how a file already in
+   * flight was read, and every part of one file has to be read the same way.
+   */
+  readMode: ReadMode;
   status: "uploading" | "reading" | "ready" | "failed";
   pageCount: number | null;
   parts: PartState[];
@@ -130,9 +152,9 @@ interface BatchPanelHandle {
 
 /**
  * How many files are uploaded and read at once. Each file's segmentation is
- * one serverless request carrying one Opus call, so this is also the number
- * of concurrent whole-document model reads; three keeps a stack of class
- * scans moving without leaning on rate limits.
+ * one serverless request, which fans out into per-page cover checks (quick
+ * read) or one whole-document Opus call (deep read); three keeps a stack of
+ * class scans moving without leaning on rate limits.
  */
 const FILE_CONCURRENCY = 3;
 
@@ -223,6 +245,43 @@ function batchFromSegmentation(data: Record<string, unknown>, fileName: string):
   };
 }
 
+/**
+ * The quick/deep read choice. Rendered both in the empty state and in the
+ * header bar, because it applies to the next upload -- a file added to a stack
+ * that is already loaded is read with whatever the box says at that moment.
+ */
+function DeepReadToggle({
+  checked,
+  disabled,
+  onChange,
+  className,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`${className ?? ""}${disabled ? " opacity-50" : ""}`}>
+      <label className="flex cursor-pointer items-center gap-1.5 text-xs text-da-muted">
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="rounded"
+        />
+        Deep read (every page at once — use when a scan has loose sheets out of order)
+      </label>
+      <p className="mt-1 text-[11px] text-da-muted/80">
+        Quick read costs about 0.3 cents a page and assumes each student&apos;s work runs from
+        their cover page to the next one. Deep read costs about 1 cent a page and can attribute
+        a loose sheet that was scanned out of order.
+      </p>
+    </div>
+  );
+}
+
 export function BatchGradeTab({
   testId,
   students,
@@ -233,6 +292,7 @@ export function BatchGradeTab({
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploads, setUploads] = useState<UploadState[]>([]);
+  const [deepRead, setDeepRead] = useState(false);
   const [panelStatus, setPanelStatus] = useState<Record<string, PanelStatus>>({});
   const [gradingAll, setGradingAll] = useState(false);
   const [allStatusLine, setAllStatusLine] = useState<string | null>(null);
@@ -256,12 +316,20 @@ export function BatchGradeTab({
       try {
         const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`);
         if (!ok || cancelled) return;
-        type ApiBatch = BatchRow & RestorableBatch & { source_storage_path?: string | null };
+        type ApiBatch = BatchRow &
+          RestorableBatch & { source_storage_path?: string | null; read_mode?: string | null };
         const restored = groupUnfinishedBatches(((data.batches as ApiBatch[]) ?? []));
         if (restored.length === 0) return;
         const entries: UploadState[] = restored.map((u) => ({
           key: `restored-${u.fileName}`,
           fileName: u.fileName,
+          // Carried from the row rather than assumed: the mode only matters
+          // if a part is read again, and defaulting would silently downgrade
+          // a deep read to a quick one on the retry. Rows written before
+          // read_mode existed are deep, which is also the safe direction to
+          // fall back to -- a needless deep read costs money, a needless
+          // quick one costs the answer the teacher asked for.
+          readMode: u.parts[0]?.batch.read_mode === "quick" ? "quick" : "deep",
           status: "ready",
           pageCount: u.pageCount,
           warnings: [],
@@ -284,6 +352,7 @@ export function BatchGradeTab({
             status: "segmented",
             batch: p.batch,
             reused: false,
+            warnings: [],
             error: null,
             restored: p.splitButUngraded ? "split" : "segmented",
           })),
@@ -318,13 +387,19 @@ export function BatchGradeTab({
    * Segment one stored PDF (a whole upload, or one part of a chunked one)
    * through the batch route and record the outcome on its part.
    */
-  const segmentPart = async (uploadKey: string, partKey: string, storagePath: string, fileName: string) => {
+  const segmentPart = async (
+    uploadKey: string,
+    partKey: string,
+    storagePath: string,
+    fileName: string,
+    readMode: ReadMode
+  ) => {
     updatePart(uploadKey, partKey, { status: "segmenting", error: null });
     try {
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storagePath, fileName }),
+        body: JSON.stringify({ storagePath, fileName, readMode }),
       });
       if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
       if (data.chunked) {
@@ -337,6 +412,7 @@ export function BatchGradeTab({
         status: "segmented",
         batch: batchFromSegmentation(data, fileName),
         reused: !!data.reusedFromBatchId,
+        warnings: data.reusedFromBatchId ? [] : ((data.warnings as string[]) ?? []),
       });
     } catch (e) {
       updatePart(uploadKey, partKey, {
@@ -351,7 +427,7 @@ export function BatchGradeTab({
    * cut it into parts), then read each part. Never throws -- a bad file
    * marks its own upload failed and the others carry on.
    */
-  const processFile = async (uploadKey: string, file: File) => {
+  const processFile = async (uploadKey: string, file: File, readMode: ReadMode) => {
     try {
       // Batch scans can be very large — upload straight to Storage from the
       // browser rather than sending it as JSON through this Next.js route,
@@ -371,7 +447,7 @@ export function BatchGradeTab({
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storagePath, fileName: file.name }),
+        body: JSON.stringify({ storagePath, fileName: file.name, readMode }),
       });
       if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
 
@@ -387,6 +463,7 @@ export function BatchGradeTab({
           status: "pending",
           batch: null,
           reused: false,
+          warnings: [],
           error: null,
           restored: null,
         }));
@@ -397,7 +474,7 @@ export function BatchGradeTab({
           warnings: (data.warnings as string[]) ?? [],
         });
         for (const part of parts) {
-          await segmentPart(uploadKey, part.key, part.chunk!.storagePath, part.chunk!.fileName);
+          await segmentPart(uploadKey, part.key, part.chunk!.storagePath, part.chunk!.fileName, readMode);
         }
         return;
       }
@@ -405,7 +482,12 @@ export function BatchGradeTab({
       updateUpload(uploadKey, {
         status: "ready",
         pageCount: data.pageCount as number,
-        warnings: [],
+        // A quick read reports what it could not place (a page before the
+        // first cover page, a name it could not read, a page it failed to
+        // check); these used to be dropped on the floor here. A reused
+        // mapping's lone "warning" is the dedupe notice, which the panel's
+        // status line already states, so it is not repeated as a banner.
+        warnings: data.reusedFromBatchId ? [] : ((data.warnings as string[]) ?? []),
         parts: [
           {
             key: "whole",
@@ -413,6 +495,8 @@ export function BatchGradeTab({
             status: "segmented",
             batch: batchFromSegmentation(data, file.name),
             reused: !!data.reusedFromBatchId,
+            // Carried by the upload above, which renders the same banner.
+            warnings: [],
             error: null,
             restored: null,
           },
@@ -436,11 +520,17 @@ export function BatchGradeTab({
     // and is then uploaded and read with bounded concurrency: files are
     // independent, and a class set that arrives as several scanner runs
     // shouldn't have to wait for each one to finish before the next starts.
+    //
+    // The read mode is read once, here, so every file in this batch of picks -- and every
+    // later re-read of one of their parts -- uses the mode the teacher chose
+    // when they picked the files, not whatever the box says at the time.
+    const readMode: ReadMode = deepRead ? "deep" : "quick";
     const entries = files.map((file) => ({
       file,
       upload: {
         key: crypto.randomUUID(),
         fileName: file.name,
+        readMode,
         status: "uploading" as const,
         pageCount: null,
         parts: [],
@@ -452,7 +542,7 @@ export function BatchGradeTab({
 
     try {
       await runPool(
-        entries.map((e) => () => processFile(e.upload.key, e.file)),
+        entries.map((e) => () => processFile(e.upload.key, e.file, readMode)),
         FILE_CONCURRENCY
       );
     } finally {
@@ -586,6 +676,12 @@ export function BatchGradeTab({
             students&apos; cover pages. Several files are uploaded and read side by side, and
             every part is reviewed and graded separately below — or all at once.
           </p>
+          <DeepReadToggle
+            className="mt-4"
+            checked={deepRead}
+            disabled={readingAny || gradingParts.length > 0}
+            onChange={setDeepRead}
+          />
           <button
             type="button"
             disabled={uploading}
@@ -613,6 +709,12 @@ export function BatchGradeTab({
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <DeepReadToggle
+                className="max-w-xs"
+                checked={deepRead}
+                disabled={readingAny || gradingParts.length > 0}
+                onChange={setDeepRead}
+              />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -724,6 +826,14 @@ export function BatchGradeTab({
                           earlier attempt timed out. Splitting and grading it again is safe.
                         </div>
                       )}
+                      {part.warnings.map((w, i) => (
+                        <div
+                          key={i}
+                          className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300"
+                        >
+                          ⚠ {w}
+                        </div>
+                      ))}
                       <BatchPanel
                         ref={(handle) => {
                           if (handle) panelRefs.current.set(key, handle);
@@ -751,7 +861,15 @@ export function BatchGradeTab({
                         <button
                           type="button"
                           disabled={readingAny}
-                          onClick={() => segmentPart(upload.key, part.key, part.chunk!.storagePath, part.chunk!.fileName)}
+                          onClick={() =>
+                            segmentPart(
+                              upload.key,
+                              part.key,
+                              part.chunk!.storagePath,
+                              part.chunk!.fileName,
+                              upload.readMode
+                            )
+                          }
                           className="mt-3 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
                         >
                           Read this part again
