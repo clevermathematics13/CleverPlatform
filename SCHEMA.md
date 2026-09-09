@@ -1,9 +1,11 @@
 # Database schema reference
 
 Generated from the live Supabase project (`qnawglgnoojrlaivylou`, schema `public`) on
-2 Sep 2026. 82 tables. This file replaced a 312-byte PostgREST error blob that had sat
-here since a `get_schema` RPC was removed; `platform/CLAUDE.md` still pointed agents at
-it as required reading.
+2 Sep 2026 (82 tables) and hand-extended per migration since: 88 tables here, checked
+against the database on 9 Sep 2026, of the 93 the schema now has -- the five `game_*`
+tables have never been documented. This file replaced a 312-byte PostgREST error blob
+that had sat here since a `get_schema` RPC was removed; `platform/CLAUDE.md` still
+pointed agents at it as required reading.
 
 **To refresh**, run this against the database (MCP `execute_sql` works) and paste the
 `markdown` column below the horizontal rule:
@@ -58,6 +60,33 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `segmented_at` | timestamp with time zone, nullable |  |
 | `split_at` | timestamp with time zone, nullable |  |
 | `source_sha256` | text, nullable |  |
+| `read_mode` | text | default `'deep'::text` — how `proposed_segments` were produced: `quick` = one Haiku cover-page check per page (`lib/cover-page-segmentation.ts`, ~0.3 cents/page), `deep` = the whole PDF read by the segmentation model (~1 cent/page). `deep` is the default because every row predating the column was read that way; the upload UI offers quick and makes deep the opt-in. The `source_sha256` dedupe is deliberately asymmetric: a quick request may reuse a `quick` or `deep` proposal, a deep request only a `deep` one |
+
+### `ai_grade_message_batches`
+
+One submission to Anthropic's Message Batches API -- overnight marking, half price on
+every token. There is no worker and no cron behind this table: the submit runs in the
+request the teacher's click makes, and `POST /api/tests/[id]/ai-grade/collect` reads
+results back when the AI grade page asks for them. Anthropic keeps a batch's results
+for 29 days, so a row stays collectable long after the tab that created it was closed.
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `anthropic_batch_id` | text | Anthropic's own batch id (`msgbatch_...`); unique, so a double submit cannot produce two rows tracking one batch |
+| `test_id` | uuid | FK tests(id) on delete cascade |
+| `created_by` | uuid, nullable | FK profiles(id) on delete set null |
+| `status` | text | default `'submitted'::text` — check `('submitted', 'in_progress', 'ended', 'results_written', 'failed')` |
+| `request_count` | integer | students in this submission; one submit call sends at most `MAX_BATCH_REQUESTS` (20) and returns the rest for the client to send again |
+| `submitted_at` | timestamp with time zone | default `now()` |
+| `ended_at` | timestamp with time zone, nullable |  |
+| `results_written_at` | timestamp with time zone, nullable |  |
+| `error_message` | text, nullable |  |
+| `created_at` | timestamp with time zone | default `now()` |
+
+Partial index `idx_ai_grade_message_batches_open` on `(test_id, submitted_at)` where
+`status in ('submitted', 'in_progress', 'ended')` — the collect route's working set,
+partial because rows only ever leave it.
 
 ### `ai_grade_results`
 
@@ -90,7 +119,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `test_id` | uuid |  |
 | `student_id` | uuid, nullable | FK profiles(id) — null for a run graded against an invited-only student; backfilled by `auto_enroll_from_invitations` on first login |
 | `created_by` | uuid |  |
-| `status` | text | default `'running'::text` |
+| `status` | text | default `'running'::text` — check `('submitted', 'running', 'complete', 'failed')`; `submitted` is written only by the overnight queue route and means the request is with Anthropic and no result has been written, so it is unambiguous evidence of the batch path |
 | `model` | text, nullable |  |
 | `source_storage_path` | text, nullable |  |
 | `coverage` | jsonb | default `'{}'::jsonb` |
@@ -98,6 +127,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `created_at` | timestamp with time zone | default `now()` |
 | `completed_at` | timestamp with time zone, nullable |  |
 | `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null — set for every run created via the batch/invited-roster flow, regardless of registration status |
+| `pending_message_batch_id` | uuid, nullable | FK ai_grade_message_batches(id) on delete set null — the batch a `submitted` run is waiting on, cleared when its result is written, so non-null plus `status = 'submitted'` is exactly the set the collect route still owes an answer for |
 
 ### `ai_usage_log`
 
