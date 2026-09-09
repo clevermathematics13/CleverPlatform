@@ -1,9 +1,11 @@
 # Database schema reference
 
 Generated from the live Supabase project (`qnawglgnoojrlaivylou`, schema `public`) on
-2 Sep 2026. 82 tables. This file replaced a 312-byte PostgREST error blob that had sat
-here since a `get_schema` RPC was removed; `platform/CLAUDE.md` still pointed agents at
-it as required reading.
+2 Sep 2026 (82 tables) and hand-extended per migration since: 88 tables here, checked
+against the database on 9 Sep 2026, of the 93 the schema now has -- the five `game_*`
+tables have never been documented. This file replaced a 312-byte PostgREST error blob
+that had sat here since a `get_schema` RPC was removed; `platform/CLAUDE.md` still
+pointed agents at it as required reading.
 
 **To refresh**, run this against the database (MCP `execute_sql` works) and paste the
 `markdown` column below the horizontal rule:
@@ -58,6 +60,49 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `segmented_at` | timestamp with time zone, nullable |  |
 | `split_at` | timestamp with time zone, nullable |  |
 | `source_sha256` | text, nullable |  |
+| `read_mode` | text | default `'deep'::text` — how `proposed_segments` were produced: `quick` = one Haiku cover-page check per page (`lib/cover-page-segmentation.ts`, ~0.3 cents/page), `deep` = the whole PDF read by the segmentation model (~1 cent/page). `deep` is the default because every row predating the column was read that way; the upload UI offers quick and makes deep the opt-in. The `source_sha256` dedupe is deliberately asymmetric: a quick request may reuse a `quick` or `deep` proposal, a deep request only a `deep` one |
+
+### `worker_heartbeats`
+
+Liveness for the background workers. One row per worker process, rewritten
+every pipeline tick whether or not the tick found work, so a stale
+`last_seen_at` means the worker is gone. Added after the 6 Sep 2026 Railway
+restarts, when an idle worker and a dead one were indistinguishable from
+here. Teachers may read it; only the service role writes it.
+
+| column | type | default |
+|---|---|---|
+| `worker_id` | text, primary key |  |
+| `service` | text | default `'bulk-upload-worker'::text` |
+| `started_at` | timestamp with time zone | default `now()` |
+| `last_seen_at` | timestamp with time zone | default `now()` |
+| `detail` | jsonb | default `'{}'::jsonb` — uptime, concurrency, interval config, last assess poll |
+
+### `ai_grade_message_batches`
+
+One submission to Anthropic's Message Batches API -- overnight marking, half price on
+every token. There is no worker and no cron behind this table: the submit runs in the
+request the teacher's click makes, and `POST /api/tests/[id]/ai-grade/collect` reads
+results back when the AI grade page asks for them. Anthropic keeps a batch's results
+for 29 days, so a row stays collectable long after the tab that created it was closed.
+
+| column | type | default |
+|---|---|---|
+| `id` | uuid | default `gen_random_uuid()` |
+| `anthropic_batch_id` | text | Anthropic's own batch id (`msgbatch_...`); unique, so a double submit cannot produce two rows tracking one batch |
+| `test_id` | uuid | FK tests(id) on delete cascade |
+| `created_by` | uuid, nullable | FK profiles(id) on delete set null |
+| `status` | text | default `'submitted'::text` — check `('submitted', 'in_progress', 'ended', 'results_written', 'failed')` |
+| `request_count` | integer | students in this submission; one submit call sends at most `MAX_BATCH_REQUESTS` (20) and returns the rest for the client to send again |
+| `submitted_at` | timestamp with time zone | default `now()` |
+| `ended_at` | timestamp with time zone, nullable |  |
+| `results_written_at` | timestamp with time zone, nullable |  |
+| `error_message` | text, nullable |  |
+| `created_at` | timestamp with time zone | default `now()` |
+
+Partial index `idx_ai_grade_message_batches_open` on `(test_id, submitted_at)` where
+`status in ('submitted', 'in_progress', 'ended')` — the collect route's working set,
+partial because rows only ever leave it.
 
 ### `ai_grade_results`
 
@@ -90,7 +135,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `test_id` | uuid |  |
 | `student_id` | uuid, nullable | FK profiles(id) — null for a run graded against an invited-only student; backfilled by `auto_enroll_from_invitations` on first login |
 | `created_by` | uuid |  |
-| `status` | text | default `'running'::text` |
+| `status` | text | default `'running'::text` — check `('submitted', 'running', 'complete', 'failed')`; `submitted` is written only by the overnight queue route and means the request is with Anthropic and no result has been written, so it is unambiguous evidence of the batch path |
 | `model` | text, nullable |  |
 | `source_storage_path` | text, nullable |  |
 | `coverage` | jsonb | default `'{}'::jsonb` |
@@ -98,6 +143,7 @@ For what the tables *mean* and which ones an agent actually touches, read
 | `created_at` | timestamp with time zone | default `now()` |
 | `completed_at` | timestamp with time zone, nullable |  |
 | `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null — set for every run created via the batch/invited-roster flow, regardless of registration status |
+| `pending_message_batch_id` | uuid, nullable | FK ai_grade_message_batches(id) on delete set null — the batch a `submitted` run is waiting on, cleared when its result is written, so non-null plus `status = 'submitted'` is exactly the set the collect route still owes an answer for |
 
 ### `ai_usage_log`
 
@@ -925,6 +971,48 @@ One row per uploaded scanned placement-test PDF. student_name is manually tagged
 | `created_at` | timestamp with time zone | default `now()` |
 | `updated_at` | timestamp with time zone | default `now()` |
 
+### `powerschool_export_files`
+
+The PowerSchool scores file rebuilt each time a student in the class finishes
+that assessment's self-assessment. One row per (course, test), overwritten; the
+object lives in the private `powerschool-exports` bucket at `storage_path`.
+Written by the service role only (no INSERT/UPDATE policy); read by teachers.
+
+| column | type | default |
+|---|---|---|
+| `course_id` | uuid | part of primary key, FK courses(id) on delete cascade |
+| `test_id` | uuid | part of primary key, FK tests(id) on delete cascade |
+| `storage_path` | text | `<course_id>/<test_id>.csv` — stable, so an update is an upsert rather than a delete-and-recreate |
+| `filename` | text | what the download is called: `[class]_[short name]_[completed count].csv`, e.g. `9C_Form1_6.csv` |
+| `completed_count` | integer | students in this course with at least one non-null `self_marks` for this test — the number in the filename |
+| `roster_count` | integer | everyone on the course roster, the denominator in "9 of 20" |
+| `filled_count` | integer | Score cells actually written |
+| `stale` | boolean | default `false` — set when marks change after the file was written; the download regenerates before serving rather than hand back a file known to be out of date |
+| `drive_file_id` | text, nullable | the Drive file this export is mirrored to; reused every sync so Drive keeps revision history instead of accumulating one file per rebuild |
+| `drive_synced_at` | timestamp with time zone, nullable | when the Drive copy was last written |
+| `drive_error` | text, nullable | why the last Drive sync failed, or null; never fatal — Storage is the source of truth |
+| `content_sha` | text, nullable | sha256 of the CSV as last written; compared against `downloaded_sha` to decide whether this class has scores the teacher has not taken yet |
+| `downloaded_sha` | text, nullable | `content_sha` at the moment the file was last included in a "Download new scores" batch; null until the first download |
+| `downloaded_at` | timestamp with time zone, nullable | when this file was last included in a download batch |
+| `updated_at` | timestamp with time zone | default `now()` |
+
+### `powerschool_templates`
+
+The PowerTeacher Scores Template for one class, uploaded once and re-filled for
+every assignment. `template` is stored with its Score column blank.
+
+| column | type | default |
+|---|---|---|
+| `course_id` | uuid | primary key, FK courses(id) on delete cascade |
+| `template` | text |  |
+| `source_test_id` | uuid, nullable | FK tests(id) on delete set null — the test it was uploaded against; that one test keeps PowerSchool's own metadata, any other gets its assignment name and due date rewritten |
+| `source_filename` | text, nullable |  |
+| `assignment_name` | text, nullable | read from the template's metadata block |
+| `class_name` | text, nullable | read from the template's metadata block |
+| `student_count` | integer, nullable |  |
+| `updated_at` | timestamp with time zone | default `now()` |
+| `updated_by` | uuid, nullable | FK profiles(id) |
+
 ### `profiles`
 
 | column | type | default |
@@ -1257,6 +1345,7 @@ A student who did not sit a test. The AI grader roster and the gradebook show "A
 | `teacher_id` | uuid |  |
 | `show_corrections` | boolean | default `false` |
 | `show_feedback` | boolean | default `false` |
+| `powerschool_drive_folder_id` | text, nullable | Google Drive folder that PowerSchool exports are mirrored into; null disables the mirror (the files still live in the `powerschool-exports` bucket) |
 | `updated_at` | timestamp with time zone | default `now()` |
 
 ### `test_item_anchors`
@@ -1338,12 +1427,14 @@ Unique on `(test_id, question_number, part_label)`.
 | `created_at` | timestamp with time zone | default `now()` |
 | `paper_url` | text, nullable |  |
 | `mark_scheme_url` | text, nullable |  |
-| `hidden` | boolean | default `false` |
+| `hidden` | boolean | default `false` — keeps the test out of the **student** reflection dropdown (lib/exam-service.ts) |
 | `boundary_set_id` | uuid, nullable |  |
 | `exam_time` | time without time zone, nullable |  |
 | `custom_content` | jsonb, nullable | full authored draft for a Formative-Assessment-creator test; null for IB-bank/external tests |
 | `release_at` | timestamp with time zone, nullable |  |
 | `require_self_assessment` | boolean | default `true` — when false, app/dashboard/reflection reveals marks to a student without requiring a self-assessment submission first |
+| `short_name` | text, nullable | short label for generated filenames, e.g. `Form1` for "Formative Assessment 1"; falls back to an abbreviation of `name` (lib/assessment-short-name.ts) |
+| `hidden_from_gradebook` | boolean | default `false` — omits the test's column from the **teacher** gradebook grid. Deliberately separate from `hidden`: a paper with an approximate boundary set belongs out of the students' hands and still in front of the teacher, and vice versa |
 
 ### `topics`
 

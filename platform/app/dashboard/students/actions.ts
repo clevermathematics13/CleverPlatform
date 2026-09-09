@@ -41,6 +41,7 @@ export async function setInvitedStudentExtraTime(formData: FormData) {
 import { createClient } from "@/lib/supabase/server";
 import { requireTeacher } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { parseStudentNumberPaste, type RosterEntry } from "@/lib/student-number-import";
 
 export async function addManualInvite(formData: FormData) {
   await requireTeacher();
@@ -312,4 +313,123 @@ export async function unarchiveClassStudents(formData: FormData) {
   revalidatePath("/dashboard/students");
   revalidatePath("/dashboard/courses");
   return { success: true };
+}
+
+// -- Student numbers (PowerSchool score import) ---------------------------------
+//
+// PowerTeacher Pro matches imported scores on the school-defined student number
+// and nothing else, so these have to be stored before an export is worth
+// anything. See lib/powerschool-export.ts.
+
+export async function setStudentNumber(formData: FormData) {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const studentId = formData.get("student_id") as string;
+  const studentNumber = ((formData.get("student_number") as string) ?? "").trim();
+  if (!studentId) return;
+
+  const { error } = await supabase
+    .from("students")
+    .update({ student_number: studentNumber || null })
+    .eq("id", studentId);
+  if (error) {
+    console.error("[setStudentNumber] Failed to update students.student_number:", error.message);
+    throw new Error(`Failed to save student number: ${error.message}`);
+  }
+  revalidatePath("/dashboard/students");
+}
+
+export async function setInvitedStudentNumber(formData: FormData) {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const invitedId = formData.get("invited_id") as string;
+  const studentNumber = ((formData.get("student_number") as string) ?? "").trim();
+  if (!invitedId) return;
+
+  const { error } = await supabase
+    .from("invited_students")
+    .update({ student_number: studentNumber || null })
+    .eq("id", invitedId);
+  if (error) {
+    console.error("[setInvitedStudentNumber] Failed to update invited_students.student_number:", error.message);
+    throw new Error(`Failed to save student number: ${error.message}`);
+  }
+  revalidatePath("/dashboard/students");
+}
+
+/**
+ * Fill student numbers in bulk from a pasted PowerSchool roster.
+ *
+ * The roster is loaded here rather than accepted from the client: the paste is
+ * matched against what the database says this teacher's classes contain, so a
+ * tampered payload cannot write a number onto a student the teacher cannot see.
+ */
+export async function bulkSetStudentNumbers(
+  formData: FormData
+): Promise<{
+  applied: number;
+  unmatchedLines: string[];
+  unmatchedStudents: string[];
+  error?: string;
+}> {
+  await requireTeacher();
+  const supabase = await createClient();
+
+  const text = (formData.get("paste") as string) ?? "";
+  const courseId = ((formData.get("course_id") as string) ?? "").trim();
+  if (!text.trim()) {
+    return { applied: 0, unmatchedLines: [], unmatchedStudents: [], error: "Nothing pasted." };
+  }
+
+  let enrolledQuery = supabase
+    .from("students")
+    .select("id, profiles:profile_id ( display_name )")
+    .eq("hidden", false);
+  let invitedQuery = supabase
+    .from("invited_students")
+    .select("id, full_name")
+    .is("profile_id", null)
+    .eq("hidden", false);
+  if (courseId) {
+    enrolledQuery = enrolledQuery.eq("course_id", courseId);
+    invitedQuery = invitedQuery.eq("course_id", courseId);
+  }
+
+  const [{ data: enrolled }, { data: invited }] = await Promise.all([enrolledQuery, invitedQuery]);
+
+  const roster: RosterEntry[] = [
+    ...(enrolled ?? []).map((s) => {
+      const prof = s.profiles as unknown as { display_name: string } | null;
+      return { key: `enrolled-${s.id as string}`, name: prof?.display_name ?? "" };
+    }),
+    ...(invited ?? []).map((i) => ({
+      key: `invited-${i.id as string}`,
+      name: (i.full_name as string) ?? "",
+    })),
+  ].filter((e) => e.name.trim() !== "");
+
+  const result = parseStudentNumberPaste(text, roster);
+
+  const writes = result.matched.map(async (m) => {
+    const [kind, id] = [m.key.slice(0, m.key.indexOf("-")), m.key.slice(m.key.indexOf("-") + 1)];
+    const table = kind === "enrolled" ? "students" : "invited_students";
+    const { error } = await supabase
+      .from(table)
+      .update({ student_number: m.studentNumber })
+      .eq("id", id);
+    return error ? m.name : null;
+  });
+  const failures = (await Promise.all(writes)).filter((f): f is string => f !== null);
+
+  revalidatePath("/dashboard/students");
+  return {
+    applied: result.matched.length - failures.length,
+    unmatchedLines: result.unmatchedLines,
+    unmatchedStudents: result.unmatchedStudents,
+    ...(failures.length > 0
+      ? { error: `Could not save ${failures.length}: ${failures.slice(0, 5).join(", ")}` }
+      : {}),
+  };
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { markExportsStale } from "@/lib/self-assessment-export";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows } from "@/lib/na-scanning";
 
@@ -253,6 +254,10 @@ export async function POST(
       { status: 500 }
     );
   }
+
+  // Clev's Marks just changed for a whole test, so the stored PowerSchool
+  // export no longer matches. One flag for the run, not one per student.
+  await markExportsStale({ testId });
 
   return NextResponse.json({
     appliedCount: clamped.length,

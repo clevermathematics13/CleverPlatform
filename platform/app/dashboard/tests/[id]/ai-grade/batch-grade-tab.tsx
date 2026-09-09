@@ -22,6 +22,14 @@ const MAX_CONCURRENT_PARTS = 4;
 type Confidence = "high" | "medium" | "low";
 type BatchStatus = "uploaded" | "segmenting" | "segmented" | "failed" | "split";
 
+/**
+ * How the server reads a scan. "quick" checks every page on its own with the
+ * cover-page model and runs each student from their cover page to the next;
+ * "deep" sends the whole PDF to Opus in one call, which costs roughly three
+ * times as much but can place a loose sheet scanned out of order.
+ */
+type ReadMode = "quick" | "deep";
+
 interface StudentOption {
   profile_id: string;
   display_name: string;
@@ -56,12 +64,25 @@ interface SplitResultRow {
   studentId: string;
   label: string;
   runId: string | null;
-  status: "complete" | "failed";
+  /**
+   * "queued" is the overnight path: the run is with Anthropic and nothing has
+   * been marked yet, so there is no total to show and no error either.
+   */
+  status: "complete" | "failed" | "queued";
   error?: string;
   suggestedTotal?: number;
   maxTotal?: number;
   testTotalMarks?: number;
   partsGraded?: number;
+}
+
+/** One row of POST .../split's response -- where this student's scan was put. */
+interface SplitApiRow {
+  studentId: string;
+  label: string;
+  status: string;
+  storagePath?: string;
+  error?: string;
 }
 
 /**
@@ -91,6 +112,13 @@ interface PartState {
   status: "pending" | "segmenting" | "segmented" | "failed";
   batch: BatchRow | null;
   reused: boolean;
+  /**
+   * Warnings from this part's own read -- a quick read reports pages before
+   * the first cover page, a cover page whose name it could not read, and any
+   * page whose check failed. Empty when the mapping was reused: that response's
+   * only "warning" is the dedupe notice the panel's status line already gives.
+   */
+  warnings: string[];
   error: string | null;
   /**
    * Set when this part came back from the server on page load rather than
@@ -104,6 +132,13 @@ interface PartState {
 interface UploadState {
   key: string;
   fileName: string;
+  /**
+   * Fixed when this upload starts rather than read from the checkbox at
+   * request time: toggling it while a stack is being read -- or before "Read
+   * this part again" on a failed part -- must not change how a file already in
+   * flight was read, and every part of one file has to be read the same way.
+   */
+  readMode: ReadMode;
   status: "uploading" | "reading" | "ready" | "failed";
   pageCount: number | null;
   parts: PartState[];
@@ -130,9 +165,9 @@ interface BatchPanelHandle {
 
 /**
  * How many files are uploaded and read at once. Each file's segmentation is
- * one serverless request carrying one Opus call, so this is also the number
- * of concurrent whole-document model reads; three keeps a stack of class
- * scans moving without leaning on rate limits.
+ * one serverless request, which fans out into per-page cover checks (quick
+ * read) or one whole-document Opus call (deep read); three keeps a stack of
+ * class scans moving without leaning on rate limits.
  */
 const FILE_CONCURRENCY = 3;
 
@@ -223,6 +258,80 @@ function batchFromSegmentation(data: Record<string, unknown>, fileName: string):
   };
 }
 
+/**
+ * The quick/deep read choice. Rendered both in the empty state and in the
+ * header bar, because it applies to the next upload -- a file added to a stack
+ * that is already loaded is read with whatever the box says at that moment.
+ */
+function DeepReadToggle({
+  checked,
+  disabled,
+  onChange,
+  className,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`${className ?? ""}${disabled ? " opacity-50" : ""}`}>
+      <label className="flex cursor-pointer items-center gap-1.5 text-xs text-da-muted">
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="rounded"
+        />
+        Deep read (every page at once — use when a scan has loose sheets out of order)
+      </label>
+      <p className="mt-1 text-[11px] text-da-muted/80">
+        Quick read costs about 0.3 cents a page and assumes each student&apos;s work runs from
+        their cover page to the next one. Deep read costs about 1 cent a page and can attribute
+        a loose sheet that was scanned out of order.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * The overnight choice, read at split time rather than at upload time: unlike
+ * the read mode it changes nothing about work already in flight, and it is the
+ * teacher looking at a reviewed part who knows whether the class can wait.
+ */
+function OvernightToggle({
+  checked,
+  disabled,
+  onChange,
+  className,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`${className ?? ""}${disabled ? " opacity-50" : ""}`}>
+      <label className="flex cursor-pointer items-center gap-1.5 text-xs text-da-muted">
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="rounded"
+        />
+        Mark overnight at half price (results arrive within a few hours, usually less)
+      </label>
+      <p className="mt-1 text-[11px] text-da-muted/80">
+        It costs half as much because the whole class is sent to Anthropic in one batch instead of
+        one request at a time. You can close the tab — results appear on the Individual tab as they
+        arrive.
+      </p>
+    </div>
+  );
+}
+
 export function BatchGradeTab({
   testId,
   students,
@@ -233,6 +342,13 @@ export function BatchGradeTab({
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploads, setUploads] = useState<UploadState[]>([]);
+  const [deepRead, setDeepRead] = useState(false);
+  /**
+   * Send the whole class to the Message Batches API instead of marking it here
+   * one student at a time. Half price on every token, and nothing depends on
+   * this tab staying open -- see the queue route and the collect pass.
+   */
+  const [overnight, setOvernight] = useState(false);
   const [panelStatus, setPanelStatus] = useState<Record<string, PanelStatus>>({});
   const [gradingAll, setGradingAll] = useState(false);
   const [allStatusLine, setAllStatusLine] = useState<string | null>(null);
@@ -256,12 +372,20 @@ export function BatchGradeTab({
       try {
         const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`);
         if (!ok || cancelled) return;
-        type ApiBatch = BatchRow & RestorableBatch & { source_storage_path?: string | null };
+        type ApiBatch = BatchRow &
+          RestorableBatch & { source_storage_path?: string | null; read_mode?: string | null };
         const restored = groupUnfinishedBatches(((data.batches as ApiBatch[]) ?? []));
         if (restored.length === 0) return;
         const entries: UploadState[] = restored.map((u) => ({
           key: `restored-${u.fileName}`,
           fileName: u.fileName,
+          // Carried from the row rather than assumed: the mode only matters
+          // if a part is read again, and defaulting would silently downgrade
+          // a deep read to a quick one on the retry. Rows written before
+          // read_mode existed are deep, which is also the safe direction to
+          // fall back to -- a needless deep read costs money, a needless
+          // quick one costs the answer the teacher asked for.
+          readMode: u.parts[0]?.batch.read_mode === "quick" ? "quick" : "deep",
           status: "ready",
           pageCount: u.pageCount,
           warnings: [],
@@ -284,6 +408,7 @@ export function BatchGradeTab({
             status: "segmented",
             batch: p.batch,
             reused: false,
+            warnings: [],
             error: null,
             restored: p.splitButUngraded ? "split" : "segmented",
           })),
@@ -318,13 +443,19 @@ export function BatchGradeTab({
    * Segment one stored PDF (a whole upload, or one part of a chunked one)
    * through the batch route and record the outcome on its part.
    */
-  const segmentPart = async (uploadKey: string, partKey: string, storagePath: string, fileName: string) => {
+  const segmentPart = async (
+    uploadKey: string,
+    partKey: string,
+    storagePath: string,
+    fileName: string,
+    readMode: ReadMode
+  ) => {
     updatePart(uploadKey, partKey, { status: "segmenting", error: null });
     try {
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storagePath, fileName }),
+        body: JSON.stringify({ storagePath, fileName, readMode }),
       });
       if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
       if (data.chunked) {
@@ -337,6 +468,7 @@ export function BatchGradeTab({
         status: "segmented",
         batch: batchFromSegmentation(data, fileName),
         reused: !!data.reusedFromBatchId,
+        warnings: data.reusedFromBatchId ? [] : ((data.warnings as string[]) ?? []),
       });
     } catch (e) {
       updatePart(uploadKey, partKey, {
@@ -351,7 +483,7 @@ export function BatchGradeTab({
    * cut it into parts), then read each part. Never throws -- a bad file
    * marks its own upload failed and the others carry on.
    */
-  const processFile = async (uploadKey: string, file: File) => {
+  const processFile = async (uploadKey: string, file: File, readMode: ReadMode) => {
     try {
       // Batch scans can be very large — upload straight to Storage from the
       // browser rather than sending it as JSON through this Next.js route,
@@ -371,7 +503,7 @@ export function BatchGradeTab({
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storagePath, fileName: file.name }),
+        body: JSON.stringify({ storagePath, fileName: file.name, readMode }),
       });
       if (!ok) throw new Error((data.error as string) ?? "Segmentation failed.");
 
@@ -387,6 +519,7 @@ export function BatchGradeTab({
           status: "pending",
           batch: null,
           reused: false,
+          warnings: [],
           error: null,
           restored: null,
         }));
@@ -397,7 +530,7 @@ export function BatchGradeTab({
           warnings: (data.warnings as string[]) ?? [],
         });
         for (const part of parts) {
-          await segmentPart(uploadKey, part.key, part.chunk!.storagePath, part.chunk!.fileName);
+          await segmentPart(uploadKey, part.key, part.chunk!.storagePath, part.chunk!.fileName, readMode);
         }
         return;
       }
@@ -405,7 +538,12 @@ export function BatchGradeTab({
       updateUpload(uploadKey, {
         status: "ready",
         pageCount: data.pageCount as number,
-        warnings: [],
+        // A quick read reports what it could not place (a page before the
+        // first cover page, a name it could not read, a page it failed to
+        // check); these used to be dropped on the floor here. A reused
+        // mapping's lone "warning" is the dedupe notice, which the panel's
+        // status line already states, so it is not repeated as a banner.
+        warnings: data.reusedFromBatchId ? [] : ((data.warnings as string[]) ?? []),
         parts: [
           {
             key: "whole",
@@ -413,6 +551,8 @@ export function BatchGradeTab({
             status: "segmented",
             batch: batchFromSegmentation(data, file.name),
             reused: !!data.reusedFromBatchId,
+            // Carried by the upload above, which renders the same banner.
+            warnings: [],
             error: null,
             restored: null,
           },
@@ -436,11 +576,17 @@ export function BatchGradeTab({
     // and is then uploaded and read with bounded concurrency: files are
     // independent, and a class set that arrives as several scanner runs
     // shouldn't have to wait for each one to finish before the next starts.
+    //
+    // The read mode is read once, here, so every file in this batch of picks -- and every
+    // later re-read of one of their parts -- uses the mode the teacher chose
+    // when they picked the files, not whatever the box says at the time.
+    const readMode: ReadMode = deepRead ? "deep" : "quick";
     const entries = files.map((file) => ({
       file,
       upload: {
         key: crypto.randomUUID(),
         fileName: file.name,
+        readMode,
         status: "uploading" as const,
         pageCount: null,
         parts: [],
@@ -452,7 +598,7 @@ export function BatchGradeTab({
 
     try {
       await runPool(
-        entries.map((e) => () => processFile(e.upload.key, e.file)),
+        entries.map((e) => () => processFile(e.upload.key, e.file, readMode)),
         FILE_CONCURRENCY
       );
     } finally {
@@ -514,7 +660,9 @@ export function BatchGradeTab({
     setGradingAll(true);
     const skipped = reviewingParts.map(partLabelOf);
     setAllStatusLine(
-      `Grading ${readyParts.length} part(s) — the first student goes alone to warm the mark-scheme cache, then the rest run ${MAX_CONCURRENT_PARTS} at a time.` +
+      (overnight
+        ? `Sending ${readyParts.length} part(s) to Anthropic for overnight marking.`
+        : `Grading ${readyParts.length} part(s) — the first student goes alone to warm the mark-scheme cache, then the rest run ${MAX_CONCURRENT_PARTS} at a time.`) +
         (skipped.length > 0 ? ` Skipped until their rows are reviewed: ${skipped.join(", ")}.` : "")
     );
     try {
@@ -536,7 +684,9 @@ export function BatchGradeTab({
         ),
       ]);
       setAllStatusLine(
-        `Finished ${readyParts.length} part(s). See each part below for its results.` +
+        (overnight
+          ? `Sent ${readyParts.length} part(s) for overnight marking. Results appear on the Individual tab as they arrive; you can close this tab.`
+          : `Finished ${readyParts.length} part(s). See each part below for its results.`) +
           (skipped.length > 0 ? ` Still need review: ${skipped.join(", ")}.` : "")
       );
     } finally {
@@ -586,6 +736,12 @@ export function BatchGradeTab({
             students&apos; cover pages. Several files are uploaded and read side by side, and
             every part is reviewed and graded separately below — or all at once.
           </p>
+          <DeepReadToggle
+            className="mt-4"
+            checked={deepRead}
+            disabled={readingAny || gradingParts.length > 0}
+            onChange={setDeepRead}
+          />
           <button
             type="button"
             disabled={uploading}
@@ -613,6 +769,18 @@ export function BatchGradeTab({
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <DeepReadToggle
+                className="max-w-xs"
+                checked={deepRead}
+                disabled={readingAny || gradingParts.length > 0}
+                onChange={setDeepRead}
+              />
+              <OvernightToggle
+                className="max-w-xs"
+                checked={overnight}
+                disabled={gradingAll || gradingParts.length > 0}
+                onChange={setOvernight}
+              />
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
@@ -629,7 +797,7 @@ export function BatchGradeTab({
               >
                 Start over
               </button>
-              {partCount > 1 && gradingParts.length > 0 && (
+              {partCount > 1 && gradingParts.length > 0 && !overnight && (
                 <button
                   type="button"
                   onClick={handleStopAll}
@@ -650,14 +818,20 @@ export function BatchGradeTab({
                       : readyParts.length === 0
                         ? "No part is ready yet — every row in a part needs a matched student, at least one page, and no page conflicts"
                         : reviewingParts.length > 0
-                          ? `Grades the ${readyParts.length} ready part(s) at once; still need review and will be skipped: ${reviewingParts.map(partLabelOf).join(", ")}`
-                          : "Splits and grades every part at once — each part marks its students one at a time, in parallel with the other parts"
+                          ? `${overnight ? "Sends" : "Grades"} the ${readyParts.length} ready part(s) at once; still need review and will be skipped: ${reviewingParts.map(partLabelOf).join(", ")}`
+                          : overnight
+                            ? "Splits every part and sends the whole class to Anthropic in one batch at half price — nothing is marked in this tab, so you can close it"
+                            : "Splits and grades every part at once — each part marks its students one at a time, in parallel with the other parts"
                   }
                   className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
                 >
                   {gradingAll
-                    ? "Grading all parts…"
-                    : `Split and grade all ${readyParts.length === partCount ? partCount : `${readyParts.length} ready`} part(s)`}
+                    ? overnight
+                      ? "Sending all parts…"
+                      : "Grading all parts…"
+                    : `Split and ${overnight ? "send" : "grade"} all ${
+                        readyParts.length === partCount ? partCount : `${readyParts.length} ready`
+                      } part(s)${overnight ? " overnight" : ""}`}
                 </button>
               )}
             </div>
@@ -724,6 +898,14 @@ export function BatchGradeTab({
                           earlier attempt timed out. Splitting and grading it again is safe.
                         </div>
                       )}
+                      {part.warnings.map((w, i) => (
+                        <div
+                          key={i}
+                          className="rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300"
+                        >
+                          ⚠ {w}
+                        </div>
+                      ))}
                       <BatchPanel
                         ref={(handle) => {
                           if (handle) panelRefs.current.set(key, handle);
@@ -734,6 +916,7 @@ export function BatchGradeTab({
                         batch={part.batch}
                         partLabel={partLabel}
                         reused={part.reused}
+                        overnight={overnight}
                         onStatus={(status) =>
                           setPanelStatus((prev) => (prev[key] === status ? prev : { ...prev, [key]: status }))
                         }
@@ -751,7 +934,15 @@ export function BatchGradeTab({
                         <button
                           type="button"
                           disabled={readingAny}
-                          onClick={() => segmentPart(upload.key, part.key, part.chunk!.storagePath, part.chunk!.fileName)}
+                          onClick={() =>
+                            segmentPart(
+                              upload.key,
+                              part.key,
+                              part.chunk!.storagePath,
+                              part.chunk!.fileName,
+                              upload.readMode
+                            )
+                          }
                           className="mt-3 rounded-lg border border-purple-400/40 bg-purple-500/15 px-4 py-2 text-sm font-medium text-purple-300 hover:bg-purple-500/25 disabled:opacity-50"
                         >
                           Read this part again
@@ -794,6 +985,7 @@ function BatchPanel({
   batch,
   partLabel,
   reused,
+  overnight,
   onStatus,
 }: {
   ref?: Ref<BatchPanelHandle>;
@@ -802,6 +994,8 @@ function BatchPanel({
   batch: BatchRow;
   partLabel: string | null;
   reused: boolean;
+  /** Send this part's students to the Message Batches API instead of marking them here. */
+  overnight: boolean;
   /** Reports the panel's lifecycle up to the tab -- see PanelStatus. */
   onStatus?: (status: PanelStatus) => void;
 }) {
@@ -979,6 +1173,66 @@ function BatchPanel({
     setStopRequested(true);
   };
 
+  /**
+   * Hand this part's split scans to the batch route. That route submits a
+   * bounded slice per call (one serverless invocation cannot upload a whole
+   * class to Anthropic) and returns the rest in `remaining`, so this loops
+   * until nothing is left. The loop's only exit besides an empty `remaining`
+   * is a `remaining` that did not shrink: the route made no progress, and
+   * posting the same list again would spin here for ever.
+   */
+  const queueOvernight = async (splitRows: SplitApiRow[]) => {
+    const labelOf = new Map(splitRows.map((r) => [r.studentId, r.label]));
+    const rowFor = (studentId: string): { studentId: string; label: string } => ({
+      studentId,
+      label: labelOf.get(studentId) ?? studentId,
+    });
+    // Rows the split itself could not produce a scan for never reach the
+    // batch, exactly as in the synchronous loop.
+    const results: SplitResultRow[] = splitRows
+      .filter((r) => r.status !== "split" || !r.storagePath)
+      .map((r) => ({ ...rowFor(r.studentId), runId: null, status: "failed" as const, error: r.error }));
+    let pending = splitRows
+      .filter((r) => r.status === "split" && r.storagePath)
+      .map((r) => ({ studentId: r.studentId, storagePath: r.storagePath! }));
+    setSplitResults([...results]);
+
+    let sent = 0;
+    while (pending.length > 0) {
+      setStatusLine(`Sending ${pending.length} student(s) to Anthropic for overnight marking…`);
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ students: pending }),
+      });
+      if (!ok) throw new Error((data.error as string) ?? "Could not send this part for overnight marking.");
+      for (const q of ((data.submitted as { studentId: string; runId: string }[] | undefined) ?? [])) {
+        results.push({ ...rowFor(q.studentId), runId: q.runId, status: "queued" });
+        sent += 1;
+      }
+      for (const q of ((data.failed as { studentId: string; error?: string }[] | undefined) ?? [])) {
+        results.push({ ...rowFor(q.studentId), runId: null, status: "failed", error: q.error });
+      }
+      setSplitResults([...results]);
+      const remaining =
+        (data.remaining as { studentId: string; storagePath: string }[] | undefined) ?? [];
+      if (remaining.length >= pending.length) {
+        throw new Error(
+          `The server handed back ${remaining.length} student(s) still to send without sending any of them. ` +
+            `${sent} student(s) went to Anthropic; the rest were not sent.`
+        );
+      }
+      pending = remaining;
+    }
+
+    const failedCount = results.filter((r) => r.status === "failed").length;
+    setStatusLine(
+      `Sent ${sent} student(s) for overnight marking. They will appear on the Individual tab as ` +
+        "results arrive; you can close this tab." +
+        (failedCount > 0 ? ` ${failedCount} could not be sent — see below.` : "")
+    );
+  };
+
   const handleSplit = async (opts: { onFirstStudentGraded?: () => void } = {}) => {
     if (!canSplit) return;
     let firstSignalled = false;
@@ -1002,10 +1256,16 @@ function BatchPanel({
       });
       if (!ok) throw new Error((data.error as string) ?? "Splitting failed.");
 
-      const splitRows =
-        (data.results as
-          | { studentId: string; label: string; status: string; storagePath?: string; error?: string }[]
-          | undefined) ?? [];
+      const splitRows = (data.results as SplitApiRow[] | undefined) ?? [];
+
+      if (overnight) {
+        // Nothing is marked in this browser on this path, so the cache-warming
+        // stagger has nothing to wait for: release the other parts before the
+        // first queue call rather than holding them up for a submission.
+        signalFirst();
+        await queueOvernight(splitRows);
+        return;
+      }
 
       // Grading each student is its own request against the existing
       // single-student route, passed the exact scan this route just split
@@ -1119,7 +1379,7 @@ function BatchPanel({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {splitting && (
+          {splitting && !overnight && (
             <button
               type="button"
               onClick={handleStop}
@@ -1141,7 +1401,13 @@ function BatchPanel({
                 : undefined
             }
           >
-            {splitting ? "Splitting & grading…" : `Split and grade ${rows.length} student(s)`}
+            {splitting
+              ? overnight
+                ? "Splitting & sending…"
+                : "Splitting & grading…"
+              : overnight
+                ? `Split and send ${rows.length} student(s) overnight`
+                : `Split and grade ${rows.length} student(s)`}
           </button>
         </div>
       </div>
@@ -1304,6 +1570,13 @@ function BatchPanel({
                             result.testTotalMarks !== result.maxTotal &&
                             ` of ${result.testTotalMarks} total`}
                         </span>
+                      ) : result.status === "queued" ? (
+                        <span
+                          className="text-xs text-blue-300"
+                          title="Sent to Anthropic with the rest of the class — the mark appears on the Individual tab when it arrives."
+                        >
+                          queued
+                        </span>
                       ) : (
                         <span className="text-xs text-red-300" title={result.error}>
                           failed
@@ -1341,9 +1614,20 @@ function BatchPanel({
 
       {splitResults && (
         <div className="border-t border-da-border px-5 py-3 text-sm text-da-muted">
-          Graded scripts are staged for review. Switch to the{" "}
-          <span className="font-semibold">Individual</span> tab and open each student&apos;s
-          &quot;Review →&quot; to check and accept their marks.
+          {splitResults.some((r) => r.status === "queued") ? (
+            <>
+              These scripts are with Anthropic. Each one appears on the{" "}
+              <span className="font-semibold">Individual</span> tab as its marking finishes — that
+              page collects finished batches whenever it is open, so nothing is lost if you close
+              this one.
+            </>
+          ) : (
+            <>
+              Graded scripts are staged for review. Switch to the{" "}
+              <span className="font-semibold">Individual</span> tab and open each student&apos;s
+              &quot;Review →&quot; to check and accept their marks.
+            </>
+          )}
         </div>
       )}
     </section>

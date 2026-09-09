@@ -145,6 +145,11 @@ export interface ActivityContentAst {
   syllabusTopics?: string;
   prerequisites?: string;
   materials?: string;
+  /**
+   * DESIGN_INSTRUCTIONS 2.4. Authored by the generator and shown in the live
+   * preview, but it had no slot here at all, so it could never reach a PDF.
+   */
+  atl?: string;
   compulsoryCore?: string;
   tokProvocations?: TokProvocation[];
   internationalMindedness?: InternationalMindednessBox;
@@ -424,9 +429,18 @@ function describeCompileError(err: unknown): string {
 /**
  * Returns the full Typst template source as a string.
  * Embedded here so the API route has zero file I/O at runtime.
- * The canonical source lives in platform/typst/activity.typ.
+ *
+ * THIS STRING IS THE TEMPLATE. Nothing reads platform/typst/activity.typ at
+ * runtime; it is a reference copy that has drifted, and it previously said it
+ * was canonical, which is how this program came to be missing the whole
+ * DESIGN_INSTRUCTIONS 2.1 header block that activity.typ has always had. Edit
+ * here, and treat that file as documentation that can lie.
+ *
+ * Exported so tests can compile it against a real payload: a syntax error or a
+ * mistyped content key here breaks every PDF the platform produces, and
+ * nothing else in the pipeline would catch it.
  */
-function getActivityTypstSource(): string {
+export function getActivityTypstSource(): string {
   return `
 // -- CleverPlatform Nuanced Analysis — Typst template ------------------------
 #let raw = sys.inputs.at("payload", default: "{}")
@@ -589,7 +603,37 @@ function getActivityTypstSource(): string {
 #v(6pt)
 #line(length:100%,stroke:0.5pt+col-border)
 #v(4pt)
-#grid(columns:(1fr,1fr),gutter:8pt)[*Name:* #h(4pt)#underline[#h(120pt)]][*Date:* #h(4pt)#underline[#h(80pt)]]
+#grid(columns:(1fr,1fr),gutter:8pt)[*Student Name:* #h(4pt)#underline[#h(120pt)]][*Date:* #h(4pt)#underline[#h(80pt)]]
+#v(4pt)
+
+// DESIGN_INSTRUCTIONS 2.1 header block, plus the 2.4 ATL line. The payload
+// carried every one of these and this template rendered none of them, so the
+// on-screen preview and the downloaded PDF disagreed about the packet header.
+// The orchestrator omits a key entirely rather than sending an empty or
+// non-string value, so presence is enough to render, and rich() is required
+// because these are teacher prose that can carry inline $...$ math.
+#if "syllabusTopics" in content [
+  #text(size:9pt)[*Syllabus Topics:* #rich(content.syllabusTopics)]
+  #v(2pt)
+]
+#if "prerequisites" in content [
+  #text(size:9pt)[*Prerequisites:* #rich(content.prerequisites)]
+  #v(2pt)
+]
+#if "materials" in content [
+  #text(size:9pt,style:"italic")[#rich(content.materials)]
+  #v(2pt)
+]
+#if "atl" in content [
+  #text(size:9pt)[*ATL skill:* #text(style:"italic")[#rich(content.atl)]]
+  #v(2pt)
+]
+#if "compulsoryCore" in content [
+  #v(2pt)
+  #callout-box(fill-color:rgb("#f0fdf4"), border-color:rgb("#059669"), label:"Compulsory core (\u{2605} and \u{2605}\u{2605} questions)")[
+    #text(size:9pt)[#rich(content.compulsoryCore)]
+  ]
+]
 #v(8pt)
 
 // Progress tracker

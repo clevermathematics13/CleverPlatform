@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   resolveGrade,
   pctToGradeFallback,
@@ -22,6 +22,28 @@ export type TestItem = {
 
 // A single grade threshold row from grade_boundaries table
 
+/**
+ * A band of question numbers to sub-total inside an expanded test.
+ *
+ * An IB paper gets the standard Section A (Q1-8) / Section B (Q9+) split, which
+ * is real: those sections are short-response and extended-response, and the two
+ * percentages say whether marks are going on breadth or on sustained problems.
+ *
+ * A Formative Assessment gets its own LEVEL headings instead. Applying the Q8
+ * cut to one of those papers was actively misleading -- on Formative Assessment
+ * 1 it landed in the middle of LEVEL 3, so neither subtotal corresponded to
+ * anything the paper was built to measure. page.tsx derives these ranges.
+ */
+export type TestSection = {
+  /** Short column label, e.g. 'Sec A' or 'L1'. */
+  label: string;
+  /** Full name for the tooltip, e.g. 'LEVEL 3 -- CONNECT THE ALGEBRA'. */
+  title: string;
+  fromQ: number;
+  /** Inclusive upper bound; null means open-ended (the last section). */
+  toQ: number | null;
+};
+
 export type Test = {
   id: string;
   name: string;
@@ -29,8 +51,11 @@ export type Test = {
   total_marks: number;
   component: "P1" | "P2" | "P3" | "IA" | null;
   // null when no boundary set has been assigned to this test
+  boundary_set_id: string | null;
   boundary_set_name: string | null;  // e.g. 'A', 'B', 'C', 'D'
   boundaries: GradeBoundary[] | null; // sorted grade 1→7, null if unassigned
+  /** Subtotal bands for the expanded view, in display order. */
+  sections: TestSection[];
   items: TestItem[];
 };
 
@@ -68,6 +93,38 @@ function gradeBg(grade: number | null): string {
   return "bg-red-950/50";
 }
 
+/** Stronger tint than gradeBg(), for the distribution bars where the fill is
+ *  carrying the meaning rather than just shading a cell. */
+function gradeBarBg(grade: number): string {
+  if (grade === 7) return "bg-emerald-500/30";
+  if (grade === 6) return "bg-green-500/30";
+  if (grade === 5) return "bg-lime-500/30";
+  if (grade === 4) return "bg-yellow-500/30";
+  if (grade === 3) return "bg-orange-500/30";
+  if (grade === 2) return "bg-red-500/30";
+  return "bg-red-400/30";
+}
+
+const LEVELS = [7, 6, 5, 4, 3, 2, 1] as const;
+
+/** How many students sit at each level in one column of grades. Ungraded
+ *  students are counted in `total` but not in any level, so the bars read as a
+ *  share of the work actually marked. */
+function tallyLevels(grades: (number | null)[]): {
+  counts: Record<number, number>;
+  graded: number;
+  total: number;
+} {
+  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0 };
+  let graded = 0;
+  for (const g of grades) {
+    if (g === null) continue;
+    counts[g] = (counts[g] ?? 0) + 1;
+    graded++;
+  }
+  return { counts, graded, total: grades.length };
+}
+
 function computeTestScore(
   profileId: string,
   test: Test,
@@ -89,32 +146,106 @@ function computeTestScore(
   return { grade: resolveGrade(pct, test.boundaries), earned, pct };
 }
 
+/**
+ * Band an aggregate percentage over several tests.
+ *
+ * The rule used to be "an aggregate always uses the generic fallback, because
+ * no single boundary set applies across tests". That is only true when the
+ * tests actually disagree. When every test a student sat carries the same set
+ * -- and with one assessment in a course, that is the common case -- the set
+ * plainly does apply, and ignoring it made the Overall column contradict the
+ * test column beside it: on 9G's Formative Assessment 1, 43 of 50 students
+ * read one level higher in Overall than in the column the marks came from,
+ * purely because Overall was banding 90%-for-a-7 marks against 80%-for-a-7.
+ *
+ * `contributing` is the tests the student actually has marks for, so a student
+ * who has only sat Grade 9 papers is banded as Grade 9 even if the course also
+ * holds a paper on some other set that they have not sat yet.
+ */
+function bandAggregate(
+  pct: number,
+  contributing: Test[]
+): { grade: number; approximate: boolean } {
+  const setIds = new Set(contributing.map((t) => t.boundary_set_id));
+  const [only] = [...setIds];
+  if (setIds.size === 1 && only !== null) {
+    const boundaries = contributing[0].boundaries;
+    if (boundaries && boundaries.length > 0) {
+      return { grade: resolveGrade(pct, boundaries), approximate: false };
+    }
+  }
+  return { grade: pctToGradeFallback(pct), approximate: true };
+}
+
 function computeComponentGrade(
   profileId: string,
   component: "P1" | "P2" | "P3" | "IA",
   tests: Test[],
   marks: MarksState
-): number | null {
+): { grade: number | null; pct: number | null; approximate: boolean } {
   const compTests = tests.filter((t) => t.component === component);
-  if (compTests.length === 0) return null;
+  if (compTests.length === 0) return { grade: null, pct: null, approximate: false };
   let totalEarned = 0;
   let totalPossible = 0;
-  let hasAny = false;
+  const contributing: Test[] = [];
   for (const test of compTests) {
     const { earned, pct } = computeTestScore(profileId, test, marks);
     if (pct !== null) {
       totalEarned += earned;
       totalPossible += test.total_marks;
-      hasAny = true;
+      contributing.push(test);
     }
   }
-  if (!hasAny || totalPossible === 0) return null;
-  // For component aggregates we use fallback (no single boundary set applies)
-  return pctToGradeFallback((totalEarned / totalPossible) * 100);
+  if (contributing.length === 0 || totalPossible === 0) {
+    return { grade: null, pct: null, approximate: false };
+  }
+  const pct = (totalEarned / totalPossible) * 100;
+  const { grade, approximate } = bandAggregate(pct, contributing);
+  return { grade, pct, approximate };
 }
 
-// IB standard: Section A = Q1–8, Section B = Q9+
-const SECTION_A_MAX_Q = 8;
+/** Tints for the section subtotal columns, cycled in order. The first two keep
+ *  the indigo/violet the Sec A / Sec B columns have always used. */
+const SECTION_TINTS = [
+  { bg: "bg-indigo-950/40", cellBg: "bg-indigo-950/30", edge: "border-indigo-800/40", head: "text-indigo-300/70", text: "text-indigo-300", soft: "text-indigo-200" },
+  { bg: "bg-violet-950/40", cellBg: "bg-violet-950/30", edge: "border-violet-800/40", head: "text-violet-300/70", text: "text-violet-300", soft: "text-violet-200" },
+  { bg: "bg-cyan-950/40", cellBg: "bg-cyan-950/30", edge: "border-cyan-800/40", head: "text-cyan-300/70", text: "text-cyan-300", soft: "text-cyan-200" },
+  { bg: "bg-fuchsia-950/40", cellBg: "bg-fuchsia-950/30", edge: "border-fuchsia-800/40", head: "text-fuchsia-300/70", text: "text-fuchsia-300", soft: "text-fuchsia-200" },
+];
+
+function inSection(questionNumber: number, section: TestSection): boolean {
+  return (
+    questionNumber >= section.fromQ &&
+    (section.toQ === null || questionNumber <= section.toQ)
+  );
+}
+
+/** The test's sections that actually contain marks, so an empty band (a paper
+ *  that stops at Q6 has no Section B) contributes no columns. */
+function presentSections(test: Test): TestSection[] {
+  return test.sections.filter((s) =>
+    test.items.some((i) => inSection(i.question_number, s))
+  );
+}
+
+/** How an opened test column is showing itself. */
+export type TestView = "levels" | "marks";
+
+/** Columns an opened test occupies: a marks/% pair per present section, plus
+ *  one per question in the "marks" view. Shared by the header, the "Abs" cell
+ *  and the footer so the three cannot drift out of alignment. */
+function expandedTestSpan(test: Test, view: TestView): number {
+  const sectionCols = 2 * presentSections(test).length;
+  if (view === "levels") return Math.max(1, sectionCols);
+  return Math.max(1, test.items.length) + sectionCols;
+}
+
+/** Which views are worth offering. A paper with no items cannot be opened at
+ *  all, and one whose sections hold no items has no subtotals to show. */
+function availableViews(test: Test): TestView[] {
+  if (test.items.length === 0) return [];
+  return presentSections(test).length > 0 ? ["levels", "marks"] : ["marks"];
+}
 
 interface SectionScore {
   earned: number;
@@ -122,17 +253,18 @@ interface SectionScore {
   pct: number | null;
 }
 
+/** Earned / max / % for each of the test's present sections, in display order. */
 function computeSectionScores(
   profileId: string,
   test: Test,
   marks: MarksState
-): { secA: SectionScore | null; secB: SectionScore | null } {
-  const score = (items: TestItem[]): SectionScore | null => {
-    if (items.length === 0) return null;
+): SectionScore[] {
+  return presentSections(test).map((section) => {
     let earned = 0;
     let max = 0;
     let hasAny = false;
-    for (const item of items) {
+    for (const item of test.items) {
+      if (!inSection(item.question_number, section)) continue;
       max += item.max_marks;
       const m = marks[item.id]?.[profileId];
       if (m !== null && m !== undefined) {
@@ -141,33 +273,31 @@ function computeSectionScores(
       }
     }
     return { earned, max, pct: hasAny && max > 0 ? (earned / max) * 100 : null };
-  };
-  return {
-    secA: score(test.items.filter((i) => i.question_number <= SECTION_A_MAX_Q)),
-    secB: score(test.items.filter((i) => i.question_number > SECTION_A_MAX_Q)),
-  };
+  });
 }
 
 function computeOverallGrade(
   profileId: string,
   tests: Test[],
   marks: MarksState
-): { grade: number | null; pct: number | null } {
+): { grade: number | null; pct: number | null; approximate: boolean } {
   let totalEarned = 0;
   let totalPossible = 0;
-  let hasAny = false;
+  const contributing: Test[] = [];
   for (const test of tests) {
     const { earned, pct } = computeTestScore(profileId, test, marks);
     if (pct !== null) {
       totalEarned += earned;
       totalPossible += test.total_marks;
-      hasAny = true;
+      contributing.push(test);
     }
   }
-  if (!hasAny || totalPossible === 0) return { grade: null, pct: null };
+  if (contributing.length === 0 || totalPossible === 0) {
+    return { grade: null, pct: null, approximate: false };
+  }
   const pct = (totalEarned / totalPossible) * 100;
-  // Overall uses fallback — no single set applies across all tests
-  return { grade: pctToGradeFallback(pct), pct };
+  const { grade, approximate } = bandAggregate(pct, contributing);
+  return { grade, pct, approximate };
 }
 
 // --- Boundary set badge -------------------------------------------------------
@@ -187,9 +317,122 @@ function SetBadge({ name }: { name: string | null }) {
   return (
     <span
       className="inline-block text-[9px] font-mono font-bold px-1 py-px rounded bg-da-accent/15 text-da-accent leading-none"
-      title={`Grade boundaries: Set ${name}`}
+      title={`Grade boundaries: ${name}`}
     >
       {name}
+    </span>
+  );
+}
+
+// --- View switcher ------------------------------------------------------------
+
+const VIEW_LABEL: Record<TestView, string> = { levels: "Levels", marks: "Marks" };
+const VIEW_TITLE: Record<TestView, string> = {
+  levels: "Open this test as section subtotals only",
+  marks: "Open this test as per-question marks",
+};
+
+/**
+ * The per-test controls: how to open the column, and the two ways to get its
+ * levels out.
+ *
+ * The export buttons are deliberately labelled for what they DO rather than for
+ * the file type. A pill reading "CSV" that opens a file picker reads as broken:
+ * every other CSV button in every other app downloads something. "Fill PST"
+ * says a file is going in; "Download" says one is coming out.
+ */
+function ViewPills({
+  test,
+  view,
+  onSet,
+  onFill,
+  onGenerated,
+  generated,
+  hasTemplate,
+  busy,
+}: {
+  test: Test;
+  view: TestView | null;
+  onSet: (view: TestView | null) => void;
+  onFill: () => void;
+  onGenerated: () => void;
+  /** The file last written when a student finished this self-assessment, if
+   *  any has been. */
+  generated: GeneratedFile | null;
+  /** True once a scores template is stored for this class, which turns the
+   *  upload into a plain download. */
+  hasTemplate: boolean;
+  busy: boolean;
+}) {
+  const views = availableViews(test);
+  if (views.length === 0) return null;
+  const pill =
+    "rounded px-1 py-px text-[9px] font-medium leading-none transition-colors disabled:opacity-50";
+  const idle = "bg-da-bg/60 text-da-muted hover:bg-da-hover hover:text-da-accent";
+  return (
+    <span className="mt-0.5 flex flex-col items-center gap-0.5">
+      <span className="flex items-center justify-center gap-1">
+        <button
+          type="button"
+          disabled={busy}
+          title={
+            hasTemplate
+              ? "Download this class's PowerSchool scores template with the Score column filled in -- import it as-is, nothing to map"
+              : "Upload the PowerSchool scores template for this assignment. It comes back with the Score column filled in, and is kept for this class so you only have to do this once"
+          }
+          onClick={(e) => {
+            e.stopPropagation();
+            onFill();
+          }}
+          className={`${pill} ${idle}`}
+        >
+          {busy ? "…" : hasTemplate ? "↧ PST" : "↥ Fill PST"}
+        </button>
+        {generated && (
+          <button
+            type="button"
+            disabled={busy}
+            title={
+              `${generated.filename} — rebuilt automatically whenever a student finishes this self-assessment or its marks change ` +
+              `(${generated.completedCount} of ${generated.rosterCount} have completed it). ` +
+              `The PST button above is always live; this one is that saved copy.\n\n` +
+              (generated.driveError
+                ? `Google Drive: ${generated.driveError}`
+                : generated.driveSyncedAt
+                ? `Google Drive: copied ${new Date(generated.driveSyncedAt).toLocaleString()}`
+                : "Google Drive: not mirrored yet.")
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              onGenerated();
+            }}
+            className={`${pill} ${generated.driveError ? "bg-amber-500/15 text-amber-300 hover:bg-amber-500/25" : idle}`}
+          >
+            {generated.completedCount}/{generated.rosterCount}
+            {generated.driveError ? " !" : ""}
+          </button>
+        )}
+      </span>
+      <span className="flex items-center justify-center gap-1">
+        {views.map((v) => {
+          const active = view === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={active}
+              title={active ? "Click to collapse" : VIEW_TITLE[v]}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSet(active ? null : v);
+              }}
+              className={`${pill} ${active ? "bg-da-accent/25 text-da-accent" : idle}`}
+            >
+              {VIEW_LABEL[v]}
+            </button>
+          );
+        })}
+      </span>
     </span>
   );
 }
@@ -197,16 +440,56 @@ function SetBadge({ name }: { name: string | null }) {
 // --- Component ----------------------------------------------------------------
 
 interface Props {
+  /** The gradebook's own course, for the PowerSchool export. */
+  courseId: string;
   tests: Test[];
   students: Student[];
   initialMarks: Record<string, Record<string, number>>;
   /** testId -> subject ids recorded as absent (table test_absences); shown as "Abs". */
   absences?: Record<string, string[]>;
+  /** Summary of the PowerTeacher Scores Template stored for this class, or
+   *  null when none has been uploaded yet. */
+  initialTemplate?: TemplateSummary | null;
+  /** testId -> the file written the last time a student in this class finished
+   *  that assessment's self-assessment. */
+  generatedFiles?: Record<string, GeneratedFile>;
 }
 
-export function GradebookGrid({ tests, students, initialMarks, absences = {} }: Props) {
+/** One auto-generated PowerSchool file, as the gradebook needs to describe it.
+ *  Written by /api/gradebook/self-assessment-export on a student's submit. */
+export type GeneratedFile = {
+  filename: string;
+  completedCount: number;
+  rosterCount: number;
+  updatedAt: string | null;
+  /** When the Drive copy was last written, or null if it never has been. */
+  driveSyncedAt: string | null;
+  /** Why the last Drive mirror failed. The file itself is fine either way --
+   *  Drive is a copy, not the source. */
+  driveError: string | null;
+};
+
+/** What the gradebook knows about the stored template -- enough to say which
+ *  assignment it came from, never the roster itself. */
+export type TemplateSummary = { assignmentName: string | null; studentCount: number | null };
+
+export function GradebookGrid({
+  courseId,
+  tests,
+  students,
+  initialMarks,
+  absences = {},
+  initialTemplate = null,
+  generatedFiles = {},
+}: Props) {
   const [expandedOverall, setExpandedOverall] = useState(false);
-  const [expandedTests, setExpandedTests] = useState<Set<string>>(new Set());
+  // A test opens two ways. "levels" is the section subtotals alone -- on a
+  // 14-question paper that is 8 columns instead of 22, so the level profile is
+  // readable without scrolling past every question. "marks" is the per-question
+  // inputs, with those same subtotals kept alongside so they move as you type.
+  // Absent from the record means collapsed.
+  const [testViews, setTestViews] = useState<Record<string, TestView>>({});
+  const [showDistribution, setShowDistribution] = useState(false);
 
   // Build mutable marks state from server-provided initial data
   const [marks, setMarks] = useState<MarksState>(() => {
@@ -229,11 +512,288 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
   // -- Handlers ----------------------------------------------------------------
 
-  const toggleTest = useCallback((testId: string) => {
-    setExpandedTests((prev) => {
-      const next = new Set(prev);
-      if (next.has(testId)) next.delete(testId);
-      else next.add(testId);
+  const [exportingTestId, setExportingTestId] = useState<string | null>(null);
+  // Which students an export covers. Defaults to the narrower set: a file
+  // that wrongly omits a student is noticed, one that wrongly includes them
+  // lands a level in PowerSchool for work the student never reviewed.
+  const [exportScope, setExportScope] = useState<"self" | "all">("self");
+  // The stored template, kept in state so uploading one turns every ".. Fill
+  // PST" button into a plain download without a page reload.
+  const [template, setTemplate] = useState<TemplateSummary | null>(initialTemplate);
+
+  /** Save a CSV response to disk, under the name the server gave it. */
+  const saveCsv = useCallback(async (res: Response, fallbackName: string) => {
+    const disposition = res.headers.get("Content-Disposition") ?? "";
+    const named = /filename="([^"]+)"/.exec(disposition)?.[1];
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = named ?? fallbackName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }, []);
+
+  /**
+   * What a fill did, in a sentence. Every row the template listed but we could
+   * not score is a row that will import as blank, so say so here rather than
+   * leaving it to be noticed in PowerSchool.
+   */
+  const describeFill = useCallback(
+    (res: Response, testName: string) => {
+      const filled = Number(res.headers.get("X-Filled") ?? "0");
+      const unfilled = Number(res.headers.get("X-Unfilled") ?? "0");
+      const notInTemplate = Number(res.headers.get("X-Not-In-Template") ?? "0");
+      const notSelfAssessed = Number(res.headers.get("X-Not-Self-Assessed") ?? "0");
+      const scope = res.headers.get("X-Scope") ?? exportScope;
+
+      const notes: string[] = [];
+      if (unfilled > 0) {
+        notes.push(
+          `${unfilled} row${unfilled === 1 ? "" : "s"} left blank` +
+            (notSelfAssessed > 0 && scope === "self"
+              ? ` (${notSelfAssessed} student${notSelfAssessed === 1 ? " has" : "s have"} not completed the self-assessment; students who have never signed in cannot).`
+              : " — no mark, no student number, or not in this course.")
+        );
+      }
+      if (notInTemplate > 0) {
+        notes.push(
+          `${notInTemplate} scored student${notInTemplate === 1 ? " is" : "s are"} not in this template, so they were not written anywhere.`
+        );
+      }
+      return (
+        `${testName}: filled ${filled} score${filled === 1 ? "" : "s"}.` +
+        (notes.length > 0 ? ` ${notes.join(" ")}` : "")
+      );
+    },
+    [exportScope]
+  );
+
+  /**
+   * Download the stored scores template with this test's levels written in.
+   *
+   * The template was uploaded once; from then on this is a plain download.
+   * Matching is on Student Num, so PowerSchool's "Roberto GAMIO" never has to
+   * be reconciled with this platform's "Roberto Aurelio Gamio", and the five
+   * metadata lines that describe the class stay exactly as PowerSchool wrote
+   * them.
+   */
+  const downloadPst = useCallback(
+    async (testId: string, testName: string) => {
+      setExportingTestId(testId);
+      try {
+        const res = await fetch(
+          `/api/gradebook/powerschool-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}&scope=${exportScope}`
+        );
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          setAuditWarning(`Could not build the template for ${testName}: ${d.error ?? res.statusText}`);
+          return;
+        }
+        const note = describeFill(res, testName);
+        await saveCsv(res, "scores-filled.csv");
+        setAuditWarning(note);
+      } catch {
+        setAuditWarning(`Could not build the template for ${testName}: network error.`);
+      } finally {
+        setExportingTestId(null);
+      }
+    },
+    [courseId, exportScope, saveCsv, describeFill]
+  );
+
+  /**
+   * Ask the server to rebuild the stored PowerSchool file for an assessment,
+   * a few seconds after the last mark save rather than on each one.
+   *
+   * The routes that write marks only flag the file as stale, because the
+   * gradebook saves a cell at a time and a 41-question paper for 20 students
+   * is 820 saves. This is the trailing edge: one rebuild once the teacher
+   * stops typing, so the file on disk matches the grid without anyone asking.
+   * Missing it is not a correctness problem -- the download rebuilds a stale
+   * file before serving it -- so this is fire-and-forget and silent.
+   */
+  const rebuildTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rebuildPending = useRef<Set<string>>(new Set());
+
+  const scheduleRebuild = useCallback(
+    (testId: string | null) => {
+      if (!testId) return;
+      rebuildPending.current.add(testId);
+      if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
+      rebuildTimer.current = setTimeout(() => {
+        const ids = [...rebuildPending.current];
+        rebuildPending.current.clear();
+        rebuildTimer.current = null;
+        for (const id of ids) {
+          void fetch("/api/gradebook/self-assessment-export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ testId: id, courseId }),
+          }).catch(() => {});
+        }
+      }, 3000);
+    },
+    [courseId]
+  );
+
+  // A pending rebuild must not fire into a page that has gone away.
+  useEffect(() => {
+    return () => {
+      if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
+    };
+  }, []);
+
+  /**
+   * The Drive problem worth putting in the toolbar, if any. One message, not
+   * one per assessment: every export shares a folder and a connection, so when
+   * Drive is unhappy they all say the same thing.
+   */
+  const driveTrouble = useMemo(() => {
+    const errors = Object.values(generatedFiles)
+      .map((f) => f.driveError)
+      .filter((e): e is string => Boolean(e));
+    return errors.length > 0 ? errors[0] : null;
+  }, [generatedFiles]);
+
+  /** Which assessment a question belongs to, for the rebuild above. */
+  const testIdByItem = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of tests) for (const item of t.items) map[item.id] = t.id;
+    return map;
+  }, [tests]);
+
+  /** Download the file written the last time a student finished this
+   *  assessment's self-assessment. */
+  const downloadGenerated = useCallback(
+    async (testId: string, testName: string) => {
+      setExportingTestId(testId);
+      try {
+        const res = await fetch(
+          `/api/gradebook/self-assessment-export?testId=${encodeURIComponent(testId)}&courseId=${encodeURIComponent(courseId)}`
+        );
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          setAuditWarning(`Could not download the saved file for ${testName}: ${d.error ?? res.statusText}`);
+          return;
+        }
+        const completed = Number(res.headers.get("X-Completed-Count") ?? "0");
+        const roster = Number(res.headers.get("X-Roster-Count") ?? "0");
+        await saveCsv(res, "levels.csv");
+        setAuditWarning(
+          `${testName}: downloaded the saved file — ${completed} of ${roster} student${roster === 1 ? " has" : "s have"} completed the self-assessment.`
+        );
+      } catch {
+        setAuditWarning(`Could not download the saved file for ${testName}: network error.`);
+      } finally {
+        setExportingTestId(null);
+      }
+    },
+    [courseId, saveCsv]
+  );
+
+  /**
+   * Upload a PowerTeacher Scores Template: fills it, and keeps it.
+   *
+   * The teacher exports the blank template from the assignment in PowerTeacher
+   * Pro. We write the Score column, hand it straight back, and store the blank
+   * copy against this class -- the roster and the identifiers are the same for
+   * every assignment in the section, so this only has to happen once.
+   */
+  const fillTemplate = useCallback(
+    async (file: File, testId: string, testName: string) => {
+      setExportingTestId(testId);
+      try {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("testId", testId);
+        body.append("courseId", courseId);
+        body.append("scope", exportScope);
+        const res = await fetch("/api/gradebook/powerschool-export", { method: "POST", body });
+        if (!res.ok) {
+          const d = (await res.json().catch(() => ({}))) as { error?: string };
+          setAuditWarning(`Could not fill the template for ${testName}: ${d.error ?? res.statusText}`);
+          return;
+        }
+        const stored = res.headers.get("X-Template-Stored") === "1";
+        const assignmentName = decodeURIComponent(res.headers.get("X-Template-Assignment") ?? "");
+        const studentCount = Number(res.headers.get("X-Template-Students") ?? "0");
+        const note = describeFill(res, testName);
+        await saveCsv(res, "scores-filled.csv");
+
+        if (stored) {
+          setTemplate({ assignmentName: assignmentName || null, studentCount });
+        }
+        setAuditWarning(
+          note +
+            (stored
+              ? " Template saved for this class — from now on the button downloads it directly."
+              : " The template could not be saved for reuse, so it will be needed again next time.")
+        );
+      } catch {
+        setAuditWarning(`Could not fill the template for ${testName}: network error.`);
+      } finally {
+        setExportingTestId(null);
+      }
+    },
+    [courseId, exportScope, saveCsv, describeFill]
+  );
+
+  // One input, retargeted per test: a file picker per column would be dozens of
+  // hidden inputs for a control only ever used one at a time. A null target is
+  // the toolbar's "replace" -- store the template without exporting anything.
+  const templateInputRef = useRef<HTMLInputElement>(null);
+  const pendingTemplateTest = useRef<{ id: string; name: string } | null>(null);
+
+  const chooseTemplate = useCallback((target: { id: string; name: string } | null) => {
+    pendingTemplateTest.current = target;
+    templateInputRef.current?.click();
+  }, []);
+
+  /** Store a template without exporting anything: the toolbar's Replace. */
+  const storeTemplate = useCallback(
+    async (file: File) => {
+      setExportingTestId("template");
+      try {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("courseId", courseId);
+        const res = await fetch("/api/gradebook/powerschool-export", { method: "POST", body });
+        const d = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          assignmentName?: string | null;
+          studentCount?: number;
+        };
+        if (!res.ok) {
+          setAuditWarning(`Could not save the template: ${d.error ?? res.statusText}`);
+          return;
+        }
+        setTemplate({
+          assignmentName: d.assignmentName ?? null,
+          studentCount: d.studentCount ?? null,
+        });
+        setAuditWarning(
+          `Scores template saved for this class${
+            d.studentCount ? ` (${d.studentCount} students)` : ""
+          }.`
+        );
+      } catch {
+        setAuditWarning("Could not save the template: network error.");
+      } finally {
+        setExportingTestId(null);
+      }
+    },
+    [courseId]
+  );
+
+  /** Open a test in a view, or pass null to collapse it. */
+  const setTestView = useCallback((testId: string, view: TestView | null) => {
+    setTestViews((prev) => {
+      const next = { ...prev };
+      if (view === null) delete next[testId];
+      else next[testId] = view;
       return next;
     });
   }, []);
@@ -278,8 +838,9 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
         if (!res.ok) {
           setCellErrors((prev) => ({ ...prev, [key]: "Save failed" }));
           console.error("Mark save error:", d.error);
-        } else if (d.auditWarning) {
-          setAuditWarning(d.auditWarning);
+        } else {
+          scheduleRebuild(testIdByItem[itemId] ?? null);
+          if (d.auditWarning) setAuditWarning(d.auditWarning);
         }
       } catch {
         setCellErrors((prev) => ({ ...prev, [key]: "Network error" }));
@@ -291,7 +852,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
         });
       }
     },
-    []
+    [scheduleRebuild, testIdByItem]
   );
 
   const handleBlur = useCallback(
@@ -316,7 +877,9 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
       const visibleItems: { itemId: string; maxMarks: number }[] = [];
       for (const test of tests) {
-        if (expandedTests.has(test.id)) {
+        // Only the "marks" view has cells to paste into; a test showing section
+        // subtotals contributes no columns to the paste target.
+        if (testViews[test.id] === "marks") {
           for (const item of test.items) {
             visibleItems.push({ itemId: item.id, maxMarks: item.max_marks });
           }
@@ -379,6 +942,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
             error?: string;
             auditWarning?: string;
           };
+          if (res.ok) {
+            for (const id of new Set(updates.map((u) => testIdByItem[u.itemId]))) {
+              scheduleRebuild(id ?? null);
+            }
+          }
           if (!res.ok) {
             console.error("Mark paste error:", d.error);
             setCellErrors((prev) => {
@@ -407,7 +975,7 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
           });
         });
     },
-    [tests, expandedTests, students, saveCell]
+    [tests, testViews, students, saveCell]
   );
 
   // -- Styles -------------------------------------------------------------------
@@ -416,20 +984,87 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
     "px-2 py-2 text-center text-xs font-medium text-da-muted bg-da-surface border-b border-da-border whitespace-nowrap select-none";
   const thBtn = `${thBase} cursor-pointer hover:bg-da-hover hover:text-da-accent transition-colors`;
   const tdBase = "px-2 py-2 text-center text-sm border-b border-da-border/50";
+  // Footer cells deliberately do not reuse thBase/tdBase: those carry a bottom
+  // border, and Tailwind resolves a border-b / border-b-0 clash by stylesheet
+  // order rather than class order, so overriding it would be a coin flip.
+  const tdFoot = "px-2 py-1 text-center align-middle";
+  const thFoot =
+    "px-4 py-1 text-left text-xs font-medium text-da-muted whitespace-nowrap select-none sticky left-0 z-20 bg-da-surface border-r border-da-border";
 
   // -- Render -------------------------------------------------------------------
+
+  // P1/P2/P3/IA are DP paper components, inferred from test names. A Grade 9
+  // course has none of them, and expanding Overall into four permanently empty
+  // columns invented a DP structure the course does not have. Only offer the
+  // components this course's tests actually carry, and when there are none,
+  // Overall is not expandable at all.
+  const presentComponents = COMPONENTS.filter((c) => tests.some((t) => t.component === c));
+  const showComponents = expandedOverall && presentComponents.length > 0;
 
   const itemColMap = new Map<string, number>();
   {
     let col = 0;
     for (const test of tests) {
-      if (expandedTests.has(test.id)) {
+      if (testViews[test.id] === "marks") {
         for (const item of test.items) {
           itemColMap.set(item.id, col++);
         }
       }
     }
   }
+
+  // -- Footer columns -----------------------------------------------------------
+  // One descriptor per column right of the name, in header order, so the footer
+  // stays aligned however the grid is expanded. Only columns that actually show
+  // a level get a tally; an expanded test shows per-question marks, so its block
+  // is spanned blank rather than being summarised as something it is not.
+  type FooterColumn =
+    | { kind: "levels"; key: string; label: string; grades: (number | null)[] }
+    | { kind: "blank"; key: string; span: number };
+
+  const footerColumns: FooterColumn[] = [];
+  if (showComponents) {
+    for (const comp of presentComponents) {
+      footerColumns.push({
+        kind: "levels",
+        key: `comp:${comp}`,
+        label: comp,
+        grades: students.map(
+          (s) => computeComponentGrade(s.profile_id, comp, tests, marks).grade
+        ),
+      });
+    }
+  } else {
+    footerColumns.push({
+      kind: "levels",
+      key: "overall",
+      label: "Overall",
+      grades: students.map((s) => computeOverallGrade(s.profile_id, tests, marks).grade),
+    });
+  }
+  for (const test of tests) {
+    const view = testViews[test.id];
+    if (view) {
+      footerColumns.push({ kind: "blank", key: test.id, span: expandedTestSpan(test, view) });
+      continue;
+    }
+    footerColumns.push({
+      kind: "levels",
+      key: test.id,
+      label: test.name,
+      // A student recorded absent reads "Abs" in the grid, not a level, so they
+      // are not part of this test's cohort at all -- counting them as ungraded
+      // would understate how much of the class has actually been marked.
+      grades: students
+        .filter((s) => !absences[test.id]?.includes(s.profile_id))
+        .map((s) => computeTestScore(s.profile_id, test, marks).grade),
+    });
+  }
+  const footerTallies = new Map(
+    footerColumns
+      .filter((c): c is Extract<FooterColumn, { kind: "levels" }> => c.kind === "levels")
+      .map((c) => [c.key, tallyLevels(c.grades)])
+  );
 
   return (
     <div className="overflow-hidden rounded-xl border border-da-border bg-da-surface/85 shadow-sm shadow-black/25">
@@ -449,6 +1084,121 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
           </button>
         </div>
       )}
+      {/* PowerSchool export scope. Lives above the scroll container so it is
+          visible whatever the grid is scrolled to, and so the choice is made
+          before the export button rather than being buried in the file. */}
+      <input
+        ref={templateInputRef}
+        type="file"
+        accept=".csv,.txt,text/csv,text/plain"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          const target = pendingTemplateTest.current;
+          // Reset first, so choosing the same file twice still fires onChange.
+          e.target.value = "";
+          pendingTemplateTest.current = null;
+          if (!file) return;
+          if (target) void fillTemplate(file, target.id, target.name);
+          else void storeTemplate(file);
+        }}
+      />
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-da-border px-4 py-2 text-xs">
+        <span className="text-da-muted">PowerSchool export covers:</span>
+        <div className="inline-flex overflow-hidden rounded-md border border-da-border">
+          {([
+            ["self", "Self-assessed only"],
+            ["all", "All students"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={exportScope === value}
+              onClick={() => setExportScope(value)}
+              title={
+                value === "self"
+                  ? "Only students who completed the self-assessment. Students who have never signed in cannot, so they are never included."
+                  : "Every student on the roster, whether or not they reviewed their marks."
+              }
+              className={`px-2.5 py-1 font-medium transition-colors ${
+                exportScope === value
+                  ? "bg-da-accent/20 text-da-accent"
+                  : "text-da-muted hover:bg-da-hover hover:text-da-text"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="text-da-border">|</span>
+        {template ? (
+          <span className="text-da-muted">
+            <span className="text-da-text">↧ PST</span> downloads this class&rsquo;s
+            PowerSchool scores template with the levels written in. Import it as-is —
+            it is the one file PowerSchool&rsquo;s import reads without asking anything.
+            The <span className="text-da-text">6/14</span> pill beside it is the same
+            file saved automatically the last time a student finished this
+            self-assessment, and says how many of the class have.
+          </span>
+        ) : (
+          <span className="text-da-muted">
+            <span className="text-da-text">↥ Fill PST</span> takes the scores template
+            you exported from that assignment in PowerTeacher Pro and returns it with
+            the Score column filled. It is kept for this class, so every assignment
+            after this one is a plain download.
+          </span>
+        )}
+        {driveTrouble && (
+          <>
+            <span className="text-da-border">|</span>
+            <span
+              className="text-amber-300"
+              title="These files are still complete and downloadable -- only the Google Drive copy is behind."
+            >
+              Drive: {driveTrouble}
+            </span>
+            {/* The fix for every message this can show is the same consent
+                screen, so offer it here rather than sending the teacher to
+                the Question Bank to find the button. */}
+            <a
+              href="/api/questions/connect-drive"
+              className="rounded border border-amber-400/40 px-2 py-0.5 font-medium text-amber-300 transition-colors hover:bg-amber-500/15"
+            >
+              Reconnect Drive
+            </a>
+          </>
+        )}
+        {template && (
+          <>
+            <span className="text-da-border">|</span>
+            <span
+              className="text-da-muted"
+              title={
+                template.assignmentName
+                  ? `Uploaded from "${template.assignmentName}". Its roster and student numbers are reused for every assignment; the assignment name and due date are rewritten to match whichever test you export.`
+                  : "Reused for every assignment in this class."
+              }
+            >
+              Template:{" "}
+              <span className="text-da-text">
+                {template.assignmentName ?? "saved"}
+                {template.studentCount ? ` · ${template.studentCount} students` : ""}
+              </span>
+            </span>
+            <button
+              type="button"
+              disabled={exportingTestId !== null}
+              onClick={() => chooseTemplate(null)}
+              title="Upload a fresh scores template for this class — do this if the class roster changed in PowerSchool"
+              className="rounded border border-da-border px-2 py-0.5 font-medium text-da-muted transition-colors hover:bg-da-hover hover:text-da-text disabled:opacity-50"
+            >
+              Replace
+            </button>
+          </>
+        )}
+      </div>
+
       <div className="overflow-x-auto">
         <table className="border-collapse min-w-full text-da-text text-sm">
           {/* -- Header --------------------------------------------------- */}
@@ -461,9 +1211,9 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                 Student
               </th>
 
-              {/* Overall ← or P1/P2/P3/IA columns */}
-              {expandedOverall ? (
-                COMPONENTS.map((comp, i) => (
+              {/* Overall ← or the DP component columns this course actually has */}
+              {showComponents ? (
+                presentComponents.map((comp, i) => (
                   <th
                     key={comp}
                     className={thBtn}
@@ -478,117 +1228,134 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                     {comp}
                   </th>
                 ))
-              ) : (
+              ) : presentComponents.length > 0 ? (
                 <th
                   className={`${thBtn} min-w-20`}
-                  title="Click to expand into P1, P2, P3, IA"
+                  title={`Click to expand into ${presentComponents.join(", ")}`}
                   onClick={() => setExpandedOverall(true)}
                 >
                   Overall
                   <span className="block text-[10px] text-da-accent">▸</span>
                 </th>
+              ) : (
+                <th
+                  className={`${thBase} min-w-20`}
+                  title="Every assessment across this course"
+                >
+                  Overall
+                </th>
               )}
 
               {/* Test columns */}
               {tests.map((test) => {
-                const isExp = expandedTests.has(test.id);
+                const view = testViews[test.id] ?? null;
 
-                if (isExp) {
-                  if (test.items.length === 0) {
-                    return (
-                      <th
-                        key={test.id}
-                        className={thBtn}
-                        onClick={() => toggleTest(test.id)}
+                if (view) {
+                  const sections = presentSections(test);
+                  // Whichever block comes first carries the name, the way back
+                  // out, and the switch to the other view.
+                  const control = (
+                    <>
+                      <span
+                        className="block max-w-25 cursor-pointer truncate text-[10px] text-da-accent/70 hover:text-da-accent"
+                        onClick={() => setTestView(test.id, null)}
+                        title="Click to collapse"
                       >
-                        {test.name}
-                        <span className="block text-[10px] text-da-accent">◂</span>
-                      </th>
-                    );
-                  }
-                  const aMax = test.items
-                    .filter((i) => i.question_number <= SECTION_A_MAX_Q)
-                    .reduce((s, i) => s + i.max_marks, 0);
-                  const bMax = test.items
-                    .filter((i) => i.question_number > SECTION_A_MAX_Q)
-                    .reduce((s, i) => s + i.max_marks, 0);
-                  const hasA = aMax > 0;
-                  const hasB = bMax > 0;
+                        ◂ {test.name}
+                      </span>
+                      <ViewPills
+                        test={test}
+                        view={view}
+                        onSet={(v) => setTestView(test.id, v)}
+                        onFill={() =>
+                          template
+                            ? downloadPst(test.id, test.name)
+                            : chooseTemplate({ id: test.id, name: test.name })
+                        }
+                        onGenerated={() => downloadGenerated(test.id, test.name)}
+                        generated={generatedFiles[test.id] ?? null}
+                        hasTemplate={template !== null}
+                        busy={exportingTestId === test.id}
+                      />
+                    </>
+                  );
 
                   return (
                     <React.Fragment key={test.id}>
-                      {test.items.map((item, idx) => (
-                        <th
-                          key={item.id}
-                          className={`${thBtn} min-w-13`}
-                          title={idx === 0 ? "Click to collapse" : item.question_code ? `Open ${item.question_code} in question editor` : undefined}
-                        >
-                          {idx === 0 && (
-                            <span
-                              className="block text-[10px] text-da-accent/70 max-w-25 truncate cursor-pointer"
-                              onClick={() => toggleTest(test.id)}
-                              title="Click to collapse"
-                            >
-                              ◂ {test.name}
-                            </span>
-                          )}
-                          <span
-                            className={item.question_code ? "cursor-pointer hover:underline" : ""}
-                            onClick={() => {
-                              if (item.question_code) {
-                                window.open(`/dashboard/questions?search=${encodeURIComponent(item.question_code)}`, "_blank");
-                              } else {
-                                toggleTest(test.id);
-                              }
-                            }}
+                      {view === "marks" &&
+                        test.items.map((item, idx) => (
+                          <th
+                            key={item.id}
+                            className={`${thBase} min-w-13`}
+                            title={item.question_code ? `Open ${item.question_code} in question editor` : undefined}
                           >
-                            Q{item.question_number}
-                            {item.part_label ? item.part_label : ""}
-                          </span>
-                          <span className="block text-[10px] text-da-muted">
-                            /{item.max_marks}
-                          </span>
-                        </th>
-                      ))}
-                      {hasA && (
-                        <>
-                          <th className={`${thBase} min-w-16 bg-indigo-950/40 border-l border-indigo-800/40`}>
-                            <span className="block text-[10px] text-indigo-300/70">Sec A</span>
-                            <span className="text-indigo-300">/{aMax}</span>
+                            {idx === 0 && control}
+                            <span
+                              className={item.question_code ? "cursor-pointer hover:underline" : ""}
+                              onClick={() => {
+                                if (item.question_code) {
+                                  window.open(`/dashboard/questions?search=${encodeURIComponent(item.question_code)}`, "_blank");
+                                }
+                              }}
+                            >
+                              Q{item.question_number}
+                              {item.part_label ? item.part_label : ""}
+                            </span>
+                            <span className="block text-[10px] text-da-muted">
+                              /{item.max_marks}
+                            </span>
                           </th>
-                          <th className={`${thBase} min-w-14 bg-indigo-950/40`}>
-                            <span className="block text-[10px] text-indigo-300/70">Sec A</span>
-                            <span className="text-indigo-300">%</span>
-                          </th>
-                        </>
-                      )}
-                      {hasB && (
-                        <>
-                          <th className={`${thBase} min-w-16 bg-violet-950/40 border-l border-violet-800/40`}>
-                            <span className="block text-[10px] text-violet-300/70">Sec B</span>
-                            <span className="text-violet-300">/{bMax}</span>
-                          </th>
-                          <th className={`${thBase} min-w-14 bg-violet-950/40 border-r border-violet-800/40`}>
-                            <span className="block text-[10px] text-violet-300/70">Sec B</span>
-                            <span className="text-violet-300">%</span>
-                          </th>
-                        </>
-                      )}
+                        ))}
+                      {sections.map((section, sIdx) => {
+                        const tint = SECTION_TINTS[sIdx % SECTION_TINTS.length];
+                        const max = test.items
+                          .filter((i) => inSection(i.question_number, section))
+                          .reduce((s, i) => s + i.max_marks, 0);
+                        const isLast = sIdx === sections.length - 1;
+                        return (
+                          <React.Fragment key={section.label}>
+                            <th
+                              className={`${thBase} min-w-16 ${tint.bg} border-l ${tint.edge}`}
+                              title={section.title}
+                            >
+                              {view === "levels" && sIdx === 0 && control}
+                              <span className={`block text-[10px] ${tint.head}`}>{section.label}</span>
+                              <span className={tint.text}>/{max}</span>
+                            </th>
+                            <th
+                              className={`${thBase} min-w-14 ${tint.bg} ${isLast ? `border-r ${tint.edge}` : ""}`}
+                              title={section.title}
+                            >
+                              <span className={`block text-[10px] ${tint.head}`}>{section.label}</span>
+                              <span className={tint.text}>%</span>
+                            </th>
+                          </React.Fragment>
+                        );
+                      })}
                     </React.Fragment>
                   );
                 }
 
-                // -- Collapsed test header — show name + date + set badge --
+                // -- Collapsed test header — name, date, set badge, and the two
+                //    ways in. The cell itself is no longer one big toggle: with
+                //    two destinations, "click somewhere" would have to guess.
                 return (
                   <th
                     key={test.id}
-                    className={`${thBtn} min-w-22.5 max-w-32.5`}
-                    onClick={() => toggleTest(test.id)}
+                    className={`${thBase} min-w-22.5 max-w-32.5`}
                     title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nBoundary set: ${
-                      test.boundary_set_name ? "Set " + test.boundary_set_name : "unassigned (approx.)"
-                    }\nClick to expand`}
+                      test.boundary_set_name ?? "unassigned (approx.)"
+                    }\nClick the name to open this assessment`}
                   >
-                    <span className="block truncate">{test.name}</span>
+                    {/* The name is the way in to the assessment itself -- where
+                        the boundary set this header reports on can actually be
+                        assigned. The pills below stay what they were. */}
+                    <a
+                      href={`/dashboard/tests/${test.id}`}
+                      className="block truncate hover:text-da-accent hover:underline"
+                    >
+                      {test.name}
+                    </a>
                     {test.test_date && (
                       <span className="block text-[10px] text-da-muted">
                         {new Date(test.test_date + "T00:00:00").toLocaleDateString(
@@ -597,10 +1364,23 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                         )}
                       </span>
                     )}
-                    <span className="flex items-center justify-center gap-1 mt-0.5">
+                    <span className="mt-0.5 flex items-center justify-center gap-1">
                       <SetBadge name={test.boundary_set_name} />
-                      <span className="text-[10px] text-da-accent">▸</span>
                     </span>
+                    <ViewPills
+                      test={test}
+                      view={null}
+                      onSet={(v) => setTestView(test.id, v)}
+                      onFill={() =>
+                        template
+                          ? downloadPst(test.id, test.name)
+                          : chooseTemplate({ id: test.id, name: test.name })
+                      }
+                      onGenerated={() => downloadGenerated(test.id, test.name)}
+                      generated={generatedFiles[test.id] ?? null}
+                      hasTemplate={template !== null}
+                      busy={exportingTestId === test.id}
+                    />
                   </th>
                 );
               })}
@@ -624,8 +1404,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
               const evenRow = rowIdx % 2 === 0;
               const rowBg = evenRow ? "bg-da-surface" : "bg-da-bg/50";
               const stickyBg = evenRow ? "bg-da-surface" : "bg-da-bg/65";
-              const { grade: overallGrade, pct: overallPct } =
-                computeOverallGrade(student.profile_id, tests, marks);
+              const {
+                grade: overallGrade,
+                pct: overallPct,
+                approximate: overallApprox,
+              } = computeOverallGrade(student.profile_id, tests, marks);
 
               return (
                 <tr key={student.profile_id} className={rowBg}>
@@ -637,9 +1420,9 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                   </td>
 
                   {/* Overall / Components */}
-                  {expandedOverall ? (
-                    COMPONENTS.map((comp) => {
-                      const g = computeComponentGrade(
+                  {showComponents ? (
+                    presentComponents.map((comp) => {
+                      const { grade: g, pct, approximate } = computeComponentGrade(
                         student.profile_id,
                         comp as "P1" | "P2" | "P3" | "IA",
                         tests,
@@ -649,6 +1432,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                         <td
                           key={comp}
                           className={`${tdBase} font-bold text-base ${gradeColor(g)} ${gradeBg(g)}`}
+                          title={
+                            pct !== null
+                              ? `${pct.toFixed(1)}% · ${approximate ? "approximate bands" : "test's own boundaries"}`
+                              : undefined
+                          }
                         >
                           {g ?? "—"}
                         </td>
@@ -659,7 +1447,11 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                       className={`${tdBase} font-bold text-lg ${gradeColor(overallGrade)} ${gradeBg(overallGrade)}`}
                       title={
                         overallPct !== null
-                          ? `${overallPct.toFixed(1)}%`
+                          ? `${overallPct.toFixed(1)}% · ${
+                              overallApprox
+                                ? "approximate bands (tests use different boundary sets)"
+                                : "the boundaries of the tests it covers"
+                            }`
                           : undefined
                       }
                     >
@@ -669,16 +1461,12 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
 
                   {/* Test cells */}
                   {tests.map((test) => {
-                    const isExp = expandedTests.has(test.id);
+                    const view = testViews[test.id] ?? null;
 
                     // Recorded absent: one "Abs" cell in place of the marks,
                     // so an empty row no longer reads as "not graded yet".
                     if (absences[test.id]?.includes(student.profile_id)) {
-                      const span = isExp
-                        ? Math.max(1, test.items.length) +
-                          (test.items.some((i) => i.question_number <= SECTION_A_MAX_Q) ? 2 : 0) +
-                          (test.items.some((i) => i.question_number > SECTION_A_MAX_Q) ? 2 : 0)
-                        : 1;
+                      const span = view ? expandedTestSpan(test, view) : 1;
                       return (
                         <td
                           key={test.id}
@@ -691,22 +1479,17 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                       );
                     }
 
-                    if (isExp) {
-                      if (test.items.length === 0) {
-                        return (
-                          <td key={test.id} className={`${tdBase} text-da-muted`}>
-                            —
-                          </td>
-                        );
-                      }
-                      const { secA, secB } = computeSectionScores(
+                    if (view) {
+                      const sections = presentSections(test);
+                      const sectionScores = computeSectionScores(
                         student.profile_id,
                         test,
                         marks
                       );
                       return (
                         <React.Fragment key={test.id}>
-                          {test.items.map((item) => {
+                          {view === "marks" &&
+                            test.items.map((item) => {
                             const cellKey = `${item.id}:${student.profile_id}`;
                             const val =
                               marks[item.id]?.[student.profile_id] ??
@@ -761,28 +1544,28 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                               </td>
                             );
                           })}
-                          {secA && (
-                            <>
-                              <td className={`${tdBase} font-semibold text-indigo-300 bg-indigo-950/30 border-l border-indigo-800/40`}>
-                                {secA.pct !== null ? secA.earned : "—"}
-                              </td>
-                              <td className={`${tdBase} text-indigo-200 bg-indigo-950/30`}
-                                title={secA.pct !== null ? `${secA.earned}/${secA.max}` : undefined}>
-                                {secA.pct !== null ? `${secA.pct.toFixed(0)}%` : "—"}
-                              </td>
-                            </>
-                          )}
-                          {secB && (
-                            <>
-                              <td className={`${tdBase} font-semibold text-violet-300 bg-violet-950/30 border-l border-violet-800/40`}>
-                                {secB.pct !== null ? secB.earned : "—"}
-                              </td>
-                              <td className={`${tdBase} text-violet-200 bg-violet-950/30 border-r border-violet-800/40`}
-                                title={secB.pct !== null ? `${secB.earned}/${secB.max}` : undefined}>
-                                {secB.pct !== null ? `${secB.pct.toFixed(0)}%` : "—"}
-                              </td>
-                            </>
-                          )}
+                          {sections.map((section, sIdx) => {
+                            const tint = SECTION_TINTS[sIdx % SECTION_TINTS.length];
+                            const score = sectionScores[sIdx];
+                            const isLast = sIdx === sections.length - 1;
+                            return (
+                              <React.Fragment key={section.label}>
+                                <td className={`${tdBase} font-semibold ${tint.text} ${tint.cellBg} border-l ${tint.edge}`}>
+                                  {score.pct !== null ? score.earned : "—"}
+                                </td>
+                                <td
+                                  className={`${tdBase} ${tint.soft} ${tint.cellBg} ${isLast ? `border-r ${tint.edge}` : ""}`}
+                                  title={
+                                    score.pct !== null
+                                      ? `${section.title}: ${score.earned}/${score.max}`
+                                      : section.title
+                                  }
+                                >
+                                  {score.pct !== null ? `${score.pct.toFixed(0)}%` : "—"}
+                                </td>
+                              </React.Fragment>
+                            );
+                          })}
                         </React.Fragment>
                       );
                     }
@@ -799,8 +1582,8 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
                         className={`${tdBase} font-semibold text-base ${gradeColor(grade)} ${gradeBg(grade)}`}
                         title={
                           pct !== null
-                            ? `${pct.toFixed(1)}% · Set ${
-                                test.boundary_set_name ?? "unassigned"
+                            ? `${pct.toFixed(1)}% · ${
+                                test.boundary_set_name ?? "no boundary set"
                               }`
                             : undefined
                         }
@@ -813,14 +1596,104 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
               );
             })}
           </tbody>
+
+          {/* -- Footer: level distribution ------------------------------- */}
+          {students.length > 0 && (
+            <tfoot className="bg-da-surface">
+              <tr className="border-t-2 border-da-border">
+                <th
+                  className={`${thFoot} cursor-pointer hover:text-da-accent transition-colors`}
+                  onClick={() => setShowDistribution((v) => !v)}
+                  title={
+                    showDistribution
+                      ? "Hide the level distribution"
+                      : "Show how many students sit at each level"
+                  }
+                >
+                  Level distribution
+                  <span className="ml-1 text-da-accent">
+                    {showDistribution ? "▾" : "▸"}
+                  </span>
+                </th>
+                {footerColumns.map((col) => {
+                  if (col.kind === "blank") {
+                    return <td key={col.key} colSpan={col.span} className={tdFoot} />;
+                  }
+                  const t = footerTallies.get(col.key)!;
+                  return (
+                    <td
+                      key={col.key}
+                      className={`${tdFoot} text-[11px] tabular-nums ${
+                        t.graded === 0 ? "text-da-muted/40" : "text-da-muted"
+                      }`}
+                      title={`${col.label} — ${t.graded} of ${t.total} graded`}
+                    >
+                      {t.graded}/{t.total}
+                    </td>
+                  );
+                })}
+              </tr>
+
+              {showDistribution &&
+                LEVELS.map((level) => (
+                  <tr key={level}>
+                    <th className={`${thFoot} font-normal`}>
+                      <span className={`font-bold ${gradeColor(level)}`}>{level}</span>
+                    </th>
+                    {footerColumns.map((col) => {
+                      if (col.kind === "blank") {
+                        return <td key={col.key} colSpan={col.span} className={tdFoot} />;
+                      }
+                      const t = footerTallies.get(col.key)!;
+                      const n = t.counts[level] ?? 0;
+                      const share = t.graded > 0 ? (n / t.graded) * 100 : 0;
+                      return (
+                        <td
+                          key={col.key}
+                          className={`${tdFoot} px-1`}
+                          title={
+                            t.graded === 0
+                              ? `${col.label} — nothing graded yet`
+                              : `${col.label} — level ${level}: ${n} of ${t.graded} graded (${share.toFixed(0)}%)`
+                          }
+                        >
+                          <div
+                            className={`relative mx-auto h-5 w-full max-w-24 overflow-hidden rounded-sm ${
+                              t.graded > 0 ? "bg-da-bg/60" : ""
+                            }`}
+                          >
+                            <div
+                              className={`absolute inset-y-0 left-0 ${gradeBarBg(level)}`}
+                              style={{ width: `${share}%` }}
+                              aria-hidden="true"
+                            />
+                            <span
+                              className={`absolute inset-0 flex items-center justify-center text-xs tabular-nums ${
+                                n > 0 ? "font-semibold text-da-text" : "text-da-muted/40"
+                              }`}
+                            >
+                              {n > 0 ? n : "·"}
+                            </span>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+            </tfoot>
+          )}
         </table>
       </div>
 
       {/* Legend */}
       <div className="px-4 py-3 border-t border-da-border flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-da-muted">
-        <span>Click column headers to expand / collapse.</span>
+        <span>
+          Open a test as <span className="text-da-text">Levels</span> (section
+          subtotals) or <span className="text-da-text">Marks</span> (per-question);
+          click the active one again to collapse.
+        </span>
         <span className="text-da-border">|</span>
-        <span>IB bands:</span>
+        <span>Levels:</span>
         {([7, 6, 5, 4, 3, 2, 1] as const).map((g) => (
           <span key={g} className={`font-bold ${gradeColor(g)}`}>
             {g}
@@ -836,7 +1709,12 @@ export function GradebookGrid({ tests, students, initialMarks, absences = {} }: 
         <span className="text-da-border">|</span>
         <span>Hover grade cells for % and set. Enter marks and press Tab/Enter to save.</span>
         <span className="text-da-border">|</span>
-        <span>Expand a test, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
+        <span>
+          <span className="text-da-text">Level distribution</span> at the foot of each
+          grade column counts students per level; bars are a share of what is graded.
+        </span>
+        <span className="text-da-border">|</span>
+        <span>Open a test as Marks, copy scores from a spreadsheet, click the first cell and paste to fill the grid.</span>
       </div>
     </div>
   );

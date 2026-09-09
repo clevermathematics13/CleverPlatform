@@ -6,12 +6,12 @@
  * Creator for a standalone Formative Assessment: a fixed-format test with
  * LEVEL bands, numbered questions/subparts each carrying a printed mark
  * value and a free-text M/A/R/FT mark scheme, plus paper-wide marking
- * principles, achievement bands, and a reteach guide.
+ * principles and a reteach guide.
  *
  * Deliberately distinct from Nuanced Analysis (NuancedAnalysisSandbox) and
  * self-contained rather than reusing NuancedAnalysisPreview — that shared
  * editor has no concept of markScheme/requiresWorking/estimatedMinutes/
- * achievementBands/reteachGuide, and extending it for this format would
+ * reteachGuide, and extending it for this format would
  * risk regressions in the NA/DP/generic-sandbox flows that depend on it.
  *
  * Save writes a gradeable `tests` row via POST /api/formative-assessments
@@ -26,7 +26,6 @@ import type {
   AssignmentSection,
   AssignmentQuestion,
   FormattingRequirements,
-  AchievementBand,
   ReteachGuideEntry,
 } from "@/lib/assignments";
 import { sanitizeDraft, extractJsonObject } from "@/lib/assignments";
@@ -81,9 +80,6 @@ const DEFAULT_DRAFT: AssignmentDraft = {
   markingPrinciples: [
     "A bare correct answer earns no method marks where the command term is Solve, Show, Determine, or Hence.",
     "Accept equivalent correct forms unless a part specifies otherwise.",
-  ],
-  achievementBands: [
-    { band: "7-8", marksRange: "e.g. 42-50", description: "Fluent, precise, and unprompted across every level." },
   ],
   reteachGuide: [],
   showSectionScoreSummary: true,
@@ -197,7 +193,6 @@ export function FormativeAssessmentSandbox() {
       formatting,
       showSectionScoreSummary: draft.showSectionScoreSummary,
       markingPrinciples: draft.markingPrinciples,
-      achievementBands: draft.achievementBands,
       reteachGuide: draft.reteachGuide,
     };
   }
@@ -520,11 +515,6 @@ export function FormativeAssessmentSandbox() {
             onChange={(items) => setDraft((d) => ({ ...d, markingPrinciples: items }))}
           />
 
-          <AchievementBandsEditor
-            bands={draft.achievementBands ?? []}
-            onChange={(bands) => setDraft((d) => ({ ...d, achievementBands: bands }))}
-          />
-
           <ReteachGuideEditor
             entries={draft.reteachGuide ?? []}
             onChange={(entries) => setDraft((d) => ({ ...d, reteachGuide: entries }))}
@@ -694,35 +684,6 @@ function StringListEditor({
         className="w-full rounded-md border border-dashed border-da-border px-3 py-1.5 text-xs text-da-muted hover:border-da-accent/60 hover:text-da-text"
       >
         + Add
-      </button>
-    </div>
-  );
-}
-
-function AchievementBandsEditor({
-  bands,
-  onChange,
-}: {
-  bands: AchievementBand[];
-  onChange: (bands: AchievementBand[]) => void;
-}) {
-  return (
-    <div className="rounded-xl border border-da-border bg-da-bg/30 p-4 space-y-2">
-      <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Achievement Bands</h3>
-      {bands.map((band, i) => (
-        <div key={i} className="grid grid-cols-[64px_84px_1fr_auto] gap-2">
-          <input value={band.band} onChange={(e) => onChange(bands.map((b, idx) => (idx === i ? { ...b, band: e.target.value } : b)))} placeholder="7-8"
-            className="rounded-md border border-da-border bg-da-bg/40 px-2 py-1.5 text-xs text-da-text focus:border-da-accent/60 focus:outline-none" />
-          <input value={band.marksRange} onChange={(e) => onChange(bands.map((b, idx) => (idx === i ? { ...b, marksRange: e.target.value } : b)))} placeholder="42-50"
-            className="rounded-md border border-da-border bg-da-bg/40 px-2 py-1.5 text-xs text-da-text focus:border-da-accent/60 focus:outline-none" />
-          <input value={band.description} onChange={(e) => onChange(bands.map((b, idx) => (idx === i ? { ...b, description: e.target.value } : b)))} placeholder="What the work looks like"
-            className="rounded-md border border-da-border bg-da-bg/40 px-2.5 py-1.5 text-xs text-da-text focus:border-da-accent/60 focus:outline-none" />
-          <button type="button" onClick={() => onChange(bands.filter((_, idx) => idx !== i))} className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-red-400 hover:bg-red-500/20">✕</button>
-        </div>
-      ))}
-      <button type="button" onClick={() => onChange([...bands, { band: "", marksRange: "", description: "" }])}
-        className="w-full rounded-md border border-dashed border-da-border px-3 py-1.5 text-xs text-da-muted hover:border-da-accent/60 hover:text-da-text">
-        + Add band
       </button>
     </div>
   );

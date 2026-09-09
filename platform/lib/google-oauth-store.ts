@@ -1,4 +1,5 @@
 import type { Credentials } from "google-auth-library";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -55,6 +56,118 @@ export interface ConnectionStatus {
   expiresAt: string | null;
   /** True when a refresh token is absent — the connection cannot self-heal. */
   fragile: boolean;
+}
+
+/**
+ * The same three operations, against an explicit client and profile rather
+ * than the signed-in user of the current request.
+ *
+ * The request-scoped exports below are the normal way in and are unchanged.
+ * These exist because a background job has neither: the PowerSchool export
+ * mirror runs from a student's submit (whose profile has no Google token) and
+ * from a rebuild with no request at all, and in both cases the token it needs
+ * is the TEACHER's. Reading it through the request would either find nothing
+ * or, worse, find the wrong person's.
+ *
+ * The caller passes the client, which for those paths is the service role.
+ */
+async function readToken(
+  supabase: SupabaseClient,
+  profileId: string,
+  provider: string
+): Promise<StoredGoogleToken | null> {
+  const { data, error } = await supabase
+    .from("google_oauth_tokens")
+    .select(
+      "access_token, refresh_token, id_token, scope, token_type, expiry_date, google_email"
+    )
+    .eq("profile_id", profileId)
+    .eq("provider", provider)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  return data as StoredGoogleToken;
+}
+
+/** Load a provider token for a named profile. See readToken. */
+export async function loadProviderTokenFor(
+  supabase: SupabaseClient,
+  profileId: string,
+  provider: string
+): Promise<StoredGoogleToken | null> {
+  return readToken(supabase, profileId, provider);
+}
+
+/** Persist a refreshed token for a named profile, merging as saveProviderToken
+ *  does so a routine refresh never clobbers the refresh_token with null. */
+export async function saveProviderTokenFor(
+  supabase: SupabaseClient,
+  profileId: string,
+  provider: string,
+  tokens: Credentials
+): Promise<void> {
+  const existing = await readToken(supabase, profileId, provider);
+  const { error } = await supabase.from("google_oauth_tokens").upsert(
+    {
+      profile_id: profileId,
+      provider,
+      access_token: tokens.access_token ?? existing?.access_token ?? null,
+      refresh_token: tokens.refresh_token ?? existing?.refresh_token ?? null,
+      id_token: tokens.id_token ?? existing?.id_token ?? null,
+      scope: tokens.scope ?? existing?.scope ?? null,
+      token_type: tokens.token_type ?? existing?.token_type ?? "Bearer",
+      expiry_date: tokens.expiry_date ?? existing?.expiry_date ?? null,
+      google_email:
+        decodeEmailFromIdToken(tokens.id_token) ?? existing?.google_email ?? null,
+      last_error: null,
+      last_refreshed_at: new Date().toISOString(),
+    },
+    { onConflict: "profile_id,provider" }
+  );
+  if (error) {
+    throw new GoogleOAuthError(
+      provider,
+      "upstream_error",
+      `Could not persist Google token: ${error.message}`
+    );
+  }
+}
+
+/** Connection status for a named profile. Same shape and rules as
+ *  getProviderConnectionStatus. */
+export async function getProviderConnectionStatusFor(
+  supabase: SupabaseClient,
+  profileId: string,
+  provider: string,
+  requiredScopes: string[]
+): Promise<ConnectionStatus> {
+  const token = await readToken(supabase, profileId, provider);
+  return describeConnection(token, requiredScopes);
+}
+
+function describeConnection(
+  token: StoredGoogleToken | null,
+  requiredScopes: string[]
+): ConnectionStatus {
+  if (!token) {
+    return {
+      connected: false,
+      email: null,
+      scopes: [],
+      missingScopes: requiredScopes,
+      expiresAt: null,
+      fragile: true,
+    };
+  }
+  const granted = (token.scope ?? "").split(/\s+/).filter(Boolean);
+  return {
+    connected: Boolean(token.refresh_token || token.access_token),
+    email: token.google_email,
+    scopes: granted,
+    missingScopes: requiredScopes.filter((s) => !granted.includes(s)),
+    expiresAt: token.expiry_date ? new Date(token.expiry_date).toISOString() : null,
+    fragile: !token.refresh_token,
+  };
 }
 
 async function currentProfileId(): Promise<string | null> {
@@ -176,24 +289,5 @@ export async function getProviderConnectionStatus(
   provider: string,
   requiredScopes: string[]
 ): Promise<ConnectionStatus> {
-  const token = await loadProviderToken(provider);
-  if (!token) {
-    return {
-      connected: false,
-      email: null,
-      scopes: [],
-      missingScopes: requiredScopes,
-      expiresAt: null,
-      fragile: true,
-    };
-  }
-  const granted = (token.scope ?? "").split(/\s+/).filter(Boolean);
-  return {
-    connected: Boolean(token.refresh_token || token.access_token),
-    email: token.google_email,
-    scopes: granted,
-    missingScopes: requiredScopes.filter((s) => !granted.includes(s)),
-    expiresAt: token.expiry_date ? new Date(token.expiry_date).toISOString() : null,
-    fragile: !token.refresh_token,
-  };
+  return describeConnection(await loadProviderToken(provider), requiredScopes);
 }

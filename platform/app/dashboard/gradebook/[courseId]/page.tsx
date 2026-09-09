@@ -2,10 +2,64 @@ import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { notFound } from "next/navigation";
-import { GradebookGrid } from "./GradebookGrid";
+import { GradebookGrid, type GeneratedFile, type TestSection } from "./GradebookGrid";
+import { CoursePicker } from "./CoursePicker";
+import { NewScoresButton } from "./NewScoresButton";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { loadTrackLinks, trackFamilyCourseIds } from "@/lib/track-courses";
+
+/** The IB split, and the default for any paper that does not carry its own
+ *  structure: Section A is short response, Section B extended response. */
+const IB_SECTIONS: TestSection[] = [
+  { label: "Sec A", title: "Section A - short response (Q1-8)", fromQ: 1, toQ: 8 },
+  { label: "Sec B", title: "Section B - extended response (Q9+)", fromQ: 9, toQ: null },
+];
+
+/** "LEVEL 3 -- CONNECT THE ALGEBRA" -> "L3", to fit a gradebook column. */
+function shortSectionLabel(heading: string, index: number): string {
+  const level = /^\s*LEVEL\s+(\d+)/i.exec(heading);
+  if (level) return `L${level[1]}`;
+  const firstWord = heading.trim().split(/[\s—-]+/)[0];
+  return firstWord && firstWord.length <= 6 ? firstWord : `S${index + 1}`;
+}
+
+/**
+ * Section ranges for a Formative Assessment, from the LEVEL headings it was
+ * authored with. Question numbering is global across sections (see
+ * deriveTestItems in lib/formative-assessment-bridge.ts), so each section owns
+ * a contiguous run of question numbers and only the per-section question
+ * *count* is needed to find it.
+ *
+ * That count is the only thing wanted from a ~17 kB draft, and PostgREST
+ * cannot aggregate inside JSONB, so the whole blob is fetched and thrown away.
+ * Fine while a course holds a handful of assessments; if that stops being true,
+ * put the section on test_items at write time rather than deriving it here.
+ */
+function sectionsFromCustomContent(customContent: unknown): TestSection[] | null {
+  const raw = (customContent as { sections?: unknown } | null)?.sections;
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+
+  const out: TestSection[] = [];
+  let lastQ = 0;
+  raw.forEach((entry, i) => {
+    const section = entry as { heading?: unknown; questions?: unknown };
+    const count = Array.isArray(section.questions) ? section.questions.length : 0;
+    if (count === 0) return; // consumes no question numbers, so lastQ is untouched
+    const heading =
+      typeof section.heading === "string" && section.heading.trim()
+        ? section.heading.trim()
+        : `Section ${i + 1}`;
+    out.push({
+      label: shortSectionLabel(heading, i),
+      title: heading,
+      fromQ: lastQ + 1,
+      toQ: lastQ + count,
+    });
+    lastQ += count;
+  });
+  return out.length > 0 ? out : null;
+}
 
 function inferComponent(name: string): "P1" | "P2" | "P3" | "IA" | null {
   const u = name.toUpperCase();
@@ -34,6 +88,19 @@ export default async function GradebookCoursePage({
     .single();
 
   if (!course) notFound();
+
+  // Classes the title can switch to -- the same non-archived list the gradebook
+  // index shows. An archived course's gradebook is still reachable by URL, so
+  // pin the current one in when it is not in that set.
+  const { data: switchableCourses } = await supabase
+    .from("courses")
+    .select("id, name")
+    .eq("archived", false)
+    .order("name");
+  const courseOptions = switchableCourses ?? [];
+  const pickerCourses = courseOptions.some((c) => c.id === course.id)
+    ? courseOptions
+    : [{ id: course.id, name: course.name }, ...courseOptions];
 
   // All boundary sets (small table — fetch once, pass to client)
   const { data: rawSets } = await supabase
@@ -72,10 +139,16 @@ export default async function GradebookCoursePage({
   // the whole track, so it belongs on every member's gradebook and the
   // track's own.
   const testCourseIds = trackFamilyCourseIds(courseId, await loadTrackLinks(supabase, courseId));
+  //
+  // hidden_from_gradebook, not hidden: the latter keeps a test out of the
+  // students' reflection dropdown, which is a separate decision. A paper with
+  // an approximate boundary set is exactly the case where the teacher wants it
+  // out of the students' hands and still in front of them here.
   const { data: rawTests } = await supabase
     .from("tests")
-    .select("id, name, test_date, total_marks, boundary_set_id")
+    .select("id, name, test_date, total_marks, boundary_set_id, custom_content")
     .in("course_id", testCourseIds)
+    .eq("hidden_from_gradebook", false)
     .order("test_date", { ascending: false });
 
   const testList = rawTests ?? [];
@@ -185,6 +258,40 @@ export default async function GradebookCoursePage({
     }
   }
 
+  // The PowerTeacher Scores Template stored for this class, if the teacher has
+  // ever uploaded one. Only the summary: the template itself is filled server
+  // side and never needs to reach the browser.
+  const { data: templateRow } = await supabase
+    .from("powerschool_templates")
+    .select("assignment_name, student_count, updated_at")
+    .eq("course_id", courseId)
+    .maybeSingle();
+  const powerSchoolTemplate = templateRow
+    ? {
+        assignmentName: (templateRow.assignment_name as string | null) ?? null,
+        studentCount: (templateRow.student_count as number | null) ?? null,
+      }
+    : null;
+
+  // The files written as students finish their self-assessments, one per
+  // assessment. Just the summary -- the object itself is served by
+  // /api/gradebook/self-assessment-export.
+  const { data: exportFileRows } = await supabase
+    .from("powerschool_export_files")
+    .select("test_id, filename, completed_count, roster_count, updated_at, drive_synced_at, drive_error")
+    .eq("course_id", courseId);
+  const generatedFiles: Record<string, GeneratedFile> = {};
+  for (const r of exportFileRows ?? []) {
+    generatedFiles[r.test_id as string] = {
+      filename: r.filename as string,
+      completedCount: (r.completed_count as number) ?? 0,
+      rosterCount: (r.roster_count as number) ?? 0,
+      updatedAt: (r.updated_at as string) ?? null,
+      driveSyncedAt: (r.drive_synced_at as string | null) ?? null,
+      driveError: (r.drive_error as string | null) ?? null,
+    };
+  }
+
   // Group items by test
   const itemsByTest: Record<string, typeof allItems> = {};
   for (const item of allItems) {
@@ -200,8 +307,10 @@ export default async function GradebookCoursePage({
       test_date: t.test_date as string | null,
       total_marks: t.total_marks ?? 0,
       component: inferComponent(t.name),
+      boundary_set_id: setId,
       boundary_set_name: setId ? (setNameById[setId] ?? null) : null,
       boundaries: setId ? (boundariesBySetId[setId] ?? null) : null,
+      sections: sectionsFromCustomContent(t.custom_content) ?? IB_SECTIONS,
       items: (itemsByTest[t.id] ?? []).map((item) => ({
         id: item.id,
         question_number: item.question_number,
@@ -219,18 +328,29 @@ export default async function GradebookCoursePage({
         <p className="text-da-muted text-xs font-medium uppercase tracking-widest mb-1">
           Gradebook
         </p>
-        <h1 className="text-3xl font-bold text-da-text font-serif">{course.name}</h1>
-        <p className="text-da-muted text-sm mt-1">
-          {students.length} student{students.length !== 1 ? "s" : ""} ·{" "}
-          {tests.length} assessment{tests.length !== 1 ? "s" : ""}
-        </p>
+        <CoursePicker
+          current={{ id: course.id, name: course.name }}
+          courses={pickerCourses}
+        />
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-da-muted text-sm">
+            {students.length} student{students.length !== 1 ? "s" : ""} ·{" "}
+            {tests.length} assessment{tests.length !== 1 ? "s" : ""}
+          </p>
+          {/* Beside the class picker rather than in the grid: the batch spans
+              every class, not the one being looked at. */}
+          <NewScoresButton />
+        </div>
       </div>
 
       <GradebookGrid
+        courseId={courseId}
         tests={tests}
         students={students}
         initialMarks={marksMap}
         absences={absencesByTest}
+        initialTemplate={powerSchoolTemplate}
+        generatedFiles={generatedFiles}
       />
     </div>
   );

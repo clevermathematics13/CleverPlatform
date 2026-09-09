@@ -12,6 +12,10 @@ to this agent environment and the Railway domain was allowed in the network poli
 This changed §6 materially - see the corrected table below. The Q26(a) backfill
 (§9, previously blocked on exactly this) is now done.
 
+**§4 was corrected on 7 Sep 2026** - the file/row counts, and everything it said
+about `CLEVERPLATFORM_SUPABASE_DB_URL`, which is now set and whose workflow had
+been failing on every merge. See §13.
+
 ---
 
 ## 1. What this is
@@ -84,6 +88,33 @@ must exercise Server Actions.
   `lambdaRuntimeStats` are both present.** Bare READY is insufficient.
 - **CV service:** `opencv-python-headless==4.11.0.86` (no libGL on Railway),
   `pymupdf==1.24.14`, guarded by `CV_SERVICE_SECRET`.
+- **The 1-7 Level from `lib/grade-bands.ts` is the only achievement scale in use.**
+  It is what the gradebook grid and the Exam Reflection dashboard show. Boundary
+  sets `A`-`D` are DP course-progression sets (a 7 at 76-82%) and do not apply to
+  Grade 9, which is a course of the teacher's own design that borrows the 1-7 scale
+  to prepare students for DP - it is not an IB course, so do not "correct" its
+  boundaries toward official IB ones. Grade 9's set is `Grade 9` (a 7 at 90%);
+  assign it to every new Grade 9 test, or the Level falls back to the generic bands
+  in `pctToGradeFallback()` and the column renders a `~approx` badge.
+- **PowerSchool matches imported scores on the student number, and nothing else.**
+  `students.student_number` / `invited_students.student_number` exist only for
+  that: PowerTeacher Pro's per-assignment score import keys on the school-defined
+  number, and accepts a name column purely for its "Validate Student Names" check
+  (name against number), never as a matching key. A student without a number does
+  not import. Fill them from the Students page - there is a paste box that takes a
+  PowerSchool roster export and matches on a normalised token set, so "Caipo,
+  Santiago" finds "Santiago Caipo". The CSV itself is built in
+  `lib/powerschool-export.ts`, whose header comment records the format decisions
+  and why; `ABS` in the score column is PowerTeacher Pro's own default absence
+  code, which exempts the assignment. Levels export as 1-7, so the PowerSchool
+  assignment must be worth 7 points with File Score Type = Points.
+- **Formative Assessments no longer carry an achievement-band table.** A
+  Criterion-A-style `achievementBands` table used to be generated into every draft,
+  editable in the sandbox and printed on the teacher mark scheme; nobody used it and
+  nothing ever computed a band from it, so it was removed end to end (draft type,
+  Zod schemas, generator prompt, sandbox editor, mark-scheme HTML and CSS) and
+  stripped from the one stored draft that had one. The reteach guide beside it is
+  still live - do not remove that too.
 
 ### Corrected from the previous handoff
 
@@ -99,10 +130,12 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo now agree exactly: 83 files, 83 rows,
-byte-identical.** Read `platform/supabase/migrations/README.md` before touching
-anything in that directory - it documents the invariant and how to add a migration
-without breaking it.
+**The migration ledger and the repo now agree exactly: 116 files, 116 rows,
+byte-identical** (verified 7 Sep 2026; it read 83/83 when this handoff was written
+and 95/95 after the second reconciliation). Read
+`platform/supabase/migrations/README.md` before touching anything in that
+directory - it documents the invariant and how to add a migration without
+breaking it.
 
 History, because it matters: files `001_*`..`057_*` were never recorded in the
 ledger, while ~4 months of changes applied via MCP existed only in the database. The
@@ -110,15 +143,55 @@ Supabase CLI matches `^([0-9]+)_(.*)\.sql$` - `[0-9]+`, not a 14-digit timestamp
 `001_initial_schema.sql` parsed as version `001` and counted as pending. Several of
 those files are destructive (`014_016_combined.sql` drops the seating tables;
 `023_reset_aahl_students.sql` deletes student enrolment rows). Nothing was ever
-applied only because `CLEVERPLATFORM_SUPABASE_DB_URL` is unset, which makes the
-workflow's push step skip and exit 0 - all 23 "successful" runs were no-ops.
+applied only because `CLEVERPLATFORM_SUPABASE_DB_URL` was unset at the time, which
+made the workflow's push step skip and exit 0 - all 23 "successful" runs to that
+point were no-ops.
 
 Those 64 files now live in `platform/supabase/migrations-legacy/` and
 `--include-all` has been dropped from the workflow.
 
-**Setting `CLEVERPLATFORM_SUPABASE_DB_URL` is safe once the reconciliation is merged
-to `main`, and worthwhile - the workflow currently reports green while doing
-nothing. Do not set it before that merge.**
+**`CLEVERPLATFORM_SUPABASE_DB_URL` is now set, and the advice this paragraph used
+to give ("do not set it before the reconciliation merges") is spent.** What
+replaced the silent no-op was a silent failure: from 6 Sep 2026 every run of
+`platform-supabase-migrations.yml` failed, because the secret holds the direct
+connection string and `db.<ref>.supabase.co` resolves to IPv6 only - Supabase's
+own docs list GitHub Actions among the platforms that cannot reach it. The job
+died on `dial error (connect ECONNREFUSED <v6 addr>:5432)` before touching
+anything.
+
+Fixed 7 Sep 2026: the workflow now lifts the password out of that secret and
+reconnects through Supavisor session mode
+(`postgres.<ref>@aws-1-sa-east-1.pooler.supabase.com:5432`), which always has an
+IPv4 address. Transaction mode (6543) will not do - it does not speak enough of
+the protocol for migrations. A secret that already points at the pooler is used
+unchanged, so switching it over later needs no workflow edit.
+
+**Fixing that uncovered a second fault, and the honest summary is that this
+workflow had never once applied a migration.** The Supabase CLI reads
+`supabase/migrations` relative to its working directory, and the push step had
+none - so it ran at the repo root, where a *second* `supabase/` directory lives
+(kept for the edge function `deploy-edge-functions.yml` ships). That one still
+holds three 2024/2025 migration files predating both reconciliations, in no
+ledger. The CLI compared the live ledger against those three, found none of its
+116 versions locally, and refused with "Remote migration versions not found in
+local migrations directory". It fails safe - it will not push when local and
+remote disagree that badly, so it never tried to apply those three to
+production - but combined with the connection fault it means CI has never
+applied anything. The step now runs from `platform/`. Do not delete the root
+`supabase/` directory: the edge function deploy needs it. Its `migrations/`
+subdirectory is dead weight and worth removing on its own.
+
+Verified 7 Sep 2026 by `workflow_dispatch` on a branch: "Reached the database
+through aws-1-sa-east-1.pooler.supabase.com (session mode)" / "Remote database
+is up to date", schema probe green, ledger untouched at 116 rows.
+
+Note what this workflow is and is not. Because migrations are normally applied
+through MCP `apply_migration` first (see the README), the ledger usually already
+carries them by the time `main` moves, so `supabase db push` finds nothing pending
+and is a no-op **by design**. It is the safety net for a migration file that
+reaches `main` without having been applied - not the usual path. A green run here
+does not mean it did anything; a red one means production may be missing a
+migration that is in the repo.
 
 Tables you will touch most: `na_scan_batches`, `na_packet_scans`,
 `na_response_crops`, `na_feedback`, `na_anchors`, `na_rubric_items`,
@@ -1067,3 +1140,142 @@ each part is an ordinary batch whose `file_name` reads
 "scan.pdf (part 2 of 3, pages 98-190)". The Batch tab segments the parts one
 request at a time and renders one review-and-grade panel per part. Page
 numbers inside a part's panel count from 1 within that part.
+
+## 13. Self-assessment submit, and the migrations workflow (7 Sep 2026)
+
+**Students could not submit their self-assessed scores** (#149). The self-grade
+form tells them to leave a box blank if they made no attempt and sends that box
+as `NULL`; `student_self_scores.self_marks` was `NOT NULL DEFAULT 0`, so Postgres
+rejected it with `23502`. Only a student who filled in every single box got
+through, which is why the table had rows at all and why the failure looked
+intermittent rather than total. Migration `20260907152544` drops the `NOT NULL`
+and the default: `NULL` now means "did not attempt", `0` means "attempted and
+earned nothing", and those are different facts about a student.
+
+The client made it worse by upserting one row per question in a loop and throwing
+on the first error, so every question before the blank was already committed - an
+error message *and* a half-saved self-assessment, which counts as having
+self-graded and moves the student off the Self-Grade step. It now sends the whole
+assessment as one upsert (`lib/reflection-self-scores.ts`): all rows land or none
+do. That also fixes a second failure seen live during the session - a submit that
+wrote 35 of 41 questions over 24 seconds and then simply stopped, losing six
+answers with nothing told to the student. Forty-one sequential round trips is
+forty-one chances to lose the tab.
+
+Two consequences of making blanks storable, both handled: `computeDisagreement()`
+reads a blank as a claim of zero marks *once the student has self-graded* (Upload
+Corrections only unlocks at 0%, so counting it as full disagreement locked them
+out for following the form's instructions), and the Compare table no longer seeds
+a blank box with `0` or files that `0` when Save Changes is pressed. A student who
+has not self-graded at all still reads as 100% disagreement, unchanged.
+
+**Known-lossy, not fixed:** the teacher Override Scores modal
+(`components/reflection/OverrideModal.tsx`) still types self-marks as plain
+numbers, so opening and saving it turns a student's blanks into `0`s.
+
+**Two data items left alone deliberately.** One student on Formative Assessment 1
+is missing her last six answers from the truncated submit; they cannot be
+reconstructed and she has to refill them. Three rows showing 18 of 19 items on
+"27AH [K06] P1" are *not* corruption, despite looking like it: `test_items
+.created_at` shows Q6(b) was added on 2026-05-23 22:00:02, three days after the
+other 18, and the submission times split cleanly around it. Those students graded
+every question that existed. Writing marks for a question they were never shown
+would fabricate a judgement they never made. They currently read as claiming 0 on
+it; self-grading it themselves is the fix.
+
+**`platform-supabase-migrations.yml` had been failing on every merge since 6 Sep**
+and nobody noticed, because it only runs on push to `main` and so never appears as
+a PR check. Two independent faults, both fixed and both detailed in §4: the direct
+database host is IPv6-only and GitHub Actions cannot reach it, and the push step
+ran from the repo root, where a second `supabase/` directory shadowed the real
+migrations. Either alone was enough to break it, which is why the plain reading
+("it worked until 6 Sep") is wrong - it had never applied a migration from CI at
+all.
+
+The thing to remember: it is a safety net for a migration file that reaches `main`
+unapplied, not the usual path - migrations normally go through MCP
+`apply_migration` first, so a green run here usually means it found nothing to do.
+
+## 14. Quick read, overnight marking, and why neither has a worker (9 Sep 2026)
+
+**Segmentation was about a third of what an upload cost.** The 84-page, 7-student
+formative scan billed on 4 Sep came to ~$3.00, and ~$1.00 of that was the single
+whole-document Opus read that produces `proposed_segments` -- money spent before a
+mark has been suggested for anybody. The batch upload now has two ways to get those
+segments. **Quick read** puts every page through the single-page Haiku cover-page
+check (`lib/cover-page-segmentation.ts`, `pipeline = 'ai_grade_cover_page'`) at ~0.3
+cents a page, against ~1 cent a page for Opus reading the document in one go, and
+cannot hit Anthropic's 100-page or 32MB document limits at all, because every request
+carries exactly one page. **Deep read** is the old whole-document read, kept as a
+checkbox. Quick is the default for a new upload; `ai_grade_batches.read_mode` defaults
+to `'deep'` in the database instead, because that is what every row predating the
+column actually was.
+
+The `source_sha256` dedupe from §10 had to learn the difference, and its reuse rule is
+deliberately ASYMMETRIC: a quick request may reuse a stored `quick` or `deep`
+proposal, a deep request only a `deep` one. A deep read finds everything a quick read
+does and more, so serving one to a quick request is never a downgrade. The other
+direction is exactly the teacher's "the quick read got a loose sheet wrong, read it
+properly" retry, and answering that out of the cached quick proposal would silently
+ignore what they asked for. `forceResegment: true` still bypasses the dedupe entirely.
+
+**What Quick read gives up, plainly.** It builds segments by position: each student
+runs from their cover page to the page before the next cover page. A loose sheet
+scanned out of order therefore lands in whichever student's run it physically falls
+inside, and nothing detects it -- it surfaces as somebody else's working in a
+student's script at review time. Deep read, which can reattribute a page to a student
+whose cover page is elsewhere, is the answer to that, and is the reason it stays
+available rather than being deleted as the expensive old path.
+
+**Overnight marking** sends a whole class to Anthropic's Message Batches API (50% off
+every token, cache reads and writes included) instead of the browser looping over
+students against the synchronous route at full price with a tab that has to stay open.
+Usage is recorded by the collect route, not the submit -- a batch reports its tokens
+per result -- so the `ai_usage_log` rows land with `batch = true` as results are read.
+As of 9 Sep there are no such rows yet: the halving is Anthropic's published rate, not
+something this repo has measured on a real class.
+
+**There is no worker behind it, and that is the design, not an omission.** The obvious
+shape for this is a queue plus a background service, and this repo has one already:
+the Railway bulk-upload worker (`platform/worker/`, §8). It is not usable. It has
+claimed nothing since 30 Aug 2026 -- the newest `na_scan_batches` row with
+`is_bulk_upload` is 30 Aug 00:51 UTC -- its container is SIGTERMed within seconds of
+starting, and on 7 Sep the Railway account read "15 days or $3.41 left". Handing a
+class to it would queue the work into a void, with nothing to tell the teacher. So the
+submit runs inside the request the teacher's click makes
+(`POST /api/tests/[id]/ai-grade/queue`), and the page does the collecting:
+`POST /api/tests/[id]/ai-grade/collect` on load, on a 30s interval while anything is
+still pending, and from a "Check for results" button. What makes collect-on-visit safe
+rather than lossy is that Anthropic keeps a batch's results for 29 days -- nobody has
+to open that page tonight, or this week. (The CV service runs on the same Railway
+account, so its funding is a live question for evidence crops too, not only for the
+dead worker.)
+
+A submitted run sits at `ai_grade_runs.status = 'submitted'` with
+`pending_message_batch_id` pointing at its `ai_grade_message_batches` row; the pointer
+is cleared when the result is written, so "non-null and still `submitted`" is exactly
+what collect still owes an answer for. Two exits are not results: a run `submitted`
+for an hour with no batch pointer never made it into a batch (the Anthropic create
+succeeded, the write recording which batch did not) and is failed telling the teacher
+to re-submit that student, and a batch still open after 30 hours is past Anthropic's
+24h ceiling, so its runs are failed rather than left waiting forever.
+
+**Two migrations, applied through MCP `apply_migration` and renamed to their ledger
+versions per §13.** `20260909032326` adds `ai_grade_batches.read_mode`
+(`'quick' | 'deep'`, default `'deep'`). `20260909035036` widens the
+`ai_grade_runs.status` check to `('submitted', 'running', 'complete', 'failed')`,
+creates `ai_grade_message_batches` (one row per submission; `anthropic_batch_id`
+unique, so a double submit cannot produce two rows tracking one batch; partial index
+on the open statuses, which is the collect route's working set), and adds
+`ai_grade_runs.pending_message_batch_id`. Both are in `SCHEMA.md`.
+
+**The operational thing to remember: neither half is a single request.** One submit
+call takes at most `MAX_BATCH_REQUESTS` (20) students or `MAX_BATCH_BASE64_BYTES`
+(64MB of base64, ~48MB of PDF -- every scan sits in that invocation's heap at once)
+and returns the rest as `remaining`. One collect call writes at most
+`MAX_RESULTS_PER_CALL` (8) results, because writing one re-downloads the student's PDF
+and calls the CV service for evidence crops, the same 10-30s the synchronous route
+spends, and it answers `more: true`. Both are therefore client-driven loops: the batch
+tab posts to queue until `remaining` is empty (and gives up if it stops shrinking),
+and the page posts to collect up to `MAX_COLLECT_PASSES` (40) times per pass. Code
+that calls either route once and reports the class done is wrong.

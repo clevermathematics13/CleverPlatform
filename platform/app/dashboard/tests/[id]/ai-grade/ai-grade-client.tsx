@@ -14,7 +14,8 @@ import {
 
 type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "none";
 type Confidence = "high" | "medium" | "low";
-type RunStatus = "running" | "complete" | "failed";
+/** "submitted" is an overnight run: with Anthropic's batch API, no result written yet. */
+type RunStatus = "submitted" | "running" | "complete" | "failed";
 
 interface TestItem {
   id: string;
@@ -70,6 +71,13 @@ interface RunRow {
   error: string | null;
   created_at: string;
   completed_at: string | null;
+  /**
+   * The Anthropic message batch this run is still tied to, null once it is
+   * settled. A "running" run that still has one is a rescued run: its results
+   * were written but its own status update was lost, so the collect route left
+   * it deliberately for a later sweep to promote. See outstandingCollectCount.
+   */
+  pending_message_batch_id: string | null;
 }
 
 interface MarkBreakdownEntry {
@@ -151,6 +159,22 @@ const CONFIDENCE_STYLE: Record<Confidence, string> = {
   low: "bg-red-500/15 text-red-300 border-red-400/40",
 };
 
+/**
+ * How often an open page asks for finished overnight batches. There is no
+ * worker and no cron: this page load IS the collector, so the tick has to be
+ * frequent enough to feel live while a teacher watches, and cheap enough to
+ * leave running all day (the route only reads the batches this test has open).
+ */
+const COLLECT_POLL_MS = 30_000;
+
+/**
+ * Ceiling on collect calls in one pass. The route writes up to
+ * MAX_RESULTS_PER_CALL results (5) and reports `more`, so 40 passes drains
+ * 200 results -- more than any real class -- and a route that always
+ * answered `more: true` still cannot keep one page load posting for ever.
+ */
+const MAX_COLLECT_PASSES = 40;
+
 function itemLabel(item: TestItem | undefined): string {
   if (!item) return "—";
   return item.part_label
@@ -214,6 +238,41 @@ export function AiGradeClient({ testId }: { testId: string }) {
   const [evidenceImageShown, setEvidenceImageShown] = useState<Set<string>>(new Set());
   /** Same, for the mark scheme source image(s). */
   const [markschemeImageShown, setMarkschemeImageShown] = useState<Set<string>>(new Set());
+
+  /** True while a collect pass is in flight -- disables the "Check for results" button. */
+  const [collecting, setCollecting] = useState(false);
+  /**
+   * Runs still with Anthropic (status "submitted"), counted over the whole run
+   * list in loadOverview. NOT derived from newerAttemptByStudent: that map
+   * holds one run per student, so a student queued overnight and then marked in
+   * the browser has a newer complete run, their pending overnight run stops
+   * being their newest, and both the banner and the 30s poll that collects it
+   * would silently stay off.
+   */
+  const [submittedStudentCount, setSubmittedStudentCount] = useState(0);
+  /**
+   * Runs this page still owes a collect call for: the "submitted" ones above,
+   * plus any "running" run that still carries a pending_message_batch_id.
+   *
+   * Deliberately a second count rather than a wider submittedStudentCount,
+   * because the two answer different questions. That one is what the teacher
+   * is TOLD -- students still waiting at Anthropic -- and a rescued run is not
+   * one of those: its marks are already written and paid for, and saying it is
+   * still being marked would be a lie. This one is what the page still has
+   * WORK to do about. Gating the poll on the banner's count stranded exactly
+   * the run the collect route was careful to leave recoverable: if it was the
+   * last outstanding run on the test, the poll stopped, no collect call was
+   * ever made again, and the student's marks sat in ai_grade_results while the
+   * roster showed them as never graded.
+   */
+  const [outstandingCollectCount, setOutstandingCollectCount] = useState(0);
+  /**
+   * Why the last collect pass stopped, verbatim from the route (its 422 names
+   * the fix: extract the mark scheme LaTeX in the PPQ Bank). Deliberately not
+   * setError -- that box replaces the roster, and a failed collect leaves
+   * everything else on this page usable.
+   */
+  const [collectError, setCollectError] = useState<string | null>(null);
 
   const [busyStudent, setBusyStudent] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
@@ -330,9 +389,10 @@ export function AiGradeClient({ testId }: { testId: string }) {
       // as "the" run used to hide a student's real graded work behind an
       // empty run (seen when a re-mark failed on API credits). The newer
       // attempt is kept separately so its error still shows in the roster.
+      const allRuns = (runs1.data.runs as RunRow[]) ?? [];
       const latestComplete: Record<string, RunRow> = {};
       const newestAny: Record<string, RunRow> = {};
-      for (const r of ((runs1.data.runs as RunRow[]) ?? [])) {
+      for (const r of allRuns) {
         if (!newestAny[r.student_id]) newestAny[r.student_id] = r;
         if (r.status === "complete" && !latestComplete[r.student_id]) latestComplete[r.student_id] = r;
       }
@@ -342,6 +402,24 @@ export function AiGradeClient({ testId }: { testId: string }) {
       }
       setRunsByStudent(latestComplete);
       setNewerAttemptByStudent(newerAttempt);
+      // Counted off the raw run list, not the newest-run-per-student map: a
+      // student marked in the browser after being queued overnight has a
+      // newer complete run, which would hide their still-pending one and stop
+      // the poll from ever starting. Distinct students, because the banner
+      // counts people -- two submissions for one student before either
+      // collects is one student waiting, not two.
+      setSubmittedStudentCount(
+        new Set(allRuns.filter((r) => r.status === "submitted").map((r) => r.student_id)).size
+      );
+      // Runs, not distinct students: nothing renders this, it only has to be
+      // zero exactly when there is nothing left for a collect pass to do. A
+      // "running" run without a batch pointer is an ordinary interactive
+      // grade in flight, which collect has no business with.
+      setOutstandingCollectCount(
+        allRuns.filter(
+          (r) => r.status === "submitted" || (r.status === "running" && r.pending_message_batch_id !== null)
+        ).length
+      );
 
       // Absences are loaded best-effort: a failure here should not hide
       // the roster, it just means nobody shows as absent.
@@ -367,6 +445,73 @@ export function AiGradeClient({ testId }: { testId: string }) {
   useEffect(() => {
     loadOverview().finally(() => setLoading(false));
   }, [loadOverview]);
+
+  // -- Collecting overnight results --------------------------------------------
+  // Nothing on the server goes looking for a finished batch: no worker, no
+  // cron. This page is the collector -- once on load, every COLLECT_POLL_MS
+  // while any run is still outstanding (see outstandingCollectCount), and
+  // whenever the teacher asks. A pass
+  // that throws (offline, route mid-deploy) changes nothing -- Anthropic holds
+  // results for 29 days -- so it is swallowed and retried on the next tick
+  // rather than surfaced over the roster. A pass the route REFUSES is not
+  // self-healing (its 422 wants a mark scheme extracting), so that message is
+  // shown beside the overnight banner instead of being retried in silence.
+  const collectingRef = useRef(false);
+  const runCollect = useCallback(async () => {
+    if (collectingRef.current) return; // a tick must not overlap the button
+    collectingRef.current = true;
+    setCollecting(true);
+    try {
+      let written = 0;
+      // Null once every pass has answered ok, so a later good pass clears a
+      // stale message; set and kept when one refuses, since nothing this page
+      // does on its own will fix a 422 (no mark scheme stored) and the teacher
+      // would otherwise watch the banner poll for ever.
+      let failure: string | null = null;
+      for (let pass = 0; pass < MAX_COLLECT_PASSES; pass++) {
+        const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/collect`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        if (!ok) {
+          failure = (data.error as string) ?? "Could not check for overnight results.";
+          break;
+        }
+        written += ((data.completed as number) ?? 0) + ((data.failed as number) ?? 0);
+        if (data.more !== true) break;
+      }
+      setCollectError(failure);
+      // Only when a run actually changed: an empty pass is the common case
+      // (a batch still running) and must not reload the roster every 30s.
+      if (written > 0) await loadOverview();
+    } catch {
+      // Offline, or the route is mid-deploy. The batch is still with
+      // Anthropic; the next tick collects it.
+    } finally {
+      collectingRef.current = false;
+      setCollecting(false);
+    }
+  }, [testId, loadOverview]);
+
+  useEffect(() => {
+    // Nothing outstanding means nothing to collect. Firing on every mount
+    // instead would post to the route from every test's marking page,
+    // including tests that have never been sent overnight, and any 500 it
+    // returned (a missing API key, say) would paint an alert there. A test
+    // that has never used overnight marking has neither kind of outstanding
+    // run, so this count is 0 and it still never posts.
+    if (outstandingCollectCount === 0) return;
+    // The first pass is deferred by a tick rather than run in the effect
+    // body: the pass flips its own "checking" flag, and a synchronous
+    // setState here cascades a render.
+    const first = setTimeout(() => void runCollect(), 0);
+    const timer = setInterval(() => void runCollect(), COLLECT_POLL_MS);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [outstandingCollectCount, runCollect]);
 
   /** Drops whatever is in the review panel. Called before every load, so a
    * failed or superseded fetch leaves the panel empty rather than showing the
@@ -872,6 +1017,41 @@ export function AiGradeClient({ testId }: { testId: string }) {
         </button>
       </div>
 
+      {submittedStudentCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-3 text-sm text-blue-300">
+          <p>
+            {submittedStudentCount} student{submittedStudentCount === 1 ? " is" : "s are"} being marked
+            overnight. Results appear here as they arrive — this page checks every 30 seconds while
+            it is open, and Anthropic keeps them for 29 days, so closing the tab loses nothing.
+          </p>
+          <button
+            type="button"
+            onClick={() => void runCollect()}
+            disabled={collecting}
+            title="Ask Anthropic for any batch that has finished since this page last looked"
+            className="rounded border border-blue-400/40 bg-da-surface px-3 py-1 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
+          >
+            {collecting ? "Checking…" : "Check for results"}
+          </button>
+        </div>
+      )}
+
+      {collectError && submittedStudentCount > 0 && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-400/40 bg-amber-500/15 px-4 py-3 text-sm text-amber-300"
+        >
+          <p>Checking for overnight results stopped: {collectError}</p>
+          <button
+            type="button"
+            onClick={() => setCollectError(null)}
+            className="rounded border border-amber-400/40 bg-da-surface px-3 py-1 text-xs font-medium text-amber-300 hover:bg-amber-500/25"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
       {/* Kept mounted (not conditionally rendered) so switching to Individual
           and back doesn't wipe BatchGradeTab's own state — its matched rows
           and grading progress live in that component, not here, and a
@@ -1012,7 +1192,9 @@ export function AiGradeClient({ testId }: { testId: string }) {
                               ? `A newer re-mark failed${newerAttempt.error ? ` — ${newerAttempt.error}` : ""}. ${
                                   run ? "The last completed run is still shown." : ""
                                 }`
-                              : "A newer re-mark is still running."}
+                              : newerAttempt.status === "submitted"
+                                ? "Being marked overnight — results appear here when they arrive."
+                                : "A newer re-mark is still running."}
                           </p>
                         )}
                       </div>
@@ -1096,8 +1278,14 @@ export function AiGradeClient({ testId }: { testId: string }) {
                   </p>
                   {focusStudent && newerAttemptByStudent[focusStudent] && (
                     <p className="mt-1 text-xs text-amber-300">
-                      ⚠ A newer re-mark {newerAttemptByStudent[focusStudent].status === "failed" ? "failed" : "is still running"}
-                      {newerAttemptByStudent[focusStudent].error ? ` — ${newerAttemptByStudent[focusStudent].error}` : ""}. Showing the last completed run.
+                      {newerAttemptByStudent[focusStudent].status === "submitted" ? (
+                        <>⚠ Being marked overnight — results appear here when they arrive. Showing the last completed run.</>
+                      ) : (
+                        <>
+                          ⚠ A newer re-mark {newerAttemptByStudent[focusStudent].status === "failed" ? "failed" : "is still running"}
+                          {newerAttemptByStudent[focusStudent].error ? ` — ${newerAttemptByStudent[focusStudent].error}` : ""}. Showing the last completed run.
+                        </>
+                      )}
                     </p>
                   )}
                   {focusRun?.coverage?.warnings && focusRun.coverage.warnings.length > 0 && (

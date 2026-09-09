@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { parseGradingSubject } from "@/lib/ai-grading";
+import { markExportsStale } from "@/lib/self-assessment-export";
 import {
   describeAuditWarning,
   logMarkChanges,
@@ -79,6 +80,11 @@ export async function POST(req: NextRequest) {
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });
     // Logged as new_marks null: a cleared cell is not a score of 0.
+  // The levels in the stored PowerSchool export just changed. Flagged, not
+  // rebuilt: the gradebook saves one cell at a time. The rebuild happens a
+  // few seconds after the typing stops, or at the download.
+    await markExportsStale({ testItemIds: [testItemId] });
+
     const audit = await logMarkChanges(
       supabase,
       [{ testItemId, subject, oldMarks, newMarks: null }],
@@ -109,6 +115,11 @@ export async function POST(req: NextRequest) {
 
   if (error)
     return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // The levels in the stored PowerSchool export just changed. Flagged, not
+  // rebuilt: the gradebook saves one cell at a time. The rebuild happens a
+  // few seconds after the typing stops, or at the download.
+  await markExportsStale({ testItemIds: [testItemId] });
 
   const audit = await logMarkChanges(
     supabase,

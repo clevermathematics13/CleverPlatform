@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 
+/** An emptied text field means "no value", not an empty string. */
+function blankToNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
 /**
  * GET  /api/tests/[id]  — fetch test with its items
  * PATCH /api/tests/[id] — update test metadata
@@ -16,11 +21,14 @@ export async function GET(
   const { supabase } = auth;
   const { id } = await params;
 
+  // courses!tests_course_id_fkey, not a bare courses(name) -- see
+  // app/dashboard/tests/page.tsx for why the bare form fails.
   const { data, error } = await supabase
     .from("tests")
     .select(`
-      id, name, test_date, exam_time, release_at, total_marks, course_id, hidden, custom_content, require_self_assessment,
-      courses(name),
+      id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, hidden_from_gradebook, custom_content, require_self_assessment,
+      boundary_set_id, paper_url, mark_scheme_url,
+      courses!tests_course_id_fkey(name),
       test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order)
     `)
     .eq("id", id)
@@ -43,17 +51,34 @@ export async function PATCH(
   const { id } = await params;
 
   const body = await request.json();
-  const { name, test_date, exam_time, release_at, total_marks, course_id, hidden, require_self_assessment } = body;
+  const {
+    name, short_name, test_date, exam_time, release_at, total_marks, course_id,
+    hidden, hidden_from_gradebook, require_self_assessment,
+    boundary_set_id, paper_url, mark_scheme_url,
+  } = body;
 
   const updates: Record<string, unknown> = {};
   if (name !== undefined) updates.name = name;
+  // Blank means "no short name", not an empty one: assessmentShortName falls
+  // back to abbreviating the full name, which is better than a filename with
+  // an empty middle.
+  if (short_name !== undefined) {
+    updates.short_name = typeof short_name === "string" && short_name.trim() !== "" ? short_name.trim() : null;
+  }
   if (test_date !== undefined) updates.test_date = test_date;
   if (exam_time !== undefined) updates.exam_time = exam_time;
   if (release_at !== undefined) updates.release_at = release_at;
   if (total_marks !== undefined) updates.total_marks = total_marks;
   if (course_id !== undefined) updates.course_id = course_id;
   if (hidden !== undefined) updates.hidden = hidden;
+  if (hidden_from_gradebook !== undefined) updates.hidden_from_gradebook = hidden_from_gradebook;
   if (require_self_assessment !== undefined) updates.require_self_assessment = require_self_assessment;
+  // Nothing in the app could set these three until the assessment page; the
+  // gradebook could only report a boundary set as "unassigned (approx.)" and
+  // leave the teacher no way to assign one.
+  if (boundary_set_id !== undefined) updates.boundary_set_id = boundary_set_id || null;
+  if (paper_url !== undefined) updates.paper_url = blankToNull(paper_url);
+  if (mark_scheme_url !== undefined) updates.mark_scheme_url = blankToNull(mark_scheme_url);
 
   const { data, error } = await supabase
     .from("tests")

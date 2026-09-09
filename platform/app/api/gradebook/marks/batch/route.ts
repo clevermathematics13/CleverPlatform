@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { parseGradingSubject } from "@/lib/ai-grading";
+import { markExportsStale } from "@/lib/self-assessment-export";
 import {
   describeAuditWarning,
   logMarkChanges,
@@ -109,6 +110,10 @@ export async function POST(req: NextRequest) {
     if (error)
       return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  // The levels in the stored PowerSchool export just changed. Flagged rather
+  // than rebuilt; the gradebook asks for a rebuild once the typing stops.
+  await markExportsStale({ testItemIds: entries.map((e) => e.testItemId) });
 
   // One audit row per cell the paste actually changed. Cells re-sent with
   // the value they already had are dropped by buildMarkChangeRows, so a

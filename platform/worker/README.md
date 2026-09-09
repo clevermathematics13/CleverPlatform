@@ -89,6 +89,63 @@ part of writing this code** — provisioning a new hosted service is a real
 account action outside what an agent session can safely do unattended.
 Follow the steps above once ready to deploy for real.
 
+## When the service will not stay up
+
+Symptom seen on 6 Sep 2026: the container starts, prints its first log line,
+and is stopped 4 seconds later, leaving only `npm error signal SIGTERM`. The
+CV service in the same project cycled in the same window, and the database
+showed the worker had claimed nothing since 30 Aug.
+
+Nothing in this process signals itself, so a SIGTERM is always the platform
+stopping the container. Since that day the worker says so itself: it now
+logs `received SIGTERM after Ns of uptime -- the platform stopped this
+container, it did not crash`, and it binds `$PORT` with a `/health`
+endpoint. Read those two things first.
+
+| What you see | What it means |
+|---|---|
+| The `received SIGTERM` line | Railway stopped it. Nothing is wrong with this code -- work through the settings below. |
+| A stack trace, no SIGTERM line | The worker itself failed. Fix the code. |
+| `cannot start: <VAR> must be set`, HTTP 503 on `/health` | A missing or misnamed environment variable. The process deliberately stays up so this stays readable. |
+| Nothing after `Starting bulk-upload worker` | It is running and idle. That is normal -- it only logs when it does work. |
+
+Settings to check on the Railway service, in the order most likely to be the
+cause:
+
+1. **Usage limits and credit.** A project out of credit has its services
+   stopped. This is the first thing to rule out, and it matches "both
+   services cycled at once".
+2. **App sleeping / serverless.** A service set to sleep when idle will be
+   stopped seconds after starting, because this worker serves no traffic of
+   its own. It must be off.
+3. **Health check path.** If one is configured it must point at `/health` on
+   `$PORT`. Before the health endpoint existed, any configured check could
+   never pass and every deploy was killed.
+4. **Restart policy.** `ON_FAILURE` is right. The worker now exits 0 on
+   SIGTERM, so an ordinary stop no longer looks like a failure.
+5. **Deploy source.** Root directory `platform`, Dockerfile path
+   `worker/Dockerfile`, branch `main`.
+6. **Variables.** Exactly `NEXT_PUBLIC_SUPABASE_URL`,
+   `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`,
+   `GRAPH_LAB_CV_SERVICE_URL`, `CV_SERVICE_SECRET`. `ANTHROPIC_API_KEY` must
+   be spelled exactly that -- `GRADING_ANTHROPIC_API_KEY` silently does
+   nothing, and has cost a day once already.
+
+To confirm it is alive without opening Railway at all, query the database:
+
+```sql
+select worker_id, last_seen_at, now() - last_seen_at as stale_for, started_at, detail
+from public.worker_heartbeats order by last_seen_at desc;
+```
+
+Every pipeline tick rewrites that row whether or not there was work to do,
+so `stale_for` under a minute means the worker is running. No rows, or a
+`stale_for` of hours, means it is not. A `started_at` that keeps moving
+while `last_seen_at` stays fresh is a restart loop.
+
+Or open the service's public URL at `/health`. `status: "running"` with a recent `lastPipelineTickAt` is
+a working worker; `status: "failed"` names the variable to fix.
+
 ## Rollout safety
 
 Per the plan this shipped under: deploy this worker and validate it against

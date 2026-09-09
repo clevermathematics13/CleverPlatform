@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { parseGradingSubject } from "@/lib/ai-grading";
+import { markExportsStale } from "@/lib/self-assessment-export";
 
 /**
  * POST /api/reflection/update-mark
@@ -101,6 +102,9 @@ export async function POST(request: NextRequest) {
     new_marks: clamped,
     reason: reason ?? null,
   });
+
+  // The levels in the stored PowerSchool export just changed.
+  await markExportsStale({ testItemIds: [testItemId] });
 
   return NextResponse.json({ success: true, marks_awarded: clamped });
 }

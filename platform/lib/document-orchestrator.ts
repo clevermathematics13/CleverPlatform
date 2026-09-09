@@ -710,12 +710,10 @@ function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string
     .ms-principles h3 { font-size: 11pt; font-weight: 700; margin-bottom: 6px; }
     .ms-principles ol { margin-left: 18px; font-size: 9.5pt; }
     .ms-principles li { margin-bottom: 3px; }
-    .ms-bands, .ms-reteach { margin-top: 20px; break-inside: avoid; page-break-inside: avoid; }
-    .ms-bands h3, .ms-reteach h3 { font-size: 11pt; font-weight: 700; margin-bottom: 6px; }
-    .ms-bands-table, .ms-reteach-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
-    .ms-bands-table th, .ms-bands-table td,
+    .ms-reteach { margin-top: 20px; break-inside: avoid; page-break-inside: avoid; }
+    .ms-reteach h3 { font-size: 11pt; font-weight: 700; margin-bottom: 6px; }
+    .ms-reteach-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
     .ms-reteach-table td { border: 0.5pt solid #d1d5db; padding: 4px 8px; text-align: left; vertical-align: top; }
-    .ms-bands-table th { background: #f5f3ff; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.04em; }
     .katex { font-size: 1em; }
     .katex-display { margin: 4px 0; }
   `;
@@ -997,14 +995,12 @@ export type MarkSchemeRequest = {
   formatting: ValidatedFormattingRequirements;
   /** Formative Assessment: general marking rules, rendered as a numbered list above the questions. */
   markingPrinciples?: string[];
-  /** Formative Assessment: Criterion-A-style achievement-band table, rendered after the questions. */
-  achievementBands?: Array<{ band: string; marksRange: string; description: string }>;
   /** Formative Assessment: "if marks were lost here, reteach this" table, rendered last. */
   reteachGuide?: Array<{ questions: string; topic: string }>;
 };
 
 export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
-  const { title, subtitle, sections, formatting, markingPrinciples, achievementBands, reteachGuide } = req;
+  const { title, subtitle, sections, formatting, markingPrinciples, reteachGuide } = req;
   const tierLabel: Record<number, string> = { 1: "★", 2: "★★", 3: "★★★" };
   let globalQ = 0;
 
@@ -1046,17 +1042,6 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
     return `<div class="ms-section"><h3>${escapeHtml(section.heading)}</h3>${questionsHtml}</div>`;
   }).join("");
 
-  const achievementBandsHtml = Array.isArray(achievementBands) && achievementBands.length > 0
-    ? `<div class="ms-bands">
-        <h3>Achievement Bands</h3>
-        <table class="ms-bands-table">
-          <thead><tr><th>Band</th><th>Marks</th><th>What the work looks like</th></tr></thead>
-          <tbody>${achievementBands.map((b) =>
-            `<tr><td>${escapeHtml(b.band)}</td><td>${escapeHtml(b.marksRange)}</td><td>${escapeHtml(b.description)}</td></tr>`
-          ).join("")}</tbody>
-        </table>
-      </div>` : "";
-
   const reteachGuideHtml = Array.isArray(reteachGuide) && reteachGuide.length > 0
     ? `<div class="ms-reteach">
         <h3>If marks were lost here, reteach this</h3>
@@ -1077,7 +1062,6 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
   <div class="ms-banner">⚠ Teacher Copy — Mark Scheme — Not for Distribution</div>
   ${markingPrinciplesHtml}
   ${sectionsHtml}
-  ${achievementBandsHtml}
   ${reteachGuideHtml}
 </body></html>`;
 }

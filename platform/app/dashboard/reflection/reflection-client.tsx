@@ -19,6 +19,11 @@ import { TeacherDashboard } from "@/components/reflection/TeacherDashboard";
 import { DocPanel } from "@/components/reflection/DocPanel";
 import { createClient } from "@/lib/supabase/client";
 import { initialReflectionStep, isSelfGradeSkipped } from "@/lib/reflection-steps";
+import {
+  buildSelfScoreRows,
+  selfScoreSubmitMessage,
+  SELF_SCORE_CONFLICT_TARGET,
+} from "@/lib/reflection-self-scores";
 
 interface ReflectionClientProps {
   profile: { id: string; role: string; display_name: string };
@@ -91,24 +96,37 @@ export function ReflectionClient({
       if (readOnlyPreview) {
         throw new Error("This is a read-only preview — self-grading is disabled.");
       }
+      // One upsert for the whole assessment, not one per question: a
+      // row-at-a-time loop that throws partway leaves the questions before
+      // the failure committed, which reads downstream as a self-assessment
+      // the student never finished making.
       const supabase = createClient();
-      for (const score of scores) {
-        const { error } = await supabase.from("student_self_scores").upsert(
-          {
-            test_item_id: score.test_item_id,
-            student_id: targetStudentId,
-            self_marks: score.self_marks,
-            submitted_at: new Date().toISOString(),
-          },
-          { onConflict: "test_item_id,student_id" }
-        );
-        if (error) throw error;
+      const { error } = await supabase
+        .from("student_self_scores")
+        .upsert(buildSelfScoreRows(scores, targetStudentId), {
+          onConflict: SELF_SCORE_CONFLICT_TARGET,
+        });
+      if (error) throw new Error(selfScoreSubmitMessage(error));
+
+      // Finishing the self-assessment is what moves the class's count, so it
+      // is what regenerates the teacher's PowerSchool file (9C_Form1_6.csv).
+      // Deliberately not awaited and deliberately silent: the student has
+      // submitted, and a problem writing a file they will never see is not
+      // theirs to wait for or to be told about. The route returns nothing
+      // about the file for the same reason.
+      if (selectedTestId) {
+        void fetch("/api/gradebook/self-assessment-export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ testId: selectedTestId }),
+        }).catch(() => {});
       }
+
       // Refresh server component so teacher marks are now transmitted
       router.refresh();
       setStep(2);
     },
-    [router, targetStudentId, readOnlyPreview]
+    [router, targetStudentId, readOnlyPreview, selectedTestId]
   );
 
   const handleSaveComparison = useCallback(
@@ -117,18 +135,12 @@ export function ReflectionClient({
         throw new Error("This is a read-only preview — saving is disabled.");
       }
       const supabase = createClient();
-      for (const score of scores) {
-        const { error } = await supabase.from("student_self_scores").upsert(
-          {
-            test_item_id: score.test_item_id,
-            student_id: targetStudentId,
-            self_marks: score.self_marks,
-            submitted_at: new Date().toISOString(),
-          },
-          { onConflict: "test_item_id,student_id" }
-        );
-        if (error) throw error;
-      }
+      const { error } = await supabase
+        .from("student_self_scores")
+        .upsert(buildSelfScoreRows(scores, targetStudentId), {
+          onConflict: SELF_SCORE_CONFLICT_TARGET,
+        });
+      if (error) throw new Error(selfScoreSubmitMessage(error));
       const updatedItems = items.map((item) => {
         const score = scores.find((s) => s.test_item_id === item.test_item_id);
         return score ? { ...item, self_marks: score.self_marks } : item;
