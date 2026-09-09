@@ -235,6 +235,12 @@ A.1 packet: spec `4821f182-4331-4868-91a2-948c71ee4d6f`, packet version
 `aabd94f4-aa08-405e-bccb-5003d31696cb`. **40 anchors** (was 39 before Q26(a) was
 added on 24 Aug 2026).
 
+A.2 packet ("What Undoing Really Means"), set up 9 Sep 2026: packet version
+`2f8a4c31-6b7e-4d92-a1f5-8c3e07b9d240`, `nuanced_analysis`
+`41e8ca4e-087d-4146-b364-19139d659343`, **32 anchors**, 99 marks, `page_count`
+20, no scans uploaded yet. See §15 for how it was derived and what still wants
+a teacher's eye.
+
 **Corrected 27 Aug 2026: the "11 packet scans" figure above was wrong.** There were
 **17** `na_packet_scans` rows for this packet version:
 - 7 real students, each with **two** scans from two separate teacher uploads of the
@@ -938,7 +944,10 @@ the happy path work."
    non-destructively (a row a teacher has hand-edited is left alone). Anchor
    *geometry* (where each answer box sits on the printed page) remains a
    manual/SQL step by design — it inherently requires a human looking at the
-   rendered page.
+   rendered page. **A.2 (§15) is the worked example of doing that end to end**,
+   and records the two things that generalise: geometry must come from the
+   distributed print master rather than a re-render, and the printed question
+   numbers do not match the `parts[]` ordinal the bridge keys on.
 
 **Closed since the previous handoff**
 
@@ -1279,3 +1288,89 @@ spends, and it answers `more: true`. Both are therefore client-driven loops: the
 tab posts to queue until `remaining` is empty (and gives up if it stops shrinking),
 and the page posts to collect up to `MAX_COLLECT_PASSES` (40) times per pass. Code
 that calls either route once and reports the class done is wrong.
+
+---
+
+## 15. A.2 set up as a scannable packet (9 Sep 2026)
+
+"What Undoing Really Means" (Unit 1, A.2) is the second packet to become
+scannable, and the first with a retained print master. Packet version
+`2f8a4c31-6b7e-4d92-a1f5-8c3e07b9d240`, 32 anchors, 99 marks, `page_count` 20.
+Three migrations, applied through MCP `apply_migration` and renamed to their
+ledger versions per §13: `20260909124540` (packet version, 32 rubric items, 32
+anchors), `20260909124702` (master PDF path), `20260909124949` (prompt crops).
+132 files / 132 rows, byte-identical.
+
+**Geometry came from the distributed print master**, not from a re-render. That
+distinction is the whole ballgame: `d1ff83b` (8 Sep) changed what the Typst
+header prints, so a packet rendered today does not lay out like the one the
+students were handed in August, and anchors derived from a fresh render would
+sit at the wrong offsets on every page. The master is
+`U1_A2_What_Undoing_Really_Means.pdf` from Drive, now also at
+`na-masters/<packet_version_id>/master.pdf` in `exam-scans` and recorded in
+`master_pdf_storage_path` -- the column A.1 leaves null, which is exactly why
+A.1's Q26(a) backfill had to borrow a student's split scan and why its 3 orphan
+scans could not be backfilled at all. Re-derive A.2's geometry from Storage;
+never from a re-render.
+
+**Answer boxes are separable from decoration by x-coordinate.** Answer boxes are
+drawn at x0=50.83/x1=544.50; the information boxes (WHAT YOU NEED, TOK, ATL,
+the spotlights) are at the inset 51.02/544.25 and quote boxes at 87.87/466.93.
+That rule picks out 32 boxes from 57 candidates, and every one of the 32 was
+rendered over its page and checked by eye before anything was written.
+
+**Printed question numbers are NOT the `parts[]` ordinal.** The Part 0 Desmos
+activity occupies `parts[]` slot 2 but prints unnumbered, so printed Qn ==
+`parts[]` question n+1 from Q2 on. The mapping is not a guess: all 21 printed
+"Clev's Marks: N" labels agree with the `parts[]` marks exactly. Anything that
+joins anchors to `parts[]` by ordinal will be off by one -- including
+`lib/na-rubric-bridge.ts`, which is why A.2's rubric rows carry
+`source = 'authored_from_print'` rather than `'generated'`: the bridge skips any
+row whose source is not `'generated'`, so a later packet re-save cannot overwrite
+these with differently-numbered ones. (A.1's 39 hand-authored rubric rows are
+marked `'generated'` and do NOT have that protection. Latent, not yet bitten.)
+
+**`page_count` is 20 because the printed packet is 20 pages**, even though the
+document's own footer says "Page 1 of 23". A.1 does the same thing -- 26 pages
+under a footer reading "of 32" -- because the Extension section is generated but
+not printed. `page_count` is the stride the batch segmenter uses to find where
+each student's copy starts, so it must match what a student physically hands in,
+not what the generator produced. A.2's Extension (printed Q22-Q24, all 0 marks)
+has no anchors because it has no printed pages.
+
+**Two conventions carried over from A.1's hard-won fixes.** Sub-part boxes get
+their own anchor and their own rubric row, with `question_text`/`answer_key`
+scoped to that box's own sub-parts -- the assessor is never shown a neighbouring
+box's prompt and left to discard it, which is the setup that produced A.1's
+Q1/Q1(e) backtracking (open item 4c). And the Part 0 Desmos box carries no marks
+and no key of any kind, so `isUngradedAnchor()` skips it rather than inventing a
+verdict for a thinking space.
+
+**Q19's anchor is `manual_table`.** Its reflection table is ruled, not filled, so
+only the header row registers as a fill-rect; the anchor is drawn over the whole
+table (255.82-470.00, five body rows ending at the 465.9 rule). Same treatment
+A.1's Q9 needed, and the same reason `auto_fillrect` missed A.1's Q26(a) grid.
+
+**Prompt crops: 22 of 32**, generated from the master at 300 DPI, two refinements
+over the A.1 backfill, both found by looking at the output. The narrow inset
+boxes do NOT act as separators (they are printed parts of the question -- treating
+them as separators cost Q21 its prompt entirely and cut the quote out of Q5's and
+Q17's), and the anchors themselves DO (without that, Q20's crop opened with the
+five empty rows of Q19's table). The 10 skipped are sub-part boxes whose prompt
+is printed in the shared block above their question's first box.
+
+### What a teacher should check before the first scan upload
+
+- **The per-box mark splits.** `parts[]` records one total per question, not a
+  per-sub-part breakdown, so the 7 multi-box questions were split by reading the
+  printed sub-parts and their answer keys: Q1 3/1, Q3 2/4, Q5 2/3, Q13 1/3, Q14
+  1/2/2/1, Q17 3/2, Q18 1/2/3. Every split sums to that question's printed
+  total and the 32 anchors sum to 99, but the division within a question is a
+  pedagogical judgment and is the one thing here a teacher may want to move.
+- **`open_rubric` exists only on Q19.** Q20 and Q21 are open reflective questions
+  marked from their prompt alone, matching how A.1 left Q29/Q30.
+- **The packet's own compulsory-core text is wrong about its numbering.** Page 1
+  says "You must complete: Q1-Q7, Q9-Q15, Q17-Q20, Q22, Q23, Q25, Q26", but the
+  packet only prints through Q21. That is generated prose that never matched the
+  rendered numbering; it is a content bug in the packet, not a setup error, and
+  it is worth fixing before this packet is issued again.
