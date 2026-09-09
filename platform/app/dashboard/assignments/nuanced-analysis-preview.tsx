@@ -34,6 +34,29 @@
  *
  * Teacher's Companion is NOT rendered in this component. It is excluded
  * from the student-facing packet entirely.
+ *
+ * EVERY EDITABLE FIELD HERE MUST BE CONTROLLED (`value`), NEVER `defaultValue`.
+ * The title, section headings and question prompts are click-to-edit inputs.
+ * With `defaultValue` React seeds them once at mount and then leaves the DOM
+ * node alone, so loading a saved draft or generating a new one updated `draft`
+ * while these fields kept showing whatever mounted first - in practice the
+ * DEFAULT_DRAFT boilerplate from nuanced-analysis-sandbox.tsx. The banner said
+ * the packet was loaded, the course line and subtitle updated (they are plain
+ * text), and the title still read "Nuanced Analysis" with Part 0's placeholder
+ * questions underneath. The draft state, the PDF and the save were all correct
+ * the whole time - only this preview lied. Sections are keyed by array index,
+ * so the nodes really are reused across drafts; controlled values are what
+ * keeps them honest. Every onChange here writes straight through to
+ * onDraftChange with no transformation, so `value` round-trips a keystroke
+ * unchanged and the caret stays put.
+ *
+ * The `?? ""` guarding each binding is not defensive noise. These three fields
+ * are
+ * typed as required strings, but Load Draft casts assignment_templates
+ * .draft_content (jsonb) straight to AssignmentDraft with no validation -- only
+ * the generation path runs sanitizeDraft(). A row missing one of them would
+ * hand React `value={undefined}`, which is exactly how an input goes back to
+ * being uncontrolled, reopening this bug through a door the types say is shut.
  */
 
 import { useState } from "react";
@@ -383,6 +406,9 @@ function QuestionBlock({
 }) {
   const label = formatQuestionLabel(sectionIdx, qIdx, formatting.numberingStyle);
   const answerLines = q.answerBoxLines ?? globalAnswerLines;
+  // Coalesce once: an unsanitized draft (see the header note on Load Draft)
+  // would otherwise both uncontrol the textarea and throw on .length below.
+  const prompt = q.prompt ?? "";
 
   return (
     <div className="mb-4">
@@ -397,13 +423,13 @@ function QuestionBlock({
             <div className="flex-1 min-w-0">
               {onPromptChange ? (
                 <textarea
-                  defaultValue={q.prompt}
-                  rows={Math.max(2, Math.ceil(q.prompt.length / 90))}
+                  value={prompt}
+                  rows={Math.max(2, Math.ceil(prompt.length / 90))}
                   onChange={(e) => onPromptChange(e.target.value)}
                   className="w-full resize-none border-0 p-0 text-[10.5pt] text-gray-900 leading-relaxed focus:outline-none focus:ring-0 bg-transparent"
                 />
               ) : (
-                <p className="text-[10.5pt] text-gray-900 leading-relaxed"><LatexRenderer latex={q.prompt} /></p>
+                <p className="text-[10.5pt] text-gray-900 leading-relaxed"><LatexRenderer latex={prompt} /></p>
               )}
               {q.tier && <TierBadge tier={q.tier} />}
 
@@ -590,7 +616,7 @@ export function NuancedAnalysisPreview({
           </p>
           <input
             type="text"
-            defaultValue={draft.title}
+            value={draft.title ?? ""}
             onChange={(e) => updateTitle(e.target.value)}
             className="block w-full text-center text-[20pt] font-bold text-gray-900 border-0 border-b-2 border-transparent hover:border-blue-300 focus:border-blue-500 p-0 bg-transparent focus:outline-none focus:ring-0 mt-1 cursor-text transition-colors"
             title="Click to edit title"
@@ -693,7 +719,7 @@ export function NuancedAnalysisPreview({
               </button>
               <input
                 type="text"
-                defaultValue={section.heading}
+                value={section.heading ?? ""}
                 onChange={(e) => updateSectionHeading(si, e.target.value)}
                 className="flex-1 border-0 p-0 bg-transparent text-[13pt] font-bold text-gray-900 focus:outline-none focus:ring-0 cursor-text hover:border-b hover:border-blue-300 focus:border-b focus:border-blue-500"
                 title="Click to edit section heading"

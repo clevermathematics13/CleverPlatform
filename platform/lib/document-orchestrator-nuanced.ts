@@ -338,17 +338,32 @@ export const DocumentOrchestratorService = {
         nd.internationalMindedness
       );
 
+      // The DESIGN_INSTRUCTIONS 2.1 header fields. These were passed through
+      // raw, which was survivable only because the Typst template ignored them
+      // outright. Now that it renders them they follow the same all-or-nothing
+      // rule as the enrichment boxes above: a key that is present but empty
+      // would print a bare "Syllabus Topics:" label with nothing after it, and
+      // a non-string would crash rich()'s .split("$") and take the whole
+      // document down.
+      const course = nonEmptyString(nd.course);
+      const syllabusTopics = nonEmptyString(nd.syllabusTopics);
+      const prerequisites = nonEmptyString(nd.prerequisites);
+      const materials = nonEmptyString(nd.materials);
+      const atl = nonEmptyString(nd.atl);
+      const compulsoryCore = nonEmptyString(nd.compulsoryCore);
+
       const content: ActivityContentAst = {
         title: nd.title || "Nuanced Analysis",
         subtitle:
           nd.subtitle ||
           "IBDP Mathematics — Analysis & Approaches HL · Nuanced Analysis",
-        course: nd.course,
-        syllabusTopics: nd.syllabusTopics,
-        prerequisites: nd.prerequisites,
-        materials: nd.materials,
-        compulsoryCore: nd.compulsoryCore,
         sections,
+        ...(course ? { course } : {}),
+        ...(syllabusTopics ? { syllabusTopics } : {}),
+        ...(prerequisites ? { prerequisites } : {}),
+        ...(materials ? { materials } : {}),
+        ...(atl ? { atl } : {}),
+        ...(compulsoryCore ? { compulsoryCore } : {}),
         ...(commandTerms ? { commandTerms } : {}),
         ...(tokProvocations ? { tokProvocations } : {}),
         ...(internationalMindedness ? { internationalMindedness } : {}),

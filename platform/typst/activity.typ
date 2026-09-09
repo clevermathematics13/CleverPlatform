@@ -144,6 +144,11 @@
   ]
 ]
 
+// NOTE: this file is NOT read at runtime. The Typst program that actually
+// ships is the embedded string in lib/typst-render.service.ts
+// (getActivityTypstSource). Keep this copy as a readable reference, but a
+// change made only here changes nothing about any generated PDF.
+
 // ── Document header ───────────────────────────────────────────────────────────
 #block(width: 100%)[
   #align(center)[
