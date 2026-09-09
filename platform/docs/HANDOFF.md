@@ -1376,8 +1376,12 @@ so the next packet does not start from scratch:
 `platform/scripts/na_packet_a2.json` is A.2's config, kept as the worked
 example. Regenerating from it reproduces all 70 data lines of migration
 `20260909124540` and all 22 prompt crops byte-for-byte, which is how the
-scripts were checked — if that ever stops being true, the tool changed
-behaviour and A.3 should not be authored with it until you know why.
+scripts were checked — with one deliberate exception since: the config carries
+Q3's corrected 3/3 split, which `20260909174056` applied afterwards, so a
+regeneration diff of exactly those four rows (Q3 and Q3(b), in the rubric
+insert and the anchor insert) is correct. Any other difference is not, and
+means the tool changed behaviour — A.3 should not be authored with it until
+you know why.
 
 The packet-specific judgments live in the config, not the code: the printed-to-
 `parts[]` question map, the mark splits, any `open_rubric`, the ungraded
@@ -1391,10 +1395,18 @@ do not work around it.
 
 - **The per-box mark splits.** `parts[]` records one total per question, not a
   per-sub-part breakdown, so the 7 multi-box questions were split by reading the
-  printed sub-parts and their answer keys: Q1 3/1, Q3 2/4, Q5 2/3, Q13 1/3, Q14
-  1/2/2/1, Q17 3/2, Q18 1/2/3. Every split sums to that question's printed
+  printed sub-parts and their answer keys: Q1 3/1, **Q3 3/3**, Q5 2/3, Q13 1/3,
+  Q14 1/2/2/1, Q17 3/2, Q18 1/2/3. Every split sums to that question's printed
   total and the 32 anchors sum to 99, but the division within a question is a
   pedagogical judgment and is the one thing here a teacher may want to move.
+  **Q3 already was moved** (9 Sep 2026, migration `20260909174056`): authored
+  2/4 on the reading that (b)'s explanation carries more weight than (a)'s
+  rewrite, changed by the teacher to 3/3. Both `na_anchors.marks_available`
+  and `na_rubric_items.marks` were updated together — stage 5 reads the anchor,
+  the review UI shows the rubric row, and letting them disagree would put one
+  number on screen and a different one in front of the model. Changing a split
+  is only this cheap while a packet has no scans: after the first upload it
+  also means re-running stage 5 for every affected crop.
 - **`open_rubric` exists only on Q19.** Q20 and Q21 are open reflective questions
   marked from their prompt alone, matching how A.1 left Q29/Q30.
 - **The packet's own compulsory-core text is wrong about its numbering.** Page 1
