@@ -90,6 +90,11 @@ export async function POST(
         .from("na_response_crops")
         .select("id, anchor_id, packet_scan_id, na_feedback(id, approved_at)")
         .in("packet_scan_id", scanIds)
+        // Paging is only total if the order is stable -- see the comment
+        // above. Without this, a concurrent insert can push a crop across a
+        // page boundary and out of the result, which is exactly the "missing
+        // crops just aren't checked" release this query exists to prevent.
+        .order("id", { ascending: true })
         .range(from, to)
     );
   } catch (e) {

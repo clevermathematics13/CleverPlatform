@@ -122,6 +122,12 @@ export async function GET(
             "id, anchor_id, packet_scan_id, na_feedback(ai_attempted, ai_marks_awarded, ai_marks_available, ai_validation_error, final_marks_awarded, approved_at, released_at)"
           )
           .in("packet_scan_id", scanIds)
+          // .range() without an explicit order has no stability guarantee
+          // across requests: rows inserted between page fetches (the crop
+          // pipeline writes here) can shift a row across a page boundary, so
+          // paging silently duplicates one and drops another. Ordering by a
+          // stable key is what makes the paging above actually total.
+          .order("id", { ascending: true })
           .range(from, to)
       );
     } catch (e) {
