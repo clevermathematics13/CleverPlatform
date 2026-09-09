@@ -1,5 +1,5 @@
 {
-  "_": "A.2 'What Undoing Really Means' -- the worked example for na_derive_anchors.py and na_prompt_crops.py. Regenerating from this reproduces migration 20260909124540 exactly. See HANDOFF.md ss15.",
+  "_": "A.2 'What Undoing Really Means' -- the worked example for na_derive_anchors.py and na_prompt_crops.py. Regenerating from this reproduces migration 20260909124540, except for Q3's mark split, which the teacher changed afterwards in migration 20260909174056 and which is carried here rather than in the original migration -- so a regeneration diff of exactly those four rows is correct, and anything else is not. See HANDOFF.md ss15.",
 
   "packet_version_id": "2f8a4c31-6b7e-4d92-a1f5-8c3e07b9d240",
   "nuanced_analysis_id": "41e8ca4e-087d-4146-b364-19139d659343",
@@ -24,10 +24,10 @@
     "20": 21, "21": 22
   },
 
-  "_mark_splits": "How a question's printed total divides across its own answer boxes. parts[] records one total per question and no per-sub-part breakdown, so these were read off the printed sub-parts and their answer keys; each list must sum to the question's total, which --sql enforces. This is the one genuinely pedagogical judgment in the file and the thing a teacher is most likely to want to move. Questions printed with a single box are absent and take their whole total.",
+  "_mark_splits": "How a question's printed total divides across its own answer boxes. parts[] records one total per question and no per-sub-part breakdown, so these were read off the printed sub-parts and their answer keys; each list must sum to the question's total, which --sql enforces. This is the one genuinely pedagogical judgment in the file and the thing a teacher is most likely to want to move -- Q3 already was, from 2/4 to 3/3, by the teacher on 9 Sep 2026 (migration 20260909174056). Questions printed with a single box are absent and take their whole total.",
   "mark_splits": {
     "1": [3, 1],
-    "3": [2, 4],
+    "3": [3, 3],
     "5": [2, 3],
     "13": [1, 3],
     "14": [1, 2, 2, 1],
