@@ -1,6 +1,66 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/na-scanning";
 import Link from "next/link";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+
+type PacketVersion = {
+  id: string;
+  version_label: string | null;
+  page_count: number | null;
+  nuanced_analysis_id: string | null;
+  nuanced_analyses: { title: string | null; slug: string | null } | { title: string | null; slug: string | null }[] | null;
+};
+
+type CropRow = {
+  id: string;
+  anchor_id: string;
+  packet_scan_id: string | null;
+  is_blank: boolean | null;
+  possibly_truncated: boolean | null;
+  na_feedback: { approved_at: string | null } | { approved_at: string | null }[] | null;
+};
+
+type ScanRow = {
+  id: string;
+  invited_student_id: string | null;
+  student_profile_id: string | null;
+};
+
+/**
+ * Which packet version the board lands on when no ?packetVersionId is given.
+ *
+ * Ordering by created_at alone lands it on whichever print master was created
+ * most recently -- which, the moment a new NA's packet is generated, is an
+ * empty board with nothing to review, while a half-finished review sits one
+ * click away on the previous version with no hint that it is there. Prefer the
+ * newest version that actually has scanned work, falling back to the newest
+ * overall so a freshly printed packet still resolves to something.
+ *
+ * Newest-first with a short circuit, so the common case (the newest version is
+ * the one being marked) costs one existence probe and stops.
+ */
+async function resolveDefaultVersionId(
+  supabase: SupabaseServerClient,
+  packetVersions: PacketVersion[]
+): Promise<string | null> {
+  for (const pv of packetVersions) {
+    const { data: anchors } = await supabase
+      .from("na_anchors")
+      .select("id")
+      .eq("packet_version_id", pv.id);
+    const anchorIds = (anchors ?? []).map((a: { id: string }) => a.id);
+    if (anchorIds.length === 0) continue;
+
+    const { count } = await supabase
+      .from("na_response_crops")
+      .select("id", { count: "exact", head: true })
+      .in("anchor_id", anchorIds);
+    if ((count ?? 0) > 0) return pv.id;
+  }
+  return packetVersions[0]?.id ?? null;
+}
 
 export default async function NaReviewPage({
   searchParams,
@@ -16,7 +76,15 @@ export default async function NaReviewPage({
     .select("id, version_label, page_count, nuanced_analysis_id, nuanced_analyses(title, slug)")
     .order("created_at", { ascending: false });
 
-  const activeVersionId = packetVersionId ?? packetVersions?.[0]?.id ?? null;
+  const versions = (packetVersions ?? []) as PacketVersion[];
+  const activeVersionId = packetVersionId ?? (await resolveDefaultVersionId(supabase, versions));
+
+  const activePv = versions.find((pv) => pv.id === activeVersionId) ?? null;
+  const activeNa = activePv
+    ? Array.isArray(activePv.nuanced_analyses)
+      ? activePv.nuanced_analyses[0]
+      : activePv.nuanced_analyses
+    : null;
 
   let questions: {
     id: string;
@@ -28,6 +96,8 @@ export default async function NaReviewPage({
     sort_order: number;
     progress: { total: number; reviewed: number; blank: number; possiblyTruncated: number };
   }[] = [];
+  let scanStats: { scans: number; students: number; duplicated: number; unidentified: number } | null = null;
+  let loadError: string | null = null;
 
   if (activeVersionId) {
     const { data: anchors } = await supabase
@@ -38,17 +108,40 @@ export default async function NaReviewPage({
 
     if (anchors && anchors.length > 0) {
       const anchorIds = anchors.map((a) => a.id);
-      const { data: crops } = await supabase
-        .from("na_response_crops")
-        .select("id, anchor_id, is_blank, possibly_truncated, na_feedback(approved_at)")
-        .in("anchor_id", anchorIds);
+
+      // PostgREST caps a single request at 1000 rows, and a packet version's
+      // crops run well past that (A.1 alone has ~2000). A plain .select() here
+      // silently returned an arbitrary, unordered 1000 of them -- so the
+      // progress bar read "/1000" as if that were the total, per-anchor totals
+      // came out uneven, and the truncation banner below UNDER-reported,
+      // because an anchor whose crops fell outside the window looked clean.
+      // Page through with the same helper the release/results routes use.
+      //
+      // .order("id") matters: .range() without an explicit order has no
+      // stability guarantee across requests, so paging can duplicate and omit
+      // rows -- exactly the bug this is fixing, in a new disguise.
+      let crops: CropRow[] = [];
+      try {
+        crops = await fetchAllRows<CropRow>((from, to) =>
+          supabase
+            .from("na_response_crops")
+            .select("id, anchor_id, packet_scan_id, is_blank, possibly_truncated, na_feedback(approved_at)")
+            .in("anchor_id", anchorIds)
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+      } catch (e) {
+        // fetchAllRows throws where the old destructure swallowed the error.
+        // Better a visible failure than a confidently wrong denominator.
+        loadError = e instanceof Error ? e.message : "Failed to load scanned responses";
+      }
 
       const byAnchor = new Map<
         string,
         { total: number; reviewed: number; blank: number; possiblyTruncated: number }
       >();
       for (const a of anchors) byAnchor.set(a.id, { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0 });
-      for (const crop of crops ?? []) {
+      for (const crop of crops) {
         const bucket = byAnchor.get(crop.anchor_id);
         if (!bucket) continue;
         bucket.total += 1;
@@ -62,6 +155,48 @@ export default async function NaReviewPage({
         ...a,
         progress: byAnchor.get(a.id) ?? { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0 },
       }));
+
+      // A student who was re-scanned has more than one packet scan against this
+      // version, and every one of their crops counts toward the totals above --
+      // so "N responses" can exceed one per student per question without
+      // anything being wrong. Say so plainly rather than leaving an inflated
+      // denominator to be discovered. Deliberately advisory only: nothing here
+      // collapses or hides a scan, because picking a winner per student is a
+      // decision the results table (which is per-scan too) has to share.
+      const scanIds = Array.from(
+        new Set(crops.map((c) => c.packet_scan_id).filter((id): id is string => Boolean(id)))
+      );
+      if (scanIds.length > 0) {
+        try {
+          const scans = await fetchAllRows<ScanRow>((from, to) =>
+            supabase
+              .from("na_packet_scans")
+              .select("id, invited_student_id, student_profile_id")
+              .in("id", scanIds)
+              .order("id", { ascending: true })
+              .range(from, to)
+          );
+          const perStudent = new Map<string, number>();
+          let unidentified = 0;
+          for (const s of scans) {
+            const key = s.invited_student_id ?? s.student_profile_id;
+            if (!key) {
+              unidentified += 1;
+              continue;
+            }
+            perStudent.set(key, (perStudent.get(key) ?? 0) + 1);
+          }
+          scanStats = {
+            scans: scans.length,
+            students: perStudent.size,
+            duplicated: Array.from(perStudent.values()).filter((n) => n > 1).length,
+            unidentified,
+          };
+        } catch {
+          // Advisory only -- a failure here must not cost the teacher the board.
+          scanStats = null;
+        }
+      }
     }
   }
 
@@ -90,11 +225,17 @@ export default async function NaReviewPage({
         <p className="text-da-muted text-sm mt-1">
           Mark vertically: one question at a time, across every student.
         </p>
+        {activePv && (
+          <p className="text-sm mt-2">
+            <span className="text-da-text font-medium">{activeNa?.title ?? "Untitled NA"}</span>{" "}
+            {activePv.version_label && <span className="text-da-muted">({activePv.version_label})</span>}
+          </p>
+        )}
       </div>
 
-      {packetVersions && packetVersions.length > 1 && (
+      {versions.length > 1 && (
         <div className="flex gap-2">
-          {packetVersions.map((pv) => {
+          {versions.map((pv) => {
             const na = Array.isArray(pv.nuanced_analyses) ? pv.nuanced_analyses[0] : pv.nuanced_analyses;
             return (
               <Link
@@ -110,6 +251,15 @@ export default async function NaReviewPage({
               </Link>
             );
           })}
+        </div>
+      )}
+
+      {loadError && (
+        <div className="rounded-xl border border-red-500/60 bg-red-500/5 p-4">
+          <p className="text-sm font-medium text-red-400">Could not load the scanned responses</p>
+          <p className="mt-1 text-xs text-da-muted">
+            The counts below would be wrong, so they are not being shown. {loadError}
+          </p>
         </div>
       )}
 
@@ -135,13 +285,24 @@ export default async function NaReviewPage({
                 style={{ width: totalCrops > 0 ? `${(totalReviewed / totalCrops) * 100}%` : "0%" }}
               />
             </div>
+            {scanStats && (
+              <p className="mt-2 text-xs text-da-muted">
+                Across {scanStats.scans} scan{scanStats.scans === 1 ? "" : "s"} -- {scanStats.students} student
+                {scanStats.students === 1 ? "" : "s"}
+                {scanStats.duplicated > 0 &&
+                  `, ${scanStats.duplicated} with more than one scan`}
+                {scanStats.unidentified > 0 &&
+                  `, ${scanStats.unidentified} scan${scanStats.unidentified === 1 ? "" : "s"} not matched to a student`}
+                {scanStats.duplicated > 0 && ". A re-scanned student's responses are all counted here."}
+              </p>
+            )}
           </div>
 
           {truncationHotspots.length > 0 && (
             <div className="rounded-xl border border-amber-400/60 bg-amber-500/5 p-4">
               <p className="text-sm font-medium text-amber-500">
-                {truncationHotspots.length} anchor{truncationHotspots.length === 1 ? "" : "s"} may be cropping some
-                students&apos; work too tight
+                {truncationHotspots.length} anchor{truncationHotspots.length === 1 ? "" : "s"}{" "}
+                may be cropping some students&apos; work too tight
               </p>
               <p className="mt-1 text-xs text-da-muted">
                 Stage 4&apos;s crop expansion hit its configured limit while ink was still touching the edge -- these
