@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractLeadingQuestionNumber,
   extractPartNumber,
+  extractQuestionCitations,
   validateDraftNumbering,
 } from "./numbering-validator";
 
@@ -150,5 +151,110 @@ describe("validateDraftNumbering", () => {
     expect(validateDraftNumbering(null as any)).toEqual([]);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect(validateDraftNumbering({ sections: [null, { heading: 1, questions: null }] } as any)).toEqual([]);
+  });
+});
+
+describe("extractQuestionCitations", () => {
+  it("reads single citations and both endpoints of a range", () => {
+    expect(extractQuestionCitations("Complete Q3 and Q12.")).toEqual([3, 12]);
+    expect(extractQuestionCitations("Complete Q1-Q7.")).toEqual([1, 7]);
+    expect(extractQuestionCitations("Complete Q1–Q7.")).toEqual([1, 7]);
+    // Second endpoint without its own Q, which the model writes about half the time.
+    expect(extractQuestionCitations("Complete Q9–15.")).toEqual([9, 15]);
+    expect(extractQuestionCitations("See Q 4 for the method.")).toEqual([4]);
+  });
+
+  it("ignores ordinary numbers, which this prose is full of", () => {
+    expect(extractQuestionCitations("8 minutes with a slider; 5 fewer than p.")).toEqual([]);
+    expect(extractQuestionCitations("a computer that costs $1,200 before tax")).toEqual([]);
+    expect(extractQuestionCitations("")).toEqual([]);
+  });
+
+  it("does not read a Q that is part of a longer token", () => {
+    expect(extractQuestionCitations("an IQ12 score")).toEqual([]);
+  });
+});
+
+describe("validateDraftNumbering — prose cross-references", () => {
+  // A.2's real compulsory core, which shipped citing questions the packet
+  // does not have. See numbering-validator.ts's validateCitations comment.
+  const A2_COMPULSORY_CORE =
+    "You must complete: Q1–Q7, Q9–Q15, Q17–Q20, Q22, Q23, Q25, Q26. " +
+    "Everything marked ★★★ is a genuine challenge. Partial working always earns Clev's Marks.";
+
+  function packet(questionCount: number, extra: Record<string, unknown> = {}) {
+    return {
+      sections: [
+        {
+          heading: "Part 1",
+          questions: Array.from({ length: questionCount }, () => ({ prompt: "Find the mean." })),
+        },
+      ],
+      ...extra,
+    };
+  }
+
+  it("flags every citation past the last question the packet has", () => {
+    const issues = validateDraftNumbering(packet(21, { compulsoryCore: A2_COMPULSORY_CORE }));
+    expect(issues.map((i) => i.kind)).toEqual([
+      "cross-reference-out-of-range",
+      "cross-reference-out-of-range",
+      "cross-reference-out-of-range",
+      "cross-reference-out-of-range",
+    ]);
+    expect(issues.every((i) => i.location === "Compulsory core")).toBe(true);
+    expect(issues.map((i) => i.detail.match(/Cites Q([0-9]+)/)?.[1])).toEqual(["22", "23", "25", "26"]);
+    expect(issues[0].detail).toContain("only 21 questions");
+  });
+
+  it("catches A.2's real defect at the bound A.2 actually had", () => {
+    // A.2's draft carried 25 questions (the printed packet numbers only 21 --
+    // the Desmos activity prints unnumbered and the three Extension branches
+    // never print at all). So the bound available at generation time is 25,
+    // and exactly one citation, Q26, is provably impossible. That is the
+    // honest yield of this check: not every wrong number, but enough to put
+    // the list in front of a teacher before it reaches a student's hands.
+    const issues = validateDraftNumbering(packet(25, { compulsoryCore: A2_COMPULSORY_CORE }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("cross-reference-out-of-range");
+    expect(issues[0].detail).toContain("Cites Q26");
+  });
+
+  it("says nothing when every citation is in range", () => {
+    expect(validateDraftNumbering(packet(26, { compulsoryCore: A2_COMPULSORY_CORE }))).toEqual([]);
+    expect(validateDraftNumbering(packet(21, { compulsoryCore: "Complete Q1–Q21." }))).toEqual([]);
+  });
+
+  it("counts subparts toward the bound, matching how numbers are assigned", () => {
+    const withSubparts = {
+      sections: [
+        {
+          heading: "Part 1",
+          questions: [
+            { prompt: "Find the mean.", subparts: [{ prompt: "State the mode." }, { prompt: "Sketch it." }] },
+          ],
+        },
+      ],
+      compulsoryCore: "Complete Q1 and Q3.",
+    };
+    expect(validateDraftNumbering(withSubparts)).toEqual([]);
+    expect(validateDraftNumbering({ ...withSubparts, compulsoryCore: "Complete Q4." })).toHaveLength(1);
+  });
+
+  it("checks the other prose fields that cite question numbers", () => {
+    const planted = validateDraftNumbering(packet(3, { plantedErrorIntro: "The slip is in Q9." }));
+    expect(planted).toHaveLength(1);
+    expect(planted[0].location).toBe("Planted error intro");
+
+    const reflection = validateDraftNumbering(
+      packet(3, { reflectionQuestions: ["Look back at Q2.", "Now revisit Q8."] })
+    );
+    expect(reflection).toHaveLength(1);
+    expect(reflection[0].location).toBe("Reflection question 2");
+  });
+
+  it("stays quiet when there is no prose, or no questions to bound it with", () => {
+    expect(validateDraftNumbering(packet(5))).toEqual([]);
+    expect(validateDraftNumbering(packet(0, { compulsoryCore: "Complete Q1–Q7." }))).toEqual([]);
   });
 });

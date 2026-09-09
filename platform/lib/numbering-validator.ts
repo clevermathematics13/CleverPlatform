@@ -37,6 +37,11 @@ type DraftSection = {
 
 type DraftLike = {
   sections: DraftSection[];
+  // Prose the model writes ABOUT the questions, which is where it cites them
+  // by number. Optional because not every draft carries them.
+  compulsoryCore?: string;
+  plantedErrorIntro?: string;
+  reflectionQuestions?: string[];
 };
 
 export type NumberingIssueKind =
@@ -44,7 +49,8 @@ export type NumberingIssueKind =
   | "question-duplicate"
   | "question-out-of-order"
   | "part-gap"
-  | "part-duplicate";
+  | "part-duplicate"
+  | "cross-reference-out-of-range";
 
 export type NumberingIssue = {
   kind: NumberingIssueKind;
@@ -89,6 +95,69 @@ export function extractPartNumber(heading: string): number | null {
   if (!m) return null;
   const n = Number(m[1]);
   return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+/**
+ * Extracts every question number the prose CITES, e.g. the "Q1, Q9, Q17"
+ * in a compulsory-core list. Understands single citations ("Q12", "Q 12")
+ * and ranges ("Q1-Q7", "Q1–7"), returning both endpoints of a range: the
+ * interior of an ascending range cannot be out of bounds when its top is
+ * in bounds, so the endpoints are all this check needs.
+ *
+ * A leading "Q" is REQUIRED, and that is the point rather than an
+ * oversight. This prose is full of ordinary numbers -- "8 minutes with a
+ * slider", "5 fewer than p", "$1,200 before tax" -- and a check that read
+ * those as question references would cry wolf on every packet. Only an
+ * explicit Q-citation is unambiguous enough to act on.
+ */
+export function extractQuestionCitations(prose: string): number[] {
+  if (typeof prose !== "string") return [];
+  const found = new Set<number>();
+  const re = /(?<![A-Za-z0-9])Q[ ]?([0-9]{1,3})(?:[ ]*[-–—][ ]*(?:Q[ ]?)?([0-9]{1,3}))?/gi;
+  let m = re.exec(prose);
+  while (m !== null) {
+    for (const raw of [m[1], m[2]]) {
+      if (raw === undefined) continue;
+      const n = Number(raw);
+      if (Number.isFinite(n)) found.add(n);
+    }
+    m = re.exec(prose);
+  }
+  return Array.from(found).sort((a, b) => a - b);
+}
+
+/**
+ * Reports any question number the prose cites that the packet cannot have.
+ *
+ * WHY ONLY THE UPPER BOUND: the check is deliberately one-sided. A citation
+ * above the question count is provably wrong -- there is no such question --
+ * so it never produces a false positive. A citation INSIDE the range may
+ * still be off by one (A.2's list was), but proving that would mean
+ * reproducing every decision the renderer makes about which questions get a
+ * printed number, and a validator that guesses wrong is worse than no
+ * validator. One out-of-range citation is enough to tell a teacher the whole
+ * list needs re-reading, which is what this is for.
+ *
+ * REAL CASE: A.2 ("What Undoing Really Means") shipped with a compulsory
+ * core reading "Q1-Q7, Q9-Q15, Q17-Q20, Q22, Q23, Q25, Q26" on a packet
+ * whose printed questions stop at Q21. Students were handed a list telling
+ * them to complete questions that do not exist. Nothing caught it, because
+ * this validator only ever inspected question prompts and section headings
+ * -- the numbers the model wrote ABOUT the questions went unchecked.
+ */
+function validateCitations(
+  prose: string | undefined,
+  questionCount: number,
+  location: string
+): NumberingIssue[] {
+  if (!prose || questionCount < 1) return [];
+  return extractQuestionCitations(prose)
+    .filter((n) => n < 1 || n > questionCount)
+    .map((n) => ({
+      kind: "cross-reference-out-of-range" as const,
+      location,
+      detail: `Cites Q${n}, but this packet numbers only ${questionCount} question${questionCount === 1 ? "" : "s"} — check every number in this list against the questions actually in the packet.`,
+    }));
 }
 
 /**
@@ -195,6 +264,30 @@ export function validateDraftNumbering(draft: DraftLike): NumberingIssue[] {
         });
       }
     }
+  }
+
+  // -- Question numbers cited in the surrounding prose -------------------
+  // The bound is every question the draft contains, top-level and subparts,
+  // which is exactly what document-orchestrator-nuanced.ts's globalCounter
+  // walks when it assigns numbers. Counting it here rather than trusting the
+  // model's own arithmetic is the whole point: the two disagreeing is the
+  // bug being caught.
+  let questionCount = 0;
+  draft.sections.forEach((section) => {
+    if (!section || !Array.isArray(section.questions)) return;
+    section.questions.forEach((q) => {
+      if (!q) return;
+      questionCount += 1;
+      if (Array.isArray(q.subparts)) questionCount += q.subparts.length;
+    });
+  });
+
+  issues.push(...validateCitations(draft.compulsoryCore, questionCount, "Compulsory core"));
+  issues.push(...validateCitations(draft.plantedErrorIntro, questionCount, "Planted error intro"));
+  if (Array.isArray(draft.reflectionQuestions)) {
+    draft.reflectionQuestions.forEach((rq, i) => {
+      issues.push(...validateCitations(rq, questionCount, `Reflection question ${i + 1}`));
+    });
   }
 
   return issues;

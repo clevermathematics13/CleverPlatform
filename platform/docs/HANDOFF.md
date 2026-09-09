@@ -1400,5 +1400,35 @@ do not work around it.
 - **The packet's own compulsory-core text is wrong about its numbering.** Page 1
   says "You must complete: Q1-Q7, Q9-Q15, Q17-Q20, Q22, Q23, Q25, Q26", but the
   packet only prints through Q21. That is generated prose that never matched the
-  rendered numbering; it is a content bug in the packet, not a setup error, and
-  it is worth fixing before this packet is issued again.
+  rendered numbering; it is a content bug in the packet, not a setup error.
+
+  **The text itself cannot be edited in place, and this is worth knowing before
+  someone goes looking for it.** `nuanced_analyses.draft_content` is null for
+  A.2 — and for every one of the six NA packets, A.1 included — so that box's
+  wording is never persisted anywhere. It is authored in the sandbox at
+  generation time and baked into the rendered PDF. There is no row to correct,
+  and the copies students are holding cannot be changed retroactively. Do not
+  "fix" it by writing a partial `draft_content` holding just a corrected
+  `compulsoryCore`: `editor-client.tsx` loads `draft_content` into the editor
+  whenever it is present, so a partial write would replace the whole packet
+  with a near-empty draft the next time A.2 is opened. A correct sentence, from
+  the packet's own tier data (only printed Q15 is tier 3, and the Reflection
+  section already declares itself compulsory), is: "You must complete: Q1-Q14,
+  Q16-Q21. Q15 is marked (three stars) and is a genuine challenge — attempt it
+  if you have time. Partial working always earns Clev's Marks." Paste that in
+  when the packet is next regenerated.
+
+  **What was fixed is the class, not the instance** (9 Sep 2026).
+  `lib/numbering-validator.ts` already existed for almost exactly this defect —
+  model-embedded numbers that disagree with the structural numbering — but it
+  only ever inspected question prompts and Part headings, so numbers written
+  *about* the questions went unchecked. It now also validates the question
+  numbers cited in `compulsoryCore`, `plantedErrorIntro` and
+  `reflectionQuestions` against the count of questions the draft actually
+  contains, and the generator surfaces those as warnings before a teacher
+  downloads the PDF. The check is deliberately one-sided: it flags only
+  citations ABOVE the question count, which are provably impossible, because
+  proving an in-range citation wrong would mean reproducing every decision the
+  renderer makes about which questions get a printed number. On A.2's own draft
+  that yields exactly one flag, Q26 against a bound of 25 — which is the point,
+  since one impossible number is enough to send a teacher back to the list.
