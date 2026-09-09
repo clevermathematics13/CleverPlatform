@@ -70,6 +70,47 @@ export async function fetchAllRows<T>(
 }
 
 // -----------------------------------------------------------------------------
+// Truncation evidence
+// -----------------------------------------------------------------------------
+
+/**
+ * Whether an AI transcription shows the assessor filling in text it could not
+ * actually read -- a bracketed reconstruction like "the express[ions are
+ * equivalent]" or "60 is the cos[t] per ticket".
+ *
+ * This is the only independent evidence of real truncation available without
+ * re-reading the original page, and it exists because the two obvious signals
+ * are both unusable:
+ *
+ *   - `na_response_crops.possibly_truncated` fires whenever stage 4's
+ *     expansion hit its cap with ink still on the edge, which includes
+ *     printed rules, axis labels and answer-box borders touching the crop --
+ *     not just a student's answer running off it. On A.1, Q26(a) flags 42 of
+ *     47 students purely because the printed graph's caption sits under the
+ *     box, and exactly one of those 42 has a gap.
+ *   - The assessor's own teacherNote echoes the flag it was handed:
+ *     buildAssessmentSystemPrompt tells a flagged crop to "say so plainly in
+ *     teacherNote" and an unflagged one to treat an apparent cut-off with
+ *     "real skepticism".
+ *
+ * Nothing in the prompt asks for bracket notation, so its rate is not driven
+ * by the flag. Measured over A.1: 31.9% of flagged crops bracket, against
+ * 10.5% of unflagged ones.
+ *
+ * Deliberately narrow, and a ranking signal rather than a verdict. The span
+ * is capped at 40 characters so a whole bracketed paragraph (a transcriber's
+ * aside) does not count, and ellipsis is excluded because question text and
+ * student answers use it legitimately -- Q17 literally asks students to
+ * "Begin it with 'For every...'". Bracketed interval notation such as [5, 10]
+ * would register as a gap; it has not appeared in this packet's algebra, and
+ * a stray one costs a place in an ordering, not a wrong mark.
+ */
+export function transcriptionHasUnreadableGap(transcription: string | null | undefined): boolean {
+  if (!transcription) return false;
+  return /\[[^\]]{1,40}\]/.test(transcription);
+}
+
+// -----------------------------------------------------------------------------
 // Roster matching against invited_students
 // -----------------------------------------------------------------------------
 
