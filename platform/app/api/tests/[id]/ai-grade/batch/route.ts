@@ -143,16 +143,40 @@ export async function GET(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // How many students from each batch have a completed grading run. The
-  // split route names every per-student scan "...-batch-<batchId>.pdf", so
-  // the run's source path is the link. Lets the tab tell a batch that was
-  // split and graded (finished) from one that was split and then lost to a
+  // How many students from each batch have already been paid for -- graded,
+  // or with their grading under way. The split route names every per-student
+  // scan "...-batch-<batchId>.pdf", so the run's source path is the link.
+  // Lets the tab tell a batch whose grading has started (finished with, from
+  // this tab's point of view) from one that was split and then lost to a
   // gateway timeout before grading started (still needs doing).
+  //
+  // 'submitted' and 'running' count alongside 'complete' because the teacher
+  // has been charged for those students too. An overnight submission is N
+  // 'submitted' runs and no complete ones for hours; counting only 'complete'
+  // read that as nobody graded, so lib/batch-restore.ts called the batch
+  // unfinished, the tab restored it on the next page load with the amber
+  // "most likely the earlier attempt timed out" note, and one click on "Split
+  // and grade N student(s)" marked the whole class a SECOND time -- at full
+  // price, synchronously, while the first submission was still with Anthropic.
+  //
+  // The case this query was written for is untouched: a batch split and then
+  // lost before any run row existed has no runs in ANY of these statuses, so
+  // graded_runs is still 0 and it is still restored. A run that later fails
+  // leaves the set too, so a batch whose grading really did die comes back.
+  //
+  // 'running' is deliberately NOT counted. It looks like it belongs here, but
+  // a synchronous run is 'running' only for the seconds its own request is
+  // alive, and if that request is killed (a gateway timeout mid-class is the
+  // exact case this restore exists for) the row is stranded 'running' with no
+  // batch pointer, which nothing sweeps. Counting it would hide the rest of
+  // that part's students behind one dead row -- trading a double mark for a
+  // silent no-mark. An overnight run is 'submitted' from the moment it is
+  // paid for, so the double-billing case is covered without it.
   const { data: runs } = await supabase
     .from("ai_grade_runs")
     .select("source_storage_path")
     .eq("test_id", testId)
-    .eq("status", "complete")
+    .in("status", ["complete", "submitted"])
     .like("source_storage_path", "%-batch-%.pdf");
   const gradedRunsByBatch = new Map<string, number>();
   for (const r of runs ?? []) {

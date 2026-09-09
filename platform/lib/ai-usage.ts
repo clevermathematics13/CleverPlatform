@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export type UsagePipeline =
   | "ai_grade"
+  | "ai_grade_batch"
   | "ai_regrade"
   | "ai_grade_segment"
   | "ai_grade_chunk_cover"

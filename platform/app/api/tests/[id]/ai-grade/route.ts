@@ -1,39 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
-import { PDFDocument } from "pdf-lib";
-import { getApiTeacher, type ApiAuthOk } from "@/lib/auth";
+import { getApiTeacher } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
 import {
-  AiGradeResponseSchema,
   GRADING_MODEL,
   MAX_SCAN_BYTES,
   SCAN_BUCKET,
-  assembleMarkScheme,
   assembleMarkschemeImages,
   assembleQuestionImages,
-  buildGradingStudentPrompt,
-  buildGradingSystemPrompt,
-  buildGradingUserPrompt,
   formatGradingSubject,
-  gradeNeedsReview,
   parseGradingSubject,
-  unitLabel,
   validateGradeResponse,
 } from "@/lib/ai-grading";
-import type { GradingUnit, ValidatedGrade } from "@/lib/ai-grading";
-import { fetchAllRows } from "@/lib/na-scanning";
-import { cropRegions, cvServiceEndpoint, type CropRegion } from "@/lib/cv-crop-service";
+import type { GradingUnit } from "@/lib/ai-grading";
 import {
-  anchorToEvidenceBox,
-  fractionBoxToPoints,
-  padModelBox,
-  pointsToFractions,
-  type EvidenceBox,
-  type PageSizePt,
-} from "@/lib/evidence-crops";
+  buildGradingRequest,
+  loadGradeableMarkScheme,
+  loadStudentDisplayName,
+  persistGradeOutcome,
+} from "@/lib/ai-grading-run";
+import { fetchAllRows } from "@/lib/na-scanning";
 
 export const maxDuration = 300;
+
+/** One ai_grade_runs row as the review UI reads it (GET below). */
+interface RunRow {
+  id: string;
+  test_id: string;
+  student_id: string | null;
+  invited_student_id: string | null;
+  status: string;
+  model: string | null;
+  source_storage_path: string | null;
+  coverage: unknown;
+  error: string | null;
+  created_at: string;
+  completed_at: string | null;
+  /**
+   * The Anthropic message batch a run is still tied to, or null once it is
+   * settled. Served to the review UI because a 'running' run that still
+   * carries one is a run the collect route left for a later sweep to promote
+   * (its results were written, its own status update was lost) -- the page
+   * has to keep polling collect for it, and 'running' alone cannot say so.
+   */
+  pending_message_batch_id: string | null;
+}
 
 /** One ai_grade_results row as the review UI reads it (GET below). */
 interface ResultRow {
@@ -56,211 +67,6 @@ interface ResultRow {
   accepted_by: string | null;
 }
 
-/** One rendered crop, the box it was cut from, and where that box came from. */
-interface EvidenceCrop {
-  buffer: Buffer;
-  box: EvidenceBox;
-  source: "model" | "anchor";
-}
-
-interface LayoutRow {
-  id: string;
-  page_count: number;
-  reference_page_sizes: PageSizePt[];
-}
-
-interface AnchorRow {
-  question_number: number;
-  part_label: string | null;
-  page_index: number;
-  x0_pt: number;
-  y0_pt: number;
-  x1_pt: number;
-  y1_pt: number;
-  expand_max_x1_pt: number | null;
-  expand_max_y1_pt: number | null;
-}
-
-/** The natural key test_item_anchors is unique on. */
-const anchorKey = (questionNumber: number, partLabel: string | null) =>
-  `${questionNumber}|${partLabel ?? ""}`;
-
-/**
- * The locked per-paper regions for this test, if there are any.
- *
- * Locked, not merely present: `anchors_locked` is the teacher's explicit
- * confirmation that the geometry has been checked. A half-drawn draft layout
- * must not start cutting crops for a whole class.
- */
-async function loadLockedLayout(
-  supabase: ApiAuthOk["supabase"],
-  testId: string
-): Promise<{ layout: LayoutRow; anchors: Map<string, AnchorRow> } | null> {
-  const { data: layout } = await supabase
-    .from("test_paper_layouts")
-    .select("id, page_count, reference_page_sizes")
-    .eq("test_id", testId)
-    .eq("is_active", true)
-    .eq("anchors_locked", true)
-    .maybeSingle();
-  if (!layout) return null;
-
-  const { data: rows } = await supabase
-    .from("test_item_anchors")
-    .select(
-      "question_number, part_label, page_index, x0_pt, y0_pt, x1_pt, y1_pt, expand_max_x1_pt, expand_max_y1_pt"
-    )
-    .eq("layout_id", (layout as LayoutRow).id);
-  if (!rows || rows.length === 0) return null;
-
-  const anchors = new Map<string, AnchorRow>();
-  for (const r of rows as AnchorRow[]) anchors.set(anchorKey(r.question_number, r.part_label), r);
-  return { layout: layout as LayoutRow, anchors };
-}
-
-/**
- * Best-effort: renders one cropped PNG per graded part, via the same Railway
- * CV service the NA scan pipeline uses (see
- * app/api/na-review/packet-scans/[id]/crop/route.ts for the sibling usage).
- *
- * TWO SOURCES FOR THE REGION, and which one was used is recorded per part in
- * evidence_box_source:
- *
- *  - 'anchor': a region a teacher drew once for this paper and locked. Every
- *    student sat the same printed booklet, so one set serves the class.
- *  - 'model': the grading model's own reported evidenceBox, padded. Audited in
- *    full against one 41-part paper, 22 of the 33 crops this produced did not
- *    contain the work they were captioned as evidence for: the model
- *    synthesises a plausible page layout rather than measuring one, and lands
- *    above the real answer every time. It remains the fallback because it is
- *    better than no crop, and because it is what every paper without a locked
- *    layout still has.
- *
- * The anchor path applies per part, not per run: a part with no region drawn
- * for it falls back to the model's box on its own, so a partly-drawn layout
- * degrades part by part instead of failing the whole scan.
- *
- * Never throws: a crop is a nice-to-have alongside the suggested grade, not
- * something worth failing (or even warning on) a whole grading run over.
- * Returns an empty map on any failure, including GRAPH_LAB_CV_SERVICE_URL
- * being unset (most local/dev environments).
- */
-async function fetchEvidenceCrops(
-  supabase: ApiAuthOk["supabase"],
-  testId: string,
-  scanBase64: string,
-  grades: ValidatedGrade[]
-): Promise<Map<string, EvidenceCrop>> {
-  const byTestItemId = new Map<string, EvidenceCrop>();
-  if (!cvServiceEndpoint("/crop")) return byTestItemId;
-
-  let pageCount: number;
-  const pageSizePt: PageSizePt[] = [];
-  try {
-    const pdfDoc = await PDFDocument.load(Buffer.from(scanBase64, "base64"));
-    pageCount = pdfDoc.getPageCount();
-    for (const page of pdfDoc.getPages()) {
-      pageSizePt.push({ widthPt: page.getWidth(), heightPt: page.getHeight() });
-    }
-  } catch {
-    return byTestItemId;
-  }
-
-  const locked = await loadLockedLayout(supabase, testId);
-
-  // Anchors map to a student's scan by page index, which only holds when the
-  // scan has at least the booklet's pages. A scan SHORTER than the paper has
-  // lost one, and every page after the gap is then a different page from the
-  // one the regions were drawn on -- so the whole scan falls back rather than
-  // cropping confidently wrong regions for it. Longer is fine and common:
-  // three of six sampled scans carried a trailing loose sheet after the
-  // booklet's own pages, in order.
-  const useAnchors = !!locked && pageCount >= locked.layout.page_count;
-
-  const boxByQid = new Map<string, EvidenceBox>();
-  const sourceByQid = new Map<string, "model" | "anchor">();
-  const regions: CropRegion[] = [];
-
-  for (const g of grades) {
-    const anchor = useAnchors
-      ? locked!.anchors.get(anchorKey(g.unit.questionNumber, g.unit.partLabel || null))
-      : undefined;
-
-    if (anchor) {
-      const referenceSize = locked!.layout.reference_page_sizes?.[anchor.page_index];
-      const scanSize = pageSizePt[anchor.page_index];
-      if (referenceSize && scanSize) {
-        const box = anchorToEvidenceBox({
-          anchor: {
-            x0Pt: Number(anchor.x0_pt),
-            y0Pt: Number(anchor.y0_pt),
-            x1Pt: Number(anchor.x1_pt),
-            y1Pt: Number(anchor.y1_pt),
-          },
-          referenceSize,
-          page: anchor.page_index + 1,
-          // The tolerance may grow the region down, but not past the cap --
-          // which is the next region's top, so it cannot reach the next part.
-          maxY1Pt: anchor.expand_max_y1_pt === null ? undefined : Number(anchor.expand_max_y1_pt),
-        });
-        // The caps are points on the REFERENCE page, so they cross through
-        // fractions too -- passing them straight across would cap growth at
-        // the wrong place on a differently sized scan.
-        const capFractions = pointsToFractions(
-          {
-            x0Pt: 0,
-            y0Pt: 0,
-            x1Pt: Number(anchor.expand_max_x1_pt ?? referenceSize.widthPt),
-            y1Pt: Number(anchor.expand_max_y1_pt ?? referenceSize.heightPt),
-          },
-          referenceSize
-        );
-        boxByQid.set(g.unit.testItemId, box);
-        sourceByQid.set(g.unit.testItemId, "anchor");
-        regions.push({
-          qid: g.unit.testItemId,
-          pageIndex: anchor.page_index,
-          ...fractionBoxToPoints(box, scanSize),
-          expandMaxX1Pt: capFractions.x1 * scanSize.widthPt,
-          expandMaxY1Pt: capFractions.y1 * scanSize.heightPt,
-        });
-        continue;
-      }
-    }
-
-    // -- Fallback: the model's own box, padded, exactly as before -----------
-    const reported = g.item.evidenceBox;
-    if (!g.item.workFound || !reported) continue;
-    const pageIndex = reported.page - 1;
-    if (pageIndex < 0 || pageIndex >= pageCount) continue;
-    const padded = padModelBox(reported);
-    if (!padded) continue;
-    boxByQid.set(g.unit.testItemId, padded);
-    sourceByQid.set(g.unit.testItemId, "model");
-    regions.push({
-      qid: g.unit.testItemId,
-      pageIndex,
-      ...fractionBoxToPoints(padded, pageSizePt[pageIndex]),
-    });
-  }
-
-  const cropped = await cropRegions({
-    pdfBase64: scanBase64,
-    expectedPageCount: pageCount,
-    regions,
-  });
-  if (!cropped.ok) return byTestItemId;
-
-  for (const crop of cropped.value) {
-    const box = boxByQid.get(crop.qid);
-    const source = sourceByQid.get(crop.qid);
-    if (crop.imageBase64 && box && source) {
-      byTestItemId.set(crop.qid, { buffer: Buffer.from(crop.imageBase64, "base64"), box, source });
-    }
-  }
-  return byTestItemId;
-}
-
 /**
  * GET /api/tests/[id]/ai-grade?studentId=...
  * Returns grading runs and their results, for the review UI.
@@ -276,28 +82,51 @@ export async function GET(
   const { id: testId } = await params;
   const studentId = request.nextUrl.searchParams.get("studentId");
 
-  let query = supabase
-    .from("ai_grade_runs")
-    .select(
-      "id, test_id, student_id, invited_student_id, status, model, source_storage_path, coverage, error, created_at, completed_at"
-    )
-    .eq("test_id", testId)
-    .order("created_at", { ascending: false });
-
-  if (studentId) {
+  // Built fresh per call so each .range() page starts from an untouched
+  // builder, the same shape the results query below uses.
+  const runQuery = () => {
+    const q = supabase
+      .from("ai_grade_runs")
+      .select(
+        "id, test_id, student_id, invited_student_id, status, model, source_storage_path, coverage, error, created_at, completed_at, pending_message_batch_id"
+      )
+      .eq("test_id", testId)
+      // id breaks created_at ties: one overnight submission inserts a whole
+      // class in a single statement, so those runs share a created_at to the
+      // microsecond and paging on it alone would repeat and skip rows.
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true });
+    if (!studentId) return q;
     const subject = parseGradingSubject(studentId);
-    query =
-      subject.kind === "invited"
-        ? query.eq("invited_student_id", subject.id)
-        : query.eq("student_id", subject.id);
-  }
+    return subject.kind === "invited"
+      ? q.eq("invited_student_id", subject.id)
+      : q.eq("student_id", subject.id);
+  };
 
-  const { data: rawRuns, error } = await query.limit(studentId ? 5 : 100);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  let rawRuns: RunRow[];
+  if (studentId) {
+    // One student's own history: the review UI shows the last few attempts,
+    // so this cap is the feature, not a limit to page around.
+    const { data, error } = await runQuery().limit(5);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    rawRuns = (data ?? []) as RunRow[];
+  } else {
+    // No cap on the whole-test load. Overnight marking creates one run per
+    // student on every click, so a class that has been re-marked a few times
+    // passes 100 runs within a term (60 on one test already, 5 Sep 2026) --
+    // and .limit(100) dropped the oldest ones with no error, so those
+    // students read as never graded on the page that is the only record of
+    // their marking. Page it like the results query below.
+    try {
+      rawRuns = await fetchAllRows<RunRow>((from, to) => runQuery().range(from, to));
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    }
+  }
   // Collapse student_id/invited_student_id back into the one opaque subject
   // id every caller already keys its state by (see parseGradingSubject) —
   // the review UI never needs to know which column a run's identity lives in.
-  const runs = (rawRuns ?? []).map((r) => ({
+  const runs = rawRuns.map((r) => ({
     ...r,
     student_id: formatGradingSubject(r),
   }));
@@ -442,30 +271,14 @@ export async function POST(
   if (!test) return NextResponse.json({ error: "Assessment not found" }, { status: 404 });
 
   const subject = parseGradingSubject(studentId);
-  let studentDisplayName: string | undefined;
-  if (subject.kind === "profile") {
-    const { data: studentProfile } = await supabase
-      .from("profiles")
-      .select("display_name")
-      .eq("id", subject.id)
-      .maybeSingle();
-    studentDisplayName = studentProfile?.display_name ?? undefined;
-  } else {
-    const { data: invited } = await supabase
-      .from("invited_students")
-      .select("full_name, nickname")
-      .eq("id", subject.id)
-      .maybeSingle();
-    studentDisplayName = invited?.nickname || invited?.full_name || undefined;
-  }
+  const studentDisplayName = await loadStudentDisplayName(supabase, subject);
 
   // -- Mark scheme assembly --------------------------------------------------
   let units: GradingUnit[];
+  let gradeable: GradingUnit[];
   let assemblyWarnings: string[];
   try {
-    const assembled = await assembleMarkScheme(supabase, testId);
-    units = assembled.units;
-    assemblyWarnings = assembled.warnings;
+    ({ units, gradeable, assemblyWarnings } = await loadGradeableMarkScheme(supabase, testId));
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Mark scheme assembly failed" },
@@ -473,7 +286,6 @@ export async function POST(
     );
   }
 
-  const gradeable = units.filter((u) => u.markschemeSource !== "none");
   if (gradeable.length === 0) {
     return NextResponse.json(
       {
@@ -605,76 +417,29 @@ export async function POST(
 
   // The request is built once and may be sent twice: a response that comes
   // back malformed or schema-invalid gets ONE retry before the run fails.
-  // Structured output (output_config.format, from the same zod schema the
-  // validator uses) makes the JSON itself well-formed, which removes the
-  // failure that killed a whole student's grading on 2 Sep 2026 -- a single
-  // stray character at position 8267 of an otherwise fine response. The
-  // retry covers what structured output cannot: a response cut off at
-  // max_tokens, or one that parses but fails validateGradeResponse's own
-  // checks (unknown testItemId, etc.).
-  const gradingRequest: Anthropic.MessageCreateParamsNonStreaming = {
-      model: GRADING_MODEL,
-      max_tokens: 16384,
-      // Marking should be as repeatable as the model allows. At the default
-      // temperature (1.0) the same scan re-marked minutes apart moved by 1-3
-      // marks on several parts (BiStats, 2 Sep 2026: Q1 5 -> 2 for one
-      // student at "high" confidence). 0 does not make it deterministic, but
-      // it removes the sampling noise that has nothing to do with the work.
-      temperature: 0,
-      // Identical for every student sitting this same test (it only varies by
-      // which policies this test's questions require, not by student), so
-      // it's still worth caching on a batch upload even though it's no
-      // longer identical across every test in the app.
-      //
-      // 1-hour cache lifetime, not the 5-minute default. The teacher reviews
-      // one part's page mapping, grades it, then reviews the next -- gaps of
-      // 5-40 minutes between grading calls for the same test are the normal
-      // rhythm (ai_usage_log, 4 Sep 2026: one 41-part test re-wrote its
-      // 14.4K-token prefix three times in a session because each gap
-      // outlived the 5-minute entry). A 1-hour write costs 2x input instead
-      // of 1.25x, and pays for itself the first time it prevents one re-write.
-      // Both breakpoints must carry the same TTL: a longer-lived entry may
-      // not follow a shorter-lived one in the prefix.
-      system: [
-        {
-          type: "text",
-          text: buildGradingSystemPrompt(gradeable),
-          cache_control: { type: "ephemeral", ttl: "1h" },
-        },
-      ],
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              // Identical for every student on this test — cached so a batch
-              // upload only pays full price for the first student's call.
-              type: "text",
-              text: buildGradingUserPrompt(gradeable, { testName: test.name }),
-              cache_control: { type: "ephemeral", ttl: "1h" },
-            },
-            {
-              type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: scanBase64 },
-            },
-            {
-              type: "text",
-              text: buildGradingStudentPrompt(studentDisplayName),
-            },
-          ],
-        },
-      ],
-  };
+  // Structured output (output_config.format, which buildGradingRequest sets
+  // from the same zod schema the validator uses) makes the JSON itself
+  // well-formed. The retry covers what structured output cannot: a response
+  // cut off at max_tokens, or one that parses but fails
+  // validateGradeResponse's own checks (unknown testItemId, etc.).
+  //
+  // 1h, not the batch path's 5m: this is the interactive route, and the gaps
+  // between one teacher's calls for the same test outlive a 5-minute cache
+  // entry (see GradingCacheTtl).
+  const gradingRequest = buildGradingRequest({
+    gradeable,
+    testName: test.name,
+    studentDisplayName,
+    scanBase64,
+    cacheTtl: "1h",
+  });
 
   let validation: ReturnType<typeof validateGradeResponse> | null = null;
   let lastError = "Model returned an empty response";
   for (let attempt = 1; attempt <= 2 && !validation; attempt++) {
     let responseText: string;
     try {
-      const message = await anthropic.messages.parse({
-        ...gradingRequest,
-        output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
-      });
+      const message = await anthropic.messages.parse(gradingRequest);
       await recordUsage(supabase, {
         pipeline: "ai_grade",
         model: GRADING_MODEL,
@@ -704,111 +469,28 @@ export async function POST(
 
   const { grades, warnings } = validation.outcome;
 
-  // -- Evidence crops (best-effort; never blocks or fails the run) -----------
-  const crops = await fetchEvidenceCrops(supabase, testId, scanBase64, grades);
-  const evidenceImagePathByTestItemId = new Map<string, string>();
-  for (const [testItemId, crop] of crops) {
-    const storagePath = `${testId}/${studentId}/evidence/${run.id}/${testItemId}.png`;
-    const { error: cropUploadErr } = await supabase.storage
-      .from(SCAN_BUCKET)
-      .upload(storagePath, crop.buffer, { contentType: "image/png", upsert: true });
-    if (!cropUploadErr) evidenceImagePathByTestItemId.set(testItemId, storagePath);
-  }
-
-  // -- Carry forward acceptance for parts whose suggestion did not change ----
-  // A re-mark used to start every part at accepted=false, so re-marking a
-  // fully reviewed student flipped all of it back to "needs review" even when
-  // the new suggestion was identical. The teacher's earlier decision still
-  // holds for any part where the model suggests the same mark it did last
-  // time (Clev's Marks already carries whatever they accepted for it). Only
-  // parts whose suggestion moved need a fresh look. Scoped to the most recent
-  // COMPLETE run before this one, so a failed attempt in between is ignored.
-  const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
-  {
-    let priorCompleteQuery = supabase
-      .from("ai_grade_runs")
-      .select("id")
-      .eq("test_id", testId)
-      .eq("status", "complete")
-      .neq("id", run.id)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    priorCompleteQuery =
-      subject.kind === "invited"
-        ? priorCompleteQuery.eq("invited_student_id", subject.id)
-        : priorCompleteQuery.eq("student_id", subject.id);
-    const { data: priorRun } = await priorCompleteQuery.maybeSingle();
-    if (priorRun) {
-      const { data: priorRows } = await supabase
-        .from("ai_grade_results")
-        .select("test_item_id, suggested_marks, accepted_at, accepted_by")
-        .eq("run_id", priorRun.id)
-        .eq("accepted", true);
-      for (const p of priorRows ?? []) priorAccepted.set(p.test_item_id, p);
-    }
-  }
-
-  // -- Persist results -------------------------------------------------------
-  let acceptedCarriedForward = 0;
-  const rows = grades.map((g) => {
-    const prior = priorAccepted.get(g.unit.testItemId);
-    const carried = prior && prior.suggested_marks === g.clampedMarks ? prior : null;
-    if (carried) acceptedCarriedForward += 1;
-    return {
-      run_id: run.id,
-      test_item_id: g.unit.testItemId,
-      suggested_marks: g.clampedMarks,
-      max_marks: g.unit.maxMarks,
-      confidence: g.confidence,
-      markscheme_source: g.unit.markschemeSource,
-      work_found: g.item.workFound,
-      reasoning: g.item.reasoning,
-      evidence: g.item.evidence,
-      evidence_image_path: evidenceImagePathByTestItemId.get(g.unit.testItemId) ?? null,
-      evidence_box: evidenceImagePathByTestItemId.has(g.unit.testItemId)
-        ? crops.get(g.unit.testItemId)?.box ?? null
-        : null,
-      // Kept in step with evidence_box: a row either has a model-located box
-      // and is labelled as such, or has neither. A teacher redrawing the
-      // region later overwrites both (see the evidence-box route).
-      evidence_box_source: evidenceImagePathByTestItemId.has(g.unit.testItemId)
-        ? crops.get(g.unit.testItemId)?.source ?? "model"
-        : null,
-      mark_breakdown: g.item.markBreakdown,
-      accepted: !!carried,
-      accepted_at: carried?.accepted_at ?? null,
-      accepted_by: carried?.accepted_by ?? null,
-    };
+  // Crops, acceptance carry-forward, the result rows, the coverage summary and
+  // the run to 'complete' -- shared with the overnight batch collect route so
+  // the carry-forward rule cannot drift between the two (lib/ai-grading-run.ts).
+  const persisted = await persistGradeOutcome({
+    supabase,
+    testId,
+    studentId,
+    subject,
+    runId: run.id,
+    scanBase64,
+    units,
+    gradeable,
+    assemblyWarnings,
+    grades,
+    warnings,
   });
+  if (!persisted.ok) return failRun(persisted.error);
 
-  const { error: insertErr } = await supabase.from("ai_grade_results").insert(rows);
-  if (insertErr) return failRun(`Could not save results: ${insertErr.message}`);
-
-  const suggestedTotal = grades.reduce((s, g) => s + g.clampedMarks, 0);
-  // maxTotal covers only parts that had a mark scheme to grade against;
-  // testTotalMarks is the assessment's real total, so the UI can show
-  // "17/20 of 33" instead of a misleading "17/20" when parts are missing
-  // a mark scheme.
-  const maxTotal = gradeable.reduce((s, u) => s + u.maxMarks, 0);
-  const testTotalMarks = units.reduce((s, u) => s + u.maxMarks, 0);
-  const needsReview = grades.filter(gradeNeedsReview).map((g) => unitLabel(g.unit));
-
-  const coverage = {
-    partsInAssessment: units.length,
-    partsGraded: grades.length,
-    partsWithoutMarkscheme: units.length - gradeable.length,
-    suggestedTotal,
-    maxTotal,
-    testTotalMarks,
-    needsReview,
-    acceptedCarriedForward,
-    warnings: [...assemblyWarnings, ...warnings],
-  };
-
-  await supabase
-    .from("ai_grade_runs")
-    .update({ status: "complete", completed_at: new Date().toISOString(), coverage })
-    .eq("id", run.id);
-
-  return NextResponse.json({ runId: run.id, status: "complete", ...coverage });
+  // persisted.completionRecorded can be false when the rows went in but the
+  // run's own status update did not. This path answers 200 either way, as it
+  // always has: the marks exist and the teacher can review them. Only the
+  // overnight path acts on the flag, because only it has a sweep that can
+  // pick the run back up.
+  return NextResponse.json({ runId: run.id, status: "complete", ...persisted.coverage });
 }
