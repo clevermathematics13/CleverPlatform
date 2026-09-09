@@ -973,8 +973,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                 ⚠ {numberingIssues.length} numbering problem{numberingIssues.length === 1 ? "" : "s"} in this draft
               </p>
               <p className="mt-0.5 text-amber-300/80">
-                The question/Part numbers in the generated content have gaps, duplicates, or run backwards —
-                questions may have been dropped during generation. Regenerate, or fix the numbering by hand before downloading.
+                The numbers in this draft do not line up: a question/Part sequence has gaps, duplicates or runs
+                backwards, or the prose cites a question this packet does not have. Questions may have been dropped
+                during generation, or the model miscounted its own list. Regenerate, or fix the numbering by hand
+                before downloading.
               </p>
               <ul className="mt-1 space-y-0.5">
                 {numberingIssues.map((issue, i) => (
