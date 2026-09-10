@@ -3,6 +3,7 @@ import { computeDisagreement } from "@/lib/reflection-utils";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { buildSelfScoreRows, SELF_SCORE_CONFLICT_TARGET } from "@/lib/reflection-self-scores";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
+import { correctionsKey } from "@/lib/storage-keys";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
   ReflectionTest,
@@ -278,7 +279,7 @@ export async function uploadCorrectionsPdf(
 ): Promise<PdfUpload> {
   const supabase = await createClient();
 
-  const storagePath = `${studentId}/${testId}/${file.name}`;
+  const storagePath = correctionsKey(studentId, testId, file.name);
 
   const { error: uploadError } = await supabase.storage
     .from("corrections")
@@ -323,9 +324,30 @@ export async function clearPdfUpload(
     .maybeSingle();
 
   if (existing?.storage_path) {
-    await supabase.storage
+    // Do not let this fail quietly. Until the policies added in
+    // 20260910181334_corrections_bucket_update_delete_policies.sql, the bucket
+    // had no DELETE policy, so this call removed nothing while the row below
+    // was deleted anyway -- and because neither half of the result was read,
+    // every object in the bucket ended up stranded with nobody aware of it.
+    //
+    // RLS filtering a removal out is not reported as an error: the call comes
+    // back with an empty `data` and `error` null. The returned list is the only
+    // honest signal that the object actually went.
+    const { data: removed, error: removeError } = await supabase.storage
       .from("corrections")
       .remove([existing.storage_path]);
+
+    if (removeError || !removed?.length) {
+      console.error(
+        "[clearPdfUpload] correction object was not removed from storage",
+        {
+          storagePath: existing.storage_path,
+          studentId,
+          testId,
+          reason: removeError?.message ?? "storage reported no object removed",
+        }
+      );
+    }
   }
 
   await supabase
