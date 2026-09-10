@@ -38,6 +38,14 @@ const probes = [
     column: "instructional_context_terms",
     migration: "036_instructional_context_terms.sql",
   },
+  {
+    // Without it the Nuanced Analysis editor cannot tell a packet's working
+    // copy from an ordinary template, so it silently stops writing edits back
+    // to the packet -- a quiet wrong answer rather than a visible failure.
+    table: "assignment_templates",
+    column: "nuanced_analysis_id",
+    migration: "20260910173204_assignment_templates_nuanced_analysis_link.sql",
+  },
 ];
 
 const missing = [];

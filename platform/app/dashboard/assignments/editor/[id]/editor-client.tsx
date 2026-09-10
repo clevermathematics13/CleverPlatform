@@ -283,6 +283,19 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
   const [cohortTag, setCohortTag] = useState<"26AH" | "27AH" | "custom">("26AH");
   const [hasDraftContent, setHasDraftContent] = useState(false);
 
+  // -- Packet linkage --
+  // Set when this template is the working copy of a nuanced_analyses packet.
+  // Then the packet owns the content and a save writes back to it, unless it
+  // has been committed to print, in which case the API refuses the content
+  // write and returns the reason we show here.
+  const [packetId, setPacketId] = useState<string | null>(null);
+  const [packetLock, setPacketLock] = useState<{ locked: boolean; reason?: string } | null>(null);
+  // What was loaded from the packet. Sent in place of the edited draft when
+  // the packet is locked, so a content edit that cannot reach the packet is
+  // not quietly persisted to the copy either -- one stored version, not two.
+  const [baselineDraft, setBaselineDraft] = useState<AssignmentDraft | null>(null);
+  const [packetNotice, setPacketNotice] = useState<string | null>(null);
+
   // Computed stats
   const totalMarks = draft.sections.reduce((s, sec) =>
     s + sec.questions.reduce((q, qn) => q + (qn.marks ?? 0), 0), 0);
@@ -306,6 +319,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
         setFormatting(t.formatting_requirements);
         if (t.draft_content) {
           setDraft(t.draft_content as AssignmentDraft);
+          setBaselineDraft(t.draft_content as AssignmentDraft);
           setHasDraftContent(true);
         } else {
           // No draft saved yet — pre-populate title from assignment_input so editor isn't blank
@@ -321,6 +335,23 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
           setAnswerBoxLines(t.formatting_requirements.answerBoxLines);
         }
         setLoadState("ready");
+
+        // Lock state is fetched after the editor is usable rather than
+        // blocking on it: a teacher opening an unlocked packet should not
+        // wait on a query whose only job is to warn about locked ones.
+        if (t.nuanced_analysis_id) {
+          setPacketId(t.nuanced_analysis_id);
+          try {
+            const pr = await fetch(`/api/nuanced-analyses/${t.nuanced_analysis_id}`);
+            if (pr.ok) {
+              const pd = (await pr.json()) as { lock?: { locked: boolean; reason?: string } };
+              if (pd.lock) setPacketLock(pd.lock);
+            }
+          } catch {
+            // Leave packetLock null -- the save path re-checks server-side and
+            // is the real guard; this fetch only drives the banner.
+          }
+        }
       } catch (err) {
         console.error(err);
         setLoadState("error");
@@ -332,6 +363,8 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
   // -- Save --
   const handleSave = useCallback(async () => {
     setSaveState("saving");
+    setPacketNotice(null);
+    const locked = packetLock?.locked === true;
     try {
       const res = await fetch(`/api/assignments/templates/${id}`, {
         method: "PUT",
@@ -354,13 +387,59 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
             includeRealWorldContext: true,
             tone: "exam-style",
           } as AssignmentInput,
-          draftContent: draft,
+          // On a locked packet the content cannot reach the packet, so it is
+          // not written to the copy either -- otherwise the two would diverge
+          // again, which is the whole problem this linkage removes.
+          draftContent: locked ? (baselineDraft ?? draft) : draft,
         }),
       });
       if (!res.ok) {
         const d = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(d.error ?? `Save failed (${res.status})`);
       }
+
+      // -- Write the content back to the packet it came from --
+      if (packetId && !locked) {
+        const pr = await fetch(`/api/nuanced-analyses/${packetId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draft }),
+        });
+        const pd = (await pr.json().catch(() => ({}))) as {
+          error?: string;
+          locked?: boolean;
+          rubric?: { ok: boolean; synced?: number; skipped?: number; error?: string };
+        };
+        if (pr.status === 409 && pd.locked) {
+          // Locked between load and save. The template kept the edited draft
+          // in the call above, so put it back to the packet's version rather
+          // than leave a copy the packet does not agree with.
+          setPacketLock({ locked: true, reason: pd.error });
+          if (baselineDraft) setDraft(baselineDraft);
+          setPacketNotice(pd.error ?? "This packet is locked; content was not saved.");
+          setSaveState("error");
+          setTimeout(() => setSaveState("idle"), 3000);
+          return;
+        }
+        if (!pr.ok) {
+          throw new Error(pd.error ?? `Packet save failed (${pr.status})`);
+        }
+        setBaselineDraft(draft);
+        if (pd.rubric && !pd.rubric.ok) {
+          setPacketNotice(
+            `Packet saved, but the rubric did not re-sync: ${pd.rubric.error}. ` +
+              `The answer key may be behind the questions until it does.`,
+          );
+        } else if (pd.rubric?.skipped) {
+          setPacketNotice(
+            `Packet saved. Rubric: ${pd.rubric.synced} updated, ` +
+              `${pd.rubric.skipped} left alone (hand-edited).`,
+          );
+        }
+      } else if (packetId && locked) {
+        setPacketNotice("Formatting saved. Content is locked to the printed packet.");
+      }
+
       setHasDraftContent(true);
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 2500);
@@ -369,7 +448,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
       setSaveState("error");
       setTimeout(() => setSaveState("idle"), 3000);
     }
-  }, [id, templateName, draft, formatting, answerBoxLines, totalQ]);
+  }, [id, templateName, draft, formatting, answerBoxLines, totalQ, packetId, packetLock, baselineDraft]);
 
   // -- Keyboard shortcut: Cmd/Ctrl+S --
   useEffect(() => {
@@ -518,6 +597,32 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
 
   return (
     <div className="space-y-4">
+      {/* -- Packet linkage banners -------------------------------------------
+          A teacher needs to know BEFORE typing whether what they are editing
+          reaches the packet, so this sits above the toolbar rather than
+          appearing only as a result of pressing Save. */}
+      {packetLock?.locked && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
+          <p className="text-sm font-semibold text-amber-200">
+            Content locked — this packet has been printed
+          </p>
+          <p className="mt-1 text-xs text-amber-100/80">{packetLock.reason}</p>
+        </div>
+      )}
+      {packetId && !packetLock?.locked && (
+        <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2">
+          <p className="text-xs text-emerald-200/90">
+            Editing the saved packet — changes here are written back to it, and its
+            answer key re-syncs to match.
+          </p>
+        </div>
+      )}
+      {packetNotice && (
+        <div className="rounded-xl border border-da-border bg-da-bg/60 px-4 py-2">
+          <p className="text-xs text-da-muted">{packetNotice}</p>
+        </div>
+      )}
+
       {/* -- Top bar -- */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/60 px-4 py-2.5">
         <input
@@ -565,6 +670,7 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
             {saveState === "saving" ? <><Spinner /><span>Saving…</span></>
               : saveState === "saved" ? "✓ Saved"
               : saveState === "error" ? "Save failed"
+              : packetLock?.locked ? "Save formatting"
               : "Save"}
           </button>
         </div>
