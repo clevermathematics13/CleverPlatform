@@ -15,6 +15,10 @@
  * rebuild kept behind File > Version history. The name is rewritten on each
  * sync so it still carries the current completion count.
  *
+ * That reuse is conditional, and has to be: an id is only worth updating
+ * while it still names a file in the export folder. See targetStillInFolder,
+ * and the Bin it was written for.
+ *
  * ## Whose Drive
  *
  * The teacher's, named explicitly. This runs from a student's submit and from
@@ -46,13 +50,50 @@ function body(csv: string): Readable {
 }
 
 /**
+ * Is the file we wrote last time still somewhere the teacher will see it?
+ *
+ * Reusing the stored id is what gives Drive's version history somewhere to
+ * accumulate, but it is only worth reusing while the file is still in the
+ * folder the exports are configured to go to. Two ways it stops being:
+ *
+ * - **It is in the Bin.** This is the one that actually happened, on 10 Sep
+ *   2026, and it is silent in the worst way: `files.update` on a trashed file
+ *   succeeds, so the sync reported `ok` and refreshed `drive_synced_at` while
+ *   every export for all four classes accumulated revisions in the Bin and
+ *   the folder itself sat empty. The teacher had tidied the folder out;
+ *   nothing told them the mirror had stopped delivering, because as far as
+ *   the database and the gradebook pill were concerned it had not.
+ * - **It has been moved out of the folder**, or the teacher has since pointed
+ *   `powerschool_drive_folder_id` at a different one. Same shape of failure:
+ *   updates keep landing somewhere that is no longer where they are looking.
+ *
+ * Both mean "make a fresh file in the configured folder" -- exactly what a
+ * 404 already meant. Only a real API failure propagates; anything we cannot
+ * check, we do not get to call usable.
+ */
+async function targetStillInFolder(
+  drive: ReturnType<typeof google.drive>,
+  fileId: string,
+  folderId: string
+): Promise<boolean> {
+  try {
+    const { data } = await drive.files.get({ fileId, fields: "trashed, parents" });
+    if (data.trashed) return false;
+    return (data.parents ?? []).includes(folderId);
+  } catch (e) {
+    if (isNotFound(e)) return false;
+    throw e;
+  }
+}
+
+/**
  * Put this content in Drive, as a new file or a new revision of an existing
  * one. `existingFileId` is what was written last time, or null the first time.
  *
- * A stored id that no longer resolves -- the teacher deleted the file, or
- * emptied the folder -- is not an error worth surfacing: the update comes back
- * 404, and we create a fresh file and return its id, so the next sync is
- * normal again.
+ * A stored id that no longer names a file in the export folder -- deleted,
+ * binned, moved, or left behind by a change of folder -- is not an error
+ * worth surfacing: we create a fresh file and return its id, so the next sync
+ * is normal again. It is logged, because it costs the file its history.
  */
 export async function mirrorExportToDrive(opts: {
   /** Service-role client: this runs where nobody relevant is signed in. */
@@ -83,7 +124,7 @@ export async function mirrorExportToDrive(opts: {
     if (!auth) return { ok: false, error: "Google Drive is not connected." };
     const drive = google.drive({ version: "v3", auth });
 
-    if (existingFileId) {
+    if (existingFileId && (await targetStillInFolder(drive, existingFileId, folderId))) {
       try {
         const updated = await drive.files.update({
           fileId: existingFileId,
@@ -95,7 +136,8 @@ export async function mirrorExportToDrive(opts: {
         const id = updated.data.id;
         if (id) return { ok: true, fileId: id };
       } catch (e) {
-        // Anything other than "that file is gone" is a real failure.
+        // Anything other than "that file is gone" is a real failure. It can
+        // still go 404 between the check above and here.
         if (!isNotFound(e)) throw e;
       }
     }
@@ -107,6 +149,14 @@ export async function mirrorExportToDrive(opts: {
     });
     const id = created.data.id;
     if (!id) return { ok: false, error: "Drive accepted the file but returned no id." };
+    if (existingFileId) {
+      // Not an error -- the export is delivered either way -- but the teacher
+      // now has a second file where they had one, and the old one's version
+      // history stops here.
+      console.info(
+        `Drive mirror: ${existingFileId} could not be updated in place; wrote ${filename} as new file ${id}.`
+      );
+    }
     return { ok: true, fileId: id };
   } catch (e) {
     return { ok: false, error: describeDriveError(e) };
