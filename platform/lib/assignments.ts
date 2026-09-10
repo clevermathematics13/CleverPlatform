@@ -81,6 +81,11 @@ export type AssignmentQuestion = {
     requiresWorking?: boolean;
   }>;
   answerBoxLines?: number;
+  /**
+   * Turns this question's answer space into a table with these columns.
+   * Weights are relative widths; see AnswerBoxSpec.columns.
+   */
+  answerBoxColumns?: Array<{ header: string; weight: number }>;
 };
 
 // ---- Nuanced Analysis section enrichments ----
