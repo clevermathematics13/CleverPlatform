@@ -318,6 +318,43 @@ describe("rich() never lets a bad segment end the document", () => {
   });
 });
 
+describe("rich() on the aliases the packets actually reach for", () => {
+  it.each([
+    ["degree.circle, invented eight times in one packet", "Convert $150 degree.circle$ to radians."],
+    ["leftrightarrow, a LaTeX name", "with corresponding vertices $G leftrightarrow J$."],
+    ["rightarrow and infty", "As $n rightarrow infty$ the terms shrink."],
+    ["subseteq", "The set $A subseteq B$ holds throughout."],
+  ])("typesets %s", (_label, text) => {
+    expect(dollarsIn(text)).toBe(0);
+  });
+
+  it("every alias name resolves to something Typst defines", () => {
+    // The whole point of the table is that Typst does NOT define the left
+    // column, so nothing else can check these: a wrong right-hand side is a
+    // failed render, and a right-hand side Typst renamed is a silent one.
+    const names = preludeTable("math-aliases").filter((_v, i) => i % 2 === 0);
+    expect(names.length).toBeGreaterThan(0);
+    for (const name of names) {
+      expect(dollarsIn(`before $a ${name} b$ after`), `${name} does not resolve`).toBe(0);
+    }
+  });
+
+  // Guards that were briefly too strict: a trailing operator is not an error
+  // in Typst, and stripping the quoted spans out of a segment can leave one
+  // where the author wrote none.
+  it.each([
+    ["a lone equals sign", "The equals sign $=$ can be read two ways."],
+    ["one in a spotlight", "To prove an identity of the form LHS $=$ RHS, start from one side."],
+    ["quoted names either side of a slash", 'Scale factor: $k = "new length" / "original length"$'],
+    [
+      "a proportion written entirely in words",
+      'Set up the ratio $"height of tree" / "height of stick" = "shadow of tree" / "shadow of stick"$.',
+    ],
+  ])("does not refuse %s", (_label, text) => {
+    expect(dollarsIn(text)).toBe(0);
+  });
+});
+
 describe("rich() falls back one segment at a time", () => {
   it("keeps the math in a sentence that also carries a price", () => {
     // The fallback used to be per string: one currency dollar anywhere threw

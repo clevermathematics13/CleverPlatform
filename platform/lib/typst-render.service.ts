@@ -621,6 +621,12 @@ export function getActivityTypstSource(): string {
   ("cdot", "dot.op"), ("pm", "plus.minus"), ("mp", "minus.plus"),
   ("implies", "arrow.r.double"), ("iff", "arrow.l.r.double"),
   ("oplus", "plus.circle"), ("otimes", "times.circle"),
+  // LaTeX names, and one Typst-shaped invention: a real trigonometry packet
+  // wrote "degree.circle" eight times, which Typst does not define.
+  ("degree.circle", "degree"), ("leftrightarrow", "arrow.l.r"),
+  ("rightarrow", "arrow.r"), ("leftarrow", "arrow.l"),
+  ("infty", "infinity"), ("ldots", "dots.h"), ("cdots", "dots.c"),
+  ("subseteq", "subset.eq"), ("supseteq", "supset.eq"),
 )
 
 // Dotted names are Typst symbol variant chains, and rule 11b tells the
@@ -667,10 +673,12 @@ export function getActivityTypstSource(): string {
 // exact spelling closes that hole without narrowing what the list allows.
 #let math-scope = dictionary(sym) + dictionary(math)
 
+#let is-alias(t) = math-aliases.any(pair => pair.at(0) == t)
+
 #let known-name(t) = {
   // Alias names are the exception: Typst does not define "leq", but
   // normalize-math rewrites it to one that exists before anything evals it.
-  if math-aliases.any(pair => pair.at(0) == t) { return true }
+  if is-alias(t) { return true }
   math-idents.contains(lower(t)) and t in math-scope
 }
 
@@ -724,18 +732,22 @@ export function getActivityTypstSource(): string {
   // must carry an operator, so "$ax + by = c$" is read as math while "$5 and
   // $" -- the middle of "tickets cost $5 and $10" -- keeps its dollar signs.
   // A segment that opens with an attachment operator has nothing to attach
-  // to, and one that ends on a binary operator has nothing to apply it to:
-  // neither is Typst math, and eval() answers a syntax error by ending the
-  // document rather than the segment. Both come from one habit -- writing a
-  // unit as "cm$^2$ to m$^2$", where the dollars pair up around a bare "^2".
-  if unquoted.contains(regex("^ *[_^]")) { return false }
-  if unquoted.contains(regex("[-+*/^_=] *$")) { return false }
+  // to, which is a syntax error, and eval() answers one by ending the
+  // document rather than the segment. It comes from writing a unit as
+  // "cm$^2$ to m$^2$", where the dollars pair up around a bare "^2".
+  //
+  // Tested against seg, not unquoted: stripping the quoted spans out of
+  // $k = "new length" / "original length"$ leaves a trailing slash, and a
+  // trailing operator is not an error anyway -- Typst renders "3 +" and a
+  // lone "=" quite happily, which is how $=$ is written in prose about the
+  // equals sign itself. An earlier version of this guard refused all three.
+  if seg.contains(regex("^ *[_^]")) { return false }
   let unspaced = not unquoted.contains(regex("\\\\s"))
   let has-operator = unquoted.contains(regex("[-+=^_/<>()*|]"))
   for m in unquoted.matches(math-token) {
     let t = m.text
     if t.contains(".") {
-      if not math-symbol-paths.contains(lower(t)) { return false }
+      if not (math-symbol-paths.contains(lower(t)) or is-alias(t)) { return false }
     } else if t.len() > 1 and not known-name(t) {
       // A run carrying a digit cannot be re-spaced into single-letter
       // variables, so there is nothing safe to hand eval: "cos2theta" and
