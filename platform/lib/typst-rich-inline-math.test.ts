@@ -385,6 +385,41 @@ describe("rich() on names written without spaces between them", () => {
   });
 });
 
+describe("rich() on figures named by their vertices", () => {
+  // A similar-triangles packet is built out of these, and they clear no other
+  // bar: "ST parallel QR" has no operator character in it, and "ABC" is three
+  // letters. Prose is never shouted, so the capitals do the work instead.
+  it.each([
+    ["two-letter segments", "Since $ST parallel QR$, the ratio $PS:SQ$ equals the ratio $PT:TR$."],
+    ["a three-letter triangle", 'Calculate $("area of " A B C)/("area of " P Q R)$ and compare to $k^2$.'],
+    ["a triangle inside quoted text", 'The ratio $("area of " ABC)$ over the original.'],
+    ["vertices in a sentence", "In triangle $PQR$ the segment $ST$ is drawn."],
+  ])("typesets %s", (_label, text) => {
+    expect(dollarsIn(text)).toBe(0);
+  });
+});
+
+describe("rich() on the degree sign the model keeps inventing", () => {
+  // Two batches produced two different guesses at it -- degree.circle eight
+  // times, degree.o fourteen -- neither of which Typst defines.
+  it.each([
+    ["degree.o", "Convert $150 degree.o$ to radians."],
+    ["degree.circle", "Convert $150 degree.circle$ to radians."],
+    ["both in one conversion rule", 'Rule: $pi " radians" = 180 degree.o$, so $1 degree.o = pi/180 " radians"$.'],
+  ])("typesets %s", (_label, text) => {
+    expect(dollarsIn(text)).toBe(0);
+  });
+
+  it("does not evaluate one glued to a digit", () => {
+    // math-token starts at a letter, so it sees "degree.o" inside
+    // "75degree.o" and an alias vouches for it -- but the rewrite behind that
+    // needs a word boundary, and "5d" is not one, so the glued text would
+    // reach eval as written and end the document.
+    expect(compiles("A wheel rotates through $75degree.o$ exactly.")).toBe(true);
+    expect(dollarsIn("A wheel rotates through $75degree.o$ exactly.")).toBeGreaterThan(0);
+  });
+});
+
 describe("rich() falls back one segment at a time", () => {
   it("keeps the math in a sentence that also carries a price", () => {
     // The fallback used to be per string: one currency dollar anywhere threw

@@ -623,7 +623,11 @@ export function getActivityTypstSource(): string {
   ("oplus", "plus.circle"), ("otimes", "times.circle"),
   // LaTeX names, and one Typst-shaped invention: a real trigonometry packet
   // wrote "degree.circle" eight times, which Typst does not define.
-  ("degree.circle", "degree"), ("leftrightarrow", "arrow.l.r"),
+  // Two batches, two different inventions for the degree sign: the packets
+  // wrote degree.circle eight times and degree.o fourteen. Both flatten to
+  // the symbol Typst has, which is what 11b now names outright.
+  ("degree.circle", "degree"), ("degree.o", "degree"),
+  ("leftrightarrow", "arrow.l.r"),
   ("rightarrow", "arrow.r"), ("leftarrow", "arrow.l"),
   ("infty", "infinity"), ("ldots", "dots.h"), ("cdots", "dots.c"),
   ("subseteq", "subset.eq"), ("supseteq", "supset.eq"),
@@ -796,6 +800,12 @@ export function getActivityTypstSource(): string {
   // lone "=" quite happily, which is how $=$ is written in prose about the
   // equals sign itself. An earlier version of this guard refused all three.
   if seg.contains(regex("^ *[_^]")) { return false }
+  // A dotted name glued to a digit -- "75degree.o" -- is one identifier to
+  // Typst, but math-token starts at a letter and sees only "degree.o", which
+  // an alias would happily vouch for. The rewrite behind that vouching needs
+  // a word boundary, and "5d" is not one, so the glued text would reach eval
+  // exactly as written and end the document.
+  if unquoted.contains(regex("[0-9][A-Za-z]+[.][A-Za-z]")) { return false }
   let unspaced = not unquoted.contains(regex("\\\\s"))
   let has-operator = unquoted.contains(regex("[-+=^_/<>()*|]"))
   for m in unquoted.matches(math-token) {
@@ -808,7 +818,15 @@ export function getActivityTypstSource(): string {
       // anything ("x2", "Q3"), so it is printed as written rather than handed
       // to an eval that would end the document.
       if t.contains(regex("[0-9]")) { return false }
-      if not (unspaced or (t.len() == 2 and has-operator)) { return false }
+      // A short run of capitals is a geometric figure named by its vertices:
+      // "ST", "QR", "ABC". Prose is never shouted, so the capitals carry the
+      // same weight an operator does -- and they have to, because
+      // "$ST parallel QR$" and "$("area of " ABC)$" have no operator between
+      // them and a similar-triangles packet is built out of little else.
+      let labels = upper(t) == t and t.len() <= 4
+      if not labels and not (unspaced or (t.len() == 2 and has-operator)) {
+        return false
+      }
     }
   }
   true
