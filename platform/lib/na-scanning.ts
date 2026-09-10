@@ -86,11 +86,37 @@ const WORKING_ONLY = /^[\d\s()+\-*/×÷=.,:;]+$/;
 
 /**
  * The assessor stating outright that content is missing. Measured over A.1
- * this is the sharpest signal available: 12.9% of flagged crops against 1.6%
- * of unflagged ones, an 8x enrichment, where a bracketed reconstruction alone
+ * this is the sharpest signal available: 14.3% of flagged crops against 2.1%
+ * of unflagged ones, a ~7x enrichment, where a bracketed reconstruction alone
  * runs about 3x.
+ *
+ * The direction word is matched as a family rather than as the fixed pair this
+ * started with, because the assessor varies it freely and "continues beyond"
+ * alone missed eleven crops saying exactly the same thing: "[continues below
+ * crop]", "[continues off crop]", "[and more continues at edge]". Two of those
+ * missed on the verb alone -- "text appears to continue beyond crop" is
+ * singular -- so the verb is matched as continu\w*, covering continue,
+ * continues, continuing and continued.
  */
-const TRUNCATION_STATEMENT = /cut[ -]off|continues beyond|beyond the crop|text continues/i;
+const TRUNCATION_STATEMENT =
+  /cut[ -]off|continu\w*\s+(?:beyond|below|off|past|onto)\b|continu\w*\s+at\s+(?:the\s+)?edge|beyond the crop|text continues/i;
+
+/**
+ * The assessor saying outright that the response runs past the crop edge, and
+ * only that -- no bracketed reconstructions.
+ *
+ * Split out from transcriptionHasUnreadableGap because the two halves of that
+ * heuristic earn their keep on different populations. Over A.1 an explicit
+ * statement runs 14.3% of flagged crops against 2.1% of unflagged ones; a
+ * bracketed reconstruction runs 29.4% against 9.6%. Once the flag is no longer
+ * narrowing the field, brackets are mostly illegible handwriting -- of six
+ * sampled unflagged Q15 gaps, one was real -- so a caller looking at unflagged
+ * crops wants this predicate rather than the full heuristic.
+ */
+export function transcriptionStatesTruncation(transcription: string | null | undefined): boolean {
+  if (!transcription) return false;
+  return TRUNCATION_STATEMENT.test(transcription);
+}
 
 /**
  * Whether an AI transcription shows the assessor unable to read the whole
@@ -129,7 +155,7 @@ const TRUNCATION_STATEMENT = /cut[ -]off|continues beyond|beyond the crop|text c
  */
 export function transcriptionHasUnreadableGap(transcription: string | null | undefined): boolean {
   if (!transcription) return false;
-  if (TRUNCATION_STATEMENT.test(transcription)) return true;
+  if (transcriptionStatesTruncation(transcription)) return true;
 
   for (const match of transcription.matchAll(/\[([^\]]{1,40})\]/g)) {
     const inner = match[1].trim();
