@@ -84,34 +84,33 @@ export async function POST(req: Request) {
 
     const templateName = row.title.length > 120 ? `${row.title.slice(0, 117)}...` : row.title;
 
-    // Reuse this teacher's existing working copy of the packet rather than
-    // inserting a second one. Without this, the Manage tab's "Open" button
-    // -- which a teacher may click any number of times -- would leave a new
-    // assignment_templates row behind on every click.
-    //
-    // Matching on template_name is the only join available: nothing links
-    // assignment_templates back to nuanced_analyses, and adding a column to
-    // do so is a production schema change this fix does not need. The name
-    // written here is exactly row.title, so a collision means a template
-    // named precisely after the packet, which is the one we want anyway.
-    //
-    // A reused row is returned AS-IS, not refreshed from the packet: the
-    // teacher may have edited it in the editor, and silently overwriting
-    // that work is worse than showing a copy that has drifted from a
-    // re-saved packet. Deleting the template in the editor is the way back
-    // to a fresh conversion.
+    // Reuse this teacher's existing working copy rather than inserting a
+    // second one on every click of "Open". The lookup is on the
+    // nuanced_analysis_id foreign key, backed by a partial unique index on
+    // (user_id, nuanced_analysis_id) -- exact, where the earlier match on
+    // template_name was only a good guess.
     const { data: existing, error: existingError } = await supabase
       .from("assignment_templates")
       .select("id")
       .eq("user_id", profile.id)
-      .eq("template_name", templateName)
-      .order("created_at", { ascending: true })
-      .limit(1)
+      .eq("nuanced_analysis_id", nuancedAnalysisId)
       .maybeSingle();
 
     if (existingError) throw existingError;
 
     if (existing) {
+      // Refresh the copy's CONTENT from the packet, and only its content:
+      // formatting_requirements is the teacher's own export setup and stays
+      // put. The packet is the source of truth now that the editor saves
+      // back to it, so a reused row that kept its own stale draft_content
+      // would be showing an older version of the very thing it edits.
+      const { error: refreshError } = await supabase
+        .from("assignment_templates")
+        .update({ draft_content: draft, template_name: templateName })
+        .eq("id", existing.id);
+
+      if (refreshError) throw refreshError;
+
       return NextResponse.json(
         { success: true, templateId: existing.id, reused: true },
         { status: 200 },
@@ -128,6 +127,7 @@ export async function POST(req: Request) {
         formatting_requirements: formattingRequirements,
         assignment_input: assignmentInput,
         draft_content: draft,
+        nuanced_analysis_id: nuancedAnalysisId,
       })
       .select()
       .single();

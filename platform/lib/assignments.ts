@@ -149,6 +149,14 @@ export type SavedTemplate = {
   formatting_requirements: FormattingRequirements;
   assignment_input: AssignmentInput;
   draft_content?: AssignmentDraft | null;
+  /**
+   * The nuanced_analyses packet this template is the working copy of, or null
+   * for one authored directly in a grade sandbox. Where it is set, the packet
+   * owns the content: the editor refreshes from it on open and writes back to
+   * it on save. See the column comment in
+   * supabase/migrations/20260910173204_assignment_templates_nuanced_analysis_link.sql.
+   */
+  nuanced_analysis_id?: string | null;
   created_at: string;
   updated_at: string;
 };
