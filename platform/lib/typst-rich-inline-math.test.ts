@@ -420,6 +420,35 @@ describe("rich() on the degree sign the model keeps inventing", () => {
   });
 });
 
+describe("rich() on a quote mark with no partner", () => {
+  // The broken-math-critique questions quote a student's working, and the
+  // quote marks collide with the dollar signs around it. Two whole packets
+  // failed to render on this -- not printed dollar signs, no PDF at all --
+  // and it predates this branch: these abort on origin/main too.
+  //
+  // An odd count leaves a string Typst never sees the end of, which is a
+  // syntax error, which is the whole document.
+  it.each([
+    ["a student's division", 'A student\'s working to solve $x/4 = 12$ is shown: $"x/4 = 12$, so divide both sides by $4$: $x = 3."$ Identify the error.'],
+    ["collecting like terms", 'A student\'s working begins: $"5x + 3 = 8x$, so combine $5x$ and $3$ to get $8x = 8x."$ Identify the error.'],
+    ["expanding a bracket", 'A student writes: $"3(x+4) = 3x + 4$, so $3x + 4 = 21$, giving $3x = 17$."$ Critique this.'],
+  ])("compiles rather than aborting: %s", (_label, text) => {
+    expect(compiles(text)).toBe(true);
+  });
+
+  // Balanced quotes are how 11b requires named operators and units be
+  // written, so the count is the only thing being judged, never the quoting.
+  it.each([
+    ["a named operator", 'Then $"Var"(X) = sigma^2$ by definition.'],
+    ["two of them", 'And $"SD"(X)$ too, with $op("Corr")(X,Y)$.'],
+    ["a unit", 'It is given that $AB = 5 "cm"$ and $BC = 7 "cm"$.'],
+    ["words either side of a slash", 'Scale factor: $k = "new length" / "original length"$'],
+    ["a whole proportion in words", 'Set up $"height of tree" / "height of stick" = "shadow of tree" / "shadow of stick"$.'],
+  ])("still typesets %s", (_label, text) => {
+    expect(dollarsIn(text)).toBe(0);
+  });
+});
+
 describe("rich() falls back one segment at a time", () => {
   it("keeps the math in a sentence that also carries a price", () => {
     // The fallback used to be per string: one currency dollar anywhere threw

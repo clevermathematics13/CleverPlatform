@@ -806,6 +806,13 @@ export function getActivityTypstSource(): string {
   // a word boundary, and "5d" is not one, so the glued text would reach eval
   // exactly as written and end the document.
   if unquoted.contains(regex("[0-9][A-Za-z]+[.][A-Za-z]")) { return false }
+  // An odd number of quote marks leaves a string Typst never sees the end of,
+  // which is a syntax error, which is the whole document. It comes from the
+  // broken-math-critique questions, where the model quotes a student's
+  // working and its quote marks collide with the dollar signs around it:
+  // "A student's working is shown: $"x/4 = 12$, so divide by $4$: $x = 3."$"
+  // leaves two segments holding one quote mark each.
+  if calc.rem(seg.matches(regex("\\"")).len(), 2) != 0 { return false }
   let unspaced = not unquoted.contains(regex("\\\\s"))
   let has-operator = unquoted.contains(regex("[-+=^_/<>()*|]"))
   for m in unquoted.matches(math-token) {
