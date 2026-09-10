@@ -23,6 +23,10 @@
 
 import type { TemplateAst } from "./template-ast.schema";
 import { DEFAULT_NUANCED_ANALYSIS_TEMPLATE } from "./template-ast-defaults";
+// Deliberately ./typst-payload and NOT ./typst-render.service: this module is
+// reached from a client component (nuanced-analysis-sandbox.tsx), and the
+// service pulls in the native Typst compiler, which webpack cannot put in a
+// browser bundle. See typst-payload.ts's header.
 import {
   computeEstimatedMinutes,
   type ActivityPayload,
@@ -30,7 +34,7 @@ import {
   type ActivitySection,
   type ActivityQuestion,
   type AnswerBoxSpec,
-} from "./typst-render.service";
+} from "./typst-payload";
 import type {
   AssignmentDraft,
   AssignmentSection,
