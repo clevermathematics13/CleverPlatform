@@ -1444,3 +1444,62 @@ do not work around it.
   renderer makes about which questions get a printed number. On A.2's own draft
   that yields exactly one flag, Q26 against a bound of 25 — which is the point,
   since one impossible number is enough to send a teacher back to the list.
+
+---
+
+## 16. The Drive mirror was writing into the Bin (10 Sep 2026)
+
+**A teacher asked why a student's self-assessment had not produced an updated
+PowerSchool file in their Drive. It had. The file was in the Bin.**
+
+Everything upstream of Drive was correct and stayed correct throughout. Raul
+Siucho's 41 `student_self_scores` rows for Formative Assessment 1 landed in one
+atomic upsert at `19:34:56Z`; `powerschool_export_files` for 9C rebuilt to
+`9C_Form1_15.csv` (15 of 20) at `19:38:03Z`; the Storage object's sha256 matched
+`content_sha` exactly. Only the mirror was broken, and it was broken in the way
+that is hardest to notice: **it reported success.**
+
+`drive.files.update` on a *trashed* file returns 200 and writes a new revision.
+`mirrorExportToDrive` reached its recreate path only from a 404, which Drive
+raises for a permanently deleted file and not for a binned one. So the update
+succeeded, `drive_error` stayed null, `drive_synced_at` refreshed, and the
+gradebook pill (`GradebookGrid.tsx:399-402`) read "Google Drive: copied
+10/09/2026, 19:38:03" - all true, and all useless.
+
+Found by reading the file's own metadata with the app's stored token:
+
+```
+name: 9C_Form1_15.csv   trashed: true   explicitlyTrashed: true
+parents: [1m6Qx89Thaf71CrwtLduHkkT6pGIYNvxO]   8 revisions, last 19:38:02Z
+```
+
+**All four classes' files were trashed**, each `explicitlyTrashed` (so binned
+individually, not by a trashed parent), along with both download zips and two
+manual `9G_Form1_5 N.csv` copies. `My Drive > ¡CleverPlatform! > PowerSchool
+exports` held zero untrashed files while the app had been mirroring into it for
+two days. The four class CSVs were restored from the Bin the same day with their
+content and revision history intact; the zips and duplicates were left binned.
+
+**Fixed in `lib/drive-export-mirror.ts`.** `targetStillInFolder()` now reads
+`trashed, parents` before reusing a stored id, and treats trashed, moved-out-of-
+folder, and missing all the way the 404 was already treated: create a fresh file
+in the configured folder. That also closes a second case nobody had hit yet -
+changing `teacher_settings.powerschool_drive_folder_id` used to leave every
+export still updating the old file in the old folder. A recreate is logged,
+because it costs the file its version history. `lib/drive-export-mirror.test.ts`
+is the regression test; it fails on 4 of 7 cases against the pre-fix code.
+
+**Open, and deliberately not done here.** The gradebook still cannot tell a
+delivered mirror from a binned one - `drive_synced_at` means "Drive accepted a
+write", not "the teacher can see it". Surfacing "recreated in Drive" wants a
+column on `powerschool_export_files`, and migrations go through MCP
+`apply_migration` first (see `supabase/migrations/README.md`); an agent session
+without the Supabase MCP tool cannot apply one or read back the ledger version
+it was assigned, and committing an unapplied file would break the 1:1 invariant.
+Worth doing from a session that has it.
+
+**The general lesson, because it will recur.** Every "did it sync?" field in
+this schema records what an API call returned, not what the teacher can see.
+`drive_synced_at`, `drive_error` and `content_sha` were all in a consistent,
+healthy state describing a file nobody could find. When a teacher says the file
+is not there, check the file, not the row.
