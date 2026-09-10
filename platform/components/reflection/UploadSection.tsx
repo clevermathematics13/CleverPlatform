@@ -2,6 +2,25 @@
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { PdfUpload } from "@/lib/reflection-types";
+import { correctionsKey } from "@/lib/storage-keys";
+/**
+ * Storage failures arrive as raw Supabase messages. Left alone they render
+ * straight into the student's face -- the report that prompted this read
+ * `Invalid key: <student uuid>/<test uuid>/Diseno sin titulo.pdf`, which tells
+ * a 15-year-old nothing and leaks the key layout. Map the ones a student can
+ * actually hit to something actionable, and keep the original in the console
+ * for whoever is debugging.
+ */
+function uploadErrorMessage(e: unknown): string {
+  const raw = e instanceof Error ? e.message : String(e);
+  console.error("[corrections upload]", e);
+  if (/invalid key/i.test(raw)) return "That file could not be stored under its current name. Rename it using letters and numbers only, then try again.";
+  if (/row-level security/i.test(raw)) return "You do not have permission to upload this file. Please tell your teacher.";
+  if (/exceeded the maximum allowed size|payload too large/i.test(raw)) return "That file is too large. It must be under 20 MB.";
+  if (/duplicate/i.test(raw)) return "A file is already uploaded for this test. Remove it first, then upload again.";
+  if (/fetch|network|failed to fetch/i.test(raw)) return "The upload could not reach the server. Check your connection and try again.";
+  return "Upload failed. Please try again, and tell your teacher if it keeps happening.";
+}
 interface UploadSectionProps { studentId: string; testId: string; existingUpload: PdfUpload | null; disagreement: number | null; onChangeUpload?: (upload: PdfUpload | null) => void; }
 export function UploadSection({ studentId, testId, existingUpload, disagreement, onChangeUpload }: UploadSectionProps) {
   const [upload, setUpload] = useState<PdfUpload | null>(existingUpload);
@@ -59,7 +78,7 @@ export function UploadSection({ studentId, testId, existingUpload, disagreement,
     const interval=setInterval(()=>setProgress(p=>p<90?p+5:p),300);
     try {
       const supabase=createClient();
-      const storagePath=`${studentId}/${testId}/${file.name}`;
+      const storagePath=correctionsKey(studentId,testId,file.name);
       const{error:uploadError}=await supabase.storage.from("corrections").upload(storagePath,file,{upsert:true});
       if(uploadError)throw uploadError;
       const{data,error:dbError}=await supabase.from("pdf_uploads").upsert({student_id:studentId,test_id:testId,storage_path:storagePath,file_name:file.name,file_size:file.size,uploaded_at:new Date().toISOString()},{onConflict:"student_id,test_id"}).select().single();
@@ -67,7 +86,7 @@ export function UploadSection({ studentId, testId, existingUpload, disagreement,
       const newUpload=data as PdfUpload;
       fetch("/api/reflection/trigger-correction",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({upload_id:newUpload.id,student_id:studentId,test_id:testId})}).catch(()=>{});
       clearInterval(interval); setProgress(100); setUpload(newUpload); onChangeUpload?.(newUpload);
-    } catch(e){clearInterval(interval);setProgress(0);setError(e instanceof Error?e.message:"Upload failed");}
+    } catch(e){clearInterval(interval);setProgress(0);setError(uploadErrorMessage(e));}
     finally{setUploading(false);}
   };
   return (

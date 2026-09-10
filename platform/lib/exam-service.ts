@@ -3,6 +3,7 @@ import { computeDisagreement } from "@/lib/reflection-utils";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { buildSelfScoreRows, SELF_SCORE_CONFLICT_TARGET } from "@/lib/reflection-self-scores";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
+import { correctionsKey } from "@/lib/storage-keys";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
   ReflectionTest,
@@ -278,7 +279,7 @@ export async function uploadCorrectionsPdf(
 ): Promise<PdfUpload> {
   const supabase = await createClient();
 
-  const storagePath = `${studentId}/${testId}/${file.name}`;
+  const storagePath = correctionsKey(studentId, testId, file.name);
 
   const { error: uploadError } = await supabase.storage
     .from("corrections")
