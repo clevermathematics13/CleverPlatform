@@ -16,6 +16,10 @@ import {
   type NumberingIssue,
   validateDraftNumbering,
 } from "@/lib/numbering-validator";
+import {
+  type MathDelimiterIssue,
+  validateDraftMathDelimiters,
+} from "@/lib/math-delimiter-validator";
 import { createClient } from "@/lib/supabase/client";
 
 // ---- Types ----
@@ -290,6 +294,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   // duplicates, or go backwards — the "1... 5, 6" symptom of questions
   // silently dropped between the two generation passes.
   const [numberingIssues, setNumberingIssues] = useState<NumberingIssue[]>([]);
+  // Fields carrying mathematics the renderer cannot typeset, because the
+  // model wrote it without $...$ around it. Non-empty means the PDF will
+  // print raw Typst source somewhere -- "ax^2+bx+c" rather than the equation.
+  const [mathIssues, setMathIssues] = useState<MathDelimiterIssue[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isExpanded, setIsExpanded] = useState(true);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -575,6 +583,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     setError(null);
     setCommandTermIssues([]);
     setNumberingIssues([]);
+    setMathIssues([]);
 
     // Attachments are referenced by their Supabase Storage path, not inline
     // base64 — /api/claude resolves them server-side. This keeps the wire
@@ -678,6 +687,10 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       // or goes backwards, questions were likely dropped between the two
       // generation passes — warn before the packet is downloaded.
       setNumberingIssues(validateDraftNumbering(sanitized));
+
+      // And once more for the 11b MATH rule: a header or callout the model
+      // wrote as bare "ax^2+bx+c" prints the caret on the student's page.
+      setMathIssues(validateDraftMathDelimiters(sanitized));
 
       setLastDraft(sanitized);
       onDraftGenerated(sanitized);
@@ -983,6 +996,28 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                   <li key={`${issue.kind}-${i}`} className="text-amber-200/90">
                     <span className="font-medium">{issue.location}:</span>{" "}
                     <span className="text-amber-300/70">{issue.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {mathIssues.length > 0 && (
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">
+              <p className="font-semibold">
+                ⚠ {mathIssues.length} field{mathIssues.length === 1 ? "" : "s"} with math outside $…$
+              </p>
+              <p className="mt-0.5 text-amber-300/80">
+                These print as the characters the model typed rather than as equations — a Syllabus Topics
+                line reading “ax^2+bx+c”, a Prerequisites line reading “a div b”. Wrap each expression in
+                $…$ (Typst syntax, not LaTeX) or regenerate before downloading.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {mathIssues.map((issue, i) => (
+                  <li key={`${issue.kind}-${i}`} className="text-amber-200/90">
+                    <span className="font-medium">{issue.location}:</span>{" "}
+                    <span className="text-amber-300/70">{issue.detail}</span>{" "}
+                    <span className="italic text-amber-300/70">“{issue.excerpt}”</span>
                   </li>
                 ))}
               </ul>

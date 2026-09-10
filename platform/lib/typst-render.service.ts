@@ -557,25 +557,32 @@ export function getActivityTypstSource(): string {
 // inline math (per the ActivityQuestion.prompt / MathNode docstrings) — a
 // bare #text[#s] interpolation would print the dollar signs literally rather
 // than typesetting the math, which is unacceptable on a mathematics platform.
-// An odd number of $ (malformed/unbalanced input) falls back to literal text
-// instead of a hard compile failure.
+// A segment that does not read as math -- including one whose $ never
+// closed -- falls back to literal text on its own, leaving the rest of the
+// string typeset, instead of failing the compile.
+//
 // Multi-letter runs inside $...$ are variable lookups in Typst math, so a
 // prose word makes eval() raise "unknown variable: <word>" and abort the
 // entire compile. Not hypothetical: "Pencils cost $2.50 per package and
 // pens cost $3 per package" pairs two currency dollars into a fake math
-// segment and dies on "per". Typst has no try/catch, so the check has to
-// come before eval -- a segment counts as math only when every multi-letter
-// run in it is an identifier Typst math actually defines. Deliberately
-// conservative: words that are overwhelmingly ordinary English in this
-// content ("and", "not", "text") are left out. Operator words the generator
-// genuinely emits per its 11b MATH rule ("times", "div", "dot", "min",
-// "max", "in", "macron", ...) ARE included -- excluding them silently
-// degraded real equations like "$a div b := a times 1/b$" to literal text,
-// dollar signs and all, on a printed student packet. Every entry was
-// verified to eval() cleanly in math mode against the shipped compiler
-// (see typst-rich-inline-math.test.ts); an entry that Typst does NOT
-// define belongs in math-aliases below instead, never here alone, or a
-// genuine math segment using it aborts the whole compile.
+// segment and dies on "per". Typst has no try/catch, so every run has to be
+// accounted for before eval, and looks-like-math() below accepts one only as
+// a name Typst defines (this list), a symbol variant chain
+// (math-symbol-paths), or a product of single-letter variables it can
+// re-space (space-out-products).
+//
+// The list is deliberately conservative: words that are overwhelmingly
+// ordinary English in this content ("and", "not", "text") are left out.
+// Operator words the generator genuinely emits per its 11b MATH rule
+// ("times", "div", "dot", "min", "max", "in", "macron", ...) ARE included --
+// excluding them silently degraded real equations like
+// "$a div b := a times 1/b$" to literal text, dollar signs and all, on a
+// printed student packet. Entries are matched case-insensitively, so that
+// "Delta" reads as the Greek letter, with math-scope below vouching for the
+// exact spelling; an entry that Typst does NOT define belongs in
+// math-aliases instead, never here alone, or a genuine math segment using it
+// aborts the whole compile. typst-rich-inline-math.test.ts holds every
+// spelling of every entry to that, against the shipped compiler.
 #let math-idents = (
   "sin","cos","tan","sec","csc","cot","sinh","cosh","tanh",
   "arcsin","arccos","arctan","log","ln","lg","exp","sqrt","root","abs",
@@ -589,6 +596,15 @@ export function getActivityTypstSource(): string {
   "frac","binom","vec","mat","cases","overline","underline","hat","tilde",
   "macron","op","bb","cal","frak","upright",
   "quad","star","compose","prec","succ",
+  // Geometry and measure. Left out of the first draft of this list as
+  // "ordinary English", which was wrong in the way that matters: a similar-
+  // triangles packet writes "angle" and "triangle" in nearly every box and a
+  // trigonometry packet writes "degree" in nearly every question, so six real
+  // generations printed 50 dollar signs between them with the model's math
+  // perfectly well-formed. The prose risk is the same one "in", "times",
+  // "min" and "star" above already accept.
+  "degree","angle","triangle","square","circle","parallel","perp",
+  "nabla","prime","norm","ratio","percent","diameter",
   "rr","zz","nn","qq","cc",
   "alpha","beta","gamma","delta","epsilon","zeta","eta",
   "theta","iota","kappa","lambda","mu","nu","xi","rho","sigma","tau",
@@ -605,14 +621,160 @@ export function getActivityTypstSource(): string {
   ("cdot", "dot.op"), ("pm", "plus.minus"), ("mp", "minus.plus"),
   ("implies", "arrow.r.double"), ("iff", "arrow.l.r.double"),
   ("oplus", "plus.circle"), ("otimes", "times.circle"),
+  // LaTeX names, and one Typst-shaped invention: a real trigonometry packet
+  // wrote "degree.circle" eight times, which Typst does not define.
+  // Two batches, two different inventions for the degree sign: the packets
+  // wrote degree.circle eight times and degree.o fourteen. Both flatten to
+  // the symbol Typst has, which is what 11b now names outright.
+  ("degree.circle", "degree"), ("degree.o", "degree"),
+  ("leftrightarrow", "arrow.l.r"),
+  ("rightarrow", "arrow.r"), ("leftarrow", "arrow.l"),
+  ("infty", "infinity"), ("ldots", "dots.h"), ("cdots", "dots.c"),
+  ("subseteq", "subset.eq"), ("supseteq", "supset.eq"),
 )
+
+// Dotted names are Typst symbol variant chains, and rule 11b tells the
+// generator to write them: "lt.eq / gt.eq / eq.not for <= >= !=". The head
+// cannot vouch for the rest -- an unknown modifier ("eq.bogus") aborts the
+// compile exactly like an unknown variable does, and Typst offers no way to
+// ask a symbol which variants it has -- so the whole path is matched here.
+// Every entry is compile-verified in typst-rich-inline-math.test.ts.
+// Without this list "$a eq.not 0$" printed its dollar signs on a student
+// packet: the identifier check saw "eq" and "not", neither a variable.
+#let math-symbol-paths = (
+  "eq.not","eq.triple","eq.quest","eq.def","eq.delta","eq.colon","colon.eq",
+  "lt.eq","lt.eq.not","lt.not","lt.double","lt.triple",
+  "gt.eq","gt.eq.not","gt.not","gt.double","gt.triple",
+  "plus.minus","plus.circle","plus.dot","plus.big",
+  "minus.plus","minus.dot","minus.circle",
+  "dot.op","dot.c","dot.circle","dot.double","dot.triple",
+  "times.circle","times.div","times.big",
+  "div.circle",
+  "in.not","in.rev",
+  "subset.eq","subset.not","subset.eq.not","supset.eq","supset.not",
+  "prec.eq","succ.eq",
+  "tilde.eq","tilde.equiv","tilde.op","tilde.not",
+  "arrow.r","arrow.l","arrow.t","arrow.b","arrow.r.not",
+  "arrow.r.double","arrow.l.double","arrow.l.r","arrow.l.r.double",
+  "arrow.r.long","arrow.r.bar",
+  "angle.l","angle.r",
+  "bar.v","bar.h","bar.double","bar.v.double",
+  "paren.l","paren.r","bracket.l","bracket.r","brace.l","brace.r",
+  "dots.h","dots.v","dots.c","dots.down","dots.up",
+  "integral.cont","integral.double","integral.triple",
+  "union.big","union.sq","sect.big","sect.sq",
+  "and.big","or.big","exists.not",
+  "star.op","circle.small","circle.filled","circle.stroked",
+  "square.filled","square.stroked","triangle.filled","triangle.t",
+  "prime.double","prime.triple",
+)
+
+// Typst's own math scope, the authority on whether a name exists at all.
+// The list above is the prose filter and is matched case-insensitively, so
+// that "Delta" reads as the Greek letter -- but on its own that also waves
+// through "Sin" and a lowercase "rr", neither of which Typst defines, and
+// evaluating either aborts the whole document. Asking the scope for the
+// exact spelling closes that hole without narrowing what the list allows.
+#let math-scope = dictionary(sym) + dictionary(math)
+
+#let is-alias(t) = math-aliases.any(pair => pair.at(0) == t)
+
+// A name Typst evaluates exactly as written. The peel below may only emit
+// these: an alias name would still be an unknown variable at eval time,
+// because normalize-math rewrites whole words and a glued "xleq" never was
+// one.
+#let real-name(t) = math-idents.contains(lower(t)) and t in math-scope
+
+#let known-name(t) = {
+  // Alias names are the exception: Typst does not define "leq", but
+  // normalize-math rewrites it to one that exists before anything evals it.
+  if is-alias(t) { return true }
+  real-name(t)
+}
+
+// Takes a run Typst reads as one unknown name and splits it into pieces it
+// does know, longest first: "sinx" is sin of x, "cos2theta" is cos of 2theta,
+// "sinthetacostheta" is a product of four things, and every one of them
+// appeared in a real generated packet. Anything the list cannot claim comes
+// out as a digit run or a single letter, both of which always evaluate.
+//
+// Returns the re-spaced text and how many characters real names accounted
+// for, which is what tells "sinx" (3 of 4) apart from "package" (0 of 7).
+#let peel-run(run) = {
+  let parts = ()
+  let claimed = 0
+  let i = 0
+  let n = run.len()
+  while i < n {
+    let took = 0
+    // Longest first, capped past the longest name in the list.
+    let j = calc.min(n, i + 10)
+    while j > i + 1 and took == 0 {
+      let cand = run.slice(i, j)
+      if real-name(cand) {
+        parts.push(cand)
+        claimed += j - i
+        took = j - i
+      }
+      j -= 1
+    }
+    if took == 0 {
+      let j2 = i + 1
+      if run.slice(i, i + 1).contains(regex("[0-9]")) {
+        while j2 < n and run.slice(j2, j2 + 1).contains(regex("[0-9]")) { j2 += 1 }
+      }
+      parts.push(run.slice(i, j2))
+      took = j2 - i
+    }
+    i += took
+  }
+  (text: parts.join(" "), claimed: claimed)
+}
+
+// Two thirds of the run is names Typst has, so reading it as a product of
+// them is the better bet. The threshold is what keeps a stray currency
+// segment out, and a bare majority was not enough: "child" hides chi and
+// peels to chi + l + d, three of five, which let "adult $7, child $5" render
+// as mathematics. "minimum" hides min (three of seven) and "number" hides nu
+// (two of six); at two thirds all three stay prose, while "sinx" (three of
+// four) and "kpi" (two of three) are read as the products they are.
+#let peels-to-names(t) = peel-run(t).claimed * 3 >= t.len() * 2
+
+// One token of a candidate math segment: a quoted literal span, or a name,
+// where a name carries its dotted symbol modifiers with it so "eq.not" is
+// judged as one thing rather than as the two English words it contains.
+//
+// Digits are part of a name, because they are part of one to Typst: it reads
+// "cos2theta" as a single identifier and dies on it. Matching only letters
+// saw "cos" and "theta", found both defined, and handed the whole run to
+// eval -- which aborted the document. A real trigonometry packet wrote
+// "$sin^2 theta = (1-cos2theta)/2$" and took its own PDF down that way.
+#let math-token = regex("\\"[^\\"]*\\"|[A-Za-z][A-Za-z0-9]*([.][A-Za-z][A-Za-z0-9]*)*")
+
+// Typst reads a multi-letter run as ONE variable name, so "ab" is a lookup
+// that fails, not a product. Algebra is written exactly that way -- "ab" and
+// "ac" in $a(b+c)=ab+ac$, "ax"/"bx" in $ax^2+bx+c$, "pq" in $x^2+(p+q)x+pq$
+// -- and every one of those segments used to be rejected below and printed
+// with its dollar signs on a student packet, which is what this re-spacing
+// fixes: "a b", "a x", "p q" are the same products in Typst's own notation.
+// Real identifiers, symbol paths and quoted spans are left exactly as
+// written, so "sqrt", "eq.not" and $"Var"(X)$ survive untouched.
+#let space-out-products(seg) = seg.replace(math-token, m => {
+  let t = m.text
+  if not t.starts-with(regex("[A-Za-z]")) { t }
+  else if t.contains(".") or t.len() == 1 { t }
+  else if known-name(t) { t }
+  else { peel-run(t).text }
+})
 
 #let normalize-math(seg) = {
   let out = seg
   for (name, sym) in math-aliases {
     out = out.replace(regex("\\\\b" + name + "\\\\b"), sym)
   }
-  out
+  // After the aliases, because "pm" must become "plus.minus" while it is
+  // still one token -- spacing it out first would leave "p m".
+  space-out-products(out)
 }
 
 #let looks-like-math(seg) = {
@@ -620,29 +782,80 @@ export function getActivityTypstSource(): string {
   // requires named operators be written that way ($"Var"(X)$) -- so the
   // words inside them are always valid and must not fail the check.
   let unquoted = seg.replace(regex("\\"[^\\"]*\\""), " ")
-  for m in unquoted.matches(regex("[A-Za-z]{2,}")) {
-    if not math-idents.contains(lower(m.text)) { return false }
+  // A run this function does not recognise is either a product of variables
+  // or a word from a sentence that two stray currency dollars fenced off, and
+  // the two are told apart by what surrounds it. A segment with no space at
+  // all cannot be part of a sentence. A segment with spaces has to earn it:
+  // every unrecognised run in it must be two letters long AND the segment
+  // must carry an operator, so "$ax + by = c$" is read as math while "$5 and
+  // $" -- the middle of "tickets cost $5 and $10" -- keeps its dollar signs.
+  // A segment that opens with an attachment operator has nothing to attach
+  // to, which is a syntax error, and eval() answers one by ending the
+  // document rather than the segment. It comes from writing a unit as
+  // "cm$^2$ to m$^2$", where the dollars pair up around a bare "^2".
+  //
+  // Tested against seg, not unquoted: stripping the quoted spans out of
+  // $k = "new length" / "original length"$ leaves a trailing slash, and a
+  // trailing operator is not an error anyway -- Typst renders "3 +" and a
+  // lone "=" quite happily, which is how $=$ is written in prose about the
+  // equals sign itself. An earlier version of this guard refused all three.
+  if seg.contains(regex("^ *[_^]")) { return false }
+  // A dotted name glued to a digit -- "75degree.o" -- is one identifier to
+  // Typst, but math-token starts at a letter and sees only "degree.o", which
+  // an alias would happily vouch for. The rewrite behind that vouching needs
+  // a word boundary, and "5d" is not one, so the glued text would reach eval
+  // exactly as written and end the document.
+  if unquoted.contains(regex("[0-9][A-Za-z]+[.][A-Za-z]")) { return false }
+  // An odd number of quote marks leaves a string Typst never sees the end of,
+  // which is a syntax error, which is the whole document. It comes from the
+  // broken-math-critique questions, where the model quotes a student's
+  // working and its quote marks collide with the dollar signs around it:
+  // "A student's working is shown: $"x/4 = 12$, so divide by $4$: $x = 3."$"
+  // leaves two segments holding one quote mark each.
+  if calc.rem(seg.matches(regex("\\"")).len(), 2) != 0 { return false }
+  let unspaced = not unquoted.contains(regex("\\\\s"))
+  let has-operator = unquoted.contains(regex("[-+=^_/<>()*|]"))
+  for m in unquoted.matches(math-token) {
+    let t = m.text
+    if t.contains(".") {
+      if not (math-symbol-paths.contains(lower(t)) or is-alias(t)) { return false }
+    } else if t.len() > 1 and not known-name(t) and not peels-to-names(t) {
+      // Nothing here is a name Typst has. A run of plain letters can still be
+      // a product of single-letter variables; one carrying a digit cannot be
+      // anything ("x2", "Q3"), so it is printed as written rather than handed
+      // to an eval that would end the document.
+      if t.contains(regex("[0-9]")) { return false }
+      // A short run of capitals is a geometric figure named by its vertices:
+      // "ST", "QR", "ABC". Prose is never shouted, so the capitals carry the
+      // same weight an operator does -- and they have to, because
+      // "$ST parallel QR$" and "$("area of " ABC)$" have no operator between
+      // them and a similar-triangles packet is built out of little else.
+      let labels = upper(t) == t and t.len() <= 4
+      if not labels and not (unspaced or (t.len() == 2 and has-operator)) {
+        return false
+      }
+    }
   }
   true
 }
 
 #let rich(s) = {
   let parts = s.split("$")
-  if calc.rem(parts.len(), 2) == 0 {
-    return [#s]
-  }
-  // A candidate segment that is really prose means the $-pairing was never
-  // math; render the string exactly as written rather than evaluating a
-  // fragment that would take the whole document down with it.
-  for (i, part) in parts.enumerate() {
-    if calc.rem(i, 2) == 1 and not looks-like-math(part) {
-      return [#s]
-    }
-  }
+  let last = parts.len() - 1
   let out = []
   for (i, part) in parts.enumerate() {
     if calc.rem(i, 2) == 0 {
       out += [#part]
+    } else if i == last or not looks-like-math(part) {
+      // Either the $ never closed, or the segment is prose the $-pairing
+      // only looked like math. Put the dollars back and print it as
+      // written, rather than evaluating a fragment that would take the
+      // whole document down with it. Per segment, not per string: one
+      // currency amount used to strip the math out of every other equation
+      // in the same sentence, so Q5's $a$, $b$ and $c$ all printed their
+      // delimiters because "$a(b+c)=ab+ac$" earlier in the prompt failed.
+      let close = if i == last { "" } else { "$" }
+      out += [#("$" + part + close)]
     } else {
       out += eval(normalize-math(part), mode: "math")
     }
@@ -779,7 +992,7 @@ export function getActivityTypstSource(): string {
   ]
   #if "translationTable" in section [
     #v(4pt)
-    #text(size:9pt,weight:"bold")[#section.translationTable.caption]
+    #text(size:9pt,weight:"bold")[#rich(section.translationTable.caption)]
     #v(2pt)
     #table(columns:(1fr,1fr),stroke:0.4pt+col-border,
       table.header(text(weight:"bold",size:9pt)[What you say in your head...],text(weight:"bold",size:9pt)[What you write on the exam...]),
