@@ -324,9 +324,30 @@ export async function clearPdfUpload(
     .maybeSingle();
 
   if (existing?.storage_path) {
-    await supabase.storage
+    // Do not let this fail quietly. Until the policies added in
+    // 20260910181334_corrections_bucket_update_delete_policies.sql, the bucket
+    // had no DELETE policy, so this call removed nothing while the row below
+    // was deleted anyway -- and because neither half of the result was read,
+    // every object in the bucket ended up stranded with nobody aware of it.
+    //
+    // RLS filtering a removal out is not reported as an error: the call comes
+    // back with an empty `data` and `error` null. The returned list is the only
+    // honest signal that the object actually went.
+    const { data: removed, error: removeError } = await supabase.storage
       .from("corrections")
       .remove([existing.storage_path]);
+
+    if (removeError || !removed?.length) {
+      console.error(
+        "[clearPdfUpload] correction object was not removed from storage",
+        {
+          storagePath: existing.storage_path,
+          studentId,
+          testId,
+          reason: removeError?.message ?? "storage reported no object removed",
+        }
+      );
+    }
   }
 
   await supabase
