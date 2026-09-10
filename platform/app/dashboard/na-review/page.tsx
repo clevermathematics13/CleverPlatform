@@ -1,6 +1,11 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { fetchAllRows, missingAnchorCause, transcriptionHasUnreadableGap } from "@/lib/na-scanning";
+import {
+  fetchAllRows,
+  missingAnchorCause,
+  transcriptionHasUnreadableGap,
+  transcriptionStatesTruncation,
+} from "@/lib/na-scanning";
 import Link from "next/link";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -27,6 +32,33 @@ type FlaggedRow = {
   anchor_id: string;
   na_feedback: { ai_transcription: string | null } | { ai_transcription: string | null }[] | null;
 };
+
+/**
+ * Per-anchor tallies over that anchor's student crops.
+ *
+ * gaps and statedCutOff count disjoint populations on purpose: gaps is over
+ * crops possibly_truncated already flagged, statedCutOff is over the ones it
+ * did not. Neither subsumes the other, so the board reports them separately.
+ */
+type AnchorProgress = {
+  total: number;
+  reviewed: number;
+  blank: number;
+  possiblyTruncated: number;
+  /** Flagged crops whose transcription shows an unreadable gap. */
+  gaps: number;
+  /** Unflagged crops the assessor says outright run past the crop edge. */
+  statedCutOff: number;
+};
+
+const emptyProgress = (): AnchorProgress => ({
+  total: 0,
+  reviewed: 0,
+  blank: 0,
+  possiblyTruncated: 0,
+  gaps: 0,
+  statedCutOff: 0,
+});
 
 type ScanRow = {
   id: string;
@@ -129,7 +161,7 @@ export default async function NaReviewPage({
     marks_available: number | null;
     command_term: string | null;
     sort_order: number;
-    progress: { total: number; reviewed: number; blank: number; possiblyTruncated: number; gaps: number };
+    progress: AnchorProgress;
   }[] = [];
   let scanStats: { scans: number; students: number; duplicated: number; unidentified: number } | null = null;
   let incompleteScans: IncompleteScan[] = [];
@@ -172,11 +204,8 @@ export default async function NaReviewPage({
         loadError = e instanceof Error ? e.message : "Failed to load scanned responses";
       }
 
-      const byAnchor = new Map<
-        string,
-        { total: number; reviewed: number; blank: number; possiblyTruncated: number; gaps: number }
-      >();
-      for (const a of anchors) byAnchor.set(a.id, { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0, gaps: 0 });
+      const byAnchor = new Map<string, AnchorProgress>();
+      for (const a of anchors) byAnchor.set(a.id, emptyProgress());
       for (const crop of crops) {
         const bucket = byAnchor.get(crop.anchor_id);
         if (!bucket) continue;
@@ -213,9 +242,50 @@ export default async function NaReviewPage({
         }
       }
 
+      // The other half of the picture: crops the flag never caught, where the
+      // assessor still says the work runs past the edge. possibly_truncated
+      // only fires when stage 4's expansion hit its cap with ink on the edge,
+      // so a box whose expansion never started -- the density check reads the
+      // blank paper between ruled lines and stops (HANDOFF.md, Q1(e)) -- is
+      // invisible to it. On A.1 that is 31 crops over 15 anchors, none of them
+      // counted above, since that list tallies flagged crops only; on A.2, 3 of
+      // the 7 affected anchors have no flagged crop at all and so do not appear
+      // there in any form.
+      //
+      // The ilike triple is a deliberately loose prefilter, not the verdict.
+      // Every alternative in TRUNCATION_STATEMENT contains "cut", "continu" or
+      // "beyond", so it is a strict superset of the real test and
+      // transcriptionStatesTruncation still decides -- one source of truth, in
+      // TypeScript, while the database narrows 1472 unflagged crops to 37 rows
+      // instead of dragging every transcription through the page.
+      try {
+        const stated = await fetchAllRows<FlaggedRow>((from, to) =>
+          supabase
+            .from("na_response_crops")
+            .select("id, anchor_id, na_feedback!inner(ai_transcription)")
+            .in("anchor_id", anchorIds)
+            .not("possibly_truncated", "is", true)
+            .or(
+              "ai_transcription.ilike.*cut*,ai_transcription.ilike.*continu*,ai_transcription.ilike.*beyond*",
+              { referencedTable: "na_feedback" }
+            )
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+        for (const row of stated) {
+          const fb = Array.isArray(row.na_feedback) ? row.na_feedback[0] : row.na_feedback;
+          if (!transcriptionStatesTruncation(fb?.ai_transcription)) continue;
+          const bucket = byAnchor.get(row.anchor_id);
+          if (bucket) bucket.statedCutOff += 1;
+        }
+      } catch {
+        // Advisory only -- every count the board reported before this is
+        // unaffected, so a failure here costs a section, not the page.
+      }
+
       questions = anchors.map((a) => ({
         ...a,
-        progress: byAnchor.get(a.id) ?? { total: 0, reviewed: 0, blank: 0, possiblyTruncated: 0, gaps: 0 },
+        progress: byAnchor.get(a.id) ?? emptyProgress(),
       }));
 
       // A student who was re-scanned has more than one packet scan against this
@@ -329,6 +399,17 @@ export default async function NaReviewPage({
         b.progress.gaps - a.progress.gaps || b.progress.possiblyTruncated - a.progress.possiblyTruncated
     );
   const anchorsWithGaps = truncationHotspots.filter((q) => q.progress.gaps > 0).length;
+
+  // Kept separate from truncationHotspots because the cause and the remedy
+  // differ. There is no expand_max_x1_pt/expand_max_y1_pt to widen when the
+  // expansion never started, and scripts/audit_anchor_geometry.py reports no
+  // short anchor on either live packet -- so on current data these are students
+  // writing past the box one at a time, checked per student against the
+  // original page, not an anchor to re-cut.
+  const statedCutOffAnchors = questions
+    .filter((q) => q.progress.statedCutOff > 0)
+    .sort((a, b) => b.progress.statedCutOff - a.progress.statedCutOff || a.sort_order - b.sort_order);
+  const statedCutOffCrops = statedCutOffAnchors.reduce((sum, q) => sum + q.progress.statedCutOff, 0);
 
   return (
     <div className="space-y-6">
@@ -491,6 +572,44 @@ export default async function NaReviewPage({
                             q.progress.possiblyTruncated === 1 ? "" : "s"
                           } ${q.progress.gaps === 1 ? "has an unreadable gap" : "have unreadable gaps"}`
                         : `${q.progress.possiblyTruncated} flagged, no unreadable gaps`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {statedCutOffAnchors.length > 0 && (
+            <div className="rounded-xl border border-sky-400/60 bg-sky-500/5 p-4">
+              <p className="text-sm font-medium text-sky-400">
+                {statedCutOffCrops} response{statedCutOffCrops === 1 ? "" : "s"} the crop detector did not flag, where
+                the assessor says the work runs past the edge anyway
+              </p>
+              <p className="mt-1 text-xs text-da-muted">
+                A crop is only flagged when stage 4&apos;s expansion hit its limit with ink still on the edge. Where
+                the expansion never started -- the density check reads the blank paper between ruled lines and stops
+                -- nothing is flagged, so these crops are missing from the amber list above even for an anchor that
+                appears in it, because that list counts flagged crops only.
+              </p>
+              <p className="mt-1 text-xs text-da-muted">
+                Listed on the assessor&apos;s own words alone -- &quot;[cut off]&quot;, &quot;[continues below
+                crop]&quot; -- which run about 2% of unflagged crops against 14% of flagged ones. A bracketed guess
+                is deliberately not enough to appear here: away from the flag those are mostly illegible handwriting
+                rather than missing text. Worth opening before you approve, since approving one sends a student
+                feedback on work the assessor could not fully see.
+              </p>
+              <ul className="mt-3 divide-y divide-da-border/40">
+                {statedCutOffAnchors.map((q) => (
+                  <li key={q.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                    <Link
+                      href={`/dashboard/na-review/${q.id}`}
+                      className="text-da-text hover:text-da-accent hover:underline"
+                    >
+                      {q.qid}
+                    </Link>
+                    <span className="text-xs text-sky-300">
+                      {q.progress.statedCutOff} unflagged crop{q.progress.statedCutOff === 1 ? "" : "s"}
+                      {q.progress.statedCutOff === 1 ? " says" : " say"} the work continues past the edge
                     </span>
                   </li>
                 ))}
