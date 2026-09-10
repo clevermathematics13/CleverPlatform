@@ -56,6 +56,13 @@ export interface AnswerBoxSpec {
   kind: "blank" | "lined" | "grid" | "structured";
   heightMm: number;
   lineSpacingMm: number;
+  /**
+   * Column spec for a "structured" box, ignored by every other kind. Weights
+   * are relative, so (4, 2, 8) reads as a wide first column, a narrow middle
+   * and a wide last -- the shape a reflection table needs when the middle
+   * column holds only a question number.
+   */
+  columns?: Array<{ header: string; weight: number }>;
   continuation: {
     enabled: boolean;
     label: string;
@@ -477,10 +484,61 @@ export function getActivityTypstSource(): string {
   else { [] }
 }
 
-#let answer-box(height-mm, label: none) = {
-  block(breakable: false)[
+#let col-rule = rgb("#e5e7eb")
+
+// Answer space for one question.
+//
+// This takes the whole AnswerBoxSpec because it used to take only heightMm:
+// kind and lineSpacingMm were computed by the orchestrator, validated by
+// template-ast.schema, and then dropped here, so a template configured
+// "lined" -- which is the default -- printed an empty rectangle. Every kind
+// the schema allows is honoured now.
+//
+// "structured" carries its own column spec, so a question that wants a table
+// (a concept map, say) declares its columns as weights rather than relying on
+// whatever a generator happened to draw. Weights are relative: (4, 2, 8) gives
+// a wide idea column, a narrow one for a question number, and the widest for
+// the explanation -- the shape a reflection table actually needs, and the one
+// A.1's Q28 and A.2's Q19 both got wrong by over-allocating the middle.
+#let answer-box(spec, label: none) = {
+  let h = spec.at("heightMm", default: 40) * 1mm
+  let gap = spec.at("lineSpacingMm", default: 7) * 1mm
+  let kind = spec.at("kind", default: "blank")
+  let cols = spec.at("columns", default: ())
+
+  block(breakable: false, width: 100%)[
     #if label != none [ #block(inset: (x:4pt,y:2pt))[#text(size:7pt,fill:rgb("#6b7280"))[#label]] ]
-    #rect(width: 100%, height: (height-mm) * 1mm, stroke: 0.5pt + col-border, radius: 1pt)
+    #if kind == "structured" and cols.len() > 0 [
+      #let body-rows = calc.max(1, int(h / gap) - 1)
+      #table(
+        columns: cols.map(c => c.at("weight", default: 1) * 1fr),
+        stroke: 0.4pt + col-border,
+        inset: 4pt,
+        table.header(..cols.map(c => text(weight: "bold", size: 8.5pt)[#c.at("header", default: "")])),
+        ..range(body-rows * cols.len()).map(_ => block(height: gap)[])
+      )
+    ] else [
+      #rect(width: 100%, height: h, stroke: 0.5pt + col-border, radius: 1pt, inset: 0pt)[
+        #if kind == "lined" or kind == "grid" [
+          #layout(size => {
+            let out = []
+            let i = 1
+            while i * gap < size.height {
+              out += place(top + left, dy: i * gap, line(length: size.width, stroke: 0.3pt + col-rule))
+              i += 1
+            }
+            if kind == "grid" {
+              let j = 1
+              while j * gap < size.width {
+                out += place(top + left, dx: j * gap, line(angle: 90deg, length: size.height, stroke: 0.3pt + col-rule))
+                j += 1
+              }
+            }
+            out
+          })
+        ]
+      ]
+    ]
   ]
 }
 
@@ -715,7 +773,7 @@ export function getActivityTypstSource(): string {
         #if tmpl.questionBlocks.showEstimatedMinutes [#v(1pt)#text(size:7pt,fill:rgb("#9ca3af"))[(~#str(q.estimatedMinutes) min)]]
       ]
       #v(3pt)
-      #answer-box(q.answerBox.heightMm)
+      #answer-box(q.answerBox)
     ]
     #v(4pt)
   ]

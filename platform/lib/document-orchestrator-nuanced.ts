@@ -203,10 +203,15 @@ function buildAnswerBoxSpec(
     template.questionBlocks.minimumUsefulAnswerBoxHeightMm
   );
 
+  // A question that declares columns wants a table, whatever the template's
+  // default kind is -- the columns are the more specific instruction.
+  const columns = q.answerBoxColumns?.filter((c) => c.weight > 0) ?? [];
+
   return {
-    kind: template.answerBoxes.defaultKind,
+    kind: columns.length > 0 ? "structured" : template.answerBoxes.defaultKind,
     heightMm,
     lineSpacingMm: template.answerBoxes.lineSpacingMm,
+    ...(columns.length > 0 ? { columns } : {}),
     continuation: {
       enabled: template.answerBoxes.continuationEnabled,
       label: template.answerBoxes.continuationLabel,
