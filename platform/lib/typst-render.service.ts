@@ -874,7 +874,7 @@ export function getActivityTypstSource(): string {
   ]
   #if "translationTable" in section [
     #v(4pt)
-    #text(size:9pt,weight:"bold")[#section.translationTable.caption]
+    #text(size:9pt,weight:"bold")[#rich(section.translationTable.caption)]
     #v(2pt)
     #table(columns:(1fr,1fr),stroke:0.4pt+col-border,
       table.header(text(weight:"bold",size:9pt)[What you say in your head...],text(weight:"bold",size:9pt)[What you write on the exam...]),
