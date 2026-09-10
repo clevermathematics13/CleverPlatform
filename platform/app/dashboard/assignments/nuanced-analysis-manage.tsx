@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type PacketSummary = {
   id: string;
@@ -50,7 +51,19 @@ function formatDate(iso: string): string {
   }
 }
 
+/**
+ * The printable teacher answer key for a packet: every rubric entry with its
+ * answer key, open rubric, misconception and marking note, styled for A4 so
+ * the browser's own File -> Print -> Save as PDF produces the document.
+ * See app/api/na-review/rubric/[nuancedAnalysisId]/route.ts for why it is
+ * HTML rather than a generated PDF binary.
+ */
+function answerKeyHref(packetId: string): string {
+  return `/api/na-review/rubric/${packetId}?format=html`;
+}
+
 export function NuancedAnalysisManage() {
+  const router = useRouter();
   const [packets, setPackets] = useState<PacketSummary[]>([]);
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -58,6 +71,9 @@ export function NuancedAnalysisManage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleteState, setDeleteState] = useState<DeleteState>("idle");
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [openErrorId, setOpenErrorId] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
   async function loadPackets() {
     setLoadState("loading");
@@ -90,6 +106,43 @@ export function NuancedAnalysisManage() {
     if (courseFilter === "all") return packets;
     return packets.filter((p) => p.course === courseFilter);
   }, [packets, courseFilter]);
+
+  /**
+   * Open a packet in the Nuanced Analysis editor.
+   *
+   * The editor is keyed on an assignment_templates row, not on a
+   * nuanced_analyses row, so a card cannot simply link to
+   * /dashboard/assignments/editor/<packet id> -- that id names nothing the
+   * editor can load, and the page rendered "not found" for every packet.
+   * The conversion route builds (or hands back) the packet's working copy
+   * and returns the id the editor actually wants. This mirrors what
+   * /admin/create already does after generating a packet.
+   */
+  async function openPacket(id: string) {
+    setOpeningId(id);
+    setOpenError(null);
+    setOpenErrorId(null);
+    try {
+      const res = await fetch("/api/assignments/from-nuanced-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nuancedAnalysisId: id }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        templateId?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.success || !data.templateId) {
+        throw new Error(data.error ?? `Could not open this packet (${res.status})`);
+      }
+      router.push(`/dashboard/assignments/editor/${data.templateId}`);
+    } catch (err) {
+      setOpenError(err instanceof Error ? err.message : "Could not open this packet");
+      setOpenErrorId(id);
+      setOpeningId(null);
+    }
+  }
 
   function requestDelete(id: string) {
     setDeleteTargetId(id);
@@ -207,11 +260,22 @@ export function NuancedAnalysisManage() {
 
                 <div className="flex shrink-0 items-center gap-2">
                   <a
-                    href={`/dashboard/assignments/editor/${packet.id}`}
-                    className="rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-1.5 text-xs font-medium text-da-text hover:bg-da-hover transition-colors"
+                    href={answerKeyHref(packet.id)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Printable marking rubric — every answer key, open rubric and marking note. Print → Save as PDF. Teacher only; not for student distribution."
+                    className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 transition-colors"
                   >
-                    Open
+                    Answer key
                   </a>
+                  <button
+                    type="button"
+                    onClick={() => void openPacket(packet.id)}
+                    disabled={openingId === packet.id}
+                    className="rounded-lg border border-da-border/50 bg-da-bg/30 px-3 py-1.5 text-xs font-medium text-da-text hover:bg-da-hover disabled:opacity-50 transition-colors"
+                  >
+                    {openingId === packet.id ? "Opening…" : "Open"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => requestDelete(packet.id)}
@@ -221,6 +285,12 @@ export function NuancedAnalysisManage() {
                   </button>
                 </div>
               </div>
+
+              {openErrorId === packet.id && openError && (
+                <p className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 p-2 text-xs text-red-300">
+                  {openError}
+                </p>
+              )}
 
               {deleteTargetId === packet.id && (
                 <div className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3">

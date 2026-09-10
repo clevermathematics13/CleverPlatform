@@ -84,6 +84,40 @@ export async function POST(req: Request) {
 
     const templateName = row.title.length > 120 ? `${row.title.slice(0, 117)}...` : row.title;
 
+    // Reuse this teacher's existing working copy of the packet rather than
+    // inserting a second one. Without this, the Manage tab's "Open" button
+    // -- which a teacher may click any number of times -- would leave a new
+    // assignment_templates row behind on every click.
+    //
+    // Matching on template_name is the only join available: nothing links
+    // assignment_templates back to nuanced_analyses, and adding a column to
+    // do so is a production schema change this fix does not need. The name
+    // written here is exactly row.title, so a collision means a template
+    // named precisely after the packet, which is the one we want anyway.
+    //
+    // A reused row is returned AS-IS, not refreshed from the packet: the
+    // teacher may have edited it in the editor, and silently overwriting
+    // that work is worse than showing a copy that has drifted from a
+    // re-saved packet. Deleting the template in the editor is the way back
+    // to a fresh conversion.
+    const { data: existing, error: existingError } = await supabase
+      .from("assignment_templates")
+      .select("id")
+      .eq("user_id", profile.id)
+      .eq("template_name", templateName)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingError) throw existingError;
+
+    if (existing) {
+      return NextResponse.json(
+        { success: true, templateId: existing.id, reused: true },
+        { status: 200 },
+      );
+    }
+
     const { data: template, error: insertError } = await supabase
       .from("assignment_templates")
       .insert({
@@ -100,7 +134,10 @@ export async function POST(req: Request) {
 
     if (insertError) throw insertError;
 
-    return NextResponse.json({ success: true, templateId: template.id }, { status: 201 });
+    return NextResponse.json(
+      { success: true, templateId: template.id, reused: false },
+      { status: 201 },
+    );
   } catch (err) {
     const message =
       err instanceof Error ? err.message : "Failed to convert packet to Assignment Studio template.";
