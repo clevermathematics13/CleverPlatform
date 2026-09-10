@@ -62,6 +62,14 @@ export async function addManualInvite(formData: FormData) {
   const fullName = fullNameInput || email.split("@")[0];
   const firstName = fullName.split(/\s+/)[0];
 
+  // registered is deliberately not written here. It means "this student has an
+  // account", not "this student was invited" -- profile_id below, and
+  // auto_enroll_from_invitations on first sign-in, are the only things that
+  // earn it. Writing it at invite time made every imported student read as
+  // registered while profile_id stayed null, which is what made a class's
+  // Formative Assessment feedback look deliverable when nobody could sign in
+  // to see it. The column defaults to false, and omitting it from the payload
+  // leaves an already-earned true intact when this upsert hits an existing row.
   const { error: inviteError } = await supabase
     .from("invited_students")
     .upsert(
@@ -69,7 +77,6 @@ export async function addManualInvite(formData: FormData) {
         email,
         full_name: fullName,
         course_id: courseId,
-        registered: true,
       },
       { onConflict: "email,course_id" }
     );

@@ -14,10 +14,11 @@ export default async function ArchivedCoursesPage() {
       .eq("archived", true)
       .order("name"),
     supabase.from("students").select("course_id"),
+    // profile_id alone separates "not signed in yet" from the students table's
+    // own rows -- see the note in ../courses/page.tsx.
     supabase
       .from("invited_students")
       .select("course_id")
-      .eq("registered", true)
       .is("profile_id", null),
     supabase.from("tests").select("course_id"),
   ]);

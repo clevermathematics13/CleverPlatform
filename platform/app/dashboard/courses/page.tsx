@@ -12,11 +12,13 @@ export default async function CoursesPage() {
   let studentsQuery = supabase.from("students").select("course_id");
   if (!showHidden) studentsQuery = studentsQuery.eq("hidden", false);
 
-  // Only count invited students who haven't signed in yet (no profile_id) to avoid double-counting
+  // Only count invited students who haven't signed in yet (no profile_id) to
+  // avoid double-counting: those with one are already in `students` above.
+  // profile_id alone decides that -- registered now means "has an account",
+  // so pairing it with `is null` would match nothing and empty every card.
   let invitedQuery = supabase
     .from("invited_students")
     .select("course_id")
-    .eq("registered", true)
     .is("profile_id", null);
   if (!showHidden) invitedQuery = invitedQuery.eq("hidden", false);
 
