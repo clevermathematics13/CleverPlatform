@@ -281,6 +281,43 @@ describe("rich() on geometry and measure vocabulary", () => {
   });
 });
 
+describe("rich() never lets a bad segment end the document", () => {
+  // These come from two of six real generated packets, and they are the worst
+  // failure this helper has: not a printed dollar sign but a render that
+  // produces no PDF at all. Both predate the products fix -- they abort on
+  // origin/main too.
+  //
+  // Typst reads an unbroken run of letters AND DIGITS as one identifier, so
+  // "cos2theta" is a variable it does not have. The guard tokenised on
+  // letters alone, saw "cos" and "theta", found both defined, and handed the
+  // whole run to eval. A segment can also be un-evaluable with no letters in
+  // it at all: "cm$^2$ to m$^2$" pairs its dollars around a bare "^2".
+  it.each([
+    ["a digit inside a name", "Substitute $theta = omega t$ into $sin^2 theta = (1-cos2theta)/2$."],
+    ["the same, in a hint", "First write $cos^2theta = (1+cos2theta)/2$, then apply it again."],
+    ["units written as prose superscripts", "convert from cm$^2$ to m$^2$ using $1$ m$^2 = 10000$ cm$^2$."],
+    ["a run of glued function names", "Kofi writes $sin2theta/(1+cos2theta) = (2sinthetacostheta)/(1+cos2theta)$."],
+    ["a bare attachment operator", "The area is $^2$ of the total."],
+    ["a trailing binary operator", "The sum is $3 +$ the remainder."],
+  ])("compiles rather than aborting: %s", (_label, text) => {
+    expect(compiles(text)).toBe(true);
+  });
+
+  // The guard must not have bought that by rejecting real math with digits or
+  // attachments in it -- which is most of a DP packet.
+  it.each([
+    ["subscripts", "Then $x_1$, $u_n = u_(n-1) + d$ and $S_n$ hold."],
+    ["superscripts", "Power rule $dif/(dif x) x^n = n x^(n-1)$ applies."],
+    ["a numeric base", "Show $log_2(8) = 3$ and $2^10 = 1024$."],
+    ["sigma with bounds", "sigma notation $sum_(k=1)^n a_k$ converges."],
+    ["exact trig values", "exact values at $pi/6, pi/4, pi/3$ are needed."],
+    ["a negative opener", "Assume $-5 < x$ and $x^2 - 4x + 3 = 0$."],
+    ["modulus and exponential form", "modulus $|z| = sqrt(a^2+b^2)$ and $z = r e^(i theta)$"],
+  ])("still typesets %s", (_label, text) => {
+    expect(dollarsIn(text)).toBe(0);
+  });
+});
+
 describe("rich() falls back one segment at a time", () => {
   it("keeps the math in a sentence that also carries a price", () => {
     // The fallback used to be per string: one currency dollar anywhere threw

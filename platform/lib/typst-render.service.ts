@@ -677,7 +677,13 @@ export function getActivityTypstSource(): string {
 // One token of a candidate math segment: a quoted literal span, or a name,
 // where a name carries its dotted symbol modifiers with it so "eq.not" is
 // judged as one thing rather than as the two English words it contains.
-#let math-token = regex("\\"[^\\"]*\\"|[A-Za-z]+([.][A-Za-z]+)*")
+//
+// Digits are part of a name, because they are part of one to Typst: it reads
+// "cos2theta" as a single identifier and dies on it. Matching only letters
+// saw "cos" and "theta", found both defined, and handed the whole run to
+// eval -- which aborted the document. A real trigonometry packet wrote
+// "$sin^2 theta = (1-cos2theta)/2$" and took its own PDF down that way.
+#let math-token = regex("\\"[^\\"]*\\"|[A-Za-z][A-Za-z0-9]*([.][A-Za-z][A-Za-z0-9]*)*")
 
 // Typst reads a multi-letter run as ONE variable name, so "ab" is a lookup
 // that fails, not a product. Algebra is written exactly that way -- "ab" and
@@ -690,7 +696,7 @@ export function getActivityTypstSource(): string {
 #let space-out-products(seg) = seg.replace(math-token, m => {
   let t = m.text
   if not t.starts-with(regex("[A-Za-z]")) { t }
-  else if t.contains(".") or t.len() == 1 { t }
+  else if t.contains(".") or t.contains(regex("[0-9]")) or t.len() == 1 { t }
   else if known-name(t) { t }
   else { t.clusters().join(" ") }
 })
@@ -717,6 +723,13 @@ export function getActivityTypstSource(): string {
   // every unrecognised run in it must be two letters long AND the segment
   // must carry an operator, so "$ax + by = c$" is read as math while "$5 and
   // $" -- the middle of "tickets cost $5 and $10" -- keeps its dollar signs.
+  // A segment that opens with an attachment operator has nothing to attach
+  // to, and one that ends on a binary operator has nothing to apply it to:
+  // neither is Typst math, and eval() answers a syntax error by ending the
+  // document rather than the segment. Both come from one habit -- writing a
+  // unit as "cm$^2$ to m$^2$", where the dollars pair up around a bare "^2".
+  if unquoted.contains(regex("^ *[_^]")) { return false }
+  if unquoted.contains(regex("[-+*/^_=] *$")) { return false }
   let unspaced = not unquoted.contains(regex("\\\\s"))
   let has-operator = unquoted.contains(regex("[-+=^_/<>()*|]"))
   for m in unquoted.matches(math-token) {
@@ -724,6 +737,11 @@ export function getActivityTypstSource(): string {
     if t.contains(".") {
       if not math-symbol-paths.contains(lower(t)) { return false }
     } else if t.len() > 1 and not known-name(t) {
+      // A run carrying a digit cannot be re-spaced into single-letter
+      // variables, so there is nothing safe to hand eval: "cos2theta" and
+      // "x2" are single unknown identifiers to Typst either way. Printed as
+      // written that is only ugly; evaluated it is a failed render.
+      if t.contains(regex("[0-9]")) { return false }
       if not (unspaced or (t.len() == 2 and has-operator)) { return false }
     }
   }
