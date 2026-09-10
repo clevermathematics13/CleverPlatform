@@ -6,6 +6,7 @@ import {
   transcriptionHasUnreadableGap,
   transcriptionStatesTruncation,
 } from "@/lib/na-scanning";
+import { isUngradedAnchor, type AnchorContext } from "@/lib/na-assessment";
 import Link from "next/link";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -161,6 +162,16 @@ export default async function NaReviewPage({
     marks_available: number | null;
     command_term: string | null;
     sort_order: number;
+    /**
+     * A box with no marks and no key of any kind -- A.1 and A.2 each carry one,
+     * the Desmos "noticings from the sandbox" thinking space. The assessment
+     * pipeline already skips these (isUngradedAnchor, used by the worker, the
+     * approve-all route and both release routes), so their crops carry a
+     * "not marked" note and can never be reviewed. The board is the last
+     * consumer that did not know, and counting them as outstanding marking put
+     * 44 unreachable responses in A.1's denominator.
+     */
+    ungraded: boolean;
     progress: AnchorProgress;
   }[] = [];
   let scanStats: { scans: number; students: number; duplicated: number; unidentified: number } | null = null;
@@ -170,7 +181,9 @@ export default async function NaReviewPage({
   if (activeVersionId) {
     const { data: anchors } = await supabase
       .from("na_anchors")
-      .select("id, qid, base_qid, part_label, marks_available, command_term, sort_order")
+      .select(
+        "id, qid, base_qid, part_label, marks_available, command_term, sort_order, question_answer, answer_sketch, open_rubric"
+      )
       .eq("packet_version_id", activeVersionId)
       .order("sort_order");
 
@@ -284,7 +297,25 @@ export default async function NaReviewPage({
       }
 
       questions = anchors.map((a) => ({
-        ...a,
+        id: a.id,
+        qid: a.qid,
+        base_qid: a.base_qid,
+        part_label: a.part_label,
+        marks_available: a.marks_available,
+        command_term: a.command_term,
+        sort_order: a.sort_order,
+        // Same predicate the worker and the release routes use, rather than a
+        // second rule that could drift from theirs.
+        ungraded: isUngradedAnchor({
+          qid: a.qid,
+          baseQid: a.base_qid ?? a.qid,
+          marksAvailable: a.marks_available,
+          commandTerm: a.command_term,
+          answerSketch: a.answer_sketch,
+          openRubric: a.open_rubric,
+          misconceptionContext: null,
+          questionAnswer: a.question_answer,
+        } satisfies AnchorContext),
         progress: byAnchor.get(a.id) ?? emptyProgress(),
       }));
 
@@ -370,8 +401,13 @@ export default async function NaReviewPage({
     }
   }
 
-  const totalCrops = questions.reduce((sum, q) => sum + q.progress.total, 0);
-  const totalReviewed = questions.reduce((sum, q) => sum + q.progress.reviewed, 0);
+  // Overall progress is a marking figure, so it counts only what can be marked.
+  // Leaving the thinking space in made A.1's bar top out at 97.5% forever.
+  const gradableQuestions = questions.filter((q) => !q.ungraded);
+  const totalCrops = gradableQuestions.reduce((sum, q) => sum + q.progress.total, 0);
+  const totalReviewed = gradableQuestions.reduce((sum, q) => sum + q.progress.reviewed, 0);
+  const ungradedQuestions = questions.filter((q) => q.ungraded);
+  const ungradedCrops = ungradedQuestions.reduce((sum, q) => sum + q.progress.total, 0);
 
   // Anchors where stage 4's adaptive expansion is genuinely running out of
   // room, not just "may be worth a glance" -- ranked so the worst
@@ -392,8 +428,14 @@ export default async function NaReviewPage({
   // and the real problem) sat third. Flag count still breaks ties, and
   // anchors with no gaps stay listed -- the heuristic ranks, it does not
   // adjudicate.
+  // Ungraded anchors are excluded: the remedy this banner recommends is widen,
+  // re-crop, re-grade, and there is no grade to redo on a box nobody marks. A
+  // row that can only ever read "4 flagged, no unreadable gaps" -- the gap
+  // heuristic needs a transcription, and an ungraded crop never gets one -- is
+  // an invitation to widen an anchor for no benefit. The tile still shows the
+  // flag count for anyone who wants it.
   const truncationHotspots = questions
-    .filter((q) => q.progress.possiblyTruncated > 0)
+    .filter((q) => !q.ungraded && q.progress.possiblyTruncated > 0)
     .sort(
       (a, b) =>
         b.progress.gaps - a.progress.gaps || b.progress.possiblyTruncated - a.progress.possiblyTruncated
@@ -487,6 +529,15 @@ export default async function NaReviewPage({
                 {scanStats.unidentified > 0 &&
                   `, ${scanStats.unidentified} scan${scanStats.unidentified === 1 ? "" : "s"} not matched to a student`}
                 {scanStats.duplicated > 0 && ". A re-scanned student's responses are all counted here."}
+              </p>
+            )}
+            {ungradedCrops > 0 && (
+              <p className="mt-1 text-xs text-da-muted">
+                Excludes {ungradedCrops} response{ungradedCrops === 1 ? "" : "s"} in{" "}
+                {ungradedQuestions.length === 1
+                  ? "an ungraded thinking space"
+                  : `${ungradedQuestions.length} ungraded thinking spaces`}{" "}
+                ({ungradedQuestions.map((q) => q.qid).join(", ")}) -- still listed below to read, but never marked.
               </p>
             )}
           </div>
@@ -639,18 +690,31 @@ export default async function NaReviewPage({
                     {done && <span className="text-green-500 text-lg">✓</span>}
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between text-xs text-da-muted">
-                    <span>
-                      {q.progress.reviewed}/{q.progress.total} reviewed
-                    </span>
-                    {q.marks_available != null && <span>{q.marks_available} Clev&apos;s Marks</span>}
-                  </div>
-                  <div className="mt-1.5 h-1.5 rounded-full bg-da-hover overflow-hidden">
-                    <div
-                      className={`h-full transition-all ${done ? "bg-green-500" : "bg-da-accent"}`}
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
+                  {q.ungraded ? (
+                    <div className="mt-3">
+                      <span className="inline-block rounded-full border border-da-border bg-da-hover px-2 py-0.5 text-[11px] text-da-muted">
+                        Thinking space -- not marked
+                      </span>
+                      <p className="mt-1.5 text-xs text-da-muted">
+                        {q.progress.total} response{q.progress.total === 1 ? "" : "s"} to read, none to mark
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-3 flex items-center justify-between text-xs text-da-muted">
+                        <span>
+                          {q.progress.reviewed}/{q.progress.total} reviewed
+                        </span>
+                        {q.marks_available != null && <span>{q.marks_available} Clev&apos;s Marks</span>}
+                      </div>
+                      <div className="mt-1.5 h-1.5 rounded-full bg-da-hover overflow-hidden">
+                        <div
+                          className={`h-full transition-all ${done ? "bg-green-500" : "bg-da-accent"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </>
+                  )}
                   {q.progress.blank > 0 && (
                     <p className="mt-1.5 text-[11px] text-da-muted">{q.progress.blank} blank</p>
                   )}
