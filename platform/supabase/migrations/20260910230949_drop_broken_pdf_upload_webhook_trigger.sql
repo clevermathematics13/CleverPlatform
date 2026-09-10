@@ -1,0 +1,32 @@
+-- on_pdf_upload_inserted has never once worked.
+--
+-- trigger_correction_check() reads current_setting('app.supabase_url') and
+-- current_setting('app.supabase_service_role_key'). Neither is set on this
+-- database, so the function raises 42704 (unrecognized configuration
+-- parameter) every time it runs. It is an AFTER INSERT trigger, so that
+-- exception rolls the INSERT back: the pdf_uploads row is never written, while
+-- the storage object the browser uploaded a moment earlier is already
+-- committed and stays behind.
+--
+-- That is the entire explanation for the orphaned objects in the corrections
+-- bucket, and it is not the missing DELETE policy that 20260910181334
+-- suggested. Verified against production on 10 Sep 2026: every object stored
+-- after this trigger was created has no pdf_uploads row, and the single row
+-- that does exist was written on 23 May 2026, eight days before the trigger.
+--
+-- The consequence is that no student has been able to submit corrected work
+-- since 31 May 2026. The upload reports a failure and nothing is recorded.
+--
+-- The trigger is redundant as well as broken. app/api/reflection/
+-- trigger-correction/route.ts already upserts correction_checks and POSTs the
+-- same process-correction edge function, using NEXT_PUBLIC_SUPABASE_URL and
+-- SUPABASE_SERVICE_ROLE_KEY, which are set; UploadSection calls that route
+-- after every successful insert. So dropping this restores the insert path and
+-- loses no behaviour.
+--
+-- Setting the two config parameters instead was rejected deliberately: it
+-- would put the service-role key in database configuration to duplicate work
+-- the application already does correctly.
+
+drop trigger if exists on_pdf_upload_inserted on public.pdf_uploads;
+drop function if exists public.trigger_correction_check();
