@@ -27,45 +27,65 @@ export interface PacketLockFacts {
   scans: number;
 }
 
-export type PacketLock = { locked: false } | { locked: true; reason: string };
+export type PacketLock =
+  /** Editable. `warning` is advisory only and never blocks a save. */
+  | { locked: false; warning?: string }
+  | { locked: true; reason: string };
 
 /**
- * A packet is locked for content edits once a print master has been
- * registered for it (na_packet_versions), whether or not anything has been
- * scanned yet.
+ * A packet is locked for content edits once student work has been scanned
+ * against it (na_packet_scans).
  *
- * The version row is the point at which the packet stops being only a
- * document and becomes the key to physical paper: anchors are cut against
- * that PDF's exact page geometry, crops are taken at those coordinates, and
- * na_rubric_items is what Clev's Marks grades the resulting work against.
- * Renumbering a question or changing its marks after that point silently
- * desyncs the marking key from the paper the students actually wrote on, and
- * nothing downstream would report the mismatch.
+ * That is the point where an edit can produce a wrong mark rather than merely
+ * a stale document: crops have been taken at the anchors' coordinates and
+ * Clev's Marks grades them against na_rubric_items, so renumbering a question
+ * or changing its marks afterwards leaves the marking key describing a paper
+ * the students never wrote on, with nothing downstream reporting the
+ * mismatch.
  *
- * Deliberately conservative: it refuses even at zero scans, because the
- * anchors are already keyed to the printed geometry by then. The cost of a
- * false refusal is a teacher re-saving from the sandbox; the cost of a false
- * allow is marks computed against the wrong key.
+ * A registered print master with no scans is deliberately NOT a lock. A
+ * teacher who has generated a master but not yet handed it out is exactly who
+ * needs to fix a typo, and refusing them buys nothing: no marks exist to be
+ * computed against the wrong key.
+ *
+ * That middle state does carry a smaller risk, so it returns a warning rather
+ * than passing silently. na_anchors.rubric_item_id points at a rubric row by
+ * qid; syncRubricItems upserts on (nuanced_analysis_id, qid), so an edit that
+ * leaves the numbering alone re-links cleanly, while one that renumbers a
+ * question leaves an existing anchor pointing at a row that no longer
+ * describes it. Reprinting the master and re-cutting the anchors is what
+ * resolves that, and the warning is where the teacher hears so.
  */
 export function evaluatePacketLock(facts: PacketLockFacts): PacketLock {
-  if (facts.packetVersions <= 0) return { locked: false };
+  if (facts.scans > 0) {
+    const parts = [`${facts.scans} scanned student cop${facts.scans === 1 ? "y" : "ies"}`];
+    if (facts.anchors > 0) parts.push(`${facts.anchors} answer-box anchors`);
 
-  const parts = [
-    `${facts.packetVersions} print master${facts.packetVersions === 1 ? "" : "s"}`,
-  ];
-  if (facts.anchors > 0) parts.push(`${facts.anchors} answer-box anchors`);
-  if (facts.scans > 0) parts.push(`${facts.scans} scanned student copies`);
+    return {
+      locked: true,
+      reason:
+        `This packet has ${parts.join(" and ")}. Those crops were taken at the ` +
+        `anchors' coordinates and Clev's Marks grades them against its rubric, ` +
+        `so changing the content here would leave the marking key describing a ` +
+        `paper the students never wrote on. Formatting changes still save. To ` +
+        `correct an answer key, edit the rubric; to change the questions, issue ` +
+        `a new packet version.`,
+    };
+  }
 
-  return {
-    locked: true,
-    reason:
-      `This packet has ${parts.join(", ")}. Its anchors are cut against the ` +
-      `printed page geometry and Clev's Marks grades against its rubric, so ` +
-      `changing the content here would leave the marking key describing a ` +
-      `paper the students never wrote on. Formatting changes still save. To ` +
-      `correct an answer key, edit the rubric; to change the questions, issue ` +
-      `a new packet version.`,
-  };
+  if (facts.packetVersions > 0) {
+    return {
+      locked: false,
+      warning:
+        `This packet has a print master${
+          facts.anchors > 0 ? ` and ${facts.anchors} answer-box anchors` : ""
+        } but no scanned work yet, so it is still editable. If you renumber or ` +
+        `remove a question, reprint the master and re-cut the anchors before ` +
+        `collecting any work against it.`,
+    };
+  }
+
+  return { locked: false };
 }
 
 // ---- Content write ---------------------------------------------------------

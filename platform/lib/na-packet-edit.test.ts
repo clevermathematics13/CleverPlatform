@@ -5,36 +5,53 @@ import { evaluatePacketLock, buildPacketContentUpdate } from "./na-packet-edit";
 import type { AssignmentDraft } from "./assignments";
 
 describe("evaluatePacketLock", () => {
-  it("leaves a packet that was never printed editable", () => {
+  it("leaves a packet that was never printed editable and unremarkable", () => {
     expect(evaluatePacketLock({ packetVersions: 0, anchors: 0, scans: 0 })).toEqual({
       locked: false,
     });
   });
 
-  it("locks on a print master even before anything is scanned", () => {
-    // The anchors are already cut to that PDF's geometry by this point, so
-    // waiting for scans would be locking the door after the fact.
-    const lock = evaluatePacketLock({ packetVersions: 1, anchors: 32, scans: 0 });
-    expect(lock.locked).toBe(true);
+  it("locks once any student work has been scanned", () => {
+    // The line is drawn here because this is where an edit can produce a
+    // wrong MARK, not merely a stale document.
+    expect(evaluatePacketLock({ packetVersions: 1, anchors: 40, scans: 44 }).locked).toBe(true);
+    expect(evaluatePacketLock({ packetVersions: 1, anchors: 0, scans: 1 }).locked).toBe(true);
   });
 
-  it("names what exists so the teacher can see why", () => {
+  it("does NOT lock a print master that has collected no work yet", () => {
+    // A teacher who generated a master but has not handed it out is exactly
+    // who needs to fix a typo; no marks exist to be computed wrongly.
+    const lock = evaluatePacketLock({ packetVersions: 1, anchors: 32, scans: 0 });
+    expect(lock.locked).toBe(false);
+  });
+
+  it("warns, rather than blocks, on a master with anchors but no scans", () => {
+    const lock = evaluatePacketLock({ packetVersions: 1, anchors: 32, scans: 0 });
+    if (lock.locked) throw new Error("expected editable");
+    expect(lock.warning).toContain("32 answer-box anchors");
+    expect(lock.warning).toContain("no scanned work yet");
+    expect(lock.warning).toContain("re-cut the anchors");
+  });
+
+  it("still warns on a master with no anchors, without naming a zero count", () => {
+    const lock = evaluatePacketLock({ packetVersions: 1, anchors: 0, scans: 0 });
+    if (lock.locked) throw new Error("expected editable");
+    expect(lock.warning).toContain("print master");
+    expect(lock.warning).not.toContain("0 answer-box anchors");
+  });
+
+  it("names what exists so the teacher can see why it is locked", () => {
     // A.1's real numbers.
     const lock = evaluatePacketLock({ packetVersions: 1, anchors: 40, scans: 44 });
     if (!lock.locked) throw new Error("expected locked");
-    expect(lock.reason).toContain("1 print master");
-    expect(lock.reason).toContain("40 answer-box anchors");
     expect(lock.reason).toContain("44 scanned student copies");
+    expect(lock.reason).toContain("40 answer-box anchors");
   });
 
-  it("omits counts that are zero rather than saying '0 scanned'", () => {
-    const lock = evaluatePacketLock({ packetVersions: 2, anchors: 0, scans: 0 });
+  it("says 'copy' not 'copies' for a single scan", () => {
+    const lock = evaluatePacketLock({ packetVersions: 1, anchors: 0, scans: 1 });
     if (!lock.locked) throw new Error("expected locked");
-    // Only the enumerated list is conditional; the sentence after it always
-    // explains what anchors are, so assert on the counts themselves.
-    expect(lock.reason).toContain("2 print masters");
-    expect(lock.reason).not.toContain("0 answer-box anchors");
-    expect(lock.reason).not.toContain("0 scanned");
+    expect(lock.reason).toContain("1 scanned student copy");
   });
 
   it("tells the teacher formatting still saves and where to correct a key", () => {
@@ -42,6 +59,15 @@ describe("evaluatePacketLock", () => {
     if (!lock.locked) throw new Error("expected locked");
     expect(lock.reason).toContain("Formatting changes still save");
     expect(lock.reason).toContain("rubric");
+  });
+
+  it("matches the live packets: A.1 and A.2 locked, the other four editable", () => {
+    // Counts read from production when this rule was written.
+    expect(evaluatePacketLock({ packetVersions: 1, anchors: 40, scans: 44 }).locked).toBe(true); // A.1
+    expect(evaluatePacketLock({ packetVersions: 1, anchors: 32, scans: 22 }).locked).toBe(true); // A.2
+    for (const _ of [0, 1, 2, 3]) {
+      expect(evaluatePacketLock({ packetVersions: 0, anchors: 0, scans: 0 }).locked).toBe(false);
+    }
   });
 });
 
