@@ -255,6 +255,32 @@ describe("rich() on Typst symbol paths", () => {
   });
 });
 
+describe("rich() on geometry and measure vocabulary", () => {
+  // Found by generating six real packets and counting the dollar signs in the
+  // rendered PDFs: three of them printed 50 between them, with the model's
+  // math perfectly well-formed. These words were left out of math-idents as
+  // "ordinary English", which is true and beside the point -- a similar-
+  // triangles packet writes "angle" in nearly every box, and a trigonometry
+  // packet writes "degree" in nearly every question.
+  it.each([
+    ["degree, from the trigonometry packet", "Rotate the point through $45 degree$ about the origin."],
+    ["angle and degree together", "In the diagram $angle A B C = 90 degree$."],
+    ["triangle, from the similar-figures packet", "The triangles $triangle A B C$ and $triangle D E F$ are similar."],
+    ["parallel", "Since $A B parallel C D$, the corresponding angles are equal."],
+    ["perp", "The radius $O P perp A B$ at the point of contact."],
+    ["square and circle", "The area of the $square$ is $s^2$ and of the $circle$ is $pi r^2$."],
+  ])("typesets %s", (_label, text) => {
+    expect(dollarsIn(text)).toBe(0);
+  });
+
+  // The words above are English as well as Typst, which is why they were left
+  // out. Adding them cannot come at the cost of the currency guard.
+  it("still leaves currency prose alone", () => {
+    expect(dollarsIn("Pencils cost $2.50 per package and pens cost $3 per package.")).toBe(2);
+    expect(dollarsIn("tickets cost $5 and $10 today.")).toBe(2);
+  });
+});
+
 describe("rich() falls back one segment at a time", () => {
   it("keeps the math in a sentence that also carries a price", () => {
     // The fallback used to be per string: one currency dollar anywhere threw

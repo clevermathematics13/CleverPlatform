@@ -596,6 +596,15 @@ export function getActivityTypstSource(): string {
   "frac","binom","vec","mat","cases","overline","underline","hat","tilde",
   "macron","op","bb","cal","frak","upright",
   "quad","star","compose","prec","succ",
+  // Geometry and measure. Left out of the first draft of this list as
+  // "ordinary English", which was wrong in the way that matters: a similar-
+  // triangles packet writes "angle" and "triangle" in nearly every box and a
+  // trigonometry packet writes "degree" in nearly every question, so six real
+  // generations printed 50 dollar signs between them with the model's math
+  // perfectly well-formed. The prose risk is the same one "in", "times",
+  // "min" and "star" above already accept.
+  "degree","angle","triangle","square","circle","parallel","perp",
+  "nabla","prime","norm","ratio","percent","diameter",
   "rr","zz","nn","qq","cc",
   "alpha","beta","gamma","delta","epsilon","zeta","eta",
   "theta","iota","kappa","lambda","mu","nu","xi","rho","sigma","tau",
