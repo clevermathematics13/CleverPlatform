@@ -675,12 +675,66 @@ export function getActivityTypstSource(): string {
 
 #let is-alias(t) = math-aliases.any(pair => pair.at(0) == t)
 
+// A name Typst evaluates exactly as written. The peel below may only emit
+// these: an alias name would still be an unknown variable at eval time,
+// because normalize-math rewrites whole words and a glued "xleq" never was
+// one.
+#let real-name(t) = math-idents.contains(lower(t)) and t in math-scope
+
 #let known-name(t) = {
   // Alias names are the exception: Typst does not define "leq", but
   // normalize-math rewrites it to one that exists before anything evals it.
   if is-alias(t) { return true }
-  math-idents.contains(lower(t)) and t in math-scope
+  real-name(t)
 }
+
+// Takes a run Typst reads as one unknown name and splits it into pieces it
+// does know, longest first: "sinx" is sin of x, "cos2theta" is cos of 2theta,
+// "sinthetacostheta" is a product of four things, and every one of them
+// appeared in a real generated packet. Anything the list cannot claim comes
+// out as a digit run or a single letter, both of which always evaluate.
+//
+// Returns the re-spaced text and how many characters real names accounted
+// for, which is what tells "sinx" (3 of 4) apart from "package" (0 of 7).
+#let peel-run(run) = {
+  let parts = ()
+  let claimed = 0
+  let i = 0
+  let n = run.len()
+  while i < n {
+    let took = 0
+    // Longest first, capped past the longest name in the list.
+    let j = calc.min(n, i + 10)
+    while j > i + 1 and took == 0 {
+      let cand = run.slice(i, j)
+      if real-name(cand) {
+        parts.push(cand)
+        claimed += j - i
+        took = j - i
+      }
+      j -= 1
+    }
+    if took == 0 {
+      let j2 = i + 1
+      if run.slice(i, i + 1).contains(regex("[0-9]")) {
+        while j2 < n and run.slice(j2, j2 + 1).contains(regex("[0-9]")) { j2 += 1 }
+      }
+      parts.push(run.slice(i, j2))
+      took = j2 - i
+    }
+    i += took
+  }
+  (text: parts.join(" "), claimed: claimed)
+}
+
+// Two thirds of the run is names Typst has, so reading it as a product of
+// them is the better bet. The threshold is what keeps a stray currency
+// segment out, and a bare majority was not enough: "child" hides chi and
+// peels to chi + l + d, three of five, which let "adult $7, child $5" render
+// as mathematics. "minimum" hides min (three of seven) and "number" hides nu
+// (two of six); at two thirds all three stay prose, while "sinx" (three of
+// four) and "kpi" (two of three) are read as the products they are.
+#let peels-to-names(t) = peel-run(t).claimed * 3 >= t.len() * 2
 
 // One token of a candidate math segment: a quoted literal span, or a name,
 // where a name carries its dotted symbol modifiers with it so "eq.not" is
@@ -704,9 +758,9 @@ export function getActivityTypstSource(): string {
 #let space-out-products(seg) = seg.replace(math-token, m => {
   let t = m.text
   if not t.starts-with(regex("[A-Za-z]")) { t }
-  else if t.contains(".") or t.contains(regex("[0-9]")) or t.len() == 1 { t }
+  else if t.contains(".") or t.len() == 1 { t }
   else if known-name(t) { t }
-  else { t.clusters().join(" ") }
+  else { peel-run(t).text }
 })
 
 #let normalize-math(seg) = {
@@ -748,11 +802,11 @@ export function getActivityTypstSource(): string {
     let t = m.text
     if t.contains(".") {
       if not (math-symbol-paths.contains(lower(t)) or is-alias(t)) { return false }
-    } else if t.len() > 1 and not known-name(t) {
-      // A run carrying a digit cannot be re-spaced into single-letter
-      // variables, so there is nothing safe to hand eval: "cos2theta" and
-      // "x2" are single unknown identifiers to Typst either way. Printed as
-      // written that is only ugly; evaluated it is a failed render.
+    } else if t.len() > 1 and not known-name(t) and not peels-to-names(t) {
+      // Nothing here is a name Typst has. A run of plain letters can still be
+      // a product of single-letter variables; one carrying a digit cannot be
+      // anything ("x2", "Q3"), so it is printed as written rather than handed
+      // to an eval that would end the document.
       if t.contains(regex("[0-9]")) { return false }
       if not (unspaced or (t.len() == 2 and has-operator)) { return false }
     }

@@ -355,6 +355,36 @@ describe("rich() on the aliases the packets actually reach for", () => {
   });
 });
 
+describe("rich() on names written without spaces between them", () => {
+  // Typst reads a run of letters and digits as ONE name, and the model glues
+  // them constantly: every string here is from a real generated packet. They
+  // are split by taking the longest prefix Typst actually defines -- "sinx"
+  // is sin of x, "cos2theta" is cos of 2theta -- rather than refused.
+  it.each([
+    ["cos2theta", "Substitute $theta = omega t$ into $sin^2 theta = (1-cos2theta)/2$."],
+    ["cos^2theta", "First write $cos^2theta = (1+cos2theta)/2$, then apply it again."],
+    ["four names in a row", "Kofi writes $sin2theta/(1+cos2theta) = (2sinthetacostheta)/(1+cos2theta)$."],
+    ["a glued coefficient", "the argument $theta_k = phi/n + 2kpi/n$ for $k = 0,1,dots,n-1$"],
+    ["sinx", "The result $1/(1-sinx) + 1/(1+sinx) = 2/cos^2 x$ found in Part 0."],
+  ])("typesets %s", (_label, text) => {
+    expect(dollarsIn(text)).toBe(0);
+  });
+
+  // The split is only allowed to claim a run when most of it is names Typst
+  // has. English words hide short ones -- chi in "child", min in "minimum",
+  // nu in "number" -- and a bare majority let "adult $7, child $5" render as
+  // mathematics, so the bar is two thirds.
+  it.each([
+    ["chi inside child", "Using ticket prices adult $7, child $5, buying whole numbers."],
+    ["min inside minimum", "a $5 minimum and a $10 maximum apply"],
+    ["nu inside number", "the number is $6 and the total is $9"],
+    ["ordinary currency prose", "Pencils cost $2.50 per package and pens cost $3 per package."],
+    ["a word between two prices", "tickets cost $5 and $10 today."],
+  ])("leaves the dollars on %s", (_label, text) => {
+    expect(dollarsIn(text)).toBeGreaterThan(0);
+  });
+});
+
 describe("rich() falls back one segment at a time", () => {
   it("keeps the math in a sentence that also carries a price", () => {
     // The fallback used to be per string: one currency dollar anywhere threw
