@@ -74,40 +74,72 @@ export async function fetchAllRows<T>(
 // -----------------------------------------------------------------------------
 
 /**
- * Whether an AI transcription shows the assessor filling in text it could not
- * actually read -- a bracketed reconstruction like "the express[ions are
- * equivalent]" or "60 is the cos[t] per ticket".
+ * Bracketed asides that describe the page rather than stand in for text the
+ * model could not read. "[blank]" and "[crossed out]" are the assessor
+ * reporting what is there; "[ents]" is it guessing at what is not.
+ */
+const ANNOTATION_BRACKET =
+  /^(?:blank|empty|nothing|no answer|crossed out|struck out|circled|underlined|highlighted|checkmark|tick|diagram|drawing|sketch|graph)$|^(?:marked|(?:with )?side working)\b/i;
+
+/** Digits and operators only: transcribed working such as "30(6) = 180". */
+const WORKING_ONLY = /^[\d\s()+\-*/×÷=.,:;]+$/;
+
+/**
+ * The assessor stating outright that content is missing. Measured over A.1
+ * this is the sharpest signal available: 12.9% of flagged crops against 1.6%
+ * of unflagged ones, an 8x enrichment, where a bracketed reconstruction alone
+ * runs about 3x.
+ */
+const TRUNCATION_STATEMENT = /cut[ -]off|continues beyond|beyond the crop|text continues/i;
+
+/**
+ * Whether an AI transcription shows the assessor unable to read the whole
+ * crop -- either saying so outright ("[cut off]", "[continues beyond crop]")
+ * or filling in text it could not make out ("the express[ions are
+ * equivalent]", "60 is the cos[t] per ticket").
  *
  * This is the only independent evidence of real truncation available without
- * re-reading the original page, and it exists because the two obvious signals
- * are both unusable:
+ * re-reading the original page, because the two obvious signals are both
+ * unusable:
  *
  *   - `na_response_crops.possibly_truncated` fires whenever stage 4's
  *     expansion hit its cap with ink still on the edge, which includes
- *     printed rules, axis labels and answer-box borders touching the crop --
- *     not just a student's answer running off it. On A.1, Q26(a) flags 42 of
- *     47 students purely because the printed graph's caption sits under the
- *     box, and exactly one of those 42 has a gap.
+ *     printed rules, answer-box borders and axis captions touching the crop.
+ *     On A.1, Q26(a) flags 42 of 47 students purely because the printed
+ *     graph's caption sits under the box, and one of those 42 has a gap.
  *   - The assessor's own teacherNote echoes the flag it was handed:
  *     buildAssessmentSystemPrompt tells a flagged crop to "say so plainly in
  *     teacherNote" and an unflagged one to treat an apparent cut-off with
  *     "real skepticism".
  *
  * Nothing in the prompt asks for bracket notation, so its rate is not driven
- * by the flag. Measured over A.1: 31.9% of flagged crops bracket, against
- * 10.5% of unflagged ones.
+ * by the flag: over A.1, 29.4% of flagged crops qualify against 9.6% of
+ * unflagged ones.
  *
- * Deliberately narrow, and a ranking signal rather than a verdict. The span
- * is capped at 40 characters so a whole bracketed paragraph (a transcriber's
- * aside) does not count, and ellipsis is excluded because question text and
- * student answers use it legitimately -- Q17 literally asks students to
- * "Begin it with 'For every...'". Bracketed interval notation such as [5, 10]
- * would register as a gap; it has not appeared in this packet's algebra, and
- * a stray one costs a place in an ordering, not a wrong mark.
+ * Not every bracket is a gap, which an earlier version of this got wrong --
+ * it counted any bracketed span, so "[blank]" and "[marked with checkmark]"
+ * inflated Q4 from 12 real to 16. Annotations and transcribed working are
+ * excluded now; see ANNOTATION_BRACKET and WORKING_ONLY.
+ *
+ * Deliberately narrow, and a ranking signal rather than a verdict. Spans cap
+ * at 40 characters so a transcriber's aside does not count, a span must
+ * contain a letter, and bare ellipsis is excluded because question text and
+ * student answers use it legitimately -- Q17 asks students to begin "For
+ * every...". A stray miss costs a place in an ordering, not a wrong mark.
  */
 export function transcriptionHasUnreadableGap(transcription: string | null | undefined): boolean {
   if (!transcription) return false;
-  return /\[[^\]]{1,40}\]/.test(transcription);
+  if (TRUNCATION_STATEMENT.test(transcription)) return true;
+
+  for (const match of transcription.matchAll(/\[([^\]]{1,40})\]/g)) {
+    const inner = match[1].trim();
+    if (!inner) continue;
+    if (ANNOTATION_BRACKET.test(inner)) continue;
+    if (WORKING_ONLY.test(inner)) continue;
+    if (!/[A-Za-z]/.test(inner)) continue;
+    return true;
+  }
+  return false;
 }
 
 // -----------------------------------------------------------------------------
