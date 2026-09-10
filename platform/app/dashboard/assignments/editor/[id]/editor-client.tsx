@@ -289,7 +289,9 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
   // has been committed to print, in which case the API refuses the content
   // write and returns the reason we show here.
   const [packetId, setPacketId] = useState<string | null>(null);
-  const [packetLock, setPacketLock] = useState<{ locked: boolean; reason?: string } | null>(null);
+  const [packetLock, setPacketLock] = useState<
+    { locked: boolean; reason?: string; warning?: string } | null
+  >(null);
   // What was loaded from the packet. Sent in place of the edited draft when
   // the packet is locked, so a content edit that cannot reach the packet is
   // not quietly persisted to the copy either -- one stored version, not two.
@@ -604,17 +606,27 @@ export function NuancedAnalysisEditorClient({ id }: { id: string }) {
       {packetLock?.locked && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3">
           <p className="text-sm font-semibold text-amber-200">
-            Content locked — this packet has been printed
+            Content locked — students have written on this packet
           </p>
           <p className="mt-1 text-xs text-amber-100/80">{packetLock.reason}</p>
         </div>
       )}
-      {packetId && !packetLock?.locked && (
+      {/* Only once the lock state is actually known. While the fetch is in
+          flight packetLock is null, and promising "changes are written back"
+          before we know that is true would invite a teacher to start typing on
+          a packet that is about to tell them it is locked. */}
+      {packetId && packetLock && !packetLock.locked && (
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-2">
           <p className="text-xs text-emerald-200/90">
             Editing the saved packet — changes here are written back to it, and its
             answer key re-syncs to match.
           </p>
+        </div>
+      )}
+      {/* Editable, but a print master already exists: allowed, worth knowing. */}
+      {packetLock && !packetLock.locked && packetLock.warning && (
+        <div className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-4 py-2">
+          <p className="text-xs text-yellow-100/90">{packetLock.warning}</p>
         </div>
       )}
       {packetNotice && (
