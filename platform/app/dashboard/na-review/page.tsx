@@ -31,6 +31,7 @@ type FlaggedRow = {
 type ScanRow = {
   id: string;
   status: string | null;
+  split_storage_path: string | null;
   invited_student_id: string | null;
   student_profile_id: string | null;
   invited_students: { full_name: string | null } | { full_name: string | null }[] | null;
@@ -49,7 +50,18 @@ type ScanRow = {
  * them, so the page exists and stage 4 failed on that anchor alone. A re-crop
  * recovers it, and the student's work is not lost.
  */
-type IncompleteScan = { name: string; present: number; missing: string[]; kind: "pages" | "crops" };
+type IncompleteScan = {
+  name: string;
+  present: number;
+  missing: string[];
+  /**
+   * "crops-no-source" is "crops" whose split PDF was never retained, so there
+   * is nothing left to re-cut and the advice for "crops" would be a dead end.
+   * A.1's three pilot-ingested scans are in that state: crops were written
+   * directly, with no source PDF and no batch segments behind them.
+   */
+  kind: "pages" | "crops" | "crops-no-source";
+};
 
 /**
  * Which packet version the board lands on when no ?packetVersionId is given.
@@ -221,7 +233,9 @@ export default async function NaReviewPage({
         const scans = await fetchAllRows<ScanRow>((from, to) =>
           supabase
             .from("na_packet_scans")
-            .select("id, status, invited_student_id, student_profile_id, invited_students(full_name)")
+            .select(
+              "id, status, split_storage_path, invited_student_id, student_profile_id, invited_students(full_name)"
+            )
             .eq("packet_version_id", activeVersionId)
             .order("id", { ascending: true })
             .range(from, to)
@@ -266,8 +280,14 @@ export default async function NaReviewPage({
               present: seen.size,
               missing: missingAnchors.map((a) => a.qid),
               // anchors is ordered by sort_order, which is what makes
-              // "trailing" mean "the scan ran out of pages".
-              kind: missingAnchorCause(anchors.map((a) => a.id), seen) ?? "crops",
+              // "trailing" mean "the scan ran out of pages". A missing crop is
+              // only re-cuttable while the split PDF it came from still
+              // exists; both crop paths refuse without one.
+              kind: ((): IncompleteScan["kind"] => {
+                const cause = missingAnchorCause(anchors.map((a) => a.id), seen) ?? "crops";
+                if (cause === "crops" && !s.split_storage_path) return "crops-no-source";
+                return cause;
+              })(),
             };
           })
           .filter((row) => row.missing.length > 0)
@@ -396,10 +416,10 @@ export default async function NaReviewPage({
                 {incompleteScans.length} scan{incompleteScans.length === 1 ? "" : "s"} have questions with no crop
               </p>
               <p className="mt-1 text-xs text-da-muted">
-                A scan should produce one crop per question. Fewer has two causes, and they need opposite fixes, so
-                they are separated here.
+                A scan should produce one crop per question. Fewer has more than one cause, and they need different
+                fixes -- sometimes none is available -- so they are separated here.
               </p>
-              {(["pages", "crops"] as const).map((kind) => {
+              {(["pages", "crops", "crops-no-source"] as const).map((kind) => {
                 const rows = incompleteScans.filter((r) => r.kind === kind);
                 if (rows.length === 0) return null;
                 return (
@@ -407,7 +427,9 @@ export default async function NaReviewPage({
                     <p className="text-xs font-medium text-da-text">
                       {kind === "pages"
                         ? "Pages never captured -- the answers are not in the system, and only a rescan recovers them."
-                        : "Page scanned but the crop failed -- the work is not lost; re-crop that anchor."}
+                        : kind === "crops"
+                          ? "Page scanned but the crop failed -- the work is not lost; re-crop that anchor."
+                          : "Crop missing and the split PDF was not retained -- there is nothing left to re-cut, so only the original paper recovers this."}
                     </p>
                     <ul className="mt-1 divide-y divide-da-border/40">
                       {rows.map((scan, i) => (
@@ -416,7 +438,7 @@ export default async function NaReviewPage({
                           className="flex items-center justify-between gap-3 py-1.5 text-sm"
                         >
                           <span className="text-da-text">{scan.name}</span>
-                          <span className={`text-xs ${kind === "pages" ? "text-rose-300" : "text-da-muted"}`}>
+                          <span className={`text-xs ${kind === "crops" ? "text-da-muted" : "text-rose-300"}`}>
                             {scan.present} of {questions.length} -- missing {scan.missing.slice(0, 6).join(", ")}
                             {scan.missing.length > 6 && ` and ${scan.missing.length - 6} more`}
                           </span>
