@@ -1,6 +1,6 @@
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { fetchAllRows, transcriptionHasUnreadableGap } from "@/lib/na-scanning";
+import { fetchAllRows, missingAnchorCause, transcriptionHasUnreadableGap } from "@/lib/na-scanning";
 import Link from "next/link";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -30,9 +30,26 @@ type FlaggedRow = {
 
 type ScanRow = {
   id: string;
+  status: string | null;
   invited_student_id: string | null;
   student_profile_id: string | null;
+  invited_students: { full_name: string | null } | { full_name: string | null }[] | null;
 };
+
+/**
+ * A scan that produced fewer crops than the packet has anchors, and which of
+ * the two causes it is -- they need opposite remedies, so the board must not
+ * conflate them.
+ *
+ * "pages": the missing anchors are a trailing run, so the split PDF simply ran
+ * out of pages before the packet did and those answers were never captured.
+ * Only a rescan recovers them.
+ *
+ * "crops": the missing anchors sit inside a scan that has pages either side of
+ * them, so the page exists and stage 4 failed on that anchor alone. A re-crop
+ * recovers it, and the student's work is not lost.
+ */
+type IncompleteScan = { name: string; present: number; missing: string[]; kind: "pages" | "crops" };
 
 /**
  * Which packet version the board lands on when no ?packetVersionId is given.
@@ -103,6 +120,7 @@ export default async function NaReviewPage({
     progress: { total: number; reviewed: number; blank: number; possiblyTruncated: number; gaps: number };
   }[] = [];
   let scanStats: { scans: number; students: number; duplicated: number; unidentified: number } | null = null;
+  let incompleteScans: IncompleteScan[] = [];
   let loadError: string | null = null;
 
   if (activeVersionId) {
@@ -195,39 +213,69 @@ export default async function NaReviewPage({
       // denominator to be discovered. Deliberately advisory only: nothing here
       // collapses or hides a scan, because picking a winner per student is a
       // decision the results table (which is per-scan too) has to share.
-      const scanIds = Array.from(
-        new Set(crops.map((c) => c.packet_scan_id).filter((id): id is string => Boolean(id)))
-      );
-      if (scanIds.length > 0) {
-        try {
-          const scans = await fetchAllRows<ScanRow>((from, to) =>
-            supabase
-              .from("na_packet_scans")
-              .select("id, invited_student_id, student_profile_id")
-              .in("id", scanIds)
-              .order("id", { ascending: true })
-              .range(from, to)
-          );
-          const perStudent = new Map<string, number>();
-          let unidentified = 0;
-          for (const s of scans) {
-            const key = s.invited_student_id ?? s.student_profile_id;
-            if (!key) {
-              unidentified += 1;
-              continue;
-            }
-            perStudent.set(key, (perStudent.get(key) ?? 0) + 1);
+      // Query scans by packet version rather than by the scan ids present in
+      // crops: a scan whose pages never made it through would have no crops at
+      // all, and deriving the list from crops is exactly how such a scan stays
+      // invisible.
+      try {
+        const scans = await fetchAllRows<ScanRow>((from, to) =>
+          supabase
+            .from("na_packet_scans")
+            .select("id, status, invited_student_id, student_profile_id, invited_students(full_name)")
+            .eq("packet_version_id", activeVersionId)
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+
+        const perStudent = new Map<string, number>();
+        let unidentified = 0;
+        for (const s of scans) {
+          const key = s.invited_student_id ?? s.student_profile_id;
+          if (!key) {
+            unidentified += 1;
+            continue;
           }
-          scanStats = {
-            scans: scans.length,
-            students: perStudent.size,
-            duplicated: Array.from(perStudent.values()).filter((n) => n > 1).length,
-            unidentified,
-          };
-        } catch {
-          // Advisory only -- a failure here must not cost the teacher the board.
-          scanStats = null;
+          perStudent.set(key, (perStudent.get(key) ?? 0) + 1);
         }
+        scanStats = {
+          scans: scans.length,
+          students: perStudent.size,
+          duplicated: Array.from(perStudent.values()).filter((n) => n > 1).length,
+          unidentified,
+        };
+
+        // A scan should have one crop per anchor. Fewer means the split PDF
+        // ran out of pages before the packet did, so stage 4 had nothing to
+        // cut -- the answers were never captured at all. That is a different
+        // thing from an unmarked crop, and the board used to render it as
+        // simply a smaller denominator.
+        const anchorsByScan = new Map<string, Set<string>>();
+        for (const crop of crops) {
+          if (!crop.packet_scan_id) continue;
+          const seen = anchorsByScan.get(crop.packet_scan_id) ?? new Set<string>();
+          seen.add(crop.anchor_id);
+          anchorsByScan.set(crop.packet_scan_id, seen);
+        }
+        incompleteScans = scans
+          .map((s) => {
+            const seen = anchorsByScan.get(s.id) ?? new Set<string>();
+            const missingAnchors = anchors.filter((a) => !seen.has(a.id));
+            const student = Array.isArray(s.invited_students) ? s.invited_students[0] : s.invited_students;
+            return {
+              name: student?.full_name ?? "Unmatched scan",
+              present: seen.size,
+              missing: missingAnchors.map((a) => a.qid),
+              // anchors is ordered by sort_order, which is what makes
+              // "trailing" mean "the scan ran out of pages".
+              kind: missingAnchorCause(anchors.map((a) => a.id), seen) ?? "crops",
+            };
+          })
+          .filter((row) => row.missing.length > 0)
+          .sort((a, b) => b.missing.length - a.missing.length);
+      } catch {
+        // Advisory only -- a failure here must not cost the teacher the board.
+        scanStats = null;
+        incompleteScans = [];
       }
     }
   }
@@ -341,6 +389,45 @@ export default async function NaReviewPage({
               </p>
             )}
           </div>
+
+          {incompleteScans.length > 0 && (
+            <div className="rounded-xl border border-rose-500/60 bg-rose-500/5 p-4">
+              <p className="text-sm font-medium text-rose-400">
+                {incompleteScans.length} scan{incompleteScans.length === 1 ? "" : "s"} have questions with no crop
+              </p>
+              <p className="mt-1 text-xs text-da-muted">
+                A scan should produce one crop per question. Fewer has two causes, and they need opposite fixes, so
+                they are separated here.
+              </p>
+              {(["pages", "crops"] as const).map((kind) => {
+                const rows = incompleteScans.filter((r) => r.kind === kind);
+                if (rows.length === 0) return null;
+                return (
+                  <div key={kind} className="mt-3">
+                    <p className="text-xs font-medium text-da-text">
+                      {kind === "pages"
+                        ? "Pages never captured -- the answers are not in the system, and only a rescan recovers them."
+                        : "Page scanned but the crop failed -- the work is not lost; re-crop that anchor."}
+                    </p>
+                    <ul className="mt-1 divide-y divide-da-border/40">
+                      {rows.map((scan, i) => (
+                        <li
+                          key={`${kind}-${scan.name}-${i}`}
+                          className="flex items-center justify-between gap-3 py-1.5 text-sm"
+                        >
+                          <span className="text-da-text">{scan.name}</span>
+                          <span className={`text-xs ${kind === "pages" ? "text-rose-300" : "text-da-muted"}`}>
+                            {scan.present} of {questions.length} -- missing {scan.missing.slice(0, 6).join(", ")}
+                            {scan.missing.length > 6 && ` and ${scan.missing.length - 6} more`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {truncationHotspots.length > 0 && (
             <div className="rounded-xl border border-amber-400/60 bg-amber-500/5 p-4">

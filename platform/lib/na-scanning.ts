@@ -142,6 +142,35 @@ export function transcriptionHasUnreadableGap(transcription: string | null | und
   return false;
 }
 
+/**
+ * Why a scan produced fewer crops than the packet has anchors. The two causes
+ * need opposite remedies, so a board that reports only "fewer crops" sends the
+ * teacher after the wrong one.
+ *
+ *   "pages" -- the missing anchors are a trailing run, so the split PDF ran out
+ *     of pages before the packet did and stage 4 had nothing to cut. Those
+ *     answers were never captured; only a rescan recovers them. Seen on A.1
+ *     where a source scan held 76 pages for three 26-page packets, leaving the
+ *     last student two pages short.
+ *
+ *   "crops" -- the missing anchors sit inside a scan that has pages on both
+ *     sides of them, so the page exists and stage 4 failed on that anchor
+ *     alone. A re-crop recovers it and no work is lost. Seen on A.1 where
+ *     three fully assessed scans each lack only Q26(a).
+ *
+ * Returns null when nothing is missing. `orderedAnchorIds` must be in
+ * sort_order, since that ordering is what makes "trailing" meaningful.
+ */
+export function missingAnchorCause(
+  orderedAnchorIds: string[],
+  presentAnchorIds: Set<string>
+): "pages" | "crops" | null {
+  const missing = orderedAnchorIds.filter((id) => !presentAnchorIds.has(id));
+  if (missing.length === 0) return null;
+  const tail = orderedAnchorIds.slice(orderedAnchorIds.length - missing.length);
+  return missing.every((id, i) => id === tail[i]) ? "pages" : "crops";
+}
+
 // -----------------------------------------------------------------------------
 // Roster matching against invited_students
 // -----------------------------------------------------------------------------
