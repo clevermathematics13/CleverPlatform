@@ -183,6 +183,22 @@ export const AssignmentPdfRequestSchema = z.object({
           tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
           hint: z.string().optional(),
           answerBoxLines: z.number().int().min(1).max(20).optional(),
+          /**
+           * Turns this question's answer space into a table. Weights are
+           * relative widths, so what matters is their ratio, not their scale.
+           * Bounded because a one-column "table" is just a box and more than
+           * six columns cannot be written in on A4.
+           */
+          answerBoxColumns: z
+            .array(
+              z.object({
+                header: z.string().min(1).max(60),
+                weight: z.number().min(1).max(12),
+              })
+            )
+            .min(2)
+            .max(6)
+            .optional(),
           markScheme: z.string().optional(),
           requiresWorking: z.boolean().optional(),
           subparts: z.array(z.object({
