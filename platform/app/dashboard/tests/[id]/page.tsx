@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { loadOverrideClasses } from "@/lib/self-assessment-override-classes";
 import { TestDetailClient, type BoundarySetOption, type TestDetail } from "./test-detail-client";
 
 /**
@@ -47,6 +48,13 @@ export default async function TestDetailPage({
 
   if (!test) notFound();
 
+  const { classes: overrideClasses, overrides } = await loadOverrideClasses(
+    supabase,
+    id,
+    (test.course_id as string | null) ?? null,
+    ((test.test_items ?? []) as { id: string }[]).map((i) => i.id)
+  );
+
   // Each set summarised as the thing a teacher actually wants to compare:
   // where the grades start. "7 from 90%, 6 from 80%, ..." beats a set named "B".
   const bandsBySet = new Map<string, { grade: number; minPct: number }[]>();
@@ -71,6 +79,8 @@ export default async function TestDetailPage({
       test={test as unknown as TestDetail}
       courses={(courses ?? []) as { id: string; name: string }[]}
       boundarySets={setOptions}
+      overrideClasses={overrideClasses}
+      overrides={overrides}
     />
   );
 }

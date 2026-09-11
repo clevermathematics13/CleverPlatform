@@ -1596,10 +1596,35 @@ on conflict (test_id, course_id) do update
   set require_self_assessment = excluded.require_self_assessment;
 ```
 
-**No teacher UI, deliberately.** `tests-client.tsx` has a per-test checkbox for
-the flag itself; a per-class control needs a course dimension on that row and
-that is a design question, not a mechanical one. Until someone answers it, the
-override is set by SQL.
+**Teacher UI, added 11 Sep.** A "Per-class release" block on the test detail
+page (`app/dashboard/tests/[id]`), directly under the test's own
+require-self-assessment checkbox, because that is where the teacher already
+decides this question and the per-class rows are its exceptions. One
+three-option select per class -- follow the assessment / released / required --
+since the table genuinely has three states and a checkbox cannot express "no
+row" when the test flag is already true. Saved by the page's existing Save
+button through `PUT /api/tests/[id]/self-assessment-overrides`, a separate
+route because these are rows in another table with their own delete semantics,
+not columns of `tests`.
+
+Two things about it are deliberate. Each class shows **how many of its
+students have not self-assessed**, not its roster size: those are the only
+students a release changes anything for, and the number is what makes the
+choice an informed one rather than a toggle. And the write order is deletes
+then upserts, un-transactional: either half failing leaves a class gated that
+should have been released, never the reverse.
+
+**Which classes it lists: the test's track family, and that is narrower than
+it looks.** As of 11 Sep the family for Formative Assessment 1 is 9G, 9A, 9C
+and the Grade 9 Extended track itself (listed, disabled, "no students
+enrolled" -- it is virtual by design). **9D is absent and that is correct**:
+the current 9D belongs to no track (only the archived `9D (2025-2026)` is a
+Grade 9 Standard member) and has zero `students` rows, so
+`track_family_course_ids` returns only itself and a 9D student cannot see this
+test at all. Do not "fix" this by listing every course with a
+`powerschool_export_files` row for the test -- that table is built from
+`loadInvitedRoster`, which reads `invited_students`, a different roster that
+counts 18 people in 9D who have never signed in.
 
 **State of 9C's Formative Assessment 1 at the time of writing**, since it is
 what prompted all of this: all 20 students fully marked (41 of 41 items each),
