@@ -86,30 +86,45 @@ export function calculatorAllowed(paper: number | null): boolean {
   return paper === 2;
 }
 
+/** The directory part of a storage path: "22M.1.AHL.TZ1.H_1/question". */
+function directoryOf(path: string): string {
+  const cut = path.lastIndexOf("/");
+  return cut === -1 ? "" : path.slice(0, cut);
+}
+
 /**
  * Which stored images to serve for one item.
  *
  * `curated` is the teacher's verified list from practice_set_items; `available`
- * is every image the bank holds for that code with image_type 'question'. The
- * result is the intersection, in the curated order, and an empty curated list
- * means "all of them".
+ * is every image the bank holds for that code with image_type 'question'. An
+ * empty curated list means "all of them".
  *
- * The intersection is the point. The curated column is hand-entered, so it is
- * the wrong place to trust; `available` is the only list that has been
- * filtered on image_type. A mark scheme path typed into the curated column
- * therefore drops out here rather than being signed and served -- which is
- * what keeps a typo from becoming an answer leak while mark schemes are
- * withheld.
+ * A curated path is served when it sits in the same DIRECTORY as one of the
+ * available question images -- not when it is one of them exactly. The bank's
+ * own images are the raw page scans, and some carry a printed answer box a
+ * page deep that is dead space on screen; the set can point instead at a
+ * trimmed derivative stored beside them under `<code>/question/`, which has no
+ * question_images row of its own precisely so it stays out of the teacher's
+ * bank UI and out of printed papers, where the box belongs.
+ *
+ * Directory rather than exact path still closes the leak this check exists
+ * for. Every available path is a question image, so the only directory that
+ * can ever be allowed is `<code>/question`; a mark scheme lives in
+ * `<code>/markscheme` and the bank's loose imports sit under prefixes of their
+ * own, so neither can match however the curated column is typed. The storage
+ * policy enforces the same shape independently -- a student may read only
+ * objects whose second path segment is "question" -- so this is the inner of
+ * two locks, not the only one.
  */
 export function selectQuestionImagePaths(
   curated: readonly string[],
   available: readonly string[]
 ): string[] {
   if (available.length === 0) return [];
-  const allowed = new Set(available);
   if (curated.length === 0) return [...available];
 
-  const chosen = curated.filter((path) => allowed.has(path));
+  const allowedDirs = new Set(available.map(directoryOf));
+  const chosen = curated.filter((path) => allowedDirs.has(directoryOf(path)));
   // A curated list that matches nothing usually means the bank was re-imported
   // and the paths moved. Falling back to every question image shows the
   // student something real, with at worst some clutter, instead of a question
