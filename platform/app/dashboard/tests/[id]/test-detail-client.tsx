@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { abbreviateAssessmentName, assessmentShortName } from "@/lib/assessment-short-name";
+import type { OverrideMap, OverrideValue } from "@/lib/self-assessment-override-diff";
+import type { OverrideClass } from "@/lib/self-assessment-override-classes";
 
 export type BoundarySetOption = {
   id: string;
@@ -108,13 +110,24 @@ export function TestDetailClient({
   test,
   courses,
   boundarySets,
+  overrideClasses,
+  overrides,
 }: {
   test: TestDetail;
   courses: { id: string; name: string }[];
   boundarySets: BoundarySetOption[];
+  overrideClasses: OverrideClass[];
+  overrides: OverrideMap;
 }) {
   const [saved, setSaved] = useState<TestDetail>(test);
   const [draft, setDraft] = useState<Draft>(() => draftFrom(test));
+  const [savedOverrides, setSavedOverrides] = useState<OverrideMap>(overrides);
+  const [draftOverrides, setDraftOverrides] = useState<OverrideMap>(overrides);
+
+  const setOverride = (courseId: string, value: OverrideValue) => {
+    setDraftOverrides((o) => ({ ...o, [courseId]: value }));
+    setJustSaved(false);
+  };
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -124,10 +137,21 @@ export function TestDetailClient({
     setJustSaved(false);
   };
 
+  const overridesDirty = useMemo(
+    () =>
+      overrideClasses.some(
+        (c) => (draftOverrides[c.courseId] ?? null) !== (savedOverrides[c.courseId] ?? null)
+      ),
+    [draftOverrides, savedOverrides, overrideClasses]
+  );
+
   const dirty = useMemo(() => {
     const original = draftFrom(saved);
-    return (Object.keys(original) as (keyof Draft)[]).some((k) => original[k] !== draft[k]);
-  }, [draft, saved]);
+    return (
+      (Object.keys(original) as (keyof Draft)[]).some((k) => original[k] !== draft[k]) ||
+      overridesDirty
+    );
+  }, [draft, saved, overridesDirty]);
 
   const items = useMemo(
     () =>
@@ -167,6 +191,33 @@ export function TestDetailClient({
       if (!res.ok) {
         setError(data?.error ?? res.statusText);
         return;
+      }
+
+      // Second call, because these are rows in another table rather than
+      // columns of `tests`. Only sent when something actually moved, so an
+      // ordinary metadata edit does not touch any class's release state.
+      if (overridesDirty) {
+        const body: OverrideMap = {};
+        for (const c of overrideClasses) body[c.courseId] = draftOverrides[c.courseId] ?? null;
+        const oRes = await fetch(`/api/tests/${saved.id}/self-assessment-overrides`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ overrides: body }),
+        });
+        const oData = await oRes.json();
+        if (!oRes.ok) {
+          // The test's own fields saved; this did not. Say exactly that, so the
+          // teacher does not read one error as everything having failed.
+          setError(
+            `Saved the assessment, but the per-class release did not save: ${
+              oData?.error ?? oRes.statusText
+            }`
+          );
+          setSaved((prev) => ({ ...prev, ...data }));
+          return;
+        }
+        setSavedOverrides(oData.overrides ?? {});
+        setDraftOverrides(oData.overrides ?? {});
       }
       // Keep the course name and the questions, which the PATCH response does
       // not carry -- only the row's own columns come back.
@@ -412,6 +463,68 @@ export function TestDetailClient({
             </span>
           </span>
         </label>
+
+        {overrideClasses.length > 1 && (
+          <div className="space-y-3 rounded-lg border border-da-border bg-da-bg p-4">
+            <div>
+              <h3 className="text-sm font-bold text-da-text">Per-class release</h3>
+              <p className={hint}>
+                These classes all sit this assessment, so the setting above applies to
+                every one of them. Set a class here to override it for that class alone.
+              </p>
+            </div>
+
+            <ul className="space-y-2">
+              {overrideClasses.map((c) => {
+                const value = draftOverrides[c.courseId] ?? null;
+                const changed = value !== (savedOverrides[c.courseId] ?? null);
+                return (
+                  <li
+                    key={c.courseId}
+                    className="flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <span className="text-sm text-da-text">
+                      {c.name}
+                      <span className={`block ${hint}`}>
+                        {c.studentCount === 0
+                          ? "no students enrolled"
+                          : `${c.notSelfAssessed} of ${c.studentCount} ${
+                              c.notSelfAssessed === 1 ? "has" : "have"
+                            } not self-assessed`}
+                      </span>
+                    </span>
+                    <select
+                      value={value === null ? "inherit" : value ? "required" : "released"}
+                      onChange={(e) =>
+                        setOverride(
+                          c.courseId,
+                          e.target.value === "inherit" ? null : e.target.value === "required"
+                        )
+                      }
+                      disabled={saving || c.studentCount === 0}
+                      className={`${field} w-auto min-w-56 ${
+                        changed ? "border-da-accent" : ""
+                      }`}
+                    >
+                      <option value="inherit">
+                        Follow the assessment ({draft.require_self_assessment
+                          ? "self-assessment required"
+                          : "released"})
+                      </option>
+                      <option value="released">Released to this class</option>
+                      <option value="required">Self-assessment required</option>
+                    </select>
+                  </li>
+                );
+              })}
+            </ul>
+
+            <p className={hint}>
+              Releasing shows those students their marks immediately. They can still
+              self-assess afterwards, and it is not recorded as a step they completed.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* -- Files -------------------------------------------------------- */}
