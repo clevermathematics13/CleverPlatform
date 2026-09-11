@@ -11,6 +11,7 @@
  */
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LatexRenderer from "@/components/LatexRenderer";
 import { TIER_LABEL, TIER_ORDER, type PracticeTier } from "@/lib/practice-sets";
@@ -210,6 +211,17 @@ function SetDetail({ set, busy, send }: { set: AdminSet; busy: string | null; se
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {/* Only once a set is released: before that nobody has answered
+                it, so a marking screen would open on an empty roster and
+                read as broken rather than as early. */}
+            {set.releasedAt && (
+              <Link
+                href={`/dashboard/practice-sets/${set.id}/marking`}
+                className="rounded-md border border-da-border px-3 py-1.5 text-xs text-da-muted transition-colors hover:border-da-accent/60 hover:text-da-text"
+              >
+                Mark answers &rarr;
+              </Link>
+            )}
             <Toggle
               on={set.releasedAt !== null}
               label={set.releasedAt ? "Released to students" : "Not released"}
