@@ -124,6 +124,7 @@ export async function hasReleasedPracticeSet(courseIds: string[]): Promise<boole
 }
 
 interface ItemRow {
+  id: string;
   position: number;
   source: string;
   ib_question_code: string | null;
@@ -171,7 +172,7 @@ export async function loadPracticeSetView(options: {
   const { data: itemRows } = await supabase
     .from("practice_set_items")
     .select(
-      "position, source, ib_question_code, question_latex, tier, marks, subtopic_codes, question_image_paths"
+      "id, position, source, ib_question_code, question_latex, tier, marks, subtopic_codes, question_image_paths"
     )
     .eq("practice_set_id", setId)
     .order("position");
@@ -267,6 +268,7 @@ export async function loadPracticeSetView(options: {
     }));
 
     return {
+      id: item.id,
       position: item.position,
       // The column is CHECK-constrained to the three tiers; the guard is for
       // the type, and anything unrecognised lands in the middle rather than
@@ -292,4 +294,38 @@ export async function loadPracticeSetView(options: {
     markschemeReleased: setRow.markscheme_released_at !== null,
     items: built,
   });
+}
+
+/**
+ * A student's saved answers for one set, keyed by "<item id>::<part label>".
+ *
+ * Keyed on the item id rather than the position, because position is a
+ * property of the view and the id is what the answer row actually holds.
+ *
+ * `profileId` is passed in rather than read from the session so the teacher's
+ * ?viewAs= preview can load the answers of the student being previewed --
+ * which the teacher's SELECT policy allows and their (absent) write policy
+ * does not. A student's own client cannot use this to read anyone else's:
+ * their SELECT policy is profile_id = auth.uid() regardless of what is asked
+ * for here.
+ */
+export async function loadPracticeAnswers(
+  setId: string,
+  profileId: string
+): Promise<Map<string, string>> {
+  const supabase = await createClient();
+
+  const { data } = await supabase
+    .from("practice_answers")
+    .select("part_label, answer_latex, practice_set_item_id, practice_set_items!inner(practice_set_id)")
+    .eq("profile_id", profileId)
+    .eq("practice_set_items.practice_set_id", setId);
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    const itemId = row.practice_set_item_id as string;
+    const label = (row.part_label as string) ?? "";
+    map.set(`${itemId}::${label}`, (row.answer_latex as string) ?? "");
+  }
+  return map;
 }

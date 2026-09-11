@@ -32,6 +32,7 @@ import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { normaliseTariffs } from "@/lib/latex-hfill";
 
 export const PRACTICE_GENERATOR_MODEL = "claude-opus-5";
 
@@ -200,7 +201,7 @@ export function parseGeneratedQuestion(
   response: Anthropic.Messages.Message & { parsed_output?: unknown }
 ): GeneratedQuestion {
   if (response.parsed_output) {
-    return GeneratedQuestionSchema.parse(response.parsed_output);
+    return withNormalisedTariffs(GeneratedQuestionSchema.parse(response.parsed_output));
   }
 
   const text = response.content.find(
@@ -214,5 +215,21 @@ export function parseGeneratedQuestion(
   } catch {
     throw new Error("The model's reply was not the expected JSON.");
   }
-  return GeneratedQuestionSchema.parse(raw);
+  return withNormalisedTariffs(GeneratedQuestionSchema.parse(raw));
+}
+
+/**
+ * The authoring guide asks for `\hfill [n]` tariffs; this is what makes it so.
+ *
+ * Both parse paths go through here, because a question is stored straight from
+ * whichever one produced it. The first thirteen generated questions came back
+ * with four different tariff spellings between them, and only the canonical
+ * one lays out correctly -- so normalising at the boundary is what keeps a set
+ * looking like one document rather than thirteen.
+ */
+function withNormalisedTariffs(question: GeneratedQuestion): GeneratedQuestion {
+  return {
+    ...question,
+    questionLatex: normaliseTariffs(question.questionLatex),
+  };
 }

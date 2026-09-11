@@ -40,6 +40,13 @@ export interface PracticeSubtopic {
 }
 
 export interface PracticeItem {
+  /**
+   * The practice_set_items row id. The student's answers are keyed on it, so
+   * it reaches the browser -- which is safe because it is only ever a key:
+   * writing against one is gated by can_write_practice_answer, and reading a
+   * set you are not on returns nothing whatever id you present.
+   */
+  id: string;
   position: number;
   tier: PracticeTier;
   marks: number;

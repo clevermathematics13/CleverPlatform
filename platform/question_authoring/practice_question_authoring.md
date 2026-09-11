@@ -103,8 +103,14 @@ Body LaTeX only. No preamble, no `\documentclass`, no `\begin{document}`.
   Column vectors use `pmatrix`. Dot product is `\boldsymbol{\cdot}`.
 - Scalars such as `\lambda`, `\mu`, `\theta` stay unbolded.
 - Differentials are upright with a thin space: `\,dx`.
-- Put the mark tariff for each part at the end of that part as `[3]`, matching
-  the paper convention.
+- Put the mark tariff for each part at the end of that part as `\hfill [3]`,
+  matching the paper convention. Write it exactly that way — backslash-hfill,
+  one space, the number in square brackets — as the last thing in the part,
+  on the same line as the text it belongs to rather than alone on the next
+  line. The renderer right-aligns a tariff written like this against the text
+  beside it; a bare `[3]` renders in the middle of the sentence, and a `[3]`
+  alone on its own line renders left-aligned under the question, both of which
+  look wrong next to the rest of the set.
 - No diagrams. You cannot draw one, and a question that needs a figure to be
   understood is the wrong question to write here — choose a task that stands
   in text.
