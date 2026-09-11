@@ -9,11 +9,12 @@
  * never updated, so the editor quietly diverged from the thing it claimed to
  * be editing.
  *
- * PUT refuses a packet that has been committed to print -- see
+ * PUT refuses a packet that students have already written on -- see
  * evaluatePacketLock in lib/na-packet-edit.ts for why that line is drawn at
- * the existence of a print master rather than at scans. A refusal is a 409
- * carrying the reason, not a generic error, because the editor shows that
- * text to the teacher verbatim.
+ * scanned work rather than at the print master. A refusal is a 409 carrying
+ * the reason, not a generic error, because the editor shows that text to the
+ * teacher verbatim; a packet that is printed but unscanned comes back
+ * editable with a warning the editor shows the same way.
  *
  * On a successful write the rubric is re-synced through the same
  * syncRubricItems the sandbox save uses, so the answer key follows the
