@@ -17,6 +17,7 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
     return [
       ...shared,
       { href: "/dashboard/questions", label: "PPQ Bank", icon: "❓" },
+      { href: "/dashboard/practice-sets", label: "Practice Sets", icon: "\u{1F4D0}" },
       { href: "/dashboard/assignments", label: "Assignments", icon: "\u{1F4CB}" },
       { href: "/dashboard/tests", label: "Tests", icon: "\u{1F4DD}" },
       { href: "/dashboard/placement", label: "Placement Tests", icon: "\u{1F9ED}" },

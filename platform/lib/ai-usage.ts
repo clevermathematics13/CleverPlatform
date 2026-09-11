@@ -15,7 +15,10 @@ export type UsagePipeline =
   | "na_assess"
   | "na_assess_wide"
   | "na_assess_batch"
-  | "na_cover_page";
+  | "na_cover_page"
+  // Writing an original practice question from a bank question (Opus, one
+  // call per question, at a teacher's desk rather than in a pipeline).
+  | "practice_question";
 
 export type UsageRefType = "ai_grade_run" | "ai_grade_result" | "ai_grade_batch" | "na_crop" | "na_scan_batch";
 

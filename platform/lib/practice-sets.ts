@@ -44,9 +44,16 @@ export interface PracticeItem {
   tier: PracticeTier;
   marks: number;
   subtopics: PracticeSubtopic[];
-  /** 1 or 2. Null when the bank has no paper recorded for the question. */
+  /** 1 or 2. Null for a generated question, which belongs to no paper. */
   paper: number | null;
+  /** Set for a bank question: the scanned page. Empty for a generated one. */
   imageUrls: string[];
+  /**
+   * Set for a generated question: the question itself, as LaTeX for
+   * LatexRenderer. Null for a bank question, whose content is its image.
+   * Exactly one of imageUrls / questionLatex carries the question.
+   */
+  questionLatex: string | null;
   /**
    * The IB code (e.g. "22M.1.AHL.TZ1.H_1"). Populated for the teacher's own
    * preview and null for a student -- see buildPracticeItem. Typing it as

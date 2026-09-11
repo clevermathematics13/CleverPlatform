@@ -8,6 +8,7 @@ import {
   loadPracticeSetView,
   type PracticeSetSummary,
 } from "@/lib/practice-set-service";
+import LatexRenderer from "@/components/LatexRenderer";
 import { calculatorAllowed, type PracticeItem, type PracticeSetView } from "@/lib/practice-sets";
 
 export const metadata = { title: "Practice" };
@@ -178,7 +179,14 @@ function QuestionCard({ item }: { item: PracticeItem }) {
       )}
 
       <div className="mt-4 space-y-3">
-        {item.imageUrls.length === 0 ? (
+        {/* A generated question is text and renders as text; a bank question
+            is a scan of a printed page. Exactly one of the two is ever set,
+            so there is no precedence to get wrong. */}
+        {item.questionLatex ? (
+          <div className="rounded-lg bg-da-bg/60 px-4 py-3 text-da-text">
+            <LatexRenderer latex={item.questionLatex} />
+          </div>
+        ) : item.imageUrls.length === 0 ? (
           <p className="rounded-lg border border-da-warning/40 bg-da-warning/10 px-3 py-2 text-sm text-da-text">
             This question could not be loaded. Let your teacher know which number it is.
           </p>

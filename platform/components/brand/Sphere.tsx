@@ -56,9 +56,19 @@ interface Props {
   className?: string;
   /** Crimson of the artwork, used by the static orb; defaults to the lattice's. */
   accent?: string;
+  /**
+   * Render the CSS orb alone and never load the video.
+   *
+   * The video's backdrop is baked into its pixels (H.264 has no alpha), keyed
+   * to `--color-da-bg`, so it only disappears on a surface actually painted
+   * that colour -- anywhere else it is a dark square. The orb underneath is
+   * real CSS on a transparent element and composites over anything, which is
+   * what a background layer on a textured dashboard surface needs.
+   */
+  still?: boolean;
 }
 
-export function Sphere({ size = 320, className, accent = "#c8103f" }: Props) {
+export function Sphere({ size = 320, className, accent = "#c8103f", still = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [failed, setFailed] = useState(false);
 
@@ -123,7 +133,7 @@ export function Sphere({ size = 320, className, accent = "#c8103f" }: Props) {
         />
       </div>
 
-      {!failed && (
+      {!failed && !still && (
         <video
           ref={videoRef}
           src="/sphere.mp4"
