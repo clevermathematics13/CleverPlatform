@@ -20,6 +20,7 @@ import Image from "next/image";
 import selfAssess from "@/public/student-tiles/self-assess.png";
 import feedback from "@/public/student-tiles/feedback.png";
 import liveGame from "@/public/student-tiles/live-game.png";
+import practice from "@/public/student-tiles/practice.png";
 
 /** Self-Assess: a balance scale. Weighing your own work against the mark
  *  scheme is the whole act, and a pair of pans on a pillar is what a carver
@@ -61,6 +62,22 @@ export function LiveGameIcon() {
     <Image
       src={liveGame}
       alt="Live Game: a trophy embossed in steel"
+      className="carved-icon"
+      sizes="(min-width: 640px) 13rem, 11rem"
+      priority
+    />
+  );
+}
+
+/** Practice: a pair of dividers standing on the arc they have drawn. The
+ *  other three emblems show work that is over -- weighed, written up, won.
+ *  This is the instrument still touching the paper, which is what separates
+ *  a practice set from everything else a student can reach from here. */
+export function PracticeIcon() {
+  return (
+    <Image
+      src={practice}
+      alt="Practice: a pair of dividers embossed in steel"
       className="carved-icon"
       sizes="(min-width: 640px) 13rem, 11rem"
       priority

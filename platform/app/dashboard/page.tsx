@@ -3,7 +3,14 @@ import { createClient } from "@/lib/supabase/server";
 import { resolveViewAs } from "@/lib/view-as";
 import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { DeployCard } from "./deploy-card";
-import { FeedbackIcon, LiveGameIcon, SelfAssessIcon, StudentTile } from "./student-tiles";
+import { getStudentCourseIds, hasReleasedPracticeSet } from "@/lib/practice-set-service";
+import {
+  FeedbackIcon,
+  LiveGameIcon,
+  PracticeIcon,
+  SelfAssessIcon,
+  StudentTile,
+} from "./student-tiles";
 
 export default async function DashboardPage({
   searchParams,
@@ -16,6 +23,20 @@ export default async function DashboardPage({
   const viewAs = await resolveViewAs(viewAsParam);
   const viewRole = viewAs ? "student" : profile.role;
 
+  // The Practice tile appears only for a class that actually has a released
+  // set. A tile that always shows and usually leads to "nothing here yet" is
+  // worse than no tile: students stop trusting the ones that are there.
+  let studentCourseIds: string[] = [];
+  if (viewRole === "student") {
+    studentCourseIds = viewAs
+      ? viewAs.courseId
+        ? [viewAs.courseId]
+        : []
+      : await getStudentCourseIds(profile.id, profile.email);
+  }
+  const showPractice =
+    viewRole === "student" && (await hasReleasedPracticeSet(studentCourseIds));
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-da-text font-serif">
@@ -25,18 +46,25 @@ export default async function DashboardPage({
         {getRoleDescription(viewRole)}
       </p>
 
-      {/* Quick Stats / Cards. The student view is three large tiles, so it
-          gets a wider-gapped grid of its own. */}
+      {/* Quick Stats / Cards. The student view is large tiles, so it gets a
+          wider-gapped grid of its own -- and a column count the tiles fill
+          exactly: three across when there are three, 2x2 when Practice makes
+          it four, rather than leaving one tile alone on a second row. */}
       <div
         className={
           viewRole === "student"
-            ? "mt-10 grid max-w-5xl grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
+            ? showPractice
+              ? "mt-10 grid max-w-4xl grid-cols-1 gap-8 sm:grid-cols-2"
+              : "mt-10 grid max-w-5xl grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3"
             : "mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3"
         }
       >
         {viewRole === "teacher" && <TeacherDashboard supabase={supabase} teacherId={profile.id} />}
         {viewRole === "student" && (
-          <StudentDashboard viewAsId={viewAs?.invitedStudentId ?? null} />
+          <StudentDashboard
+            viewAsId={viewAs?.invitedStudentId ?? null}
+            showPractice={showPractice}
+          />
         )}
         {viewRole === "parent" && <ParentDashboard supabase={supabase} profileId={profile.id} />}
         {viewRole === "teacher" && <DeployCard />}
@@ -126,11 +154,25 @@ async function TeacherDashboard({
  *  previewing this student in this tab; it rides along on each link so the
  *  destination page knows whose data to show and the view survives the
  *  navigation. A real student sees the same tiles with no param. */
-async function StudentDashboard({ viewAsId }: { viewAsId: string | null }) {
+async function StudentDashboard({
+  viewAsId,
+  showPractice,
+}: {
+  viewAsId: string | null;
+  showPractice: boolean;
+}) {
   const q = viewAsId ? `?viewAs=${viewAsId}` : "";
 
   return (
     <>
+      {showPractice && (
+        <StudentTile
+          title="Practice"
+          description="Work through the question set for your class"
+          href={`/dashboard/practice${q}`}
+          icon={<PracticeIcon />}
+        />
+      )}
       <StudentTile
         title="Self-Assess"
         description="Grade your own exams and review feedback"
