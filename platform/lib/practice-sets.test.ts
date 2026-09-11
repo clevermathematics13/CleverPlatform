@@ -17,6 +17,7 @@ function item(overrides: Partial<PracticeItem> & { position: number; tier: Pract
     subtopics: [],
     paper: 1,
     imageUrls: [],
+    questionLatex: null,
     questionCode: null,
     ...overrides,
   };

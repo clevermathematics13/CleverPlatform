@@ -853,3 +853,59 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
     animation: none !important;
   }
 }
+
+/* ---- Ambient sphere -------------------------------------------------------
+   The lattice sphere as a background presence on the practice-set builder.
+   Sphere.tsx's design note says the sphere does not loop inside the working
+   dashboard, because motion competes with reading; this is the exception the
+   teacher asked for, so it is tuned to stay under the threshold of notice:
+   very slow, very soft, very dim, and behind everything. Two independent
+   cycles (a drift and a breath) at co-prime-ish periods so the loop never
+   reads as a loop.
+
+   The element is fixed and inert. It must never sit above content or take a
+   pointer event -- it is scenery, not an object on the page. */
+.ambient-sphere {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-sphere__drift {
+  position: absolute;
+  right: -6%;
+  bottom: -8%;
+  opacity: 0.16;
+  filter: blur(1.5px) saturate(0.85);
+  will-change: transform;
+  animation: ambient-sphere-drift 34s ease-in-out infinite;
+}
+
+.ambient-sphere__breathe {
+  will-change: transform;
+  animation: ambient-sphere-breathe 11s ease-in-out infinite;
+}
+
+@keyframes ambient-sphere-drift {
+  0%,
+  100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(-3.5%, -4.5%, 0); }
+}
+
+/* The breath is a scale, not an opacity pulse: a sphere that grows and
+   settles reads as something with volume, where a fading one reads as a
+   rendering fault. 2.5% is about as small as the eye still registers. */
+@keyframes ambient-sphere-breathe {
+  0%,
+  100% { transform: scale(1); }
+  50% { transform: scale(1.025); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-sphere__drift,
+  .ambient-sphere__breathe {
+    animation: none !important;
+  }
+}

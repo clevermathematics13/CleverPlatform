@@ -125,7 +125,9 @@ export async function hasReleasedPracticeSet(courseIds: string[]): Promise<boole
 
 interface ItemRow {
   position: number;
-  ib_question_code: string;
+  source: string;
+  ib_question_code: string | null;
+  question_latex: string | null;
   tier: string;
   marks: number;
   subtopic_codes: string[] | null;
@@ -168,7 +170,9 @@ export async function loadPracticeSetView(options: {
 
   const { data: itemRows } = await supabase
     .from("practice_set_items")
-    .select("position, ib_question_code, tier, marks, subtopic_codes, question_image_paths")
+    .select(
+      "position, source, ib_question_code, question_latex, tier, marks, subtopic_codes, question_image_paths"
+    )
     .eq("practice_set_id", setId)
     .order("position");
 
@@ -183,12 +187,17 @@ export async function loadPracticeSetView(options: {
     });
   }
 
-  const codes = [...new Set(items.map((item) => item.ib_question_code))];
+  // Only bank items have a code to resolve. A generated item carries its own
+  // question text and never touches ib_questions or the image bucket.
+  const bankItems = items.filter(
+    (item): item is ItemRow & { ib_question_code: string } =>
+      item.source === "bank" && !!item.ib_question_code
+  );
+  const codes = [...new Set(bankItems.map((item) => item.ib_question_code))];
 
-  const { data: questionRows } = await supabase
-    .from("ib_questions")
-    .select("id, code, paper")
-    .in("code", codes);
+  const { data: questionRows } = codes.length
+    ? await supabase.from("ib_questions").select("id, code, paper").in("code", codes)
+    : { data: [] };
 
   const questionIdByCode = new Map<string, string>();
   const paperByCode = new Map<string, number | null>();
@@ -233,7 +242,7 @@ export async function loadPracticeSetView(options: {
   // per image: a 13-question set is 13+ separate requests otherwise.
   const pathsByPosition = new Map<number, string[]>();
   const allPaths: string[] = [];
-  for (const item of items) {
+  for (const item of bankItems) {
     const questionId = questionIdByCode.get(item.ib_question_code);
     const available = questionId ? (availableByQuestionId.get(questionId) ?? []) : [];
     const chosen = selectQuestionImagePaths(item.question_image_paths ?? [], available);
@@ -265,10 +274,13 @@ export async function loadPracticeSetView(options: {
       tier: isPracticeTier(item.tier) ? item.tier : "medium",
       marks: item.marks,
       subtopics,
-      paper: paperByCode.get(item.ib_question_code) ?? null,
+      paper: item.ib_question_code ? (paperByCode.get(item.ib_question_code) ?? null) : null,
       imageUrls: (pathsByPosition.get(item.position) ?? [])
         .map((path) => signedUrlByPath.get(path))
         .filter((url): url is string => !!url),
+      // A generated question IS its text; a bank question is its scanned
+      // page. Never both, so the page has one thing to render either way.
+      questionLatex: item.source === "generated" ? item.question_latex : null,
       questionCode: includeQuestionCodes ? item.ib_question_code : null,
     };
   });
