@@ -47,6 +47,33 @@ describe("selectQuestionImagePaths", () => {
     ).toEqual(["q/question/01.png"]);
   });
 
+  it("serves a trimmed derivative stored beside the bank's own question images", () => {
+    // The trimmed copies deliberately have no question_images row, so they are
+    // never in `available`; they are allowed because they share the directory.
+    expect(
+      selectQuestionImagePaths(
+        ["q/question/practice-trimmed-02.png"],
+        ["q/question/01.png", "q/question/02.png"]
+      )
+    ).toEqual(["q/question/practice-trimmed-02.png"]);
+  });
+
+  it("does not let the directory rule reach a mark scheme or another question", () => {
+    expect(
+      selectQuestionImagePaths(
+        [
+          "q/markscheme/practice-trimmed-01.png",
+          "q/markscheme/01.png",
+          "other-code/question/01.png",
+          "2017_past_papers_ms_paper_1_markscheme/pages/04.png",
+        ],
+        ["q/question/01.png"]
+      )
+      // Nothing matched, so this is the fall-back to every question image --
+      // never any of the paths above.
+    ).toEqual(["q/question/01.png"]);
+  });
+
   it("never returns a mark scheme path even when every curated path is one", () => {
     const chosen = selectQuestionImagePaths(
       ["q/markscheme/01.png", "q/markscheme/02.png"],
