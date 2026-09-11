@@ -1506,15 +1506,17 @@ is not there, check the file, not the row.
 
 ---
 
-## 17. Releasing one class's marks, and a migration this session could not apply (10 Sep 2026)
+## 17. Releasing one class's marks, and why a migration's TIMESTAMP decides whether CI can apply it (10-11 Sep 2026)
 
-**READ THIS FIRST IF YOU ARE THE NEXT AGENT: `20260910213307_test_course_self_assessment_override.sql`
-was written but NOT applied.** The repo therefore carries at least one
-migration file the ledger has no row for until it is. (This session could not
-read the ledger either -- no Supabase MCP tool -- so treat the exact counts as
-unverified and check them yourself.) See "How it gets applied" below before
-doing anything else with migrations, and do not "reconcile" the invariant by
-deleting the file.
+**READ THIS FIRST IF YOU ARE ADDING A MIGRATION FROM AN AGENT SESSION.** The
+headline is in "How it gets applied" below and it cost three failed runs to
+learn: `platform-supabase-migrations.yml` will silently refuse any migration
+file whose version sorts BEFORE the newest row already in the ledger. Choose
+the timestamp at the moment you push, not the moment you started writing.
+
+The migration itself is
+`platform/supabase/migrations/20260911055400_test_course_self_assessment_override.sql`,
+renumbered from `20260910213307` for exactly that reason.
 
 **The problem.** `tests.require_self_assessment` gates a student seeing Clev's
 Marks before they have self-graded, and it lives on the test. A test belongs to
@@ -1549,18 +1551,39 @@ anything yet would be worse than one that falls back to the test's own flag.
 That is what makes shipping this before the migration safe, and it is also why
 a green deploy does NOT tell you the migration landed.
 
-**How it gets applied.** Not through MCP `apply_migration`, which is the normal
-path (`supabase/migrations/README.md`): this session had no Supabase MCP tool,
-so it could neither apply the migration nor read back the version the ledger
-assigned. It is written with a filename version instead, which means
-`platform-supabase-migrations.yml` is the path - the safety net section 4
-describes for exactly this case, a migration file reaching `main` unapplied,
-fixed and verified on 7 Sep. `supabase db push` takes the version from the
-filename, so the ledger row should land at `20260910213307` and match it,
-restoring the 1:1 invariant rather than breaking it further. **That reasoning
-has not been observed on a real run - check the ledger after the merge**, and
-if the workflow was a no-op, apply it through MCP and rename the file to
-whatever version comes back.
+**How it gets applied, and the three ways it failed first.** The normal path is
+MCP `apply_migration` (`supabase/migrations/README.md`), which was unavailable
+when this was written and intermittently available afterwards. The fallback is
+`platform-supabase-migrations.yml`, which takes `workflow_dispatch` and so can
+be aimed at a branch -- the same way section 4's fix was verified on 7 Sep.
+Three dispatches, three different failures, all worth knowing:
+
+1. **The branch was stale.** It was cut before two migrations landed on `main`
+   (`20260910230949`, `20260911015316`), both already in the ledger. The CLI
+   compares the ledger against the files it can see and bailed with "Remote
+   migration versions not found in local migrations directory" naming exactly
+   those two. It fails safe and applied nothing. Merge `main` in first: a
+   dispatch is only meaningful from a branch carrying every ledger version.
+2. **`supabase/setup-cli@v1` hit a GitHub API rate limit** ("Failed to resolve
+   latest Supabase CLI release"), dying before the database was touched. Pure
+   infrastructure; one re-run cleared it.
+3. **The real one.** `supabase db push` found the migration and refused it:
+   "Rerun the command with --include-all flag to apply these migrations". The
+   CLI only applies versions AFTER the last one in the ledger, and this file
+   was stamped `20260910213307` while the ledger had already moved on to
+   `20260911015316` that same night. Section 4 records `--include-all` being
+   deliberately dropped from this workflow, because it would drag in the
+   destructive `migrations-legacy/` files -- so that flag is not the answer
+   and must not be added back.
+
+The fix was to renumber the file to a version later than the newest ledger
+row. That is safe here and ONLY here: the README's "never renumber" rule
+protects migrations that have ALREADY been applied, where a changed prefix
+makes an applied migration look pending. A file the ledger has never seen has
+no identity to protect. **A migration written by a long agent session is
+exactly the case that hits this** -- the timestamp is chosen when the file is
+created, the session then runs for hours, and other migrations land in the
+ledger meanwhile.
 
 **Nothing is released yet.** The migration creates the mechanism; it writes no
 rows. Releasing 9C is one statement, deliberately kept out of the migration so
