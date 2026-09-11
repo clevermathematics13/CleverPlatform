@@ -241,7 +241,7 @@ function getRoleDescription(role: string): string {
     case "teacher":
       return "Manage your courses, students, and assignments.";
     case "student":
-      return "Grade your own work, read Clev's Marks feedback, or join the live game.";
+      return "Work through your practice set, grade your own work, read Clev's Marks feedback, or join the live game.";
     case "parent":
       return "View your student's progress and grades.";
     default:

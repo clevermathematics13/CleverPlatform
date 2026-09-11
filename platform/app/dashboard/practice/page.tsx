@@ -186,14 +186,20 @@ function QuestionCard({ item }: { item: PracticeItem }) {
           item.imageUrls.map((url) => (
             // Plain <img>: these are signed Supabase URLs that expire in an
             // hour, so next/image's optimiser cache would be caching a URL
-            // that is dead before the cache entry is. Dimensions are unknown
-            // and vary per question, so the box is sized by the image.
+            // that is dead before the cache entry is.
+            //
+            // max-w-full rather than w-full, because the bank's images were
+            // imported at several different resolutions -- from 582px wide to
+            // 1786px for the same one line of question text. Stretching every
+            // one to the container upscales the low-resolution ones into
+            // blurry giants next to their neighbours. Capping instead means
+            // the big ones fit and the small ones render at native size.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={url}
               src={url}
               alt={`Question ${item.position}`}
-              className="w-full rounded-lg bg-white"
+              className="mx-auto h-auto max-w-full rounded-lg bg-white"
             />
           ))
         )}
