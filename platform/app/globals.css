@@ -107,6 +107,31 @@ body {
   font-weight: 400;
 }
 
+/* ---- Handwritten answers (app/dashboard/na-feedback, answers view) -------
+   Caveat is a script face: at body size its joined strokes stop being
+   letters. It is set a size up with room between the lines, which is also
+   what makes a list of answers scannable rather than a block.
+
+   Deliberately NOT registered as a Tailwind theme font. Nothing else on the
+   platform should reach for a handwriting face, and a `font-hand` utility
+   sitting in the theme is an invitation to; this is one component's voice,
+   not part of the type scale.
+
+   Maths is left alone, and does not need excluding here: katex.min.css sets
+   the `font` shorthand on `.katex` itself, so an inherited family never
+   reaches it. That is not a detail to work around -- KaTeX carries no
+   positioning in its markup, and every superscript and fraction bar is placed
+   from the measured widths of its own fonts, so a family forced into it would
+   not restyle the maths but dismantle it. Only the size follows the hand,
+   through KaTeX's own 1.21em, which is what keeps the two the same size on a
+   line. */
+.font-hand {
+  font-family: var(--font-hand), ui-rounded, "Segoe Print", cursive;
+  font-size: 1.3125rem;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
 /* ---- Student tiles: topographic title and carved-steel emblem ------------
    .terrain-title stands the word up out of the card in stepped layers. The
    face is a lit maroon (the rail's colour, one stop brighter so it reads on
@@ -649,6 +674,19 @@ input.bg-gray-50::placeholder, textarea.bg-gray-50::placeholder {
   opacity: 1;
 }
 
+/* ---- The answers sheet (app/dashboard/na-feedback, answers view) ---------
+   Warm paper with a ruled edge, so a page of handwriting has something to sit
+   on. It is a light surface inside a dark app, which is why it joins the
+   KaTeX colour rule below rather than inheriting the parchment one meant for
+   the dark page. */
+.answer-sheet {
+  background-color: #f7f2e7;
+  background-image: linear-gradient(90deg, rgba(200, 16, 63, 0.35) 0 2px, transparent 2px);
+  border: 1px solid #d9cdb8;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  color: #1f2a44;
+}
+
 /* Tailwind text-gray-900 utility should always win over the global rule */
 input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
   color: #111827 !important;
@@ -671,7 +709,9 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
 .bg-indigo-50 .katex,
 .bg-indigo-50 .katex *,
 .bg-amber-50 .katex,
-.bg-amber-50 .katex * {
+.bg-amber-50 .katex *,
+.answer-sheet .katex,
+.answer-sheet .katex * {
   color: #111827;
 }
 

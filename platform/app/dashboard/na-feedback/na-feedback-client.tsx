@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { ReleasedPacketScan, NaFeedbackItem } from "@/lib/na-feedback-service";
 import type { EmptyFeedbackPreviewCopy } from "@/lib/na-feedback-preview";
+import type { StudentAnswerLine } from "@/lib/na-answer-service";
 import { CropImagePanel } from "@/components/na-feedback/CropImagePanel";
+import { AnswersView } from "@/components/na-feedback/AnswersView";
+import { StudentPacketMenu, type FeedbackView } from "@/components/na-feedback/StudentPacketMenu";
 
 interface NaFeedbackClientProps {
   isTeacher: boolean;
@@ -14,6 +17,11 @@ interface NaFeedbackClientProps {
   scans: ReleasedPacketScan[];
   selectedScanId: string | null;
   initialItems: NaFeedbackItem[];
+  /** The answers for this packet, already reduced to the answer alone and
+   *  rendered to safe HTML server-side. Empty for a packet whose rubric has
+   *  none, which is what hides the answers view rather than opening it
+   *  blank. */
+  answers: StudentAnswerLine[];
   /** True for the ?viewAs= preview -- a read-only simulation of the
    *  student's own page, same convention as the Exam Reflection page. */
   readOnlyPreview?: boolean;
@@ -35,6 +43,7 @@ export function NaFeedbackClient({
   scans,
   selectedScanId,
   initialItems,
+  answers,
   readOnlyPreview = false,
   previewViewAsId = null,
   previewHasAccount = true,
@@ -46,6 +55,13 @@ export function NaFeedbackClient({
   const [flagDraft, setFlagDraft] = useState<{ cropId: string; note: string } | null>(null);
   const [flagSaving, setFlagSaving] = useState<string | null>(null);
   const [expandedGaps, setExpandedGaps] = useState<Set<string>>(new Set());
+  // The sphere menu's two switches. Both are view state and deliberately not
+  // in the URL: a student flicking between the answers and their feedback is
+  // not navigating, and putting it in the query string would make the back
+  // button undo a glance.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [view, setView] = useState<FeedbackView>("detailed");
+  const [onlyLostMarks, setOnlyLostMarks] = useState(false);
   // Keyed on the resolved name, not on viewStudentId: a teacher can
   // preview by ?scanId= alone (a class where nobody has signed in yet has
   // no profile id to pass), and that path still resolves a name from the
@@ -104,8 +120,11 @@ export function NaFeedbackClient({
   type Group =
     | { kind: "item"; key: string; item: NaFeedbackItem }
     | { kind: "unattempted"; key: string; items: NaFeedbackItem[] };
+  const lostMarks = items.filter((i) => !i.fullMarks);
+  const visibleItems = onlyLostMarks ? lostMarks : items;
+
   const groups: Group[] = [];
-  for (const item of items) {
+  for (const item of visibleItems) {
     if (item.attempted) {
       groups.push({ kind: "item", key: item.cropId, item });
       continue;
@@ -308,7 +327,15 @@ export function NaFeedbackClient({
             </p>
           )}
 
+          {view === "answers" ? (
+            <AnswersView lines={answers} packetTitle={selectedScan?.title ?? "This packet"} />
+          ) : (
           <div className="space-y-2">
+            {onlyLostMarks && lostMarks.length === 0 && (
+              <p className="rounded-lg border border-dashed border-da-border px-4 py-3 text-sm text-da-muted">
+                Nothing to review — you have full Clev&apos;s Marks on every question here.
+              </p>
+            )}
             {groups.map((group) => {
               if (group.kind === "unattempted") {
                 const open = expandedGaps.has(group.key);
@@ -342,7 +369,21 @@ export function NaFeedbackClient({
               return renderItem(group.item);
             })}
           </div>
+          )}
         </>
+      )}
+
+      {scans.length > 0 && (
+        <StudentPacketMenu
+          open={menuOpen}
+          onOpenChange={setMenuOpen}
+          view={view}
+          onViewChange={setView}
+          answersAvailable={answers.some((a) => a.answerHtml !== null)}
+          lostMarksCount={items.length > 0 ? lostMarks.length : null}
+          onlyLostMarks={onlyLostMarks}
+          onOnlyLostMarksChange={setOnlyLostMarks}
+        />
       )}
 
       {openPanel && (
