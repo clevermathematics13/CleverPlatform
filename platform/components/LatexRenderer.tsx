@@ -4,6 +4,7 @@ import katex from "katex";
 import React from "react";
 import dynamic from "next/dynamic";
 import { type IbGraphSpec, GRAPH_MARKER_RE, decodeGraphSpec } from "./IbGraph";
+import { splitHfillMark } from "@/lib/latex-hfill";
 
 const IbGraph = dynamic(() => import("./IbGraph"), { ssr: false });
 
@@ -142,10 +143,13 @@ function groupSegmentsIntoLines(
     let hfillMark: string | null = null;
     const last = current[current.length - 1];
     if (last.kind === "text" && last.content.includes("\\hfill")) {
-      const idx = last.content.indexOf("\\hfill");
-      const beforeInLast = last.content.slice(0, idx);
-      hfillMark = last.content.slice(idx + 7).trim();
-      current = [...current.slice(0, -1), { kind: "text", content: beforeInLast }];
+      // splitHfillMark, not an inline slice: the fixed offset this replaced
+      // assumed a space after the command and ate the "[" of "\hfill[6]".
+      const split = splitHfillMark(last.content);
+      if (split.mark !== null) {
+        hfillMark = split.mark;
+        current = [...current.slice(0, -1), { kind: "text", content: split.before }];
+      }
     }
     groups.push({ kind: "content", pieces: current, hfillMark });
     current = [];
