@@ -1,5 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import {
+  packetUsesLatexDelimiters,
+  renderRubricText,
+  escapeHtml,
+  RUBRIC_TEXT_FIELDS,
+} from "@/lib/rubric-latex";
+
+/**
+ * Standalone HTML, so there is no app stylesheet to inherit KaTeX from, and
+ * app/globals.css's `@import "katex/dist/katex.min.css"` never reaches here.
+ *
+ * Served from public/ rather than the jsdelivr URL the other two
+ * generated-HTML paths use (lib/latex-visual-check.ts, a dev tool, and
+ * lib/document-orchestrator.ts, which renders server-side where the CDN is
+ * reachable). This page is different on both counts: it renders in the
+ * teacher's own browser, on a school network that may well block a CDN, and
+ * its whole purpose is to be printed.
+ *
+ * The failure mode is what settles it. KaTeX carries no positioning in its
+ * markup -- every superscript, fraction bar and delimiter is placed by this
+ * stylesheet -- so if it does not load, the maths does not fall back to
+ * source. It collapses inline: x^4 renders as "x4" and \binom{4}{r} as
+ * "(r4)". That reads like an answer while being the wrong one, which is the
+ * last thing a marking key should do. Observed directly, not theorised.
+ *
+ * public/katex/ is vendored from node_modules/katex/dist; see
+ * lib/rubric-latex.vendor.test.ts, which fails if the two drift apart.
+ */
+const KATEX_CSS = "/katex/katex.min.css";
 
 export const maxDuration = 60;
 
@@ -82,11 +111,20 @@ export async function GET(
     });
   }
 
-  const esc = (s: unknown) =>
-    String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
+  const esc = escapeHtml;
+
+  // Decided once, from every text field on the packet, so the whole rubric is
+  // typeset or none of it is -- and so that a packet whose dollars are prices
+  // rather than delimiters is never reinterpreted as maths. See
+  // lib/rubric-latex.ts for why this cannot be judged span by span.
+  const renderLatex = packetUsesLatexDelimiters([
+    na.title,
+    na.subtitle,
+    ...items.flatMap((it) =>
+      RUBRIC_TEXT_FIELDS.map((f) => (it as Record<string, unknown>)[f] as string | null),
+    ),
+  ]);
+  const rich = (s: unknown) => renderRubricText(s, renderLatex);
 
   const warningBlock =
     mismatches.length > 0
@@ -106,16 +144,16 @@ export async function GET(
   const rowsHtml = items
     .map((it) => {
       const bits: string[] = [];
-      if (it.question_text) bits.push(`<div class="qtext">${esc(it.question_text)}</div>`);
-      if (it.answer_key) bits.push(`<div class="ans"><span class="lbl">Answer key</span>${esc(it.answer_key)}</div>`);
+      if (it.question_text) bits.push(`<div class="qtext">${rich(it.question_text)}</div>`);
+      if (it.answer_key) bits.push(`<div class="ans"><span class="lbl">Answer key</span>${rich(it.answer_key)}</div>`);
       if (it.open_rubric)
         bits.push(
-          `<div class="ans"><span class="lbl">Open rubric (no single correct answer)</span>${esc(it.open_rubric)}</div>`
+          `<div class="ans"><span class="lbl">Open rubric (no single correct answer)</span>${rich(it.open_rubric)}</div>`
         );
       if (it.misconception_context)
-        bits.push(`<div class="mis"><span class="lbl">Misconception tested</span>${esc(it.misconception_context)}</div>`);
+        bits.push(`<div class="mis"><span class="lbl">Misconception tested</span>${rich(it.misconception_context)}</div>`);
       if (it.teacher_notes)
-        bits.push(`<div class="note"><span class="lbl">Marking note</span>${esc(it.teacher_notes)}</div>`);
+        bits.push(`<div class="note"><span class="lbl">Marking note</span>${rich(it.teacher_notes)}</div>`);
       if (!it.answer_key && !it.open_rubric)
         bits.push(`<div class="none">No answer key &mdash; ungraded or open thinking space.</div>`);
 
@@ -132,6 +170,7 @@ export async function GET(
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <title>Rubric — ${esc(na.title)}</title>
+${renderLatex ? `<link rel="stylesheet" href="${KATEX_CSS}">` : ""}
 <style>
   @page { size: A4; margin: 18mm 16mm; }
   body { font: 11pt/1.45 Georgia, "Times New Roman", serif; color: #16130f; margin: 0; }
@@ -155,14 +194,21 @@ export async function GET(
   .mis { background: #fdf4e7; border-left: 3px solid #a8631b; padding: 6px 10px; margin: 5px 0; }
   .note { background: #eef2f7; border-left: 3px solid #3a5a80; padding: 6px 10px; margin: 5px 0; }
   .none { color: #857a6d; font-style: italic; font-size: 10pt; }
+  /* KaTeX sits inside serif prose here, not the app's sans UI: match the
+     surrounding size rather than KaTeX's default 1.21em, and never let a
+     formula be split across a page break in the printed key. */
+  .katex { font-size: 1.05em; }
+  .katex-display { margin: 0.4em 0; break-inside: avoid; page-break-inside: avoid; }
+  /* A long expression must wrap or scroll rather than run off the paper. */
+  .qtext, .ans, .mis, .note { overflow-wrap: anywhere; }
   footer { margin-top: 20px; padding-top: 8px; border-top: 1px solid #e2dbd1;
            font-family: system-ui, sans-serif; font-size: 8pt; color: #857a6d; }
   @media screen { body { max-width: 820px; margin: 30px auto; padding: 0 22px; } }
 </style></head>
 <body>
   <header>
-    <h1>Marking rubric — ${esc(na.title)}</h1>
-    ${na.subtitle ? `<div class="sub">${esc(na.subtitle)}</div>` : ""}
+    <h1>Marking rubric — ${rich(na.title)}</h1>
+    ${na.subtitle ? `<div class="sub">${rich(na.subtitle)}</div>` : ""}
     <div class="sub">${esc(na.course ?? "")}</div>
     <div class="totals">${items.length} entries · ${trueTotal} marks total${
       shareTotal !== trueTotal ? ` · parts currently sum to ${shareTotal}` : ""
