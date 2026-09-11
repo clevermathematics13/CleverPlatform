@@ -4,6 +4,7 @@ import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { buildSelfScoreRows, SELF_SCORE_CONFLICT_TARGET } from "@/lib/reflection-self-scores";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { correctionsKey } from "@/lib/storage-keys";
+import { resolveSelfAssessmentRequired } from "@/lib/self-assessment-gate";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
   ReflectionTest,
@@ -74,10 +75,56 @@ async function getTestsVisibleToCourses(courseIds: string[]): Promise<Reflection
     throw error;
   }
   const now = Date.now();
-  return ((tests ?? []) as ReflectionTest[]).filter((t) => {
+  const visible = ((tests ?? []) as ReflectionTest[]).filter((t) => {
     const unlockAt = computeReleaseTimestamp(t.test_date, t.exam_time, t.release_at);
     return unlockAt === null || unlockAt <= now;
   });
+  return applySelfAssessmentOverrides(visible, courseIds);
+}
+
+/**
+ * Fold `test_course_self_assessment` into each test's `require_self_assessment`,
+ * so every reader of that field gets the value that applies to THIS viewer
+ * without knowing the override exists.
+ *
+ * Keyed on `courseIds` -- the viewer's own courses, the argument as passed in,
+ * not the track family the test query was widened to. The override is per
+ * class; resolving it against the family would let one class's release reach
+ * its siblings, which is exactly what it exists to prevent.
+ *
+ * A missing table is not an error here. The migration that adds it can reach
+ * production after this code does, and a reflection page that 500s because
+ * nobody has released anything yet would be a worse outcome than one that
+ * falls back to the test's own flag -- which is what every test does anyway
+ * until a row is written. Same reasoning as the column fallbacks above.
+ */
+async function applySelfAssessmentOverrides(
+  tests: ReflectionTest[],
+  courseIds: string[]
+): Promise<ReflectionTest[]> {
+  if (tests.length === 0 || courseIds.length === 0) return tests;
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("test_course_self_assessment")
+    .select("test_id, require_self_assessment")
+    .in("test_id", tests.map((t) => t.id))
+    .in("course_id", courseIds);
+  if (error || !data || data.length === 0) return tests;
+
+  const byTest = new Map<string, boolean[]>();
+  for (const row of data) {
+    const testId = row.test_id as string;
+    byTest.set(testId, [...(byTest.get(testId) ?? []), row.require_self_assessment as boolean]);
+  }
+
+  return tests.map((t) => ({
+    ...t,
+    require_self_assessment: resolveSelfAssessmentRequired(
+      t.require_self_assessment,
+      byTest.get(t.id) ?? []
+    ),
+  }));
 }
 
 /** Fetch all tests visible to a student (via their course enrollment). */

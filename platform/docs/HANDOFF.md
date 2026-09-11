@@ -1503,3 +1503,116 @@ this schema records what an API call returned, not what the teacher can see.
 `drive_synced_at`, `drive_error` and `content_sha` were all in a consistent,
 healthy state describing a file nobody could find. When a teacher says the file
 is not there, check the file, not the row.
+
+---
+
+## 17. Releasing one class's marks, and why a migration's TIMESTAMP decides whether CI can apply it (10-11 Sep 2026)
+
+**READ THIS FIRST IF YOU ARE ADDING A MIGRATION FROM AN AGENT SESSION.** The
+headline is in "How it gets applied" below and it cost three failed runs to
+learn: `platform-supabase-migrations.yml` will silently refuse any migration
+file whose version sorts BEFORE the newest row already in the ledger. Choose
+the timestamp at the moment you push, not the moment you started writing.
+
+The migration itself is
+`platform/supabase/migrations/20260911055400_test_course_self_assessment_override.sql`,
+renumbered from `20260910213307` for exactly that reason.
+
+**The problem.** `tests.require_self_assessment` gates a student seeing Clev's
+Marks before they have self-graded, and it lives on the test. A test belongs to
+one course but is sat by its whole track family (section 13's migration
+`20260905182550`): Formative Assessment 1 hangs off 9G and is sat by 9A, 9C, 9D
+and 9G. So releasing marks to 9C's 20 students meant releasing them to roughly
+69 across four classes. There was no narrower control, and that is not a
+decision anyone wanted to make on three other classes' behalf.
+
+**The mechanism.** `test_course_self_assessment (test_id, course_id,
+require_self_assessment)` - the pair is the primary key, because the pair is
+the identity. No row means the test's own flag stands, so every existing test
+behaves exactly as it did before. `resolveSelfAssessmentRequired()` in
+`lib/self-assessment-gate.ts` combines them and **fails closed**: where two
+overrides disagree the gate stays up, because withholding marks that should
+have been released is a complaint and showing marks that should not have been
+cannot be taken back.
+
+`lib/exam-service.ts` folds the override into each test's
+`require_self_assessment` as the tests are loaded, so all three existing
+readers (the reflection page's student branch, its "view as" branch, and
+`reflection-client.tsx`) keep reading one field and get the value for that
+viewer. It resolves against the viewer's OWN courses, never the track family -
+resolving against the family would let one class's release reach its siblings,
+which is the entire point of the table.
+
+**A missing table is not an error.** `applySelfAssessmentOverrides` returns the
+tests unchanged if the query fails, on the same reasoning as the column
+fallbacks already in that file: the code can reach production before the
+migration does, and a reflection page that 500s because nobody has released
+anything yet would be worse than one that falls back to the test's own flag.
+That is what makes shipping this before the migration safe, and it is also why
+a green deploy does NOT tell you the migration landed.
+
+**How it gets applied, and the three ways it failed first.** The normal path is
+MCP `apply_migration` (`supabase/migrations/README.md`), which was unavailable
+when this was written and intermittently available afterwards. The fallback is
+`platform-supabase-migrations.yml`, which takes `workflow_dispatch` and so can
+be aimed at a branch -- the same way section 4's fix was verified on 7 Sep.
+Three dispatches, three different failures, all worth knowing:
+
+1. **The branch was stale.** It was cut before two migrations landed on `main`
+   (`20260910230949`, `20260911015316`), both already in the ledger. The CLI
+   compares the ledger against the files it can see and bailed with "Remote
+   migration versions not found in local migrations directory" naming exactly
+   those two. It fails safe and applied nothing. Merge `main` in first: a
+   dispatch is only meaningful from a branch carrying every ledger version.
+2. **`supabase/setup-cli@v1` hit a GitHub API rate limit** ("Failed to resolve
+   latest Supabase CLI release"), dying before the database was touched. Pure
+   infrastructure; one re-run cleared it.
+3. **The real one.** `supabase db push` found the migration and refused it:
+   "Rerun the command with --include-all flag to apply these migrations". The
+   CLI only applies versions AFTER the last one in the ledger, and this file
+   was stamped `20260910213307` while the ledger had already moved on to
+   `20260911015316` that same night. Section 4 records `--include-all` being
+   deliberately dropped from this workflow, because it would drag in the
+   destructive `migrations-legacy/` files -- so that flag is not the answer
+   and must not be added back.
+
+The fix was to renumber the file to a version later than the newest ledger
+row. That is safe here and ONLY here: the README's "never renumber" rule
+protects migrations that have ALREADY been applied, where a changed prefix
+makes an applied migration look pending. A file the ledger has never seen has
+no identity to protect. **A migration written by a long agent session is
+exactly the case that hits this** -- the timestamp is chosen when the file is
+created, the session then runs for hours, and other migrations land in the
+ledger meanwhile.
+
+**Nothing is released yet.** The migration creates the mechanism; it writes no
+rows. Releasing 9C is one statement, deliberately kept out of the migration so
+that a student-facing change does not ride in on a schema one:
+
+```sql
+insert into test_course_self_assessment (test_id, course_id, require_self_assessment)
+values ('f5221cd9-66b1-48cd-bfe3-652d87df26b2', 'dc6d8fcf-cacd-4b5b-9674-478ac78f7f3c', false)
+on conflict (test_id, course_id) do update
+  set require_self_assessment = excluded.require_self_assessment;
+```
+
+**No teacher UI, deliberately.** `tests-client.tsx` has a per-test checkbox for
+the flag itself; a per-class control needs a course dimension on that row and
+that is a design question, not a mechanical one. Until someone answers it, the
+override is set by SQL.
+
+**State of 9C's Formative Assessment 1 at the time of writing**, since it is
+what prompted all of this: all 20 students fully marked (41 of 41 items each),
+15 self-assessed, 5 not (Emilia Ugarte, Emma Benderman, Galo Masias, Ines
+Palomino, Yanay Khoury). Every level in the mirrored `9C_Form1_15.csv`
+reconciles exactly against `student_marks` summed over 41 items, out of
+`total_marks` 50, through boundary set `cf5ccc24`. A `scope=all` export of the
+same test fills all 20 rows with no student missing a number.
+
+**One trap worth writing down.** An earlier pass at that reconciliation
+appeared to show wild disagreement between the CSV and the marks - students
+with a level and no marks at all. It was `student_marks` being read through
+PostgREST with a plain `limit`, which silently caps at 1000 rows; the test has
+2091. `fetchAllRows` exists for exactly this and the code comments warn about
+it. Ad-hoc verification queries need the same paging the application code
+uses, or they invent bugs that are not there.
