@@ -9,6 +9,7 @@ import History from '@/components/seating/History';
 import SeatManager from '@/components/seating/SeatManager';
 import PairHeatmap from '@/components/seating/PairHeatmap';
 import SeatingExplainer from '@/components/seating/SeatingExplainer';
+import StationRotation from '@/components/seating/StationRotation';
 import {
   getStudents, getSeats, getRules, getAssignments,
   getCurrentSeating, getSettings,
@@ -136,6 +137,7 @@ export default function SeatingApp() {
           {!loading && tab === 'chart' && (
             <>
               <SeatingChart seats={seats} assignments={filteredSeating} classGroup={classGroup} />
+              <StationRotation students={students} classGroup={classGroup} />
               <SeatingExplainer
                 assignments={filteredSeating}
                 rules={rules}

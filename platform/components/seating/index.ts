@@ -6,4 +6,5 @@ export { default as RuleManager } from './RuleManager';
 export { default as SeatManager } from './SeatManager';
 export { default as SeatingChart } from './SeatingChart';
 export { default as SeatingExplainer } from './SeatingExplainer';
+export { default as StationRotation } from './StationRotation';
 export { default as StudentList } from './StudentList';
