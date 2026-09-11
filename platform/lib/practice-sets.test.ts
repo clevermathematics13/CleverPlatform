@@ -13,6 +13,9 @@ import {
 
 function item(overrides: Partial<PracticeItem> & { position: number; tier: PracticeTier }): PracticeItem {
   return {
+    // Derived from position so each fixture item has a distinct, stable id
+    // without every call site having to invent one.
+    id: `item-${overrides.position}`,
     marks: 5,
     subtopics: [],
     paper: 1,

@@ -5,9 +5,13 @@ import { resolveViewAs } from "@/lib/view-as";
 import {
   getReleasedPracticeSets,
   getStudentCourseIds,
+  loadPracticeAnswers,
   loadPracticeSetView,
   type PracticeSetSummary,
 } from "@/lib/practice-set-service";
+import AnswerEditor, { type AnswerMode } from "@/components/practice/AnswerEditor";
+import AnswerProgress from "@/components/practice/AnswerProgress";
+import { answerSlots, isAnswered } from "@/lib/practice-answers";
 import LatexRenderer from "@/components/LatexRenderer";
 import { calculatorAllowed, type PracticeItem, type PracticeSetView } from "@/lib/practice-sets";
 
@@ -61,6 +65,34 @@ export default async function PracticePage({
       })
     : null;
 
+  // Whose answers to show. A student sees their own; a ?viewAs= preview shows
+  // the previewed student's, which the teacher's SELECT policy permits and
+  // their absent write policy prevents them editing. A teacher browsing
+  // without picking a student is nobody's page, so there are no answers on it.
+  const answersFor = viewAs ? viewAs.profileId : isTeacherView ? null : profile.id;
+  const answers =
+    view && answersFor ? await loadPracticeAnswers(view.id, answersFor) : new Map<string, string>();
+
+  // Three cases, and they are genuinely different things rather than degrees
+  // of the same permission -- see AnswerMode. A teacher previewing a student
+  // reads that student's work; a teacher browsing gets a working editor that
+  // saves nothing, so they can see what they are handing a class.
+  const answerMode: AnswerMode = viewAs ? "readonly" : isTeacherView ? "demo" : "answer";
+
+  const slotsByItem = new Map<string, string[]>();
+  for (const group of view?.groups ?? []) {
+    for (const item of group.items) slotsByItem.set(item.id, answerSlots(item.questionLatex));
+  }
+  const answeredKeys: string[] = [];
+  let totalSlots = 0;
+  for (const [itemId, slots] of slotsByItem) {
+    for (const slot of slots) {
+      totalSlots += 1;
+      const key = `${itemId}::${slot}`;
+      if (isAnswered(answers.get(key))) answeredKeys.push(key);
+    }
+  }
+
   const q = viewAs ? `?viewAs=${viewAs.invitedStudentId}&` : "?";
 
   return (
@@ -76,7 +108,12 @@ export default async function PracticePage({
         <EmptyState isTeacherView={isTeacherView && !viewAs} />
       ) : (
         <>
-          <PracticeSetHeader view={view} />
+          <PracticeSetHeader
+            view={view}
+            answeredKeys={answeredKeys}
+            totalSlots={totalSlots}
+            showProgress={answerMode !== "demo"}
+          />
           {sets.length > 1 && <SetSwitcher sets={sets} selectedId={view.id} queryPrefix={q} />}
           {view.groups.map((group) => (
             <section key={group.tier} className="mt-12">
@@ -89,7 +126,13 @@ export default async function PracticePage({
               </div>
               <ol className="mt-6 space-y-8">
                 {group.items.map((item) => (
-                  <QuestionCard key={item.position} item={item} />
+                  <QuestionCard
+                    key={item.position}
+                    item={item}
+                    slots={slotsByItem.get(item.id) ?? [""]}
+                    answers={answers}
+                    mode={answerMode}
+                  />
                 ))}
               </ol>
             </section>
@@ -100,7 +143,17 @@ export default async function PracticePage({
   );
 }
 
-function PracticeSetHeader({ view }: { view: PracticeSetView }) {
+function PracticeSetHeader({
+  view,
+  answeredKeys,
+  totalSlots,
+  showProgress,
+}: {
+  view: PracticeSetView;
+  answeredKeys: string[];
+  totalSlots: number;
+  showProgress: boolean;
+}) {
   return (
     <header>
       <h1 className="font-serif text-3xl font-bold text-da-text">{view.name}</h1>
@@ -117,6 +170,9 @@ function PracticeSetHeader({ view }: { view: PracticeSetView }) {
         <span className={view.markschemeReleased ? "text-da-success" : "text-da-warning"}>
           {view.markschemeReleased ? "Worked answers available" : "Answers not released yet"}
         </span>
+        {showProgress && (
+          <AnswerProgress initialAnsweredKeys={answeredKeys} totalSlots={totalSlots} />
+        )}
       </div>
     </header>
   );
@@ -150,7 +206,17 @@ function SetSwitcher({
   );
 }
 
-function QuestionCard({ item }: { item: PracticeItem }) {
+function QuestionCard({
+  item,
+  slots,
+  answers,
+  mode,
+}: {
+  item: PracticeItem;
+  slots: string[];
+  answers: Map<string, string>;
+  mode: AnswerMode;
+}) {
   const gdc = calculatorAllowed(item.paper);
 
   return (
@@ -212,6 +278,16 @@ function QuestionCard({ item }: { item: PracticeItem }) {
           ))
         )}
       </div>
+
+      <AnswerEditor
+        itemId={item.id}
+        position={item.position}
+        mode={mode}
+        slots={slots.map((partLabel) => ({
+          partLabel,
+          answerLatex: answers.get(`${item.id}::${partLabel}`) ?? "",
+        }))}
+      />
     </li>
   );
 }

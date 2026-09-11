@@ -909,3 +909,68 @@ input.text-gray-900, textarea.text-gray-900, select.text-gray-900 {
     animation: none !important;
   }
 }
+
+/* ---- Student answer fields (MathLive) -------------------------------------
+   MathLive draws itself with its own CSS custom properties rather than
+   ordinary colours, so theming it means setting those, not overriding rules.
+   The host div carries the border and background; the field itself is
+   transparent inside it, which is what keeps the caret and selection colours
+   from fighting the surrounding card. */
+.clev-mathfield-host {
+  border: 1px solid var(--color-da-border);
+  border-radius: 0.375rem;
+  background: var(--color-da-surface);
+  padding: 0.35rem 0.5rem;
+  overflow-x: auto;
+}
+
+.clev-mathfield-host:focus-within {
+  border-color: var(--color-da-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-da-accent) 45%, transparent);
+}
+
+.clev-mathfield {
+  display: block;
+  width: 100%;
+  min-height: 2rem;
+  font-size: 1.05rem;
+  color: var(--color-da-text);
+  background: transparent;
+  border: none;
+  outline: none;
+
+  --caret-color: var(--color-da-accent);
+  --selection-background-color: color-mix(in srgb, var(--color-da-accent) 30%, transparent);
+  --selection-color: var(--color-da-text);
+  --contains-highlight-background-color: transparent;
+  --placeholder-color: var(--color-da-muted);
+  --placeholder-opacity: 0.7;
+  --smart-fence-color: var(--color-da-muted);
+}
+
+/* The empty-slot box MathLive draws for an unfilled #? placeholder. Left at
+   its default it is a near-black square on a dark card and reads as damage. */
+.clev-mathfield::part(placeholder) {
+  color: var(--color-da-muted);
+}
+
+.clev-mathfield:read-only {
+  opacity: 0.75;
+}
+
+/* MathLive draws two toggles inside the field. The menu one is switched off in
+   the component (menuItems = []); this hides the button that would open it.
+   The virtual-keyboard toggle stays on touch devices, where MathLive's
+   keyboard is the only way to type a digit into a math-field, and goes away
+   wherever there is a real keyboard -- there the palette is the whole
+   notation surface, and a second one competing with it is the thing the
+   basic/advanced split exists to prevent. */
+.clev-mathfield::part(menu-toggle) {
+  display: none;
+}
+
+@media (pointer: fine) {
+  .clev-mathfield::part(virtual-keyboard-toggle) {
+    display: none;
+  }
+}
