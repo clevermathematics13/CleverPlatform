@@ -1,4 +1,5 @@
 /**
+ * GET  /api/formative-assessments — list the saved ones, for the creator's picker
  * POST /api/formative-assessments — save a Formative Assessment as a gradeable test
  *
  * A Formative Assessment is authored as an AssignmentDraft (title/sections/
@@ -56,6 +57,53 @@ type SaveBody = {
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The saved Formative Assessments, newest first.
+ *
+ * `custom_content is not null` is what makes a test one of these: it holds the
+ * authored draft, and only this route's POST ever writes it. A test sourced
+ * from the IB question bank or an external paper URL has none and is not
+ * editable in the creator, so listing it would offer a teacher something that
+ * cannot be loaded.
+ *
+ * Summaries only, deliberately -- a draft is tens of KB, and the picker needs
+ * a name and a date. GET [testId] fetches the one actually chosen.
+ */
+export async function GET() {
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase } = auth;
+
+  // courses!tests_course_id_fkey, not a bare courses(name) -- see
+  // app/dashboard/tests/page.tsx for why the bare form fails.
+  const { data, error } = await supabase
+    .from("tests")
+    .select(
+      `id, name, course_id, total_marks, created_at, pdfs_generated_at,
+       courses!tests_course_id_fkey(name),
+       test_items(count)`,
+    )
+    .not("custom_content", "is", null)
+    .order("created_at", { ascending: false });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const assessments = (data ?? []).map((t) => ({
+    id: t.id,
+    name: t.name,
+    courseId: t.course_id,
+    courseName: (t.courses as unknown as { name: string } | null)?.name ?? "Unknown",
+    totalMarks: t.total_marks,
+    createdAt: t.created_at,
+    // Null means the archive predates PDF archiving or its last save failed to
+    // write one; the picker says so rather than offering a dead download link.
+    pdfsGeneratedAt: t.pdfs_generated_at,
+    itemCount: (t.test_items as unknown as { count: number }[] | null)?.[0]?.count ?? 0,
+  }));
+
+  return NextResponse.json({ assessments });
+}
 
 export async function POST(req: Request) {
   const auth = await getApiTeacher();
