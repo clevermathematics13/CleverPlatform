@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ImpersonateMenu } from "./impersonate-menu";
 import { RoleSwitcher } from "./role-switcher";
+import { SessionKeepAlive } from "./session-keep-alive";
 import type { ViewAsOption } from "@/lib/view-as";
 import { useSearchParams } from "next/navigation";
 import { deriveDashboardView } from "@/lib/dashboard-nav";
@@ -244,6 +245,11 @@ export function DashboardShell({
         ["--exam-builder-width" as string]: "28rem",
       }}
     >
+      {/* Renders nothing; holds a Supabase browser client so an open tab keeps
+       *  refreshing its access token instead of only doing so when a request
+       *  happens to pass through the proxy. */}
+      <SessionKeepAlive />
+
       {/* Full-page subtle psychedelic background behind main content.
        *
        * FIXED, not absolute (2026-08-20): MandelbrotBg's own wrapper is

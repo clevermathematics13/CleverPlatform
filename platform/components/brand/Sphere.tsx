@@ -25,6 +25,13 @@
  * carries it across the floor of the viewport; it does not loop inside the
  * working dashboard, where motion competes with reading.
  *
+ * The single exception is the menu button on a student's Feedback page
+ * (components/na-feedback/StudentPacketMenu), which meets the rule rather than
+ * bending it: 56px in the corner is not a focal object, it is the only moving
+ * thing on that page, and the reduced-motion path below means a student who
+ * does not want motion never even fetches the file. Adding a second is a
+ * decision to make deliberately, not by following the precedent.
+ *
  * The frame is registered so the sphere's bottom edge rests on the frame's
  * bottom edge (see scripts/sphere-backdrop.py, FLOOR_MARGIN): the element's
  * bottom IS the ball's contact point, which is what lets it bounce.
@@ -56,9 +63,19 @@ interface Props {
   className?: string;
   /** Crimson of the artwork, used by the static orb; defaults to the lattice's. */
   accent?: string;
+  /**
+   * Render the CSS orb alone and never load the video.
+   *
+   * The video's backdrop is baked into its pixels (H.264 has no alpha), keyed
+   * to `--color-da-bg`, so it only disappears on a surface actually painted
+   * that colour -- anywhere else it is a dark square. The orb underneath is
+   * real CSS on a transparent element and composites over anything, which is
+   * what a background layer on a textured dashboard surface needs.
+   */
+  still?: boolean;
 }
 
-export function Sphere({ size = 320, className, accent = "#c8103f" }: Props) {
+export function Sphere({ size = 320, className, accent = "#c8103f", still = false }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [failed, setFailed] = useState(false);
 
@@ -113,9 +130,15 @@ export function Sphere({ size = 320, className, accent = "#c8103f" }: Props) {
             position: "absolute",
             inset: 0,
             borderRadius: "50%",
+            // The weave is in percentages, not pixels, so it stays the same
+            // weave at any size. In pixels it was pitched for the 320px
+            // sign-in sphere and turned into a five-bar waffle at the 56px
+            // of the Feedback page's menu button -- which is the size most
+            // likely to be SEEN, since that is where a reduced-motion reader,
+            // or a browser that cannot decode H.264, stops.
             backgroundImage:
-              "repeating-linear-gradient(0deg, transparent 0 9px, rgba(0,0,0,0.85) 9px 11px)," +
-              "repeating-linear-gradient(90deg, transparent 0 13px, rgba(0,0,0,0.9) 13px 15px)",
+              "repeating-linear-gradient(0deg, transparent 0 2.81%, rgba(0,0,0,0.85) 2.81% 3.44%)," +
+              "repeating-linear-gradient(90deg, transparent 0 4.06%, rgba(0,0,0,0.9) 4.06% 4.69%)",
             maskImage: "radial-gradient(circle, #000 55%, transparent 72%)",
             WebkitMaskImage: "radial-gradient(circle, #000 55%, transparent 72%)",
             opacity: 0.85,
@@ -123,7 +146,7 @@ export function Sphere({ size = 320, className, accent = "#c8103f" }: Props) {
         />
       </div>
 
-      {!failed && (
+      {!failed && !still && (
         <video
           ref={videoRef}
           src="/sphere.mp4"

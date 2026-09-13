@@ -8,6 +8,10 @@ import {
   getNaFeedbackForStudent,
   getNaFeedbackForPacketScan,
 } from "@/lib/na-feedback-service";
+import {
+  getReleasedAnswersForStudent,
+  getReleasedAnswersForPacketScan,
+} from "@/lib/na-answer-service";
 import { describeEmptyFeedbackPreview } from "@/lib/na-feedback-preview";
 import { resolveViewAs } from "@/lib/view-as";
 import { NaFeedbackClient } from "./na-feedback-client";
@@ -39,6 +43,10 @@ export default async function NaFeedbackPage({
         ? requestedScanId
         : (previewScans[0]?.packetScanId ?? null);
     const items = previewScanId ? await getNaFeedbackForPacketScan(previewScanId) : [];
+    // The preview is meant to be exactly the student's own page, so it gets
+    // the answers on the same terms: the unchecked reader, because ownership
+    // here comes from the teacher role rather than from student_profile_id.
+    const answers = previewScanId ? await getReleasedAnswersForPacketScan(previewScanId) : [];
 
     // When there is nothing to show, say which nothing it is. "No feedback
     // has been released to you yet" is true of a student whose packet was
@@ -63,6 +71,7 @@ export default async function NaFeedbackPage({
         scans={previewScans}
         selectedScanId={previewScanId}
         initialItems={items}
+        answers={answers}
         readOnlyPreview
         previewViewAsId={viewAs.invitedStudentId}
         previewHasAccount={viewAs.hasAccount}
@@ -95,6 +104,7 @@ export default async function NaFeedbackPage({
     const preview = await getReleasedPacketScanForTeacher(params.scanId);
     if (preview) {
       const items = await getNaFeedbackForPacketScan(params.scanId);
+      const answers = await getReleasedAnswersForPacketScan(params.scanId);
       return (
         <NaFeedbackClient
           key={params.scanId}
@@ -104,6 +114,7 @@ export default async function NaFeedbackPage({
           scans={[preview.scan]}
           selectedScanId={params.scanId}
           initialItems={items}
+          answers={answers}
         />
       );
     }
@@ -123,6 +134,14 @@ export default async function NaFeedbackPage({
       ? await getNaFeedbackForStudent(selectedScanId, effectiveStudentId)
       : [];
 
+  // na_rubric_items is teacher-only under RLS, so this reads with the service
+  // key; the ownership and release tests live inside the service. See
+  // lib/na-answer-service.
+  const answers =
+    selectedScanId && effectiveStudentId
+      ? await getReleasedAnswersForStudent(selectedScanId, effectiveStudentId)
+      : [];
+
   return (
     <NaFeedbackClient
       key={selectedScanId ?? "none"}
@@ -132,6 +151,7 @@ export default async function NaFeedbackPage({
       scans={scans}
       selectedScanId={selectedScanId}
       initialItems={items}
+      answers={answers}
     />
   );
 }

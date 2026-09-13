@@ -114,11 +114,16 @@ export function ReflectionClient({
       // submitted, and a problem writing a file they will never see is not
       // theirs to wait for or to be told about. The route returns nothing
       // about the file for the same reason.
+      // studentId names whose assessment this was. It matters when a teacher
+      // entered it on a student's behalf: the request then carries the
+      // teacher's session, and without this the route cannot tell which class
+      // moved -- it answered 400 and rebuilt nothing, unnoticed, because
+      // nothing here waits for the reply.
       if (selectedTestId) {
         void fetch("/api/gradebook/self-assessment-export", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ testId: selectedTestId }),
+          body: JSON.stringify({ testId: selectedTestId, studentId: targetStudentId }),
         }).catch(() => {});
       }
 

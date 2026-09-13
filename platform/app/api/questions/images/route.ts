@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
 import { getApiTeacher } from "@/lib/auth";
 
+// Teacher-only, and it has to stay that way. This returns signed URLs for
+// EVERY image of a question, mark schemes included, so "any authenticated
+// user" -- which is what this was until the practice-set work -- meant any
+// student could read the answers to anything in the bank by question id. The
+// only callers are the question bank and the LaTeX review page, both teacher
+// surfaces. Student-facing question images go through lib/practice-set-service.ts,
+// which filters on image_type and never touches this route.
 export async function GET(request: NextRequest) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  }
+  const auth = await getApiTeacher();
+  if (!auth.ok) return auth.response;
+  const { supabase } = auth;
 
   const questionId = request.nextUrl.searchParams.get("questionId");
   if (!questionId) {

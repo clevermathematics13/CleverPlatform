@@ -87,6 +87,35 @@ const liveGame = {
     </g>`,
 };
 
+// Practice: a pair of dividers standing on the arc they have just drawn. The
+// other three emblems are all about work that is finished -- weighed, written
+// up, won. This one is the instrument still in contact with the paper, which
+// is the difference between a practice set and everything else on the page.
+// The needle leg is a spike and the pencil leg a blunt nib, so the two feet
+// read as different tools at thumbnail size.
+const practice = {
+  raised: `
+    <rect x="93" y="14" width="14" height="32" rx="7"/>
+    <circle cx="100" cy="52" r="14"/>
+    <g fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round">
+      <path d="M100 54 L60 150"/>
+      <path d="M100 54 L140 150"/>
+    </g>
+    <path d="M53 146 l13 5 l-6 24 Z"/>
+    <path d="M134 146 l13 -5 l2 26 l-9 2 Z"/>
+    <g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round">
+      <path d="M26 182 Q100 154 174 182"/>
+    </g>`,
+  grooves: `
+    <circle cx="100" cy="52" r="5"/>
+    <g fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round">
+      <path d="M95 22 h10 M95 28 h10 M95 34 h10"/>
+    </g>
+    <g fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+      <path d="M137 157 l7 -3"/>
+    </g>`,
+};
+
 const disc = `<circle cx="100" cy="100" r="98"/>`;
 
 const svg = (inner) =>
@@ -107,6 +136,8 @@ const jobs = [
   ["feedback.grooves", feedback.grooves],
   ["live-game.raised", liveGame.raised],
   ["live-game.grooves", liveGame.grooves],
+  ["practice.raised", practice.raised],
+  ["practice.grooves", practice.grooves],
 ];
 for (const [name, inner] of jobs) {
   await page.setContent(page_html(inner));
