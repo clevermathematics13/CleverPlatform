@@ -56,6 +56,7 @@ export interface AdminSet {
   description: string | null;
   releasedAt: string | null;
   markschemeReleasedAt: string | null;
+  feedbackReleasedAt: string | null;
   items: AdminItem[];
   totalMarks: number;
   /** How many generated items are still waiting for a teacher to read them. */
@@ -67,7 +68,7 @@ export async function listPracticeSetsForTeacher(): Promise<AdminSet[]> {
 
   const { data: setRows } = await supabase
     .from("practice_sets")
-    .select("id, course_id, name, description, released_at, markscheme_released_at, courses(name)")
+    .select("id, course_id, name, description, released_at, markscheme_released_at, feedback_released_at, courses(name)")
     .order("created_at", { ascending: false });
 
   const sets = setRows ?? [];
@@ -134,6 +135,7 @@ export async function listPracticeSetsForTeacher(): Promise<AdminSet[]> {
       description: (s.description as string | null) ?? null,
       releasedAt: (s.released_at as string | null) ?? null,
       markschemeReleasedAt: (s.markscheme_released_at as string | null) ?? null,
+      feedbackReleasedAt: (s.feedback_released_at as string | null) ?? null,
       items,
       totalMarks: items.reduce((sum, i) => sum + i.marks, 0),
       awaitingApproval: items.filter((i) => i.source === "generated" && !i.approvedAt).length,

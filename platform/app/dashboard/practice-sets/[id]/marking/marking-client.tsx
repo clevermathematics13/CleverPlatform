@@ -326,8 +326,19 @@ export function MarkingClient({ view }: { view: MarkingView }) {
             buttons looks like a grading screen and this one deliberately is
             not. */}
         <p className="mt-3 max-w-2xl text-xs leading-relaxed text-da-muted/80">
-          Practice, not assessment: nothing here is a score, nothing reaches Clev&rsquo;s Marks or
-          the gradebook, and students cannot see what you record.
+          Practice, not assessment: nothing here is a score, and nothing reaches Clev&rsquo;s Marks
+          or the gradebook.{" "}
+          {view.feedbackReleasedAt ? (
+            <span className="text-da-warning">
+              Feedback is shared &mdash; each student can see what you write on their own answers,
+              as soon as you write it.
+            </span>
+          ) : (
+            <span>
+              Feedback is private: students cannot see any of this until you share it from the
+              Practice Sets page.
+            </span>
+          )}
         </p>
       </header>
 

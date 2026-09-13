@@ -233,6 +233,20 @@ function SetDetail({ set, busy, send }: { set: AdminSet; busy: string | null; se
                 })
               }
             />
+            {/* Three independent gates. Feedback normally goes back before
+                the worked answers do, which is why this is its own switch
+                rather than something the mark scheme drags along. */}
+            <Toggle
+              on={set.feedbackReleasedAt !== null}
+              label={set.feedbackReleasedAt ? "Feedback shared" : "Feedback private"}
+              busy={busy === "Feedback"}
+              onClick={() =>
+                send("Feedback", `/api/practice-sets/${set.id}`, {
+                  method: "PATCH",
+                  body: JSON.stringify({ feedbackReleased: set.feedbackReleasedAt === null }),
+                })
+              }
+            />
             <Toggle
               on={set.markschemeReleasedAt !== null}
               label={set.markschemeReleasedAt ? "Answers released" : "Answers withheld"}

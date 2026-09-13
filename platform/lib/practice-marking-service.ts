@@ -53,6 +53,9 @@ export interface MarkingView {
   setName: string;
   courseName: string;
   releasedAt: string | null;
+  /** Set once the class can read these notes. Shown while marking, because
+   *  what you write reads differently when somebody else will see it. */
+  feedbackReleasedAt: string | null;
   questions: MarkingQuestion[];
   students: { invitedId: string; profileId: string | null; fullName: string }[];
   progress: PartProgress;
@@ -81,7 +84,7 @@ export async function loadMarkingView(setId: string): Promise<MarkingView | null
 
   const { data: set } = await supabase
     .from("practice_sets")
-    .select("id, name, course_id, released_at, courses(name)")
+    .select("id, name, course_id, released_at, feedback_released_at, courses(name)")
     .eq("id", setId)
     .maybeSingle();
   if (!set) return null;
@@ -107,6 +110,7 @@ export async function loadMarkingView(setId: string): Promise<MarkingView | null
       setName: set.name as string,
       courseName: courseNameOf(set),
       releasedAt: (set.released_at as string | null) ?? null,
+      feedbackReleasedAt: (set.feedback_released_at as string | null) ?? null,
       questions: [],
       students: [],
       progress: { answered: 0, marked: 0, stale: 0, onRoster: 0 },
@@ -203,6 +207,7 @@ export async function loadMarkingView(setId: string): Promise<MarkingView | null
     setName: set.name as string,
     courseName: courseNameOf(set),
     releasedAt: (set.released_at as string | null) ?? null,
+    feedbackReleasedAt: (set.feedback_released_at as string | null) ?? null,
     questions,
     students,
     progress: sumProgress(questions.map((q) => q.progress)),

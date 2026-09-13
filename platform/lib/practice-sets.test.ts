@@ -198,6 +198,7 @@ describe("buildPracticeSetView", () => {
         name: "Integration",
         description: null,
         markschemeReleased: false,
+        feedbackReleased: false,
         items,
       }).markschemeReleased
     ).toBe(false);
@@ -208,6 +209,7 @@ describe("buildPracticeSetView", () => {
         name: "Integration",
         description: null,
         markschemeReleased: true,
+        feedbackReleased: false,
         items,
       }).markschemeReleased
     ).toBe(true);
@@ -219,6 +221,7 @@ describe("buildPracticeSetView", () => {
       name: "Integration",
       description: "Thirteen questions",
       markschemeReleased: false,
+        feedbackReleased: false,
       items,
     });
     expect(view.questionCount).toBe(3);
@@ -233,9 +236,41 @@ describe("buildPracticeSetView", () => {
       name: "Integration",
       description: null,
       markschemeReleased: false,
+        feedbackReleased: false,
       items: [],
     });
     expect(view.groups).toEqual([]);
     expect(view.totalMarks).toBe(0);
+  });
+});
+
+describe("the feedback gate", () => {
+  const items = [item({ position: 1, tier: "basic", marks: 5 })];
+
+  // A third gate, independent of the other two: feedback normally goes back
+  // to a class before the worked answers do.
+  it("carries through independently of the mark scheme gate", () => {
+    const view = buildPracticeSetView({
+      id: "s",
+      name: "Integration",
+      description: null,
+      markschemeReleased: false,
+      feedbackReleased: true,
+      items,
+    });
+    expect(view.feedbackReleased).toBe(true);
+    expect(view.markschemeReleased).toBe(false);
+  });
+
+  it("is closed when it is closed, whatever the other gate says", () => {
+    const view = buildPracticeSetView({
+      id: "s",
+      name: "Integration",
+      description: null,
+      markschemeReleased: true,
+      feedbackReleased: false,
+      items,
+    });
+    expect(view.feedbackReleased).toBe(false);
   });
 });

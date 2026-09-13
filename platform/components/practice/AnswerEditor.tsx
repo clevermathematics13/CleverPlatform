@@ -39,6 +39,15 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 export interface AnswerSlotState {
   partLabel: string;
   answerLatex: string;
+  /**
+   * The teacher's feedback for this part, already rendered on the server, or
+   * null when there is none or it has not been released.
+   *
+   * A ReactNode rather than the data, so this client island never learns the
+   * rule for who may see feedback -- that decision stays on the server, where
+   * the gate and the RLS are.
+   */
+  feedback?: React.ReactNode;
 }
 
 /**
@@ -74,12 +83,14 @@ function AnswerBox({
   partLabel,
   initialLatex,
   mode,
+  feedback,
 }: {
   itemId: string;
   position: number;
   partLabel: string;
   initialLatex: string;
   mode: AnswerMode;
+  feedback?: React.ReactNode;
 }) {
   const readOnly = mode === "readonly";
   const persists = mode === "answer";
@@ -194,6 +205,8 @@ function AnswerBox({
         }
       />
 
+      {feedback}
+
       {focused && !readOnly && <NotationPalette onInsert={insert} />}
     </div>
   );
@@ -231,6 +244,7 @@ export default function AnswerEditor({
           partLabel={slot.partLabel}
           initialLatex={slot.answerLatex}
           mode={mode}
+          feedback={slot.feedback}
         />
       ))}
     </div>

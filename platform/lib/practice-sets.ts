@@ -87,6 +87,10 @@ export interface PracticeSetView {
   /** False means the page shows questions only. Nothing in this module can
    *  produce a mark scheme URL either way -- see practice-set-service.ts. */
   markschemeReleased: boolean;
+  /** True once the teacher has handed their marking back to the class. A
+   *  third gate, independent of the other two: feedback normally goes back
+   *  before worked answers do. */
+  feedbackReleased: boolean;
   groups: PracticeTierGroup[];
 }
 
@@ -181,6 +185,7 @@ export function buildPracticeSetView(input: {
   name: string;
   description: string | null;
   markschemeReleased: boolean;
+  feedbackReleased: boolean;
   items: readonly PracticeItem[];
 }): PracticeSetView {
   const { questionCount, totalMarks } = summarisePracticeSet(input.items);
@@ -191,6 +196,15 @@ export function buildPracticeSetView(input: {
     questionCount,
     totalMarks,
     markschemeReleased: input.markschemeReleased,
+    feedbackReleased: input.feedbackReleased,
     groups: groupItemsByTier(input.items),
   };
+}
+
+/** The teacher's read of one answer, as the student sees it. */
+export interface PracticeFeedback {
+  verdict: "correct" | "almost" | "not_yet";
+  note: string | null;
+  /** The student edited the answer after the teacher read it. */
+  stale: boolean;
 }
