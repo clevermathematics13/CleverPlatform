@@ -127,7 +127,7 @@ export default async function PracticePage({
             view={view}
             answeredKeys={answeredKeys}
             totalSlots={totalSlots}
-            showProgress={answerMode !== "demo"}
+            isSomeonesPage={answerMode !== "demo"}
           />
           {sets.length > 1 && <SetSwitcher sets={sets} selectedId={view.id} queryPrefix={q} />}
           {view.groups.map((group) => (
@@ -163,12 +163,18 @@ function PracticeSetHeader({
   view,
   answeredKeys,
   totalSlots,
-  showProgress,
+  isSomeonesPage,
 }: {
   view: PracticeSetView;
   answeredKeys: string[];
   totalSlots: number;
-  showProgress: boolean;
+  /**
+   * False on the teacher's own browsing view, which belongs to nobody: there
+   * are no answers on it and so no progress and no feedback. Both lines below
+   * are about a particular student's work, and saying "your teacher's feedback
+   * is here" to the teacher, on a page with neither, is just wrong.
+   */
+  isSomeonesPage: boolean;
 }) {
   return (
     <header>
@@ -186,10 +192,10 @@ function PracticeSetHeader({
         <span className={view.markschemeReleased ? "text-da-success" : "text-da-warning"}>
           {view.markschemeReleased ? "Worked answers available" : "Answers not released yet"}
         </span>
-        {view.feedbackReleased && (
+        {isSomeonesPage && view.feedbackReleased && (
           <span className="text-da-success">Your teacher&rsquo;s feedback is here</span>
         )}
-        {showProgress && (
+        {isSomeonesPage && (
           <AnswerProgress initialAnsweredKeys={answeredKeys} totalSlots={totalSlots} />
         )}
       </div>
