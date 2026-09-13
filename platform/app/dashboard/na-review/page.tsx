@@ -3,8 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import {
   fetchAllRows,
   missingAnchorCause,
+  summariseApprovalProgress,
   transcriptionHasUnreadableGap,
   transcriptionStatesTruncation,
+  type ApprovalProgress,
+  type ScanApprovalTally,
 } from "@/lib/na-scanning";
 import { isUngradedAnchor, type AnchorContext } from "@/lib/na-assessment";
 import Link from "next/link";
@@ -25,7 +28,10 @@ type CropRow = {
   packet_scan_id: string | null;
   is_blank: boolean | null;
   possibly_truncated: boolean | null;
-  na_feedback: { approved_at: string | null } | { approved_at: string | null }[] | null;
+  na_feedback:
+    | { approved_at: string | null; released_at: string | null }
+    | { approved_at: string | null; released_at: string | null }[]
+    | null;
 };
 
 type FlaggedRow = {
@@ -175,6 +181,7 @@ export default async function NaReviewPage({
     progress: AnchorProgress;
   }[] = [];
   let scanStats: { scans: number; students: number; duplicated: number; unidentified: number } | null = null;
+  let approvals: ApprovalProgress | null = null;
   let incompleteScans: IncompleteScan[] = [];
   let loadError: string | null = null;
 
@@ -206,7 +213,9 @@ export default async function NaReviewPage({
         crops = await fetchAllRows<CropRow>((from, to) =>
           supabase
             .from("na_response_crops")
-            .select("id, anchor_id, packet_scan_id, is_blank, possibly_truncated, na_feedback(approved_at)")
+            .select(
+              "id, anchor_id, packet_scan_id, is_blank, possibly_truncated, na_feedback(approved_at, released_at)"
+            )
             .in("anchor_id", anchorIds)
             .order("id", { ascending: true })
             .range(from, to)
@@ -217,8 +226,29 @@ export default async function NaReviewPage({
         loadError = e instanceof Error ? e.message : "Failed to load scanned responses";
       }
 
+      // Hoisted out of the questions map below because the per-scan tally needs
+      // it as well: "finished" has to mean every *gradable* crop approved, or
+      // the thinking space would keep every scan permanently unfinished.
+      const ungradedAnchorIds = new Set(
+        anchors
+          .filter((a) =>
+            isUngradedAnchor({
+              qid: a.qid,
+              baseQid: a.base_qid ?? a.qid,
+              marksAvailable: a.marks_available,
+              commandTerm: a.command_term,
+              answerSketch: a.answer_sketch,
+              openRubric: a.open_rubric,
+              misconceptionContext: null,
+              questionAnswer: a.question_answer,
+            } satisfies AnchorContext)
+          )
+          .map((a) => a.id)
+      );
+
       const byAnchor = new Map<string, AnchorProgress>();
       for (const a of anchors) byAnchor.set(a.id, emptyProgress());
+      const byScan = new Map<string, ScanApprovalTally>();
       for (const crop of crops) {
         const bucket = byAnchor.get(crop.anchor_id);
         if (!bucket) continue;
@@ -227,7 +257,16 @@ export default async function NaReviewPage({
         if (crop.possibly_truncated) bucket.possiblyTruncated += 1;
         const fb = Array.isArray(crop.na_feedback) ? crop.na_feedback[0] : crop.na_feedback;
         if (fb?.approved_at) bucket.reviewed += 1;
+
+        if (crop.packet_scan_id && !ungradedAnchorIds.has(crop.anchor_id)) {
+          const tally = byScan.get(crop.packet_scan_id) ?? { gradable: 0, approved: 0, released: 0 };
+          tally.gradable += 1;
+          if (fb?.approved_at) tally.approved += 1;
+          if (fb?.released_at) tally.released += 1;
+          byScan.set(crop.packet_scan_id, tally);
+        }
       }
+      approvals = summariseApprovalProgress(byScan.values());
 
       // The transcriptions only matter for crops the flag already caught, so
       // fetch just those rather than dragging ~2000 transcriptions through the
@@ -304,18 +343,7 @@ export default async function NaReviewPage({
         marks_available: a.marks_available,
         command_term: a.command_term,
         sort_order: a.sort_order,
-        // Same predicate the worker and the release routes use, rather than a
-        // second rule that could drift from theirs.
-        ungraded: isUngradedAnchor({
-          qid: a.qid,
-          baseQid: a.base_qid ?? a.qid,
-          marksAvailable: a.marks_available,
-          commandTerm: a.command_term,
-          answerSketch: a.answer_sketch,
-          openRubric: a.open_rubric,
-          misconceptionContext: null,
-          questionAnswer: a.question_answer,
-        } satisfies AnchorContext),
+        ungraded: ungradedAnchorIds.has(a.id),
         progress: byAnchor.get(a.id) ?? emptyProgress(),
       }));
 
@@ -453,6 +481,37 @@ export default async function NaReviewPage({
     .sort((a, b) => b.progress.statedCutOff - a.progress.statedCutOff || a.sort_order - b.sort_order);
   const statedCutOffCrops = statedCutOffAnchors.reduce((sum, q) => sum + q.progress.statedCutOff, 0);
 
+  // "N reviewed" counts responses, but a student only hears back when their
+  // whole packet is approved and released -- so the same N means very
+  // different things depending on whether it is concentrated or scattered.
+  // Spell that out rather than leaving the bar to imply progress it does not
+  // have: on A.1, 47 approvals were one finished student plus eight loose
+  // questions across five others.
+  const packets = (n: number) => `${n} packet${n === 1 ? "" : "s"}`;
+  const approvalNote = ((): string | null => {
+    if (!approvals || approvals.approved === 0) return null;
+    const clauses: string[] = [];
+    if (approvals.approvedOnComplete > 0) {
+      const state =
+        approvals.readyScans === 0
+          ? "released"
+          : approvals.releasedScans === 0
+            ? `ready to release`
+            : `${approvals.releasedScans} released, ${approvals.readyScans} ready to release`;
+      clauses.push(
+        `${approvals.approvedOnComplete} of those finish ${packets(approvals.completeScans)} (${state})`
+      );
+    }
+    if (approvals.approvedOnPartial > 0) {
+      clauses.push(
+        `${approvals.approvedOnComplete > 0 ? "the other " : ""}${approvals.approvedOnPartial} ` +
+          `${approvals.approvedOnPartial === 1 ? "sits" : "sit"} on ${packets(approvals.partialScans)} ` +
+          `still part-reviewed, which cannot be released until the rest of their questions are approved`
+      );
+    }
+    return clauses.length > 0 ? `${clauses.join("; ")}.` : null;
+  })();
+
   return (
     <div className="space-y-6">
       <div>
@@ -538,6 +597,11 @@ export default async function NaReviewPage({
                   ? "an ungraded thinking space"
                   : `${ungradedQuestions.length} ungraded thinking spaces`}{" "}
                 ({ungradedQuestions.map((q) => q.qid).join(", ")}) -- still listed below to read, but never marked.
+              </p>
+            )}
+            {approvalNote && (
+              <p className={`mt-1 text-xs ${approvals && approvals.readyScans > 0 ? "text-emerald-400" : "text-da-muted"}`}>
+                {approvalNote}
               </p>
             )}
           </div>
