@@ -820,7 +820,13 @@ the happy path work."
 
 **Medium**
 
-4. Grade 9 Standard NA packets - none seeded.
+4. Grade 9 Standard NA packets - none seeded. **Declined 13 Sep 2026**: the
+   teacher was offered this directly and said they do not need Grade 9 Standard
+   materials at this time. Nothing is broken and nothing is blocked - the track
+   and its virtual course still exist, and the Nuanced Analysis creator still
+   offers both Grade 9 tracks - so this is a decision not to seed, not an
+   outstanding task. Left listed because the gap is real and may matter later;
+   do not raise it again unprompted.
 4b. **4 crops flagged by the teacherNote backtracking detector, awaiting manual
    verification** (found 28 Aug 2026 while investigating the Q1/Q1(e) issue below;
    these are unrelated judgment calls, not the same bug). Each has `ai_teacher_note`
