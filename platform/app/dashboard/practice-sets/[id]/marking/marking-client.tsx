@@ -78,18 +78,14 @@ function AnswerCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noteOpen, setNoteOpen] = useState(!!cell.note);
-  // What the teacher just clicked, shown as pressed straight away.
+  // What the teacher just clicked, shown as pressed straight away, because
+  // router.refresh() re-runs the whole page and a button that looks untouched
+  // for a second or two invites a second click.
   //
-  // Saving triggers router.refresh(), which re-runs the whole server page --
-  // roster, every answer, every mark -- and on a full class that is a second
-  // or two. Without this the button looks untouched for that whole time and
-  // the natural response is to click it again. `pending` is a display detail
-  // only: the durable state is still whatever the server sends back, and it
-  // is dropped the moment the refresh agrees with it.
-  // The optimistic value carries a snapshot of what the server was showing
-  // when the click happened, so it expires on its own: the moment a refresh
-  // changes cell.verdict, the snapshot no longer matches and the server wins.
-  // No reset, no effect, and nothing to leave stale if a refresh is missed.
+  // It carries a snapshot of what the server was showing when the click
+  // happened, so it expires on its own: the moment a refresh changes
+  // cell.verdict the snapshot stops matching and the server wins. No reset, no
+  // effect, and nothing left stale if a refresh never arrives.
   const [pending, setPending] = useState<{ verdict: Verdict; serverWas: Verdict | null } | null>(
     null
   );
