@@ -502,8 +502,12 @@ export function TestDetailClient({
                         )
                       }
                       disabled={saving || c.studentCount === 0}
-                      className={`${field} w-auto min-w-56 ${
-                        changed ? "border-da-accent" : ""
+                      // Not composed from `field`: that starts with w-full, and
+                      // Tailwind resolves w-full/w-auto by stylesheet order, not
+                      // by which one is written last here -- the select rendered
+                      // full width and flattened the row into two stacked lines.
+                      className={`shrink-0 rounded-lg border bg-da-bg px-3 py-2 text-sm text-da-text focus:border-da-accent focus:outline-none disabled:opacity-50 ${
+                        changed ? "border-da-accent" : "border-da-border"
                       }`}
                     >
                       <option value="inherit">
