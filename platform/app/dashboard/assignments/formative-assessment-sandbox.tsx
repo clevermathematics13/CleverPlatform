@@ -27,7 +27,7 @@
  * GET /api/formative-assessments/[testId] returns one to load.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   AssignmentDraft,
   AssignmentSection,
@@ -47,7 +47,7 @@ import {
 import {
   editorSnapshot,
   needsDiscardConfirmation,
-  isAlreadyOpen,
+  loadButtonState,
   formatSavedDate,
 } from "./load-saved-assessment";
 import type { RubricFinding } from "@/lib/rubric-validator";
@@ -160,8 +160,21 @@ export function FormativeAssessmentSandbox() {
    * replaces everything on screen, so this is what tells us whether that would
    * discard real work -- the alternative, confirming every time, trains a
    * teacher to click through the one prompt that matters.
+   *
+   * State rather than a ref: the open button's label depends on it, so saving
+   * or loading has to re-render.
    */
-  const cleanSnapshot = useRef(editorSnapshot(DEFAULT_DRAFT, DEFAULT_FORMATTING));
+  const [cleanSnapshot, setCleanSnapshot] = useState(
+    editorSnapshot(DEFAULT_DRAFT, DEFAULT_FORMATTING),
+  );
+  const currentSnapshot = useMemo(() => editorSnapshot(draft, formatting), [draft, formatting]);
+  const hasUnsavedWork = currentSnapshot !== cleanSnapshot;
+  const openButton = loadButtonState({
+    loadId,
+    savedTestId,
+    hasUnsavedWork,
+    isLoading: isLoadingSaved,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -295,8 +308,8 @@ export function FormativeAssessmentSandbox() {
 
     if (
       needsDiscardConfirmation({
-        current: editorSnapshot(draft, formatting),
-        clean: cleanSnapshot.current,
+        current: currentSnapshot,
+        clean: cleanSnapshot,
         confirmed: loadConfirm,
       })
     ) {
@@ -332,10 +345,7 @@ export function FormativeAssessmentSandbox() {
       setRubricFindings([]);
       setRubricBlocked(false);
       setLoadConfirm(false);
-      cleanSnapshot.current = editorSnapshot(
-        data.draft,
-        data.formatting ?? DEFAULT_FORMATTING,
-      );
+      setCleanSnapshot(editorSnapshot(data.draft, data.formatting ?? DEFAULT_FORMATTING));
       setNotice(
         data.formattingSource === "default"
           ? `Loaded "${data.name ?? "assessment"}". It was saved before layout settings were kept, so those are back to the defaults -- check them before exporting.`
@@ -403,7 +413,7 @@ export function FormativeAssessmentSandbox() {
       // This is now the saved state, so loading something else no longer has
       // unsaved work to warn about. Refresh the picker too: a first save adds
       // a row to it, and a re-save moves this one's totals.
-      cleanSnapshot.current = editorSnapshot(draft, formatting);
+      setCleanSnapshot(currentSnapshot);
       if (data.test?.id) setLoadId(data.test.id);
       void fetchSavedAssessments().then((list) => {
         if (list) setSaved(list);
@@ -492,14 +502,10 @@ export function FormativeAssessmentSandbox() {
                 <button
                   type="button"
                   onClick={() => void handleLoad()}
-                  disabled={!loadId || isLoadingSaved || isAlreadyOpen(loadId, savedTestId)}
+                  disabled={openButton.disabled}
                   className="w-full rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {isLoadingSaved
-                    ? "Opening…"
-                    : isAlreadyOpen(loadId, savedTestId)
-                      ? "Already open"
-                      : "Open in the editor"}
+                  {openButton.label}
                 </button>
               )}
             </div>

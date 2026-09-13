@@ -48,14 +48,36 @@ export function needsDiscardConfirmation(args: {
   return args.current !== args.clean;
 }
 
-/**
- * Is this row the one already in the editor?
- *
- * Opening it would be a no-op that still wipes any edits made since it loaded,
- * so the button offers nothing and is disabled instead.
- */
+/** Is this row the one already in the editor? */
 export function isAlreadyOpen(loadId: string, savedTestId: string | null): boolean {
   return loadId !== "" && loadId === savedTestId;
+}
+
+/**
+ * What the open button says, and whether it does anything.
+ *
+ * The subtle case is the row that is already open. Re-opening it is a no-op
+ * only while the editor still matches what was loaded; once there are unsaved
+ * edits, re-opening is how you throw them away and get the saved paper back,
+ * which is worth offering rather than disabling. Getting this backwards leaves
+ * a teacher who has made a mess of a paper with no way to undo it short of
+ * reloading the page.
+ */
+export function loadButtonState(args: {
+  loadId: string;
+  savedTestId: string | null;
+  hasUnsavedWork: boolean;
+  isLoading: boolean;
+}): { disabled: boolean; label: string } {
+  if (args.isLoading) return { disabled: true, label: "Opening…" };
+  if (!args.loadId) return { disabled: true, label: "Open in the editor" };
+
+  if (isAlreadyOpen(args.loadId, args.savedTestId)) {
+    return args.hasUnsavedWork
+      ? { disabled: false, label: "Reload, discarding changes" }
+      : { disabled: true, label: "Already open" };
+  }
+  return { disabled: false, label: "Open in the editor" };
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   editorSnapshot,
   needsDiscardConfirmation,
   isAlreadyOpen,
+  loadButtonState,
   formatSavedDate,
 } from "./load-saved-assessment";
 import { DEFAULT_ASSESSMENT_FORMATTING } from "@/lib/formative-assessment-pdf-body";
@@ -88,6 +89,51 @@ describe("isAlreadyOpen", () => {
     expect(isAlreadyOpen("", null)).toBe(false);
     expect(isAlreadyOpen("", "")).toBe(false);
     expect(isAlreadyOpen("abc", null)).toBe(false);
+  });
+});
+
+describe("loadButtonState", () => {
+  const base = { loadId: "fa1", savedTestId: null as string | null, hasUnsavedWork: false, isLoading: false };
+
+  it("is inert until something is selected", () => {
+    expect(loadButtonState({ ...base, loadId: "" })).toEqual({
+      disabled: true,
+      label: "Open in the editor",
+    });
+  });
+
+  it("opens a different assessment", () => {
+    expect(loadButtonState({ ...base, savedTestId: "other" })).toEqual({
+      disabled: false,
+      label: "Open in the editor",
+    });
+  });
+
+  it("offers nothing for the row already open and untouched", () => {
+    expect(loadButtonState({ ...base, savedTestId: "fa1" })).toEqual({
+      disabled: true,
+      label: "Already open",
+    });
+  });
+
+  it("becomes a revert once that row has unsaved edits", () => {
+    // Found by driving the real UI: with this disabled, a teacher who had made
+    // a mess of a loaded paper had no way back to the saved one short of
+    // reloading the page.
+    expect(loadButtonState({ ...base, savedTestId: "fa1", hasUnsavedWork: true })).toEqual({
+      disabled: false,
+      label: "Reload, discarding changes",
+    });
+  });
+
+  it("says so while loading, whatever else is true", () => {
+    expect(loadButtonState({ ...base, isLoading: true })).toEqual({
+      disabled: true,
+      label: "Opening…",
+    });
+    expect(
+      loadButtonState({ ...base, savedTestId: "fa1", hasUnsavedWork: true, isLoading: true }),
+    ).toEqual({ disabled: true, label: "Opening…" });
   });
 });
 
