@@ -30,11 +30,7 @@ export async function POST(
   try {
     body = await request.json();
   } catch {
-    // Clev's Marks just changed, so the stored PowerSchool export no longer
-  // matches it.
-  await markExportsStale({ testId });
-
-  return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
   const runId = typeof body.runId === "string" ? body.runId.trim() : "";
@@ -150,6 +146,11 @@ export async function POST(
 
     applied.push({ resultId: r.id, testItemId: r.test_item_id, marks });
   }
+
+  // Clev's Marks just changed, so the stored PowerSchool export no longer
+  // matches it. Nothing applied means nothing moved, so there is nothing to
+  // flag. Mirrors accept-all, which flags the whole test the same way.
+  if (applied.length > 0) await markExportsStale({ testId });
 
   return NextResponse.json({
     appliedCount: applied.length,
