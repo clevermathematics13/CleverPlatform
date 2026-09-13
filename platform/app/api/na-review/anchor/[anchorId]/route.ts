@@ -20,7 +20,7 @@ export async function GET(
   const { data: anchor, error: anchorErr } = await supabase
     .from("na_anchors")
     .select(
-      "id, qid, base_qid, part_label, command_term, marks_available, answer_sketch, open_rubric, misconception_context, packet_version_id"
+      "id, qid, base_qid, part_label, command_term, marks_available, question_answer, answer_sketch, open_rubric, misconception_context, packet_version_id"
     )
     .eq("id", anchorId)
     .single();
