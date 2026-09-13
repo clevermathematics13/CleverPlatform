@@ -24,15 +24,28 @@ import {
   summarizeRubricFindings,
   shouldHoldForRubricReview,
 } from "@/lib/rubric-validator";
+import { archiveFormativeAssessmentPdfs } from "@/lib/formative-assessment-pdf";
+import { DEFAULT_ASSESSMENT_FORMATTING } from "@/lib/formative-assessment-pdf-body";
+import { FormattingRequirementsSchema } from "@/lib/template-schema";
 import type { AssignmentDraft } from "@/lib/assignments";
 
 export const runtime = "nodejs";
+// Two PDFs are rendered here, sharing one browser launch. The launch dominates,
+// so this is barely more than the single-PDF routes, which use the same 60s.
+export const maxDuration = 60;
 
 type SaveBody = {
   testId?: unknown;
   courseId?: unknown;
   draft?: unknown;
   requireSelfAssessment?: unknown;
+  /**
+   * The formatting the sandbox is previewing with. Sent so the archived PDFs
+   * are the paper the teacher actually sees rather than a default-formatted
+   * lookalike. Invalid or absent falls back to DEFAULT_ASSESSMENT_FORMATTING --
+   * never a reason to refuse a save.
+   */
+  formatting?: unknown;
   /**
    * Set once the teacher has seen the rubric findings and chosen to save
    * regardless. Deliberately not a "skip validation" flag: the findings are
@@ -139,9 +152,27 @@ export async function POST(req: Request) {
   // Reported separately rather than rolled back: the test is saved and the
   // teacher should not lose it because the item sync failed.
   const syncResult = await syncTestItems(supabase, saved.id, draft.sections);
+
+  // -- Archive the PDFs ----------------------------------------------------
+  // The whole point of doing this on save rather than offering a button: a
+  // paper nobody remembered to archive is exactly how Formative Assessment 1
+  // ended up with no retrievable copy after 50 students had sat it.
+  //
+  // Runs after the item sync (which is fast) so a sync error surfaces without
+  // waiting on Chromium, but runs even when that sync failed -- the PDFs
+  // depend only on the draft, and a test whose items need fixing still
+  // deserves its paper kept. Re-saving regenerates both, so this is also its
+  // own retry.
+  const fmtParse = FormattingRequirementsSchema.safeParse(body.formatting);
+  const formatting = fmtParse.success ? fmtParse.data : DEFAULT_ASSESSMENT_FORMATTING;
+  const archive = await archiveFormativeAssessmentPdfs(supabase, saved.id, draft, formatting);
+  const pdfs = archive.ok
+    ? { pdfs: "archived" as const, archived: archive.archived }
+    : { pdfs: "failed" as const, pdfsError: archive.error };
+
   if (!syncResult.ok) {
     return NextResponse.json(
-      { test: saved, testItems: "failed", testItemsError: syncResult.error, rubric },
+      { test: saved, testItems: "failed", testItemsError: syncResult.error, rubric, ...pdfs },
       { status: 207 },
     );
   }
@@ -150,7 +181,7 @@ export async function POST(req: Request) {
   // a teacher who overrode a blocking finding should still see what they
   // overrode rather than have it disappear on the way through.
   return NextResponse.json(
-    { test: saved, testItems: "synced", synced: syncResult.synced, rubric },
-    { status: 200 },
+    { test: saved, testItems: "synced", synced: syncResult.synced, rubric, ...pdfs },
+    { status: archive.ok ? 200 : 207 },
   );
 }
