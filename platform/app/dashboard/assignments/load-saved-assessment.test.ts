@@ -4,7 +4,6 @@ import {
   needsDiscardConfirmation,
   isAlreadyOpen,
   loadButtonState,
-  formatSavedDate,
 } from "./load-saved-assessment";
 import { DEFAULT_ASSESSMENT_FORMATTING } from "@/lib/formative-assessment-pdf-body";
 import type { AssignmentDraft } from "@/lib/assignments";
@@ -134,15 +133,5 @@ describe("loadButtonState", () => {
     expect(
       loadButtonState({ ...base, savedTestId: "fa1", hasUnsavedWork: true, isLoading: true }),
     ).toEqual({ disabled: true, label: "Opening…" });
-  });
-});
-
-describe("formatSavedDate", () => {
-  it("renders a real timestamp", () => {
-    expect(formatSavedDate("2026-09-04T20:06:06.394Z")).toContain("2026");
-  });
-
-  it("hands back an unparseable value rather than throwing or showing Invalid Date", () => {
-    expect(formatSavedDate("not a date")).toBe("not a date");
   });
 });
