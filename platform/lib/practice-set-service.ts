@@ -26,10 +26,12 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { isStale, isVerdict } from "@/lib/practice-marking";
 import {
   buildPracticeSetView,
   isPracticeTier,
   selectQuestionImagePaths,
+  type PracticeFeedback,
   type PracticeItem,
   type PracticeSetView,
   type PracticeSubtopic,
@@ -161,7 +163,7 @@ export async function loadPracticeSetView(options: {
 
   const { data: setRow } = await supabase
     .from("practice_sets")
-    .select("id, course_id, name, description, released_at, markscheme_released_at")
+    .select("id, course_id, name, description, released_at, markscheme_released_at, feedback_released_at")
     .eq("id", setId)
     .not("released_at", "is", null)
     .in("course_id", courseIds)
@@ -184,6 +186,7 @@ export async function loadPracticeSetView(options: {
       name: setRow.name as string,
       description: (setRow.description as string | null) ?? null,
       markschemeReleased: setRow.markscheme_released_at !== null,
+      feedbackReleased: setRow.feedback_released_at !== null,
       items: [],
     });
   }
@@ -292,6 +295,7 @@ export async function loadPracticeSetView(options: {
     name: setRow.name as string,
     description: (setRow.description as string | null) ?? null,
     markschemeReleased: setRow.markscheme_released_at !== null,
+    feedbackReleased: setRow.feedback_released_at !== null,
     items: built,
   });
 }
@@ -328,4 +332,67 @@ export async function loadPracticeAnswers(
     map.set(`${itemId}::${label}`, (row.answer_latex as string) ?? "");
   }
   return map;
+}
+
+/**
+ * A student's own feedback for one set, keyed by "<item id>::<part label>".
+ *
+ * Returns an empty map when the teacher has not released feedback for the set,
+ * and the RLS says the same independently: a student's SELECT policy on
+ * practice_answer_marks requires their own answer AND feedback_released_at.
+ * The check is repeated here for the same reason the mark-scheme filters are
+ * -- the teacher's ?viewAs= preview runs on the teacher's client, where RLS
+ * would happily return marks the class cannot see yet, and a preview that
+ * shows more than the student gets is not a preview.
+ */
+export async function loadPracticeFeedback(
+  setId: string,
+  profileId: string
+): Promise<Map<string, PracticeFeedback>> {
+  const supabase = await createClient();
+  const out = new Map<string, PracticeFeedback>();
+
+  const { data: setRow } = await supabase
+    .from("practice_sets")
+    .select("feedback_released_at")
+    .eq("id", setId)
+    .maybeSingle();
+  if (!setRow?.feedback_released_at) return out;
+
+  const { data } = await supabase
+    .from("practice_answers")
+    .select(
+      "practice_set_item_id, part_label, updated_at, practice_set_items!inner(practice_set_id), practice_answer_marks(verdict, note, updated_at)"
+    )
+    .eq("profile_id", profileId)
+    .eq("practice_set_items.practice_set_id", setId);
+
+  for (const row of (data ?? []) as unknown as FeedbackRow[]) {
+    // postgrest returns an embedded one-to-one either as an object or as a
+    // one-element array depending on how it infers the relationship.
+    const mark = Array.isArray(row.practice_answer_marks)
+      ? row.practice_answer_marks[0]
+      : row.practice_answer_marks;
+    if (!mark || !isVerdict(mark.verdict)) continue;
+    out.set(`${row.practice_set_item_id}::${row.part_label ?? ""}`, {
+      verdict: mark.verdict,
+      note: mark.note ?? null,
+      // The student edited after it was read, so the comment is about an
+      // earlier version. Saying so is kinder than letting them wonder why the
+      // note does not match what is in the box.
+      stale: isStale(row.updated_at, mark.updated_at),
+    });
+  }
+
+  return out;
+}
+
+interface FeedbackRow {
+  practice_set_item_id: string;
+  part_label: string | null;
+  updated_at: string;
+  practice_answer_marks:
+    | { verdict: string; note: string | null; updated_at: string }
+    | { verdict: string; note: string | null; updated_at: string }[]
+    | null;
 }

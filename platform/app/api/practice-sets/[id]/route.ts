@@ -25,6 +25,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     description?: unknown;
     released?: unknown;
     markschemeReleased?: unknown;
+    feedbackReleased?: unknown;
   };
 
   const patch: Record<string, unknown> = {};
@@ -32,6 +33,9 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   if (typeof body.description === "string") patch.description = body.description.trim() || null;
   if (typeof body.released === "boolean") {
     patch.released_at = body.released ? new Date().toISOString() : null;
+  }
+  if (typeof body.feedbackReleased === "boolean") {
+    patch.feedback_released_at = body.feedbackReleased ? new Date().toISOString() : null;
   }
   if (typeof body.markschemeReleased === "boolean") {
     patch.markscheme_released_at = body.markschemeReleased ? new Date().toISOString() : null;

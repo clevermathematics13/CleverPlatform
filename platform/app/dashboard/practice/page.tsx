@@ -6,14 +6,21 @@ import {
   getReleasedPracticeSets,
   getStudentCourseIds,
   loadPracticeAnswers,
+  loadPracticeFeedback,
   loadPracticeSetView,
   type PracticeSetSummary,
 } from "@/lib/practice-set-service";
+import AnswerFeedback from "@/components/practice/AnswerFeedback";
 import AnswerEditor, { type AnswerMode } from "@/components/practice/AnswerEditor";
 import AnswerProgress from "@/components/practice/AnswerProgress";
 import { answerSlots, isAnswered } from "@/lib/practice-answers";
 import LatexRenderer from "@/components/LatexRenderer";
-import { calculatorAllowed, type PracticeItem, type PracticeSetView } from "@/lib/practice-sets";
+import {
+  calculatorAllowed,
+  type PracticeFeedback,
+  type PracticeItem,
+  type PracticeSetView,
+} from "@/lib/practice-sets";
 
 export const metadata = { title: "Practice" };
 
@@ -73,6 +80,14 @@ export default async function PracticePage({
   const answers =
     view && answersFor ? await loadPracticeAnswers(view.id, answersFor) : new Map<string, string>();
 
+  // Only once the teacher has released it. loadPracticeFeedback checks the
+  // same gate itself and the RLS checks it a third time, because this query
+  // also runs on a teacher's client during a ?viewAs= preview.
+  const feedback =
+    view && answersFor && view.feedbackReleased
+      ? await loadPracticeFeedback(view.id, answersFor)
+      : new Map<string, PracticeFeedback>();
+
   // Three cases, and they are genuinely different things rather than degrees
   // of the same permission -- see AnswerMode. A teacher previewing a student
   // reads that student's work; a teacher browsing gets a working editor that
@@ -131,6 +146,7 @@ export default async function PracticePage({
                     item={item}
                     slots={slotsByItem.get(item.id) ?? [""]}
                     answers={answers}
+                    feedback={feedback}
                     mode={answerMode}
                   />
                 ))}
@@ -170,6 +186,9 @@ function PracticeSetHeader({
         <span className={view.markschemeReleased ? "text-da-success" : "text-da-warning"}>
           {view.markschemeReleased ? "Worked answers available" : "Answers not released yet"}
         </span>
+        {view.feedbackReleased && (
+          <span className="text-da-success">Your teacher&rsquo;s feedback is here</span>
+        )}
         {showProgress && (
           <AnswerProgress initialAnsweredKeys={answeredKeys} totalSlots={totalSlots} />
         )}
@@ -210,11 +229,13 @@ function QuestionCard({
   item,
   slots,
   answers,
+  feedback,
   mode,
 }: {
   item: PracticeItem;
   slots: string[];
   answers: Map<string, string>;
+  feedback: Map<string, PracticeFeedback>;
   mode: AnswerMode;
 }) {
   const gdc = calculatorAllowed(item.paper);
@@ -286,6 +307,11 @@ function QuestionCard({
         slots={slots.map((partLabel) => ({
           partLabel,
           answerLatex: answers.get(`${item.id}::${partLabel}`) ?? "",
+          // Rendered on the server and handed down, so the editor stays a
+          // client island that knows nothing about who may see feedback.
+          feedback: feedback.has(`${item.id}::${partLabel}`) ? (
+            <AnswerFeedback feedback={feedback.get(`${item.id}::${partLabel}`)!} />
+          ) : null,
         }))}
       />
     </li>
