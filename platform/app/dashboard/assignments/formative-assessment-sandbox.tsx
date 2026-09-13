@@ -18,9 +18,16 @@
  * (lib/formative-assessment-bridge.ts derives test_items from the draft),
  * so the saved assessment immediately works with the existing, unmodified
  * batch AI-grading UI at /dashboard/tests/[id]/ai-grade.
+ *
+ * A saved assessment can be reopened here. Until the picker existed,
+ * `savedTestId` was only ever set by a save in the same browser session, so
+ * closing the tab stranded a paper that `tests.custom_content` had held all
+ * along -- Formative Assessment 1 was sat by 50 students and had no way back
+ * into the editor. GET /api/formative-assessments lists them and
+ * GET /api/formative-assessments/[testId] returns one to load.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   AssignmentDraft,
   AssignmentSection,
@@ -37,11 +44,47 @@ import {
   DEFAULT_ASSESSMENT_FORMATTING,
   buildFormativeAssessmentPdfBody,
 } from "@/lib/formative-assessment-pdf-body";
+import {
+  editorSnapshot,
+  needsDiscardConfirmation,
+  isAlreadyOpen,
+  formatSavedDate,
+} from "./load-saved-assessment";
 import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 
 type CourseOption = { id: string; name: string };
 type ClaudeResponse = { content?: Array<{ type: string; text?: string }> };
+
+/** One row of GET /api/formative-assessments, for the load picker. */
+type SavedAssessment = {
+  id: string;
+  name: string;
+  courseName: string;
+  totalMarks: number | null;
+  createdAt: string;
+  pdfsGeneratedAt: string | null;
+  itemCount: number;
+};
+
+/**
+ * The saved assessments, or null if the list could not be fetched.
+ *
+ * Null rather than a throw: the picker is an extra way in, not the way in, so
+ * a failed list leaves the last good one on screen and puts no error banner
+ * over a sandbox that still works.
+ */
+async function fetchSavedAssessments(): Promise<SavedAssessment[] | null> {
+  try {
+    const res = await fetch("/api/formative-assessments");
+    if (!res.ok) return null;
+    const data = (await res.json()) as { assessments?: SavedAssessment[] };
+    return data.assessments ?? [];
+  } catch {
+    return null;
+  }
+}
+
 
 // Moved to lib/formative-assessment-pdf-body.ts when the save route started
 // rendering these PDFs server-side: both sides must format a paper identically,
@@ -107,6 +150,18 @@ export function FormativeAssessmentSandbox() {
   const [notice, setNotice] = useState<string | null>(null);
   const [rubricFindings, setRubricFindings] = useState<RubricFinding[]>([]);
   const [rubricBlocked, setRubricBlocked] = useState(false);
+  const [saved, setSaved] = useState<SavedAssessment[]>([]);
+  const [loadId, setLoadId] = useState("");
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
+  const [loadConfirm, setLoadConfirm] = useState(false);
+
+  /**
+   * What the editor looked like when it was last saved or loaded. Loading
+   * replaces everything on screen, so this is what tells us whether that would
+   * discard real work -- the alternative, confirming every time, trains a
+   * teacher to click through the one prompt that matters.
+   */
+  const cleanSnapshot = useRef(editorSnapshot(DEFAULT_DRAFT, DEFAULT_FORMATTING));
 
   useEffect(() => {
     let cancelled = false;
@@ -114,6 +169,19 @@ export function FormativeAssessmentSandbox() {
       const supabase = createClient();
       const { data } = await supabase.from("courses").select("id, name").eq("archived", false).order("name");
       if (!cancelled && data) setCourses(data as CourseOption[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Same shape as the courses fetch above -- the set happens inside the async
+  // IIFE behind a cancelled guard, not in the effect body.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const list = await fetchSavedAssessments();
+      if (!cancelled && list) setSaved(list);
     })();
     return () => {
       cancelled = true;
@@ -169,7 +237,10 @@ export function FormativeAssessmentSandbox() {
       const json = extractJsonObject(rawText);
       const parsed = JSON.parse(json) as AssignmentDraft;
       setDraft(sanitizeDraft(parsed));
+      // A generated draft is new work, not an edit of whatever was open: it
+      // saves to a new test, and the archive on screen is not its archive.
       setSavedTestId(null);
+      setPdfsArchived(false);
       setNotice(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected AI generation error.");
@@ -208,6 +279,72 @@ export function FormativeAssessmentSandbox() {
       setError(`Export failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Reopen a saved assessment.
+   *
+   * Restores everything the save wrote, not just the questions: the formatting
+   * decides what the PDFs look like, and the course and self-assessment gate
+   * are what make the reloaded draft save back over the same test instead of
+   * forking a second copy of it.
+   */
+  async function handleLoad() {
+    if (!loadId) return;
+
+    if (
+      needsDiscardConfirmation({
+        current: editorSnapshot(draft, formatting),
+        clean: cleanSnapshot.current,
+        confirmed: loadConfirm,
+      })
+    ) {
+      setLoadConfirm(true);
+      return;
+    }
+
+    setIsLoadingSaved(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/formative-assessments/${loadId}`);
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        name?: string;
+        courseId?: string | null;
+        draft?: AssignmentDraft;
+        formatting?: FormattingRequirements;
+        formattingSource?: "stored" | "default";
+        requireSelfAssessment?: boolean;
+        pdfsArchived?: boolean;
+      };
+      if (!res.ok || !data.draft) throw new Error(data.error ?? `Load failed (${res.status})`);
+
+      setDraft(data.draft);
+      if (data.formatting) setFormatting(data.formatting);
+      setCourseId(data.courseId ?? "");
+      setRequireSelfAssessment(data.requireSelfAssessment !== false);
+      setSavedTestId(loadId);
+      setPdfsArchived(Boolean(data.pdfsArchived));
+      // Findings belong to the draft that produced them; carrying them over
+      // would pin another paper's defects to this one.
+      setRubricFindings([]);
+      setRubricBlocked(false);
+      setLoadConfirm(false);
+      cleanSnapshot.current = editorSnapshot(
+        data.draft,
+        data.formatting ?? DEFAULT_FORMATTING,
+      );
+      setNotice(
+        data.formattingSource === "default"
+          ? `Loaded "${data.name ?? "assessment"}". It was saved before layout settings were kept, so those are back to the defaults -- check them before exporting.`
+          : `Loaded "${data.name ?? "assessment"}". Saving writes back to this same test.`,
+      );
+    } catch (err) {
+      setError(`Load failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setIsLoadingSaved(false);
     }
   }
 
@@ -263,6 +400,14 @@ export function FormativeAssessmentSandbox() {
       setRubricBlocked(false);
       setSavedTestId(data.test?.id ?? null);
       setPdfsArchived(data.pdfs === "archived");
+      // This is now the saved state, so loading something else no longer has
+      // unsaved work to warn about. Refresh the picker too: a first save adds
+      // a row to it, and a re-save moves this one's totals.
+      cleanSnapshot.current = editorSnapshot(draft, formatting);
+      if (data.test?.id) setLoadId(data.test.id);
+      void fetchSavedAssessments().then((list) => {
+        if (list) setSaved(list);
+      });
       const warnings = data.rubric?.summary.warnings ?? 0;
       const saved =
         data.testItems === "synced"
@@ -292,6 +437,74 @@ export function FormativeAssessmentSandbox() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         {/* -- Left panel: generation + settings -- */}
         <div className="space-y-5">
+          {/* Above "Generate with AI" on purpose: resuming an existing paper is
+              the first question when you open this tab, and answering it after
+              generating one means throwing that generation away. */}
+          {saved.length > 0 && (
+            <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
+              <h2 className="text-lg font-semibold font-serif text-da-text">Open a saved assessment</h2>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                  Saved assessments
+                </span>
+                <select
+                  value={loadId}
+                  onChange={(e) => {
+                    setLoadId(e.target.value);
+                    setLoadConfirm(false);
+                  }}
+                  className="rounded-lg border border-da-border bg-da-bg px-3 py-2 text-sm text-da-text"
+                >
+                  <option value="">Select one…</option>
+                  {saved.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {s.courseName} — {s.itemCount} parts
+                      {s.totalMarks ? `/${s.totalMarks} marks` : ""} — {formatSavedDate(s.createdAt)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {loadConfirm ? (
+                <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                  <p className="text-xs text-amber-200">
+                    The editor has changes that are not saved. Opening this assessment replaces them.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleLoad()}
+                      disabled={isLoadingSaved}
+                      className="rounded-lg border border-amber-500/50 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isLoadingSaved ? "Opening…" : "Discard and open"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLoadConfirm(false)}
+                      disabled={isLoadingSaved}
+                      className="rounded-lg border border-da-border bg-da-hover px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Keep editing
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleLoad()}
+                  disabled={!loadId || isLoadingSaved || isAlreadyOpen(loadId, savedTestId)}
+                  className="w-full rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isLoadingSaved
+                    ? "Opening…"
+                    : isAlreadyOpen(loadId, savedTestId)
+                      ? "Already open"
+                      : "Open in the editor"}
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h2 className="text-lg font-semibold font-serif text-da-text">Generate with AI</h2>
             <LabeledInput label="Grade level" value={gradeLevel} onChange={setGradeLevel} />
