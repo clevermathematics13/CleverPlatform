@@ -28,6 +28,7 @@
 
 import { useEffect, useState } from "react";
 import type { AssignmentDraft } from "@/lib/assignments";
+import { formatSavedDateTime } from "./format-date";
 
 type TemplateSummary = {
   id: string;
@@ -44,19 +45,6 @@ type TemplateSummary = {
 
 type ListResponse = { templates?: TemplateSummary[]; error?: string };
 type GetResponse = { template?: TemplateSummary; error?: string };
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
 
 export function LoadDraftModal({
   open,
@@ -193,7 +181,7 @@ export function LoadDraftModal({
                         </span>
                       </div>
                       <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-da-muted">
-                        <span>Saved {formatDate(t.updated_at || t.created_at)}</span>
+                        <span>Saved {formatSavedDateTime(t.updated_at || t.created_at)}</span>
                         {!hasContent && <span className="text-amber-400">No content saved</span>}
                         {loadingId === t.id && <span>Loading…</span>}
                       </div>

@@ -58,16 +58,6 @@ interface NameField {
 
 // --- Helpers -----------------------------------------------------------------
 
-function formatDate(iso: string): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
 function studentDisplayName(s: Student): string {
   return s.profiles?.nickname ?? s.profiles?.display_name ?? "Student";
 }

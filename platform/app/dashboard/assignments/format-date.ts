@@ -34,3 +34,27 @@ export function formatSavedDate(iso: string): string {
     return iso;
   }
 }
+
+/**
+ * The same, with the time of day.
+ *
+ * For lists where several entries land on one day and the date alone cannot
+ * order them -- the draft list, where "Saved" is the whole point of the column.
+ * Kept as its own function rather than an options argument: two call shapes do
+ * not justify a formatter API, and the point of this module is that nobody has
+ * to think about the Invalid Date trap again.
+ */
+export function formatSavedDateTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  try {
+    return date.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}

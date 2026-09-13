@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatSavedDate } from "./format-date";
+import { formatSavedDate, formatSavedDateTime } from "./format-date";
 
 describe("formatSavedDate", () => {
   it("renders a real timestamp", () => {
@@ -23,5 +23,26 @@ describe("formatSavedDate", () => {
   it("hands back the raw value when it is not a date", () => {
     expect(formatSavedDate("not a date")).toBe("not a date");
     expect(formatSavedDate("")).toBe("");
+  });
+});
+
+describe("formatSavedDateTime", () => {
+  it("includes the time of day", () => {
+    const out = formatSavedDateTime("2026-09-04T20:06:06.394Z");
+    expect(out).toMatch(/\d/);
+    // A date alone cannot order several drafts saved on one day, which is the
+    // whole reason this variant exists.
+    expect(out).not.toBe(formatSavedDate("2026-09-04T20:06:06.394Z"));
+  });
+
+  it("never renders the string 'Invalid Date'", () => {
+    for (const bad of ["not a date", "", "   ", "2026-13-45", "undefined", "null"]) {
+      expect(formatSavedDateTime(bad)).not.toBe("Invalid Date");
+    }
+  });
+
+  it("hands back the raw value when it is not a date", () => {
+    expect(formatSavedDateTime("not a date")).toBe("not a date");
+    expect(formatSavedDateTime("")).toBe("");
   });
 });
