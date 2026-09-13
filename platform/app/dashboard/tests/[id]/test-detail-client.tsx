@@ -28,6 +28,11 @@ export type TestDetail = {
   boundary_set_id: string | null;
   paper_url: string | null;
   mark_scheme_url: string | null;
+  /** Archived Formative Assessment PDFs -- see the migration comment on
+   *  tests.paper_pdf_storage_path. Null for every other kind of test. */
+  paper_pdf_storage_path: string | null;
+  mark_scheme_pdf_storage_path: string | null;
+  pdfs_generated_at: string | null;
   courses: { name: string } | null;
   test_items: {
     id: string;
@@ -554,6 +559,40 @@ export function TestDetailClient({
             className={field}
           />
         </label>
+
+        {/* The archived PDFs a Formative Assessment writes on save. Separate
+            from the two URL fields above, which are free text a teacher types:
+            these are files this system holds, served as signed URLs. This is
+            the durable place to come back for them -- the creator cannot
+            reload a saved assessment. */}
+        {test.paper_pdf_storage_path && (
+          <div className="space-y-2 rounded-lg border border-da-border bg-da-bg/40 p-3">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className={labelText}>Archived PDFs</span>
+              {test.pdfs_generated_at && (
+                <span className={hint}>
+                  generated {new Date(test.pdfs_generated_at).toLocaleString()}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={`/api/formative-assessments/${test.id}/pdf?kind=paper`}
+                className="rounded-lg border border-da-border bg-da-hover px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60"
+              >
+                Student paper ↓
+              </a>
+              {test.mark_scheme_pdf_storage_path && (
+                <a
+                  href={`/api/formative-assessments/${test.id}/pdf?kind=mark-scheme`}
+                  className="rounded-lg border border-violet-500/50 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-200 transition-colors hover:bg-violet-500/20"
+                >
+                  Mark scheme ↓
+                </a>
+              )}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* -- Questions ---------------------------------------------------- */}

@@ -33,27 +33,20 @@ import {
   buildFormativeAssessmentSystemPrompt,
   buildFormativeAssessmentUserPrompt,
 } from "@/lib/formative-assessment-prompt";
+import {
+  DEFAULT_ASSESSMENT_FORMATTING,
+  buildFormativeAssessmentPdfBody,
+} from "@/lib/formative-assessment-pdf-body";
 import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 
 type CourseOption = { id: string; name: string };
 type ClaudeResponse = { content?: Array<{ type: string; text?: string }> };
 
-const DEFAULT_FORMATTING: FormattingRequirements = {
-  schoolName: "CleverPlatform Mathematics",
-  teacherName: "",
-  includeNameLine: true,
-  includeDateLine: true,
-  includeMarksColumn: true,
-  includeAnswerKey: false,
-  fontSize: 11,
-  lineSpacing: "normal",
-  pageMarginsMm: 16,
-  numberingStyle: "numeric",
-  answerBoxLines: 4,
-  answerStyle: "boxes",
-  includeBlockLine: true,
-};
+// Moved to lib/formative-assessment-pdf-body.ts when the save route started
+// rendering these PDFs server-side: both sides must format a paper identically,
+// or the archived copy is not the one the teacher previewed.
+const DEFAULT_FORMATTING: FormattingRequirements = DEFAULT_ASSESSMENT_FORMATTING;
 
 const DEFAULT_DRAFT: AssignmentDraft = {
   title: "Formative Assessment 1",
@@ -104,6 +97,7 @@ export function FormativeAssessmentSandbox() {
   const [levelCount, setLevelCount] = useState(4);
   const [contextNotes, setContextNotes] = useState("");
   const [savedTestId, setSavedTestId] = useState<string | null>(null);
+  const [pdfsArchived, setPdfsArchived] = useState(false);
   const [requireSelfAssessment, setRequireSelfAssessment] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -185,16 +179,7 @@ export function FormativeAssessmentSandbox() {
   }
 
   function buildPdfBody(isMarkScheme: boolean) {
-    return {
-      title: draft.title,
-      subtitle: `${draft.subtitle}${isMarkScheme ? " -- MARK SCHEME" : ""}`,
-      instructions: draft.instructions,
-      sections: draft.sections,
-      formatting,
-      showSectionScoreSummary: draft.showSectionScoreSummary,
-      markingPrinciples: draft.markingPrinciples,
-      reteachGuide: draft.reteachGuide,
-    };
+    return buildFormativeAssessmentPdfBody(draft, formatting, isMarkScheme);
   }
 
   async function downloadPdf(endpoint: string, isMarkScheme: boolean, setBusy: (b: boolean) => void, suffix: string) {
@@ -250,6 +235,9 @@ export function FormativeAssessmentSandbox() {
           courseId,
           draft,
           requireSelfAssessment,
+          // Sent so the archived PDFs are the paper on screen, not a
+          // default-formatted lookalike.
+          formatting,
           ...(acknowledge ? { acknowledgeRubricFindings: true } : {}),
         }),
       });
@@ -257,6 +245,8 @@ export function FormativeAssessmentSandbox() {
         error?: string;
         test?: { id: string };
         testItems?: string;
+        pdfs?: "archived" | "failed";
+        pdfsError?: string;
         rubric?: { findings: RubricFinding[]; summary: { blocking: number; warnings: number } };
       };
 
@@ -272,15 +262,23 @@ export function FormativeAssessmentSandbox() {
 
       setRubricBlocked(false);
       setSavedTestId(data.test?.id ?? null);
+      setPdfsArchived(data.pdfs === "archived");
       const warnings = data.rubric?.summary.warnings ?? 0;
       const saved =
         data.testItems === "synced"
           ? "Saved -- ready to grade scanned student papers."
           : "Saved, but syncing gradeable items failed -- try saving again.";
+      // A failed archive is called out rather than folded into the notice: the
+      // whole point of archiving on save is that nobody has to remember, so a
+      // save that did not archive must not read as a clean success.
+      const archive =
+        data.pdfs === "archived"
+          ? " Student paper and mark scheme archived."
+          : ` The PDFs were NOT archived (${data.pdfsError ?? "unknown error"}) -- save again to retry, or download them below and keep a copy.`;
       setNotice(
         warnings > 0
-          ? `${saved} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
-          : saved,
+          ? `${saved}${archive} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
+          : `${saved}${archive}`,
       );
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -361,7 +359,28 @@ export function FormativeAssessmentSandbox() {
                 Upload scanned papers to grade →
               </a>
             )}
-            {notice && <p className="text-xs text-emerald-300">{notice}</p>}
+            {savedTestId && pdfsArchived && (
+              // The archived copies, not a fresh render of whatever is in the
+              // editor right now. These are what a teacher comes back for
+              // months later, so they are the ones worth linking.
+              <div className="flex gap-2">
+                <a
+                  href={`/api/formative-assessments/${savedTestId}/pdf?kind=paper`}
+                  className="flex-1 rounded-lg border border-da-border bg-da-hover px-3 py-2 text-center text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60"
+                >
+                  Archived paper ↓
+                </a>
+                <a
+                  href={`/api/formative-assessments/${savedTestId}/pdf?kind=mark-scheme`}
+                  className="flex-1 rounded-lg border border-violet-500/50 bg-violet-500/10 px-3 py-2 text-center text-xs font-semibold text-violet-200 transition-colors hover:bg-violet-500/20"
+                >
+                  Archived mark scheme ↓
+                </a>
+              </div>
+            )}
+            {notice && (
+              <p className={`text-xs ${pdfsArchived ? "text-emerald-300" : "text-amber-300"}`}>{notice}</p>
+            )}
           </div>
 
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
