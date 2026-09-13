@@ -79,24 +79,3 @@ export function loadButtonState(args: {
   }
   return { disabled: false, label: "Open in the editor" };
 }
-
-/**
- * A saved assessment's date for the picker, falling back to the raw value.
- *
- * The invalid case is checked rather than caught: `new Date("nonsense")` does
- * not throw, it yields an Invalid Date whose toLocaleDateString returns the
- * string "Invalid Date" -- so a try/catch alone puts that in the dropdown.
- */
-export function formatSavedDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  try {
-    return date.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}

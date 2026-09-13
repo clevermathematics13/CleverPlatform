@@ -48,8 +48,8 @@ import {
   editorSnapshot,
   needsDiscardConfirmation,
   loadButtonState,
-  formatSavedDate,
 } from "./load-saved-assessment";
+import { formatSavedDate } from "./format-date";
 import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 
