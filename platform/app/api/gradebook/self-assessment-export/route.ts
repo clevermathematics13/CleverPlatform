@@ -45,8 +45,13 @@ export async function POST(req: NextRequest) {
 
   let testId: unknown;
   let courseId: unknown;
+  let studentId: unknown;
   try {
-    ({ testId, courseId } = (await req.json()) as { testId?: unknown; courseId?: unknown });
+    ({ testId, courseId, studentId } = (await req.json()) as {
+      testId?: unknown;
+      courseId?: unknown;
+      studentId?: unknown;
+    });
   } catch {
     return NextResponse.json({ error: "Expected a JSON body" }, { status: 400 });
   }
@@ -59,6 +64,35 @@ export async function POST(req: NextRequest) {
   // getApiUser already read -- and unlike the student path below, they name
   // the class rather than being placed in one.
   if (auth.profile.role === "teacher") {
+    // A teacher entering a self-assessment on a student's behalf -- the
+    // ?viewStudent= path in app/dashboard/reflection, which writes the rows
+    // under the student's id while the request still carries the teacher's
+    // session. They name the student, not a class, so resolve the class the
+    // same way the student branch below does.
+    //
+    // The test's own course is the wrong answer here and was the trap: a test
+    // hangs off a track course (9G), while the student sits on a real class
+    // roster (9C). Rebuilding the test's course would leave the file that
+    // actually moved untouched.
+    //
+    // Before this, such a submit reached the courseId check below, returned
+    // 400, and rebuilt nothing -- silently, because the caller does not await
+    // the response. Self-assessments students entered themselves rebuilt
+    // correctly, so the file simply under-reported by however many the teacher
+    // had entered.
+    if (typeof studentId === "string" && studentId !== "") {
+      const service = serviceClient();
+      const { data: enrolments } = await service
+        .from("students")
+        .select("course_id")
+        .eq("profile_id", studentId)
+        .eq("hidden", false);
+      for (const id of [...new Set((enrolments ?? []).map((e) => e.course_id as string))]) {
+        await regenerateSelfAssessmentExport(service, id, testId);
+      }
+      return NextResponse.json({ ok: true });
+    }
+
     if (typeof courseId !== "string" || courseId === "") {
       return NextResponse.json({ error: "courseId is required" }, { status: 400 });
     }
