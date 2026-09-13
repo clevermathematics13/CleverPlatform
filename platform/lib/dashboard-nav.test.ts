@@ -89,3 +89,39 @@ describe("deriveDashboardView", () => {
     expect(r.navigation).toEqual(teacherNavigation);
   });
 });
+
+describe("the teacher's route into the student practice page", () => {
+  const teacherNav = getNavigation("teacher");
+
+  it("gives the teacher a way in, which is the whole point of the entry", () => {
+    expect(teacherNav.map((n) => n.href)).toContain("/dashboard/practice");
+  });
+
+  // Two adjacent items called Practice and Practice Sets, both with a ruler,
+  // is a coin flip every time. The label and the icon both have to differ.
+  it("cannot be mistaken for the set builder", () => {
+    const practice = teacherNav.find((n) => n.href === "/dashboard/practice");
+    const builder = teacherNav.find((n) => n.href === "/dashboard/practice-sets");
+    expect(practice).toBeDefined();
+    expect(builder).toBeDefined();
+    expect(practice!.label).not.toBe(builder!.label);
+    expect(practice!.icon).not.toBe(builder!.icon);
+    expect(practice!.label).toMatch(/student/i);
+  });
+
+  it("sits next to the builder, since one leads to the other", () => {
+    const hrefs = teacherNav.map((n) => n.href);
+    expect(hrefs.indexOf("/dashboard/practice")).toBe(
+      hrefs.indexOf("/dashboard/practice-sets") + 1
+    );
+  });
+
+  // The student's own menu keeps the plain label; this rename is the
+  // teacher's entry only.
+  it("leaves the student's own Practice entry alone", () => {
+    const studentPractice = getNavigation("student", false).find(
+      (n) => n.href === "/dashboard/practice"
+    );
+    expect(studentPractice?.label).toBe("Practice");
+  });
+});
