@@ -1444,3 +1444,200 @@ do not work around it.
   renderer makes about which questions get a printed number. On A.2's own draft
   that yields exactly one flag, Q26 against a bound of 25 — which is the point,
   since one impossible number is enough to send a teacher back to the list.
+
+---
+
+## 16. The Drive mirror was writing into the Bin (10 Sep 2026)
+
+**A teacher asked why a student's self-assessment had not produced an updated
+PowerSchool file in their Drive. It had. The file was in the Bin.**
+
+Everything upstream of Drive was correct and stayed correct throughout. Raul
+Siucho's 41 `student_self_scores` rows for Formative Assessment 1 landed in one
+atomic upsert at `19:34:56Z`; `powerschool_export_files` for 9C rebuilt to
+`9C_Form1_15.csv` (15 of 20) at `19:38:03Z`; the Storage object's sha256 matched
+`content_sha` exactly. Only the mirror was broken, and it was broken in the way
+that is hardest to notice: **it reported success.**
+
+`drive.files.update` on a *trashed* file returns 200 and writes a new revision.
+`mirrorExportToDrive` reached its recreate path only from a 404, which Drive
+raises for a permanently deleted file and not for a binned one. So the update
+succeeded, `drive_error` stayed null, `drive_synced_at` refreshed, and the
+gradebook pill (`GradebookGrid.tsx:399-402`) read "Google Drive: copied
+10/09/2026, 19:38:03" - all true, and all useless.
+
+Found by reading the file's own metadata with the app's stored token:
+
+```
+name: 9C_Form1_15.csv   trashed: true   explicitlyTrashed: true
+parents: [1m6Qx89Thaf71CrwtLduHkkT6pGIYNvxO]   8 revisions, last 19:38:02Z
+```
+
+**All four classes' files were trashed**, each `explicitlyTrashed` (so binned
+individually, not by a trashed parent), along with both download zips and two
+manual `9G_Form1_5 N.csv` copies. `My Drive > ¡CleverPlatform! > PowerSchool
+exports` held zero untrashed files while the app had been mirroring into it for
+two days. The four class CSVs were restored from the Bin the same day with their
+content and revision history intact; the zips and duplicates were left binned.
+
+**Fixed in `lib/drive-export-mirror.ts`.** `targetStillInFolder()` now reads
+`trashed, parents` before reusing a stored id, and treats trashed, moved-out-of-
+folder, and missing all the way the 404 was already treated: create a fresh file
+in the configured folder. That also closes a second case nobody had hit yet -
+changing `teacher_settings.powerschool_drive_folder_id` used to leave every
+export still updating the old file in the old folder. A recreate is logged,
+because it costs the file its version history. `lib/drive-export-mirror.test.ts`
+is the regression test; it fails on 4 of 7 cases against the pre-fix code.
+
+**Open, and deliberately not done here.** The gradebook still cannot tell a
+delivered mirror from a binned one - `drive_synced_at` means "Drive accepted a
+write", not "the teacher can see it". Surfacing "recreated in Drive" wants a
+column on `powerschool_export_files`, and migrations go through MCP
+`apply_migration` first (see `supabase/migrations/README.md`); an agent session
+without the Supabase MCP tool cannot apply one or read back the ledger version
+it was assigned, and committing an unapplied file would break the 1:1 invariant.
+Worth doing from a session that has it.
+
+**The general lesson, because it will recur.** Every "did it sync?" field in
+this schema records what an API call returned, not what the teacher can see.
+`drive_synced_at`, `drive_error` and `content_sha` were all in a consistent,
+healthy state describing a file nobody could find. When a teacher says the file
+is not there, check the file, not the row.
+
+---
+
+## 17. Releasing one class's marks, and why a migration's TIMESTAMP decides whether CI can apply it (10-11 Sep 2026)
+
+**READ THIS FIRST IF YOU ARE ADDING A MIGRATION FROM AN AGENT SESSION.** The
+headline is in "How it gets applied" below and it cost three failed runs to
+learn: `platform-supabase-migrations.yml` will silently refuse any migration
+file whose version sorts BEFORE the newest row already in the ledger. Choose
+the timestamp at the moment you push, not the moment you started writing.
+
+The migration itself is
+`platform/supabase/migrations/20260911055400_test_course_self_assessment_override.sql`,
+renumbered from `20260910213307` for exactly that reason.
+
+**The problem.** `tests.require_self_assessment` gates a student seeing Clev's
+Marks before they have self-graded, and it lives on the test. A test belongs to
+one course but is sat by its whole track family (section 13's migration
+`20260905182550`): Formative Assessment 1 hangs off 9G and is sat by 9A, 9C, 9D
+and 9G. So releasing marks to 9C's 20 students meant releasing them to roughly
+69 across four classes. There was no narrower control, and that is not a
+decision anyone wanted to make on three other classes' behalf.
+
+**The mechanism.** `test_course_self_assessment (test_id, course_id,
+require_self_assessment)` - the pair is the primary key, because the pair is
+the identity. No row means the test's own flag stands, so every existing test
+behaves exactly as it did before. `resolveSelfAssessmentRequired()` in
+`lib/self-assessment-gate.ts` combines them and **fails closed**: where two
+overrides disagree the gate stays up, because withholding marks that should
+have been released is a complaint and showing marks that should not have been
+cannot be taken back.
+
+`lib/exam-service.ts` folds the override into each test's
+`require_self_assessment` as the tests are loaded, so all three existing
+readers (the reflection page's student branch, its "view as" branch, and
+`reflection-client.tsx`) keep reading one field and get the value for that
+viewer. It resolves against the viewer's OWN courses, never the track family -
+resolving against the family would let one class's release reach its siblings,
+which is the entire point of the table.
+
+**A missing table is not an error.** `applySelfAssessmentOverrides` returns the
+tests unchanged if the query fails, on the same reasoning as the column
+fallbacks already in that file: the code can reach production before the
+migration does, and a reflection page that 500s because nobody has released
+anything yet would be worse than one that falls back to the test's own flag.
+That is what makes shipping this before the migration safe, and it is also why
+a green deploy does NOT tell you the migration landed.
+
+**How it gets applied, and the three ways it failed first.** The normal path is
+MCP `apply_migration` (`supabase/migrations/README.md`), which was unavailable
+when this was written and intermittently available afterwards. The fallback is
+`platform-supabase-migrations.yml`, which takes `workflow_dispatch` and so can
+be aimed at a branch -- the same way section 4's fix was verified on 7 Sep.
+Three dispatches, three different failures, all worth knowing:
+
+1. **The branch was stale.** It was cut before two migrations landed on `main`
+   (`20260910230949`, `20260911015316`), both already in the ledger. The CLI
+   compares the ledger against the files it can see and bailed with "Remote
+   migration versions not found in local migrations directory" naming exactly
+   those two. It fails safe and applied nothing. Merge `main` in first: a
+   dispatch is only meaningful from a branch carrying every ledger version.
+2. **`supabase/setup-cli@v1` hit a GitHub API rate limit** ("Failed to resolve
+   latest Supabase CLI release"), dying before the database was touched. Pure
+   infrastructure; one re-run cleared it.
+3. **The real one.** `supabase db push` found the migration and refused it:
+   "Rerun the command with --include-all flag to apply these migrations". The
+   CLI only applies versions AFTER the last one in the ledger, and this file
+   was stamped `20260910213307` while the ledger had already moved on to
+   `20260911015316` that same night. Section 4 records `--include-all` being
+   deliberately dropped from this workflow, because it would drag in the
+   destructive `migrations-legacy/` files -- so that flag is not the answer
+   and must not be added back.
+
+The fix was to renumber the file to a version later than the newest ledger
+row. That is safe here and ONLY here: the README's "never renumber" rule
+protects migrations that have ALREADY been applied, where a changed prefix
+makes an applied migration look pending. A file the ledger has never seen has
+no identity to protect. **A migration written by a long agent session is
+exactly the case that hits this** -- the timestamp is chosen when the file is
+created, the session then runs for hours, and other migrations land in the
+ledger meanwhile.
+
+**Nothing is released yet.** The migration creates the mechanism; it writes no
+rows. Releasing 9C is one statement, deliberately kept out of the migration so
+that a student-facing change does not ride in on a schema one:
+
+```sql
+insert into test_course_self_assessment (test_id, course_id, require_self_assessment)
+values ('f5221cd9-66b1-48cd-bfe3-652d87df26b2', 'dc6d8fcf-cacd-4b5b-9674-478ac78f7f3c', false)
+on conflict (test_id, course_id) do update
+  set require_self_assessment = excluded.require_self_assessment;
+```
+
+**Teacher UI, added 11 Sep.** A "Per-class release" block on the test detail
+page (`app/dashboard/tests/[id]`), directly under the test's own
+require-self-assessment checkbox, because that is where the teacher already
+decides this question and the per-class rows are its exceptions. One
+three-option select per class -- follow the assessment / released / required --
+since the table genuinely has three states and a checkbox cannot express "no
+row" when the test flag is already true. Saved by the page's existing Save
+button through `PUT /api/tests/[id]/self-assessment-overrides`, a separate
+route because these are rows in another table with their own delete semantics,
+not columns of `tests`.
+
+Two things about it are deliberate. Each class shows **how many of its
+students have not self-assessed**, not its roster size: those are the only
+students a release changes anything for, and the number is what makes the
+choice an informed one rather than a toggle. And the write order is deletes
+then upserts, un-transactional: either half failing leaves a class gated that
+should have been released, never the reverse.
+
+**Which classes it lists: the test's track family, and that is narrower than
+it looks.** As of 11 Sep the family for Formative Assessment 1 is 9G, 9A, 9C
+and the Grade 9 Extended track itself (listed, disabled, "no students
+enrolled" -- it is virtual by design). **9D is absent and that is correct**:
+the current 9D belongs to no track (only the archived `9D (2025-2026)` is a
+Grade 9 Standard member) and has zero `students` rows, so
+`track_family_course_ids` returns only itself and a 9D student cannot see this
+test at all. Do not "fix" this by listing every course with a
+`powerschool_export_files` row for the test -- that table is built from
+`loadInvitedRoster`, which reads `invited_students`, a different roster that
+counts 18 people in 9D who have never signed in.
+
+**State of 9C's Formative Assessment 1 at the time of writing**, since it is
+what prompted all of this: all 20 students fully marked (41 of 41 items each),
+15 self-assessed, 5 not (Emilia Ugarte, Emma Benderman, Galo Masias, Ines
+Palomino, Yanay Khoury). Every level in the mirrored `9C_Form1_15.csv`
+reconciles exactly against `student_marks` summed over 41 items, out of
+`total_marks` 50, through boundary set `cf5ccc24`. A `scope=all` export of the
+same test fills all 20 rows with no student missing a number.
+
+**One trap worth writing down.** An earlier pass at that reconciliation
+appeared to show wild disagreement between the CSV and the marks - students
+with a level and no marks at all. It was `student_marks` being read through
+PostgREST with a plain `limit`, which silently caps at 1000 rows; the test has
+2091. `fetchAllRows` exists for exactly this and the code comments warn about
+it. Ad-hoc verification queries need the same paging the application code
+uses, or they invent bugs that are not there.

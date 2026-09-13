@@ -1256,6 +1256,31 @@ every assignment. `template` is stored with its Score column blank.
 
 A student who did not sit a test. The AI grader roster and the gradebook show "Absent" / "Abs" instead of an empty row.
 
+### `test_course_self_assessment`
+
+Per-course override of `tests.require_self_assessment`. A test belongs to one
+course but is sat by its whole track family, so switching that flag off
+released marks to every class in the track; a row here releases (or re-gates)
+exactly one class. No row means the test's own flag applies, which is every
+test that predates this table.
+
+Resolution is `resolveSelfAssessmentRequired()` in
+`lib/self-assessment-gate.ts`, folded into each test by `lib/exam-service.ts`
+so callers read `require_self_assessment` and get the value for their viewer.
+It fails closed: where two overrides disagree, the gate stays up.
+
+| column | type | default |
+|---|---|---|
+| `test_id` | uuid | part of primary key, FK tests(id) on delete cascade |
+| `course_id` | uuid | part of primary key, FK courses(id) on delete cascade |
+| `require_self_assessment` | boolean | false releases Clev's Marks to this course without self-grading first; true re-imposes the gate even where the test has it switched off |
+| `updated_at` | timestamp with time zone | default `now()`, maintained by `public.set_updated_at()` |
+
+Students read only their own class's row, via the security-definer
+`student_is_enrolled_in_course(uuid)` -- their own course, deliberately NOT its
+track family, since widening it would let one class's release leak to its
+siblings. Teachers read and write all rows.
+
 ### `student_marks`
 
 | column | type | default |

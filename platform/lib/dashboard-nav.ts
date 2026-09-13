@@ -17,6 +17,7 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
     return [
       ...shared,
       { href: "/dashboard/questions", label: "PPQ Bank", icon: "❓" },
+      { href: "/dashboard/practice-sets", label: "Practice Sets", icon: "\u{1F4D0}" },
       { href: "/dashboard/assignments", label: "Assignments", icon: "\u{1F4CB}" },
       { href: "/dashboard/tests", label: "Tests", icon: "\u{1F4DD}" },
       { href: "/dashboard/placement", label: "Placement Tests", icon: "\u{1F9ED}" },
@@ -44,7 +45,17 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
         { href: "/dashboard/reflection", label: "Test Feedback", icon: "\u{1FA9E}" },
       ];
     }
-    return [...shared, { href: "/dashboard/games", label: "Live Game", icon: "\u{1F3AE}" }];
+    // Practice sits in the menu whether or not the class currently has a
+    // released set, exactly as Live Game does whether or not a game is
+    // running: this is a static list with no database behind it, and the
+    // page says plainly when there is nothing yet. The dashboard TILE is the
+    // conditional one, because a tile is a claim that there is something to
+    // open. Grade 9 is excluded above -- practice sets are a DP thing.
+    return [
+      ...shared,
+      { href: "/dashboard/practice", label: "Practice", icon: "\u{1F4D0}" },
+      { href: "/dashboard/games", label: "Live Game", icon: "\u{1F3AE}" },
+    ];
   }
 
   if (role === "parent") {
