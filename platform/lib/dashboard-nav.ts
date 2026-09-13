@@ -18,6 +18,14 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
       ...shared,
       { href: "/dashboard/questions", label: "PPQ Bank", icon: "❓" },
       { href: "/dashboard/practice-sets", label: "Practice Sets", icon: "\u{1F4D0}" },
+      // The same page the class gets, opened as yourself: a working answer
+      // editor and notation palette that saves nothing, so a set can be tried
+      // before it is handed out. Deliberately NOT called "Practice" and
+      // deliberately not sharing the set-builder's icon -- two adjacent items
+      // called Practice and Practice Sets, both with a ruler, is a coin flip
+      // every time. To read one student's real answers, use "View as"
+      // instead; this entry is nobody's page.
+      { href: "/dashboard/practice", label: "Practice (as a student)", icon: "\u{1F441}️" },
       { href: "/dashboard/assignments", label: "Assignments", icon: "\u{1F4CB}" },
       { href: "/dashboard/tests", label: "Tests", icon: "\u{1F4DD}" },
       { href: "/dashboard/placement", label: "Placement Tests", icon: "\u{1F9ED}" },
