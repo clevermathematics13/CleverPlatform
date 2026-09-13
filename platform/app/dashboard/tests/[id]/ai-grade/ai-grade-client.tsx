@@ -5,7 +5,7 @@ import type { ChangeEvent } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import EvidenceBoxEditor from "@/components/EvidenceBoxEditor";
 import { BatchGradeTab } from "./batch-grade-tab";
-import { fetchJson } from "./fetch-json";
+import { fetchJson, SESSION_EXPIRED_MESSAGE } from "./fetch-json";
 import {
   runsForStudent,
   rowsForRun,
@@ -548,16 +548,26 @@ export function AiGradeClient({ testId }: { testId: string }) {
 
   // -- Load one student's results for review --
   const loadResultsFor = useCallback(
-    async (studentId: string) => {
+    async (studentId: string, opts?: { afterWrite?: boolean }) => {
       const requestId = ++reviewRequestSeq.current;
       // A teacher clicking down the roster has several of these in flight at
       // once; responses can arrive out of order. Only the newest may write.
       const superseded = () => requestId !== reviewRequestSeq.current;
+      // When this refresh follows a write that already succeeded, its failure
+      // must not read as the write having failed. The accept call sets the
+      // blue confirmation and this runs straight after it, so a bare error
+      // above that line said "41 mark(s) written" and "Not authenticated" at
+      // once and left the teacher unable to tell which to believe. The marks
+      // are in Clev's Marks; only the list on screen is behind.
+      const describe = (reason: string) =>
+        opts?.afterWrite
+          ? `The marks were written to Clev's Marks and are safe. The list below could not be refreshed: ${reason}`
+          : reason;
       try {
         const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade?studentId=${studentId}`);
         if (superseded()) return;
         if (!ok) {
-          setError((data.error as string) ?? "Could not load results for this student.");
+          setError(describe((data.error as string) ?? "Could not load results for this student."));
           return;
         }
         const runs = (data.runs ?? []) as RunRow[];
@@ -605,7 +615,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
         }
       } catch (e) {
         if (superseded()) return;
-        setError(e instanceof Error ? e.message : "Could not load results for this student.");
+        setError(describe(e instanceof Error ? e.message : "Could not load results for this student."));
       }
     },
     [testId]
@@ -728,7 +738,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
         return;
       }
       setStatusLine(`${data.appliedCount} mark(s) written to Clev's Marks.`);
-      if (focusStudent) await loadResultsFor(focusStudent);
+      if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept these marks.");
     } finally {
@@ -755,7 +765,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
         return;
       }
       setStatusLine(`${data.appliedCount} mark(s) written to Clev's Marks.`);
-      if (focusStudent) await loadResultsFor(focusStudent);
+      if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept this mark.");
     } finally {
@@ -787,7 +797,7 @@ export function AiGradeClient({ testId }: { testId: string }) {
         `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s) into Clev's Marks.`
       );
       await loadOverview();
-      if (focusStudent) await loadResultsFor(focusStudent);
+      if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not accept all marks.");
     } finally {
@@ -1073,6 +1083,24 @@ export function AiGradeClient({ testId }: { testId: string }) {
           {error && (
             <div className="rounded-lg border border-red-400/40 bg-red-500/15 px-4 py-3 text-sm text-red-300">
               {error}
+              {/* An expired sign-in is the one error with a one-click fix, and
+               *  the teacher lands back on this same screen. Signing in does
+               *  not recover the review selections held in memory, so the
+               *  link is offered, never followed automatically -- a redirect
+               *  fired from under a half-finished review would discard it. */}
+              {error.includes(SESSION_EXPIRED_MESSAGE) && (
+                <>
+                  {" "}
+                  <a
+                    className="font-medium underline underline-offset-2 hover:text-red-200"
+                    href={`/login?redirectTo=${encodeURIComponent(
+                      `/dashboard/tests/${testId}/ai-grade`
+                    )}`}
+                  >
+                    Sign in again
+                  </a>
+                </>
+              )}
             </div>
           )}
 
