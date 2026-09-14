@@ -1941,3 +1941,93 @@ found, by driving the panel signed in.
 `tone` is explicit rather than derived from `pdfsArchived`, which had been
 rendering "Loaded ..." in green whenever the paper being opened happened to
 have archived PDFs - the right colour for a save and meaningless for a load.
+
+---
+
+## 21. Three words built into both study guides (14 Sep 2026)
+
+The teacher asked for `denominator`, `numerator` and `subject (of an equation)`
+to be built into the Formative and Summative study guides. Both are rows in
+`source_materials`, and both were short of those words in the place that
+matters - their vocabulary tables:
+
+| Guide | `source_materials.id` | Vocabulary table | Was missing |
+|---|---|---|---|
+| Formative 1 Study Guide | `81663765-e625-47d9-a045-1df848b65dd3` | §1, three columns | all three |
+| KA1 Study Guide (the summative) | `f3eb538e-6bb1-4c1f-bbd2-9afd2f0c0709` | A1, four columns | numerator, denominator |
+
+The KA1 guide already defined **Subject**, for a formula (`In h = 2A/b, the
+subject is h`), so it was not given a second row - a duplicate row in the same
+table is a defect, not an addition. Its insert extends that definition to any
+equation and says on the row that page 2 has the other half.
+
+Worth noticing for its own sake: KA1 used "denominator" twelve times and
+"numerator" three times across eighteen pages without ever defining either.
+The Formative guide used none of the three at all, while its sections 7 and 8
+are about solving equations and rearranging formulas. That is exactly the gap
+`buildSourceMaterialPrompt()` turns into a constraint - "do not introduce a
+form of words ... that does not appear below" - so a paper generated from
+these guides could not legitimately have asked for a numerator by name.
+
+### Neither guide has a source document
+
+Only the PDFs exist, in Storage and in Drive. KA1 was produced with Typst (A4,
+TeX Gyre Schola/Heros, Latin Modern Math); Formative 1 with LibreOffice
+(US Letter, Liberation Sans, plain-text mathematics). Rebuilding either from
+its own `extracted_text` would have lost every fraction, so nothing was
+re-typeset. Each guide got **one appended page** in its own house style, every
+measurement read off the real file with pdfplumber.
+
+`platform/scripts/study-guide-insert/` is the tooling, and its README carries
+the measurements and the four traps found building it. The short version:
+
+- Chromium writes a **CFF/OTF web font as Type3** glyph procedures - not
+  embedded, badly extracted. Convert to TTF first (`otf2ttf.py`).
+- **pdf-lib silently corrupted** the LibreOffice-made guide - broken object
+  streams, zero readable pages - despite being a dependency of this app. The
+  merge uses pypdf, and `append.py` refuses to keep a merge in which any
+  original page's text changed.
+- **KaTeX is wrong for this job.** It positions every atom in its own box, so
+  `pdf-parse` - the parser `POST /api/source-materials` uses to fill
+  `extracted_text` - lifts the symbols out of the sentence and dumps them at
+  the foot of the page. The insert's mathematics is ordinary italic text with
+  solidus fractions, which extracts whole.
+- KaTeX's fonts have **no U+2260**; it draws a slash over an `=`, which
+  extracts as `=`. On a page about restrictions that is the opposite claim.
+  The not-equal sign is set in the body font, which has the glyph.
+
+CTAN is blocked by the agent network policy, so the TeX Gyre faces could not be
+fetched. `fetch-fonts.sh` pulls URW's C059 and Nimbus Sans from GitHub instead -
+the base-35 clones TeX Gyre Schola and Heros are themselves extensions of, so
+the metrics match for everything on the page.
+
+### What was published
+
+Both merged PDFs were upserted over their existing `storage_path`, and both
+rows had `extracted_text`, `page_count` and `byte_size` refreshed -
+`extracted_text` re-derived with the same `pdf-parse` call and the same
+`\n{3,}` collapsing the upload route uses, so it is what a re-upload would have
+stored. KA1 is 19 pages, Formative 1 is 12.
+
+Every original page was verified **pixel-identical** (rendered at scale 1,
+zero channel difference) before anything was uploaded.
+
+### Still open: Drive
+
+**The Drive copies were not replaced.** The Drive connector in this session can
+only change a file's metadata, not its content, and the platform's own
+`google_oauth_tokens` rows are all expired with no `GOOGLE_CLIENT_ID` /
+`GOOGLE_CLIENT_SECRET` in the agent environment to refresh them against. The
+stale files are:
+
+- `Grade_9_Extended_Formative_1_Study_Guide_v3.pdf` (`1aIdQajr4y4ON81LiixYEmoL4nrV4eEHt`), in `U1 Formative`
+- `KA1_Study_Guide.pdf` (`1iYhXSx_e43Gx3XUINMKrMgu0tUL8yTW-`), in `U1 Summative`
+
+Replacing them through Drive's own **Manage versions** keeps the file id, so
+every existing link and Classroom attachment keeps working - better than
+anything an upload from here would have done, which would have minted new ids
+and left the old files in place. Note that the Formative file's name still says
+`_v3` while its content is now a version later.
+
+`KA1_Study_Guide_Answer_Key.pdf` was left alone: the insert adds no questions,
+so the key needs no new entries.
