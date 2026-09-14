@@ -218,17 +218,50 @@ Tables you will touch most: `na_scan_batches`, `na_packet_scans`,
 |---|---|
 | 0 | Anchor extraction - `auto_fillrect` finds the filled rectangles that draw answer boxes |
 | 1 | Cover-page segmentation via Haiku 4.5 (~165x cheaper than Opus; roster-grounded) |
-| 2 | Page identity via Opus 4.5 - affine fit, NOT match-count voting |
+| 2 | Packet boundaries by position - the next cover page is expected `packetPageCount` pages on, confirmed by the stage 1 Haiku check within a 4-page window |
 | 3 | Pre-split oversized batches into linked chunks |
 | 4 | Crop extraction via PyMuPDF at 300 DPI on the Railway CV service |
 | 5 | Per-crop assessment via Sonnet 4.6, one call per crop, results in `na_feedback` |
 
 Architecture decisions - do not reverse without understanding why: geometry is solved
-once from the master PDF, not per scan; orientation is recovered via affine fit;
-adaptive crop expansion happens in a single upright coordinate space after rotation;
-verdict and marks are independent fields; "correct verdict must equal full marks" is
-enforced in prompt and server-side; use `nuanced_analyses.parts` answer keys, not
-`answer_sketch`.
+once from the master PDF, not per scan; scans must arrive upright, and nothing in the
+pipeline detects or corrects orientation; adaptive crop expansion happens in a single
+upright coordinate space; verdict and marks are independent fields; "correct verdict
+must equal full marks" is enforced in prompt and server-side; use
+`nuanced_analyses.parts` answer keys, not `answer_sketch`.
+
+**Corrected 14 Sep 2026 - stage 2 and the orientation claim above were both wrong,
+and the orientation half is the one that can cost marks.** They used to read "Page
+identity via Opus 4.5 - affine fit, NOT match-count voting" and "orientation is
+recovered via affine fit; adaptive crop expansion happens in a single upright
+coordinate space after rotation". That describes the ORB/RANSAC pilot - built and
+validated 78/78 across 3 real packets, then **deliberately not shipped**, which
+`scripts/cv_crop_extract.py:9-24` says in its own opening paragraph.
+
+What ships instead: no Opus call exists anywhere in the NA scan path (only
+`COVER_PAGE_CHECK_MODEL`, Haiku 4.5, and `ASSESSMENT_MODEL`, Sonnet 4.6 - every other
+mention of Opus in those files is a comment explaining why it was NOT used), and
+there is no ORB, `estimateAffine*`, `findHomography`, RANSAC or `warpAffine` anywhere
+in the repository. **Nothing detects or corrects page orientation.** `rotation_hint`
+does thread from `lib/cv-crop-service.ts` through `cv-service/main.py` to
+`_render_page_upright`, but it is one scalar per request, not per page, and every
+caller hardcodes `0`. `na_scan_pages.page_rotation_deg` was provisioned for the
+pilot; nothing reads or writes it.
+
+This matters because the old text told a reader the pipeline self-corrects a crooked
+scan. It does not, and the failure is silent: an inverted page does not fail the
+grading call, it returns a confabulated reading. Measured 14 Sep 2026 on a one-page
+fixture, three runs at temperature 0, each reporting the page's content at both its
+top and its bottom when it carried that content once.
+
+So scans must arrive upright, and a duplex batch with every even page rotated is
+fixed BEFORE upload - in Acrobat, Rotate Pages / Even Pages Only / 180. The
+`/Rotate 180` that writes is honoured the whole way down, verified the same day:
+`pdf-lib`'s `copyPages` preserves it through the split routes (and the
+`canCopySourceWhole` path is a byte-for-byte Storage copy), PyMuPDF's `get_pixmap`
+renders the page upright so anchor points in upright space still cut the right
+region, and the Anthropic document block reads it correctly. 180 degrees does not
+swap width and height, so no stored geometry changes.
 
 **Stage 4 is idempotent.** It find-or-creates per `(packet_scan_id, anchor_id)`, so
 existing crop rows keep their id and any `na_feedback` pointing at them survives.
