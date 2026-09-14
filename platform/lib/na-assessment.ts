@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { markingKeyFor } from "@/lib/na-marking-key";
+import { mathematicalRegisterBlock } from "./mathematical-register";
 
 /**
  * NA scan pipeline -- stage 5: AI assessment of cropped student responses.
@@ -444,6 +445,9 @@ export type AssessmentPass = "crop" | "wide_context";
 export function buildAssessmentSystemPrompt(pass: AssessmentPass): string {
   const base = pass === "wide_context" ? WIDE_CONTEXT_SYSTEM_PROMPT_BASE : ASSESSMENT_SYSTEM_PROMPT_BASE;
   return `${base}
+
+===============================================================================
+${mathematicalRegisterBlock()}
 
 ===============================================================================
 THE TEACHER'S FEEDBACK VOICE GUIDE (student-facing wording only)

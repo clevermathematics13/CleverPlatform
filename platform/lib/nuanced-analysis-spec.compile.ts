@@ -17,6 +17,7 @@
  * -----------------------------------------------------------------------------
  */
 
+import { mathematicalRegisterBlock } from "./mathematical-register";
 import type { NuancedAnalysisSpec } from "./nuanced-analysis-spec.schema";
 
 // Newline char built at runtime so this source file stays backslash-free
@@ -213,7 +214,10 @@ ${outputFields}
 Each Part carries a "${s.outputContract.partPhaseTagField}" field (${s.outputContract.partPhaseTagValues.join(" | ")}) and each question carries a "tier" field (★ | ★★ | ★★★).
 JSON rules:
 ${bullets(s.outputContract.jsonEscapingRules)}
-${s.outputContract.noMarkdownFences ? "Do NOT wrap the JSON in markdown code fences. Output the raw JSON object only." : ""}`;
+${s.outputContract.noMarkdownFences ? "Do NOT wrap the JSON in markdown code fences. Output the raw JSON object only." : ""}
+
+════════════════════════════════════════════════════════════════════════
+${mathematicalRegisterBlock()}`;
 }
 
 /**

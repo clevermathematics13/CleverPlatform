@@ -1,6 +1,8 @@
 // Types and utilities for the DP (Diploma Programme) question designer
 // Uses DeepSeek to generate IB DP curriculum modules
 
+import { mathematicalRegisterBlock } from "./mathematical-register";
+
 export type Curriculum = "AA" | "AI";
 export type Level = "HL" | "SL";
 
@@ -125,6 +127,8 @@ export function buildDPSystemPrompt(): string {
     "- Stages should build on each other where appropriate.",
     "- Vocabulary, proofs, and activities must be age-appropriate for the target grade level.",
     "- Keep descriptions clear and academically precise.",
+    "",
+    mathematicalRegisterBlock(),
   ].join("\n");
 }
 

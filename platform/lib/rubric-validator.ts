@@ -1,5 +1,6 @@
 import type { AssignmentDraft } from "./assignments";
 import { buildTestItemsFromSections } from "./formative-assessment-bridge";
+import { findLooseRegisterTerms } from "./mathematical-register";
 
 /**
  * Pre-publication quality checks for a Formative Assessment's mark scheme.
@@ -39,7 +40,7 @@ import { buildTestItemsFromSections } from "./formative-assessment-bridge";
 export type RubricFindingSeverity = "block" | "warn";
 
 export interface RubricFinding {
-  /** 1-9, matching the audit that motivated each rule. */
+  /** 1-15, matching the audit or review that motivated each rule. */
   rule: number;
   /** Stable slug, safe to match on in tests and UI. */
   code: string;
@@ -700,6 +701,36 @@ function ruleExpressionAfterSubstitution(parts: FlatPart[], out: RubricFinding[]
   }
 }
 
+/**
+ * Rule 15 -- the mathematical register.
+ *
+ * lib/mathematical-register.ts is spliced into every generator's system
+ * prompt, but a prompt is a request. This is the check, and it reads the
+ * question text and the mark scheme alike: a scheme that accepts "they
+ * agree" teaches the loose word just as surely as a prompt that asks for it.
+ *
+ * A warning, never blocking. The patterns are narrow but they are still
+ * patterns, and a teacher who has a reason to write one of these words
+ * should not have to argue with a regex to save their paper.
+ */
+function ruleMathematicalRegister(parts: FlatPart[], out: RubricFinding[]): void {
+  for (const part of parts) {
+    for (const field of ["question", "scheme"] as const) {
+      for (const hit of findLooseRegisterTerms(part[field])) {
+        out.push({
+          rule: 15,
+          code: "loose-mathematical-register",
+          severity: "warn",
+          part: part.label,
+          message:
+            `${part.printedLabel}'s ${field === "question" ? "wording" : "mark scheme"} says ` +
+            `"${hit.found}". Write ${hit.instead}.`,
+        });
+      }
+    }
+  }
+}
+
 export function validateRubric(
   draft: AssignmentDraft,
   /** Paper-level facts the draft does not carry; see RubricContext. */
@@ -713,6 +744,7 @@ export function validateRubric(
   ruleAnswerLinePromise(draft, parts, findings);
   ruleTimeBudget(draft, context, findings);
   ruleExpressionAfterSubstitution(parts, findings);
+  ruleMathematicalRegister(parts, findings);
 
   for (const part of parts) {
     ruleSelfContradiction(part, findings);

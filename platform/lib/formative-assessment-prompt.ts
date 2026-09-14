@@ -26,6 +26,7 @@
 import type { AssessmentKind } from "./assessment-kind";
 import type { CalculatorPolicy } from "./assignments";
 import { calculatorPolicyLabel } from "./exam-conditions";
+import { mathematicalRegisterBlock } from "./mathematical-register";
 
 export type FormativeAssessmentInput = {
   gradeLevel: string;
@@ -121,6 +122,8 @@ export function buildFormativeAssessmentSystemPrompt(kind: AssessmentKind = "for
     "18. A CONTEXT MUST SAY WHO PAYS, WHO SHARES, AND WHAT IS INCLUDED. 'The students share the entire cost' leaves a student wondering whether the teachers' admission is in it. Spell the scope out: 'the n students share the entire cost -- admission for the students and the teachers, and the coach -- equally between them.' Ambiguity in a context is marked as a mathematical error, which it is not.",
     "19. A LEVEL HEADING IS A LABEL, NOT AN INSTRUCTION. 'Expand, simplify and factor' reads as three things to do to every part. Name the skill instead: 'ALGEBRAIC MANIPULATION'. The same for a question stem that introduces subparts -- it sets the scene, it does not issue the commands.",
     "20. TIME IS A BUDGET, NOT A TOTAL. The estimatedMinutes across the levels must come to about EIGHTY PER CENT of the time allowed, not all of it: a student needs the rest for reading, being stuck, page-turning and checking. Count explanation parts at roughly twice a computation of the same marks -- writing a reason takes longer than writing a value -- and if a paper will not fit, cut explanation parts rather than shortening the ramp.",
+    "",
+    mathematicalRegisterBlock(),
     ...(summative
       ? [
           "",
