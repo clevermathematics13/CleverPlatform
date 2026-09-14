@@ -92,6 +92,14 @@ export async function renderFormativeAssessmentPdfs(
       const page = await browser.newPage();
       try {
         await page.setContent(html, { waitUntil: "load", timeout: 30000 });
+        // `load` covers the document's stylesheets, not the @font-face files
+        // they fetch lazily -- so without this, page.pdf() can print before a
+        // face arrives. KaTeX draws U+2260 as a private-use slash glyph over
+        // an `=`, and a missing face drops the slash without dropping the
+        // `=`: "n != 0" prints as "n = 0". lib/katex-inline-css.ts removes
+        // the fetch entirely; this covers the CDN fallback, and any face a
+        // future stylesheet adds.
+        await page.evaluate(() => document.fonts.ready.then(() => undefined));
         const pdf = await page.pdf({
           format: "A4",
           margin: { top: margin, right: margin, bottom: margin, left: margin },

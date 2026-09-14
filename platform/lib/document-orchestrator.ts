@@ -46,6 +46,7 @@
  */
 
 import katex from "katex";
+import { katexStylesheetBlock } from "./katex-inline-css";
 import {
   validatePdfRequest,
   type ValidatedAssignmentPdfRequest,
@@ -277,7 +278,7 @@ function renderQuestion(
 function buildCss(formatting: ValidatedFormattingRequirements): string {
   const lineHeight = formatting.lineSpacing === "compact" ? "1.3" : formatting.lineSpacing === "relaxed" ? "1.7" : "1.5";
   return `
-    @import url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css');
+    ${katexStylesheetBlock()}
     @page { size: A4; margin: ${formatting.pageMarginsMm}mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -711,7 +712,7 @@ ${EXAM_CONDITIONS_CSS}
 
 function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string {
   return `
-    @import url('https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css');
+    ${katexStylesheetBlock()}
     @page { size: A4; margin: ${formatting.pageMarginsMm}mm; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: Georgia, "Times New Roman", serif; color: #111; font-size: ${formatting.fontSize}pt; line-height: 1.5; }

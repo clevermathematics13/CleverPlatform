@@ -12,6 +12,15 @@ const nextConfig: NextConfig = {
     "heic-convert",
     "libheif-js",
   ],
+  // public/ is served statically, which does not put it on the lambda's
+  // filesystem. lib/katex-inline-css.ts reads public/katex/ at runtime to
+  // embed KaTeX's fonts in every printed page, so the API routes that render
+  // PDFs need those files traced in. Without this the module falls back to a
+  // CDN @import -- still correct, but back to fetching fonts mid-render.
+  outputFileTracingIncludes: {
+    "/api/**": ["./public/katex/**"],
+  },
+
   experimental: {
     serverActions: {
       // SECURITY: never use a bare "*.vercel.app" wildcard here. It trusts
