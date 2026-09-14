@@ -1974,3 +1974,85 @@ found, by driving the panel signed in.
 `tone` is explicit rather than derived from `pdfsArchived`, which had been
 rendering "Loaded ..." in green whenever the paper being opened happened to
 have archived PDFs - the right colour for a save and meaningless for a load.
+
+## 21. The overnight batch was paying eight cache writes for one prefix (14 Sep 2026)
+
+A cost pass over the first real overnight grading run -- Block A, 14 students,
+"Key Assessment 1" -- priced it at **$2.03** ($0.145/student) from `ai_usage_log`
+at Opus 4.5 Batch API rates. Measured, not estimated; §10's table is what made
+that possible.
+
+| Line | Tokens | Cost | Share |
+|---|---:|---:|---:|
+| Output | 96,357 | $1.204 | 59% |
+| Uncached input (the scans) | 176,853 | $0.442 | 22% |
+| Cache writes | 116,976 | $0.366 | 18% |
+| Cache reads | 87,732 | $0.022 | 1% |
+
+**Two things were already right and should not be re-litigated.** The Batch API
+send halves every token type -- the synchronous `ai_grade` pipeline measured
+$0.299/call over the same 30 days against $0.145/student here. And the batch
+path's 5m TTL beat 1h: at the hit rate actually observed, 1h would have cost
+*more than not caching at all* (8 writes x 2.0 + 6 reads x 0.1 = 16.6x the
+prefix, against 14x uncached). The break-even note in `GradingCacheTtl` is
+arithmetically correct.
+
+**What was wrong is that the batch cannot warm its own cache.** The per-call
+rows show a 14,622-token prefix with **eight cache writes and six reads** across
+14 calls. Anthropic runs the requests inside a Message Batch in parallel, so
+there is no first student to pay the write and thirteen behind to read it --
+they race, and most of them write. That is structural: it was never going to
+come right on its own, and a bigger class makes it worse, not better.
+
+`buildCachePrimerRequest` (`lib/ai-grading-run.ts`) plus one awaited call in
+`ai-grade/queue/route.ts` before `batches.create` fixes it: one synchronous
+write, then N batch reads. ~$0.245 off a run of this size, about 12%. The
+primer is derived from `buildGradingRequest` rather than rebuilt, because
+caching is a prefix match and one byte of drift makes it an expensive no-op
+that still looks like it is working -- `lib/ai-grading-run.test.ts` pins the
+cached blocks byte-identical at both TTLs.
+
+It is gated on `MIN_STUDENTS_TO_PRIME = 4`. The primer is synchronous, so its
+write costs ~$0.091 against the ~$0.046 a write inside the batch costs at the
+batch rate -- it has to save two batch-rate writes to break even, which on the
+observed write rate lands at about four students. Below that the unprimed
+batch is genuinely cheaper. Priming on every call of the client's `remaining`
+loop is deliberate: only the first writes, and the rest bill a cheap read and
+restart the 5-minute timer ahead of their own batch.
+
+Note `max_tokens: 0` is an `invalid_request_error` when `output_config.format`
+is present, which the real grading request always carries, so the primer sends
+no `output_config`. Structured output constrains decoding, not the prefix.
+
+**Verify after the next real overnight run** -- expect ONE write and N reads:
+
+```sql
+select input_tokens, cache_creation_input_tokens, cache_read_input_tokens,
+       output_tokens, created_at
+from ai_usage_log
+where pipeline = 'ai_grade_batch' and created_at > now() - interval '1 day'
+order by created_at;
+```
+
+Re-price the prefix line: ~$0.14 against the ~$0.39 above. If it still shows a
+write per call, the first assumption to re-test is that `output_config` sits
+outside the cached prefix; the fallback is `max_tokens: 1` WITH it. If the
+primer's entry has expired before the batch starts (the three Block A batches
+ended 5.2-5.7 min after submit; when Anthropic *started* them is not
+observable), move the primer and the batch path both to `"1h"` -- one write at
+2x plus N reads is still ~49% off the prefix line and is robust to queue delay.
+
+**Deliberately not done, and now unblocked.** §10 deferred any grading-model or
+effort change with "no eval exists". `scripts/eval-grading.ts` shipped the next
+day (§11: 51 teacher-accepted parts, 82% exact, 100% within 1 mark, $1.42/run)
+and already takes `--model`. At the measured token mix Sonnet 5 is ~$0.82/run
+(~$1.07 allowing for the newer tokenizer's ~30% more tokens) and Haiku 4.5
+~$0.41, against $2.03 -- so the sweep is worth about $0.85 of eval spend to
+settle. Two things it must measure, not one: accuracy AND run-to-run drift,
+because `temperature: 0` (`ai-grading-run.ts`) is **rejected with a 400 on
+every current-generation model** and it exists precisely because re-marks moved
+1-3 marks without it. Haiku 4.5 still accepts `temperature`, which makes the
+larger nominal saving the easier migration of the two.
+
+Not a lever, so nobody should chase it: the scan PDF is 22% of the bill, is
+unique per student, and correctly sits after both breakpoints.

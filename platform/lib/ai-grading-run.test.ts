@@ -9,7 +9,7 @@ import {
   buildGradingUserPrompt,
   type GradingUnit,
 } from "./ai-grading";
-import { buildGradingRequest } from "./ai-grading-run";
+import { buildCachePrimerRequest, buildGradingRequest } from "./ai-grading-run";
 
 /**
  * These are the pin on the extraction: the synchronous route used to build
@@ -149,5 +149,77 @@ describe("buildGradingRequest", () => {
     expect(perStudent.type).toBe("text");
     expect(perStudent.text.endsWith("Return the JSON object now.")).toBe(true);
     expect(perStudent.text).not.toContain("Student:");
+  });
+});
+
+/**
+ * The primer's whole job is to write the prefix the batch then reads, and
+ * caching is a prefix match -- so the only property that matters is that its
+ * cached blocks are byte-identical to the ones the batch sends. Drift here
+ * does not fail, it silently pays for a write nobody reads, which is exactly
+ * the bill this was added to cut. Hence identity assertions rather than
+ * shape ones.
+ */
+describe("buildCachePrimerRequest", () => {
+  const primerArgs = (ttl: "5m" | "1h" = "5m") => ({
+    gradeable: GRADEABLE,
+    testName: TEST_NAME,
+    cacheTtl: ttl,
+  });
+
+  it.each(["5m", "1h"] as const)(
+    "sends cached blocks byte-identical to the real request at %s",
+    (ttl) => {
+      const primer = buildCachePrimerRequest(primerArgs(ttl));
+      const real = buildGradingRequest(args({ cacheTtl: ttl }));
+
+      expect(primer.system).toEqual(real.system);
+
+      const primerContent = primer.messages[0].content as Anthropic.ContentBlockParam[];
+      const realContent = real.messages[0].content as Anthropic.ContentBlockParam[];
+      expect(primerContent[0]).toEqual(realContent[0]);
+
+      // Same model, or the entry is written into a different cache namespace.
+      expect(primer.model).toBe(real.model);
+      expect(primer.model).toBe(GRADING_MODEL);
+    }
+  );
+
+  it("carries max_tokens 0 and no output_config, which together are a 400", () => {
+    const primer = buildCachePrimerRequest(primerArgs());
+
+    expect(primer.max_tokens).toBe(0);
+    // max_tokens 0 is an invalid_request_error when output_config.format is
+    // present. The real request always carries it; the primer must not.
+    expect(primer.output_config).toBeUndefined();
+  });
+
+  it("sends the prefix only -- no scan and no per-student tail", () => {
+    const primer = buildCachePrimerRequest(primerArgs());
+    const content = primer.messages[0].content as Anthropic.ContentBlockParam[];
+
+    expect(content).toHaveLength(1);
+    expect(content[0].type).toBe("text");
+    expect(content.some((b) => b.type === "document")).toBe(false);
+    expect(JSON.stringify(primer)).not.toContain(SCAN_BASE64);
+    expect(JSON.stringify(primer)).not.toContain(STUDENT);
+  });
+
+  it("keeps both breakpoints cached, not just the system one", () => {
+    const primer = buildCachePrimerRequest(primerArgs());
+    const system = primer.system as Anthropic.TextBlockParam[];
+    const markScheme = (primer.messages[0].content as Anthropic.TextBlockParam[])[0];
+
+    expect(system[0].cache_control).toEqual({ type: "ephemeral" });
+    expect(markScheme.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("propagates the 1h TTL to both breakpoints", () => {
+    const primer = buildCachePrimerRequest(primerArgs("1h"));
+    const system = primer.system as Anthropic.TextBlockParam[];
+    const markScheme = (primer.messages[0].content as Anthropic.TextBlockParam[])[0];
+
+    expect(system[0].cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(markScheme.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
   });
 });

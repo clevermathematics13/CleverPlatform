@@ -10,6 +10,7 @@ import {
 } from "@/lib/ai-grading";
 import type { GradingUnit } from "@/lib/ai-grading";
 import {
+  buildCachePrimerRequest,
   buildGradingRequest,
   loadGradeableMarkScheme,
   loadStudentDisplayName,
@@ -43,6 +44,25 @@ export const MAX_BATCH_BASE64_BYTES = 64 * 1024 * 1024;
 
 /** Per-request cap on the class list, so one call cannot walk an unbounded roster. */
 const MAX_STUDENTS_PER_REQUEST = 200;
+
+/**
+ * Below this many students in one submit, priming the cache costs more than
+ * the race it avoids.
+ *
+ * The primer is synchronous, so its write is at the full 1.25x rate while a
+ * write inside the batch gets the 50% batch discount too. On the 14,622-token
+ * prefix Block A measured, that is ~$0.091 against ~$0.046 -- the primer has
+ * to save two batch-rate writes before it breaks even. At the write rate
+ * actually observed (8 of 14 requests) the crossover is around four students:
+ * one or two, and the unprimed batch is cheaper; four and up, and the primer
+ * wins by progressively more (~$0.25 at fourteen).
+ *
+ * Deliberately not a per-student calculation: the prefix size varies by test
+ * and the write rate varies by how Anthropic schedules the batch, so a
+ * conservative constant is honest where arithmetic on two moving numbers
+ * would only look precise.
+ */
+const MIN_STUDENTS_TO_PRIME = 4;
 
 interface QueuedStudent {
   studentId: string;
@@ -317,6 +337,36 @@ export async function POST(
   }));
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  // -- Warm the cached prefix ------------------------------------------------
+  // Anthropic runs a batch's requests in parallel, so without this there is no
+  // first student to pay the cache write and no later ones to read it -- they
+  // all race, and most of them write. Measured on the 14-student Block A run:
+  // eight writes, six reads, ~$0.25 of a $2.03 run spent on writes nothing
+  // read back. One synchronous primer first makes it one write and N reads.
+  //
+  // Best-effort, never a gate: this is a billing optimisation, and a batch
+  // that cannot be primed must still go out exactly as it does today. Same
+  // posture as recordUsage. It is awaited rather than fired off, because the
+  // write has to land BEFORE the batch is created for any of it to matter.
+  //
+  // Priming on every call of the client's `remaining` loop is deliberate, not
+  // waste: only the first call writes, and the rest hit the entry they just
+  // paid for, which bills a cheap read AND restarts the 5-minute timer ahead
+  // of each batch. That is the one thing protecting a later batch from a cold
+  // prefix when a class is split over several submits.
+  if (collected.length >= MIN_STUDENTS_TO_PRIME) {
+    try {
+      await anthropic.messages.create(
+        buildCachePrimerRequest({ gradeable, testName: test.name, cacheTtl: "5m" })
+      );
+    } catch (e) {
+      console.error(
+        "[ai-grade queue] cache primer failed (submitting anyway):",
+        e instanceof Error ? e.message : e
+      );
+    }
+  }
 
   let anthropicBatchId: string;
   try {

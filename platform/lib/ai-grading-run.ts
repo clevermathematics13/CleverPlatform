@@ -176,6 +176,59 @@ export function buildGradingRequest(args: {
   };
 }
 
+/**
+ * A request that writes this test's cached prefix and nothing else.
+ *
+ * Why it exists: Anthropic runs the requests inside a Message Batch in
+ * parallel, so on a class submitted at once there is no first student to pay
+ * the write and every later one to read it -- they race. Measured on the
+ * 14-student Block A run (14 Sep 2026): a 14,622-token prefix, EIGHT cache
+ * writes and six reads, where one write and thirteen reads was the shape the
+ * batch path was designed for. Priming the prefix synchronously before the
+ * batch goes out turns that into one write and N reads.
+ *
+ * Derived from buildGradingRequest rather than rebuilt from the same pieces,
+ * and deliberately so: caching is a prefix match, one byte of drift between
+ * the primer's blocks and the batch's makes this an expensive no-op that
+ * looks like it is working. This repo has already had that drift once --
+ * scripts/eval-grading.ts is a third hand-copy of the request and still sends
+ * the TTL the routes moved off on 4 Sep 2026 (see this module's header).
+ *
+ * Three deliberate differences from the real request, all required:
+ *  - max_tokens 0. The API runs prefill, writes the cache, and returns
+ *    immediately with no content and no output tokens billed.
+ *  - no output_config. max_tokens 0 is an invalid_request_error when
+ *    output_config.format is present, which the real request always carries.
+ *    Structured output constrains decoding, not the cached prefix, so its
+ *    absence here does not change what gets cached.
+ *  - no PDF and no per-student tail. Both sit AFTER the second breakpoint in
+ *    the real request, so neither is part of the prefix being written.
+ *
+ * If the meters ever show the batch still writing rather than reading (see
+ * the verification query in docs/HANDOFF.md), the assumption to re-test first
+ * is that output_config is outside the prefix; the fallback is max_tokens 1
+ * WITH output_config, which costs one discarded token instead.
+ */
+export function buildCachePrimerRequest(args: {
+  gradeable: GradingUnit[];
+  testName: string;
+  cacheTtl: GradingCacheTtl;
+}): Anthropic.MessageCreateParamsNonStreaming {
+  const real = buildGradingRequest({ ...args, scanBase64: "" });
+  const content = real.messages[0].content as Anthropic.ContentBlockParam[];
+
+  return {
+    model: real.model,
+    max_tokens: 0,
+    temperature: real.temperature,
+    system: real.system,
+    // The cached mark-scheme block only. Note this is a block the real
+    // request genuinely shares, not a placeholder -- a breakpoint on a
+    // placeholder would key the cache to the placeholder and never be read.
+    messages: [{ role: "user", content: [content[0]] }],
+  };
+}
+
 // -----------------------------------------------------------------------------
 // Context loads
 // -----------------------------------------------------------------------------
