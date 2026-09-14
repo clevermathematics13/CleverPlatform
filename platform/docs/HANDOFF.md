@@ -1888,6 +1888,32 @@ normal way to use that button and a prompt there would fire on every attempt.
 The button also names the kind it will write (`Generate Summative From 4
 Sources`), since the formative/summative control now sits below it.
 
-The rest regrouped to match: **The paper** (kind, title, subtitle, cover
-lines), **Exam Conditions** (summative only, next to the cover settings it
-belongs with), **Save & Grade**, **Export**.
+### What sits above the Generate button
+
+The teacher's rule, given while looking at the live panel: the choices for the
+assessment the model is about to write belong ABOVE the button that writes it.
+So the order is **The paper** (formative/summative, and for a summative the
+exam conditions) -> **Start** (open, or generate) -> **Title page** -> **Save &
+Grade** -> **Export**.
+
+What decides the split is whether a generation survives it. The kind steers the
+prompt; the exam conditions ride on `FormattingRequirements`, which a generation
+does not touch. Both are therefore safe, and useful, above the button. Title and
+subtitle are on the DRAFT, which a generation replaces wholesale - typed above
+the button they would be typed only to be overwritten, so they wait below it
+under Title page.
+
+### Where a status line goes
+
+There is still one `notice` at a time, but it now carries the panel that
+produced it (`type Notice = { place; text; tone? }`) and renders there, through
+`NoticeLine`. One fixed location cannot be right for all of them: notices come
+from Start (load, upload, a source shortened), from The paper (the kind switch)
+and from Save & Grade (saved, archived, hints stripped). Parked in Save & Grade,
+"Switched to summative..." printed some eight hundred pixels below the button
+that switched it - off the bottom of a laptop screen, which is where it was
+found, by driving the panel signed in.
+
+`tone` is explicit rather than derived from `pdfsArchived`, which had been
+rendering "Loaded ..." in green whenever the paper being opened happened to
+have archived PDFs - the right colour for a save and meaningless for a load.
