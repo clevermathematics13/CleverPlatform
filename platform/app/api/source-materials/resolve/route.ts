@@ -93,18 +93,18 @@ export async function POST(req: Request) {
 
   const templateIds = byKind.get("template") ?? [];
   if (templateIds.length > 0) {
+    // draft_content only: this table has no `parts` column (that is
+    // nuanced_analyses). Selecting one made the catalogue route 500.
     const { data, error } = await supabase
       .from("assignment_templates")
-      .select("id, template_name, draft_content, parts")
+      .select("id, template_name, draft_content")
       .in("id", templateIds);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     for (const r of data ?? []) {
       texts.set(`template:${r.id}`, {
         title: r.template_name,
         kind: "template",
-        text: r.draft_content
-          ? draftToText(r.draft_content as AssignmentDraft)
-          : harvestText(r.parts).join("\n"),
+        text: r.draft_content ? draftToText(r.draft_content as AssignmentDraft) : "",
       });
     }
   }

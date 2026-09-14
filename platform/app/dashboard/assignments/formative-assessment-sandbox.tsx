@@ -118,12 +118,14 @@ async function fetchSavedAssessments(): Promise<SavedAssessment[] | null> {
  * make a better paper, not the way to make one, and a failed fetch must not put
  * an error banner over a creator that still works.
  */
-async function fetchSourceMaterials(grade: string): Promise<SourceMaterialSummary[] | null> {
+async function fetchSourceMaterials(
+  grade: string,
+): Promise<{ materials: SourceMaterialSummary[]; warnings: string[] } | null> {
   try {
     const res = await fetch(`/api/source-materials?grade=${encodeURIComponent(grade)}`);
     if (!res.ok) return null;
-    const data = (await res.json()) as { materials?: SourceMaterialSummary[] };
-    return data.materials ?? [];
+    const data = (await res.json()) as { materials?: SourceMaterialSummary[]; warnings?: string[] };
+    return { materials: data.materials ?? [], warnings: data.warnings ?? [] };
   } catch {
     return null;
   }
@@ -201,6 +203,13 @@ export function FormativeAssessmentSandbox() {
   const [boundarySets, setBoundarySets] = useState<BoundarySetOption[]>([]);
   const [boundarySetId, setBoundarySetId] = useState("");
   const [materials, setMaterials] = useState<SourceMaterialSummary[]>([]);
+  /**
+   * Origins the catalogue could not read. Shown rather than swallowed: an
+   * empty list reads as "you have not uploaded anything", which is the wrong
+   * thing to believe when the truth is that the query failed.
+   */
+  const [materialWarnings, setMaterialWarnings] = useState<string[]>([]);
+  const [materialsFailed, setMaterialsFailed] = useState(false);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -284,8 +293,15 @@ export function FormativeAssessmentSandbox() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const list = await fetchSourceMaterials(gradeLevel);
-      if (!cancelled && list) setMaterials(list);
+      const result = await fetchSourceMaterials(gradeLevel);
+      if (cancelled) return;
+      if (!result) {
+        setMaterialsFailed(true);
+        return;
+      }
+      setMaterials(result.materials);
+      setMaterialWarnings(result.warnings);
+      setMaterialsFailed(false);
     })();
     return () => {
       cancelled = true;
@@ -416,8 +432,11 @@ export function FormativeAssessmentSandbox() {
       };
       if (!res.ok || !data.material) throw new Error(data.error ?? `Upload failed (${res.status})`);
 
-      const list = await fetchSourceMaterials(gradeLevel);
-      if (list) setMaterials(list);
+      const refreshed = await fetchSourceMaterials(gradeLevel);
+      if (refreshed) {
+        setMaterials(refreshed.materials);
+        setMaterialWarnings(refreshed.warnings);
+      }
       // Selected on arrival: uploading it is the act of choosing it.
       setSelectedSourceIds((prev) => [...prev, data.material!.id]);
       setNotice(
@@ -841,9 +860,19 @@ export function FormativeAssessmentSandbox() {
               notation and worked examples in what you choose.
             </p>
 
+            {(materialsFailed || materialWarnings.length > 0) && (
+              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-200">
+                {materialsFailed
+                  ? "The catalogue could not be loaded, so this list is empty for a reason that is not you. Reload the page."
+                  : materialWarnings.join(" ")}
+              </p>
+            )}
+
             {materials.length === 0 ? (
               <p className="text-xs text-da-muted">
-                Nothing catalogued for {gradeLevel} yet. Add a file below.
+                {materialsFailed
+                  ? "Nothing to show while the catalogue is unavailable."
+                  : `Nothing catalogued for ${gradeLevel} yet. Add a file below.`}
               </p>
             ) : (
               <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
