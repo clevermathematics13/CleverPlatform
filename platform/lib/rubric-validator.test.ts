@@ -463,3 +463,54 @@ describe("validateRubric", () => {
     expect(findings.map((f) => f.part)).toEqual(["Q1(a)", "Q1(b)"]);
   });
 });
+
+describe("rule 15 -- the mathematical register", () => {
+  const draftWith = (question: string, scheme: string): AssignmentDraft => ({
+    title: "T",
+    subtitle: "S",
+    instructions: [],
+    sections: [
+      {
+        heading: "LEVEL 1 -- READ",
+        questions: [{ prompt: "Consider the expressions.", marks: 1, subparts: [
+          { prompt: question, marks: 1, answer: "a", markScheme: scheme, requiresWorking: false },
+        ] }],
+      },
+    ],
+  }) as unknown as AssignmentDraft;
+
+  it("flags the wording that shipped on the Grade 9 summative", () => {
+    const findings = validateRubric(
+      draftWith("State precisely where the two expressions agree.", "R1 for the right place."),
+    );
+    const hit = findings.find((f) => f.code === "loose-mathematical-register");
+    expect(hit).toBeDefined();
+    expect(hit!.rule).toBe(15);
+    expect(hit!.message).toMatch(/EQUAL/);
+  });
+
+  it("reads the mark scheme too, not only the question", () => {
+    const findings = validateRubric(
+      draftWith("State the values of $x$ for which the two expressions are equal.",
+                "R1 where the student shows the expressions agree everywhere except 5."),
+    );
+    const hit = findings.find((f) => f.code === "loose-mathematical-register");
+    expect(hit).toBeDefined();
+    expect(hit!.message).toMatch(/mark scheme/);
+  });
+
+  it("never blocks a save -- a teacher may have a reason", () => {
+    const findings = validateRubric(draftWith("Cancel the common factor.", "A1."));
+    const hits = findings.filter((f) => f.code === "loose-mathematical-register");
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((f) => f.severity === "warn")).toBe(true);
+  });
+
+  it("stays quiet on the corrected wording", () => {
+    const findings = validateRubric(
+      draftWith("State the value of $w$ for which this equation is undefined.",
+                "A1 for $w = 3$. Accept the restriction written as $w \\neq 3$."),
+    );
+    expect(findings.filter((f) => f.code === "loose-mathematical-register")).toEqual([]);
+  });
+});

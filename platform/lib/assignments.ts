@@ -1,5 +1,6 @@
 // Shared types and utilities for assignment sandboxes across all grade levels
 
+import { mathematicalRegisterBlock } from "./mathematical-register";
 import { sanitizeJsonBackslashes, sanitizeJsonEmbeddedQuotes } from "./json-repair";
 
 export type DocumentKind = "activity-sheet" | "practice-set" | "investigation";
@@ -398,6 +399,8 @@ export function buildActivityGeneratorSystemPrompt(
       ? "18. For IBDP: include at least one proof question (Show that/Prove), one Broken Math Critique part, and one technology task (GeoGebra/Desmos)."
       : `18. For ${gradeLevel}: include at least one real-world application and one error-analysis question.`,
     ...(isMYP ? MYP_ROLLING_BUNDLE_RULES : []),
+    "",
+    mathematicalRegisterBlock(),
     ...(continuityContext ? ["", continuityContext] : []),
   ].join("\n");
 }
@@ -445,6 +448,8 @@ export function buildSystemPrompt(gradeLevel: string): string {
     "- Include a mix of procedural fluency and reasoning.",
     "- Ensure marks are sensible for each prompt.",
     "- Keep prompts plain text (no markdown).",
+    "",
+    mathematicalRegisterBlock(),
   ].join("\n");
 }
 

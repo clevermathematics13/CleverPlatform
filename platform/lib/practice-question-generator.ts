@@ -27,6 +27,7 @@
  * approved it -- see the approved_at gate in migration 20260911170521.
  */
 
+import { mathematicalRegisterBlock } from "./mathematical-register";
 import fs from "node:fs";
 import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
@@ -100,7 +101,7 @@ const ROLE_PREAMBLE = `You write original mathematics questions for IB Diploma P
 The rules that follow are the teacher's own, loaded from the platform at runtime. Follow them exactly. They are not suggestions, and the first of them -- that your question must not be a reworded copy of the source -- is the entire reason this task exists.`;
 
 export function buildAuthoringSystemPrompt(): string {
-  return `${ROLE_PREAMBLE}\n\n---\n\n${AUTHORING_GUIDE}`;
+  return `${ROLE_PREAMBLE}\n\n---\n\n${mathematicalRegisterBlock()}\n\n---\n\n${AUTHORING_GUIDE}`;
 }
 
 /** The per-question instruction. Exported for the tests, which assert that the
