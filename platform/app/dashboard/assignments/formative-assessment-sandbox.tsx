@@ -583,6 +583,10 @@ export function FormativeAssessmentSandbox() {
                   levelCount,
                   contextNotes: contextNotes || undefined,
                   kind,
+                  // The exam conditions steer the paper, not just its cover:
+                  // the teacher set them above this button for that reason.
+                  calculatorPolicy: formatting.calculatorPolicy,
+                  timeAllowedMinutes: formatting.timeAllowedMinutes,
                 }) + sourcePrompt,
             },
           ],
