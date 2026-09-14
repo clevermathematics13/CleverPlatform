@@ -110,6 +110,14 @@ export type AssignmentQuestion = {
     marks?: number;
     answer?: string;
     hint?: string;
+    /**
+     * Lines of answer space for THIS subpart. Without it a subpart inherits
+     * half the question's allowance and never drops below MIN_USEFUL_LINES,
+     * which gives three ruled lines to "state the coefficient" -- three times
+     * the space the answer needs, and a signal to the student that more is
+     * wanted than a single value.
+     */
+    answerBoxLines?: number;
     tier?: 1 | 2 | 3;
     contentTag?: string;
     skillTag?: string;

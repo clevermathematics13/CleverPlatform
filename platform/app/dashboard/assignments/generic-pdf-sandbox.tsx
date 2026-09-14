@@ -17,6 +17,8 @@ import {
   detectDuplicateQuestions,
 } from "@/lib/assignments";
 import { ActivityGeneratorPanel } from "./activity-generator";
+// POST /api/claude streams SSE, not JSON -- see claude-stream.ts.
+import { readClaudeStream } from "./claude-stream";
 import { NuancedAnalysisPreview } from "./nuanced-analysis-preview";
 
 type GenericSandboxProps = {
@@ -143,7 +145,7 @@ export function GenericAssignmentSandbox({
         body: JSON.stringify({ system: buildSystemPrompt(gradeLevel), messages: [{ role: "user", content: buildUserPrompt(input, formatting) }] }),
       });
       if (!response.ok) { const d = (await response.json()) as { error?: string }; throw new Error(d.error ?? `AI request failed with status ${response.status}`); }
-      const data = (await response.json()) as ClaudeResponse;
+      const data = await readClaudeStream(response);
       const rawText = data.content?.find((block) => block.type === "text")?.text ?? "";
       const json = extractJsonObject(rawText);
       const parsed = JSON.parse(json) as AssignmentDraft;

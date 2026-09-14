@@ -64,6 +64,8 @@ export const QuestionSubpartSchema = z.object({
   markScheme: z.string().optional(),
   /** Formative Assessment: render a "Working / reasoning" box before the answer line. */
   requiresWorking: z.boolean().optional(),
+  /** Answer lines for this subpart alone; see AssignmentDraft's subpart type. */
+  answerBoxLines: z.number().int().min(1).max(20).optional(),
 });
 
 export const AssignmentQuestionSchema = z.object({
@@ -220,6 +222,9 @@ export const AssignmentPdfRequestSchema = z.object({
             tier: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
             markScheme: z.string().optional(),
             requiresWorking: z.boolean().optional(),
+            /** Answer lines for this subpart alone -- kept in step with
+             *  QuestionSubpartSchema above; these two are hand-synced. */
+            answerBoxLines: z.number().int().min(1).max(20).optional(),
           })).optional(),
         })
       ).min(1),

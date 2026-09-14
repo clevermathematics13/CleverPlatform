@@ -56,18 +56,39 @@ import { buildExamConditionsHtml, EXAM_CONDITIONS_CSS, marksLabel } from "./exam
 
 // -- KaTeX rendering -----------------------------------------------------------
 
+/**
+ * A literal dollar, written \$ as in LaTeX, stands in for itself while the
+ * delimiters are matched. Without this a price is a delimiter: "charges $28
+ * for each adult and $16 for each child" pairs its two dollars and typesets
+ * "28 for each adult and" as mathematics. That is not hypothetical -- it is
+ * what Formative Assessment 1 printed.
+ */
+const LITERAL_DOLLAR = "\u0000DOLLAR\u0000";
+
 export function renderMath(input: string): string {
-  let output = input.replace(/\$\$([\s\S]+?)\$\$/g, (_match, tex: string) => {
+  let output = input.replace(/\\\$/g, LITERAL_DOLLAR);
+
+  output = output.replace(/\$\$([\s\S]+?)\$\$/g, (_match, tex: string) => {
     try {
       return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false, output: "htmlAndMathml" });
     } catch { return escapeHtml(tex); }
   });
-  output = output.replace(/(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, (_match, tex: string) => {
-    try {
-      return katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false, output: "htmlAndMathml" });
-    } catch { return escapeHtml(tex); }
-  });
-  return output;
+
+  // Inline maths may not open or close on whitespace. This is the usual
+  // markdown-math rule, and it is the second half of the currency defect: an
+  // author who writes a bare "$28 ... $16" produces a span ending in a space,
+  // which is prose, not an expression.
+  output = output.replace(
+    /(?<!\$)\$(?!\$)(\S[^$\n]*?|\S)(?<!\$)\$(?!\$)/g,
+    (match, tex: string) => {
+      if (/\s$/.test(tex)) return match;
+      try {
+        return katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false, output: "htmlAndMathml" });
+      } catch { return escapeHtml(tex); }
+    },
+  );
+
+  return output.split(LITERAL_DOLLAR).join("$");
 }
 
 // -- Pagination constants ------------------------------------------------------
@@ -209,7 +230,11 @@ function renderQuestion(
             ? `<span class="marks">[${sp.marks}]</span>` : "";
           const spTier = sp.tier ? tierBadge(sp.tier) : "";
           const spHint = sp.hint ? `<div class="hint"><em>Hint: ${escapeHtml(sp.hint)}</em></div>` : "";
-          const spAnswerLines = Math.max(MIN_USEFUL_LINES, Math.ceil(answerLines / 2));
+          // A subpart's own allowance wins. The inherited half-of-the-question
+          // floor is a sensible default for a worked subpart and far too much
+          // for one that asks for a single word or value.
+          const spAnswerLines =
+            sp.answerBoxLines ?? Math.max(MIN_USEFUL_LINES, Math.ceil(answerLines / 2));
           const spAnswerHtml = sp.requiresWorking
             ? renderWorkingAndAnswerBox(spAnswerLines, formatting.answerLineHeightMm)
             : renderAnswerBox(spAnswerLines, formatting.answerLineHeightMm);
