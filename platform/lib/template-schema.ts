@@ -37,6 +37,18 @@ export const FormattingRequirementsSchema = z.object({
   answerStyle: z.enum(["boxes", "lines", "none"]).optional(),
   /** Formative Assessment title page: a write-in line for the student's class/block. */
   includeBlockLine: z.boolean().optional(),
+  // -- Exam conditions, rendered by lib/exam-conditions.ts on BOTH the paper
+  // and the mark scheme. Keep in step with FormattingRequirements in
+  // lib/assignments.ts: the two are hand-synced and have drifted before
+  // (answerLineHeightMm is in this schema and not in that type).
+  /** Which calculator the student may use. Absent prints no calculator line. */
+  calculatorPolicy: z.enum(["not-permitted", "basic", "graphing", "graphing-required"]).optional(),
+  /** Minutes allowed for the whole paper. Absent prints no time line. */
+  timeAllowedMinutes: z.number().int().min(1).max(600).optional(),
+  /** Print "Total: n marks" on the cover. */
+  showTotalMarks: z.boolean().optional(),
+  /** The declaration the student is sitting under. Absent prints nothing. */
+  academicHonestyLine: z.string().max(500).optional(),
 });
 
 export type ValidatedFormattingRequirements = z.infer<typeof FormattingRequirementsSchema>;

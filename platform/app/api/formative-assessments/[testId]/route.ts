@@ -6,7 +6,8 @@
  * draft even though `tests.custom_content` had held it all along. This route
  * is the read side of that, and returns everything the sandbox needs to come
  * back to the exact state it saved from -- the draft, the formatting it was
- * rendered with, the course, and the self-assessment gate.
+ * rendered with, the course, the self-assessment gate, and whether it is a
+ * formative or a summative.
  *
  * Deliberately not GET /api/tests/[id], which serves the test detail form:
  * that one returns `test_items` (the lean grading projection) and none of the
@@ -18,6 +19,7 @@ import { NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { DEFAULT_ASSESSMENT_FORMATTING } from "@/lib/formative-assessment-pdf-body";
 import { FormattingRequirementsSchema } from "@/lib/template-schema";
+import { parseAssessmentKind } from "@/lib/assessment-kind";
 
 export const runtime = "nodejs";
 
@@ -31,8 +33,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ testId:
     .from("tests")
     .select(
       `id, name, course_id, total_marks, custom_content, assessment_formatting,
-       require_self_assessment, paper_pdf_storage_path, mark_scheme_pdf_storage_path,
-       pdfs_generated_at`,
+       require_self_assessment, assessment_kind, boundary_set_id,
+       paper_pdf_storage_path, mark_scheme_pdf_storage_path, pdfs_generated_at`,
     )
     .eq("id", testId)
     .maybeSingle();
@@ -45,7 +47,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ testId:
     return NextResponse.json(
       {
         error:
-          "This test was not created in the Formative Assessment creator, so it has no draft to load.",
+          "This test was not created in the assessment creator, so it has no draft to load.",
       },
       { status: 409 },
     );
@@ -66,6 +68,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ testId:
     formatting,
     formattingSource: parsed.success ? "stored" : "default",
     requireSelfAssessment: test.require_self_assessment !== false,
+    assessmentKind: parseAssessmentKind(test.assessment_kind),
+    // Null is a real answer here -- a summative without one reports a raw
+    // score and an "~approx" band instead of a grade, and the creator says so.
+    boundarySetId: test.boundary_set_id,
     pdfsArchived: Boolean(test.paper_pdf_storage_path && test.mark_scheme_pdf_storage_path),
     pdfsGeneratedAt: test.pdfs_generated_at,
   });

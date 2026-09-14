@@ -3,10 +3,17 @@
 /**
  * FormativeAssessmentSandbox
  * --------------------------
- * Creator for a standalone Formative Assessment: a fixed-format test with
- * LEVEL bands, numbered questions/subparts each carrying a printed mark
- * value and a free-text M/A/R/FT mark scheme, plus paper-wide marking
+ * Creator for a standalone assessment, FORMATIVE OR SUMMATIVE: a fixed-format
+ * test with LEVEL bands, numbered questions/subparts each carrying a printed
+ * mark value and a free-text M/A/R/FT mark scheme, plus paper-wide marking
  * principles and a reteach guide.
+ *
+ * The kind is one control at the top, and everything that follows from it is
+ * in lib/assessment-kind.ts: exam conditions printed on both PDFs, hints
+ * stripped, a boundary set required, self-assessment forced on, and every
+ * below-high-confidence AI grade held for the teacher. Authoring a summative
+ * is otherwise the same job as authoring a formative, deliberately -- the
+ * teacher who has written one already knows how to write the other.
  *
  * Deliberately distinct from Nuanced Analysis (NuancedAnalysisSandbox) and
  * self-contained rather than reusing NuancedAnalysisPreview — that shared
@@ -45,6 +52,15 @@ import {
   buildFormativeAssessmentPdfBody,
 } from "@/lib/formative-assessment-pdf-body";
 import {
+  ASSESSMENT_KINDS,
+  applyKindFormatting,
+  applyKindRules,
+  countHints,
+  resolveRequireSelfAssessment,
+  type AssessmentKind,
+} from "@/lib/assessment-kind";
+import { CALCULATOR_POLICY_OPTIONS } from "@/lib/exam-conditions";
+import {
   editorSnapshot,
   needsDiscardConfirmation,
   loadButtonState,
@@ -54,6 +70,7 @@ import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 
 type CourseOption = { id: string; name: string };
+type BoundarySetOption = { id: string; name: string };
 type ClaudeResponse = { content?: Array<{ type: string; text?: string }> };
 
 /** One row of GET /api/formative-assessments, for the load picker. */
@@ -65,6 +82,7 @@ type SavedAssessment = {
   createdAt: string;
   pdfsGeneratedAt: string | null;
   itemCount: number;
+  assessmentKind: AssessmentKind;
 };
 
 /**
@@ -91,8 +109,20 @@ async function fetchSavedAssessments(): Promise<SavedAssessment[] | null> {
 // or the archived copy is not the one the teacher previewed.
 const DEFAULT_FORMATTING: FormattingRequirements = DEFAULT_ASSESSMENT_FORMATTING;
 
+/**
+ * The starting title for each kind, and the set this component is allowed to
+ * overwrite when the kind changes. A title the teacher has typed is theirs; a
+ * default left untouched is just the wrong word on the cover, and "Formative
+ * Assessment 1" printed on a paper that counts is the kind of thing nobody
+ * notices until it is photocopied.
+ */
+const DEFAULT_TITLES: Record<AssessmentKind, string> = {
+  formative: "Formative Assessment 1",
+  summative: "Summative Assessment 1",
+};
+
 const DEFAULT_DRAFT: AssignmentDraft = {
-  title: "Formative Assessment 1",
+  title: DEFAULT_TITLES.formative,
   subtitle: "Grade 9 Mathematics",
   instructions: [
     "Answer every part. Each part shows how many marks it is worth.",
@@ -142,6 +172,9 @@ export function FormativeAssessmentSandbox() {
   const [savedTestId, setSavedTestId] = useState<string | null>(null);
   const [pdfsArchived, setPdfsArchived] = useState(false);
   const [requireSelfAssessment, setRequireSelfAssessment] = useState(true);
+  const [kind, setKind] = useState<AssessmentKind>("formative");
+  const [boundarySets, setBoundarySets] = useState<BoundarySetOption[]>([]);
+  const [boundarySetId, setBoundarySetId] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingMs, setIsExportingMs] = useState(false);
@@ -165,9 +198,12 @@ export function FormativeAssessmentSandbox() {
    * or loading has to re-render.
    */
   const [cleanSnapshot, setCleanSnapshot] = useState(
-    editorSnapshot(DEFAULT_DRAFT, DEFAULT_FORMATTING),
+    editorSnapshot(DEFAULT_DRAFT, DEFAULT_FORMATTING, "formative"),
   );
-  const currentSnapshot = useMemo(() => editorSnapshot(draft, formatting), [draft, formatting]);
+  const currentSnapshot = useMemo(
+    () => editorSnapshot(draft, formatting, kind),
+    [draft, formatting, kind],
+  );
   const hasUnsavedWork = currentSnapshot !== cleanSnapshot;
   const openButton = loadButtonState({
     loadId,
@@ -182,6 +218,21 @@ export function FormativeAssessmentSandbox() {
       const supabase = createClient();
       const { data } = await supabase.from("courses").select("id, name").eq("archived", false).order("name");
       if (!cancelled && data) setCourses(data as CourseOption[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Same shape again. A summative needs one of these or its mark reports as a
+  // raw score with an approximate band rather than a grade; Grade 9 has its
+  // own set, separate from the DP progression sets.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase.from("grade_boundary_sets").select("id, name").order("name");
+      if (!cancelled && data) setBoundarySets(data as BoundarySetOption[]);
     })();
     return () => {
       cancelled = true;
@@ -218,6 +269,38 @@ export function FormativeAssessmentSandbox() {
     updateSection(sIdx, (s) => ({ ...s, questions: s.questions.map((q, i) => (i === qIdx ? updater(q) : q)) }));
   }
 
+  /**
+   * Switch between formative and summative.
+   *
+   * Does everything the switch implies rather than only setting a flag: the
+   * cover conditions go on or come off, the hints go (a summative prints
+   * whatever it is handed), self-assessment is forced on, and a title still
+   * sitting at the other kind's default is renamed. A control that changes one
+   * thing and leaves five others to be remembered is a control that gets a
+   * formative saved as a summative.
+   */
+  function changeKind(next: AssessmentKind) {
+    if (next === kind) return;
+    setKind(next);
+    setFormatting((f) => applyKindFormatting(next, f));
+    setRequireSelfAssessment((current) => resolveRequireSelfAssessment(next, current));
+    setDraft((d) => {
+      const stripped = applyKindRules(next, d);
+      const other: AssessmentKind = next === "summative" ? "formative" : "summative";
+      return d.title.trim() === DEFAULT_TITLES[other]
+        ? { ...stripped, title: DEFAULT_TITLES[next] }
+        : stripped;
+    });
+    setNotice(
+      next === "summative"
+        ? "Switched to summative. Exam conditions now print on the paper and the mark scheme, hints are removed, " +
+            "self-assessment is required, and a grade boundary set has to be chosen before you can save."
+        : "Switched to formative. The exam conditions have been cleared from the cover.",
+    );
+  }
+
+  const hintsOnPaper = useMemo(() => countHints(draft), [draft]);
+
   async function generateWithAi() {
     setIsGenerating(true);
     setError(null);
@@ -226,7 +309,7 @@ export function FormativeAssessmentSandbox() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: buildFormativeAssessmentSystemPrompt(),
+          system: buildFormativeAssessmentSystemPrompt(kind),
           messages: [
             {
               role: "user",
@@ -236,6 +319,7 @@ export function FormativeAssessmentSandbox() {
                 totalMarks: totalMarksTarget,
                 levelCount,
                 contextNotes: contextNotes || undefined,
+                kind,
               }),
             },
           ],
@@ -249,7 +333,10 @@ export function FormativeAssessmentSandbox() {
       const rawText = data.content?.find((block) => block.type === "text")?.text ?? "";
       const json = extractJsonObject(rawText);
       const parsed = JSON.parse(json) as AssignmentDraft;
-      setDraft(sanitizeDraft(parsed));
+      // applyKindRules on the way out of the model as well as on the way into
+      // the save: rule S1 tells it not to write hints on a summative, and this
+      // is what makes that true rather than likely.
+      setDraft(applyKindRules(kind, sanitizeDraft(parsed)));
       // A generated draft is new work, not an edit of whatever was open: it
       // saves to a new test, and the archive on screen is not its archive.
       setSavedTestId(null);
@@ -330,14 +417,19 @@ export function FormativeAssessmentSandbox() {
         formatting?: FormattingRequirements;
         formattingSource?: "stored" | "default";
         requireSelfAssessment?: boolean;
+        assessmentKind?: AssessmentKind;
+        boundarySetId?: string | null;
         pdfsArchived?: boolean;
       };
       if (!res.ok || !data.draft) throw new Error(data.error ?? `Load failed (${res.status})`);
 
+      const loadedKind: AssessmentKind = data.assessmentKind === "summative" ? "summative" : "formative";
       setDraft(data.draft);
       if (data.formatting) setFormatting(data.formatting);
       setCourseId(data.courseId ?? "");
       setRequireSelfAssessment(data.requireSelfAssessment !== false);
+      setKind(loadedKind);
+      setBoundarySetId(data.boundarySetId ?? "");
       setSavedTestId(loadId);
       setPdfsArchived(Boolean(data.pdfsArchived));
       // Findings belong to the draft that produced them; carrying them over
@@ -345,11 +437,14 @@ export function FormativeAssessmentSandbox() {
       setRubricFindings([]);
       setRubricBlocked(false);
       setLoadConfirm(false);
-      setCleanSnapshot(editorSnapshot(data.draft, data.formatting ?? DEFAULT_FORMATTING));
+      setCleanSnapshot(
+        editorSnapshot(data.draft, data.formatting ?? DEFAULT_FORMATTING, loadedKind),
+      );
+      const what = loadedKind === "summative" ? "summative" : "formative";
       setNotice(
         data.formattingSource === "default"
-          ? `Loaded "${data.name ?? "assessment"}". It was saved before layout settings were kept, so those are back to the defaults -- check them before exporting.`
-          : `Loaded "${data.name ?? "assessment"}". Saving writes back to this same test.`,
+          ? `Loaded "${data.name ?? "assessment"}" (${what}). It was saved before layout settings were kept, so those are back to the defaults -- check them before exporting.`
+          : `Loaded "${data.name ?? "assessment"}" (${what}). Saving writes back to this same test.`,
       );
     } catch (err) {
       setError(`Load failed: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -369,6 +464,15 @@ export function FormativeAssessmentSandbox() {
       setError("Select a course before saving -- this is what makes the assessment gradeable.");
       return;
     }
+    // Checked here as well as in the route. The route is the guarantee; this
+    // is so the teacher finds out before a save that renders two PDFs.
+    if (kind === "summative" && !boundarySetId) {
+      setError(
+        "Choose a grade boundary set before saving a summative -- without one the mark reports as a raw " +
+          "score with an approximate band instead of a grade.",
+      );
+      return;
+    }
     setIsSaving(true);
     setError(null);
     setNotice(null);
@@ -382,6 +486,8 @@ export function FormativeAssessmentSandbox() {
           courseId,
           draft,
           requireSelfAssessment,
+          assessmentKind: kind,
+          ...(boundarySetId ? { boundarySetId } : {}),
           // Sent so the archived PDFs are the paper on screen, not a
           // default-formatted lookalike.
           formatting,
@@ -394,6 +500,7 @@ export function FormativeAssessmentSandbox() {
         testItems?: string;
         pdfs?: "archived" | "failed";
         pdfsError?: string;
+        hintsRemoved?: number;
         rubric?: { findings: RubricFinding[]; summary: { blocking: number; warnings: number } };
       };
 
@@ -408,12 +515,18 @@ export function FormativeAssessmentSandbox() {
       if (!res.ok) throw new Error(data.error ?? `Save failed (${res.status})`);
 
       setRubricBlocked(false);
+      // The route strips hints from a summative before storing it, so the
+      // editor has to follow -- and the clean snapshot has to be taken from
+      // the STRIPPED draft, or the editor is permanently one hint away from
+      // what was saved and never stops warning about unsaved work.
+      const storedDraft = (data.hintsRemoved ?? 0) > 0 ? applyKindRules(kind, draft) : draft;
+      if (storedDraft !== draft) setDraft(storedDraft);
       setSavedTestId(data.test?.id ?? null);
       setPdfsArchived(data.pdfs === "archived");
       // This is now the saved state, so loading something else no longer has
       // unsaved work to warn about. Refresh the picker too: a first save adds
       // a row to it, and a re-save moves this one's totals.
-      setCleanSnapshot(currentSnapshot);
+      setCleanSnapshot(editorSnapshot(storedDraft, formatting, kind));
       if (data.test?.id) setLoadId(data.test.id);
       void fetchSavedAssessments().then((list) => {
         if (list) setSaved(list);
@@ -423,6 +536,13 @@ export function FormativeAssessmentSandbox() {
         data.testItems === "synced"
           ? "Saved -- ready to grade scanned student papers."
           : "Saved, but syncing gradeable items failed -- try saving again.";
+      // Said out loud rather than done quietly: a hint the teacher wrote and
+      // then did not see on the paper is a change they are entitled to know
+      // about, even though it is the right change.
+      const stripped =
+        (data.hintsRemoved ?? 0) > 0
+          ? ` ${data.hintsRemoved} hint(s) were removed -- a summative does not print them.`
+          : "";
       // A failed archive is called out rather than folded into the notice: the
       // whole point of archiving on save is that nobody has to remember, so a
       // save that did not archive must not read as a clean success.
@@ -432,8 +552,8 @@ export function FormativeAssessmentSandbox() {
           : ` The PDFs were NOT archived (${data.pdfsError ?? "unknown error"}) -- save again to retry, or download them below and keep a copy.`;
       setNotice(
         warnings > 0
-          ? `${saved}${archive} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
-          : `${saved}${archive}`,
+          ? `${saved}${archive}${stripped} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
+          : `${saved}${archive}${stripped}`,
       );
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -447,6 +567,37 @@ export function FormativeAssessmentSandbox() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         {/* -- Left panel: generation + settings -- */}
         <div className="space-y-5">
+          {/* First control on the page. Everything below it -- what the model
+              is asked for, what prints on the cover, what a batch accept is
+              allowed to write -- depends on the answer, so it is not something
+              to find after writing the paper. */}
+          <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
+            <h2 className="text-lg font-semibold font-serif text-da-text">What is this?</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {ASSESSMENT_KINDS.map((option) => {
+                const active = kind === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => changeKind(option.value)}
+                    aria-pressed={active}
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                      active
+                        ? "border-da-accent/70 bg-da-accent/20 text-da-text"
+                        : "border-da-border bg-da-hover text-da-muted hover:border-da-accent/60"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-da-muted">
+              {ASSESSMENT_KINDS.find((o) => o.value === kind)?.blurb}
+            </p>
+          </div>
+
           {/* Above "Generate with AI" on purpose: resuming an existing paper is
               the first question when you open this tab, and answering it after
               generating one means throwing that generation away. */}
@@ -468,6 +619,7 @@ export function FormativeAssessmentSandbox() {
                   <option value="">Select one…</option>
                   {saved.map((s) => (
                     <option key={s.id} value={s.id}>
+                      {s.assessmentKind === "summative" ? "[Summative] " : ""}
                       {s.name} — {s.courseName} — {s.itemCount} parts
                       {s.totalMarks ? `/${s.totalMarks} marks` : ""} — {formatSavedDate(s.createdAt)}
                     </option>
@@ -557,11 +709,39 @@ export function FormativeAssessmentSandbox() {
                 ))}
               </select>
             </label>
+            {kind === "summative" && (
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-da-muted">Grade boundary set</span>
+                <select
+                  value={boundarySetId}
+                  onChange={(e) => setBoundarySetId(e.target.value)}
+                  className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
+                >
+                  <option value="">Select a boundary set…</option>
+                  {boundarySets.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="block text-[11px] text-da-muted">
+                  Grade 9 has its own set. Without one the mark reports as a raw score with an
+                  approximate band, not a grade.
+                </span>
+              </label>
+            )}
             <ToggleField
               label="Require self-assessment before releasing Clev's Marks"
               checked={requireSelfAssessment}
               onChange={setRequireSelfAssessment}
+              disabled={kind === "summative"}
             />
+            {kind === "summative" && (
+              <p className="text-[11px] text-da-muted">
+                Required on a summative, and not a choice: students judge their own work before they
+                see the marks you approved.
+              </p>
+            )}
             <button
               type="button"
               onClick={() => handleSave()}
@@ -601,6 +781,72 @@ export function FormativeAssessmentSandbox() {
               <p className={`text-xs ${pdfsArchived ? "text-emerald-300" : "text-amber-300"}`}>{notice}</p>
             )}
           </div>
+
+          {kind === "summative" && (
+            // Prints on the paper AND on the mark scheme, from one place --
+            // see lib/exam-conditions.ts. The marker needs the calculator rule
+            // as much as the student does.
+            <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">
+                Exam Conditions
+              </h3>
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-da-muted">Calculator policy</span>
+                <select
+                  value={formatting.calculatorPolicy ?? "not-permitted"}
+                  onChange={(e) =>
+                    setFormatting((f) => ({
+                      ...f,
+                      calculatorPolicy: e.target.value as NonNullable<
+                        FormattingRequirements["calculatorPolicy"]
+                      >,
+                    }))
+                  }
+                  className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
+                >
+                  {CALCULATOR_POLICY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <LabeledInput
+                  label="Time allowed (min)"
+                  type="number"
+                  value={String(formatting.timeAllowedMinutes ?? "")}
+                  onChange={(v) =>
+                    setFormatting((f) => ({
+                      ...f,
+                      timeAllowedMinutes: Number(v) > 0 ? Number(v) : undefined,
+                    }))
+                  }
+                />
+                <ToggleField
+                  label="Print total marks"
+                  checked={formatting.showTotalMarks !== false}
+                  onChange={(c) => setFormatting((f) => ({ ...f, showTotalMarks: c }))}
+                />
+              </div>
+              <LabeledTextArea
+                label="Academic honesty line"
+                value={formatting.academicHonestyLine ?? ""}
+                onChange={(v) => setFormatting((f) => ({ ...f, academicHonestyLine: v }))}
+                rows={3}
+              />
+              <p className="text-[11px] text-da-muted">
+                Printed on the student paper and on the mark scheme. The total is {totalMarks} marks,
+                counted from the questions below.
+              </p>
+              {hintsOnPaper > 0 && (
+                <p className="text-[11px] text-amber-300">
+                  {hintsOnPaper} hint(s) are still on this draft and will be removed when it is
+                  saved -- a summative does not print them.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Title Page</h3>
@@ -976,11 +1222,32 @@ function LabeledTextArea({ label, value, onChange, rows }: { label: string; valu
   );
 }
 
-function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (c: boolean) => void }) {
+function ToggleField({
+  label,
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (c: boolean) => void;
+  /** Shown as on and not editable -- for a setting the kind of paper decides. */
+  disabled?: boolean;
+}) {
   return (
-    <label className="flex items-center justify-between rounded-md border border-da-border bg-da-bg/30 px-2.5 py-2 text-sm">
+    <label
+      className={`flex items-center justify-between rounded-md border border-da-border bg-da-bg/30 px-2.5 py-2 text-sm ${
+        disabled ? "opacity-70" : ""
+      }`}
+    >
       <span className="text-da-text/90">{label}</span>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 accent-amber-500 disabled:cursor-not-allowed"
+      />
     </label>
   );
 }

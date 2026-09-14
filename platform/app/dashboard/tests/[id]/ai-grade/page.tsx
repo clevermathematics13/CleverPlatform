@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AiGradeClient } from "./ai-grade-client";
+import { parseAssessmentKind } from "@/lib/assessment-kind";
 
 export default async function AiGradePage({
   params,
@@ -14,7 +15,7 @@ export default async function AiGradePage({
   const supabase = await createClient();
   const { data: test } = await supabase
     .from("tests")
-    .select("id, name, test_date")
+    .select("id, name, test_date, assessment_kind")
     .eq("id", id)
     .maybeSingle();
 
@@ -50,7 +51,10 @@ export default async function AiGradePage({
         </p>
       </div>
 
-      <AiGradeClient testId={test.id as string} />
+      <AiGradeClient
+        testId={test.id as string}
+        assessmentKind={parseAssessmentKind(test.assessment_kind)}
+      />
     </div>
   );
 }
