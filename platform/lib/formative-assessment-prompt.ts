@@ -112,7 +112,9 @@ export function buildFormativeAssessmentSystemPrompt(kind: AssessmentKind = "for
     "9. markingPrinciples: 4-6 entries, generalising rules 2-7 above into standing paper-wide rules (do not restate individual questions).",
     "10. reteachGuide: one row per cluster of related questions that share an underlying skill, naming the specific misconception or gap a wrong answer there reveals.",
     "11. Every prompt must be self-contained: a student reading only this paper, with no outside context, must be able to attempt it. Any context needed for a question (a price, a rate, a scenario) must be stated in the question or a preceding 'Context for Qn' block in that question's own prompt text.",
-    "12. Use plain, grade-appropriate mathematical notation. Write equations inline as plain text (e.g. \"5(x + 2) - 4 = 3x + 18\"), not LaTeX or Typst math syntax -- this content is rendered as plain HTML, not typeset math.",
+    "12. NOTATION IS LATEX. Wrap every mathematical expression in single dollars for inline maths, e.g. $-9k^2 + 5k - \\sqrt{7}$ and $\\frac{96 - v}{6}$; use double dollars only for a displayed equation on its own line. It is typeset with KaTeX (lib/document-orchestrator.ts renderMath), so write \\sqrt{7}, \\frac{a}{b}, x^{2} and \\neq rather than sqrt(7), a/b or !=. Prose stays outside the dollars.",
+    "13. SIZE THE ANSWER SPACE TO THE ANSWER. Every subpart takes answerBoxLines. Use 1 for a single word, value or expression; 2-3 for a sentence of interpretation or a one-step calculation; 4-6 for a multi-step solution, a rearrangement or a proof. A part that asks for one number and offers six ruled lines is telling the student it wants six lines of something.",
+    "14. DO NOT NUMBER YOUR OWN SUBPARTS. The renderer prints (a), (b), (c) beside each subpart from its position. A prompt that begins \"(a) ...\" is printed as \"(a) (a) ...\".",
     ...(summative
       ? [
           "",
