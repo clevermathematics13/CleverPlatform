@@ -9,6 +9,7 @@ import {
   validateGradeResponse,
 } from "@/lib/ai-grading";
 import { loadGradeableMarkScheme, persistGradeOutcome } from "@/lib/ai-grading-run";
+import { batchDisposition } from "@/lib/ai-grade-batch-lifecycle";
 import { fetchAllRows } from "@/lib/na-scanning";
 
 export const maxDuration = 300;
@@ -40,12 +41,11 @@ export const MAX_RESULTS_PER_CALL = 5;
  */
 const LOST_SUBMISSION_MS = 60 * 60 * 1000;
 
-/**
- * Anthropic's hard ceiling for a batch is 24h. Past 30 nothing more is
- * coming, and the runs waiting on it would otherwise sit 'submitted' forever
- * -- the teacher needs them failed so they can re-mark.
- */
-const ABANDONED_BATCH_MS = 30 * 60 * 60 * 1000;
+// When an open batch may be given up on -- and, far more importantly, when it
+// must still be collected -- lives in lib/ai-grade-batch-lifecycle, pure and
+// tested, because getting it wrong throws away marking that has been paid for
+// without saying so. Read its header before changing how this route ends a
+// batch.
 
 /** The open ai_grade_message_batches columns this route works from. */
 interface OpenBatchRow {
@@ -399,13 +399,16 @@ export async function POST(
     "Overnight submission did not complete: this run was never recorded against a batch. Re-submit this student."
   );
 
-  const live: OpenBatchRow[] = [];
-  for (const row of openBatches) {
-    if (now - new Date(row.submitted_at).getTime() <= ABANDONED_BATCH_MS) {
-      live.push(row);
-      continue;
-    }
-    const message = "Overnight batch never returned results (open for more than 30 hours). Re-submit this student.";
+  /**
+   * Give up on one batch: fail every run still waiting on it and take the
+   * batch out of the open working set.
+   *
+   * Only ever called for a batch Anthropic itself says can no longer answer
+   * -- archived, gone, stuck unprocessed, or past the retention window. Age
+   * alone must never reach here: a finished batch is collectable for as long
+   * as Anthropic serves it, however late the teacher opens the page.
+   */
+  const abandonBatch = async (row: OpenBatchRow, message: string): Promise<void> => {
     // 'running' as well as 'submitted': a collect call that died mid-write
     // left its claim behind, and nothing else ever picks that run back up.
     const { data: abandonedRuns, error: abandonedErr } = await supabase
@@ -418,20 +421,19 @@ export async function POST(
       // "this batch owes nothing" -- and failing the batch on that would
       // orphan every run still pointing at it: the pointer stays, the batch
       // leaves the open working set, and nothing re-streams the results.
-      // The batch is 30 hours old and going nowhere, so the next call can
-      // sweep it just as well.
+      // Nothing here is time-critical, so the next call settles it instead.
       console.error(
         `[ai-grade collect] could not read abandoned runs for ${row.anthropic_batch_id}:`,
         abandonedErr.message
       );
-      continue;
+      return;
     }
     await settleSweptRuns(((abandonedRuns ?? []) as { id: string }[]).map((r) => r.id), message);
     await supabase
       .from("ai_grade_message_batches")
       .update({ status: "failed", error_message: message })
       .eq("id", row.id);
-  }
+  };
 
   // -- Lost-write backstop -----------------------------------------------------
   // Not an expected path. Every settled run nulls its pointer, so a run still
@@ -495,19 +497,47 @@ export async function POST(
 
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  for (const row of live) {
+  for (const row of openBatches) {
     checked++;
+    const ageMs = now - new Date(row.submitted_at).getTime();
 
-    let batch: Anthropic.Messages.Batches.MessageBatch;
+    // Retrieve first, decide second: what may be given up on is Anthropic's
+    // answer, never this route's clock. An `ended` batch inside retention is
+    // collected however long ago it was submitted -- that is the whole point
+    // of the overnight path, and the page is the only thing that collects it.
+    let batch: Anthropic.Messages.Batches.MessageBatch | null = null;
+    let notFound = false;
     try {
       batch = await anthropic.messages.batches.retrieve(row.anthropic_batch_id);
-    } catch {
-      // Transient: an Anthropic blip must not fail a batch whose results are
-      // still sitting there. The next call retrieves it again.
-      continue;
+    } catch (e) {
+      notFound = e instanceof Anthropic.APIError && e.status === 404;
+      if (!notFound) {
+        console.error(
+          `[ai-grade collect] could not retrieve ${row.anthropic_batch_id}:`,
+          e instanceof Error ? e.message : e
+        );
+      }
     }
 
-    if (batch.processing_status !== "ended") {
+    const disposition = batchDisposition(
+      ageMs,
+      batch
+        ? {
+            retrieved: true,
+            archivedAt: batch.archived_at,
+            processingStatus: batch.processing_status,
+          }
+        : { retrieved: false, notFound }
+    );
+
+    if (disposition.kind === "give-up") {
+      await abandonBatch(row, disposition.message);
+      continue;
+    }
+    // Transient: an Anthropic blip must not fail a batch whose results are
+    // still sitting there. The next call retrieves it again.
+    if (disposition.kind === "retry") continue;
+    if (disposition.kind === "wait") {
       if (row.status !== "in_progress") {
         await supabase
           .from("ai_grade_message_batches")
@@ -516,6 +546,8 @@ export async function POST(
       }
       continue;
     }
+    // 'collect': retrieved, ended, not archived, inside retention.
+    if (!batch) continue; // unreachable; narrows the type for the stream below
 
     if (row.status !== "ended") {
       await supabase
@@ -707,8 +739,9 @@ export async function POST(
         // update IS the lock: several tabs stream the same results at once,
         // and only the one whose update still saw 'submitted' writes this
         // student -- without it two tabs insert two sets of result rows for
-        // the same run. A claim left 'running' by a call that died is swept
-        // at ABANDONED_BATCH_MS.
+        // the same run. A claim left 'running' by a call that died is settled
+        // by the stalled-claim path in this batch's close-out below, an hour
+        // after the run was created.
         const { data: claimed } = await supabase
           .from("ai_grade_runs")
           .update({ status: "running" })
@@ -729,7 +762,10 @@ export async function POST(
       // Transient, exactly like a failed retrieve: whatever was written before
       // the stream died stands, the rest still has 28 days of retention, and
       // the batch stays 'ended' so the next call re-reads it. A stream that
-      // fails permanently is caught by the 30-hour sweep instead.
+      // fails permanently keeps the batch open until Anthropic stops serving
+      // it -- archived_at, a 404, or RESULTS_RETENTION_MS, whichever comes
+      // first. That is deliberately patient: every earlier cut-off risked
+      // discarding results that were still there to be read.
       console.error(`[ai-grade collect] results stream failed for ${row.anthropic_batch_id}:`, e);
       streamFailed = true;
     }
@@ -771,8 +807,8 @@ export async function POST(
     // A leftover still 'running' is a claim whose completion never landed:
     // persistGradeOutcome's completionRecorded-false path (rows written, run
     // update lost) or a throw inside collectLine. Until now nothing rescued
-    // it before the 30-hour abandoned-batch sweep, which is most of two days
-    // of a fully marked student showing as mid-marking. Settle it on the same
+    // it before the abandoned-batch sweep, which was most of two days of a
+    // fully marked student showing as mid-marking. Settle it on the same
     // hour bound the other sweeps use, through the same path: settleSweptRuns
     // promotes a run holding ai_grade_results rows and only fails one holding
     // none.
