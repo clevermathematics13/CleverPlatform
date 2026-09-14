@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
+import { markingKeyFor } from "@/lib/na-marking-key";
 
 /**
  * NA scan pipeline -- stage 5: AI assessment of cropped student responses.
@@ -337,12 +338,11 @@ export function buildRubricBlock(a: AnchorContext): string {
     );
   }
 
-  // Prefer the richer authored key over the terse companion sketch. Both
-  // are the teacher's own writing, but the sketch was written as a quick
-  // reference and reads as prescriptive where the authored key is often
-  // explicitly permissive -- see AnchorContext.questionAnswer for the
-  // real case where that difference decided a student's mark.
-  const key = a.questionAnswer?.trim() || a.answerSketch?.trim();
+  // Prefer the richer authored key over the terse companion sketch. The
+  // precedence lives in lib/na-marking-key because the teacher's review
+  // screen has to apply the same one -- when it did not, a teacher checking
+  // an AI verdict was reading a key the model had never seen.
+  const key = markingKeyFor(a);
   if (key) {
     lines.push(`\nTEACHER'S ANSWER KEY:\n${key}`);
   }

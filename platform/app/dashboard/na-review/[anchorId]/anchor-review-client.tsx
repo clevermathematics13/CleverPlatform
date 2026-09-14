@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
+import { markingKeyFor } from "@/lib/na-marking-key";
 
 type Feedback = {
   id: string;
@@ -48,6 +49,7 @@ type Anchor = {
   part_label: string | null;
   command_term: string | null;
   marks_available: number | null;
+  question_answer: string | null;
   answer_sketch: string | null;
   open_rubric: string | null;
   misconception_context: string | null;
@@ -301,7 +303,21 @@ export default function AnchorReviewClient({
         ) : (
           <div>
             <p className="text-xs font-semibold text-da-accent uppercase tracking-wide">Answer key</p>
-            <p className="text-sm text-da-text mt-1">{anchor.answer_sketch}</p>
+            {/* markingKeyFor, not answer_sketch: this panel is what a teacher
+                checks the AI's verdict against, so it has to be the key the
+                AI was given. The two differ -- see lib/na-marking-key -- and
+                while this showed the sketch, a verdict could be confirmed
+                against a key the model never saw. Capped and scrollable
+                because the authored key runs several times longer than the
+                sketch did (A.1's Q6 is 563 characters) and this panel is
+                sticky: an uncapped key pushes the crop it belongs to off
+                the screen. */}
+            <p className="text-sm text-da-text mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap">
+              {markingKeyFor({
+                questionAnswer: anchor.question_answer,
+                answerSketch: anchor.answer_sketch,
+              })}
+            </p>
           </div>
         )}
         {anchor.misconception_context && (
