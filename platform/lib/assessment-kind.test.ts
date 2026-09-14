@@ -5,6 +5,9 @@ import {
   applyKindRules,
   countHints,
   resolveRequireSelfAssessment,
+  allowedCourses,
+  calculatorPolicyForGrade,
+  retargetCalculatorPolicy,
   SUMMATIVE_FORMATTING_DEFAULTS,
 } from "./assessment-kind";
 import { DEFAULT_ASSESSMENT_FORMATTING } from "./formative-assessment-pdf-body";
@@ -129,5 +132,87 @@ describe("resolveRequireSelfAssessment", () => {
   it("stays a choice on a formative", () => {
     expect(resolveRequireSelfAssessment("formative", false)).toBe(false);
     expect(resolveRequireSelfAssessment("formative", true)).toBe(true);
+  });
+});
+
+describe("allowedCourses", () => {
+  const all = [
+    { id: "a", name: "27AH" },
+    { id: "b", name: "9A" },
+    { id: "c", name: "9G" },
+    { id: "d", name: "Grade 9 Extended" },
+    { id: "e", name: "Grade 9 Standard" },
+  ];
+
+  it("offers only the two classes these papers are for", () => {
+    expect(allowedCourses(all, null).map((c) => c.name)).toEqual(["27AH", "Grade 9 Extended"]);
+  });
+
+  it("also offers a loaded assessment's own course, whatever it is", () => {
+    // Formative Assessment 1 hangs off 9G. Dropping it from the list would
+    // make re-saving that paper silently move it to another class.
+    expect(allowedCourses(all, "c").map((c) => c.name)).toEqual(["27AH", "9G", "Grade 9 Extended"]);
+  });
+
+  it("does not duplicate a loaded course that is already allowed", () => {
+    expect(allowedCourses(all, "a").map((c) => c.name)).toEqual(["27AH", "Grade 9 Extended"]);
+  });
+});
+
+describe("calculatorPolicyForGrade", () => {
+  it("permits a graphing calculator for Grade 9", () => {
+    expect(calculatorPolicyForGrade("Grade 9")).toBe("graphing");
+    expect(calculatorPolicyForGrade("grade 9")).toBe("graphing");
+    expect(calculatorPolicyForGrade("", "Grade 9 Extended")).toBe("graphing");
+  });
+
+  it("does not match a grade that merely contains a 9", () => {
+    // "Grade 10" and "Grade 9" differ by one character in the wrong place.
+    expect(calculatorPolicyForGrade("Grade 10")).toBe("not-permitted");
+    expect(calculatorPolicyForGrade("Grade 90")).toBe("not-permitted");
+  });
+
+  it("falls back to not-permitted for a grade it does not know", () => {
+    // The safer way round: wrongly forbidding one is an argument before the
+    // exam, wrongly allowing it is an argument after the marks.
+    expect(calculatorPolicyForGrade("Grade 11")).toBe("not-permitted");
+    expect(calculatorPolicyForGrade("")).toBe("not-permitted");
+  });
+});
+
+describe("applyKindFormatting with a grade", () => {
+  it("starts a Grade 9 summative at calculator permitted", () => {
+    const out = applyKindFormatting("summative", DEFAULT_ASSESSMENT_FORMATTING, {
+      gradeLevel: "Grade 9",
+    });
+    expect(out.calculatorPolicy).toBe("graphing");
+  });
+
+  it("starts an unknown grade at not-permitted", () => {
+    const out = applyKindFormatting("summative", DEFAULT_ASSESSMENT_FORMATTING, {
+      gradeLevel: "Grade 12",
+    });
+    expect(out.calculatorPolicy).toBe("not-permitted");
+  });
+});
+
+describe("retargetCalculatorPolicy", () => {
+  const g9 = { gradeLevel: "Grade 9" };
+  const g11 = { gradeLevel: "Grade 11" };
+
+  it("follows the grade while the value is still that grade's default", () => {
+    expect(retargetCalculatorPolicy("graphing", g9, g11)).toBe("not-permitted");
+    expect(retargetCalculatorPolicy("not-permitted", g11, g9)).toBe("graphing");
+  });
+
+  it("leaves a policy the teacher chose alone", () => {
+    // The whole point: correcting a course name must not rewrite a rule
+    // somebody deliberately set, because that rule is printed on the paper.
+    expect(retargetCalculatorPolicy("basic", g9, g11)).toBe("basic");
+    expect(retargetCalculatorPolicy("graphing-required", g9, g11)).toBe("graphing-required");
+  });
+
+  it("stays absent on a formative, which prints no calculator line at all", () => {
+    expect(retargetCalculatorPolicy(undefined, g9, g11)).toBeUndefined();
   });
 });

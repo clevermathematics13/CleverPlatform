@@ -53,13 +53,20 @@ import {
 } from "@/lib/formative-assessment-pdf-body";
 import {
   ASSESSMENT_KINDS,
+  allowedCourses,
   applyKindFormatting,
   applyKindRules,
   countHints,
   resolveRequireSelfAssessment,
+  retargetCalculatorPolicy,
   type AssessmentKind,
 } from "@/lib/assessment-kind";
 import { CALCULATOR_POLICY_OPTIONS, marksLabel } from "@/lib/exam-conditions";
+import {
+  SOURCE_KIND_LABELS,
+  SOURCE_TEXT_TOTAL,
+  type SourceMaterialSummary,
+} from "@/lib/source-materials";
 import {
   editorSnapshot,
   needsDiscardConfirmation,
@@ -103,6 +110,24 @@ async function fetchSavedAssessments(): Promise<SavedAssessment[] | null> {
   }
 }
 
+
+/**
+ * Everything this grade has been taught, as the picker lists it.
+ *
+ * Null on failure for the same reason the saved list is: the picker is a way to
+ * make a better paper, not the way to make one, and a failed fetch must not put
+ * an error banner over a creator that still works.
+ */
+async function fetchSourceMaterials(grade: string): Promise<SourceMaterialSummary[] | null> {
+  try {
+    const res = await fetch(`/api/source-materials?grade=${encodeURIComponent(grade)}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { materials?: SourceMaterialSummary[] };
+    return data.materials ?? [];
+  } catch {
+    return null;
+  }
+}
 
 // Moved to lib/formative-assessment-pdf-body.ts when the save route started
 // rendering these PDFs server-side: both sides must format a paper identically,
@@ -175,6 +200,9 @@ export function FormativeAssessmentSandbox() {
   const [kind, setKind] = useState<AssessmentKind>("formative");
   const [boundarySets, setBoundarySets] = useState<BoundarySetOption[]>([]);
   const [boundarySetId, setBoundarySetId] = useState("");
+  const [materials, setMaterials] = useState<SourceMaterialSummary[]>([]);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingMs, setIsExportingMs] = useState(false);
@@ -252,6 +280,29 @@ export function FormativeAssessmentSandbox() {
     };
   }, []);
 
+  // Re-fetched when the grade changes, because the catalogue is filtered by it.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const list = await fetchSourceMaterials(gradeLevel);
+      if (!cancelled && list) setMaterials(list);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gradeLevel]);
+
+  // Narrowed to the classes these papers are for, plus whatever a loaded
+  // assessment is already saved against -- see allowedCourses.
+  const offeredCourses = useMemo(
+    () => allowedCourses(courses, savedTestId ? courseId || null : null),
+    [courses, courseId, savedTestId],
+  );
+  const courseName = useMemo(
+    () => courses.find((c) => c.id === courseId)?.name ?? "",
+    [courses, courseId],
+  );
+
   const totalMarks = draft.sections.reduce((sum, section) => sum + sectionMarks(section), 0);
 
   function sectionMarks(section: AssignmentSection): number {
@@ -282,7 +333,7 @@ export function FormativeAssessmentSandbox() {
   function changeKind(next: AssessmentKind) {
     if (next === kind) return;
     setKind(next);
-    setFormatting((f) => applyKindFormatting(next, f));
+    setFormatting((f) => applyKindFormatting(next, f, { gradeLevel, courseName }));
     setRequireSelfAssessment((current) => resolveRequireSelfAssessment(next, current));
     setDraft((d) => {
       const stripped = applyKindRules(next, d);
@@ -294,17 +345,127 @@ export function FormativeAssessmentSandbox() {
     setNotice(
       next === "summative"
         ? "Switched to summative. Exam conditions now print on the paper and the mark scheme, hints are removed, " +
-            "self-assessment is required, and a grade boundary set has to be chosen before you can save."
+            "self-assessment is required, and a grade boundary set has to be chosen before you can save. " +
+            "Check the calculator policy -- it starts at this grade's own rule."
         : "Switched to formative. The exam conditions have been cleared from the cover.",
     );
   }
 
   const hintsOnPaper = useMemo(() => countHints(draft), [draft]);
 
+  /**
+   * Change the grade this paper is for, and with it the calculator rule.
+   *
+   * Wrapped rather than a bare setState because the rule is derived from the
+   * grade: a Grade 9 paper starts permitting a graphing calculator, and
+   * correcting the grade after switching to summative has to move it. What the
+   * teacher chose themselves is left alone -- retargetCalculatorPolicy decides.
+   */
+  function changeGradeContext(next: { gradeLevel?: string; courseId?: string }) {
+    const prev = { gradeLevel, courseName };
+    const nextGrade = next.gradeLevel ?? gradeLevel;
+    const nextCourseName =
+      next.courseId !== undefined
+        ? courses.find((c) => c.id === next.courseId)?.name ?? ""
+        : courseName;
+
+    if (next.gradeLevel !== undefined) setGradeLevel(next.gradeLevel);
+    if (next.courseId !== undefined) setCourseId(next.courseId);
+
+    setFormatting((f) => ({
+      ...f,
+      calculatorPolicy: retargetCalculatorPolicy(f.calculatorPolicy, prev, {
+        gradeLevel: nextGrade,
+        courseName: nextCourseName,
+      }),
+    }));
+  }
+
+  const selectedSources = useMemo(
+    () => materials.filter((m) => selectedSourceIds.includes(m.id)),
+    [materials, selectedSourceIds],
+  );
+  const selectedChars = selectedSources.reduce((sum, m) => sum + m.approxChars, 0);
+
+  function toggleSource(id: string) {
+    setSelectedSourceIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
+  }
+
+  /**
+   * Add a file to the catalogue.
+   *
+   * Tagged with the grade on screen, which is what the catalogue filters on --
+   * upload a Grade 9 study guide while the grade says Grade 9 and it is there
+   * the next time this tab opens.
+   */
+  async function uploadSourceMaterial(file: File) {
+    setIsUploading(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("gradeLevel", gradeLevel);
+      if (courseId) form.append("courseId", courseId);
+
+      const res = await fetch("/api/source-materials", { method: "POST", body: form });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        material?: { id: string; title: string; pageCount: number | null; usable: boolean };
+      };
+      if (!res.ok || !data.material) throw new Error(data.error ?? `Upload failed (${res.status})`);
+
+      const list = await fetchSourceMaterials(gradeLevel);
+      if (list) setMaterials(list);
+      // Selected on arrival: uploading it is the act of choosing it.
+      setSelectedSourceIds((prev) => [...prev, data.material!.id]);
+      setNotice(
+        data.material.usable
+          ? `Added "${data.material.title}" and selected it.`
+          : `Added "${data.material.title}", but no text could be read out of it -- it will not reach the ` +
+              "generator. A scan with no text layer usually needs OCR first.",
+      );
+    } catch (err) {
+      setError(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
   async function generateWithAi() {
     setIsGenerating(true);
     setError(null);
     try {
+      // The chosen material's text, resolved now rather than held in the page.
+      // Empty string when nothing is selected, so the prompt is unchanged from
+      // what it was before any of this existed.
+      let sourcePrompt = "";
+      if (selectedSourceIds.length > 0) {
+        const res = await fetch("/api/source-materials/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: selectedSourceIds }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          prompt?: string;
+          truncated?: string[];
+          dropped?: string[];
+        };
+        if (!res.ok) throw new Error(data.error ?? `Could not read the source material (${res.status})`);
+        sourcePrompt = data.prompt ?? "";
+        // Said out loud: a paper built from half a study guide, silently, is
+        // one whose gaps look like the model's judgement.
+        const cut = [
+          ...(data.truncated ?? []).map((t) => `${t} (shortened)`),
+          ...(data.dropped ?? []).map((t) => `${t} (not used)`),
+        ];
+        if (cut.length > 0) {
+          setNotice(`Source material over the prompt limit: ${cut.join(", ")}.`);
+        }
+      }
+
       const response = await fetch("/api/claude", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -313,14 +474,15 @@ export function FormativeAssessmentSandbox() {
           messages: [
             {
               role: "user",
-              content: buildFormativeAssessmentUserPrompt({
-                gradeLevel,
-                topic,
-                totalMarks: totalMarksTarget,
-                levelCount,
-                contextNotes: contextNotes || undefined,
-                kind,
-              }),
+              content:
+                buildFormativeAssessmentUserPrompt({
+                  gradeLevel,
+                  topic,
+                  totalMarks: totalMarksTarget,
+                  levelCount,
+                  contextNotes: contextNotes || undefined,
+                  kind,
+                }) + sourcePrompt,
             },
           ],
         }),
@@ -663,9 +825,109 @@ export function FormativeAssessmentSandbox() {
             </div>
           )}
 
+          {/* Above "Generate with AI" because it is an input to it: what the
+              class was taught decides what the paper can fairly ask. */}
+          <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-lg font-semibold font-serif text-da-text">Source material</h2>
+              <span className="text-xs text-da-muted">
+                {selectedSourceIds.length > 0
+                  ? `${selectedSourceIds.length} selected`
+                  : `${materials.length} for ${gradeLevel}`}
+              </span>
+            </div>
+            <p className="text-xs text-da-muted">
+              Tick what this paper should be built from. Questions are written from the wording,
+              notation and worked examples in what you choose.
+            </p>
+
+            {materials.length === 0 ? (
+              <p className="text-xs text-da-muted">
+                Nothing catalogued for {gradeLevel} yet. Add a file below.
+              </p>
+            ) : (
+              <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                {materials.map((m) => {
+                  const checked = selectedSourceIds.includes(m.id);
+                  return (
+                    <label
+                      key={m.id}
+                      className={`flex cursor-pointer gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                        checked
+                          ? "border-da-accent/60 bg-da-accent/10"
+                          : "border-da-border bg-da-bg/30 hover:border-da-accent/40"
+                      } ${m.usable ? "" : "opacity-60"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={!m.usable}
+                        onChange={() => toggleSource(m.id)}
+                        className="mt-0.5 h-4 w-4 shrink-0 accent-amber-500 disabled:cursor-not-allowed"
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-da-text/90">{m.title}</span>
+                        <span className="block text-[11px] text-da-muted">
+                          {SOURCE_KIND_LABELS[m.kind]}
+                          {m.courseName ? ` - ${m.courseName}` : ""} - {m.detail}
+                        </span>
+                      </span>
+                      {m.downloadPath && (
+                        <a
+                          href={m.downloadPath}
+                          onClick={(e) => e.stopPropagation()}
+                          className="shrink-0 self-center text-[11px] text-da-muted underline hover:text-da-text"
+                        >
+                          open
+                        </a>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+
+            {selectedChars > 0 && (
+              <p
+                className={`text-[11px] ${
+                  selectedChars > SOURCE_TEXT_TOTAL ? "text-amber-300" : "text-da-muted"
+                }`}
+              >
+                About {Math.round(selectedChars / 1000)}k characters selected
+                {selectedChars > SOURCE_TEXT_TOTAL
+                  ? ` -- over the ${Math.round(SOURCE_TEXT_TOTAL / 1000)}k limit, so the later ones will be shortened or skipped.`
+                  : "."}
+              </p>
+            )}
+
+            <label className="block space-y-1">
+              <span className="text-xs font-medium text-da-muted">Add a file</span>
+              <input
+                type="file"
+                accept="application/pdf,text/plain,text/markdown"
+                disabled={isUploading}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void uploadSourceMaterial(file);
+                  e.target.value = "";
+                }}
+                className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-xs text-da-text file:mr-2 file:rounded file:border-0 file:bg-da-hover file:px-2 file:py-1 file:text-xs file:text-da-text disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              <span className="block text-[11px] text-da-muted">
+                {isUploading
+                  ? "Reading the file…"
+                  : `Saved against ${gradeLevel}. PDFs are read for their text; a scan with no text layer cannot be used.`}
+              </span>
+            </label>
+          </div>
+
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h2 className="text-lg font-semibold font-serif text-da-text">Generate with AI</h2>
-            <LabeledInput label="Grade level" value={gradeLevel} onChange={setGradeLevel} />
+            <LabeledInput
+              label="Grade level"
+              value={gradeLevel}
+              onChange={(v) => changeGradeContext({ gradeLevel: v })}
+            />
             <LabeledInput label="Topic" value={topic} onChange={setTopic} />
             <div className="grid grid-cols-2 gap-3">
               <LabeledInput
@@ -688,7 +950,11 @@ export function FormativeAssessmentSandbox() {
               disabled={isGenerating}
               className="w-full rounded-lg border border-da-accent/70 bg-da-accent/20 px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:bg-da-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isGenerating ? "Generating…" : "Generate With AI"}
+              {isGenerating
+                ? "Generating…"
+                : selectedSourceIds.length > 0
+                  ? `Generate From ${selectedSourceIds.length} Source${selectedSourceIds.length === 1 ? "" : "s"}`
+                  : "Generate With AI"}
             </button>
           </div>
 
@@ -698,11 +964,11 @@ export function FormativeAssessmentSandbox() {
               <span className="text-xs font-medium text-da-muted">Course</span>
               <select
                 value={courseId}
-                onChange={(e) => setCourseId(e.target.value)}
+                onChange={(e) => changeGradeContext({ courseId: e.target.value })}
                 className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
               >
                 <option value="">Select a course…</option>
-                {courses.map((c) => (
+                {offeredCourses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
