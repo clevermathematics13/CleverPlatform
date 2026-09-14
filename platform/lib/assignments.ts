@@ -4,6 +4,23 @@ import { sanitizeJsonBackslashes, sanitizeJsonEmbeddedQuotes } from "./json-repa
 
 export type DocumentKind = "activity-sheet" | "practice-set" | "investigation";
 
+/**
+ * What a student may compute with, printed on the cover of both the paper and
+ * the mark scheme. Declared here rather than beside its renderer in
+ * lib/exam-conditions.ts so the dependency runs one way only: that module
+ * needs escapeHtml from this one.
+ *
+ * An enum rather than free text -- this line is read under exam pressure and
+ * quoted back afterwards in an academic-honesty conversation, so it has to say
+ * the same thing every time. Nuance that does not fit ("no calculator until
+ * Level 3") belongs in `instructions`, which already prints on the cover.
+ */
+export type CalculatorPolicy =
+  | "not-permitted"
+  | "basic"
+  | "graphing"
+  | "graphing-required";
+
 export type FormattingRequirements = {
   schoolName: string;
   teacherName: string;
@@ -22,6 +39,25 @@ export type FormattingRequirements = {
    * class/block, alongside the existing name/date lines.
    */
   includeBlockLine?: boolean;
+  /**
+   * Exam conditions, printed on BOTH the paper and the mark scheme by
+   * lib/exam-conditions.ts. These live on the formatting rather than on the
+   * draft on purpose: formatting is already handed to both renderers and to
+   * the PDF archiver, so a field added here reaches the paper, the mark
+   * scheme and the archived copies at once. A draft field would need six
+   * separate edits, one of them to MarkSchemeRequest, and the mark scheme is
+   * the copy that gets forgotten.
+   *
+   * All optional and all absent by default, so every document that predates
+   * them renders exactly as it did.
+   */
+  calculatorPolicy?: CalculatorPolicy;
+  /** Minutes allowed for the whole paper. */
+  timeAllowedMinutes?: number;
+  /** Print "Total: n marks" on the cover, n computed from the sections. */
+  showTotalMarks?: boolean;
+  /** The declaration the student is sitting under. */
+  academicHonestyLine?: string;
 };
 
 export type AssignmentInput = {

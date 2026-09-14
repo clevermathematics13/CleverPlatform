@@ -52,6 +52,7 @@ import {
   type ValidatedFormattingRequirements,
 } from "./template-schema";
 import { escapeHtml, formatQuestionLabel } from "./assignments";
+import { buildExamConditionsHtml, EXAM_CONDITIONS_CSS } from "./exam-conditions";
 
 // -- KaTeX rendering -----------------------------------------------------------
 
@@ -677,6 +678,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
 
     .katex { font-size: 1em; }
     .katex-display { margin: 4px 0; }
+${EXAM_CONDITIONS_CSS}
   `;
 }
 
@@ -716,6 +718,7 @@ function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string
     .ms-reteach-table td { border: 0.5pt solid #d1d5db; padding: 4px 8px; text-align: left; vertical-align: top; }
     .katex { font-size: 1em; }
     .katex-display { margin: 4px 0; }
+${EXAM_CONDITIONS_CSS}
   `;
 }
 
@@ -808,15 +811,22 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
   const metaGridHtml = (nameLineHtml || dateLineHtml || blockLineHtml)
     ? `<div class="meta-grid">${nameLineHtml}${blockLineHtml}${dateLineHtml}</div>` : "";
 
+  const paperTotalMarks = sections.reduce((sum, section) => sum + sectionMarksTotal(section), 0);
+
+  // -- Exam conditions (summative): calculator, time, total, honesty --
+  // Built by the shared renderer so the mark scheme below prints the same
+  // strip. Empty for any paper that sets none of these, which is every
+  // document authored before they existed.
+  const examConditionsHtml = buildExamConditionsHtml(formatting, paperTotalMarks);
+
   // -- Section Scores summary box (Formative Assessment) --
   const sectionScoreSummaryHtml = nd.showSectionScoreSummary
     ? (() => {
         const rows = sections.map((section) =>
           `<tr><td>${escapeHtml(section.heading)}</td><td>/ ${sectionMarksTotal(section)}</td></tr>`
         ).join("");
-        const total = sections.reduce((sum, section) => sum + sectionMarksTotal(section), 0);
         return `<table class="score-summary-table">
-          <tbody>${rows}<tr class="score-summary-total"><td>TOTAL</td><td>/ ${total}</td></tr></tbody>
+          <tbody>${rows}<tr class="score-summary-total"><td>TOTAL</td><td>/ ${paperTotalMarks}</td></tr></tbody>
         </table>`;
       })()
     : "";
@@ -961,6 +971,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
     <h2 class="subtitle">${escapeHtml(subtitle)}</h2>
     <hr class="header-rule"/>
     ${metaGridHtml}
+    ${examConditionsHtml}
     ${extraMetaHtml}
     ${sectionScoreSummaryHtml}
   </div>
@@ -1003,6 +1014,14 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
   const { title, subtitle, sections, formatting, markingPrinciples, reteachGuide } = req;
   const tierLabel: Record<number, string> = { 1: "★", 2: "★★", 3: "★★★" };
   let globalQ = 0;
+
+  // The conditions the student sat under, printed for whoever is marking:
+  // "was a GDC allowed?" is the question a disputed summative mark turns on,
+  // and until this was shared the answer appeared on the paper only.
+  const examConditionsHtml = buildExamConditionsHtml(
+    formatting,
+    sections.reduce((sum, section) => sum + sectionMarksTotal(section), 0),
+  );
 
   const markingPrinciplesHtml = Array.isArray(markingPrinciples) && markingPrinciples.length > 0
     ? `<div class="ms-principles">
@@ -1060,6 +1079,7 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
   <h1>${escapeHtml(title)}</h1>
   <h2>${escapeHtml(subtitle ?? "Mark Scheme")}</h2>
   <div class="ms-banner">⚠ Teacher Copy — Mark Scheme — Not for Distribution</div>
+  ${examConditionsHtml}
   ${markingPrinciplesHtml}
   ${sectionsHtml}
   ${reteachGuideHtml}

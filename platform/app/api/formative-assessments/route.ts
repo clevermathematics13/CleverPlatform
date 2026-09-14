@@ -1,8 +1,13 @@
 /**
  * GET  /api/formative-assessments — list the saved ones, for the creator's picker
- * POST /api/formative-assessments — save a Formative Assessment as a gradeable test
+ * POST /api/formative-assessments — save an authored assessment as a gradeable test
  *
- * A Formative Assessment is authored as an AssignmentDraft (title/sections/
+ * Formative or summative: both are authored the same way and graded through
+ * the same pipeline, and `assessmentKind` is what separates them. The rules
+ * that follow from it live in lib/assessment-kind.ts -- this route is where
+ * they are applied to the draft before anything else reads it.
+ *
+ * An assessment is authored as an AssignmentDraft (title/sections/
  * questions, each with a mark scheme — see lib/assignments.ts and
  * lib/formative-assessment-prompt.ts) but graded through the existing
  * `tests` + lib/ai-grading.ts pipeline, unmodified. This route is what
@@ -28,6 +33,13 @@ import {
 import { archiveFormativeAssessmentPdfs } from "@/lib/formative-assessment-pdf";
 import { DEFAULT_ASSESSMENT_FORMATTING } from "@/lib/formative-assessment-pdf-body";
 import { FormattingRequirementsSchema } from "@/lib/template-schema";
+import {
+  parseAssessmentKind,
+  applyKindRules,
+  SUMMATIVE_FORMATTING_DEFAULTS,
+  countHints,
+  resolveRequireSelfAssessment,
+} from "@/lib/assessment-kind";
 import type { AssignmentDraft } from "@/lib/assignments";
 
 export const runtime = "nodejs";
@@ -40,6 +52,19 @@ type SaveBody = {
   courseId?: unknown;
   draft?: unknown;
   requireSelfAssessment?: unknown;
+  /**
+   * "formative" (the default, and what every existing saved paper is) or
+   * "summative". See lib/assessment-kind.ts for everything that follows from
+   * it -- exam conditions on both PDFs, no hints, a required boundary set,
+   * forced self-assessment, and held low-confidence AI grades.
+   */
+  assessmentKind?: unknown;
+  /**
+   * The grade boundary set the mark reports against. Required for a
+   * summative: without one the gradebook falls back to generic bands and
+   * shows an "~approx" badge, which is not a grade to hand back.
+   */
+  boundarySetId?: unknown;
   /**
    * The formatting the sandbox is previewing with. Sent so the archived PDFs
    * are the paper the teacher actually sees rather than a default-formatted
@@ -80,7 +105,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("tests")
     .select(
-      `id, name, course_id, total_marks, created_at, pdfs_generated_at,
+      `id, name, course_id, total_marks, created_at, pdfs_generated_at, assessment_kind,
        courses!tests_course_id_fkey(name),
        test_items(count)`,
     )
@@ -96,6 +121,7 @@ export async function GET() {
     courseName: (t.courses as unknown as { name: string } | null)?.name ?? "Unknown",
     totalMarks: t.total_marks,
     createdAt: t.created_at,
+    assessmentKind: parseAssessmentKind(t.assessment_kind),
     // Null means the archive predates PDF archiving or its last save failed to
     // write one; the picker says so rather than offering a dead download link.
     pdfsGeneratedAt: t.pdfs_generated_at,
@@ -125,10 +151,40 @@ export async function POST(req: Request) {
   if (!body.draft || typeof body.draft !== "object") {
     return NextResponse.json({ error: "draft is required" }, { status: 400 });
   }
-  const draft = body.draft as AssignmentDraft;
-  if (!draft.title || !Array.isArray(draft.sections) || draft.sections.length === 0) {
+  const submitted = body.draft as AssignmentDraft;
+  if (!submitted.title || !Array.isArray(submitted.sections) || submitted.sections.length === 0) {
     return NextResponse.json(
       { error: "draft must have a title and a non-empty sections array" },
+      { status: 400 },
+    );
+  }
+
+  // -- Kind, and what it does to the draft -------------------------------
+  // Applied here, before anything else reads the draft, so the rubric gate,
+  // the mark total, the gradeable items and both archived PDFs all see the
+  // same paper. A summative loses its hints -- a printed "Hint: try
+  // substituting x = 2" on a paper that counts is marks given away, and the
+  // renderer prints whatever it is handed.
+  const assessmentKind = parseAssessmentKind(body.assessmentKind);
+  const hintsRemoved = assessmentKind === "summative" ? countHints(submitted) : 0;
+  const draft = applyKindRules(assessmentKind, submitted);
+
+  // -- Boundary set --------------------------------------------------------
+  // Required for a summative and optional for a formative. Without one the
+  // gradebook falls back to generic bands and shows an "~approx" badge next
+  // to the level, which is a guess -- fine on practice, not on a paper a
+  // student is graded by. Grade 9 has its own set; see HANDOFF section 3.
+  const boundarySetId =
+    typeof body.boundarySetId === "string" && UUID_RE.test(body.boundarySetId)
+      ? body.boundarySetId
+      : null;
+  if (assessmentKind === "summative" && !boundarySetId) {
+    return NextResponse.json(
+      {
+        error:
+          "A summative needs a grade boundary set, or the mark reports as a raw score with an " +
+          "approximate band instead of a grade. Pick one and save again.",
+      },
       { status: 400 },
     );
   }
@@ -162,8 +218,13 @@ export async function POST(req: Request) {
     typeof body.testId === "string" && UUID_RE.test(body.testId) ? body.testId : null;
   const totalMarks = computeTotalMarks(draft.sections);
   // Defaults to required (true) to match tests.require_self_assessment's own
-  // column default -- every other creation path leaves this untouched.
-  const requireSelfAssessment = body.requireSelfAssessment !== false;
+  // column default -- every other creation path leaves this untouched. A
+  // summative is not asked: students self-assess before they see the marks
+  // their teacher approved, and a toggle is a thing to forget.
+  const requireSelfAssessment = resolveRequireSelfAssessment(
+    assessmentKind,
+    body.requireSelfAssessment !== false,
+  );
 
   const saveResult = testId
     ? await supabase
@@ -174,6 +235,10 @@ export async function POST(req: Request) {
           total_marks: totalMarks,
           custom_content: draft,
           require_self_assessment: requireSelfAssessment,
+          assessment_kind: assessmentKind,
+          // Only written when the creator sent one, so re-saving a formative
+          // does not clear a boundary set assigned on the test detail page.
+          ...(boundarySetId ? { boundary_set_id: boundarySetId } : {}),
         })
         .eq("id", testId)
         .select("id, name, total_marks")
@@ -187,6 +252,8 @@ export async function POST(req: Request) {
           total_marks: totalMarks,
           custom_content: draft,
           require_self_assessment: requireSelfAssessment,
+          assessment_kind: assessmentKind,
+          ...(boundarySetId ? { boundary_set_id: boundarySetId } : {}),
         })
         .select("id, name, total_marks")
         .single();
@@ -212,15 +279,40 @@ export async function POST(req: Request) {
   // deserves its paper kept. Re-saving regenerates both, so this is also its
   // own retry.
   const fmtParse = FormattingRequirementsSchema.safeParse(body.formatting);
-  const formatting = fmtParse.success ? fmtParse.data : DEFAULT_ASSESSMENT_FORMATTING;
+  const parsedFormatting = fmtParse.success ? fmtParse.data : DEFAULT_ASSESSMENT_FORMATTING;
+  // A summative always prints its exam conditions, whatever the client sent.
+  // The creator fills these in, but the guarantee cannot depend on it: a paper
+  // that counts must say what the student was allowed to compute with, and
+  // "the form was blank" is not a reason for a cover that does not.
+  const formatting =
+    assessmentKind === "summative"
+      ? {
+          ...parsedFormatting,
+          calculatorPolicy: parsedFormatting.calculatorPolicy ?? SUMMATIVE_FORMATTING_DEFAULTS.calculatorPolicy,
+          timeAllowedMinutes: parsedFormatting.timeAllowedMinutes ?? SUMMATIVE_FORMATTING_DEFAULTS.timeAllowedMinutes,
+          showTotalMarks: parsedFormatting.showTotalMarks ?? SUMMATIVE_FORMATTING_DEFAULTS.showTotalMarks,
+          academicHonestyLine:
+            parsedFormatting.academicHonestyLine?.trim() ||
+            SUMMATIVE_FORMATTING_DEFAULTS.academicHonestyLine,
+        }
+      : parsedFormatting;
   const archive = await archiveFormativeAssessmentPdfs(supabase, saved.id, draft, formatting);
   const pdfs = archive.ok
     ? { pdfs: "archived" as const, archived: archive.archived }
     : { pdfs: "failed" as const, pdfsError: archive.error };
 
+  const kindEcho = { assessmentKind, requireSelfAssessment, hintsRemoved };
+
   if (!syncResult.ok) {
     return NextResponse.json(
-      { test: saved, testItems: "failed", testItemsError: syncResult.error, rubric, ...pdfs },
+      {
+        test: saved,
+        testItems: "failed",
+        testItemsError: syncResult.error,
+        rubric,
+        ...kindEcho,
+        ...pdfs,
+      },
       { status: 207 },
     );
   }
@@ -229,7 +321,14 @@ export async function POST(req: Request) {
   // a teacher who overrode a blocking finding should still see what they
   // overrode rather than have it disappear on the way through.
   return NextResponse.json(
-    { test: saved, testItems: "synced", synced: syncResult.synced, rubric, ...pdfs },
+    {
+      test: saved,
+      testItems: "synced",
+      synced: syncResult.synced,
+      rubric,
+      ...kindEcho,
+      ...pdfs,
+    },
     { status: archive.ok ? 200 : 207 },
   );
 }

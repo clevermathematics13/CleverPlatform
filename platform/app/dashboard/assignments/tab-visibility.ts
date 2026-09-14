@@ -54,7 +54,11 @@ export const TABS: TabOption[] = [
   // course filter and a delete confirmation. Reopening it after saving a
   // packet must show that packet, so this one is deliberately remounted.
   { id: "manage-nuanced-analysis",   label: "Manage Saved Packets",     emoji: "🗂️", remountOnShow: true },
-  { id: "formative-assessment",      label: "Formative Assessment",     emoji: "📝" },
+  // The tab id stays "formative-assessment" -- it is what the saved tab
+  // preference and any bookmarked URL already say, and renaming it would
+  // silently move a returning teacher to a different tab. The LABEL is what
+  // people read, and this tab now writes summatives too.
+  { id: "formative-assessment",      label: "Assessment Creator",       emoji: "📝" },
   { id: "grade9",                    label: "Grade 9 (generic PDF)",    emoji: "9️⃣" },
   { id: "grade10",                   label: "Grade 10 (generic PDF)",   emoji: "🔟" },
   { id: "grade11",                   label: "Grade 11 (generic PDF)",   emoji: "11" },

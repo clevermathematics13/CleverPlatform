@@ -1,12 +1,20 @@
 /**
- * Formative Assessment — AI generation prompt
- * --------------------------------------------
- * A Formative Assessment is a different content type from a Nuanced Analysis
- * (NA) packet: a fixed-format test with numbered questions/subparts, a
- * printed mark value per part, an "Answer" line and/or a separate "Working /
- * reasoning" box, and a mark scheme using M/A/R/FT codes (Method/Answer/
- * Reasoning/Follow-through) with a "reteach this" guide — not NA's
- * rolling-bundle/TOK/international-mindedness format.
+ * Assessment — AI generation prompt
+ * ---------------------------------
+ * An assessment is a different content type from a Nuanced Analysis (NA)
+ * packet: a fixed-format test with numbered questions/subparts, a printed mark
+ * value per part, an "Answer" line and/or a separate "Working / reasoning"
+ * box, and a mark scheme using M/A/R/FT codes (Method/Answer/Reasoning/
+ * Follow-through) with a "reteach this" guide — not NA's rolling-bundle/TOK/
+ * international-mindedness format.
+ *
+ * FORMATIVE OR SUMMATIVE. One prompt, because a summative is not a different
+ * document: same LEVEL bands, same mark codes, same marking principles. What
+ * changes is what the paper is FOR, and the handful of rules that follow from
+ * it — exam conditions, no hints, coverage across the whole topic rather than
+ * a diagnostic probe at one skill. Those are folded in below rather than
+ * written as a second prompt file, which would drift from this one the first
+ * time a mark-code rule was tightened in only one of them.
  *
  * This mirrors buildActivityGeneratorSystemPrompt() in lib/assignments.ts
  * (same JSON-draft-in, parseAssignmentDraftJson()-out contract) but targets
@@ -15,19 +23,26 @@
  * draft-level markingPrinciples/reteachGuide.
  */
 
+import type { AssessmentKind } from "./assessment-kind";
+
 export type FormativeAssessmentInput = {
   gradeLevel: string;
   topic: string;
   totalMarks: number;
   levelCount: number;
   contextNotes?: string;
+  /** Defaults to formative, which is what every caller meant before this existed. */
+  kind?: AssessmentKind;
 };
 
-export function buildFormativeAssessmentSystemPrompt(): string {
+export function buildFormativeAssessmentSystemPrompt(kind: AssessmentKind = "formative"): string {
+  const summative = kind === "summative";
   const q = String.fromCharCode(34);
   return [
-    "You are an expert mathematics teacher writing a Formative Assessment — a fixed-format, individually-taken test, distinct from a guided-investigation packet.",
-    "A Formative Assessment:",
+    summative
+      ? "You are an expert mathematics teacher writing a SUMMATIVE assessment — a fixed-format, individually-taken paper sat under exam conditions, whose mark is reported as the student's grade for this unit. It is not practice. It is the record."
+      : "You are an expert mathematics teacher writing a FORMATIVE assessment — a fixed-format, individually-taken test, distinct from a guided-investigation packet. Its purpose is to show the teacher what to teach next.",
+    "The paper:",
     "- Is organised into named LEVELS (bands of increasing demand), not open-ended 'Parts'",
     "- Has a printed mark value on every question and subpart",
     "- Gives each subpart an Answer line, or a Working / reasoning box plus an Answer line when the command term requires shown steps",
@@ -81,6 +96,18 @@ export function buildFormativeAssessmentSystemPrompt(): string {
     "10. reteachGuide: one row per cluster of related questions that share an underlying skill, naming the specific misconception or gap a wrong answer there reveals.",
     "11. Every prompt must be self-contained: a student reading only this paper, with no outside context, must be able to attempt it. Any context needed for a question (a price, a rate, a scenario) must be stated in the question or a preceding 'Context for Qn' block in that question's own prompt text.",
     "12. Use plain, grade-appropriate mathematical notation. Write equations inline as plain text (e.g. \"5(x + 2) - 4 = 3x + 18\"), not LaTeX or Typst math syntax -- this content is rendered as plain HTML, not typeset math.",
+    ...(summative
+      ? [
+          "",
+          "THIS PAPER IS SUMMATIVE. The rules above all still hold. These are on top of them:",
+          "S1. NO HINTS. Never emit a hint field, on a question or a subpart. A hint on a paper that counts is marks given away, and this one is printed exactly as you write it.",
+          "S2. COVER THE TOPIC, do not probe one corner of it. A formative may spend three questions on the single misconception the teacher is chasing; this paper has to let a student demonstrate the whole unit, so spread the marks across its distinct skills and name each level's skill in its heading.",
+          "S3. EVERY MARK MUST BE DEFENSIBLE TO A PARENT. A part whose mark scheme depends on a marker's taste does not belong here. If a part cannot be marked the same way by two teachers reading only the markScheme string, rewrite the part.",
+          "S4. NO NEW NOTATION OR CONTEXT. A summative may not be the first place a student meets a form of words, a symbol or a scenario. Use only what the unit has already taught.",
+          "S5. THE RAMP STILL APPLIES, and it matters more here: the first level must be genuinely accessible to the weakest student sitting the paper, so that a mark of zero means something went wrong rather than that the paper started above them.",
+          "S6. INSTRUCTIONS ARE EXAM INSTRUCTIONS. Write `instructions` for a student sitting under exam conditions -- what to do with working, what to do if they need more space, what happens if they cannot answer a part. Do NOT write the calculator rule, the time allowed or the total marks into instructions: those are printed on the cover from the teacher's own settings, and a second copy is one that can disagree with it.",
+        ]
+      : []),
   ].join("\n");
 }
 
@@ -91,6 +118,8 @@ export function buildFormativeAssessmentUserPrompt(input: FormativeAssessmentInp
     `Target total marks: ${input.totalMarks}`,
     `Number of levels: ${input.levelCount}`,
     ...(input.contextNotes ? [`Additional constraints: ${input.contextNotes}`] : []),
-    "Generate a complete Formative Assessment. Return only JSON.",
+    input.kind === "summative"
+      ? "Generate a complete summative assessment. Return only JSON."
+      : "Generate a complete Formative Assessment. Return only JSON.",
   ].join("\n");
 }

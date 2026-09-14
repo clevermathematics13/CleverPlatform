@@ -3,6 +3,8 @@ import { getApiTeacher } from "@/lib/auth";
 import { markExportsStale } from "@/lib/self-assessment-export";
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { fetchAllRows } from "@/lib/na-scanning";
+import { parseAssessmentKind } from "@/lib/assessment-kind";
+import { partitionBatchAccept, heldForReviewMessage } from "@/lib/summative-grading-gate";
 
 export const maxDuration = 300;
 
@@ -27,6 +29,8 @@ interface PendingResult {
   suggested_marks: number;
   max_marks: number;
   confidence: string;
+  /** Read for the summative gate: a mark with no working is held like a low-confidence one. */
+  work_found: boolean | null;
 }
 
 /** One student_marks row this batch may overwrite (for the audit log). */
@@ -53,6 +57,11 @@ function identityFor(r: RunRow): Identity {
  * same student_marks / mark_changes writes as POST .../accept, just batched
  * across the whole class rather than one run's selections at a time.
  *
+ * On a SUMMATIVE this does not cover everything. Only the suggestions Clev
+ * was fully confident about are written; the rest stay unaccepted and wait for
+ * the teacher to open them individually, which is the intervention. See
+ * lib/summative-grading-gate.ts. On a formative, behaviour is unchanged.
+ *
  * Works the same whether a run's identity is a registered student
  * (student_id) or an imported-but-not-yet-registered one
  * (invited_student_id) -- see student_marks.invited_student_id. Since a
@@ -69,6 +78,18 @@ export async function POST(
   const { supabase, user } = auth;
 
   const { id: testId } = await params;
+
+  // Read before the runs: what this batch is allowed to cover depends on it,
+  // and a test that cannot be read is not one to start writing marks against.
+  const { data: testRow, error: testErr } = await supabase
+    .from("tests")
+    .select("assessment_kind")
+    .eq("id", testId)
+    .single();
+  if (testErr || !testRow) {
+    return NextResponse.json({ error: testErr?.message ?? "Test not found." }, { status: 404 });
+  }
+  const assessmentKind = parseAssessmentKind(testRow.assessment_kind);
 
   const { data: allRuns, error: runsErr } = await supabase
     .from("ai_grade_runs")
@@ -109,7 +130,7 @@ export async function POST(
     results = await fetchAllRows<PendingResult>((from, to) =>
       supabase
         .from("ai_grade_results")
-        .select("id, run_id, test_item_id, suggested_marks, max_marks, confidence")
+        .select("id, run_id, test_item_id, suggested_marks, max_marks, confidence, work_found")
         .in("run_id", runIds)
         .eq("accepted", false)
         .order("id", { ascending: true })
@@ -127,7 +148,25 @@ export async function POST(
     });
   }
 
-  const clamped = results.map((r) => ({
+  // The summative gate. On a formative `held` is empty and everything below
+  // runs exactly as it did.
+  const { accept: coveredResults, held } = partitionBatchAccept(assessmentKind, results);
+  const heldStudents = new Set(held.map((r) => r.run_id)).size;
+  const heldMessage = heldForReviewMessage(held.length, heldStudents);
+
+  if (coveredResults.length === 0) {
+    return NextResponse.json({
+      appliedCount: 0,
+      studentsProcessed: runs.length,
+      heldCount: held.length,
+      heldStudents,
+      message:
+        heldMessage ||
+        "Nothing to accept -- every suggested mark for every student is already accepted.",
+    });
+  }
+
+  const clamped = coveredResults.map((r) => ({
     ...r,
     identity: identityByRun.get(r.run_id)!,
     marks: Math.max(0, Math.min(r.suggested_marks, r.max_marks)),
@@ -240,19 +279,40 @@ export async function POST(
   // the review UI kept showing them as unaccepted. The run list is short
   // (one id per student) and, with the same accepted = false filter the
   // results were selected with, names exactly the rows just applied.
+  //
+  // When a summative holds some of a run's results, the run is no longer the
+  // right unit: flagging by run would mark the held ones accepted too, which
+  // is the exact thing being prevented. Those go out by id instead, in small
+  // chunks -- the UUID list is what broke the URL above, so 200 per request
+  // rather than one request with all of them.
   const acceptedAt = new Date().toISOString();
-  const { error: acceptErr } = await supabase
-    .from("ai_grade_results")
-    .update({ accepted: true, accepted_at: acceptedAt, accepted_by: user.id })
-    .in("run_id", runIds)
-    .eq("accepted", false);
-  if (acceptErr) {
-    return NextResponse.json(
+  const acceptPatch = { accepted: true, accepted_at: acceptedAt, accepted_by: user.id };
+  const acceptFailed = async (message: string) =>
+    NextResponse.json(
       {
-        error: `The marks were written to Clev's Marks, but flagging the suggestions as accepted failed: ${acceptErr.message}. Run "Accept all" again to finish.`,
+        error: `The marks were written to Clev's Marks, but flagging the suggestions as accepted failed: ${message}. Run "Accept all" again to finish.`,
       },
       { status: 500 }
     );
+
+  if (held.length === 0) {
+    const { error: acceptErr } = await supabase
+      .from("ai_grade_results")
+      .update(acceptPatch)
+      .in("run_id", runIds)
+      .eq("accepted", false);
+    if (acceptErr) return acceptFailed(acceptErr.message);
+  } else {
+    const ID_CHUNK = 200;
+    const ids = clamped.map((r) => r.id);
+    for (let i = 0; i < ids.length; i += ID_CHUNK) {
+      const { error: acceptErr } = await supabase
+        .from("ai_grade_results")
+        .update(acceptPatch)
+        .in("id", ids.slice(i, i + ID_CHUNK))
+        .eq("accepted", false);
+      if (acceptErr) return acceptFailed(acceptErr.message);
+    }
   }
 
   // Clev's Marks just changed for a whole test, so the stored PowerSchool
@@ -263,5 +323,8 @@ export async function POST(
     appliedCount: clamped.length,
     studentsProcessed: runs.length,
     totalApplied: clamped.reduce((sum, r) => sum + r.marks, 0),
+    heldCount: held.length,
+    heldStudents,
+    ...(heldMessage ? { message: heldMessage } : {}),
   });
 }

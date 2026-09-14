@@ -13,13 +13,21 @@
  */
 
 import type { AssignmentDraft, FormattingRequirements } from "@/lib/assignments";
+import type { AssessmentKind } from "@/lib/assessment-kind";
 
 /**
  * What the editor holds, as a comparable value.
  *
  * Formatting is part of it, not just the questions: it decides what the
  * exported and archived PDFs look like, so changing only the font size and
- * then opening something else is still losing work.
+ * then opening something else is still losing work. So is the kind -- a paper
+ * switched from formative to summative and back looks identical here but is
+ * saved differently, and the teacher who made that switch should not lose it
+ * silently.
+ *
+ * `kind` is optional so the calls that predate it still mean what they meant:
+ * an undefined value is dropped by JSON.stringify, leaving the old two-field
+ * snapshot byte-for-byte.
  *
  * Key order is stable because both objects are built by the same code paths,
  * so `JSON.stringify` is sound here and far cheaper than a deep compare on a
@@ -28,8 +36,9 @@ import type { AssignmentDraft, FormattingRequirements } from "@/lib/assignments"
 export function editorSnapshot(
   draft: AssignmentDraft,
   formatting: FormattingRequirements,
+  kind?: AssessmentKind,
 ): string {
-  return JSON.stringify({ draft, formatting });
+  return JSON.stringify({ draft, formatting, kind });
 }
 
 /**
