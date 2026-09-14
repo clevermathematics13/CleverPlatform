@@ -1,15 +1,17 @@
 'use client';
 
-import type { Assignment } from '@/lib/seating-types';
+import { isExamRun } from '@/lib/seating-exam';
+import type { Assignment, SeatingMode } from '@/lib/seating-types';
 
 interface Props {
   assignments: Assignment[];
   classGroup: string;
+  mode: SeatingMode;
 }
 
-export default function History({ assignments, classGroup }: Props) {
+export default function History({ assignments, classGroup, mode }: Props) {
   const relevant = assignments
-    .filter((a) => a.class_group === classGroup)
+    .filter((a) => a.class_group === classGroup && isExamRun(a.run_id) === (mode === 'assessment'))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
   const runs = new Map<string, Assignment[]>();
@@ -21,7 +23,11 @@ export default function History({ assignments, classGroup }: Props) {
   const sortedRuns = [...runs.entries()].slice(0, 20);
 
   if (!sortedRuns.length) {
-    return <p className="text-da-muted italic py-4">No seating history for {classGroup || 'this class'}.</p>;
+    return (
+      <p className="text-da-muted italic py-4">
+        No {mode === 'assessment' ? 'assessment' : 'group'} seating history for {classGroup || 'this class'}.
+      </p>
+    );
   }
 
   return (
@@ -36,7 +42,7 @@ export default function History({ assignments, classGroup }: Props) {
           <table className="w-full text-sm border-t border-da-border">
             <thead>
               <tr className="bg-da-hover">
-                {['Pod', 'Seat', 'Student'].map((h) => (
+                {[mode === 'assessment' ? 'Row' : 'Pod', 'Seat', 'Student'].map((h) => (
                   <th key={h} className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-da-text">{h}</th>
                 ))}
               </tr>

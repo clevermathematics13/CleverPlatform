@@ -1,3 +1,4 @@
+import { isExamRun } from './seating-exam';
 import type { Student, Seat, Rule, Assignment, Setting, RuleFeedback } from './seating-types';
 
 interface ScoredCandidate {
@@ -102,8 +103,11 @@ function buildHistoryStats(
   classGroup: string,
   historyRuns: number
 ): HistoryStats {
+  // Assessment runs sit one student per desk and record the ROW as the pod, so
+  // counting them here would read a whole row as a group that has already sat
+  // together. Group freshness is about group seating only.
   const relevant = assignments
-    .filter((a) => a.class_group === classGroup)
+    .filter((a) => a.class_group === classGroup && !isExamRun(a.run_id))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
   const runOrder: string[] = [];

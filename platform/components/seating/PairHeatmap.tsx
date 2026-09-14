@@ -1,5 +1,6 @@
 'use client';
 
+import { isExamRun } from '@/lib/seating-exam';
 import type { Assignment, Student } from '@/lib/seating-types';
 
 interface Props {
@@ -11,10 +12,11 @@ interface Props {
 function getPairCounts(assignments: Assignment[], classGroup: string): Map<string, number> {
   const counts = new Map<string, number>();
 
-  // Group assignments by run_id
+  // Group assignments by run_id. Assessment runs are left out: their "pod" is
+  // a row of separate desks, not a group that sat together.
   const byRun = new Map<string, Assignment[]>();
   assignments
-    .filter((a) => a.class_group === classGroup)
+    .filter((a) => a.class_group === classGroup && !isExamRun(a.run_id))
     .forEach((a) => {
       if (!byRun.has(a.run_id)) byRun.set(a.run_id, []);
       byRun.get(a.run_id)!.push(a);

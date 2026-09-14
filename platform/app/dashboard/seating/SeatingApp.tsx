@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import ClassPicker from '@/components/seating/ClassPicker';
 import SeatingChart from '@/components/seating/SeatingChart';
+import ExamSeatingChart from '@/components/seating/ExamSeatingChart';
 import RuleManager from '@/components/seating/RuleManager';
 import StudentList from '@/components/seating/StudentList';
 import History from '@/components/seating/History';
@@ -15,12 +16,31 @@ import {
   saveCurrentSeating, appendAssignments,
 } from '@/lib/seating-data';
 import { generateSeating, evaluateRules } from '@/lib/seating-engine';
-import type { Student, Seat, Rule, Assignment, Setting, RuleFeedback } from '@/lib/seating-types';
+import { generateExamSeating, latestExamRun } from '@/lib/seating-exam';
+import type { Student, Seat, Rule, Assignment, Setting, RuleFeedback, SeatingMode } from '@/lib/seating-types';
 
 type Tab = 'chart' | 'rules' | 'students' | 'history' | 'heatmap' | 'layout';
 
+const MODE_STORAGE_KEY = 'sc_seating_mode';
+
+/**
+ * Pods, rules and the pair heatmap are all about who sits with whom, which
+ * assessment seating deliberately has no opinion about - it sits everyone on
+ * their own. Those tabs are hidden there rather than left to quietly do
+ * nothing.
+ */
+const TABS: { key: Tab; label: string; modes: SeatingMode[] }[] = [
+  { key: 'chart', label: 'Seating', modes: ['groups', 'assessment'] },
+  { key: 'rules', label: 'Rules', modes: ['groups'] },
+  { key: 'students', label: 'Students', modes: ['groups', 'assessment'] },
+  { key: 'history', label: 'History', modes: ['groups', 'assessment'] },
+  { key: 'heatmap', label: 'Heatmap', modes: ['groups'] },
+  { key: 'layout', label: 'Layout', modes: ['groups'] },
+];
+
 export default function SeatingApp() {
   const [classGroup, setClassGroup] = useState('27AH');
+  const [mode, setMode] = useState<SeatingMode>('groups');
   const [tab, setTab] = useState<Tab>('chart');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -54,17 +74,42 @@ export default function SeatingApp() {
     loadData();
   }, [loadData]);
 
+  /* Restore the last mode after mount, not during render, so the server and
+     the first client render agree. */
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(MODE_STORAGE_KEY);
+      if (saved === 'assessment' || saved === 'groups') setMode(saved);
+    } catch { /* ignore */ }
+  }, []);
+
+  const tabs = TABS.filter((t) => t.modes.includes(mode));
+
+  const changeMode = (next: SeatingMode) => {
+    setMode(next);
+    try { localStorage.setItem(MODE_STORAGE_KEY, next); } catch { /* ignore */ }
+    if (!TABS.some((t) => t.key === tab && t.modes.includes(next))) setTab('chart');
+  };
+
   const handleGenerate = async () => {
     if (!classGroup) { alert('Pick a class group first.'); return; }
-    const latest = await getRules();
-    setRules(latest);
     setGenerating(true);
     try {
-      const result = generateSeating(students, seats, latest, allAssignments, settings, classGroup);
-      await Promise.all([saveCurrentSeating(result), appendAssignments(result)]);
-      setCurrentSeating(result);
-      setAllAssignments((prev) => [...prev, ...result]);
-      setFeedback(evaluateRules(latest, result, classGroup));
+      if (mode === 'assessment') {
+        // Assessment runs are history only: they never touch seating_current,
+        // so generating one does not throw away the class's group seating.
+        const { assignments } = generateExamSeating(students, allAssignments, classGroup);
+        await appendAssignments(assignments);
+        setAllAssignments((prev) => [...prev, ...assignments]);
+      } else {
+        const latest = await getRules();
+        setRules(latest);
+        const result = generateSeating(students, seats, latest, allAssignments, settings, classGroup);
+        await Promise.all([saveCurrentSeating(result), appendAssignments(result)]);
+        setCurrentSeating(result);
+        setAllAssignments((prev) => [...prev, ...result]);
+        setFeedback(evaluateRules(latest, result, classGroup));
+      }
     } catch (e) {
       alert('Generation failed: ' + (e as Error).message);
     } finally {
@@ -73,15 +118,7 @@ export default function SeatingApp() {
   };
 
   const filteredSeating = currentSeating.filter((a) => a.class_group === classGroup);
-
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'chart', label: 'Seating' },
-    { key: 'rules', label: 'Rules' },
-    { key: 'students', label: 'Students' },
-    { key: 'history', label: 'History' },
-    { key: 'heatmap', label: 'Heatmap' },
-    { key: 'layout', label: 'Layout' },
-  ];
+  const examSeating = latestExamRun(allAssignments, classGroup);
 
   return (
     <div className="space-y-6">
@@ -94,12 +131,41 @@ export default function SeatingApp() {
         {/* Controls */}
         <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-surface/80 p-4 shadow-sm shadow-black/25">
           <ClassPicker selected={classGroup} onChange={setClassGroup} />
+
+          <div
+            role="group"
+            aria-label="Seating mode"
+            className="inline-flex overflow-hidden rounded-lg border border-da-border"
+          >
+            {([
+              { value: 'groups', label: 'Groups', title: 'Pods around tables, with pair and pod rules' },
+              { value: 'assessment', label: 'Assessment', title: 'One student per desk, in rows of three, alternating B/G' },
+            ] as const).map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                title={option.title}
+                aria-pressed={mode === option.value}
+                onClick={() => changeMode(option.value)}
+                className={`px-3 py-2 text-sm font-semibold transition-colors ${
+                  mode === option.value
+                    ? 'bg-da-accent text-da-on-accent'
+                    : 'text-da-muted hover:bg-da-hover hover:text-da-text'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
           <button
             onClick={handleGenerate}
             disabled={!classGroup || generating}
             className="rounded-lg border border-da-accent/40 bg-da-accent px-4 py-2 text-sm font-semibold text-da-on-accent transition-colors hover:bg-da-amber disabled:opacity-50"
           >
-            {generating ? 'Generating…' : '🎲 Generate Seating'}
+            {generating
+              ? 'Generating…'
+              : mode === 'assessment' ? '📝 Generate Exam Seating' : '🎲 Generate Seating'}
           </button>
           <button
             onClick={loadData}
@@ -133,7 +199,14 @@ export default function SeatingApp() {
         <div className="rounded-xl border border-da-border bg-da-surface/80 p-6 shadow-sm shadow-black/25">
           {loading && <p className="py-12 text-center text-da-muted">Loading data…</p>}
 
-          {!loading && tab === 'chart' && (
+          {!loading && tab === 'chart' && mode === 'assessment' && (
+            <ExamSeatingChart
+              assignments={examSeating}
+              students={students}
+              classGroup={classGroup}
+            />
+          )}
+          {!loading && tab === 'chart' && mode === 'groups' && (
             <>
               <SeatingChart seats={seats} assignments={filteredSeating} classGroup={classGroup} />
               <SeatingExplainer
@@ -152,10 +225,10 @@ export default function SeatingApp() {
             />
           )}
           {!loading && tab === 'students' && (
-            <StudentList students={students} classGroup={classGroup} />
+            <StudentList students={students} classGroup={classGroup} onGenderSaved={loadData} />
           )}
           {!loading && tab === 'history' && (
-            <History assignments={allAssignments} classGroup={classGroup} />
+            <History assignments={allAssignments} classGroup={classGroup} mode={mode} />
           )}
           {!loading && tab === 'heatmap' && (
             <PairHeatmap
