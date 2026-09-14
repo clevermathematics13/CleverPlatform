@@ -15,6 +15,9 @@ Design docs (read before any NA content or PDF layout work):
 
 ## Non-negotiables
 - Dev server: always npm run dev (--webpack). Never --turbopack.
+  This covers the DEV SERVER only. `npm run build` passes no bundler flag,
+  so production builds with Turbopack -- Next 16's default -- and always has.
+  What actually keeps Turbopack safe is the ASCII-dashes rule below.
 - Never rename platform/src/proxy.ts or add middleware.ts alongside it.
 - ASCII dashes only in comments (---- not Unicode box-drawing chars).
 - Build + test before every push: npm run build && npm test
