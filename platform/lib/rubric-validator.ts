@@ -56,6 +56,23 @@ interface FlatPart {
   marks: number;
   question: string;
   scheme: string;
+  /**
+   * The label the PAPER prints for this part -- "2.1(c)", not "Q6(c)".
+   *
+   * The renderer numbers questions within their level; the bridge numbers
+   * them across the whole paper because that is what test_items and the
+   * gradebook key on. Both are right for their own job, and a finding is
+   * useless if it names a label the teacher cannot find on the page.
+   */
+  printedLabel: string;
+  /** Whether this part renders a line marked "Answer" (see the orchestrator). */
+  hasAnswerLine: boolean;
+}
+
+/** Options a paper-level rule needs and the draft alone cannot supply. */
+export interface RubricContext {
+  /** From the exam conditions; enables the time-budget rule. */
+  timeAllowedMinutes?: number;
 }
 
 // ---- shared matchers -------------------------------------------------------
@@ -98,6 +115,7 @@ function labelOf(questionNumber: number, partLabel: string): string {
 }
 
 function flatten(draft: AssignmentDraft): FlatPart[] {
+  const { printed, answerLine } = paperFacts(draft);
   // Reuse the bridge so the validator checks exactly the rows that will be
   // stored and graded -- a second flattening convention here could pass a
   // draft whose stored form is different.
@@ -108,7 +126,39 @@ function flatten(draft: AssignmentDraft): FlatPart[] {
     marks: row.max_marks,
     question: row.question_text ?? "",
     scheme: row.markscheme_text ?? "",
+    printedLabel: printed.get(row.sort_order) ?? labelOf(row.question_number, row.part_label),
+    hasAnswerLine: answerLine.get(row.sort_order) ?? false,
   }));
+}
+
+/**
+ * How the paper labels each part, and whether it prints an Answer line,
+ * keyed by the bridge's sort_order so the two walks cannot drift apart.
+ */
+function paperFacts(draft: AssignmentDraft): {
+  printed: Map<number, string>;
+  answerLine: Map<number, boolean>;
+} {
+  const printed = new Map<number, string>();
+  const answerLine = new Map<number, boolean>();
+  let sortOrder = 0;
+  (draft.sections ?? []).forEach((section, sIdx) => {
+    (section.questions ?? []).forEach((question, qIdx) => {
+      const stem = `${sIdx + 1}.${qIdx + 1}`;
+      if (question.subparts && question.subparts.length > 0) {
+        question.subparts.forEach((sp, spIdx) => {
+          printed.set(sortOrder, `${stem}(${String.fromCharCode(97 + spIdx)})`);
+          answerLine.set(sortOrder, sp.requiresWorking === true);
+          sortOrder++;
+        });
+      } else {
+        printed.set(sortOrder, stem);
+        answerLine.set(sortOrder, question.requiresWorking === true);
+        sortOrder++;
+      }
+    });
+  });
+  return { printed, answerLine };
 }
 
 /**
@@ -450,12 +500,219 @@ function ruleConjunctOnOneMark(part: FlatPart, out: RubricFinding[]): void {
  * with missing sections or schemes yields findings, not an exception, since
  * this runs on model output that may be malformed in any number of ways.
  */
-export function validateRubric(draft: AssignmentDraft): RubricFinding[] {
+
+// ---- rules 10-14: the paper as a student reads it ---------------------------
+//
+// The nine rules above check a mark scheme against itself and against the
+// paper's own principles. These five check the QUESTION against what the page
+// actually prints, which is the other place a paper can disagree with itself.
+// Every one of them comes from a teacher reading a generated summative front
+// to back before giving it:
+//
+//   "Context for Q4" sat above a question the paper numbered 2.1.
+//   The instructions promised "the line marked Answer" on parts that have none.
+//   Forty-six minutes of work were suggested inside a fifty-minute paper.
+//
+// None is a mathematical error, and every one of them costs a student time
+// they were not given.
+
+/** A cross-reference to a question by number, in any of the usual voices. */
+const QUESTION_CROSS_REFERENCE = /\b(?:Q|question)\s*\.?\s*(\d+)\b/i;
+
+/** A subpart prompt that numbers itself: "(a) ...", "a) ...", "(iii) ...". */
+const SELF_NUMBERED = /^\s*\(?\s*(?:[a-z]|[ivx]{1,4})\s*[).]\s+/i;
+
+/** The instructions promising somewhere specific to put the final answer. */
+const PROMISES_ANSWER_LINE = /\bline\s+marked\s+["'\u2018\u201c]?answer\b/i;
+
+/**
+ * ... unless the promise is qualified. "On the line marked Answer where one is
+ * given" is true of every paper, and a rule that flagged it would push authors
+ * away from the wording that fixes the problem.
+ */
+const ANSWER_LINE_QUALIFIED =
+  /\bwhere\s+(?:one\s+is\s+)?(?:given|provided|shown)\b|\bif\s+(?:one\s+is\s+)?(?:given|provided)\b/i;
+
+/** A part that has just pinned the variables to particular values. */
+const SUBSTITUTES_VALUES = /\b(?:when|where|if|for)\b[^.]{0,40}[a-z]\s*=\s*-?\d/i;
+
+/** A part asking for something general rather than a number. */
+const ASKS_FOR_EXPRESSION = /\bwrite\s+(?:an?|the)\s+expression\b|\bexpression\s+for\b/i;
+
+const IN_TERMS_OF = /\bin terms of\b|\bgeneral\b|\bfor any\b/i;
+
+/**
+ * Rule 10 -- a question that numbers itself.
+ *
+ * The renderer prints "2.1" beside the question, from its position. A prompt
+ * that also says "Context for Q6" gives the same question two names, and the
+ * one it chose is not the one on the page: the bridge numbers globally for
+ * test_items, the renderer numbers within the level for the student.
+ */
+function ruleQuestionNumbersItself(part: FlatPart, out: RubricFinding[]): void {
+  const match = QUESTION_CROSS_REFERENCE.exec(part.question);
+  if (!match) return;
+  out.push({
+    rule: 10,
+    code: "question-numbers-itself",
+    severity: "block",
+    part: part.label,
+    message:
+      `The prompt refers to "${match[0]}", but the paper prints this part as ` +
+      `${part.printedLabel}. A student looking for ${match[0]} will not find it. ` +
+      "Drop the number -- the renderer supplies it -- or refer to a part by its " +
+      "letter, as in \"your expression from part (a)\".",
+  });
+}
+
+/**
+ * Rule 11 -- a subpart that numbers itself.
+ *
+ * The renderer prints (a), (b), (c) from position. A prompt that opens "(a)"
+ * is printed as "(a) (a) ...".
+ */
+function ruleSubpartNumbersItself(part: FlatPart, out: RubricFinding[]): void {
+  if (!part.partLabel || !SELF_NUMBERED.test(part.question)) return;
+  out.push({
+    rule: 11,
+    code: "subpart-numbers-itself",
+    severity: "block",
+    part: part.label,
+    message:
+      "The prompt begins with its own part letter, and the renderer prints one " +
+      `too, so the paper reads "(a) (a) ..." at ${part.printedLabel}. Start the prompt at the question.`,
+  });
+}
+
+/**
+ * Rule 12 -- instructions that promise an Answer line the parts do not have.
+ *
+ * Only a part with requiresWorking renders "Answer" beneath its working box;
+ * every other part is ruled lines. Telling a student to write their final
+ * answer "on the line marked Answer" is then false for most of the paper, and
+ * a student who believes it will hunt for something that is not there.
+ */
+function ruleAnswerLinePromise(
+  draft: AssignmentDraft,
+  parts: FlatPart[],
+  out: RubricFinding[],
+): void {
+  const promise = (draft.instructions ?? []).find(
+    (line) => PROMISES_ANSWER_LINE.test(line) && !ANSWER_LINE_QUALIFIED.test(line),
+  );
+  if (!promise) return;
+  const without = parts.filter((p) => !p.hasAnswerLine);
+  if (without.length === 0) return;
+  out.push({
+    rule: 12,
+    code: "instruction-promises-missing-answer-line",
+    severity: "block",
+    part: "(paper)",
+    message:
+      `The instructions say to write the final answer on the line marked Answer, but ` +
+      `${without.length} of ${parts.length} parts print no such line -- only a part that ` +
+      "requires working does. Say where the answer goes on the parts that have no " +
+      `Answer line (${without.slice(0, 3).map((p) => p.printedLabel).join(", ")}` +
+      `${without.length > 3 ? ", ..." : ""}), or give those parts one.`,
+  });
+}
+
+/**
+ * Rule 13 -- the paper has to fit the time, with room to check.
+ *
+ * S8 of the generator prompt already says the levels must sum to no more than
+ * the time allowed. Nothing enforced it, and "no more than" is not the real
+ * bar: a paper that fills its own time allowance to the minute leaves nothing
+ * for reading, page-turning, being stuck, or checking. Eighty per cent is the
+ * usual working figure.
+ */
+const TIME_BUDGET_FRACTION = 0.8;
+
+function ruleTimeBudget(
+  draft: AssignmentDraft,
+  context: RubricContext,
+  out: RubricFinding[],
+): void {
+  const allowed = context.timeAllowedMinutes;
+  if (!allowed || allowed <= 0) return;
+  const suggested = (draft.sections ?? []).reduce(
+    (sum, section) => sum + (section.estimatedMinutes ?? 0),
+    0,
+  );
+  if (suggested <= 0) return;
+
+  if (suggested > allowed) {
+    out.push({
+      rule: 13,
+      code: "time-budget-exceeded",
+      severity: "block",
+      part: "(paper)",
+      message:
+        `The levels suggest ${suggested} minutes of work in a ${allowed}-minute paper. ` +
+        "A paper that cannot be finished in the time printed on its own cover measures " +
+        "speed rather than mathematics.",
+    });
+    return;
+  }
+
+  const comfortable = Math.floor(allowed * TIME_BUDGET_FRACTION);
+  if (suggested > comfortable) {
+    out.push({
+      rule: 13,
+      code: "time-budget-tight",
+      severity: "warn",
+      part: "(paper)",
+      message:
+        `The levels suggest ${suggested} minutes of work in a ${allowed}-minute paper, ` +
+        `leaving ${allowed - suggested} minutes for reading, being stuck, and checking. ` +
+        `About ${comfortable} minutes of work is the usual ceiling. Explanation-heavy ` +
+        "papers run longest, because writing a reason takes longer than writing a value.",
+    });
+  }
+}
+
+/**
+ * Rule 14 -- "write an expression" straight after a part that used numbers.
+ *
+ * Part (b) evaluates at x = 5 and y = 7; part (c) then says "write an
+ * expression for the discounted total". A reasonable student cannot tell
+ * whether that means the general expression or the discounted value of the
+ * purchase they have just costed. Three words fix it.
+ */
+function ruleExpressionAfterSubstitution(parts: FlatPart[], out: RubricFinding[]): void {
+  for (let i = 1; i < parts.length; i++) {
+    const part = parts[i];
+    const previous = parts[i - 1];
+    if (part.questionNumber !== previous.questionNumber) continue;
+    if (!ASKS_FOR_EXPRESSION.test(part.question)) continue;
+    if (IN_TERMS_OF.test(part.question)) continue;
+    if (!SUBSTITUTES_VALUES.test(previous.question)) continue;
+    out.push({
+      rule: 14,
+      code: "expression-after-substitution",
+      severity: "warn",
+      part: part.label,
+      message:
+        `${previous.printedLabel} pinned the variables to particular values, and this part ` +
+        "asks for an expression without saying which. Add \"in terms of ...\" so a student " +
+        "cannot reasonably read it as asking for the value they just found.",
+    });
+  }
+}
+
+export function validateRubric(
+  draft: AssignmentDraft,
+  /** Paper-level facts the draft does not carry; see RubricContext. */
+  context: RubricContext = {},
+): RubricFinding[] {
   const parts = flatten(draft);
   const findings: RubricFinding[] = [];
 
   rulePrincipleConflict(draft, parts, findings);
   ruleFollowThroughPromised(draft, parts, findings);
+  ruleAnswerLinePromise(draft, parts, findings);
+  ruleTimeBudget(draft, context, findings);
+  ruleExpressionAfterSubstitution(parts, findings);
 
   for (const part of parts) {
     ruleSelfContradiction(part, findings);
@@ -466,6 +723,8 @@ export function validateRubric(draft: AssignmentDraft): RubricFinding[] {
     ruleSimplifyAlignment(part, findings);
     ruleCodeSum(part, findings);
     ruleConjunctOnOneMark(part, findings);
+    ruleQuestionNumbersItself(part, findings);
+    ruleSubpartNumbersItself(part, findings);
   }
 
   return findings.sort((a, b) => a.rule - b.rule || a.part.localeCompare(b.part));

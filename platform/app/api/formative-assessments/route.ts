@@ -200,7 +200,16 @@ export async function POST(req: Request) {
   // acknowledgeRubricFindings. Warnings never stop anything. A rubric is
   // professional judgement, so the gate's job is to make sure a defect was
   // seen -- not to overrule the person who wrote it.
-  const rubricFindings = validateRubric(draft);
+  // The time allowed lives on the formatting, which is parsed further down for
+  // the archive. Rule 13 needs it HERE, before the gate decides -- a paper that
+  // cannot be finished in its own time allowance is exactly the kind of defect
+  // this gate exists to surface, and it is invisible from the draft alone.
+  const timeAllowedMinutes =
+    typeof (body.formatting as { timeAllowedMinutes?: unknown } | undefined)?.timeAllowedMinutes ===
+    "number"
+      ? ((body.formatting as { timeAllowedMinutes: number }).timeAllowedMinutes)
+      : undefined;
+  const rubricFindings = validateRubric(draft, { timeAllowedMinutes });
   const rubric = { findings: rubricFindings, summary: summarizeRubricFindings(rubricFindings) };
   if (shouldHoldForRubricReview(rubricFindings, body.acknowledgeRubricFindings)) {
     return NextResponse.json(
