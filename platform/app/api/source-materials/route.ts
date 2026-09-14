@@ -58,9 +58,13 @@ export async function GET(req: Request) {
       .select("id, section_code, title, course_id, grade_level, parts, created_at")
       .not("section_code", "is", null)
       .order("section_code"),
+    // assignment_templates has NO course_id and NO parts -- its content is all
+    // in draft_content. Assuming otherwise (they were confused with
+    // nuanced_analyses, which has both) made this whole route 500 and the
+    // catalogue read as empty, uploads included.
     supabase
       .from("assignment_templates")
-      .select("id, template_name, grade_level, course_id, draft_content, parts, updated_at")
+      .select("id, template_name, grade_level, draft_content, updated_at")
       .order("updated_at", { ascending: false }),
     supabase
       .from("tests")
@@ -70,22 +74,33 @@ export async function GET(req: Request) {
     supabase.from("courses").select("id, name"),
   ]);
 
-  const firstError = [uploads, packets, templates, assessments, courses].find((r) => r.error);
-  if (firstError?.error) {
-    return NextResponse.json({ error: firstError.error.message }, { status: 500 });
-  }
+  // One origin failing must not empty the catalogue. Before this, any single
+  // bad query took the whole list with it -- the teacher saw "nothing
+  // catalogued", which reads as "you have not uploaded anything" rather than
+  // as a fault, and the files they HAD uploaded were the first thing hidden.
+  const warnings: string[] = [];
+  const usable = <T,>(
+    result: { data: T[] | null; error: { message: string } | null },
+    label: string,
+  ): T[] => {
+    if (result.error) {
+      warnings.push(`${label} could not be read: ${result.error.message}`);
+      return [];
+    }
+    return result.data ?? [];
+  };
 
   const courseName = new Map(
-    ((courses.data ?? []) as { id: string; name: string }[]).map((c) => [c.id, c.name]),
+    usable<{ id: string; name: string }>(courses, "Courses").map((c) => [c.id, c.name]),
   );
 
   const items: SourceMaterialSummary[] = [];
 
-  for (const row of (uploads.data ?? []) as Array<{
+  for (const row of usable<{
     id: string; title: string; course_id: string | null; grade_level: string | null;
     storage_path: string; page_count: number | null; byte_size: number | null;
     created_at: string; extracted_text: string | null;
-  }>) {
+  }>(uploads, "Uploaded files")) {
     if (!gradeMatches(row.grade_level)) continue;
     const text = row.extracted_text ?? "";
     items.push({
@@ -105,10 +120,10 @@ export async function GET(req: Request) {
     });
   }
 
-  for (const row of (packets.data ?? []) as Array<{
+  for (const row of usable<{
     id: string; section_code: string; title: string; course_id: string | null;
     grade_level: string | null; parts: unknown; created_at: string;
-  }>) {
+  }>(packets, "Nuanced Analysis packets")) {
     if (!gradeMatches(row.grade_level)) continue;
     const text = harvestText(row.parts).join("\n");
     items.push({
@@ -125,20 +140,19 @@ export async function GET(req: Request) {
     });
   }
 
-  for (const row of (templates.data ?? []) as Array<{
-    id: string; template_name: string; grade_level: string | null; course_id: string | null;
-    draft_content: unknown; parts: unknown; updated_at: string;
-  }>) {
+  for (const row of usable<{
+    id: string; template_name: string; grade_level: string | null;
+    draft_content: unknown; updated_at: string;
+  }>(templates, "Authored templates")) {
     if (!gradeMatches(row.grade_level)) continue;
-    const text = row.draft_content
-      ? draftToText(row.draft_content as AssignmentDraft)
-      : harvestText(row.parts).join("\n");
+    const text = row.draft_content ? draftToText(row.draft_content as AssignmentDraft) : "";
     items.push({
       id: namespacedId("template", row.id),
       kind: "template",
       title: row.template_name,
       detail: text ? `${Math.round(text.length / 1000)}k characters` : "no content saved",
-      courseName: row.course_id ? courseName.get(row.course_id) ?? null : null,
+      // No course_id on this table -- a template belongs to a grade.
+      courseName: null,
       gradeLevel: row.grade_level,
       createdAt: row.updated_at,
       usable: text.length > 0,
@@ -147,10 +161,10 @@ export async function GET(req: Request) {
     });
   }
 
-  for (const row of (assessments.data ?? []) as Array<{
+  for (const row of usable<{
     id: string; name: string; course_id: string | null; custom_content: unknown;
     assessment_kind: string; created_at: string;
-  }>) {
+  }>(assessments, "Saved assessments")) {
     const course = row.course_id ? courseName.get(row.course_id) ?? null : null;
     // A saved assessment carries no grade_level of its own, so its course name
     // is what places it -- "9G" and "Grade 9 Extended" both read as Grade 9.
@@ -170,7 +184,7 @@ export async function GET(req: Request) {
     });
   }
 
-  return NextResponse.json({ materials: items });
+  return NextResponse.json({ materials: items, ...(warnings.length > 0 ? { warnings } : {}) });
 }
 
 export async function POST(req: Request) {
