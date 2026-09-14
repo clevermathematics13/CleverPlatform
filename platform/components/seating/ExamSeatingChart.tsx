@@ -1,11 +1,7 @@
 'use client';
 
 import { useRef } from 'react';
-import {
-  EXAM_COLUMNS,
-  examTargetFor,
-  summariseExamRun,
-} from '@/lib/seating-exam';
+import { EXAM_COLUMNS, summariseExamRun } from '@/lib/seating-exam';
 import type { Assignment, Gender, Student } from '@/lib/seating-types';
 
 interface Props {
@@ -15,11 +11,14 @@ interface Props {
   classGroup: string;
 }
 
-const GENDER_STYLE: Record<'B' | 'G', string> = {
-  B: 'border-da-info/50 bg-da-info/10',
-  G: 'border-da-accent/50 bg-da-accent/10',
-};
-
+/**
+ * The chart shows names and nothing else. Gender drives where a student is
+ * seated, but it is not the teacher's to put on a wall or in an exported
+ * image, so nothing here renders it - no letter under the name, no colour
+ * standing in for one, and no marker on the desks that had to break the
+ * pattern, which would give away the occupant's gender by elimination. The
+ * count above the chart says how well the pattern held without naming anyone.
+ */
 export default function ExamSeatingChart({ assignments, students, classGroup }: Props) {
   const canvasRef = useRef<HTMLDivElement>(null);
 
@@ -60,9 +59,9 @@ export default function ExamSeatingChart({ assignments, students, classGroup }: 
     <div>
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-xs text-da-muted">
-          {summary.matched} of {summary.total} desks follow the B/G pattern
+          {summary.matched} of {summary.total} desks follow the alternating pattern
           {summary.mismatched > 0 && ` — ${summary.mismatched} could not (the class does not split evenly)`}
-          {summary.unset > 0 && ` — ${summary.unset} with no B/G set, in the Students tab`}
+          {summary.unset > 0 && ` — ${summary.unset} not set in the Students tab`}
         </p>
         <button
           onClick={exportImage}
@@ -101,22 +100,13 @@ export default function ExamSeatingChart({ assignments, students, classGroup }: 
                         </div>
                       );
                     }
-                    const gender = genderOf.get(a.student_id) ?? '';
-                    const target = examTargetFor(row, col);
-                    const broke = gender !== '' && gender !== target;
                     return (
                       <div
                         key={col}
-                        title={broke ? `${a.name} breaks the pattern here (this desk wants ${target})` : a.seat_id}
-                        className={`rounded border p-2 text-center ${
-                          gender ? GENDER_STYLE[gender] : 'border-da-border bg-da-hover'
-                        } ${broke ? 'border-dashed' : ''}`}
+                        title={a.seat_id}
+                        className="rounded border border-da-accent/40 bg-da-accent/20 p-2 text-center"
                       >
                         <span className="block truncate text-xs font-semibold text-da-text">{a.name}</span>
-                        <span className="mt-0.5 block text-[10px] font-bold tracking-wider text-da-muted">
-                          {gender || '?'}
-                          {broke && ' · off-pattern'}
-                        </span>
                       </div>
                     );
                   })}
