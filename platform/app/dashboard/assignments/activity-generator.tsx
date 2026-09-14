@@ -19,7 +19,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 // Moved out of this file so every /api/claude caller can read the stream the
 // route actually returns -- see claude-stream.ts.
-import { readClaudeStream, type GenerationProgress } from "./claude-stream";
+import { readClaudeStream, type GenerationProgress } from "@/lib/claude-stream";
 
 // ---- Types ----
 

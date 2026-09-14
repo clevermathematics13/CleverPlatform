@@ -77,7 +77,7 @@ import {
 } from "./load-saved-assessment";
 import { formatSavedDate } from "./format-date";
 // POST /api/claude streams Server-Sent Events, not JSON -- see claude-stream.ts.
-import { readClaudeStream } from "./claude-stream";
+import { readClaudeStream } from "@/lib/claude-stream";
 import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 

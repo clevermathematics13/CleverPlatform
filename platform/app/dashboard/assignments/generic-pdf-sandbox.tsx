@@ -18,7 +18,7 @@ import {
 } from "@/lib/assignments";
 import { ActivityGeneratorPanel } from "./activity-generator";
 // POST /api/claude streams SSE, not JSON -- see claude-stream.ts.
-import { readClaudeStream } from "./claude-stream";
+import { readClaudeStream } from "@/lib/claude-stream";
 import { NuancedAnalysisPreview } from "./nuanced-analysis-preview";
 
 type GenericSandboxProps = {

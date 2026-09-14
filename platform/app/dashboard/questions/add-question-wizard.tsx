@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import { IB_CORRECTION_SYSTEM, IB_CLASSIFY_SYSTEM } from "@/lib/latex-utils";
-import { readJsonSafely } from "@/lib/http-json";
+// POST /api/claude streams Server-Sent Events, not JSON -- see lib/claude-stream.ts.
+import { readClaudeStream } from "@/lib/claude-stream";
 import { splitDraftIntoParts } from "./review/split-draft-into-parts";
 import { hasExplicitTopLevelPartStructure } from "./part-structure";
 
@@ -128,10 +129,12 @@ function WizardStemEditor({
           ],
         }),
       });
-      const data = await readJsonSafely<{ content?: { text?: string }[]; error?: string }>(res);
       if (!res.ok) {
-        throw new Error(data?.error ?? `HTTP ${res.status}`);
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
       }
+      // Not readJsonSafely: the route streams Server-Sent Events on 200.
+      const data = await readClaudeStream(res);
       const corrected: string = data?.content?.[0]?.text ?? "";
       if (corrected) setCurrentDraft(corrected.trim());
     } finally {
@@ -279,10 +282,12 @@ function WizardPartEditor({
           ],
         }),
       });
-      const data = await readJsonSafely<{ content?: { text?: string }[]; error?: string }>(res);
       if (!res.ok) {
-        throw new Error(data?.error ?? `HTTP ${res.status}`);
+        const err = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(err.error ?? `HTTP ${res.status}`);
       }
+      // Not readJsonSafely: the route streams Server-Sent Events on 200.
+      const data = await readClaudeStream(res);
       const corrected: string = data?.content?.[0]?.text ?? "";
       if (corrected) setActiveDraft(corrected.trim());
     } finally {
@@ -769,7 +774,11 @@ export function AddQuestionWizard({
           }),
         });
         if (claudeRes.ok) {
-          const data = await readJsonSafely<{ content?: { text?: string }[] }>(claudeRes);
+          // Not readJsonSafely: the route streams Server-Sent Events on 200.
+          // The surrounding catch already tells the teacher when this falls
+          // through, which is why THIS caller degraded visibly rather than
+          // silently -- it just always degraded.
+          const data = await readClaudeStream(claudeRes);
           const text: string = data?.content?.[0]?.text ?? "";
           const jsonMatch = text.match(/\{[\s\S]*\}/);
           if (jsonMatch) {
