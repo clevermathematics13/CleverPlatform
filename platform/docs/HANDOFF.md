@@ -1831,3 +1831,63 @@ The tab label is now "Assessment Creator". The tab ID stays
 renaming it would silently move a returning teacher to a different tab. The
 API route path and `lib/formative-assessment-*.ts` filenames are unchanged for
 the same reason.
+
+## 20. Source material, and two ways into the creator (14 Sep 2026)
+
+### The catalogue
+
+`GET /api/source-materials?grade=` unions four origins into one list the
+creator ticks from: uploaded files (`source_materials`), NA packets, saved
+assignment templates and previously saved assessments. Ticked items are
+resolved to text by `POST /api/source-materials/resolve` at generation time
+and appended to the prompt, so a paper is written from the wording, notation
+and worked examples the class was actually taught.
+
+Two things that route got wrong and no longer does:
+
+- `assignment_templates` has NO `course_id` and NO `parts` - those are
+  `nuanced_analyses` columns, and selecting them made PostgREST refuse the
+  query, 500 the whole route, and leave the UI reading "Nothing catalogued for
+  Grade 9 yet". That empty state is byte-identical to the honest one, so it
+  reads as the teacher's own doing. The route now degrades per origin and
+  names what it could not read.
+- The prompt ceilings were invented rather than measured. They are now
+  `SOURCE_TEXT_PER_ITEM = 150_000` and `SOURCE_TEXT_TOTAL = 400_000` chars
+  (from 24k/90k): the generator runs a 1M-token context and the entire Grade 9
+  catalogue is about 28k tokens. Deliberately NOT batched - both shapes of it
+  (digest-then-generate, per-source-then-stitch) forfeit the cross-source
+  synthesis that is the reason for selecting four documents at once.
+
+Uploads go to the same route. PDFs are read with `pdf-parse` v2, which is a
+CLASS (`new PDFParse({ data }).getText()`), not a default function; `.md` and
+`.txt` are read directly. A scan with no text layer stores with
+`usable = false` and is shown ticked out, rather than reaching the generator
+as an empty string.
+
+### Two ways in, and only two
+
+The left panel had grown into four boxes that each looked like a place to
+begin - what is this, open a saved one, source material, generate with AI. It
+is now one **Start** panel with two mutually exclusive buttons, open a saved
+assessment or generate a new one, and only the chosen path's controls on
+screen. Source material moved inside the generate path, because that is all it
+is: an input to the generation. It does nothing to a paper you opened.
+
+Which path opens is decided ONCE, in the fetch that loads the saved list
+(`defaultStartMode` in `load-saved-assessment.ts`) - open if there is anything
+to open. Re-deriving it on every render would flip the panel from Generate to
+Open the moment a teacher saved the paper they had just generated, because a
+first save adds a row to that list. Until the list arrives, neither path
+shows: an empty list nobody has fetched yet looks exactly like a teacher with
+nothing saved.
+
+Generating now asks first before overwriting an OPEN saved assessment that has
+unsaved edits - the same bargain the open button already struck. A generated
+draft that was never saved does not qualify, because regenerating one is the
+normal way to use that button and a prompt there would fire on every attempt.
+The button also names the kind it will write (`Generate Summative From 4
+Sources`), since the formative/summative control now sits below it.
+
+The rest regrouped to match: **The paper** (kind, title, subtitle, cover
+lines), **Exam Conditions** (summative only, next to the cover settings it
+belongs with), **Save & Grade**, **Export**.

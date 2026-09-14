@@ -1,7 +1,8 @@
 /**
  * load-saved-assessment.ts
  * -----------------------------------------------------------------------------
- * Whether opening a saved Formative Assessment would discard unsaved work.
+ * Which of the two ways into this editor is showing, and whether taking one of
+ * them would discard unsaved work.
  *
  * Split out of formative-assessment-sandbox.tsx for the same reason
  * tab-visibility.ts was split out of assignments-client.tsx: the decision is
@@ -87,4 +88,47 @@ export function loadButtonState(args: {
       : { disabled: true, label: "Already open" };
   }
   return { disabled: false, label: "Open in the editor" };
+}
+
+/**
+ * The two ways a paper gets into this editor.
+ *
+ * They are mutually exclusive in the UI: one of them ends with a saved paper on
+ * screen and the other ends with a freshly written one, and both of them
+ * replace whatever was there. Showing the inputs for both at once made the tab
+ * read as four ways to start rather than two.
+ */
+export type StartMode = "open" | "create";
+
+export const START_MODES: Array<{ value: StartMode; label: string; blurb: string }> = [
+  {
+    value: "open",
+    label: "Open a saved one",
+    blurb:
+      "Reopen a paper you have already made. Questions, mark scheme and cover settings all come " +
+      "back, and saving writes to the same test.",
+  },
+  {
+    value: "create",
+    label: "Generate a new one",
+    blurb:
+      "Have the model write a new paper from what this class has been taught. It replaces what is " +
+      "in the editor.",
+  },
+];
+
+/**
+ * Which way in to open on, for a teacher who has not chosen yet.
+ *
+ * Decided ONCE, from the saved list, and then left alone -- a first save adds a
+ * row to that list, and a panel that re-derived this on every render would
+ * switch itself from Generate to Open the moment a teacher saved the paper they
+ * had just generated. The caller freezes it; this only says what the answer is.
+ *
+ * "Open" when there is anything to open, because resuming is the first question
+ * on a tab that already has papers in it, and answering it after generating one
+ * means throwing that generation away.
+ */
+export function defaultStartMode(savedCount: number): StartMode {
+  return savedCount > 0 ? "open" : "create";
 }

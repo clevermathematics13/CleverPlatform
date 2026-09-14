@@ -68,9 +68,12 @@ import {
   type SourceMaterialSummary,
 } from "@/lib/source-materials";
 import {
+  START_MODES,
+  defaultStartMode,
   editorSnapshot,
   needsDiscardConfirmation,
   loadButtonState,
+  type StartMode,
 } from "./load-saved-assessment";
 import { formatSavedDate } from "./format-date";
 import type { RubricFinding } from "@/lib/rubric-validator";
@@ -224,6 +227,17 @@ export function FormativeAssessmentSandbox() {
   const [loadId, setLoadId] = useState("");
   const [isLoadingSaved, setIsLoadingSaved] = useState(false);
   const [loadConfirm, setLoadConfirm] = useState(false);
+  const [generateConfirm, setGenerateConfirm] = useState(false);
+
+  /**
+   * Which of the two ways in is showing, or null while we do not yet know.
+   *
+   * Null is the honest answer until the saved list has come back: an empty list
+   * that has not been fetched looks exactly like a teacher with nothing saved,
+   * and opening on the wrong path moves the panel under their hands a moment
+   * after the tab loads.
+   */
+  const [startMode, setStartMode] = useState<StartMode | null>(null);
 
   /**
    * What the editor looked like when it was last saved or loaded. Loading
@@ -277,12 +291,21 @@ export function FormativeAssessmentSandbox() {
   }, []);
 
   // Same shape as the courses fetch above -- the set happens inside the async
-  // IIFE behind a cancelled guard, not in the effect body.
+  // IIFE behind a cancelled guard, not in the effect body. The start mode is
+  // settled even on a failed fetch: the picker degrades to "nothing saved",
+  // which is wrong, but is at least a path the teacher can leave.
+  //
+  // Which way in to open on is settled HERE, from the list that just arrived,
+  // and nowhere else. Deriving it from `saved` on every render would flip the
+  // panel from Generate to Open the moment a teacher saved the paper they had
+  // just generated -- a first save adds a row to that list.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       const list = await fetchSavedAssessments();
-      if (!cancelled && list) setSaved(list);
+      if (cancelled) return;
+      if (list) setSaved(list);
+      setStartMode((current) => current ?? defaultStartMode(list?.length ?? 0));
     })();
     return () => {
       cancelled = true;
@@ -368,6 +391,20 @@ export function FormativeAssessmentSandbox() {
   }
 
   const hintsOnPaper = useMemo(() => countHints(draft), [draft]);
+  const kindLabel = ASSESSMENT_KINDS.find((o) => o.value === kind)?.label ?? "Assessment";
+
+  /**
+   * Switch between the two ways in.
+   *
+   * Clears both discard prompts on the way: a "this replaces your work" warning
+   * belongs to the button that raised it, and one left standing next to a
+   * different control is a warning about nothing.
+   */
+  function chooseStartMode(next: StartMode) {
+    setStartMode(next);
+    setLoadConfirm(false);
+    setGenerateConfirm(false);
+  }
 
   /**
    * Change the grade this paper is for, and with it the calculator rule.
@@ -452,7 +489,24 @@ export function FormativeAssessmentSandbox() {
     }
   }
 
+  /**
+   * Write a new paper over whatever is in the editor.
+   *
+   * Asks first only when there is something to lose that cannot be got back:
+   * an OPEN saved assessment with unsaved edits. A generated draft that was
+   * never saved does not qualify -- regenerating one is the normal way to use
+   * this button, and a prompt there would be a prompt on every attempt.
+   */
   async function generateWithAi() {
+    if (savedTestId !== null && needsDiscardConfirmation({
+      current: currentSnapshot,
+      clean: cleanSnapshot,
+      confirmed: generateConfirm,
+    })) {
+      setGenerateConfirm(true);
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
     try {
@@ -522,6 +576,7 @@ export function FormativeAssessmentSandbox() {
       // saves to a new test, and the archive on screen is not its archive.
       setSavedTestId(null);
       setPdfsArchived(false);
+      setGenerateConfirm(false);
       setNotice(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected AI generation error.");
@@ -746,14 +801,313 @@ export function FormativeAssessmentSandbox() {
   return (
     <section className="rounded-2xl border border-da-border bg-da-surface/80 p-6 shadow-lg shadow-black/30">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
-        {/* -- Left panel: generation + settings -- */}
+        {/* -- Left panel: how a paper gets here, then what it is -- */}
         <div className="space-y-5">
-          {/* First control on the page. Everything below it -- what the model
-              is asked for, what prints on the cover, what a batch accept is
-              allowed to write -- depends on the answer, so it is not something
-              to find after writing the paper. */}
+          {/* Two ways in, and only two: open a paper that exists, or have the
+              model write one. Mutually exclusive on purpose -- both end with a
+              paper in the editor and both replace what was there, so the inputs
+              for the one you are not doing are noise. Only the chosen path's
+              controls are on screen. */}
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-            <h2 className="text-lg font-semibold font-serif text-da-text">What is this?</h2>
+            <h2 className="text-lg font-semibold font-serif text-da-text">Start</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {START_MODES.map((option) => {
+                const active = startMode === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => chooseStartMode(option.value)}
+                    aria-pressed={active}
+                    className={`rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors ${
+                      active
+                        ? "border-da-accent/70 bg-da-accent/20 text-da-text"
+                        : "border-da-border bg-da-hover text-da-muted hover:border-da-accent/60"
+                    }`}
+                  >
+                    <span className="block">{option.label}</span>
+                    <span className="mt-0.5 block text-[11px] font-normal text-da-muted">
+                      {option.value === "open"
+                        ? startMode === null
+                          ? "checking…"
+                          : `${saved.length} saved`
+                        : "Written by AI"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {startMode !== null && (
+              <p className="text-xs text-da-muted">
+                {START_MODES.find((o) => o.value === startMode)?.blurb}
+              </p>
+            )}
+
+            {startMode === null && (
+              // Neither path is offered until the saved list has actually come
+              // back. An empty list we have not fetched yet is not the same as
+              // no saved papers, and guessing wrong here moves the panel under
+              // the teacher's hands a moment after the tab opens.
+              <p className="text-xs text-da-muted">Looking for saved assessments…</p>
+            )}
+
+            {startMode === "open" &&
+              (saved.length === 0 ? (
+                <p className="text-xs text-da-muted">
+                  Nothing saved yet. Generate a paper and save it, and it will be listed here.
+                </p>
+              ) : (
+                <>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Saved assessments
+                    </span>
+                    <select
+                      value={loadId}
+                      onChange={(e) => {
+                        setLoadId(e.target.value);
+                        setLoadConfirm(false);
+                      }}
+                      className="rounded-lg border border-da-border bg-da-bg px-3 py-2 text-sm text-da-text"
+                    >
+                      <option value="">Select one…</option>
+                      {saved.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.assessmentKind === "summative" ? "[Summative] " : ""}
+                          {s.name} — {s.courseName} — {s.itemCount} parts
+                          {s.totalMarks ? `/${s.totalMarks} marks` : ""} — {formatSavedDate(s.createdAt)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {loadConfirm ? (
+                    <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                      <p className="text-xs text-amber-200">
+                        The editor has changes that are not saved. Opening this assessment replaces them.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleLoad()}
+                          disabled={isLoadingSaved}
+                          className="rounded-lg border border-amber-500/50 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isLoadingSaved ? "Opening…" : "Discard and open"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLoadConfirm(false)}
+                          disabled={isLoadingSaved}
+                          className="rounded-lg border border-da-border bg-da-hover px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Keep editing
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleLoad()}
+                      disabled={openButton.disabled}
+                      className="w-full rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {openButton.label}
+                    </button>
+                  )}
+                </>
+              ))}
+
+            {startMode === "create" && (
+              <>
+                <LabeledInput
+                  label="Grade level"
+                  value={gradeLevel}
+                  onChange={(v) => changeGradeContext({ gradeLevel: v })}
+                />
+                <LabeledInput label="Topic" value={topic} onChange={setTopic} />
+                <div className="grid grid-cols-2 gap-3">
+                  <LabeledInput
+                    label="Target total marks"
+                    type="number"
+                    value={String(totalMarksTarget)}
+                    onChange={(v) => setTotalMarksTarget(Number(v) || 0)}
+                  />
+                  <LabeledInput
+                    label="Number of levels"
+                    type="number"
+                    value={String(levelCount)}
+                    onChange={(v) => setLevelCount(Number(v) || 1)}
+                  />
+                </div>
+                <LabeledTextArea label="Additional constraints" value={contextNotes} onChange={setContextNotes} rows={2} />
+
+                {/* Nested inside this path rather than standing alongside it,
+                    because that is all it is: an input to the generation. It
+                    does nothing to a paper you opened. */}
+                <div className="space-y-3 rounded-lg border border-da-border/70 bg-da-bg/30 p-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">
+                      Source material
+                    </h3>
+                    <span className="text-xs text-da-muted">
+                      {selectedSourceIds.length > 0
+                        ? `${selectedSourceIds.length} selected`
+                        : `${materials.length} for ${gradeLevel}`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-da-muted">
+                    Tick what this paper should be built from. Questions are written from the wording,
+                    notation and worked examples in what you choose.
+                  </p>
+
+                  {(materialsFailed || materialWarnings.length > 0) && (
+                    <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-200">
+                      {materialsFailed
+                        ? "The catalogue could not be loaded, so this list is empty for a reason that is not you. Reload the page."
+                        : materialWarnings.join(" ")}
+                    </p>
+                  )}
+
+                  {materials.length === 0 ? (
+                    <p className="text-xs text-da-muted">
+                      {materialsFailed
+                        ? "Nothing to show while the catalogue is unavailable."
+                        : `Nothing catalogued for ${gradeLevel} yet. Add a file below.`}
+                    </p>
+                  ) : (
+                    <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                      {materials.map((m) => {
+                        const checked = selectedSourceIds.includes(m.id);
+                        return (
+                          <label
+                            key={m.id}
+                            className={`flex cursor-pointer gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                              checked
+                                ? "border-da-accent/60 bg-da-accent/10"
+                                : "border-da-border bg-da-bg/30 hover:border-da-accent/40"
+                            } ${m.usable ? "" : "opacity-60"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!m.usable}
+                              onChange={() => toggleSource(m.id)}
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-amber-500 disabled:cursor-not-allowed"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-da-text/90">{m.title}</span>
+                              <span className="block text-[11px] text-da-muted">
+                                {SOURCE_KIND_LABELS[m.kind]}
+                                {m.courseName ? ` - ${m.courseName}` : ""} - {m.detail}
+                              </span>
+                            </span>
+                            {m.downloadPath && (
+                              <a
+                                href={m.downloadPath}
+                                onClick={(e) => e.stopPropagation()}
+                                className="shrink-0 self-center text-[11px] text-da-muted underline hover:text-da-text"
+                              >
+                                open
+                              </a>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {selectedChars > 0 && (
+                    <p
+                      className={`text-[11px] ${
+                        selectedChars > SOURCE_TEXT_TOTAL ? "text-amber-300" : "text-da-muted"
+                      }`}
+                    >
+                      About {Math.round(selectedChars / 1000)}k characters selected
+                      {selectedChars > SOURCE_TEXT_TOTAL
+                        ? ` -- past the ${Math.round(SOURCE_TEXT_TOTAL / 1000)}k ceiling, so the later ones will be shortened or skipped.`
+                        : ", comfortably inside what the model reads in one pass."}
+                    </p>
+                  )}
+
+                  <label className="block space-y-1">
+                    <span className="text-xs font-medium text-da-muted">Add a file</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,text/plain,text/markdown"
+                      disabled={isUploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadSourceMaterial(file);
+                        e.target.value = "";
+                      }}
+                      className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-xs text-da-text file:mr-2 file:rounded file:border-0 file:bg-da-hover file:px-2 file:py-1 file:text-xs file:text-da-text disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    <span className="block text-[11px] text-da-muted">
+                      {isUploading
+                        ? "Reading the file…"
+                        : `Saved against ${gradeLevel}. PDFs are read for their text; a scan with no text layer cannot be used.`}
+                    </span>
+                  </label>
+                </div>
+
+                {generateConfirm ? (
+                  // The same bargain the open path strikes, for the same
+                  // reason: this is the other control that replaces everything
+                  // on screen, and a saved paper with edits on it is exactly
+                  // what a teacher does not expect a Generate button to eat.
+                  <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                    <p className="text-xs text-amber-200">
+                      The assessment in the editor has changes that are not saved. Generating writes a
+                      new paper over them.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void generateWithAi()}
+                        disabled={isGenerating}
+                        className="rounded-lg border border-amber-500/50 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isGenerating ? "Generating…" : "Discard and generate"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGenerateConfirm(false)}
+                        disabled={isGenerating}
+                        className="rounded-lg border border-da-border bg-da-hover px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Keep editing
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void generateWithAi()}
+                    disabled={isGenerating}
+                    className="w-full rounded-lg border border-da-accent/70 bg-da-accent/20 px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:bg-da-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {/* Names the kind, because the control for it is below this
+                        panel: this is the moment the choice bites, and a
+                        summative generated as a formative is not something you
+                        notice until it is photocopied. */}
+                    {isGenerating
+                      ? "Generating…"
+                      : selectedSourceIds.length > 0
+                        ? `Generate ${kindLabel} From ${selectedSourceIds.length} Source${selectedSourceIds.length === 1 ? "" : "s"}`
+                        : `Generate ${kindLabel} With AI`}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* What the paper IS, and what prints on its cover. The kind sits
+              here rather than above Start because it is a property of the paper
+              on screen, not a third way to begin one -- and a title typed
+              before generating is a title the model overwrites. */}
+          <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
+            <h2 className="text-lg font-semibold font-serif text-da-text">The paper</h2>
             <div className="grid grid-cols-2 gap-2">
               {ASSESSMENT_KINDS.map((option) => {
                 const active = kind === option.value;
@@ -777,215 +1131,85 @@ export function FormativeAssessmentSandbox() {
             <p className="text-xs text-da-muted">
               {ASSESSMENT_KINDS.find((o) => o.value === kind)?.blurb}
             </p>
+
+            <div className="space-y-3 border-t border-da-border/60 pt-3">
+              <LabeledInput label="Title" value={draft.title} onChange={(v) => setDraft((d) => ({ ...d, title: v }))} />
+              <LabeledInput label="Subtitle" value={draft.subtitle} onChange={(v) => setDraft((d) => ({ ...d, subtitle: v }))} />
+              <div className="grid grid-cols-2 gap-3">
+                <ToggleField label="Name line" checked={formatting.includeNameLine} onChange={(c) => setFormatting((p) => ({ ...p, includeNameLine: c }))} />
+                <ToggleField label="Block line" checked={!!formatting.includeBlockLine} onChange={(c) => setFormatting((p) => ({ ...p, includeBlockLine: c }))} />
+                <ToggleField label="Date line" checked={formatting.includeDateLine} onChange={(c) => setFormatting((p) => ({ ...p, includeDateLine: c }))} />
+                <ToggleField label="Section score box" checked={!!draft.showSectionScoreSummary} onChange={(c) => setDraft((d) => ({ ...d, showSectionScoreSummary: c }))} />
+              </div>
+            </div>
           </div>
 
-          {/* Above "Generate with AI" on purpose: resuming an existing paper is
-              the first question when you open this tab, and answering it after
-              generating one means throwing that generation away. */}
-          {saved.length > 0 && (
+          {kind === "summative" && (
+            // Prints on the paper AND on the mark scheme, from one place --
+            // see lib/exam-conditions.ts. The marker needs the calculator rule
+            // as much as the student does. Next to the cover settings above,
+            // because that is what these are.
             <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-              <h2 className="text-lg font-semibold font-serif text-da-text">Open a saved assessment</h2>
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-semibold uppercase tracking-wide text-da-muted">
-                  Saved assessments
-                </span>
+              <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">
+                Exam Conditions
+              </h3>
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-da-muted">Calculator policy</span>
                 <select
-                  value={loadId}
-                  onChange={(e) => {
-                    setLoadId(e.target.value);
-                    setLoadConfirm(false);
-                  }}
-                  className="rounded-lg border border-da-border bg-da-bg px-3 py-2 text-sm text-da-text"
+                  value={formatting.calculatorPolicy ?? "not-permitted"}
+                  onChange={(e) =>
+                    setFormatting((f) => ({
+                      ...f,
+                      calculatorPolicy: e.target.value as NonNullable<
+                        FormattingRequirements["calculatorPolicy"]
+                      >,
+                    }))
+                  }
+                  className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
                 >
-                  <option value="">Select one…</option>
-                  {saved.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.assessmentKind === "summative" ? "[Summative] " : ""}
-                      {s.name} — {s.courseName} — {s.itemCount} parts
-                      {s.totalMarks ? `/${s.totalMarks} marks` : ""} — {formatSavedDate(s.createdAt)}
+                  {CALCULATOR_POLICY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
                     </option>
                   ))}
                 </select>
               </label>
-              {loadConfirm ? (
-                <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
-                  <p className="text-xs text-amber-200">
-                    The editor has changes that are not saved. Opening this assessment replaces them.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void handleLoad()}
-                      disabled={isLoadingSaved}
-                      className="rounded-lg border border-amber-500/50 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isLoadingSaved ? "Opening…" : "Discard and open"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLoadConfirm(false)}
-                      disabled={isLoadingSaved}
-                      className="rounded-lg border border-da-border bg-da-hover px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      Keep editing
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => void handleLoad()}
-                  disabled={openButton.disabled}
-                  className="w-full rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {openButton.label}
-                </button>
+              <div className="grid grid-cols-2 gap-3">
+                <LabeledInput
+                  label="Time allowed (min)"
+                  type="number"
+                  value={String(formatting.timeAllowedMinutes ?? "")}
+                  onChange={(v) =>
+                    setFormatting((f) => ({
+                      ...f,
+                      timeAllowedMinutes: Number(v) > 0 ? Number(v) : undefined,
+                    }))
+                  }
+                />
+                <ToggleField
+                  label="Print total marks"
+                  checked={formatting.showTotalMarks !== false}
+                  onChange={(c) => setFormatting((f) => ({ ...f, showTotalMarks: c }))}
+                />
+              </div>
+              <LabeledTextArea
+                label="Academic honesty line"
+                value={formatting.academicHonestyLine ?? ""}
+                onChange={(v) => setFormatting((f) => ({ ...f, academicHonestyLine: v }))}
+                rows={3}
+              />
+              <p className="text-[11px] text-da-muted">
+                Printed on the student paper and on the mark scheme. The total is{" "}
+                {marksLabel(totalMarks)}, counted from the questions below.
+              </p>
+              {hintsOnPaper > 0 && (
+                <p className="text-[11px] text-amber-300">
+                  {hintsOnPaper} hint(s) are still on this draft and will be removed when it is
+                  saved -- a summative does not print them.
+                </p>
               )}
             </div>
           )}
-
-          {/* Above "Generate with AI" because it is an input to it: what the
-              class was taught decides what the paper can fairly ask. */}
-          <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-lg font-semibold font-serif text-da-text">Source material</h2>
-              <span className="text-xs text-da-muted">
-                {selectedSourceIds.length > 0
-                  ? `${selectedSourceIds.length} selected`
-                  : `${materials.length} for ${gradeLevel}`}
-              </span>
-            </div>
-            <p className="text-xs text-da-muted">
-              Tick what this paper should be built from. Questions are written from the wording,
-              notation and worked examples in what you choose.
-            </p>
-
-            {(materialsFailed || materialWarnings.length > 0) && (
-              <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-200">
-                {materialsFailed
-                  ? "The catalogue could not be loaded, so this list is empty for a reason that is not you. Reload the page."
-                  : materialWarnings.join(" ")}
-              </p>
-            )}
-
-            {materials.length === 0 ? (
-              <p className="text-xs text-da-muted">
-                {materialsFailed
-                  ? "Nothing to show while the catalogue is unavailable."
-                  : `Nothing catalogued for ${gradeLevel} yet. Add a file below.`}
-              </p>
-            ) : (
-              <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
-                {materials.map((m) => {
-                  const checked = selectedSourceIds.includes(m.id);
-                  return (
-                    <label
-                      key={m.id}
-                      className={`flex cursor-pointer gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
-                        checked
-                          ? "border-da-accent/60 bg-da-accent/10"
-                          : "border-da-border bg-da-bg/30 hover:border-da-accent/40"
-                      } ${m.usable ? "" : "opacity-60"}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={!m.usable}
-                        onChange={() => toggleSource(m.id)}
-                        className="mt-0.5 h-4 w-4 shrink-0 accent-amber-500 disabled:cursor-not-allowed"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-da-text/90">{m.title}</span>
-                        <span className="block text-[11px] text-da-muted">
-                          {SOURCE_KIND_LABELS[m.kind]}
-                          {m.courseName ? ` - ${m.courseName}` : ""} - {m.detail}
-                        </span>
-                      </span>
-                      {m.downloadPath && (
-                        <a
-                          href={m.downloadPath}
-                          onClick={(e) => e.stopPropagation()}
-                          className="shrink-0 self-center text-[11px] text-da-muted underline hover:text-da-text"
-                        >
-                          open
-                        </a>
-                      )}
-                    </label>
-                  );
-                })}
-              </div>
-            )}
-
-            {selectedChars > 0 && (
-              <p
-                className={`text-[11px] ${
-                  selectedChars > SOURCE_TEXT_TOTAL ? "text-amber-300" : "text-da-muted"
-                }`}
-              >
-                About {Math.round(selectedChars / 1000)}k characters selected
-                {selectedChars > SOURCE_TEXT_TOTAL
-                  ? ` -- past the ${Math.round(SOURCE_TEXT_TOTAL / 1000)}k ceiling, so the later ones will be shortened or skipped.`
-                  : ", comfortably inside what the model reads in one pass."}
-              </p>
-            )}
-
-            <label className="block space-y-1">
-              <span className="text-xs font-medium text-da-muted">Add a file</span>
-              <input
-                type="file"
-                accept="application/pdf,text/plain,text/markdown"
-                disabled={isUploading}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void uploadSourceMaterial(file);
-                  e.target.value = "";
-                }}
-                className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-xs text-da-text file:mr-2 file:rounded file:border-0 file:bg-da-hover file:px-2 file:py-1 file:text-xs file:text-da-text disabled:cursor-not-allowed disabled:opacity-60"
-              />
-              <span className="block text-[11px] text-da-muted">
-                {isUploading
-                  ? "Reading the file…"
-                  : `Saved against ${gradeLevel}. PDFs are read for their text; a scan with no text layer cannot be used.`}
-              </span>
-            </label>
-          </div>
-
-          <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-            <h2 className="text-lg font-semibold font-serif text-da-text">Generate with AI</h2>
-            <LabeledInput
-              label="Grade level"
-              value={gradeLevel}
-              onChange={(v) => changeGradeContext({ gradeLevel: v })}
-            />
-            <LabeledInput label="Topic" value={topic} onChange={setTopic} />
-            <div className="grid grid-cols-2 gap-3">
-              <LabeledInput
-                label="Target total marks"
-                type="number"
-                value={String(totalMarksTarget)}
-                onChange={(v) => setTotalMarksTarget(Number(v) || 0)}
-              />
-              <LabeledInput
-                label="Number of levels"
-                type="number"
-                value={String(levelCount)}
-                onChange={(v) => setLevelCount(Number(v) || 1)}
-              />
-            </div>
-            <LabeledTextArea label="Additional constraints" value={contextNotes} onChange={setContextNotes} rows={2} />
-            <button
-              type="button"
-              onClick={generateWithAi}
-              disabled={isGenerating}
-              className="w-full rounded-lg border border-da-accent/70 bg-da-accent/20 px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:bg-da-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isGenerating
-                ? "Generating…"
-                : selectedSourceIds.length > 0
-                  ? `Generate From ${selectedSourceIds.length} Source${selectedSourceIds.length === 1 ? "" : "s"}`
-                  : "Generate With AI"}
-            </button>
-          </div>
 
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Save &amp; Grade</h3>
@@ -1077,101 +1301,29 @@ export function FormativeAssessmentSandbox() {
             )}
           </div>
 
-          {kind === "summative" && (
-            // Prints on the paper AND on the mark scheme, from one place --
-            // see lib/exam-conditions.ts. The marker needs the calculator rule
-            // as much as the student does.
-            <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">
-                Exam Conditions
-              </h3>
-              <label className="block space-y-1">
-                <span className="text-xs font-medium text-da-muted">Calculator policy</span>
-                <select
-                  value={formatting.calculatorPolicy ?? "not-permitted"}
-                  onChange={(e) =>
-                    setFormatting((f) => ({
-                      ...f,
-                      calculatorPolicy: e.target.value as NonNullable<
-                        FormattingRequirements["calculatorPolicy"]
-                      >,
-                    }))
-                  }
-                  className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
-                >
-                  {CALCULATOR_POLICY_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <LabeledInput
-                  label="Time allowed (min)"
-                  type="number"
-                  value={String(formatting.timeAllowedMinutes ?? "")}
-                  onChange={(v) =>
-                    setFormatting((f) => ({
-                      ...f,
-                      timeAllowedMinutes: Number(v) > 0 ? Number(v) : undefined,
-                    }))
-                  }
-                />
-                <ToggleField
-                  label="Print total marks"
-                  checked={formatting.showTotalMarks !== false}
-                  onChange={(c) => setFormatting((f) => ({ ...f, showTotalMarks: c }))}
-                />
-              </div>
-              <LabeledTextArea
-                label="Academic honesty line"
-                value={formatting.academicHonestyLine ?? ""}
-                onChange={(v) => setFormatting((f) => ({ ...f, academicHonestyLine: v }))}
-                rows={3}
-              />
-              <p className="text-[11px] text-da-muted">
-                Printed on the student paper and on the mark scheme. The total is{" "}
-                {marksLabel(totalMarks)}, counted from the questions below.
-              </p>
-              {hintsOnPaper > 0 && (
-                <p className="text-[11px] text-amber-300">
-                  {hintsOnPaper} hint(s) are still on this draft and will be removed when it is
-                  saved -- a summative does not print them.
-                </p>
-              )}
-            </div>
-          )}
-
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Title Page</h3>
-            <LabeledInput label="Title" value={draft.title} onChange={(v) => setDraft((d) => ({ ...d, title: v }))} />
-            <LabeledInput label="Subtitle" value={draft.subtitle} onChange={(v) => setDraft((d) => ({ ...d, subtitle: v }))} />
-            <div className="grid grid-cols-2 gap-3">
-              <ToggleField label="Name line" checked={formatting.includeNameLine} onChange={(c) => setFormatting((p) => ({ ...p, includeNameLine: c }))} />
-              <ToggleField label="Block line" checked={!!formatting.includeBlockLine} onChange={(c) => setFormatting((p) => ({ ...p, includeBlockLine: c }))} />
-              <ToggleField label="Date line" checked={formatting.includeDateLine} onChange={(c) => setFormatting((p) => ({ ...p, includeDateLine: c }))} />
-              <ToggleField label="Section score box" checked={!!draft.showSectionScoreSummary} onChange={(c) => setDraft((d) => ({ ...d, showSectionScoreSummary: c }))} />
+            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Export</h3>
+            <p className="text-[11px] text-da-muted">
+              A fresh render of what is in the editor right now -- not the copies a save archives.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => downloadPdf("/api/assignments/generate-pdf", false, setIsExporting, "")}
+                disabled={isExporting}
+                className="rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isExporting ? "Generating…" : "Download Student PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadPdf("/api/assignments/mark-scheme", true, setIsExportingMs, "_mark_scheme")}
+                disabled={isExportingMs}
+                className="rounded-lg border border-violet-500/50 bg-violet-500/10 px-4 py-2 text-sm font-semibold text-violet-200 transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isExportingMs ? "Generating…" : "Download Mark Scheme"}
+              </button>
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => downloadPdf("/api/assignments/generate-pdf", false, setIsExporting, "")}
-              disabled={isExporting}
-              className="rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isExporting ? "Generating…" : "Download Student PDF"}
-            </button>
-            <button
-              type="button"
-              onClick={() => downloadPdf("/api/assignments/mark-scheme", true, setIsExportingMs, "_mark_scheme")}
-              disabled={isExportingMs}
-              className="rounded-lg border border-violet-500/50 bg-violet-500/10 px-4 py-2 text-sm font-semibold text-violet-200 transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isExportingMs ? "Generating…" : "Download Mark Scheme"}
-            </button>
           </div>
 
           {error && <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
+  START_MODES,
+  defaultStartMode,
   editorSnapshot,
   needsDiscardConfirmation,
   isAlreadyOpen,
@@ -133,5 +135,24 @@ describe("loadButtonState", () => {
     expect(
       loadButtonState({ ...base, savedTestId: "fa1", hasUnsavedWork: true, isLoading: true }),
     ).toEqual({ disabled: true, label: "Opening…" });
+  });
+});
+
+describe("which way in the creator opens on", () => {
+  it("offers to reopen when there is anything to reopen", () => {
+    expect(defaultStartMode(1)).toBe("open");
+    expect(defaultStartMode(12)).toBe("open");
+  });
+
+  it("offers to generate when there is not", () => {
+    // A picker with nothing in it is a dead end for a teacher opening this tab
+    // for the first time.
+    expect(defaultStartMode(0)).toBe("create");
+  });
+
+  it("offers exactly two ways in", () => {
+    // The whole point of the panel. A third entry point here means the teacher
+    // is again choosing between four boxes that all claim to start a paper.
+    expect(START_MODES.map((m) => m.value)).toEqual(["open", "create"]);
   });
 });
