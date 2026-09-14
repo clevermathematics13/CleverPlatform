@@ -3,6 +3,7 @@ import {
   buildExamConditionsHtml,
   formatTimeAllowed,
   calculatorPolicyLabel,
+  marksLabel,
   CALCULATOR_POLICY_OPTIONS,
 } from "./exam-conditions";
 
@@ -26,6 +27,17 @@ describe("formatTimeAllowed", () => {
   });
 });
 
+describe("marksLabel", () => {
+  it("is singular for one and plural for everything else", () => {
+    // Found by exporting a one-question draft through the real UI: the cover
+    // read "Total: 1 marks", one line above a section banner saying the same.
+    expect(marksLabel(1)).toBe("1 mark");
+    expect(marksLabel(0)).toBe("0 marks");
+    expect(marksLabel(2)).toBe("2 marks");
+    expect(marksLabel(50)).toBe("50 marks");
+  });
+});
+
 describe("buildExamConditionsHtml", () => {
   it("renders nothing at all when no condition is set", () => {
     // The whole-fleet guarantee: every NA packet, every generic sandbox
@@ -46,6 +58,12 @@ describe("buildExamConditionsHtml", () => {
     expect(html).toContain("Time allowed:");
     expect(html).toContain("50 minutes");
     expect(html).toContain("47 marks");
+  });
+
+  it("says '1 mark', not '1 marks'", () => {
+    const html = buildExamConditionsHtml({ showTotalMarks: true }, 1);
+    expect(html).toContain("1 mark<");
+    expect(html).not.toContain("1 marks");
   });
 
   it("prints a zero total rather than hiding it", () => {

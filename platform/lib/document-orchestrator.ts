@@ -52,7 +52,7 @@ import {
   type ValidatedFormattingRequirements,
 } from "./template-schema";
 import { escapeHtml, formatQuestionLabel } from "./assignments";
-import { buildExamConditionsHtml, EXAM_CONDITIONS_CSS } from "./exam-conditions";
+import { buildExamConditionsHtml, EXAM_CONDITIONS_CSS, marksLabel } from "./exam-conditions";
 
 // -- KaTeX rendering -----------------------------------------------------------
 
@@ -933,7 +933,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
         </div>` : "";
 
     const sectionBannerHtml = sec.estimatedMinutes != null
-      ? `<span class="section-banner-meta">Suggested time: ${sec.estimatedMinutes} min | ${sectionMarksTotal(sec)} marks</span>`
+      ? `<span class="section-banner-meta">Suggested time: ${sec.estimatedMinutes} min | ${marksLabel(sectionMarksTotal(sec))}</span>`
       : "";
 
     return `${separatorHtml}<div class="assignment-section">

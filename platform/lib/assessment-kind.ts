@@ -44,7 +44,7 @@
  * -----------------------------------------------------------------------------
  */
 
-import type { AssignmentDraft, FormattingRequirements } from "./assignments";
+import type { AssignmentDraft, CalculatorPolicy, FormattingRequirements } from "./assignments";
 
 export type AssessmentKind = "formative" | "summative";
 
@@ -84,6 +84,51 @@ export const DEFAULT_ACADEMIC_HONESTY_LINE =
   "Academic honesty: the work in this booklet is my own. I have not given or received help, " +
   "and I have used only the materials permitted above.";
 
+/**
+ * The courses an assessment may be authored against.
+ *
+ * Every course in the database is offered by the gradebook and the test detail
+ * form; this creator is narrower on purpose. Two classes are taught from these
+ * papers, and a dropdown that also offers 9A, 9C, 9D, two archived years and a
+ * Grade 9 Standard cohort that has been declined is a dropdown where the wrong
+ * one gets picked. Matched by name, because that is what the teacher reads.
+ *
+ * A saved assessment's OWN course is always offered alongside these, whatever
+ * it is -- Formative Assessment 1 hangs off 9G, and re-saving it must not
+ * quietly move it. See allowedCourses below.
+ */
+export const ASSESSMENT_COURSE_NAMES = ["27AH", "Grade 9 Extended"] as const;
+
+/**
+ * The courses to show, given everything that exists and what is loaded.
+ *
+ * Order is preserved from the input so the list reads the same every time.
+ */
+export function allowedCourses<T extends { id: string; name: string }>(
+  all: T[],
+  loadedCourseId: string | null,
+): T[] {
+  const names = new Set<string>(ASSESSMENT_COURSE_NAMES);
+  return all.filter((c) => names.has(c.name) || (loadedCourseId !== null && c.id === loadedCourseId));
+}
+
+/**
+ * Whether a calculator is permitted, from the grade this paper is for.
+ *
+ * Grade 9 here is pre-DP, preparing for IBDP Mathematics AA, and those students
+ * work with a graphing calculator -- so a Grade 9 paper starts permitting one.
+ * "Permitted" and not "required": a paper may be sat without touching it.
+ *
+ * Everything else starts at not-permitted, which is the safer way round for a
+ * grade whose conventions this function does not know: a paper that wrongly
+ * forbids a calculator is an argument before the exam, and one that wrongly
+ * allows it is an argument after the marks.
+ */
+export function calculatorPolicyForGrade(gradeLevel: string, courseName?: string): CalculatorPolicy {
+  const haystack = `${gradeLevel} ${courseName ?? ""}`;
+  return /\bgrade\s*9\b/i.test(haystack) ? "graphing" : "not-permitted";
+}
+
 /** Sensible starting conditions for a summative cover. All of it editable. */
 export const SUMMATIVE_FORMATTING_DEFAULTS = {
   calculatorPolicy: "not-permitted",
@@ -104,8 +149,16 @@ export const SUMMATIVE_FORMATTING_DEFAULTS = {
 export function applyKindFormatting(
   kind: AssessmentKind,
   formatting: FormattingRequirements,
+  /** What the paper is for, so the calculator rule starts at the grade's own. */
+  context?: { gradeLevel?: string; courseName?: string },
 ): FormattingRequirements {
-  if (kind === "summative") return { ...formatting, ...SUMMATIVE_FORMATTING_DEFAULTS };
+  if (kind === "summative") {
+    return {
+      ...formatting,
+      ...SUMMATIVE_FORMATTING_DEFAULTS,
+      calculatorPolicy: calculatorPolicyForGrade(context?.gradeLevel ?? "", context?.courseName),
+    };
+  }
   return {
     ...formatting,
     calculatorPolicy: undefined,
@@ -113,6 +166,24 @@ export function applyKindFormatting(
     showTotalMarks: undefined,
     academicHonestyLine: undefined,
   };
+}
+
+/**
+ * Re-apply the grade's calculator rule when the grade or course changes.
+ *
+ * Only when the current value is still the PREVIOUS grade's default -- a policy
+ * the teacher chose is theirs, and having it silently change because they
+ * corrected a course name is exactly the kind of thing that puts the wrong rule
+ * on a paper. Same rule the title switch uses.
+ */
+export function retargetCalculatorPolicy(
+  current: CalculatorPolicy | undefined,
+  previous: { gradeLevel: string; courseName?: string },
+  next: { gradeLevel: string; courseName?: string },
+): CalculatorPolicy | undefined {
+  if (current === undefined) return current;
+  const wasDefault = current === calculatorPolicyForGrade(previous.gradeLevel, previous.courseName);
+  return wasDefault ? calculatorPolicyForGrade(next.gradeLevel, next.courseName) : current;
 }
 
 /**
