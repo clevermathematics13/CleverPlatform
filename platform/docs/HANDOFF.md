@@ -130,12 +130,22 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo now agree exactly: 116 files, 116 rows,
-byte-identical** (verified 7 Sep 2026; it read 83/83 when this handoff was written
-and 95/95 after the second reconciliation). Read
+**The migration ledger and the repo agree on versions: 149 files, 149 rows**
+(verified 13 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
+the second reconciliation and 116/116 after the third). Read
 `platform/supabase/migrations/README.md` before touching anything in that
 directory - it documents the invariant and how to add a migration without
 breaking it.
+
+**"byte-identical", which this paragraph used to claim of all of them, is
+true only of the rows applied through MCP `apply_migration`.** The ledger
+stores PARSED statements with their trailing semicolons stripped, so a
+rejoined row is one character short per statement and multi-statement rows
+also lose the blank lines between them; 104 of the 149 differ that way and
+none of it is drift. Writing those files back from the ledger would produce
+SQL with no statement terminators. The README's new last section has the
+measurements. The invariant that actually holds, and all `supabase db push`
+compares, is one file per ledger version.
 
 History, because it matters: files `001_*`..`057_*` were never recorded in the
 ledger, while ~4 months of changes applied via MCP existed only in the database. The
@@ -1647,3 +1657,89 @@ PostgREST with a plain `limit`, which silently caps at 1000 rows; the test has
 2091. `fetchAllRows` exists for exactly this and the code comments warn about
 it. Ad-hoc verification queries need the same paging the application code
 uses, or they invent bugs that are not there.
+
+---
+
+## 18. A Formative Assessment could not be got back out of the system (13 Sep 2026)
+
+Started as a question - does an Assessment Creator exist for Grade 9? - and
+found that one did, had produced a real paper, and had no way to give it back.
+
+**Formative Assessment 1** (`f5221cd9`, course 9G, 41 items, 50 marks) is the
+only test in the database with `custom_content` set, i.e. the only one the
+creator has ever produced. 50 students are marked against it, 2091
+`student_marks` rows. Neither its paper nor its mark scheme could be
+retrieved: `/api/assignments/generate-pdf` and `/api/assignments/mark-scheme`
+stream a PDF to the browser and keep nothing, `tests.paper_url` and
+`mark_scheme_url` were NULL, and the sandbox could not reload a saved
+assessment. Rendering `custom_content` by hand was the only way back to it.
+`app/api/tests/[id]/paper-layout/route.ts` already documents the consequence
+in its header: "there is no blank paper anywhere in this system."
+
+### What changed (#214, #215)
+
+**Saving now archives both PDFs.** `POST /api/formative-assessments` renders
+them and uploads to the private `exam-scans` bucket under
+`formative-assessments/<testId>/{paper,mark-scheme}.pdf`, recording the paths
+on the test row. Four new `tests` columns, migration `20260913212551`:
+`paper_pdf_storage_path`, `mark_scheme_pdf_storage_path`,
+`assessment_formatting`, `pdfs_generated_at`.
+
+Deliberately NOT reusing `paper_url` / `mark_scheme_url`: those are free-text
+URLs a teacher types into the test detail form and students see as links on
+the reflection page. A private-bucket object can only be handed out as a
+signed URL minted on demand, which would expire if stored in a text column.
+`GET /api/formative-assessments/[testId]/pdf?kind=paper|mark-scheme` mints
+one; it is teacher-only, and `kind=mark-scheme` serves the full answers.
+
+`assessment_formatting` closes a real gap: the creator held
+`FormattingRequirements` in React state and never persisted it, so
+re-rendering an older draft could not reproduce the paper a class actually
+sat. Null means the defaults in `lib/formative-assessment-pdf-body.ts`.
+
+Both PDFs share ONE browser launch (`lib/formative-assessment-pdf.ts`). That
+is what makes archiving fit inside the save request - the launch dominates,
+so it costs little more than the single-PDF routes a teacher already waits
+on. A failed archive returns `pdfs: "failed"` with a 207 and is called out in
+amber in the sandbox rather than folded into the success notice; re-saving is
+the retry. FA1 was backfilled through this same code path (15-page paper,
+7-page mark scheme, 51 M/A/R codes), both verified downloadable.
+
+**The creator can now reopen a saved assessment.** `GET
+/api/formative-assessments` lists them (`custom_content is not null` is what
+qualifies one) and `GET /api/formative-assessments/[testId]` returns the
+draft, formatting, course and self-assessment gate. Deliberately not
+`GET /api/tests/[id]`, which serves the detail form and would silently drop
+the mark schemes. Opening something else asks first, but only when the editor
+holds unsaved work; once a loaded assessment has edits, re-opening it is how
+you discard them, so the button becomes "Reload, discarding changes" rather
+than staying disabled. That last part was found by driving the real UI, not
+by the tests - `app/dashboard/assignments/load-saved-assessment.ts` holds the
+decision so it is covered.
+
+### Two traps worth keeping
+
+**A mark scheme is made by its RENDERER, not a flag.** The student paper goes
+through `DocumentOrchestratorService.render`, the mark scheme through
+`generateMarkSchemeHtml`. The request bodies differ only in a subtitle
+suffix, so sending the mark-scheme body to the student renderer produces a
+convincing paper containing no mark scheme at all. That happened once while
+building this and was caught by inspection, before the backfill.
+`buildFormativeAssessmentPdfBody` now pins it with a test.
+
+**`new Date("nonsense")` does not throw** - it yields an Invalid Date whose
+`toLocaleDateString` returns the string "Invalid Date", so the try/catch
+these helpers were written with never fires. Three copies of that pattern
+existed; the live one was `load-draft-modal`, rendering "Invalid Date" on
+every Load Draft row for a template with an unparseable `updated_at`
+(#217, #218). All three are gone, replaced by
+`app/dashboard/assignments/format-date.ts`. No `function formatDate` remains
+in `app/`, `lib/` or `components/`.
+
+### Migration ledger, third reconciliation
+
+`20260913174538_tighten_a1_answer_sketches` had been applied with no file
+committed - 148 files against 149 rows, the same gap the second
+reconciliation fixed. Rebuilt from the ledger and verified by md5. See the
+correction to §4 above for what the directory-wide md5 check actually proves,
+which is less than it looks.
