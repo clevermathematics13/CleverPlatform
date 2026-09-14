@@ -924,8 +924,8 @@ export function FormativeAssessmentSandbox() {
               >
                 About {Math.round(selectedChars / 1000)}k characters selected
                 {selectedChars > SOURCE_TEXT_TOTAL
-                  ? ` -- over the ${Math.round(SOURCE_TEXT_TOTAL / 1000)}k limit, so the later ones will be shortened or skipped.`
-                  : "."}
+                  ? ` -- past the ${Math.round(SOURCE_TEXT_TOTAL / 1000)}k ceiling, so the later ones will be shortened or skipped.`
+                  : ", comfortably inside what the model reads in one pass."}
               </p>
             )}
 
