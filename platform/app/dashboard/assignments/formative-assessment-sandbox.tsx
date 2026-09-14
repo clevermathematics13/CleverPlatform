@@ -982,6 +982,11 @@ export function FormativeAssessmentSandbox() {
                         return (
                           <label
                             key={m.id}
+                            // The title is truncated to one line in a panel this
+                            // narrow, and the catalogue now holds several items
+                            // whose names differ only past the cut -- the A.3
+                            // packet PDF and the A.3 template, for one.
+                            title={m.title}
                             className={`flex cursor-pointer gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
                               checked
                                 ? "border-da-accent/60 bg-da-accent/10"
