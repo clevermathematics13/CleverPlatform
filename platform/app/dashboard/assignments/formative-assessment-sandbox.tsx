@@ -76,6 +76,8 @@ import {
   type StartMode,
 } from "./load-saved-assessment";
 import { formatSavedDate } from "./format-date";
+// POST /api/claude streams Server-Sent Events, not JSON -- see claude-stream.ts.
+import { readClaudeStream } from "./claude-stream";
 import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 
@@ -234,6 +236,8 @@ export function FormativeAssessmentSandbox() {
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  /** What the generator is doing, while it does it -- this takes minutes. */
+  const [generationPhase, setGenerationPhase] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingMs, setIsExportingMs] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -533,6 +537,7 @@ export function FormativeAssessmentSandbox() {
     }
 
     setIsGenerating(true);
+    setGenerationPhase(null);
     setError(null);
     try {
       // The chosen material's text, resolved now rather than held in the page.
@@ -593,10 +598,18 @@ export function FormativeAssessmentSandbox() {
         }),
       });
       if (!response.ok) {
+        // Error responses ARE still JSON -- it is the 200 that streams.
         const d = (await response.json()) as { error?: string };
         throw new Error(d.error ?? `AI request failed with status ${response.status}`);
       }
-      const data = (await response.json()) as ClaudeResponse;
+      // Not response.json(). Parsing the stream as JSON is what produced
+      // "Unexpected token 'e', \"event: pro\"... is not valid JSON" on every
+      // attempt to generate a paper here since #164.
+      const data = await readClaudeStream(response, (info) =>
+        setGenerationPhase(
+          info.charCount ? `${info.phase} (${info.charCount} chars)` : info.phase,
+        ),
+      );
       const rawText = data.content?.find((block) => block.type === "text")?.text ?? "";
       const json = extractJsonObject(rawText);
       const parsed = JSON.parse(json) as AssignmentDraft;
@@ -614,6 +627,7 @@ export function FormativeAssessmentSandbox() {
       setError(err instanceof Error ? err.message : "Unexpected AI generation error.");
     } finally {
       setIsGenerating(false);
+      setGenerationPhase(null);
     }
   }
 
@@ -1237,7 +1251,7 @@ export function FormativeAssessmentSandbox() {
                         summative generated as a formative is not something you
                         notice until it is photocopied. */}
                     {isGenerating
-                      ? "Generating…"
+                      ? generationPhase ?? "Generating…"
                       : selectedSourceIds.length > 0
                         ? `Generate ${kindLabel} From ${selectedSourceIds.length} Source${selectedSourceIds.length === 1 ? "" : "s"}`
                         : `Generate ${kindLabel} With AI`}
