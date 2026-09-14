@@ -1743,3 +1743,91 @@ committed - 148 files against 149 rows, the same gap the second
 reconciliation fixed. Rebuilt from the ledger and verified by md5. See the
 correction to §4 above for what the directory-wide md5 check actually proves,
 which is less than it looks.
+
+## 19. The creator learned to write a summative (14 Sep 2026)
+
+The assessment creator could write one kind of paper. It now writes both, and
+a summative is deliberately NOT a second content type: same `AssignmentDraft`,
+same LEVEL bands, same M/A/R/FT mark codes, same marking policy file, same
+`tests` + `lib/ai-grading.ts` pipeline. One control at the top of the creator
+chooses, and **`lib/assessment-kind.ts` holds everything that follows from the
+answer** - so "what makes this a summative?" has one place to be read.
+
+Migration `20260914020122` adds `tests.assessment_kind`
+(`formative` | `summative`, default `formative`, CHECK-constrained). All six
+pre-existing tests keep behaving exactly as they did.
+
+### What a summative adds
+
+**Exam conditions on the cover** - calculator policy, time allowed, total
+marks, academic honesty line. Four new optional fields on
+`FormattingRequirements`, rendered by `lib/exam-conditions.ts`.
+
+They live on the FORMATTING, not on the draft, and that is the whole reason
+the PDF export needed no changes: formatting already reaches
+`DocumentOrchestratorService.render`, `generateMarkSchemeHtml` and
+`lib/formative-assessment-pdf.ts`'s archiver. A draft field would have needed
+six separate edits, one of them to `MarkSchemeRequest`.
+
+They print on BOTH PDFs, from one renderer. The two cover blocks in
+`lib/document-orchestrator.ts` - `buildHtml`'s `.doc-head` and
+`generateMarkSchemeHtml`'s header - shared no code at all and had already
+drifted (the paper carries a name/block/date grid, a score box and the
+instructions; the mark scheme carries none of them). A calculator rule that
+printed on the paper but not the mark scheme would be missing at exactly the
+moment it is needed, which is a mark being argued over.
+`lib/exam-conditions-render.test.ts` drives both real renderers and asserts
+the block lands in each, because a unit test of the block alone would pass
+with it wired into only one.
+
+**A grade boundary set, required.** Without one the gradebook falls back to
+generic bands and shows an `~approx` badge (§3). The save route refuses a
+summative that has none; the creator offers a picker. Grade 9 has its own set
+(`cf5ccc24`), separate from the DP progression sets.
+
+**Teacher intervention on anything below high confidence.** `POST
+.../ai-grade/accept-all` now covers only what the model was fully confident
+about; everything else stays `accepted = false` and waits in the review UI,
+where accepting one IS a teacher looking at it. `lib/summative-grading-gate.ts`
+reuses `gradeNeedsReview()` from `lib/ai-grading.ts` verbatim rather than
+restating the rule, so the parts held are exactly the parts already flagged.
+
+One consequence in that route: with results held, the accepted flag can no
+longer be set by RUN id (that would flag the held ones too), so it goes out by
+result id in chunks of 200. The by-run path is kept untouched for the case
+where nothing is held, which is every formative.
+
+The per-student status dot on the roster already reports partial acceptance
+("N of M suggested marks accepted"), so a teacher can see what is outstanding
+after a summative batch accept without any new UI.
+
+**Self-assessment forced on**, not offered: students judge their own work
+before they see the marks the teacher approved. `require_self_assessment` was
+already the gate (`lib/self-assessment-gate.ts`, `lib/reflection-steps.ts`) -
+a summative simply cannot turn it off.
+
+### What a summative leaves out
+
+**Hints.** `lib/document-orchestrator.ts:198` prints any `hint` it is handed,
+and a printed "Hint: try substituting x = 2" on a paper that counts is marks
+given away. Stripped in three places - on generation, on the kind switch, and
+again in the save route - and the teacher is told how many went rather than
+having them vanish.
+
+### Deliberately unchanged
+
+The marking policy. A summative loads the same
+`grading_policies/g9_formative_assessment_marking_principles.md` that
+`lib/ai-grading.ts` already loads for every `source = 'custom'` item. M/A/R/FT
+does not mean something different because the paper counts, and a second
+policy file is a second thing to keep in step. Also unchanged: the LEVEL ramp
+(the gradebook parses `LEVEL n`) and the reteach guide, which is teacher-only
+and is exactly what a summative tells you.
+
+### Naming
+
+The tab label is now "Assessment Creator". The tab ID stays
+`formative-assessment` - it is what the saved tab preference already says, and
+renaming it would silently move a returning teacher to a different tab. The
+API route path and `lib/formative-assessment-*.ts` filenames are unchanged for
+the same reason.
