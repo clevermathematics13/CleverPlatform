@@ -24,6 +24,8 @@
  */
 
 import type { AssessmentKind } from "./assessment-kind";
+import type { CalculatorPolicy } from "./assignments";
+import { calculatorPolicyLabel } from "./exam-conditions";
 
 export type FormativeAssessmentInput = {
   gradeLevel: string;
@@ -33,6 +35,21 @@ export type FormativeAssessmentInput = {
   contextNotes?: string;
   /** Defaults to formative, which is what every caller meant before this existed. */
   kind?: AssessmentKind;
+  /**
+   * The exam conditions, on a summative only.
+   *
+   * They print on the cover either way (lib/exam-conditions.ts). What they do
+   * HERE is constrain what the paper may ask. A cover that says no calculator
+   * over a question that cannot be answered without one is a paper that cannot
+   * be sat -- and the teacher chose that rule BEFORE pressing Generate, which
+   * is the whole reason the control sits above the button.
+   *
+   * Both are dropped for a formative, whose cover carries no conditions
+   * (applyKindFormatting clears them), so a formative's prompt is unchanged
+   * from what it was before any of this existed.
+   */
+  calculatorPolicy?: CalculatorPolicy;
+  timeAllowedMinutes?: number;
 };
 
 export function buildFormativeAssessmentSystemPrompt(kind: AssessmentKind = "formative"): string {
@@ -106,17 +123,30 @@ export function buildFormativeAssessmentSystemPrompt(kind: AssessmentKind = "for
           "S4. NO NEW NOTATION OR CONTEXT. A summative may not be the first place a student meets a form of words, a symbol or a scenario. Use only what the unit has already taught.",
           "S5. THE RAMP STILL APPLIES, and it matters more here: the first level must be genuinely accessible to the weakest student sitting the paper, so that a mark of zero means something went wrong rather than that the paper started above them.",
           "S6. INSTRUCTIONS ARE EXAM INSTRUCTIONS. Write `instructions` for a student sitting under exam conditions -- what to do with working, what to do if they need more space, what happens if they cannot answer a part. Do NOT write the calculator rule, the time allowed or the total marks into instructions: those are printed on the cover from the teacher's own settings, and a second copy is one that can disagree with it.",
+          "S7. THE CALCULATOR RULE IS A CONSTRAINT, NOT A NOTE. The user message states what the student may use, and every question must be answerable under exactly that rule. With no calculator: every value a student has to produce must be reachable by hand, so keep the arithmetic to integers and simple decimals, ask for exact forms (fractions, surds) rather than decimal evaluations, and never set a part whose method is \"enter it and read the display\". With a calculator permitted: the marks must still be for method, reasoning or interpretation -- a part that is only keystrokes is not worth a mark on a paper that counts.",
+          "S8. THE PAPER MUST FIT THE TIME. Where the user message gives a time allowed, the estimatedMinutes across all levels must sum to no more than it, and should leave a few minutes for reading and checking. A paper that cannot be finished in the time printed on its own cover measures speed, not mathematics.",
         ]
       : []),
   ].join("\n");
 }
 
 export function buildFormativeAssessmentUserPrompt(input: FormativeAssessmentInput): string {
+  const summative = input.kind === "summative";
   return [
     `Grade level: ${input.gradeLevel}`,
     `Topic: ${input.topic}`,
     `Target total marks: ${input.totalMarks}`,
     `Number of levels: ${input.levelCount}`,
+    // The teacher's own cover settings, as constraints -- see S7 and S8, and
+    // the note on FormativeAssessmentInput. Raw minutes rather than
+    // formatTimeAllowed's "1 hour 15 minutes": this number is arithmetic the
+    // model has to do against estimatedMinutes, not a line on a cover.
+    ...(summative && input.calculatorPolicy
+      ? [`Calculator: ${calculatorPolicyLabel(input.calculatorPolicy)}`]
+      : []),
+    ...(summative && input.timeAllowedMinutes
+      ? [`Time allowed: ${input.timeAllowedMinutes} minutes`]
+      : []),
     ...(input.contextNotes ? [`Additional constraints: ${input.contextNotes}`] : []),
     input.kind === "summative"
       ? "Generate a complete summative assessment. Return only JSON."

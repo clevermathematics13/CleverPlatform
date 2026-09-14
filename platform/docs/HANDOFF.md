@@ -1903,6 +1903,30 @@ subtitle are on the DRAFT, which a generation replaces wholesale - typed above
 the button they would be typed only to be overwritten, so they wait below it
 under Title page.
 
+### The exam conditions steer the paper, not just its cover
+
+Sitting above the Generate button, they look like generation inputs, and now
+they are. `buildFormativeAssessmentUserPrompt` carries the calculator rule (in
+`calculatorPolicyLabel`'s own words, so the cover and the prompt cannot
+disagree) and the time allowed in raw minutes; the system prompt carries what
+those MEAN, as summative rules S7 and S8:
+
+- **S7** - the calculator rule is a constraint. No calculator means every value
+  is reachable by hand: integers and simple decimals, exact forms rather than
+  decimal evaluations, and no part whose method is reading a display. Where one
+  IS permitted, the marks still have to be for method, reasoning or
+  interpretation.
+- **S8** - the estimatedMinutes across the levels must sum to no more than the
+  time printed on the cover. A paper that cannot be finished in its own time
+  allowance measures speed.
+
+The split matters for caching as well as sense: the standing rule is in the
+system prompt, which is stable across papers, and only the values vary.
+
+Both fields are dropped for a formative, whose cover carries no conditions -
+`lib/formative-assessment-prompt.test.ts` pins that a formative's prompt is
+byte-identical to what it was before any of this existed.
+
 ### Where a status line goes
 
 There is still one `notice` at a time, but it now carries the panel that
