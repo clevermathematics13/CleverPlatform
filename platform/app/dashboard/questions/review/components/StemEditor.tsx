@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import { playChatCompletionChime } from "@/lib/chat-audio";
-import { readJsonSafely } from "@/lib/http-json";
+// POST /api/claude streams Server-Sent Events, not JSON -- see lib/claude-stream.ts.
+import { readClaudeStream } from "@/lib/claude-stream";
 import { IB_CORRECTION_SYSTEM } from "@/lib/latex-utils";
 import type { Field, StemField } from "./review-types";
 import { saveStemLatex } from "./review-types";
@@ -32,6 +33,8 @@ export function StemEditor({
   });
   const [claudeInstruction, setClaudeInstruction] = useState("");
   const [claudeLoading, setClaudeLoading] = useState(false);
+  /** Said out loud. This call used to fail into silence -- see runClaude. */
+  const [claudeError, setClaudeError] = useState<string | null>(null);
 
   // Sync internal draft when parent updates the value (e.g. from Split & apply)
   useEffect(() => {
@@ -63,18 +66,31 @@ export function StemEditor({
         ],
       },
     ];
+    setClaudeError(null);
     try {
       const res = await fetch("/api/claude", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ system: IB_CORRECTION_SYSTEM, messages }),
       });
-      const data = await readJsonSafely<{ content?: { text?: string }[]; completion?: string }>(res);
-      const corrected: string = data?.content?.[0]?.text ?? data?.completion ?? "";
+      if (!res.ok) {
+        const d = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(d.error ?? `Claude request failed (${res.status})`);
+      }
+      // Not readJsonSafely: the route streams Server-Sent Events, and that
+      // helper returns null when the body will not parse -- so for months this
+      // button did nothing at all, silently, with no way to tell.
+      const data = await readClaudeStream(res);
+      const corrected: string =
+        data?.content?.[0]?.text ?? (data as { completion?: string })?.completion ?? "";
       if (corrected) {
         setDraft((d) => ({ ...d, [stemField]: corrected.trim() }));
         void playChatCompletionChime();
+      } else {
+        setClaudeError("Claude returned nothing to apply.");
       }
+    } catch (err) {
+      setClaudeError(err instanceof Error ? err.message : "Claude request failed.");
     } finally {
       setClaudeLoading(false);
       setClaudeInstruction("");
@@ -163,6 +179,10 @@ export function StemEditor({
             {claudeLoading ? "…" : "Ask Claude"}
           </button>
         </div>
+
+        {claudeError && (
+          <p className="text-xs text-red-400">{claudeError}</p>
+        )}
 
         {/* OCR note */}
         <div className="pt-1 border-t border-indigo-400/40">
