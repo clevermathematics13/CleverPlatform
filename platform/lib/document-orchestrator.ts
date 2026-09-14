@@ -52,21 +52,43 @@ import {
   type ValidatedFormattingRequirements,
 } from "./template-schema";
 import { escapeHtml, formatQuestionLabel } from "./assignments";
+import { buildExamConditionsHtml, EXAM_CONDITIONS_CSS, marksLabel } from "./exam-conditions";
 
 // -- KaTeX rendering -----------------------------------------------------------
 
+/**
+ * A literal dollar, written \$ as in LaTeX, stands in for itself while the
+ * delimiters are matched. Without this a price is a delimiter: "charges $28
+ * for each adult and $16 for each child" pairs its two dollars and typesets
+ * "28 for each adult and" as mathematics. That is not hypothetical -- it is
+ * what Formative Assessment 1 printed.
+ */
+const LITERAL_DOLLAR = "\u0000DOLLAR\u0000";
+
 export function renderMath(input: string): string {
-  let output = input.replace(/\$\$([\s\S]+?)\$\$/g, (_match, tex: string) => {
+  let output = input.replace(/\\\$/g, LITERAL_DOLLAR);
+
+  output = output.replace(/\$\$([\s\S]+?)\$\$/g, (_match, tex: string) => {
     try {
       return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false, output: "htmlAndMathml" });
     } catch { return escapeHtml(tex); }
   });
-  output = output.replace(/(?<!\$)\$(?!\$)([^$\n]+?)(?<!\$)\$(?!\$)/g, (_match, tex: string) => {
-    try {
-      return katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false, output: "htmlAndMathml" });
-    } catch { return escapeHtml(tex); }
-  });
-  return output;
+
+  // Inline maths may not open or close on whitespace. This is the usual
+  // markdown-math rule, and it is the second half of the currency defect: an
+  // author who writes a bare "$28 ... $16" produces a span ending in a space,
+  // which is prose, not an expression.
+  output = output.replace(
+    /(?<!\$)\$(?!\$)(\S[^$\n]*?|\S)(?<!\$)\$(?!\$)/g,
+    (match, tex: string) => {
+      if (/\s$/.test(tex)) return match;
+      try {
+        return katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false, output: "htmlAndMathml" });
+      } catch { return escapeHtml(tex); }
+    },
+  );
+
+  return output.split(LITERAL_DOLLAR).join("$");
 }
 
 // -- Pagination constants ------------------------------------------------------
@@ -208,7 +230,11 @@ function renderQuestion(
             ? `<span class="marks">[${sp.marks}]</span>` : "";
           const spTier = sp.tier ? tierBadge(sp.tier) : "";
           const spHint = sp.hint ? `<div class="hint"><em>Hint: ${escapeHtml(sp.hint)}</em></div>` : "";
-          const spAnswerLines = Math.max(MIN_USEFUL_LINES, Math.ceil(answerLines / 2));
+          // A subpart's own allowance wins. The inherited half-of-the-question
+          // floor is a sensible default for a worked subpart and far too much
+          // for one that asks for a single word or value.
+          const spAnswerLines =
+            sp.answerBoxLines ?? Math.max(MIN_USEFUL_LINES, Math.ceil(answerLines / 2));
           const spAnswerHtml = sp.requiresWorking
             ? renderWorkingAndAnswerBox(spAnswerLines, formatting.answerLineHeightMm)
             : renderAnswerBox(spAnswerLines, formatting.answerLineHeightMm);
@@ -677,6 +703,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
 
     .katex { font-size: 1em; }
     .katex-display { margin: 4px 0; }
+${EXAM_CONDITIONS_CSS}
   `;
 }
 
@@ -716,6 +743,7 @@ function buildMarkSchemeCss(formatting: ValidatedFormattingRequirements): string
     .ms-reteach-table td { border: 0.5pt solid #d1d5db; padding: 4px 8px; text-align: left; vertical-align: top; }
     .katex { font-size: 1em; }
     .katex-display { margin: 4px 0; }
+${EXAM_CONDITIONS_CSS}
   `;
 }
 
@@ -808,15 +836,22 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
   const metaGridHtml = (nameLineHtml || dateLineHtml || blockLineHtml)
     ? `<div class="meta-grid">${nameLineHtml}${blockLineHtml}${dateLineHtml}</div>` : "";
 
+  const paperTotalMarks = sections.reduce((sum, section) => sum + sectionMarksTotal(section), 0);
+
+  // -- Exam conditions (summative): calculator, time, total, honesty --
+  // Built by the shared renderer so the mark scheme below prints the same
+  // strip. Empty for any paper that sets none of these, which is every
+  // document authored before they existed.
+  const examConditionsHtml = buildExamConditionsHtml(formatting, paperTotalMarks);
+
   // -- Section Scores summary box (Formative Assessment) --
   const sectionScoreSummaryHtml = nd.showSectionScoreSummary
     ? (() => {
         const rows = sections.map((section) =>
           `<tr><td>${escapeHtml(section.heading)}</td><td>/ ${sectionMarksTotal(section)}</td></tr>`
         ).join("");
-        const total = sections.reduce((sum, section) => sum + sectionMarksTotal(section), 0);
         return `<table class="score-summary-table">
-          <tbody>${rows}<tr class="score-summary-total"><td>TOTAL</td><td>/ ${total}</td></tr></tbody>
+          <tbody>${rows}<tr class="score-summary-total"><td>TOTAL</td><td>/ ${paperTotalMarks}</td></tr></tbody>
         </table>`;
       })()
     : "";
@@ -923,7 +958,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
         </div>` : "";
 
     const sectionBannerHtml = sec.estimatedMinutes != null
-      ? `<span class="section-banner-meta">Suggested time: ${sec.estimatedMinutes} min | ${sectionMarksTotal(sec)} marks</span>`
+      ? `<span class="section-banner-meta">Suggested time: ${sec.estimatedMinutes} min | ${marksLabel(sectionMarksTotal(sec))}</span>`
       : "";
 
     return `${separatorHtml}<div class="assignment-section">
@@ -961,6 +996,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
     <h2 class="subtitle">${escapeHtml(subtitle)}</h2>
     <hr class="header-rule"/>
     ${metaGridHtml}
+    ${examConditionsHtml}
     ${extraMetaHtml}
     ${sectionScoreSummaryHtml}
   </div>
@@ -1003,6 +1039,14 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
   const { title, subtitle, sections, formatting, markingPrinciples, reteachGuide } = req;
   const tierLabel: Record<number, string> = { 1: "★", 2: "★★", 3: "★★★" };
   let globalQ = 0;
+
+  // The conditions the student sat under, printed for whoever is marking:
+  // "was a GDC allowed?" is the question a disputed summative mark turns on,
+  // and until this was shared the answer appeared on the paper only.
+  const examConditionsHtml = buildExamConditionsHtml(
+    formatting,
+    sections.reduce((sum, section) => sum + sectionMarksTotal(section), 0),
+  );
 
   const markingPrinciplesHtml = Array.isArray(markingPrinciples) && markingPrinciples.length > 0
     ? `<div class="ms-principles">
@@ -1060,6 +1104,7 @@ export function generateMarkSchemeHtml(req: MarkSchemeRequest): string {
   <h1>${escapeHtml(title)}</h1>
   <h2>${escapeHtml(subtitle ?? "Mark Scheme")}</h2>
   <div class="ms-banner">⚠ Teacher Copy — Mark Scheme — Not for Distribution</div>
+  ${examConditionsHtml}
   ${markingPrinciplesHtml}
   ${sectionsHtml}
   ${reteachGuideHtml}

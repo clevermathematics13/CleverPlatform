@@ -742,3 +742,73 @@ export async function loadInvitedProfileIds(
   for (const r of data ?? []) byInvitedId[r.id as string] = (r.profile_id as string | null) ?? null;
   return byInvitedId;
 }
+
+/** One packet scan's gradable crops, tallied by how far review has got. */
+export type ScanApprovalTally = {
+  /** Crops on this scan whose anchor can be marked at all. */
+  gradable: number;
+  approved: number;
+  released: number;
+};
+
+/**
+ * How a packet version's approvals are distributed across its scans.
+ *
+ * "47 approved" is a true count and a misleading one: release is whole-scan
+ * (see the packet-scans release route, which refuses while any gradable crop
+ * is unapproved), so approvals scattered one question at a time across five
+ * students release nothing, while the same number concentrated on one student
+ * finishes them. On A.1 the 47 was 39 finishing a single packet plus 8 sitting
+ * on five part-reviewed ones -- one student done, not a sixth of the class.
+ */
+export type ApprovalProgress = {
+  approved: number;
+  /** Scans whose every gradable crop is approved. */
+  completeScans: number;
+  /** Complete scans already sent to the student. */
+  releasedScans: number;
+  /** Complete scans not yet sent -- the actionable bucket. */
+  readyScans: number;
+  approvedOnComplete: number;
+  /** Scans with some, but not all, gradable crops approved. */
+  partialScans: number;
+  approvedOnPartial: number;
+};
+
+/**
+ * Split approvals into the ones that finish a scan and the ones that do not.
+ *
+ * Counts against the crops a scan actually has rather than the packet's anchor
+ * count, matching the release route: a scan whose last pages were never
+ * captured is still releasable once the crops it does have are approved.
+ * Scans with nothing gradable on them (a crop set that is all thinking space)
+ * are skipped rather than counted as complete.
+ */
+export function summariseApprovalProgress(tallies: Iterable<ScanApprovalTally>): ApprovalProgress {
+  const out: ApprovalProgress = {
+    approved: 0,
+    completeScans: 0,
+    releasedScans: 0,
+    readyScans: 0,
+    approvedOnComplete: 0,
+    partialScans: 0,
+    approvedOnPartial: 0,
+  };
+
+  for (const t of tallies) {
+    if (t.gradable <= 0) continue;
+    out.approved += t.approved;
+
+    if (t.approved >= t.gradable) {
+      out.completeScans += 1;
+      out.approvedOnComplete += t.approved;
+      if (t.released >= t.gradable) out.releasedScans += 1;
+      else out.readyScans += 1;
+    } else if (t.approved > 0) {
+      out.partialScans += 1;
+      out.approvedOnPartial += t.approved;
+    }
+  }
+
+  return out;
+}

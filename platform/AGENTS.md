@@ -94,4 +94,26 @@ git add -A && git commit -m "<descriptive message>" && git push
 cd platform && npm run dev   # always --webpack, never --turbopack
 ```
 
-Turbopack is disabled intentionally — box-drawing characters in comments crash its Rust code-frame highlighter. Use plain ASCII dashes (`----`) in all comment dividers, never Unicode box-drawing characters.
+Turbopack is disabled **for the dev server** intentionally — box-drawing
+characters in comments crash its Rust code-frame highlighter. Use plain ASCII
+dashes (`----`) in all comment dividers, never Unicode box-drawing characters.
+
+### The build does NOT use webpack
+
+`npm run build` is a bare `next build`, which passes no bundler flag, so it
+uses Turbopack — Next 16's default — on Vercel and locally alike. The local
+build banner says so (`▲ Next.js 16.2.4 (Turbopack)`), as does the `bundler`
+field on a Vercel deployment.
+
+This is not a decision anyone made; it is what happens when the script says
+nothing. It is left that way deliberately: Turbopack builds are faster and the
+webpack path is the one Next is moving away from. Production builds are green
+on it, and the native/binary packages in `serverExternalPackages`
+(puppeteer-core, `@sparticuz/chromium-min`, typst, heic) work under it — the
+archived assessment PDFs are rendered by a production route that uses them.
+
+**The asymmetry worth knowing.** The dev server is protected from the
+code-frame crash by `--webpack`; the build is not. What protects the build is
+the ASCII-dashes rule, which applies everywhere and is a non-negotiable in
+CLAUDE.md for exactly this reason. Put a Unicode box-drawing character in a
+comment and dev will survive it while the production build may not.

@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatSavedDate } from "./format-date";
 
 type PacketSummary = {
   id: string;
@@ -38,18 +39,6 @@ type PacketSummary = {
 
 type LoadState = "loading" | "ready" | "error";
 type DeleteState = "idle" | "confirming" | "deleting" | "error";
-
-function formatDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
 
 /**
  * The printable teacher answer key for a packet: every rubric entry with its
@@ -253,8 +242,8 @@ export function NuancedAnalysisManage() {
                     {packet.grade_level ? ` · ${packet.grade_level}` : ""}
                   </p>
                   <p className="mt-1 text-[11px] text-da-muted/70">
-                    Created {formatDate(packet.created_at)}
-                    {packet.updated_at !== packet.created_at ? ` · Updated ${formatDate(packet.updated_at)}` : ""}
+                    Created {formatSavedDate(packet.created_at)}
+                    {packet.updated_at !== packet.created_at ? ` · Updated ${formatSavedDate(packet.updated_at)}` : ""}
                   </p>
                 </div>
 

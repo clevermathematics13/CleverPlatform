@@ -38,6 +38,13 @@ import {
   type Verdict,
 } from "@/lib/practice-marking";
 import type { MarkingPart, MarkingQuestion, MarkingView } from "@/lib/practice-marking-service";
+import {
+  rollUpByTopic,
+  totalTally,
+  weakestFirst,
+  type RollupCell,
+  type SubtopicNode,
+} from "@/lib/practice-topic-rollup";
 
 const VERDICT_STYLE: Record<Verdict, string> = {
   correct: "border-da-success/60 bg-da-success/15 text-da-success",
@@ -290,7 +297,7 @@ function QuestionStem({ question }: { question: MarkingQuestion }) {
 
 export function MarkingClient({ view }: { view: MarkingView }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"question" | "student">("question");
+  const [mode, setMode] = useState<"question" | "student" | "topic">("question");
   const [selectedItemId, setSelectedItemId] = useState(view.questions[0]?.itemId ?? "");
   const [selectedInvitedId, setSelectedInvitedId] = useState(view.students[0]?.invitedId ?? "");
 
@@ -343,7 +350,7 @@ export function MarkingClient({ view }: { view: MarkingView }) {
       </header>
 
       <div className="mt-6 flex gap-2" role="tablist" aria-label="Marking view">
-        {(["question", "student"] as const).map((m) => (
+        {(["question", "student", "topic"] as const).map((m) => (
           <button
             key={m}
             type="button"
@@ -356,7 +363,7 @@ export function MarkingClient({ view }: { view: MarkingView }) {
                 : "rounded-full border border-da-border px-3 py-1 text-xs text-da-muted hover:border-da-accent/50 hover:text-da-text"
             }
           >
-            {m === "question" ? "By question" : "By student"}
+            {m === "question" ? "By question" : m === "student" ? "By student" : "By topic"}
           </button>
         ))}
       </div>
@@ -399,13 +406,15 @@ export function MarkingClient({ view }: { view: MarkingView }) {
             ))}
           </div>
         </div>
-      ) : (
+      ) : mode === "student" ? (
         <ByStudent
           view={view}
           selectedInvitedId={selectedInvitedId}
           onSelect={setSelectedInvitedId}
           onMarked={onMarked}
         />
+      ) : (
+        <ByTopic view={view} />
       )}
     </>
   );
@@ -476,6 +485,122 @@ function ByStudent({
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * What the class does not have yet, by topic rather than by question.
+ *
+ * The other two tabs answer "how did question 7 go" and "how is Camilla
+ * doing". This one answers the question a teacher actually plans Monday from:
+ * which piece of mathematics is this class missing. It counts the three
+ * spellings of a topic together -- 5.16, 5.16.4 and "5.16 (parts)" are all
+ * further integration -- which only became possible once every subtopic had a
+ * parent.
+ *
+ * Weakest first, and no percentage anywhere: with fourteen students a
+ * percentage invents precision, and this is practice, which does not get
+ * scored.
+ */
+function ByTopic({ view }: { view: MarkingView }) {
+  const rollups = useMemo(() => {
+    const cells: RollupCell[] = [];
+    for (const question of view.questions) {
+      for (const part of question.parts) {
+        for (const cell of part.cells) {
+          cells.push({
+            studentName: cell.fullName,
+            verdict: cell.verdict,
+            answered: !cell.empty,
+            subtopicCodes: question.subtopicCodes,
+          });
+        }
+      }
+    }
+    const index = new Map<string, SubtopicNode>(Object.entries(view.subtopicIndex));
+    return weakestFirst(rollUpByTopic(cells, index));
+  }, [view]);
+
+  const total = useMemo(() => totalTally(rollups), [rollups]);
+  const anythingRead = total.correct + total.almost + total.not_yet > 0;
+
+  if (rollups.length === 0) {
+    return (
+      <p className="mt-6 rounded-lg border border-da-border bg-da-surface p-6 text-sm text-da-muted">
+        Nobody has written an answer yet, so there is nothing to group by topic.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-5 space-y-3">
+      <p className="font-mono text-xs tracking-wide text-da-muted">
+        {anythingRead ? (
+          <>
+            <span className="text-da-success">{total.correct} correct</span>
+            {" · "}
+            <span className="text-da-warning">{total.almost} almost</span>
+            {" · "}
+            <span className="text-da-danger">{total.not_yet} not yet</span>
+            {" · weakest first"}
+          </>
+        ) : (
+          "Answers are in, but none has been read yet -- mark some and this orders itself."
+        )}
+      </p>
+
+      {rollups.map((r) => {
+        const width = (n: number) => (r.marked === 0 ? 0 : Math.round((n / r.marked) * 100));
+        return (
+          <section
+            key={r.topicCode}
+            className="rounded-lg border border-da-border bg-da-surface p-4"
+          >
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h3 className="font-serif text-lg font-bold text-da-text">
+                {r.topicName}{" "}
+                <span className="font-mono text-xs font-normal text-da-muted">{r.topicCode}</span>
+              </h3>
+              <span className="font-mono text-xs text-da-muted">
+                {r.answered} answered &middot; {r.marked} read
+              </span>
+            </div>
+
+            {/* The codes that rolled up, so it is never a mystery what was
+                counted together. */}
+            {r.childCodes.length > 1 && (
+              <p className="mt-1 font-mono text-[11px] text-da-muted/70">
+                {r.childCodes.join(" · ")}
+              </p>
+            )}
+
+            {r.marked > 0 && (
+              <>
+                <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-da-bg">
+                  <div className="bg-da-success" style={{ width: `${width(r.tally.correct)}%` }} />
+                  <div className="bg-da-warning" style={{ width: `${width(r.tally.almost)}%` }} />
+                  <div className="bg-da-danger" style={{ width: `${width(r.tally.not_yet)}%` }} />
+                </div>
+                <p className="mt-1.5 font-mono text-xs">
+                  <span className="text-da-success">{r.tally.correct} correct</span>
+                  {" · "}
+                  <span className="text-da-warning">{r.tally.almost} almost</span>
+                  {" · "}
+                  <span className="text-da-danger">{r.tally.not_yet} not yet</span>
+                </p>
+              </>
+            )}
+
+            {r.notYetStudents.length > 0 && (
+              <p className="mt-2 text-sm text-da-text">
+                <span className="text-da-muted">Not there yet: </span>
+                {r.notYetStudents.join(", ")}
+              </p>
+            )}
+          </section>
+        );
+      })}
     </div>
   );
 }

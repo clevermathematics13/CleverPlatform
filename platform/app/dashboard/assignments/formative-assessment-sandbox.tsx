@@ -3,10 +3,17 @@
 /**
  * FormativeAssessmentSandbox
  * --------------------------
- * Creator for a standalone Formative Assessment: a fixed-format test with
- * LEVEL bands, numbered questions/subparts each carrying a printed mark
- * value and a free-text M/A/R/FT mark scheme, plus paper-wide marking
+ * Creator for a standalone assessment, FORMATIVE OR SUMMATIVE: a fixed-format
+ * test with LEVEL bands, numbered questions/subparts each carrying a printed
+ * mark value and a free-text M/A/R/FT mark scheme, plus paper-wide marking
  * principles and a reteach guide.
+ *
+ * The kind is one control at the top, and everything that follows from it is
+ * in lib/assessment-kind.ts: exam conditions printed on both PDFs, hints
+ * stripped, a boundary set required, self-assessment forced on, and every
+ * below-high-confidence AI grade held for the teacher. Authoring a summative
+ * is otherwise the same job as authoring a formative, deliberately -- the
+ * teacher who has written one already knows how to write the other.
  *
  * Deliberately distinct from Nuanced Analysis (NuancedAnalysisSandbox) and
  * self-contained rather than reusing NuancedAnalysisPreview — that shared
@@ -18,9 +25,16 @@
  * (lib/formative-assessment-bridge.ts derives test_items from the draft),
  * so the saved assessment immediately works with the existing, unmodified
  * batch AI-grading UI at /dashboard/tests/[id]/ai-grade.
+ *
+ * A saved assessment can be reopened here. Until the picker existed,
+ * `savedTestId` was only ever set by a save in the same browser session, so
+ * closing the tab stranded a paper that `tests.custom_content` had held all
+ * along -- Formative Assessment 1 was sat by 50 students and had no way back
+ * into the editor. GET /api/formative-assessments lists them and
+ * GET /api/formative-assessments/[testId] returns one to load.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type {
   AssignmentDraft,
   AssignmentSection,
@@ -33,30 +47,132 @@ import {
   buildFormativeAssessmentSystemPrompt,
   buildFormativeAssessmentUserPrompt,
 } from "@/lib/formative-assessment-prompt";
+import {
+  DEFAULT_ASSESSMENT_FORMATTING,
+  buildFormativeAssessmentPdfBody,
+} from "@/lib/formative-assessment-pdf-body";
+import {
+  ASSESSMENT_KINDS,
+  allowedCourses,
+  applyKindFormatting,
+  applyKindRules,
+  countHints,
+  resolveRequireSelfAssessment,
+  retargetCalculatorPolicy,
+  type AssessmentKind,
+} from "@/lib/assessment-kind";
+import { CALCULATOR_POLICY_OPTIONS, marksLabel } from "@/lib/exam-conditions";
+import {
+  SOURCE_KIND_LABELS,
+  SOURCE_TEXT_TOTAL,
+  type SourceMaterialSummary,
+} from "@/lib/source-materials";
+import {
+  START_MODES,
+  defaultStartMode,
+  editorSnapshot,
+  needsDiscardConfirmation,
+  loadButtonState,
+  type StartMode,
+} from "./load-saved-assessment";
+import { formatSavedDate } from "./format-date";
+// POST /api/claude streams Server-Sent Events, not JSON -- see claude-stream.ts.
+import { readClaudeStream } from "./claude-stream";
 import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 
 type CourseOption = { id: string; name: string };
+
+/**
+ * Where a status line belongs, and what it says.
+ *
+ * There is still one `notice` at a time -- what changed is that it names the
+ * panel whose control produced it, and renders there. A single fixed status
+ * line cannot be right for all three: the notices come from the Start panel
+ * (load, upload, a source shortened), from The paper (the kind switch) and
+ * from Save & Grade (saved, archived, hints stripped). Parked in Save & Grade,
+ * "Switched to summative..." printed some eight hundred pixels below the button
+ * that switched it, which on a laptop is off the bottom of the screen.
+ *
+ * `tone` is explicit rather than derived. It used to key off `pdfsArchived`,
+ * which made "Loaded ..." render green whenever the paper being opened happened
+ * to have archived PDFs -- the right colour for a save, and meaningless here.
+ */
+type NoticePlace = "start" | "paper" | "save";
+type Notice = { place: NoticePlace; text: string; tone?: "good" };
+type BoundarySetOption = { id: string; name: string };
 type ClaudeResponse = { content?: Array<{ type: string; text?: string }> };
 
-const DEFAULT_FORMATTING: FormattingRequirements = {
-  schoolName: "CleverPlatform Mathematics",
-  teacherName: "",
-  includeNameLine: true,
-  includeDateLine: true,
-  includeMarksColumn: true,
-  includeAnswerKey: false,
-  fontSize: 11,
-  lineSpacing: "normal",
-  pageMarginsMm: 16,
-  numberingStyle: "numeric",
-  answerBoxLines: 4,
-  answerStyle: "boxes",
-  includeBlockLine: true,
+/** One row of GET /api/formative-assessments, for the load picker. */
+type SavedAssessment = {
+  id: string;
+  name: string;
+  courseName: string;
+  totalMarks: number | null;
+  createdAt: string;
+  pdfsGeneratedAt: string | null;
+  itemCount: number;
+  assessmentKind: AssessmentKind;
+};
+
+/**
+ * The saved assessments, or null if the list could not be fetched.
+ *
+ * Null rather than a throw: the picker is an extra way in, not the way in, so
+ * a failed list leaves the last good one on screen and puts no error banner
+ * over a sandbox that still works.
+ */
+async function fetchSavedAssessments(): Promise<SavedAssessment[] | null> {
+  try {
+    const res = await fetch("/api/formative-assessments");
+    if (!res.ok) return null;
+    const data = (await res.json()) as { assessments?: SavedAssessment[] };
+    return data.assessments ?? [];
+  } catch {
+    return null;
+  }
+}
+
+
+/**
+ * Everything this grade has been taught, as the picker lists it.
+ *
+ * Null on failure for the same reason the saved list is: the picker is a way to
+ * make a better paper, not the way to make one, and a failed fetch must not put
+ * an error banner over a creator that still works.
+ */
+async function fetchSourceMaterials(
+  grade: string,
+): Promise<{ materials: SourceMaterialSummary[]; warnings: string[] } | null> {
+  try {
+    const res = await fetch(`/api/source-materials?grade=${encodeURIComponent(grade)}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as { materials?: SourceMaterialSummary[]; warnings?: string[] };
+    return { materials: data.materials ?? [], warnings: data.warnings ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+// Moved to lib/formative-assessment-pdf-body.ts when the save route started
+// rendering these PDFs server-side: both sides must format a paper identically,
+// or the archived copy is not the one the teacher previewed.
+const DEFAULT_FORMATTING: FormattingRequirements = DEFAULT_ASSESSMENT_FORMATTING;
+
+/**
+ * The starting title for each kind, and the set this component is allowed to
+ * overwrite when the kind changes. A title the teacher has typed is theirs; a
+ * default left untouched is just the wrong word on the cover, and "Formative
+ * Assessment 1" printed on a paper that counts is the kind of thing nobody
+ * notices until it is photocopied.
+ */
+const DEFAULT_TITLES: Record<AssessmentKind, string> = {
+  formative: "Formative Assessment 1",
+  summative: "Summative Assessment 1",
 };
 
 const DEFAULT_DRAFT: AssignmentDraft = {
-  title: "Formative Assessment 1",
+  title: DEFAULT_TITLES.formative,
   subtitle: "Grade 9 Mathematics",
   instructions: [
     "Answer every part. Each part shows how many marks it is worth.",
@@ -104,15 +220,70 @@ export function FormativeAssessmentSandbox() {
   const [levelCount, setLevelCount] = useState(4);
   const [contextNotes, setContextNotes] = useState("");
   const [savedTestId, setSavedTestId] = useState<string | null>(null);
+  const [pdfsArchived, setPdfsArchived] = useState(false);
   const [requireSelfAssessment, setRequireSelfAssessment] = useState(true);
+  const [kind, setKind] = useState<AssessmentKind>("formative");
+  const [boundarySets, setBoundarySets] = useState<BoundarySetOption[]>([]);
+  const [boundarySetId, setBoundarySetId] = useState("");
+  const [materials, setMaterials] = useState<SourceMaterialSummary[]>([]);
+  /**
+   * Origins the catalogue could not read. Shown rather than swallowed: an
+   * empty list reads as "you have not uploaded anything", which is the wrong
+   * thing to believe when the truth is that the query failed.
+   */
+  const [materialWarnings, setMaterialWarnings] = useState<string[]>([]);
+  const [materialsFailed, setMaterialsFailed] = useState(false);
+  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  /** What the generator is doing, while it does it -- this takes minutes. */
+  const [generationPhase, setGenerationPhase] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isExportingMs, setIsExportingMs] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [rubricFindings, setRubricFindings] = useState<RubricFinding[]>([]);
   const [rubricBlocked, setRubricBlocked] = useState(false);
+  const [saved, setSaved] = useState<SavedAssessment[]>([]);
+  const [loadId, setLoadId] = useState("");
+  const [isLoadingSaved, setIsLoadingSaved] = useState(false);
+  const [loadConfirm, setLoadConfirm] = useState(false);
+  const [generateConfirm, setGenerateConfirm] = useState(false);
+
+  /**
+   * Which of the two ways in is showing, or null while we do not yet know.
+   *
+   * Null is the honest answer until the saved list has come back: an empty list
+   * that has not been fetched looks exactly like a teacher with nothing saved,
+   * and opening on the wrong path moves the panel under their hands a moment
+   * after the tab loads.
+   */
+  const [startMode, setStartMode] = useState<StartMode | null>(null);
+
+  /**
+   * What the editor looked like when it was last saved or loaded. Loading
+   * replaces everything on screen, so this is what tells us whether that would
+   * discard real work -- the alternative, confirming every time, trains a
+   * teacher to click through the one prompt that matters.
+   *
+   * State rather than a ref: the open button's label depends on it, so saving
+   * or loading has to re-render.
+   */
+  const [cleanSnapshot, setCleanSnapshot] = useState(
+    editorSnapshot(DEFAULT_DRAFT, DEFAULT_FORMATTING, "formative"),
+  );
+  const currentSnapshot = useMemo(
+    () => editorSnapshot(draft, formatting, kind),
+    [draft, formatting, kind],
+  );
+  const hasUnsavedWork = currentSnapshot !== cleanSnapshot;
+  const openButton = loadButtonState({
+    loadId,
+    savedTestId,
+    hasUnsavedWork,
+    isLoading: isLoadingSaved,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +296,73 @@ export function FormativeAssessmentSandbox() {
       cancelled = true;
     };
   }, []);
+
+  // Same shape again. A summative needs one of these or its mark reports as a
+  // raw score with an approximate band rather than a grade; Grade 9 has its
+  // own set, separate from the DP progression sets.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const supabase = createClient();
+      const { data } = await supabase.from("grade_boundary_sets").select("id, name").order("name");
+      if (!cancelled && data) setBoundarySets(data as BoundarySetOption[]);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Same shape as the courses fetch above -- the set happens inside the async
+  // IIFE behind a cancelled guard, not in the effect body. The start mode is
+  // settled even on a failed fetch: the picker degrades to "nothing saved",
+  // which is wrong, but is at least a path the teacher can leave.
+  //
+  // Which way in to open on is settled HERE, from the list that just arrived,
+  // and nowhere else. Deriving it from `saved` on every render would flip the
+  // panel from Generate to Open the moment a teacher saved the paper they had
+  // just generated -- a first save adds a row to that list.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const list = await fetchSavedAssessments();
+      if (cancelled) return;
+      if (list) setSaved(list);
+      setStartMode((current) => current ?? defaultStartMode(list?.length ?? 0));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Re-fetched when the grade changes, because the catalogue is filtered by it.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const result = await fetchSourceMaterials(gradeLevel);
+      if (cancelled) return;
+      if (!result) {
+        setMaterialsFailed(true);
+        return;
+      }
+      setMaterials(result.materials);
+      setMaterialWarnings(result.warnings);
+      setMaterialsFailed(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gradeLevel]);
+
+  // Narrowed to the classes these papers are for, plus whatever a loaded
+  // assessment is already saved against -- see allowedCourses.
+  const offeredCourses = useMemo(
+    () => allowedCourses(courses, savedTestId ? courseId || null : null),
+    [courses, courseId, savedTestId],
+  );
+  const courseName = useMemo(
+    () => courses.find((c) => c.id === courseId)?.name ?? "",
+    [courses, courseId],
+  );
 
   const totalMarks = draft.sections.reduce((sum, section) => sum + sectionMarks(section), 0);
 
@@ -143,58 +381,258 @@ export function FormativeAssessmentSandbox() {
     updateSection(sIdx, (s) => ({ ...s, questions: s.questions.map((q, i) => (i === qIdx ? updater(q) : q)) }));
   }
 
-  async function generateWithAi() {
-    setIsGenerating(true);
+  /**
+   * Switch between formative and summative.
+   *
+   * Does everything the switch implies rather than only setting a flag: the
+   * cover conditions go on or come off, the hints go (a summative prints
+   * whatever it is handed), self-assessment is forced on, and a title still
+   * sitting at the other kind's default is renamed. A control that changes one
+   * thing and leaves five others to be remembered is a control that gets a
+   * formative saved as a summative.
+   */
+  function changeKind(next: AssessmentKind) {
+    if (next === kind) return;
+    setKind(next);
+    setFormatting((f) => applyKindFormatting(next, f, { gradeLevel, courseName }));
+    setRequireSelfAssessment((current) => resolveRequireSelfAssessment(next, current));
+    setDraft((d) => {
+      const stripped = applyKindRules(next, d);
+      const other: AssessmentKind = next === "summative" ? "formative" : "summative";
+      return d.title.trim() === DEFAULT_TITLES[other]
+        ? { ...stripped, title: DEFAULT_TITLES[next] }
+        : stripped;
+    });
+    setNotice({
+      place: "paper",
+      text:
+        next === "summative"
+          ? "Switched to summative. Exam conditions now print on the paper and the mark scheme, hints are removed, " +
+            "self-assessment is required, and a grade boundary set has to be chosen before you can save. " +
+            "Check the calculator policy -- it starts at this grade's own rule."
+          : "Switched to formative. The exam conditions have been cleared from the cover.",
+    });
+  }
+
+  const hintsOnPaper = useMemo(() => countHints(draft), [draft]);
+  const kindLabel = ASSESSMENT_KINDS.find((o) => o.value === kind)?.label ?? "Assessment";
+
+  /** The notice, if it belongs to this panel. */
+  const noticeAt = (place: NoticePlace) => (notice?.place === place ? notice : null);
+
+  /**
+   * Switch between the two ways in.
+   *
+   * Clears both discard prompts on the way: a "this replaces your work" warning
+   * belongs to the button that raised it, and one left standing next to a
+   * different control is a warning about nothing.
+   */
+  function chooseStartMode(next: StartMode) {
+    setStartMode(next);
+    setLoadConfirm(false);
+    setGenerateConfirm(false);
+  }
+
+  /**
+   * Change the grade this paper is for, and with it the calculator rule.
+   *
+   * Wrapped rather than a bare setState because the rule is derived from the
+   * grade: a Grade 9 paper starts permitting a graphing calculator, and
+   * correcting the grade after switching to summative has to move it. What the
+   * teacher chose themselves is left alone -- retargetCalculatorPolicy decides.
+   */
+  function changeGradeContext(next: { gradeLevel?: string; courseId?: string }) {
+    const prev = { gradeLevel, courseName };
+    const nextGrade = next.gradeLevel ?? gradeLevel;
+    const nextCourseName =
+      next.courseId !== undefined
+        ? courses.find((c) => c.id === next.courseId)?.name ?? ""
+        : courseName;
+
+    if (next.gradeLevel !== undefined) setGradeLevel(next.gradeLevel);
+    if (next.courseId !== undefined) setCourseId(next.courseId);
+
+    setFormatting((f) => ({
+      ...f,
+      calculatorPolicy: retargetCalculatorPolicy(f.calculatorPolicy, prev, {
+        gradeLevel: nextGrade,
+        courseName: nextCourseName,
+      }),
+    }));
+  }
+
+  const selectedSources = useMemo(
+    () => materials.filter((m) => selectedSourceIds.includes(m.id)),
+    [materials, selectedSourceIds],
+  );
+  const selectedChars = selectedSources.reduce((sum, m) => sum + m.approxChars, 0);
+
+  function toggleSource(id: string) {
+    setSelectedSourceIds((prev) =>
+      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id],
+    );
+  }
+
+  /**
+   * Add a file to the catalogue.
+   *
+   * Tagged with the grade on screen, which is what the catalogue filters on --
+   * upload a Grade 9 study guide while the grade says Grade 9 and it is there
+   * the next time this tab opens.
+   */
+  async function uploadSourceMaterial(file: File) {
+    setIsUploading(true);
     setError(null);
     try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("gradeLevel", gradeLevel);
+      if (courseId) form.append("courseId", courseId);
+
+      const res = await fetch("/api/source-materials", { method: "POST", body: form });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        material?: { id: string; title: string; pageCount: number | null; usable: boolean };
+      };
+      if (!res.ok || !data.material) throw new Error(data.error ?? `Upload failed (${res.status})`);
+
+      const refreshed = await fetchSourceMaterials(gradeLevel);
+      if (refreshed) {
+        setMaterials(refreshed.materials);
+        setMaterialWarnings(refreshed.warnings);
+      }
+      // Selected on arrival: uploading it is the act of choosing it.
+      setSelectedSourceIds((prev) => [...prev, data.material!.id]);
+      setNotice({
+        place: "start",
+        tone: data.material.usable ? "good" : undefined,
+        text: data.material.usable
+          ? `Added "${data.material.title}" and selected it.`
+          : `Added "${data.material.title}", but no text could be read out of it -- it will not reach the ` +
+            "generator. A scan with no text layer usually needs OCR first.",
+      });
+    } catch (err) {
+      setError(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  /**
+   * Write a new paper over whatever is in the editor.
+   *
+   * Asks first only when there is something to lose that cannot be got back:
+   * an OPEN saved assessment with unsaved edits. A generated draft that was
+   * never saved does not qualify -- regenerating one is the normal way to use
+   * this button, and a prompt there would be a prompt on every attempt.
+   */
+  async function generateWithAi() {
+    if (savedTestId !== null && needsDiscardConfirmation({
+      current: currentSnapshot,
+      clean: cleanSnapshot,
+      confirmed: generateConfirm,
+    })) {
+      setGenerateConfirm(true);
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerationPhase(null);
+    setError(null);
+    try {
+      // The chosen material's text, resolved now rather than held in the page.
+      // Empty string when nothing is selected, so the prompt is unchanged from
+      // what it was before any of this existed.
+      let sourcePrompt = "";
+      if (selectedSourceIds.length > 0) {
+        const res = await fetch("/api/source-materials/resolve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: selectedSourceIds }),
+        });
+        const data = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          prompt?: string;
+          truncated?: string[];
+          dropped?: string[];
+        };
+        if (!res.ok) throw new Error(data.error ?? `Could not read the source material (${res.status})`);
+        sourcePrompt = data.prompt ?? "";
+        // Said out loud: a paper built from half a study guide, silently, is
+        // one whose gaps look like the model's judgement.
+        const cut = [
+          ...(data.truncated ?? []).map((t) => `${t} (shortened)`),
+          ...(data.dropped ?? []).map((t) => `${t} (not used)`),
+        ];
+        if (cut.length > 0) {
+          setNotice({
+            place: "start",
+            text: `Source material over the prompt limit: ${cut.join(", ")}.`,
+          });
+        }
+      }
+
       const response = await fetch("/api/claude", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          system: buildFormativeAssessmentSystemPrompt(),
+          system: buildFormativeAssessmentSystemPrompt(kind),
           messages: [
             {
               role: "user",
-              content: buildFormativeAssessmentUserPrompt({
-                gradeLevel,
-                topic,
-                totalMarks: totalMarksTarget,
-                levelCount,
-                contextNotes: contextNotes || undefined,
-              }),
+              content:
+                buildFormativeAssessmentUserPrompt({
+                  gradeLevel,
+                  topic,
+                  totalMarks: totalMarksTarget,
+                  levelCount,
+                  contextNotes: contextNotes || undefined,
+                  kind,
+                  // The exam conditions steer the paper, not just its cover:
+                  // the teacher set them above this button for that reason.
+                  calculatorPolicy: formatting.calculatorPolicy,
+                  timeAllowedMinutes: formatting.timeAllowedMinutes,
+                }) + sourcePrompt,
             },
           ],
         }),
       });
       if (!response.ok) {
+        // Error responses ARE still JSON -- it is the 200 that streams.
         const d = (await response.json()) as { error?: string };
         throw new Error(d.error ?? `AI request failed with status ${response.status}`);
       }
-      const data = (await response.json()) as ClaudeResponse;
+      // Not response.json(). Parsing the stream as JSON is what produced
+      // "Unexpected token 'e', \"event: pro\"... is not valid JSON" on every
+      // attempt to generate a paper here since #164.
+      const data = await readClaudeStream(response, (info) =>
+        setGenerationPhase(
+          info.charCount ? `${info.phase} (${info.charCount} chars)` : info.phase,
+        ),
+      );
       const rawText = data.content?.find((block) => block.type === "text")?.text ?? "";
       const json = extractJsonObject(rawText);
       const parsed = JSON.parse(json) as AssignmentDraft;
-      setDraft(sanitizeDraft(parsed));
+      // applyKindRules on the way out of the model as well as on the way into
+      // the save: rule S1 tells it not to write hints on a summative, and this
+      // is what makes that true rather than likely.
+      setDraft(applyKindRules(kind, sanitizeDraft(parsed)));
+      // A generated draft is new work, not an edit of whatever was open: it
+      // saves to a new test, and the archive on screen is not its archive.
       setSavedTestId(null);
+      setPdfsArchived(false);
+      setGenerateConfirm(false);
       setNotice(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected AI generation error.");
     } finally {
       setIsGenerating(false);
+      setGenerationPhase(null);
     }
   }
 
   function buildPdfBody(isMarkScheme: boolean) {
-    return {
-      title: draft.title,
-      subtitle: `${draft.subtitle}${isMarkScheme ? " -- MARK SCHEME" : ""}`,
-      instructions: draft.instructions,
-      sections: draft.sections,
-      formatting,
-      showSectionScoreSummary: draft.showSectionScoreSummary,
-      markingPrinciples: draft.markingPrinciples,
-      reteachGuide: draft.reteachGuide,
-    };
+    return buildFormativeAssessmentPdfBody(draft, formatting, isMarkScheme);
   }
 
   async function downloadPdf(endpoint: string, isMarkScheme: boolean, setBusy: (b: boolean) => void, suffix: string) {
@@ -227,6 +665,80 @@ export function FormativeAssessmentSandbox() {
   }
 
   /**
+   * Reopen a saved assessment.
+   *
+   * Restores everything the save wrote, not just the questions: the formatting
+   * decides what the PDFs look like, and the course and self-assessment gate
+   * are what make the reloaded draft save back over the same test instead of
+   * forking a second copy of it.
+   */
+  async function handleLoad() {
+    if (!loadId) return;
+
+    if (
+      needsDiscardConfirmation({
+        current: currentSnapshot,
+        clean: cleanSnapshot,
+        confirmed: loadConfirm,
+      })
+    ) {
+      setLoadConfirm(true);
+      return;
+    }
+
+    setIsLoadingSaved(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/formative-assessments/${loadId}`);
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        name?: string;
+        courseId?: string | null;
+        draft?: AssignmentDraft;
+        formatting?: FormattingRequirements;
+        formattingSource?: "stored" | "default";
+        requireSelfAssessment?: boolean;
+        assessmentKind?: AssessmentKind;
+        boundarySetId?: string | null;
+        pdfsArchived?: boolean;
+      };
+      if (!res.ok || !data.draft) throw new Error(data.error ?? `Load failed (${res.status})`);
+
+      const loadedKind: AssessmentKind = data.assessmentKind === "summative" ? "summative" : "formative";
+      setDraft(data.draft);
+      if (data.formatting) setFormatting(data.formatting);
+      setCourseId(data.courseId ?? "");
+      setRequireSelfAssessment(data.requireSelfAssessment !== false);
+      setKind(loadedKind);
+      setBoundarySetId(data.boundarySetId ?? "");
+      setSavedTestId(loadId);
+      setPdfsArchived(Boolean(data.pdfsArchived));
+      // Findings belong to the draft that produced them; carrying them over
+      // would pin another paper's defects to this one.
+      setRubricFindings([]);
+      setRubricBlocked(false);
+      setLoadConfirm(false);
+      setCleanSnapshot(
+        editorSnapshot(data.draft, data.formatting ?? DEFAULT_FORMATTING, loadedKind),
+      );
+      const what = loadedKind === "summative" ? "summative" : "formative";
+      setNotice({
+        place: "start",
+        tone: data.formattingSource === "default" ? undefined : "good",
+        text:
+          data.formattingSource === "default"
+            ? `Loaded "${data.name ?? "assessment"}" (${what}). It was saved before layout settings were kept, so those are back to the defaults -- check them before exporting.`
+            : `Loaded "${data.name ?? "assessment"}" (${what}). Saving writes back to this same test.`,
+      });
+    } catch (err) {
+      setError(`Load failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setIsLoadingSaved(false);
+    }
+  }
+
+  /**
    * `acknowledge` re-sends a save the rubric gate refused. The teacher has to
    * have seen the findings to get the button that sets it, which is the whole
    * point -- a defect that is merely logged somewhere gets marked against
@@ -235,6 +747,15 @@ export function FormativeAssessmentSandbox() {
   async function handleSave(acknowledge = false) {
     if (!courseId) {
       setError("Select a course before saving -- this is what makes the assessment gradeable.");
+      return;
+    }
+    // Checked here as well as in the route. The route is the guarantee; this
+    // is so the teacher finds out before a save that renders two PDFs.
+    if (kind === "summative" && !boundarySetId) {
+      setError(
+        "Choose a grade boundary set before saving a summative -- without one the mark reports as a raw " +
+          "score with an approximate band instead of a grade.",
+      );
       return;
     }
     setIsSaving(true);
@@ -250,6 +771,11 @@ export function FormativeAssessmentSandbox() {
           courseId,
           draft,
           requireSelfAssessment,
+          assessmentKind: kind,
+          ...(boundarySetId ? { boundarySetId } : {}),
+          // Sent so the archived PDFs are the paper on screen, not a
+          // default-formatted lookalike.
+          formatting,
           ...(acknowledge ? { acknowledgeRubricFindings: true } : {}),
         }),
       });
@@ -257,6 +783,9 @@ export function FormativeAssessmentSandbox() {
         error?: string;
         test?: { id: string };
         testItems?: string;
+        pdfs?: "archived" | "failed";
+        pdfsError?: string;
+        hintsRemoved?: number;
         rubric?: { findings: RubricFinding[]; summary: { blocking: number; warnings: number } };
       };
 
@@ -271,17 +800,51 @@ export function FormativeAssessmentSandbox() {
       if (!res.ok) throw new Error(data.error ?? `Save failed (${res.status})`);
 
       setRubricBlocked(false);
+      // The route strips hints from a summative before storing it, so the
+      // editor has to follow -- and the clean snapshot has to be taken from
+      // the STRIPPED draft, or the editor is permanently one hint away from
+      // what was saved and never stops warning about unsaved work.
+      const storedDraft = (data.hintsRemoved ?? 0) > 0 ? applyKindRules(kind, draft) : draft;
+      if (storedDraft !== draft) setDraft(storedDraft);
       setSavedTestId(data.test?.id ?? null);
+      setPdfsArchived(data.pdfs === "archived");
+      // This is now the saved state, so loading something else no longer has
+      // unsaved work to warn about. Refresh the picker too: a first save adds
+      // a row to it, and a re-save moves this one's totals.
+      setCleanSnapshot(editorSnapshot(storedDraft, formatting, kind));
+      if (data.test?.id) setLoadId(data.test.id);
+      void fetchSavedAssessments().then((list) => {
+        if (list) setSaved(list);
+      });
       const warnings = data.rubric?.summary.warnings ?? 0;
       const saved =
         data.testItems === "synced"
           ? "Saved -- ready to grade scanned student papers."
           : "Saved, but syncing gradeable items failed -- try saving again.";
-      setNotice(
-        warnings > 0
-          ? `${saved} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
-          : saved,
-      );
+      // Said out loud rather than done quietly: a hint the teacher wrote and
+      // then did not see on the paper is a change they are entitled to know
+      // about, even though it is the right change.
+      const stripped =
+        (data.hintsRemoved ?? 0) > 0
+          ? ` ${data.hintsRemoved} hint(s) were removed -- a summative does not print them.`
+          : "";
+      // A failed archive is called out rather than folded into the notice: the
+      // whole point of archiving on save is that nobody has to remember, so a
+      // save that did not archive must not read as a clean success.
+      const archive =
+        data.pdfs === "archived"
+          ? " Student paper and mark scheme archived."
+          : ` The PDFs were NOT archived (${data.pdfsError ?? "unknown error"}) -- save again to retry, or download them below and keep a copy.`;
+      setNotice({
+        place: "save",
+        // Green only for a save that archived both PDFs -- the same rule this
+        // line has always rendered, now stated where it is decided.
+        tone: data.pdfs === "archived" ? "good" : undefined,
+        text:
+          warnings > 0
+            ? `${saved}${archive}${stripped} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
+            : `${saved}${archive}${stripped}`,
+      });
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
@@ -292,35 +855,426 @@ export function FormativeAssessmentSandbox() {
   return (
     <section className="rounded-2xl border border-da-border bg-da-surface/80 p-6 shadow-lg shadow-black/30">
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
-        {/* -- Left panel: generation + settings -- */}
+        {/* -- Left panel: how a paper gets here, then what it is -- */}
         <div className="space-y-5">
+          {/* What the paper IS, and the conditions it is sat under. Both sit
+              ABOVE the Generate button, because they are what a teacher settles
+              before asking for a paper: the kind decides what the model is asked
+              for, and the conditions ride on the formatting, so a generation
+              leaves them standing. Title and subtitle do not survive one -- the
+              model writes its own -- so they wait below, under Title page. */}
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-            <h2 className="text-lg font-semibold font-serif text-da-text">Generate with AI</h2>
-            <LabeledInput label="Grade level" value={gradeLevel} onChange={setGradeLevel} />
-            <LabeledInput label="Topic" value={topic} onChange={setTopic} />
-            <div className="grid grid-cols-2 gap-3">
-              <LabeledInput
-                label="Target total marks"
-                type="number"
-                value={String(totalMarksTarget)}
-                onChange={(v) => setTotalMarksTarget(Number(v) || 0)}
-              />
-              <LabeledInput
-                label="Number of levels"
-                type="number"
-                value={String(levelCount)}
-                onChange={(v) => setLevelCount(Number(v) || 1)}
-              />
+            <h2 className="text-lg font-semibold font-serif text-da-text">The paper</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {ASSESSMENT_KINDS.map((option) => {
+                const active = kind === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => changeKind(option.value)}
+                    aria-pressed={active}
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                      active
+                        ? "border-da-accent/70 bg-da-accent/20 text-da-text"
+                        : "border-da-border bg-da-hover text-da-muted hover:border-da-accent/60"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
-            <LabeledTextArea label="Additional constraints" value={contextNotes} onChange={setContextNotes} rows={2} />
-            <button
-              type="button"
-              onClick={generateWithAi}
-              disabled={isGenerating}
-              className="w-full rounded-lg border border-da-accent/70 bg-da-accent/20 px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:bg-da-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isGenerating ? "Generating…" : "Generate With AI"}
-            </button>
+            <p className="text-xs text-da-muted">
+              {ASSESSMENT_KINDS.find((o) => o.value === kind)?.blurb}
+            </p>
+            <NoticeLine notice={noticeAt("paper")} />
+
+            {kind === "summative" && (
+              // Prints on the paper AND on the mark scheme, from one place --
+              // see lib/exam-conditions.ts. The marker needs the calculator rule
+              // as much as the student does.
+              <div className="space-y-3 border-t border-da-border/60 pt-3">
+                <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">
+                  Exam Conditions
+                </h3>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-da-muted">Calculator policy</span>
+                  <select
+                    value={formatting.calculatorPolicy ?? "not-permitted"}
+                    onChange={(e) =>
+                      setFormatting((f) => ({
+                        ...f,
+                        calculatorPolicy: e.target.value as NonNullable<
+                          FormattingRequirements["calculatorPolicy"]
+                        >,
+                      }))
+                    }
+                    className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
+                  >
+                    {CALCULATOR_POLICY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <LabeledInput
+                    label="Time allowed (min)"
+                    type="number"
+                    value={String(formatting.timeAllowedMinutes ?? "")}
+                    onChange={(v) =>
+                      setFormatting((f) => ({
+                        ...f,
+                        timeAllowedMinutes: Number(v) > 0 ? Number(v) : undefined,
+                      }))
+                    }
+                  />
+                  <ToggleField
+                    label="Print total marks"
+                    checked={formatting.showTotalMarks !== false}
+                    onChange={(c) => setFormatting((f) => ({ ...f, showTotalMarks: c }))}
+                  />
+                </div>
+                <LabeledTextArea
+                  label="Academic honesty line"
+                  value={formatting.academicHonestyLine ?? ""}
+                  onChange={(v) => setFormatting((f) => ({ ...f, academicHonestyLine: v }))}
+                  rows={3}
+                />
+                <p className="text-[11px] text-da-muted">
+                  Printed on the student paper and on the mark scheme. The total is{" "}
+                  {marksLabel(totalMarks)}, counted from the questions below.
+                </p>
+                {hintsOnPaper > 0 && (
+                  <p className="text-[11px] text-amber-300">
+                    {hintsOnPaper} hint(s) are still on this draft and will be removed when it is
+                    saved -- a summative does not print them.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Two ways in, and only two: open a paper that exists, or have the
+              model write one. Mutually exclusive on purpose -- both end with a
+              paper in the editor and both replace what was there, so the inputs
+              for the one you are not doing are noise. Only the chosen path's
+              controls are on screen. */}
+          <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
+            <h2 className="text-lg font-semibold font-serif text-da-text">Start</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {START_MODES.map((option) => {
+                const active = startMode === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => chooseStartMode(option.value)}
+                    aria-pressed={active}
+                    className={`rounded-lg border px-3 py-2 text-left text-sm font-semibold transition-colors ${
+                      active
+                        ? "border-da-accent/70 bg-da-accent/20 text-da-text"
+                        : "border-da-border bg-da-hover text-da-muted hover:border-da-accent/60"
+                    }`}
+                  >
+                    <span className="block">{option.label}</span>
+                    <span className="mt-0.5 block text-[11px] font-normal text-da-muted">
+                      {option.value === "open"
+                        ? startMode === null
+                          ? "checking…"
+                          : `${saved.length} saved`
+                        : "Written by AI"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {startMode !== null && (
+              <p className="text-xs text-da-muted">
+                {START_MODES.find((o) => o.value === startMode)?.blurb}
+              </p>
+            )}
+
+            {startMode === null && (
+              // Neither path is offered until the saved list has actually come
+              // back. An empty list we have not fetched yet is not the same as
+              // no saved papers, and guessing wrong here moves the panel under
+              // the teacher's hands a moment after the tab opens.
+              <p className="text-xs text-da-muted">Looking for saved assessments…</p>
+            )}
+
+            {startMode === "open" &&
+              (saved.length === 0 ? (
+                <p className="text-xs text-da-muted">
+                  Nothing saved yet. Generate a paper and save it, and it will be listed here.
+                </p>
+              ) : (
+                <>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Saved assessments
+                    </span>
+                    <select
+                      value={loadId}
+                      onChange={(e) => {
+                        setLoadId(e.target.value);
+                        setLoadConfirm(false);
+                      }}
+                      className="rounded-lg border border-da-border bg-da-bg px-3 py-2 text-sm text-da-text"
+                    >
+                      <option value="">Select one…</option>
+                      {saved.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.assessmentKind === "summative" ? "[Summative] " : ""}
+                          {s.name} — {s.courseName} — {s.itemCount} parts
+                          {s.totalMarks ? `/${s.totalMarks} marks` : ""} — {formatSavedDate(s.createdAt)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {loadConfirm ? (
+                    <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                      <p className="text-xs text-amber-200">
+                        The editor has changes that are not saved. Opening this assessment replaces them.
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleLoad()}
+                          disabled={isLoadingSaved}
+                          className="rounded-lg border border-amber-500/50 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isLoadingSaved ? "Opening…" : "Discard and open"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLoadConfirm(false)}
+                          disabled={isLoadingSaved}
+                          className="rounded-lg border border-da-border bg-da-hover px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          Keep editing
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void handleLoad()}
+                      disabled={openButton.disabled}
+                      className="w-full rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {openButton.label}
+                    </button>
+                  )}
+                </>
+              ))}
+
+            {startMode === "create" && (
+              <>
+                <LabeledInput
+                  label="Grade level"
+                  value={gradeLevel}
+                  onChange={(v) => changeGradeContext({ gradeLevel: v })}
+                />
+                <LabeledInput label="Topic" value={topic} onChange={setTopic} />
+                <div className="grid grid-cols-2 gap-3">
+                  <LabeledInput
+                    label="Target total marks"
+                    type="number"
+                    value={String(totalMarksTarget)}
+                    onChange={(v) => setTotalMarksTarget(Number(v) || 0)}
+                  />
+                  <LabeledInput
+                    label="Number of levels"
+                    type="number"
+                    value={String(levelCount)}
+                    onChange={(v) => setLevelCount(Number(v) || 1)}
+                  />
+                </div>
+                <LabeledTextArea label="Additional constraints" value={contextNotes} onChange={setContextNotes} rows={2} />
+
+                {/* Nested inside this path rather than standing alongside it,
+                    because that is all it is: an input to the generation. It
+                    does nothing to a paper you opened. */}
+                <div className="space-y-3 rounded-lg border border-da-border/70 bg-da-bg/30 p-3">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">
+                      Source material
+                    </h3>
+                    <span className="text-xs text-da-muted">
+                      {selectedSourceIds.length > 0
+                        ? `${selectedSourceIds.length} selected`
+                        : `${materials.length} for ${gradeLevel}`}
+                    </span>
+                  </div>
+                  <p className="text-xs text-da-muted">
+                    Tick what this paper should be built from. Questions are written from the wording,
+                    notation and worked examples in what you choose.
+                  </p>
+
+                  {(materialsFailed || materialWarnings.length > 0) && (
+                    <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-200">
+                      {materialsFailed
+                        ? "The catalogue could not be loaded, so this list is empty for a reason that is not you. Reload the page."
+                        : materialWarnings.join(" ")}
+                    </p>
+                  )}
+
+                  {materials.length === 0 ? (
+                    <p className="text-xs text-da-muted">
+                      {materialsFailed
+                        ? "Nothing to show while the catalogue is unavailable."
+                        : `Nothing catalogued for ${gradeLevel} yet. Add a file below.`}
+                    </p>
+                  ) : (
+                    <div className="max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                      {materials.map((m) => {
+                        const checked = selectedSourceIds.includes(m.id);
+                        return (
+                          <label
+                            key={m.id}
+                            // The title is truncated to one line in a panel this
+                            // narrow, and the catalogue now holds several items
+                            // whose names differ only past the cut -- the A.3
+                            // packet PDF and the A.3 template, for one.
+                            title={m.title}
+                            className={`flex cursor-pointer gap-2.5 rounded-md border px-2.5 py-2 text-sm transition-colors ${
+                              checked
+                                ? "border-da-accent/60 bg-da-accent/10"
+                                : "border-da-border bg-da-bg/30 hover:border-da-accent/40"
+                            } ${m.usable ? "" : "opacity-60"}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              disabled={!m.usable}
+                              onChange={() => toggleSource(m.id)}
+                              className="mt-0.5 h-4 w-4 shrink-0 accent-amber-500 disabled:cursor-not-allowed"
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-da-text/90">{m.title}</span>
+                              <span className="block text-[11px] text-da-muted">
+                                {SOURCE_KIND_LABELS[m.kind]}
+                                {m.courseName ? ` - ${m.courseName}` : ""} - {m.detail}
+                              </span>
+                            </span>
+                            {m.downloadPath && (
+                              <a
+                                href={m.downloadPath}
+                                onClick={(e) => e.stopPropagation()}
+                                className="shrink-0 self-center text-[11px] text-da-muted underline hover:text-da-text"
+                              >
+                                open
+                              </a>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {selectedChars > 0 && (
+                    <p
+                      className={`text-[11px] ${
+                        selectedChars > SOURCE_TEXT_TOTAL ? "text-amber-300" : "text-da-muted"
+                      }`}
+                    >
+                      About {Math.round(selectedChars / 1000)}k characters selected
+                      {selectedChars > SOURCE_TEXT_TOTAL
+                        ? ` -- past the ${Math.round(SOURCE_TEXT_TOTAL / 1000)}k ceiling, so the later ones will be shortened or skipped.`
+                        : ", comfortably inside what the model reads in one pass."}
+                    </p>
+                  )}
+
+                  <label className="block space-y-1">
+                    <span className="text-xs font-medium text-da-muted">Add a file</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,text/plain,text/markdown"
+                      disabled={isUploading}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) void uploadSourceMaterial(file);
+                        e.target.value = "";
+                      }}
+                      className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-xs text-da-text file:mr-2 file:rounded file:border-0 file:bg-da-hover file:px-2 file:py-1 file:text-xs file:text-da-text disabled:cursor-not-allowed disabled:opacity-60"
+                    />
+                    <span className="block text-[11px] text-da-muted">
+                      {isUploading
+                        ? "Reading the file…"
+                        : `Saved against ${gradeLevel}. PDFs are read for their text; a scan with no text layer cannot be used.`}
+                    </span>
+                  </label>
+                </div>
+
+                {generateConfirm ? (
+                  // The same bargain the open path strikes, for the same
+                  // reason: this is the other control that replaces everything
+                  // on screen, and a saved paper with edits on it is exactly
+                  // what a teacher does not expect a Generate button to eat.
+                  <div className="space-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2">
+                    <p className="text-xs text-amber-200">
+                      The assessment in the editor has changes that are not saved. Generating writes a
+                      new paper over them.
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void generateWithAi()}
+                        disabled={isGenerating}
+                        className="rounded-lg border border-amber-500/50 bg-amber-500/20 px-3 py-2 text-xs font-semibold text-amber-100 transition-colors hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isGenerating ? "Generating…" : "Discard and generate"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setGenerateConfirm(false)}
+                        disabled={isGenerating}
+                        className="rounded-lg border border-da-border bg-da-hover px-3 py-2 text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Keep editing
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void generateWithAi()}
+                    disabled={isGenerating}
+                    className="w-full rounded-lg border border-da-accent/70 bg-da-accent/20 px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:bg-da-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {/* Names the kind, because the control for it is below this
+                        panel: this is the moment the choice bites, and a
+                        summative generated as a formative is not something you
+                        notice until it is photocopied. */}
+                    {isGenerating
+                      ? generationPhase ?? "Generating…"
+                      : selectedSourceIds.length > 0
+                        ? `Generate ${kindLabel} From ${selectedSourceIds.length} Source${selectedSourceIds.length === 1 ? "" : "s"}`
+                        : `Generate ${kindLabel} With AI`}
+                  </button>
+                )}
+              </>
+            )}
+
+            <NoticeLine notice={noticeAt("start")} />
+          </div>
+
+          {/* Below the Generate button on purpose: a generation replaces the
+              draft, so a title typed above it is a title the model overwrites. */}
+          <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
+            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Title page</h3>
+            <LabeledInput label="Title" value={draft.title} onChange={(v) => setDraft((d) => ({ ...d, title: v }))} />
+            <LabeledInput label="Subtitle" value={draft.subtitle} onChange={(v) => setDraft((d) => ({ ...d, subtitle: v }))} />
+            <div className="grid grid-cols-2 gap-3">
+              <ToggleField label="Name line" checked={formatting.includeNameLine} onChange={(c) => setFormatting((p) => ({ ...p, includeNameLine: c }))} />
+              <ToggleField label="Block line" checked={!!formatting.includeBlockLine} onChange={(c) => setFormatting((p) => ({ ...p, includeBlockLine: c }))} />
+              <ToggleField label="Date line" checked={formatting.includeDateLine} onChange={(c) => setFormatting((p) => ({ ...p, includeDateLine: c }))} />
+              <ToggleField label="Section score box" checked={!!draft.showSectionScoreSummary} onChange={(c) => setDraft((d) => ({ ...d, showSectionScoreSummary: c }))} />
+            </div>
           </div>
 
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
@@ -329,22 +1283,50 @@ export function FormativeAssessmentSandbox() {
               <span className="text-xs font-medium text-da-muted">Course</span>
               <select
                 value={courseId}
-                onChange={(e) => setCourseId(e.target.value)}
+                onChange={(e) => changeGradeContext({ courseId: e.target.value })}
                 className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
               >
                 <option value="">Select a course…</option>
-                {courses.map((c) => (
+                {offeredCourses.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
                 ))}
               </select>
             </label>
+            {kind === "summative" && (
+              <label className="block space-y-1">
+                <span className="text-xs font-medium text-da-muted">Grade boundary set</span>
+                <select
+                  value={boundarySetId}
+                  onChange={(e) => setBoundarySetId(e.target.value)}
+                  className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
+                >
+                  <option value="">Select a boundary set…</option>
+                  {boundarySets.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="block text-[11px] text-da-muted">
+                  Grade 9 has its own set. Without one the mark reports as a raw score with an
+                  approximate band, not a grade.
+                </span>
+              </label>
+            )}
             <ToggleField
               label="Require self-assessment before releasing Clev's Marks"
               checked={requireSelfAssessment}
               onChange={setRequireSelfAssessment}
+              disabled={kind === "summative"}
             />
+            {kind === "summative" && (
+              <p className="text-[11px] text-da-muted">
+                Required on a summative, and not a choice: students judge their own work before they
+                see the marks you approved.
+              </p>
+            )}
             <button
               type="button"
               onClick={() => handleSave()}
@@ -361,38 +1343,51 @@ export function FormativeAssessmentSandbox() {
                 Upload scanned papers to grade →
               </a>
             )}
-            {notice && <p className="text-xs text-emerald-300">{notice}</p>}
+            {savedTestId && pdfsArchived && (
+              // The archived copies, not a fresh render of whatever is in the
+              // editor right now. These are what a teacher comes back for
+              // months later, so they are the ones worth linking.
+              <div className="flex gap-2">
+                <a
+                  href={`/api/formative-assessments/${savedTestId}/pdf?kind=paper`}
+                  className="flex-1 rounded-lg border border-da-border bg-da-hover px-3 py-2 text-center text-xs font-semibold text-da-text transition-colors hover:border-da-accent/60"
+                >
+                  Archived paper ↓
+                </a>
+                <a
+                  href={`/api/formative-assessments/${savedTestId}/pdf?kind=mark-scheme`}
+                  className="flex-1 rounded-lg border border-violet-500/50 bg-violet-500/10 px-3 py-2 text-center text-xs font-semibold text-violet-200 transition-colors hover:bg-violet-500/20"
+                >
+                  Archived mark scheme ↓
+                </a>
+              </div>
+            )}
+            <NoticeLine notice={noticeAt("save")} />
           </div>
 
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Title Page</h3>
-            <LabeledInput label="Title" value={draft.title} onChange={(v) => setDraft((d) => ({ ...d, title: v }))} />
-            <LabeledInput label="Subtitle" value={draft.subtitle} onChange={(v) => setDraft((d) => ({ ...d, subtitle: v }))} />
-            <div className="grid grid-cols-2 gap-3">
-              <ToggleField label="Name line" checked={formatting.includeNameLine} onChange={(c) => setFormatting((p) => ({ ...p, includeNameLine: c }))} />
-              <ToggleField label="Block line" checked={!!formatting.includeBlockLine} onChange={(c) => setFormatting((p) => ({ ...p, includeBlockLine: c }))} />
-              <ToggleField label="Date line" checked={formatting.includeDateLine} onChange={(c) => setFormatting((p) => ({ ...p, includeDateLine: c }))} />
-              <ToggleField label="Section score box" checked={!!draft.showSectionScoreSummary} onChange={(c) => setDraft((d) => ({ ...d, showSectionScoreSummary: c }))} />
+            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Export</h3>
+            <p className="text-[11px] text-da-muted">
+              A fresh render of what is in the editor right now -- not the copies a save archives.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => downloadPdf("/api/assignments/generate-pdf", false, setIsExporting, "")}
+                disabled={isExporting}
+                className="rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isExporting ? "Generating…" : "Download Student PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => downloadPdf("/api/assignments/mark-scheme", true, setIsExportingMs, "_mark_scheme")}
+                disabled={isExportingMs}
+                className="rounded-lg border border-violet-500/50 bg-violet-500/10 px-4 py-2 text-sm font-semibold text-violet-200 transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isExportingMs ? "Generating…" : "Download Mark Scheme"}
+              </button>
             </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => downloadPdf("/api/assignments/generate-pdf", false, setIsExporting, "")}
-              disabled={isExporting}
-              className="rounded-lg border border-da-border bg-da-hover px-4 py-2 text-sm font-semibold text-da-text transition-colors hover:border-da-accent/60 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isExporting ? "Generating…" : "Download Student PDF"}
-            </button>
-            <button
-              type="button"
-              onClick={() => downloadPdf("/api/assignments/mark-scheme", true, setIsExportingMs, "_mark_scheme")}
-              disabled={isExportingMs}
-              className="rounded-lg border border-violet-500/50 bg-violet-500/10 px-4 py-2 text-sm font-semibold text-violet-200 transition-colors hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isExportingMs ? "Generating…" : "Download Mark Scheme"}
-            </button>
           </div>
 
           {error && <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">{error}</p>}
@@ -522,6 +1517,22 @@ export function FormativeAssessmentSandbox() {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * One status line, rendered by the panel that owns it.
+ *
+ * Amber by default and green only where the caller says so -- see the Notice
+ * type. Returns null rather than an empty paragraph so the panel's `space-y`
+ * does not open a gap for a notice that is not there.
+ */
+function NoticeLine({ notice }: { notice: Notice | null }) {
+  if (!notice) return null;
+  return (
+    <p className={`text-xs ${notice.tone === "good" ? "text-emerald-300" : "text-amber-300"}`}>
+      {notice.text}
+    </p>
   );
 }
 
@@ -738,11 +1749,32 @@ function LabeledTextArea({ label, value, onChange, rows }: { label: string; valu
   );
 }
 
-function ToggleField({ label, checked, onChange }: { label: string; checked: boolean; onChange: (c: boolean) => void }) {
+function ToggleField({
+  label,
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (c: boolean) => void;
+  /** Shown as on and not editable -- for a setting the kind of paper decides. */
+  disabled?: boolean;
+}) {
   return (
-    <label className="flex items-center justify-between rounded-md border border-da-border bg-da-bg/30 px-2.5 py-2 text-sm">
+    <label
+      className={`flex items-center justify-between rounded-md border border-da-border bg-da-bg/30 px-2.5 py-2 text-sm ${
+        disabled ? "opacity-70" : ""
+      }`}
+    >
       <span className="text-da-text/90">{label}</span>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 accent-amber-500" />
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-4 w-4 accent-amber-500 disabled:cursor-not-allowed"
+      />
     </label>
   );
 }

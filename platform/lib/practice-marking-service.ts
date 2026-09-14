@@ -14,6 +14,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { loadInvitedRoster } from "@/lib/na-scanning";
 import { answerSlots } from "@/lib/practice-answers";
+import type { SubtopicNode } from "@/lib/practice-topic-rollup";
 import {
   isEmptyAnswer,
   isStale,
@@ -41,6 +42,9 @@ export interface MarkingQuestion {
   position: number;
   marks: number;
   subtopics: string[];
+  /** The raw codes, which the by-topic roll-up needs; `subtopics` above is
+   *  the human-readable version of the same thing. */
+  subtopicCodes: string[];
   /** Null for a scanned bank question, whose content is its images. */
   questionLatex: string | null;
   imageUrls: string[];
@@ -59,6 +63,8 @@ export interface MarkingView {
   questions: MarkingQuestion[];
   students: { invitedId: string; profileId: string | null; fullName: string }[];
   progress: PartProgress;
+  /** Every code in the set with the topic it rolls up into. */
+  subtopicIndex: Record<string, SubtopicNode>;
 }
 
 const SIGNED_URL_TTL_SECONDS = 3600;
@@ -114,6 +120,7 @@ export async function loadMarkingView(setId: string): Promise<MarkingView | null
       questions: [],
       students: [],
       progress: { answered: 0, marked: 0, stale: 0, onRoster: 0 },
+      subtopicIndex: {},
     };
   }
 
@@ -151,10 +158,9 @@ export async function loadMarkingView(setId: string): Promise<MarkingView | null
     answerByKey.set(`${a.practice_set_item_id}::${a.profile_id}::${a.part_label}`, a);
   }
 
-  const subtopicLabels = await loadSubtopicLabels(
-    supabase,
-    [...new Set(items.flatMap((i) => i.subtopic_codes ?? []))]
-  );
+  const allCodes = [...new Set(items.flatMap((i) => i.subtopic_codes ?? []))];
+  const subtopicLabels = await loadSubtopicLabels(supabase, allCodes);
+  const subtopicIndex = await loadSubtopicIndex(supabase, allCodes);
   const imageUrlsByItem = await loadQuestionImages(supabase, items);
 
   const questions: MarkingQuestion[] = items.map((item) => {
@@ -195,6 +201,7 @@ export async function loadMarkingView(setId: string): Promise<MarkingView | null
       position: item.position,
       marks: item.marks,
       subtopics: (item.subtopic_codes ?? []).map((c) => subtopicLabels.get(c) ?? c),
+      subtopicCodes: item.subtopic_codes ?? [],
       questionLatex: item.question_latex,
       imageUrls: imageUrlsByItem.get(item.id) ?? [],
       parts,
@@ -211,6 +218,7 @@ export async function loadMarkingView(setId: string): Promise<MarkingView | null
     questions,
     students,
     progress: sumProgress(questions.map((q) => q.progress)),
+    subtopicIndex: Object.fromEntries(subtopicIndex),
   };
 }
 
@@ -245,6 +253,52 @@ async function loadSubtopicLabels(
   const { data } = await supabase.from("subtopics").select("code, descriptor").in("code", codes);
   for (const row of data ?? []) labels.set(row.code as string, row.descriptor as string);
   return labels;
+}
+
+/**
+ * Each code with the topic it rolls up into, for the by-topic view.
+ *
+ * Two queries rather than a self-join: the parents of the set's codes are
+ * usually a handful of rows, and asking for them by name afterwards is
+ * clearer than a nested select whose shape postgrest infers differently
+ * depending on how the foreign key is declared.
+ */
+async function loadSubtopicIndex(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  codes: string[]
+): Promise<Map<string, SubtopicNode>> {
+  const index = new Map<string, SubtopicNode>();
+  if (codes.length === 0) return index;
+
+  const { data: rows } = await supabase
+    .from("subtopics")
+    .select("code, descriptor, parent_code")
+    .in("code", codes);
+
+  const parentCodes = [
+    ...new Set(
+      (rows ?? []).map((r) => r.parent_code as string | null).filter((c): c is string => !!c)
+    ),
+  ];
+  const parentName = new Map<string, string>();
+  if (parentCodes.length > 0) {
+    const { data: parents } = await supabase
+      .from("subtopics")
+      .select("code, descriptor")
+      .in("code", parentCodes);
+    for (const p of parents ?? []) parentName.set(p.code as string, p.descriptor as string);
+  }
+
+  for (const r of rows ?? []) {
+    const parentCode = (r.parent_code as string | null) ?? null;
+    index.set(r.code as string, {
+      code: r.code as string,
+      name: r.descriptor as string,
+      parentCode,
+      parentName: parentCode ? (parentName.get(parentCode) ?? parentCode) : null,
+    });
+  }
+  return index;
 }
 
 /**

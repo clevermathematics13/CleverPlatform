@@ -90,3 +90,39 @@ disagree that badly, with "Remote migration versions not found in local
 migrations directory" - but the error names every ledger version and reads like
 catastrophic drift when nothing is actually wrong. Check your working directory
 before believing it.
+
+## The md5 check above compares more than it looks like it does
+
+Third reconciliation, 13 Sep 2026. `20260913174538_tighten_a1_answer_sketches`
+had been applied but its file was never committed - 148 files against 149 ledger
+rows, the same "applied via MCP, file never landed" gap as the second
+reconciliation. The file was rebuilt from the ledger and verified by md5. The
+version sets now match exactly: **149 files, 149 rows.**
+
+Running the md5 comparison across the whole directory while doing that turns up
+104 files whose md5 does NOT match `array_to_string(statements, E'\n')`. **That
+is not drift, and those files must not be "fixed" by overwriting them from the
+ledger.** The ledger stores PARSED statements with their trailing semicolons
+removed, so the rejoined string is one character short per statement:
+
+```
+20260604114745   ledger=1298  file=1299  delta=+1   (1 statement)
+20260910181334   ledger=2306  file=2312  delta=+6   (6 statements)
+20260911055400   ledger=3439  file=3451  delta=+12  (12 statements)
+```
+
+Multi-statement rows additionally lose the blank lines between statements, since
+the rejoin uses a single `\n`. Write a file back from the ledger and you get SQL
+with no statement terminators.
+
+The rows that DO match byte-for-byte are the ones applied through MCP
+`apply_migration`, which stores the submitted text verbatim as a single
+statement - semicolons and all. That is why the check reads clean right after a
+reconciliation (every file was just written from a matching row) and accumulates
+"mismatches" as CLI-applied migrations land.
+
+So the invariant this directory actually holds is **one file per ledger version,
+same version prefix** - which is all `supabase db push` compares. Use md5 to
+verify a file you just wrote back from the ledger, not as a directory-wide
+health check. To compare an older file against its row, ignore whitespace and
+trailing semicolons, or diff the text directly.

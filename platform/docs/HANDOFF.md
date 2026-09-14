@@ -130,12 +130,22 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo now agree exactly: 116 files, 116 rows,
-byte-identical** (verified 7 Sep 2026; it read 83/83 when this handoff was written
-and 95/95 after the second reconciliation). Read
+**The migration ledger and the repo agree on versions: 149 files, 149 rows**
+(verified 13 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
+the second reconciliation and 116/116 after the third). Read
 `platform/supabase/migrations/README.md` before touching anything in that
 directory - it documents the invariant and how to add a migration without
 breaking it.
+
+**"byte-identical", which this paragraph used to claim of all of them, is
+true only of the rows applied through MCP `apply_migration`.** The ledger
+stores PARSED statements with their trailing semicolons stripped, so a
+rejoined row is one character short per statement and multi-statement rows
+also lose the blank lines between them; 104 of the 149 differ that way and
+none of it is drift. Writing those files back from the ledger would produce
+SQL with no statement terminators. The README's new last section has the
+measurements. The invariant that actually holds, and all `supabase db push`
+compares, is one file per ledger version.
 
 History, because it matters: files `001_*`..`057_*` were never recorded in the
 ledger, while ~4 months of changes applied via MCP existed only in the database. The
@@ -820,7 +830,13 @@ the happy path work."
 
 **Medium**
 
-4. Grade 9 Standard NA packets - none seeded.
+4. Grade 9 Standard NA packets - none seeded. **Declined 13 Sep 2026**: the
+   teacher was offered this directly and said they do not need Grade 9 Standard
+   materials at this time. Nothing is broken and nothing is blocked - the track
+   and its virtual course still exist, and the Nuanced Analysis creator still
+   offers both Grade 9 tracks - so this is a decision not to seed, not an
+   outstanding task. Left listed because the gap is real and may matter later;
+   do not raise it again unprompted.
 4b. **4 crops flagged by the teacherNote backtracking detector, awaiting manual
    verification** (found 28 Aug 2026 while investigating the Q1/Q1(e) issue below;
    these are unrelated judgment calls, not the same bug). Each has `ai_teacher_note`
@@ -1641,3 +1657,287 @@ PostgREST with a plain `limit`, which silently caps at 1000 rows; the test has
 2091. `fetchAllRows` exists for exactly this and the code comments warn about
 it. Ad-hoc verification queries need the same paging the application code
 uses, or they invent bugs that are not there.
+
+---
+
+## 18. A Formative Assessment could not be got back out of the system (13 Sep 2026)
+
+Started as a question - does an Assessment Creator exist for Grade 9? - and
+found that one did, had produced a real paper, and had no way to give it back.
+
+**Formative Assessment 1** (`f5221cd9`, course 9G, 41 items, 50 marks) is the
+only test in the database with `custom_content` set, i.e. the only one the
+creator has ever produced. 50 students are marked against it, 2091
+`student_marks` rows. Neither its paper nor its mark scheme could be
+retrieved: `/api/assignments/generate-pdf` and `/api/assignments/mark-scheme`
+stream a PDF to the browser and keep nothing, `tests.paper_url` and
+`mark_scheme_url` were NULL, and the sandbox could not reload a saved
+assessment. Rendering `custom_content` by hand was the only way back to it.
+`app/api/tests/[id]/paper-layout/route.ts` already documents the consequence
+in its header: "there is no blank paper anywhere in this system."
+
+### What changed (#214, #215)
+
+**Saving now archives both PDFs.** `POST /api/formative-assessments` renders
+them and uploads to the private `exam-scans` bucket under
+`formative-assessments/<testId>/{paper,mark-scheme}.pdf`, recording the paths
+on the test row. Four new `tests` columns, migration `20260913212551`:
+`paper_pdf_storage_path`, `mark_scheme_pdf_storage_path`,
+`assessment_formatting`, `pdfs_generated_at`.
+
+Deliberately NOT reusing `paper_url` / `mark_scheme_url`: those are free-text
+URLs a teacher types into the test detail form and students see as links on
+the reflection page. A private-bucket object can only be handed out as a
+signed URL minted on demand, which would expire if stored in a text column.
+`GET /api/formative-assessments/[testId]/pdf?kind=paper|mark-scheme` mints
+one; it is teacher-only, and `kind=mark-scheme` serves the full answers.
+
+`assessment_formatting` closes a real gap: the creator held
+`FormattingRequirements` in React state and never persisted it, so
+re-rendering an older draft could not reproduce the paper a class actually
+sat. Null means the defaults in `lib/formative-assessment-pdf-body.ts`.
+
+Both PDFs share ONE browser launch (`lib/formative-assessment-pdf.ts`). That
+is what makes archiving fit inside the save request - the launch dominates,
+so it costs little more than the single-PDF routes a teacher already waits
+on. A failed archive returns `pdfs: "failed"` with a 207 and is called out in
+amber in the sandbox rather than folded into the success notice; re-saving is
+the retry. FA1 was backfilled through this same code path (15-page paper,
+7-page mark scheme, 51 M/A/R codes), both verified downloadable.
+
+**The creator can now reopen a saved assessment.** `GET
+/api/formative-assessments` lists them (`custom_content is not null` is what
+qualifies one) and `GET /api/formative-assessments/[testId]` returns the
+draft, formatting, course and self-assessment gate. Deliberately not
+`GET /api/tests/[id]`, which serves the detail form and would silently drop
+the mark schemes. Opening something else asks first, but only when the editor
+holds unsaved work; once a loaded assessment has edits, re-opening it is how
+you discard them, so the button becomes "Reload, discarding changes" rather
+than staying disabled. That last part was found by driving the real UI, not
+by the tests - `app/dashboard/assignments/load-saved-assessment.ts` holds the
+decision so it is covered.
+
+### Two traps worth keeping
+
+**A mark scheme is made by its RENDERER, not a flag.** The student paper goes
+through `DocumentOrchestratorService.render`, the mark scheme through
+`generateMarkSchemeHtml`. The request bodies differ only in a subtitle
+suffix, so sending the mark-scheme body to the student renderer produces a
+convincing paper containing no mark scheme at all. That happened once while
+building this and was caught by inspection, before the backfill.
+`buildFormativeAssessmentPdfBody` now pins it with a test.
+
+**`new Date("nonsense")` does not throw** - it yields an Invalid Date whose
+`toLocaleDateString` returns the string "Invalid Date", so the try/catch
+these helpers were written with never fires. Three copies of that pattern
+existed; the live one was `load-draft-modal`, rendering "Invalid Date" on
+every Load Draft row for a template with an unparseable `updated_at`
+(#217, #218). All three are gone, replaced by
+`app/dashboard/assignments/format-date.ts`. No `function formatDate` remains
+in `app/`, `lib/` or `components/`.
+
+### Migration ledger, third reconciliation
+
+`20260913174538_tighten_a1_answer_sketches` had been applied with no file
+committed - 148 files against 149 rows, the same gap the second
+reconciliation fixed. Rebuilt from the ledger and verified by md5. See the
+correction to §4 above for what the directory-wide md5 check actually proves,
+which is less than it looks.
+
+## 19. The creator learned to write a summative (14 Sep 2026)
+
+The assessment creator could write one kind of paper. It now writes both, and
+a summative is deliberately NOT a second content type: same `AssignmentDraft`,
+same LEVEL bands, same M/A/R/FT mark codes, same marking policy file, same
+`tests` + `lib/ai-grading.ts` pipeline. One control at the top of the creator
+chooses, and **`lib/assessment-kind.ts` holds everything that follows from the
+answer** - so "what makes this a summative?" has one place to be read.
+
+Migration `20260914020122` adds `tests.assessment_kind`
+(`formative` | `summative`, default `formative`, CHECK-constrained). All six
+pre-existing tests keep behaving exactly as they did.
+
+### What a summative adds
+
+**Exam conditions on the cover** - calculator policy, time allowed, total
+marks, academic honesty line. Four new optional fields on
+`FormattingRequirements`, rendered by `lib/exam-conditions.ts`.
+
+They live on the FORMATTING, not on the draft, and that is the whole reason
+the PDF export needed no changes: formatting already reaches
+`DocumentOrchestratorService.render`, `generateMarkSchemeHtml` and
+`lib/formative-assessment-pdf.ts`'s archiver. A draft field would have needed
+six separate edits, one of them to `MarkSchemeRequest`.
+
+They print on BOTH PDFs, from one renderer. The two cover blocks in
+`lib/document-orchestrator.ts` - `buildHtml`'s `.doc-head` and
+`generateMarkSchemeHtml`'s header - shared no code at all and had already
+drifted (the paper carries a name/block/date grid, a score box and the
+instructions; the mark scheme carries none of them). A calculator rule that
+printed on the paper but not the mark scheme would be missing at exactly the
+moment it is needed, which is a mark being argued over.
+`lib/exam-conditions-render.test.ts` drives both real renderers and asserts
+the block lands in each, because a unit test of the block alone would pass
+with it wired into only one.
+
+**A grade boundary set, required.** Without one the gradebook falls back to
+generic bands and shows an `~approx` badge (§3). The save route refuses a
+summative that has none; the creator offers a picker. Grade 9 has its own set
+(`cf5ccc24`), separate from the DP progression sets.
+
+**Teacher intervention on anything below high confidence.** `POST
+.../ai-grade/accept-all` now covers only what the model was fully confident
+about; everything else stays `accepted = false` and waits in the review UI,
+where accepting one IS a teacher looking at it. `lib/summative-grading-gate.ts`
+reuses `gradeNeedsReview()` from `lib/ai-grading.ts` verbatim rather than
+restating the rule, so the parts held are exactly the parts already flagged.
+
+One consequence in that route: with results held, the accepted flag can no
+longer be set by RUN id (that would flag the held ones too), so it goes out by
+result id in chunks of 200. The by-run path is kept untouched for the case
+where nothing is held, which is every formative.
+
+The per-student status dot on the roster already reports partial acceptance
+("N of M suggested marks accepted"), so a teacher can see what is outstanding
+after a summative batch accept without any new UI.
+
+**Self-assessment forced on**, not offered: students judge their own work
+before they see the marks the teacher approved. `require_self_assessment` was
+already the gate (`lib/self-assessment-gate.ts`, `lib/reflection-steps.ts`) -
+a summative simply cannot turn it off.
+
+### What a summative leaves out
+
+**Hints.** `lib/document-orchestrator.ts:198` prints any `hint` it is handed,
+and a printed "Hint: try substituting x = 2" on a paper that counts is marks
+given away. Stripped in three places - on generation, on the kind switch, and
+again in the save route - and the teacher is told how many went rather than
+having them vanish.
+
+### Deliberately unchanged
+
+The marking policy. A summative loads the same
+`grading_policies/g9_formative_assessment_marking_principles.md` that
+`lib/ai-grading.ts` already loads for every `source = 'custom'` item. M/A/R/FT
+does not mean something different because the paper counts, and a second
+policy file is a second thing to keep in step. Also unchanged: the LEVEL ramp
+(the gradebook parses `LEVEL n`) and the reteach guide, which is teacher-only
+and is exactly what a summative tells you.
+
+### Naming
+
+The tab label is now "Assessment Creator". The tab ID stays
+`formative-assessment` - it is what the saved tab preference already says, and
+renaming it would silently move a returning teacher to a different tab. The
+API route path and `lib/formative-assessment-*.ts` filenames are unchanged for
+the same reason.
+
+## 20. Source material, and two ways into the creator (14 Sep 2026)
+
+### The catalogue
+
+`GET /api/source-materials?grade=` unions four origins into one list the
+creator ticks from: uploaded files (`source_materials`), NA packets, saved
+assignment templates and previously saved assessments. Ticked items are
+resolved to text by `POST /api/source-materials/resolve` at generation time
+and appended to the prompt, so a paper is written from the wording, notation
+and worked examples the class was actually taught.
+
+Two things that route got wrong and no longer does:
+
+- `assignment_templates` has NO `course_id` and NO `parts` - those are
+  `nuanced_analyses` columns, and selecting them made PostgREST refuse the
+  query, 500 the whole route, and leave the UI reading "Nothing catalogued for
+  Grade 9 yet". That empty state is byte-identical to the honest one, so it
+  reads as the teacher's own doing. The route now degrades per origin and
+  names what it could not read.
+- The prompt ceilings were invented rather than measured. They are now
+  `SOURCE_TEXT_PER_ITEM = 150_000` and `SOURCE_TEXT_TOTAL = 400_000` chars
+  (from 24k/90k): the generator runs a 1M-token context and the entire Grade 9
+  catalogue is about 28k tokens. Deliberately NOT batched - both shapes of it
+  (digest-then-generate, per-source-then-stitch) forfeit the cross-source
+  synthesis that is the reason for selecting four documents at once.
+
+Uploads go to the same route. PDFs are read with `pdf-parse` v2, which is a
+CLASS (`new PDFParse({ data }).getText()`), not a default function; `.md` and
+`.txt` are read directly. A scan with no text layer stores with
+`usable = false` and is shown ticked out, rather than reaching the generator
+as an empty string.
+
+### Two ways in, and only two
+
+The left panel had grown into four boxes that each looked like a place to
+begin - what is this, open a saved one, source material, generate with AI. It
+is now one **Start** panel with two mutually exclusive buttons, open a saved
+assessment or generate a new one, and only the chosen path's controls on
+screen. Source material moved inside the generate path, because that is all it
+is: an input to the generation. It does nothing to a paper you opened.
+
+Which path opens is decided ONCE, in the fetch that loads the saved list
+(`defaultStartMode` in `load-saved-assessment.ts`) - open if there is anything
+to open. Re-deriving it on every render would flip the panel from Generate to
+Open the moment a teacher saved the paper they had just generated, because a
+first save adds a row to that list. Until the list arrives, neither path
+shows: an empty list nobody has fetched yet looks exactly like a teacher with
+nothing saved.
+
+Generating now asks first before overwriting an OPEN saved assessment that has
+unsaved edits - the same bargain the open button already struck. A generated
+draft that was never saved does not qualify, because regenerating one is the
+normal way to use that button and a prompt there would fire on every attempt.
+The button also names the kind it will write (`Generate Summative From 4
+Sources`), since the formative/summative control now sits below it.
+
+### What sits above the Generate button
+
+The teacher's rule, given while looking at the live panel: the choices for the
+assessment the model is about to write belong ABOVE the button that writes it.
+So the order is **The paper** (formative/summative, and for a summative the
+exam conditions) -> **Start** (open, or generate) -> **Title page** -> **Save &
+Grade** -> **Export**.
+
+What decides the split is whether a generation survives it. The kind steers the
+prompt; the exam conditions ride on `FormattingRequirements`, which a generation
+does not touch. Both are therefore safe, and useful, above the button. Title and
+subtitle are on the DRAFT, which a generation replaces wholesale - typed above
+the button they would be typed only to be overwritten, so they wait below it
+under Title page.
+
+### The exam conditions steer the paper, not just its cover
+
+Sitting above the Generate button, they look like generation inputs, and now
+they are. `buildFormativeAssessmentUserPrompt` carries the calculator rule (in
+`calculatorPolicyLabel`'s own words, so the cover and the prompt cannot
+disagree) and the time allowed in raw minutes; the system prompt carries what
+those MEAN, as summative rules S7 and S8:
+
+- **S7** - the calculator rule is a constraint. No calculator means every value
+  is reachable by hand: integers and simple decimals, exact forms rather than
+  decimal evaluations, and no part whose method is reading a display. Where one
+  IS permitted, the marks still have to be for method, reasoning or
+  interpretation.
+- **S8** - the estimatedMinutes across the levels must sum to no more than the
+  time printed on the cover. A paper that cannot be finished in its own time
+  allowance measures speed.
+
+The split matters for caching as well as sense: the standing rule is in the
+system prompt, which is stable across papers, and only the values vary.
+
+Both fields are dropped for a formative, whose cover carries no conditions -
+`lib/formative-assessment-prompt.test.ts` pins that a formative's prompt is
+byte-identical to what it was before any of this existed.
+
+### Where a status line goes
+
+There is still one `notice` at a time, but it now carries the panel that
+produced it (`type Notice = { place; text; tone? }`) and renders there, through
+`NoticeLine`. One fixed location cannot be right for all of them: notices come
+from Start (load, upload, a source shortened), from The paper (the kind switch)
+and from Save & Grade (saved, archived, hints stripped). Parked in Save & Grade,
+"Switched to summative..." printed some eight hundred pixels below the button
+that switched it - off the bottom of a laptop screen, which is where it was
+found, by driving the panel signed in.
+
+`tone` is explicit rather than derived from `pdfsArchived`, which had been
+rendering "Loaded ..." in green whenever the paper being opened happened to
+have archived PDFs - the right colour for a save and meaningless for a load.
