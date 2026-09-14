@@ -80,6 +80,24 @@ import type { RubricFinding } from "@/lib/rubric-validator";
 import { createClient } from "@/lib/supabase/client";
 
 type CourseOption = { id: string; name: string };
+
+/**
+ * Where a status line belongs, and what it says.
+ *
+ * There is still one `notice` at a time -- what changed is that it names the
+ * panel whose control produced it, and renders there. A single fixed status
+ * line cannot be right for all three: the notices come from the Start panel
+ * (load, upload, a source shortened), from The paper (the kind switch) and
+ * from Save & Grade (saved, archived, hints stripped). Parked in Save & Grade,
+ * "Switched to summative..." printed some eight hundred pixels below the button
+ * that switched it, which on a laptop is off the bottom of the screen.
+ *
+ * `tone` is explicit rather than derived. It used to key off `pdfsArchived`,
+ * which made "Loaded ..." render green whenever the paper being opened happened
+ * to have archived PDFs -- the right colour for a save, and meaningless here.
+ */
+type NoticePlace = "start" | "paper" | "save";
+type Notice = { place: NoticePlace; text: string; tone?: "good" };
 type BoundarySetOption = { id: string; name: string };
 type ClaudeResponse = { content?: Array<{ type: string; text?: string }> };
 
@@ -220,7 +238,7 @@ export function FormativeAssessmentSandbox() {
   const [isExportingMs, setIsExportingMs] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const [rubricFindings, setRubricFindings] = useState<RubricFinding[]>([]);
   const [rubricBlocked, setRubricBlocked] = useState(false);
   const [saved, setSaved] = useState<SavedAssessment[]>([]);
@@ -381,17 +399,22 @@ export function FormativeAssessmentSandbox() {
         ? { ...stripped, title: DEFAULT_TITLES[next] }
         : stripped;
     });
-    setNotice(
-      next === "summative"
-        ? "Switched to summative. Exam conditions now print on the paper and the mark scheme, hints are removed, " +
+    setNotice({
+      place: "paper",
+      text:
+        next === "summative"
+          ? "Switched to summative. Exam conditions now print on the paper and the mark scheme, hints are removed, " +
             "self-assessment is required, and a grade boundary set has to be chosen before you can save. " +
             "Check the calculator policy -- it starts at this grade's own rule."
-        : "Switched to formative. The exam conditions have been cleared from the cover.",
-    );
+          : "Switched to formative. The exam conditions have been cleared from the cover.",
+    });
   }
 
   const hintsOnPaper = useMemo(() => countHints(draft), [draft]);
   const kindLabel = ASSESSMENT_KINDS.find((o) => o.value === kind)?.label ?? "Assessment";
+
+  /** The notice, if it belongs to this panel. */
+  const noticeAt = (place: NoticePlace) => (notice?.place === place ? notice : null);
 
   /**
    * Switch between the two ways in.
@@ -476,12 +499,14 @@ export function FormativeAssessmentSandbox() {
       }
       // Selected on arrival: uploading it is the act of choosing it.
       setSelectedSourceIds((prev) => [...prev, data.material!.id]);
-      setNotice(
-        data.material.usable
+      setNotice({
+        place: "start",
+        tone: data.material.usable ? "good" : undefined,
+        text: data.material.usable
           ? `Added "${data.material.title}" and selected it.`
           : `Added "${data.material.title}", but no text could be read out of it -- it will not reach the ` +
-              "generator. A scan with no text layer usually needs OCR first.",
-      );
+            "generator. A scan with no text layer usually needs OCR first.",
+      });
     } catch (err) {
       setError(`Upload failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
@@ -535,7 +560,10 @@ export function FormativeAssessmentSandbox() {
           ...(data.dropped ?? []).map((t) => `${t} (not used)`),
         ];
         if (cut.length > 0) {
-          setNotice(`Source material over the prompt limit: ${cut.join(", ")}.`);
+          setNotice({
+            place: "start",
+            text: `Source material over the prompt limit: ${cut.join(", ")}.`,
+          });
         }
       }
 
@@ -677,11 +705,14 @@ export function FormativeAssessmentSandbox() {
         editorSnapshot(data.draft, data.formatting ?? DEFAULT_FORMATTING, loadedKind),
       );
       const what = loadedKind === "summative" ? "summative" : "formative";
-      setNotice(
-        data.formattingSource === "default"
-          ? `Loaded "${data.name ?? "assessment"}" (${what}). It was saved before layout settings were kept, so those are back to the defaults -- check them before exporting.`
-          : `Loaded "${data.name ?? "assessment"}" (${what}). Saving writes back to this same test.`,
-      );
+      setNotice({
+        place: "start",
+        tone: data.formattingSource === "default" ? undefined : "good",
+        text:
+          data.formattingSource === "default"
+            ? `Loaded "${data.name ?? "assessment"}" (${what}). It was saved before layout settings were kept, so those are back to the defaults -- check them before exporting.`
+            : `Loaded "${data.name ?? "assessment"}" (${what}). Saving writes back to this same test.`,
+      });
     } catch (err) {
       setError(`Load failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
@@ -786,11 +817,16 @@ export function FormativeAssessmentSandbox() {
         data.pdfs === "archived"
           ? " Student paper and mark scheme archived."
           : ` The PDFs were NOT archived (${data.pdfsError ?? "unknown error"}) -- save again to retry, or download them below and keep a copy.`;
-      setNotice(
-        warnings > 0
-          ? `${saved}${archive}${stripped} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
-          : `${saved}${archive}${stripped}`,
-      );
+      setNotice({
+        place: "save",
+        // Green only for a save that archived both PDFs -- the same rule this
+        // line has always rendered, now stated where it is decided.
+        tone: data.pdfs === "archived" ? "good" : undefined,
+        text:
+          warnings > 0
+            ? `${saved}${archive}${stripped} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
+            : `${saved}${archive}${stripped}`,
+      });
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
@@ -1105,6 +1141,8 @@ export function FormativeAssessmentSandbox() {
                 )}
               </>
             )}
+
+            <NoticeLine notice={noticeAt("start")} />
           </div>
 
           {/* What the paper IS, and what prints on its cover. The kind sits
@@ -1136,6 +1174,7 @@ export function FormativeAssessmentSandbox() {
             <p className="text-xs text-da-muted">
               {ASSESSMENT_KINDS.find((o) => o.value === kind)?.blurb}
             </p>
+            <NoticeLine notice={noticeAt("paper")} />
 
             <div className="space-y-3 border-t border-da-border/60 pt-3">
               <LabeledInput label="Title" value={draft.title} onChange={(v) => setDraft((d) => ({ ...d, title: v }))} />
@@ -1301,9 +1340,7 @@ export function FormativeAssessmentSandbox() {
                 </a>
               </div>
             )}
-            {notice && (
-              <p className={`text-xs ${pdfsArchived ? "text-emerald-300" : "text-amber-300"}`}>{notice}</p>
-            )}
+            <NoticeLine notice={noticeAt("save")} />
           </div>
 
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
@@ -1458,6 +1495,22 @@ export function FormativeAssessmentSandbox() {
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * One status line, rendered by the panel that owns it.
+ *
+ * Amber by default and green only where the caller says so -- see the Notice
+ * type. Returns null rather than an empty paragraph so the panel's `space-y`
+ * does not open a gap for a notice that is not there.
+ */
+function NoticeLine({ notice }: { notice: Notice | null }) {
+  if (!notice) return null;
+  return (
+    <p className={`text-xs ${notice.tone === "good" ? "text-emerald-300" : "text-amber-300"}`}>
+      {notice.text}
+    </p>
   );
 }
 

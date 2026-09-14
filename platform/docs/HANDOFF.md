@@ -1891,3 +1891,18 @@ Sources`), since the formative/summative control now sits below it.
 The rest regrouped to match: **The paper** (kind, title, subtitle, cover
 lines), **Exam Conditions** (summative only, next to the cover settings it
 belongs with), **Save & Grade**, **Export**.
+
+### Where a status line goes
+
+There is still one `notice` at a time, but it now carries the panel that
+produced it (`type Notice = { place; text; tone? }`) and renders there, through
+`NoticeLine`. One fixed location cannot be right for all of them: notices come
+from Start (load, upload, a source shortened), from The paper (the kind switch)
+and from Save & Grade (saved, archived, hints stripped). Parked in Save & Grade,
+"Switched to summative..." printed some eight hundred pixels below the button
+that switched it - off the bottom of a laptop screen, which is where it was
+found, by driving the panel signed in.
+
+`tone` is explicit rather than derived from `pdfsArchived`, which had been
+rendering "Loaded ..." in green whenever the paper being opened happened to
+have archived PDFs - the right colour for a save and meaningless for a load.
