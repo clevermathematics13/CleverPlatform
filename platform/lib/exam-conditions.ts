@@ -68,6 +68,19 @@ export function formatTimeAllowed(minutes: number): string {
 }
 
 /**
+ * "1 mark", "50 marks".
+ *
+ * Trivial, and it exists because the alternative kept being written inline.
+ * A one-mark paper is usually a draft rather than a real assessment -- but it
+ * is exactly what a teacher has on screen while they are building one, and
+ * "Total: 1 marks" on the cover is the kind of thing that makes the rest of
+ * the page look unfinished too.
+ */
+export function marksLabel(count: number): string {
+  return `${count} mark${count === 1 ? "" : "s"}`;
+}
+
+/**
  * The conditions strip, or "" when nothing was asked for.
  *
  * Returning "" rather than an empty container is what keeps every existing
@@ -96,7 +109,7 @@ export function buildExamConditionsHtml(
   // Printed even when the paper is worth 0 marks: a summative that totals zero
   // is a mistake worth seeing on the cover rather than one that hides itself.
   if (conditions.showTotalMarks) {
-    facts.push(`<span class="ec-fact"><strong>Total:</strong> ${totalMarks} marks</span>`);
+    facts.push(`<span class="ec-fact"><strong>Total:</strong> ${marksLabel(totalMarks)}</span>`);
   }
 
   const honesty = conditions.academicHonestyLine?.trim();

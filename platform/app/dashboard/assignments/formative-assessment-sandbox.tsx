@@ -59,7 +59,7 @@ import {
   resolveRequireSelfAssessment,
   type AssessmentKind,
 } from "@/lib/assessment-kind";
-import { CALCULATOR_POLICY_OPTIONS } from "@/lib/exam-conditions";
+import { CALCULATOR_POLICY_OPTIONS, marksLabel } from "@/lib/exam-conditions";
 import {
   editorSnapshot,
   needsDiscardConfirmation,
@@ -836,8 +836,8 @@ export function FormativeAssessmentSandbox() {
                 rows={3}
               />
               <p className="text-[11px] text-da-muted">
-                Printed on the student paper and on the mark scheme. The total is {totalMarks} marks,
-                counted from the questions below.
+                Printed on the student paper and on the mark scheme. The total is{" "}
+                {marksLabel(totalMarks)}, counted from the questions below.
               </p>
               {hintsOnPaper > 0 && (
                 <p className="text-[11px] text-amber-300">
