@@ -118,6 +118,19 @@ describe("buildSourceMaterialPrompt", () => {
     expect(out.charsUsed).toBe(SOURCE_TEXT_PER_ITEM);
   });
 
+  it("fits the whole Grade 9 catalogue without shortening anything", () => {
+    // The bug the ceilings were raised for: selecting all nine sources came to
+    // ~114k characters and tripped a 90k limit that was never a model limit.
+    // The generator runs on a 1M-token context; this is under 3% of it.
+    const catalogue = [28_672, 19_435, 4_373, 16_705, 12_260, 932, 6_849, 10_111, 14_246];
+    const out = buildSourceMaterialPrompt(
+      catalogue.map((n, i) => ({ title: `s${i}`, kind: "upload" as const, text: "z".repeat(n) })),
+    );
+    expect(out.truncated).toEqual([]);
+    expect(out.dropped).toEqual([]);
+    expect(out.charsUsed).toBe(catalogue.reduce((a, b) => a + b, 0));
+  });
+
   it("drops later items once the total runs out, and names them", () => {
     // Silently sending half a study guide is worse than a stated limit: the
     // gaps come back looking like the model's judgement.

@@ -129,14 +129,26 @@ export function harvestText(value: unknown, depth = 0): string[] {
 /**
  * Per-item and total ceilings on what reaches the model.
  *
- * A study guide and two packets run past 60,000 characters together. The model
- * can hold that, but a prompt in which the source material outweighs the
- * instructions by fifty to one is one where the instructions stop being
- * followed -- and truncation that nobody is told about is worse than a limit
- * that is stated. The caller reports what was cut.
+ * These are a guard against a runaway upload, NOT a working limit. The first
+ * version set them at 24k/90k characters on a worry about the source material
+ * drowning out the instructions, and that number was picked without measuring
+ * anything: selecting the whole Grade 9 catalogue came to ~107k characters and
+ * hit the ceiling on ordinary use.
+ *
+ * The real budget is the model's. The generator runs on claude-sonnet-5, whose
+ * context window is 1M tokens; 107k characters is roughly 27k tokens, under 3%
+ * of it. 400k characters is around 100k tokens -- a tenth of the window, three
+ * times the entire catalogue as it stands, and still far enough from the edge
+ * that the output budget and the thinking tokens are never squeezed.
+ *
+ * The per-item cap is a fairness rule rather than a capacity one: one enormous
+ * document should not crowd every other selection out of the prompt.
+ *
+ * Truncation that nobody is told about is worse than a limit that is stated,
+ * so the caller still reports exactly what was shortened or skipped.
  */
-export const SOURCE_TEXT_PER_ITEM = 24_000;
-export const SOURCE_TEXT_TOTAL = 90_000;
+export const SOURCE_TEXT_PER_ITEM = 150_000;
+export const SOURCE_TEXT_TOTAL = 400_000;
 
 export type SelectedSource = { title: string; kind: SourceMaterialKind; text: string };
 
