@@ -1221,6 +1221,22 @@ every assignment. `template` is stored with its Score column blank.
 | `key` | text |  |
 | `value` | numeric |  |
 
+### `seating_student_genders`
+
+The teacher's B/G marker for a student, read by one thing only: assessment
+seating, which alternates genders along each row (BGB, then GBG, and so on).
+Keyed by the same `student_id` the other seating tables use -- the student's
+email -- with no foreign key, because it can come from `profiles` or from
+`invited_students`. Clearing a marker deletes the row, so `gender` is never
+the empty string. Teacher-only: unlike its neighbours it carries no
+authenticated-read policy.
+
+| column | type | default |
+|---|---|---|
+| `student_id` | text, primary key |  |
+| `gender` | text | check `('B', 'G')` |
+| `updated_at` | timestamp with time zone | default `now()` |
+
 ### `seating_students`
 
 | column | type | default |

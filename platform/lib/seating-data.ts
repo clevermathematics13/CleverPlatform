@@ -4,7 +4,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client';
-import type { Student, Seat, Rule, Assignment, Setting, SeatingLayout } from '@/lib/seating-types';
+import type { Student, Seat, Rule, Assignment, Setting, SeatingLayout, Gender } from '@/lib/seating-types';
 
 // --- Reads --------------------------------------------------------------------
 
@@ -15,6 +15,9 @@ import type { Student, Seat, Rule, Assignment, Setting, SeatingLayout } from '@/
  * updated when a class gets archived — so archived classes' students used
  * to keep showing up here forever. class_group is the course name; a
  * student is included only if their course is not archived.
+ *
+ * `gender` comes from seating_student_genders and is '' for anyone the
+ * teacher has not marked. Only assessment seating reads it.
  */
 export async function getStudents(): Promise<Student[]> {
   const supabase = createClient();
@@ -29,7 +32,7 @@ export async function getStudents(): Promise<Student[]> {
   const courseIds = [...classGroupByCourse.keys()];
   if (courseIds.length === 0) return [];
 
-  const [{ data: enrolled, error: enrolledError }, { data: invited, error: invitedError }] = await Promise.all([
+  const [{ data: enrolled, error: enrolledError }, { data: invited, error: invitedError }, genders] = await Promise.all([
     supabase
       .from('students')
       .select('course_id, hidden, profiles:profile_id ( email, display_name, nickname )')
@@ -39,6 +42,7 @@ export async function getStudents(): Promise<Student[]> {
       .select('course_id, email, full_name, nickname, hidden')
       .in('course_id', courseIds)
       .is('profile_id', null),
+    getStudentGenders(),
   ]);
   if (enrolledError) throw new Error(enrolledError.message);
   if (invitedError) throw new Error(invitedError.message);
@@ -59,6 +63,7 @@ export async function getStudents(): Promise<Student[]> {
       class_group: classGroup,
       active: !row.hidden,
       notes: '',
+      gender: genders.get(studentId) ?? '',
     });
   }
 
@@ -73,12 +78,44 @@ export async function getStudents(): Promise<Student[]> {
       class_group: classGroup,
       active: !row.hidden,
       notes: '',
+      gender: genders.get(row.email) ?? '',
     });
   }
 
   return students.sort(
     (a, b) => a.class_group.localeCompare(b.class_group) || a.name.localeCompare(b.name),
   );
+}
+
+/**
+ * Every student the teacher has marked B or G. Teacher-only by RLS, so a
+ * student session reads an empty map rather than an error.
+ */
+export async function getStudentGenders(): Promise<Map<string, Gender>> {
+  const supabase = createClient();
+  const { data, error } = await supabase
+    .from('seating_student_genders')
+    .select('student_id, gender');
+  if (error) throw new Error(error.message);
+  return new Map((data ?? []).map((r) => [r.student_id as string, r.gender as Gender]));
+}
+
+/** Set a student's B/G marker, or clear it by passing ''. */
+export async function setStudentGender(studentId: string, gender: Gender): Promise<void> {
+  const supabase = createClient();
+  if (!gender) {
+    const { error } = await supabase
+      .from('seating_student_genders')
+      .delete()
+      .eq('student_id', studentId);
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const { error } = await supabase
+    .from('seating_student_genders')
+    .upsert({ student_id: studentId, gender, updated_at: new Date().toISOString() },
+      { onConflict: 'student_id' });
+  if (error) throw new Error(error.message);
 }
 
 export async function getSeats(): Promise<Seat[]> {

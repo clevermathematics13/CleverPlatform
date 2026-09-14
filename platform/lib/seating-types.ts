@@ -1,9 +1,26 @@
+/**
+ * Teacher-set B/G marker used only by assessment seating, which alternates
+ * genders along each row. '' means the teacher has not set one; such a student
+ * is seated wherever the pattern has slack rather than being forced into a row
+ * position they might not fit.
+ */
+export type Gender = 'B' | 'G' | '';
+
+/**
+ * Which kind of seating the generator is producing.
+ *
+ *   groups     - pods around tables, the historical behaviour
+ *   assessment - one student per desk in columns and rows, alternating B/G
+ */
+export type SeatingMode = 'groups' | 'assessment';
+
 export interface Student {
   student_id: string;
   name: string;
   class_group: string;
   active: boolean;
   notes: string;
+  gender: Gender;
 }
 
 export interface Seat {
