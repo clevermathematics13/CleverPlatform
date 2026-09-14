@@ -839,6 +839,106 @@ export function FormativeAssessmentSandbox() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
         {/* -- Left panel: how a paper gets here, then what it is -- */}
         <div className="space-y-5">
+          {/* What the paper IS, and the conditions it is sat under. Both sit
+              ABOVE the Generate button, because they are what a teacher settles
+              before asking for a paper: the kind decides what the model is asked
+              for, and the conditions ride on the formatting, so a generation
+              leaves them standing. Title and subtitle do not survive one -- the
+              model writes its own -- so they wait below, under Title page. */}
+          <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
+            <h2 className="text-lg font-semibold font-serif text-da-text">The paper</h2>
+            <div className="grid grid-cols-2 gap-2">
+              {ASSESSMENT_KINDS.map((option) => {
+                const active = kind === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => changeKind(option.value)}
+                    aria-pressed={active}
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
+                      active
+                        ? "border-da-accent/70 bg-da-accent/20 text-da-text"
+                        : "border-da-border bg-da-hover text-da-muted hover:border-da-accent/60"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-da-muted">
+              {ASSESSMENT_KINDS.find((o) => o.value === kind)?.blurb}
+            </p>
+            <NoticeLine notice={noticeAt("paper")} />
+
+            {kind === "summative" && (
+              // Prints on the paper AND on the mark scheme, from one place --
+              // see lib/exam-conditions.ts. The marker needs the calculator rule
+              // as much as the student does.
+              <div className="space-y-3 border-t border-da-border/60 pt-3">
+                <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">
+                  Exam Conditions
+                </h3>
+                <label className="block space-y-1">
+                  <span className="text-xs font-medium text-da-muted">Calculator policy</span>
+                  <select
+                    value={formatting.calculatorPolicy ?? "not-permitted"}
+                    onChange={(e) =>
+                      setFormatting((f) => ({
+                        ...f,
+                        calculatorPolicy: e.target.value as NonNullable<
+                          FormattingRequirements["calculatorPolicy"]
+                        >,
+                      }))
+                    }
+                    className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
+                  >
+                    {CALCULATOR_POLICY_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <LabeledInput
+                    label="Time allowed (min)"
+                    type="number"
+                    value={String(formatting.timeAllowedMinutes ?? "")}
+                    onChange={(v) =>
+                      setFormatting((f) => ({
+                        ...f,
+                        timeAllowedMinutes: Number(v) > 0 ? Number(v) : undefined,
+                      }))
+                    }
+                  />
+                  <ToggleField
+                    label="Print total marks"
+                    checked={formatting.showTotalMarks !== false}
+                    onChange={(c) => setFormatting((f) => ({ ...f, showTotalMarks: c }))}
+                  />
+                </div>
+                <LabeledTextArea
+                  label="Academic honesty line"
+                  value={formatting.academicHonestyLine ?? ""}
+                  onChange={(v) => setFormatting((f) => ({ ...f, academicHonestyLine: v }))}
+                  rows={3}
+                />
+                <p className="text-[11px] text-da-muted">
+                  Printed on the student paper and on the mark scheme. The total is{" "}
+                  {marksLabel(totalMarks)}, counted from the questions below.
+                </p>
+                {hintsOnPaper > 0 && (
+                  <p className="text-[11px] text-amber-300">
+                    {hintsOnPaper} hint(s) are still on this draft and will be removed when it is
+                    saved -- a summative does not print them.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
           {/* Two ways in, and only two: open a paper that exists, or have the
               model write one. Mutually exclusive on purpose -- both end with a
               paper in the editor and both replace what was there, so the inputs
@@ -1145,115 +1245,19 @@ export function FormativeAssessmentSandbox() {
             <NoticeLine notice={noticeAt("start")} />
           </div>
 
-          {/* What the paper IS, and what prints on its cover. The kind sits
-              here rather than above Start because it is a property of the paper
-              on screen, not a third way to begin one -- and a title typed
-              before generating is a title the model overwrites. */}
+          {/* Below the Generate button on purpose: a generation replaces the
+              draft, so a title typed above it is a title the model overwrites. */}
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-            <h2 className="text-lg font-semibold font-serif text-da-text">The paper</h2>
-            <div className="grid grid-cols-2 gap-2">
-              {ASSESSMENT_KINDS.map((option) => {
-                const active = kind === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => changeKind(option.value)}
-                    aria-pressed={active}
-                    className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${
-                      active
-                        ? "border-da-accent/70 bg-da-accent/20 text-da-text"
-                        : "border-da-border bg-da-hover text-da-muted hover:border-da-accent/60"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-da-muted">
-              {ASSESSMENT_KINDS.find((o) => o.value === kind)?.blurb}
-            </p>
-            <NoticeLine notice={noticeAt("paper")} />
-
-            <div className="space-y-3 border-t border-da-border/60 pt-3">
-              <LabeledInput label="Title" value={draft.title} onChange={(v) => setDraft((d) => ({ ...d, title: v }))} />
-              <LabeledInput label="Subtitle" value={draft.subtitle} onChange={(v) => setDraft((d) => ({ ...d, subtitle: v }))} />
-              <div className="grid grid-cols-2 gap-3">
-                <ToggleField label="Name line" checked={formatting.includeNameLine} onChange={(c) => setFormatting((p) => ({ ...p, includeNameLine: c }))} />
-                <ToggleField label="Block line" checked={!!formatting.includeBlockLine} onChange={(c) => setFormatting((p) => ({ ...p, includeBlockLine: c }))} />
-                <ToggleField label="Date line" checked={formatting.includeDateLine} onChange={(c) => setFormatting((p) => ({ ...p, includeDateLine: c }))} />
-                <ToggleField label="Section score box" checked={!!draft.showSectionScoreSummary} onChange={(c) => setDraft((d) => ({ ...d, showSectionScoreSummary: c }))} />
-              </div>
+            <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Title page</h3>
+            <LabeledInput label="Title" value={draft.title} onChange={(v) => setDraft((d) => ({ ...d, title: v }))} />
+            <LabeledInput label="Subtitle" value={draft.subtitle} onChange={(v) => setDraft((d) => ({ ...d, subtitle: v }))} />
+            <div className="grid grid-cols-2 gap-3">
+              <ToggleField label="Name line" checked={formatting.includeNameLine} onChange={(c) => setFormatting((p) => ({ ...p, includeNameLine: c }))} />
+              <ToggleField label="Block line" checked={!!formatting.includeBlockLine} onChange={(c) => setFormatting((p) => ({ ...p, includeBlockLine: c }))} />
+              <ToggleField label="Date line" checked={formatting.includeDateLine} onChange={(c) => setFormatting((p) => ({ ...p, includeDateLine: c }))} />
+              <ToggleField label="Section score box" checked={!!draft.showSectionScoreSummary} onChange={(c) => setDraft((d) => ({ ...d, showSectionScoreSummary: c }))} />
             </div>
           </div>
-
-          {kind === "summative" && (
-            // Prints on the paper AND on the mark scheme, from one place --
-            // see lib/exam-conditions.ts. The marker needs the calculator rule
-            // as much as the student does. Next to the cover settings above,
-            // because that is what these are.
-            <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">
-                Exam Conditions
-              </h3>
-              <label className="block space-y-1">
-                <span className="text-xs font-medium text-da-muted">Calculator policy</span>
-                <select
-                  value={formatting.calculatorPolicy ?? "not-permitted"}
-                  onChange={(e) =>
-                    setFormatting((f) => ({
-                      ...f,
-                      calculatorPolicy: e.target.value as NonNullable<
-                        FormattingRequirements["calculatorPolicy"]
-                      >,
-                    }))
-                  }
-                  className="w-full rounded-md border border-da-border bg-da-bg/40 px-2.5 py-2 text-sm text-da-text focus:border-da-accent/60 focus:outline-none"
-                >
-                  {CALCULATOR_POLICY_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <LabeledInput
-                  label="Time allowed (min)"
-                  type="number"
-                  value={String(formatting.timeAllowedMinutes ?? "")}
-                  onChange={(v) =>
-                    setFormatting((f) => ({
-                      ...f,
-                      timeAllowedMinutes: Number(v) > 0 ? Number(v) : undefined,
-                    }))
-                  }
-                />
-                <ToggleField
-                  label="Print total marks"
-                  checked={formatting.showTotalMarks !== false}
-                  onChange={(c) => setFormatting((f) => ({ ...f, showTotalMarks: c }))}
-                />
-              </div>
-              <LabeledTextArea
-                label="Academic honesty line"
-                value={formatting.academicHonestyLine ?? ""}
-                onChange={(v) => setFormatting((f) => ({ ...f, academicHonestyLine: v }))}
-                rows={3}
-              />
-              <p className="text-[11px] text-da-muted">
-                Printed on the student paper and on the mark scheme. The total is{" "}
-                {marksLabel(totalMarks)}, counted from the questions below.
-              </p>
-              {hintsOnPaper > 0 && (
-                <p className="text-[11px] text-amber-300">
-                  {hintsOnPaper} hint(s) are still on this draft and will be removed when it is
-                  saved -- a summative does not print them.
-                </p>
-              )}
-            </div>
-          )}
 
           <div className="rounded-xl border border-da-border bg-da-bg/40 p-4 space-y-3">
             <h3 className="text-sm font-semibold text-da-amber uppercase tracking-wide">Save &amp; Grade</h3>
