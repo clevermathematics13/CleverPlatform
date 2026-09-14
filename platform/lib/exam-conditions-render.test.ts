@@ -14,6 +14,7 @@ import { describe, it, expect } from "vitest";
 import { DocumentOrchestratorService, generateMarkSchemeHtml } from "./document-orchestrator";
 import { DEFAULT_ASSESSMENT_FORMATTING } from "./formative-assessment-pdf-body";
 import { applyKindFormatting } from "./assessment-kind";
+import type { FormattingRequirements } from "./assignments";
 
 const sections = [
   {
@@ -30,7 +31,18 @@ const sections = [
   },
 ];
 
-const summativeFormatting = applyKindFormatting("summative", DEFAULT_ASSESSMENT_FORMATTING);
+/**
+ * answerLineHeightMm lives in template-schema.ts and not in the creator's
+ * FormattingRequirements -- the two are hand-synced, and that field is one of
+ * the gaps (see the note in template-schema.ts). The orchestrator requires it,
+ * so this file was handing it undefined and rendering answer boxes of NaN mm.
+ * Nothing failed, because these tests read the cover; only the type knew.
+ */
+const withAnswerLines = (f: FormattingRequirements) => ({ ...f, answerLineHeightMm: 12 });
+
+const summativeFormatting = withAnswerLines(
+  applyKindFormatting("summative", DEFAULT_ASSESSMENT_FORMATTING),
+);
 
 function studentHtml(formatting = summativeFormatting): string {
   const result = DocumentOrchestratorService.render({
@@ -89,7 +101,7 @@ describe("exam conditions on a summative", () => {
 
 describe("a formative is left exactly as it was", () => {
   it("renders no conditions block on either document", () => {
-    const formative = applyKindFormatting("formative", summativeFormatting);
+    const formative = withAnswerLines(applyKindFormatting("formative", summativeFormatting));
     for (const html of [studentHtml(formative), markSchemeHtml(formative)]) {
       expect(html).not.toContain('<div class="exam-conditions">');
       expect(html).not.toContain("Academic honesty");
@@ -100,7 +112,7 @@ describe("a formative is left exactly as it was", () => {
   it("still renders its own cover furniture", () => {
     // Guards the edit itself: the conditions were inserted into the middle of
     // the student cover, and dropping the meta grid on the way would be easy.
-    const html = studentHtml(applyKindFormatting("formative", summativeFormatting));
+    const html = studentHtml(withAnswerLines(applyKindFormatting("formative", summativeFormatting)));
     expect(html).toContain("Student Name:");
     expect(html).toContain("Summative Assessment 1");
   });
