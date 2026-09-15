@@ -1476,6 +1476,8 @@ Unique on `(test_id, question_number, part_label)`.
 | `require_self_assessment` | boolean | default `true` — when false, app/dashboard/reflection reveals marks to a student without requiring a self-assessment submission first |
 | `short_name` | text, nullable | short label for generated filenames, e.g. `Form1` for "Formative Assessment 1"; falls back to an abbreviation of `name` (lib/assessment-short-name.ts) |
 | `hidden_from_gradebook` | boolean | default `false` — omits the test's column from the **teacher** gradebook grid. Deliberately separate from `hidden`: a paper with an approximate boundary set belongs out of the students' hands and still in front of the teacher, and vice versa |
+| `assessment_kind` | text | default `'formative'` — `'formative'` or `'summative'` (CHECK); see lib/assessment-kind.ts |
+| `standards_rubric` | jsonb, nullable | strand rubric of a Grade 9 **Standard Level** paper (strands, the CCSS standards each assesses, part-to-strand map, level bands, level descriptors), validated by `StandardsRubricSchema` in lib/standards-rubric.ts. Non-null makes lib/ai-grading.ts load `grading_policies/g9_standard_level_marking_principles.md` in place of the Formative Assessment principles, and makes the review UI and `/dashboard/tests/[id]/standards-report` compute Exceeding / Meeting / Approaching / Beginning per strand from Clev's Marks. Null = graded by marks and boundary set as usual |
 
 ### `topics`
 
@@ -1490,6 +1492,8 @@ Unique on `(test_id, question_number, part_label)`.
 ### `track_courses`
 
 Maps a virtual track course (no roster of its own, e.g. Grade 9 Extended) to the real roster-bearing class courses that follow it (e.g. 9A, 9C, 9G). Used to resolve "which real students does this NA packet/track apply to" for roster matching, since NA content lives on the track course but rosters live on the real class courses.
+
+Grade 9 Extended = 9A, 9C, 9G; Grade 9 Standard = 9D (this year's; the mapping pointed at the archived "9D (2025-2026)" until 15 Sep 2026, migration `20260915164811`).
 
 A test attached to any course in a track family is visible to every member class. `track_family_course_ids(course_id)` (security definer) returns the course plus its track and the track's other members; `student_can_view_test_course(course_id)` backs the student SELECT policies on `tests` and `test_items`, and `lib/track-courses.ts` applies the same rule to the teacher's gradebook. Students cannot read `track_courses` directly; the app calls the function via RPC.
 

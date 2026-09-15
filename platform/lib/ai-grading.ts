@@ -4,6 +4,17 @@ import fs from "fs";
 import path from "path";
 import { findExposedDeliberation, findHedgedReading } from "./examiner-reasoning";
 import { classifyUnderPrecision, matchesRequiredPrecision } from "./numerical-accuracy";
+import {
+  levelRanges,
+  normalisePartRef,
+  parseStandardsRubric,
+  partRefForItem,
+  performanceLevelLabel,
+  strandForItem,
+  PERFORMANCE_LEVELS,
+  type RubricStrand,
+  type StandardsRubric,
+} from "./standards-rubric";
 
 /**
  * AI-assisted grading of scanned student work against the PPQ mark scheme.
@@ -71,6 +82,33 @@ export interface GradingUnit {
   level: string | null;
   /** From the source ib_question: 1, 2, or 3. */
   paper: number | null;
+  /**
+   * The strand this part feeds on a Grade 9 Standard Level paper, plus the
+   * whole rubric it came from (tests.standards_rubric, see
+   * lib/standards-rubric.ts). Null or absent on every other test. Carried on
+   * the unit rather than passed alongside the units so that every sender --
+   * the interactive route, the overnight batch, the regrade route and the
+   * eval script -- builds the same system prompt through
+   * buildGradingSystemPrompt(units) without a second argument any of them
+   * could forget.
+   */
+  standards?: UnitStandards | null;
+}
+
+/** See GradingUnit.standards. The rubric object is shared by every unit of a test. */
+export interface UnitStandards {
+  strand: Pick<RubricStrand, "code" | "name" | "standards">;
+  rubric: StandardsRubric;
+}
+
+/**
+ * Whether a unit belongs to a Grade 9 Standard Level assessment -- one whose
+ * test carries a standards rubric. Scope of
+ * grading_policies/g9_standard_level_marking_principles.md, which on such a
+ * paper REPLACES the Formative Assessment principles in the system prompt.
+ */
+export function isStandardsReferenced(u: Pick<GradingUnit, "standards">): boolean {
+  return !!u.standards;
 }
 
 /**
@@ -679,6 +717,40 @@ export async function assembleMarkScheme(
   const items = (itemRows ?? []) as TestItemRow[];
   if (items.length === 0) return { units: [], warnings: ["This assessment has no test items."] };
 
+  // A Grade 9 Standard Level paper carries its strand rubric on the test.
+  // Read here, once per assembly, so every unit of the test is built with
+  // the same rubric object and the same strand lookup -- see
+  // GradingUnit.standards for why it rides on the unit. An unreadable rubric
+  // is a warning, not a failure: the parts still have their own mark
+  // schemes, and grading them without the strand context is better than
+  // grading nothing, as long as the teacher is told.
+  const { data: testRow, error: testError } = await supabase
+    .from("tests")
+    .select("standards_rubric")
+    .eq("id", testId)
+    .maybeSingle();
+  if (testError) throw new Error(`Failed to load the test: ${testError.message}`);
+  let rubric: StandardsRubric | null = null;
+  {
+    const parsed = parseStandardsRubric(testRow?.standards_rubric ?? null);
+    if (parsed.ok) rubric = parsed.rubric;
+    else warnings.push(`This test's standards rubric could not be read and was ignored: ${parsed.error}`);
+  }
+  const standardsFor = (item: TestItemRow): UnitStandards | null => {
+    if (!rubric) return null;
+    const strand = strandForItem(rubric, item);
+    if (!strand) {
+      warnings.push(
+        `${item.question_number}${item.part_label ? `(${item.part_label})` : ""}: in no strand of the standards rubric -- marked under the Standard Level policy but counts towards no strand level.`
+      );
+      // Still under the Standard Level policy: the paper is what decides
+      // the policy, and a part outside every strand is graded like the
+      // rest of it. The empty strand says so to the marker.
+      return { strand: { code: "-", name: "no strand", standards: [] }, rubric };
+    }
+    return { strand: { code: strand.code, name: strand.name, standards: strand.standards }, rubric };
+  };
+
   const codes = [...new Set(items.map((i) => i.ib_question_code).filter(Boolean))];
 
   const { data: questionRows, error: qError } = await supabase
@@ -735,6 +807,7 @@ export async function assembleMarkScheme(
         curriculum: [],
         level: null,
         paper: null,
+        standards: standardsFor(item),
       };
     }
 
@@ -806,6 +879,7 @@ export async function assembleMarkScheme(
       curriculum: question?.curriculum ?? [],
       level: question?.level ?? null,
       paper: question?.paper ?? null,
+      standards: standardsFor(item),
     };
   });
 
@@ -1131,6 +1205,73 @@ function loadG9FormativeAssessmentPolicy(): string {
 
 export const G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES = loadG9FormativeAssessmentPolicy();
 
+const G9_STANDARD_LEVEL_POLICY_PATH = path.join(
+  process.cwd(),
+  "grading_policies",
+  "g9_standard_level_marking_principles.md"
+);
+
+function loadG9StandardLevelPolicy(): string {
+  try {
+    return fs.readFileSync(G9_STANDARD_LEVEL_POLICY_PATH, "utf8");
+  } catch (e) {
+    throw new Error(
+      `Could not load the Grade 9 Standard Level marking principles from ${G9_STANDARD_LEVEL_POLICY_PATH}: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  }
+}
+
+export const G9_STANDARD_LEVEL_MARKING_PRINCIPLES = loadG9StandardLevelPolicy();
+
+/**
+ * The rubric's strand table as the marker reads it: each strand's name, the
+ * standards it assesses, which parts feed it, the mark ranges its level
+ * bands come to for a strand of that size, and the level descriptors. This
+ * is per-test text (the same for every student sitting the paper), so it
+ * belongs in the cached system prompt next to the policy it illustrates.
+ */
+export function buildStandardsRubricBlock(rubric: StandardsRubric, units: Pick<GradingUnit, "questionNumber" | "partLabel" | "maxMarks">[]): string {
+  const lines: string[] = [];
+  if (rubric.source) lines.push(`Source: ${rubric.source}`, "");
+  lines.push(
+    `Level bands: Exceeding from ${Math.round(rubric.bands.exceeding * 100)}%, Meeting from ${Math.round(
+      rubric.bands.meeting * 100
+    )}%, Approaching from ${Math.round(rubric.bands.approaching * 100)}% of a strand's marks; Beginning below that.`,
+    ""
+  );
+  for (const strand of rubric.strands) {
+    // In the rubric's own order, not the units', so the block -- and the
+    // cached system prompt it sits in -- is byte-identical however the
+    // units happen to be listed.
+    const parts = strand.parts
+      .map((ref) =>
+        units.find((u) => strandForItem(rubric, { question_number: u.questionNumber, part_label: u.partLabel })?.code === strand.code && normalisePartRef(ref) === partRefForItem({ question_number: u.questionNumber, part_label: u.partLabel }))
+      )
+      .filter((u): u is (typeof units)[number] => u !== undefined);
+    const max = parts.reduce((s, u) => s + u.maxMarks, 0);
+    const ranges = levelRanges(max, rubric.bands);
+    lines.push(`--- Strand ${strand.code}: ${strand.name} (${max} marks) ---`);
+    if (strand.standards.length > 0) {
+      lines.push("Standards assessed:");
+      for (const std of strand.standards) lines.push(`  - ${std}`);
+    }
+    lines.push(`Parts: ${parts.map((u) => unitLabel(u)).join(", ") || "(none on this test)"}`);
+    lines.push(
+      `Mark ranges: ${PERFORMANCE_LEVELS.map((l) => `${l.label} ${ranges[l.value]}`).join(" / ")}`
+    );
+    if (strand.descriptors) {
+      for (const level of PERFORMANCE_LEVELS) {
+        const text = strand.descriptors[level.value];
+        if (text) lines.push(`${performanceLevelLabel(level.value)}: ${text}`);
+      }
+    }
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
 /**
  * The system prompt for a specific grading call: the universal marking
  * rules, plus any policy document whose scope applies to at least one unit
@@ -1153,7 +1294,28 @@ Numerical Accuracy (applies to this assessment)
 ${AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY}`;
   }
 
-  if (units.some(isCustomAssessment)) {
+  // A Grade 9 Standard Level paper is graded under its own policy, which
+  // stands IN PLACE OF the Formative Assessment (Grade 9 Extended) principles
+  // rather than on top of them: the two disagree on what a mark scheme is
+  // (a descriptor with a strand context versus a printed M/A/R/FT token
+  // list), and a prompt carrying both would leave the model to pick.
+  const standards = units.find((u) => u.standards)?.standards;
+  if (standards) {
+    prompt += `
+
+===============================================================================
+ADDITIONAL POLICY -- Grade 9 Standard Level Marking Principles
+(applies to this assessment; the Formative Assessment principles do not)
+===============================================================================
+
+${G9_STANDARD_LEVEL_MARKING_PRINCIPLES}
+
+===============================================================================
+THIS ASSESSMENT'S STRAND RUBRIC
+===============================================================================
+
+${buildStandardsRubricBlock(standards.rubric, units)}`;
+  } else if (units.some(isCustomAssessment)) {
     prompt += `
 
 ===============================================================================
@@ -1183,6 +1345,9 @@ function buildUnitBlock(u: GradingUnit): string {
     `Maximum marks: ${u.maxMarks}`,
   ];
   if (u.commandTerms.length > 0) lines.push(`Command term(s): ${u.commandTerms.join(", ")}`);
+  if (u.standards) {
+    lines.push(`Strand: ${u.standards.strand.code} -- ${u.standards.strand.name} (see THIS ASSESSMENT'S STRAND RUBRIC in the system prompt)`);
+  }
   if (u.markschemeSource === "whole_question") {
     lines.push(
       `NOTE: the mark scheme below covers the WHOLE question, not just this part. Use only the portion relevant to this part.`

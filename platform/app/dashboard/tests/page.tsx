@@ -18,7 +18,7 @@ export default async function TestsPage() {
         // reads it as a join table and sees TWO ways to get from tests to
         // courses. A bare `courses(name)` is then ambiguous and the whole
         // query fails with PGRST201. Naming the foreign key settles it.
-        `id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, hidden_from_gradebook, require_self_assessment,
+        `id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, hidden_from_gradebook, require_self_assessment, standards_rubric,
          courses!tests_course_id_fkey(name),
          test_items(id, question_number, part_label, max_marks, sort_order)`
       )
@@ -70,6 +70,8 @@ export interface TestRow {
    *  which is about what students see. */
   hidden_from_gradebook: boolean;
   require_self_assessment: boolean;
+  /** Non-null on a Grade 9 Standard Level paper (see lib/standards-rubric.ts): graded by strands into performance levels. */
+  standards_rubric?: unknown;
   courses: { name: string } | null;
   test_items: {
     id: string;

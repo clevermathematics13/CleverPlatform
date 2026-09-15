@@ -29,6 +29,12 @@ Design docs (read before any NA content or PDF layout work):
   platform/grading_policies/ibdp_math_aa_hl_paper_2_numerical_accuracy.md —
   it is loaded at runtime by lib/ai-grading.ts (buildGradingSystemPrompt),
   not just documentation. Edit the .md file, not a copy of its text.
+- Grade 9 STANDARD Level marking policy lives in
+  platform/grading_policies/g9_standard_level_marking_principles.md — loaded
+  at runtime by lib/ai-grading.ts for any test whose tests.standards_rubric is
+  non-null, IN PLACE OF the Formative Assessment principles. Edit the .md
+  file, not a copy of its text. The strands, level bands and part map are
+  data on the test (lib/standards-rubric.ts), never code.
 - NA student feedback voice lives in
   platform/feedback_voice/na_student_feedback_voice.md — loaded at runtime by
   lib/na-assessment.ts (buildAssessmentSystemPrompt), not just documentation.

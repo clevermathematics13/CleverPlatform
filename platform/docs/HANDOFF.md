@@ -29,7 +29,9 @@ students, 113 `invited_students`. No admin panel, no public signup.
 
 Courses: `26AH` (Y12 AA HL), `27AH` (Y11 AA HL), `9A` (`2abe4055`), `9A (2025-2026)`
 (`31370a33`, archived - do not delete), `Grade 9 Extended` (`b1d3b183`, virtual, no
-roster by design), `Grade 9 Standard` (virtual, no NA packets yet).
+roster by design), `Grade 9 Standard` (`40ef6810`, virtual; its real class is
+`9D`, `9776610b`, 18 invited students; no NA packets, but its first summative
+is set up and graded by strands - see §21).
 
 ---
 
@@ -96,6 +98,17 @@ must exercise Server Actions.
   boundaries toward official IB ones. Grade 9's set is `Grade 9` (a 7 at 90%);
   assign it to every new Grade 9 test, or the Level falls back to the generic bands
   in `pctToGradeFallback()` and the column renders a `~approx` badge.
+- **Grade 9 Standard Level is graded differently from Grade 9 Extended, and
+  the difference is data on the test, not a second pipeline.** A test whose
+  `tests.standards_rubric` is non-null is a standards-referenced paper: its
+  parts are still graded one at a time by `lib/ai-grading.ts` and accepted
+  one at a time into Clev's Marks, but the grader loads
+  `grading_policies/g9_standard_level_marking_principles.md` IN PLACE OF the
+  Formative Assessment principles, and the marks roll up by STRAND into
+  Exceeding / Meeting / Approaching / Beginning (`lib/standards-rubric.ts`),
+  not by boundary set into a 1-7 level. Leave `boundary_set_id` null on
+  these; the gradebook's `~approx` badge is honest there, and the standards
+  report page is where the levels are. See §21.
 - **PowerSchool matches imported scores on the student number, and nothing else.**
   `students.student_number` / `invited_students.student_number` exist only for
   that: PowerTeacher Pro's per-assignment score import keys on the school-defined
@@ -1974,3 +1987,110 @@ found, by driving the panel signed in.
 `tone` is explicit rather than derived from `pdfsArchived`, which had been
 rendering "Loaded ..." in green whenever the paper being opened happened to
 have archived PDFs - the right colour for a save and meaningless for a load.
+
+## 21. Grade 9 Standard Level: the first summative, and a grader for it (15 Sep 2026)
+
+The teacher supplied the first Grade 9 Standard Level summative - Key
+Assessment 1, Unit 1 (sat 14-15 Sep 2026 by 9D; 9 questions, 26 parts, 42
+marks, 60 minutes, calculator permitted) - and its Teacher Marking Rubric,
+and asked for a grader for Standard Level. Standard is graded differently
+from Extended: the rubric groups every part into four STRANDS, each naming
+the Common Core standards it assesses (A Expressions 11 marks, B Arithmetic
+sequences and explicit rules 13, C Patterns and structure 9, D Reasoning and
+justification 9), and turns each strand total, and the paper overall, into a
+PERFORMANCE LEVEL - Exceeding / Meeting / Approaching / Beginning - at about
+85%, 65% and 40% of the strand's marks. Each part's mark scheme is a "full-mark
+response shows ..." descriptor, not an M1/A1 token list. And "future Standard
+Level assessments may look different from this first one."
+
+### What was built
+
+**The rubric is data on the test** (`tests.standards_rubric`, jsonb, migration
+`20260915164804`), validated by `StandardsRubricSchema` in
+`lib/standards-rubric.ts`: strands (code, name, standards, part refs like
+`2d` / `5`, level descriptors), level bands as proportions, optional overall
+descriptors. Nothing in code knows the letters A-D or the number four. The
+same module computes the levels. **Thresholds are the CEILING of proportion x
+max**, which is the only rule that reproduces every number printed on the
+rubric (11 marks: 10 / 8 / 5; 13: 12 / 9 / 6; 9: 8 / 6 / 4; 42: 36 / 28 / 17)
+- rounding gives 9 for 0.85 x 11. `lib/standards-rubric.test.ts` pins all of
+them, using the KA1 fixture in `lib/fixtures/g9-standard-ka1-unit1.ts`.
+
+**The marking policy** is `grading_policies/g9_standard_level_marking_principles.md`,
+loaded at module init by `lib/ai-grading.ts` like the other two, and appended
+by `buildGradingSystemPrompt()` - followed by the rubric's strand table
+(`buildStandardsRubricBlock`: standards, parts, mark ranges per level, the
+four descriptors per strand) - whenever any unit carries `standards`. On such
+a paper the Formative Assessment principles are NOT appended: the two disagree
+about what a mark scheme is, and a prompt carrying both leaves the model to
+pick. The policy tells the model to itemise each part into exactly max-marks
+M/A/R tokens from the descriptor (so `suggestedMarks` stays the count of
+awarded tokens and every existing validator holds), to read "show / explain /
+justify" as the criterion, to calibrate partial credit by the strand
+descriptors, and never to compute a level - that is the platform's job from
+ACCEPTED marks. `GradingUnit.standards` rides on the unit rather than being a
+second argument, so the interactive route, the overnight batch, the regrade
+route and `scripts/eval-grading.ts` all build the same prompt without a
+parameter any of them could forget; `assembleMarkScheme` reads the rubric
+once per test and attaches each item's strand. `buildUnitBlock` names the
+strand on each part.
+
+**The seed.** KA1 was transcribed by hand from the two PDFs into the fixture
+and applied as migration `20260915165036`: test
+`a1c0f4e2-9d00-4b7e-8c21-000000000001` on 9D, summative, self-assessment
+required, `hidden = true` (the teacher unticks "Hide this exam from student
+reflection dropdown" on the Tests page when ready), no boundary set, 26
+`source = 'custom'` items whose `markscheme_text` is the rubric's line plus
+the answer plus marks-for-what notes drawn from the level descriptors. The
+question text describes each figure and table in words (the tile pattern, the
+bus-pass table) because the item text is all the marker gets besides the scan.
+Worth a teacher's eye before the first accept: Q1(a)-(c) are written so a
+bare correct value with no substitution earns 0 (the paper says "Show all
+work" and the Exceeding descriptor says "with each substitution shown"), and
+Q8's guess-and-check cap of 2 comes from the Approaching descriptor. Both are
+in the item text and editable.
+
+**The track mapping was stale**, the same fault fixed for Extended on 22 Aug:
+Grade 9 Standard -> "9D (2025-2026)" (archived), not this year's 9D. Migration
+`20260915164811` repoints it by name. Without it the AI grader's pooled
+roster for a 9D test would have been last year's students.
+
+**The importer** (`/dashboard/tests/standards-import`) is the answer to
+"future papers may look different": upload the paper and the rubric as PDFs,
+`POST /api/standards-assessments/extract` sends both to `claude-opus-5` as
+document blocks with structured output (`lib/standards-import.ts`; the rubric
+is tables whose meaning is in the layout, and pdf-parse interleaves the
+columns), the teacher edits the draft on screen - every part's question and
+mark scheme, every strand's parts, standards and descriptors, the bands - and
+`POST /api/standards-assessments` saves it as a new test. The same
+`validateStandardsDraft` runs on the client on every edit and on the server
+on save; its consistency checks are the point (parts sum to the cover's
+total, each strand sums to the rubric's printed strand total, every part in
+exactly one strand), since a `2a` read as `2d` still parses and only the
+strand total catches it. Always a new test, never an upsert: marks hang off
+`test_items` ids.
+
+**Where the levels show.** The AI-grade review panel shows a live strand
+table from the marks being edited (suggestions, labelled as such). The test
+detail page has a Standards rubric section (strand table; the JSON, editable,
+saved through `PUT /api/tests/[id]/standards-rubric`, which refuses a rubric
+naming a part the test lacks). `/dashboard/tests/[id]/standards-report` is
+the class view from Clev's Marks - marks and level per strand per student, a
+count of students at each level per strand, a faded level while a paper is
+part-accepted - with a CSV at `/api/tests/[id]/standards-report/csv`; both
+read `lib/standards-report-data.ts`, the same roster rule as the grader
+(class plus track siblings, registered plus invited). The Tests list badges
+a Standard Level paper and links the report.
+
+### Deliberately not done
+
+- The gradebook grid is unchanged. It still shows a 1-7 from the fallback
+  bands with the `~approx` badge for KA1, because no boundary set applies;
+  the standards report is the Standard Level view. Mapping E/M/AP/B onto a
+  1-7 for PowerSchool is the teacher's call, not a default.
+- Grade 9 Standard is still not offered by the assessment CREATOR
+  (`ASSESSMENT_COURSE_NAMES`); Standard papers arrive as PDFs, through the
+  importer.
+- Nothing has been graded yet: no scans of KA1 existed when this was built,
+  so the policy has not been measured on real work. The first class through
+  it deserves the spot-check routine of §11.
