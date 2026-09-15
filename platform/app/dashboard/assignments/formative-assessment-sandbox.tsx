@@ -783,6 +783,8 @@ export function FormativeAssessmentSandbox() {
         error?: string;
         test?: { id: string };
         testItems?: string;
+        testItemsError?: string;
+        rewordedUnderStudentWork?: string[];
         pdfs?: "archived" | "failed";
         pdfsError?: string;
         hintsRemoved?: number;
@@ -817,10 +819,22 @@ export function FormativeAssessmentSandbox() {
         if (list) setSaved(list);
       });
       const warnings = data.rubric?.summary.warnings ?? 0;
+      // "Try saving again" is the right advice for a transient failure and
+      // exactly the wrong advice for a refusal: syncTestItems declines to
+      // remove a part that student work is already marked against, and saving
+      // again refuses identically. So when it says why, that is what shows.
       const saved =
         data.testItems === "synced"
           ? "Saved -- ready to grade scanned student papers."
-          : "Saved, but syncing gradeable items failed -- try saving again.";
+          : data.testItemsError
+            ? `Saved, but the gradeable items were NOT updated: ${data.testItemsError}`
+            : "Saved, but syncing gradeable items failed -- try saving again.";
+      // Never folded into the line above: marks that now sit under different
+      // words are not something to read past on the way to "Saved".
+      const reworded =
+        (data.rewordedUnderStudentWork?.length ?? 0) > 0
+          ? ` ${data.rewordedUnderStudentWork!.join(", ")} already had marks against the previous wording -- check those marks still say what you meant.`
+          : "";
       // Said out loud rather than done quietly: a hint the teacher wrote and
       // then did not see on the paper is a change they are entitled to know
       // about, even though it is the right change.
@@ -837,13 +851,17 @@ export function FormativeAssessmentSandbox() {
           : ` The PDFs were NOT archived (${data.pdfsError ?? "unknown error"}) -- save again to retry, or download them below and keep a copy.`;
       setNotice({
         place: "save",
-        // Green only for a save that archived both PDFs -- the same rule this
-        // line has always rendered, now stated where it is decided.
-        tone: data.pdfs === "archived" ? "good" : undefined,
+        // Green only for a save with nothing left to look at: both PDFs
+        // archived, the gradeable items updated, and no marks left sitting
+        // under wording that changed under them.
+        tone:
+          data.pdfs === "archived" && data.testItems === "synced" && reworded === ""
+            ? "good"
+            : undefined,
         text:
           warnings > 0
-            ? `${saved}${archive}${stripped} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
-            : `${saved}${archive}${stripped}`,
+            ? `${saved}${archive}${stripped}${reworded} ${warnings} mark scheme warning(s) below -- worth a look before the class sits it.`
+            : `${saved}${archive}${stripped}${reworded}`,
       });
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : "Unknown error"}`);

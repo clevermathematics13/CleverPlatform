@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
+import { resegmentBlockedReason } from "@/lib/placement-resegment";
 import Anthropic from "@anthropic-ai/sdk";
 
 export const runtime = "nodejs";
@@ -61,8 +62,45 @@ export async function POST(
     );
   }
 
-  // Retrying segmentation (e.g. after an error) — clear any partial results
-  // from a previous attempt so we don't duplicate questions.
+  // The clear-out below replaces this test's questions, and
+  // placement_test_marks references placement_test_question_id ON DELETE
+  // CASCADE, so it takes every mark on the paper with it. See
+  // lib/placement-resegment.ts for why status cannot be what decides this.
+  const { data: existingQuestions, error: questionsErr } = await supabase
+    .from("placement_test_questions")
+    .select("id")
+    .eq("placement_test_id", id);
+  if (questionsErr) {
+    return NextResponse.json({ error: questionsErr.message }, { status: 500 });
+  }
+
+  const existingIds = (existingQuestions ?? []).map((q) => q.id);
+  if (existingIds.length > 0) {
+    const { count, error: marksErr } = await supabase
+      .from("placement_test_marks")
+      .select("id", { count: "exact", head: true })
+      .in("placement_test_question_id", existingIds);
+    // Fails closed. `?? 0` here would read "could not count the marks" as
+    // "there are no marks" and go on to delete them, which is the one wrong
+    // answer available.
+    if (marksErr || count === null) {
+      return NextResponse.json(
+        {
+          error:
+            "Could not check whether this test has been marked, so it was not re-segmented: " +
+            (marksErr?.message ?? "the mark count came back empty"),
+        },
+        { status: 500 }
+      );
+    }
+    const blocked = resegmentBlockedReason(count);
+    if (blocked) {
+      return NextResponse.json({ error: `${blocked} Nothing was changed.` }, { status: 409 });
+    }
+  }
+
+  // Nothing marked, so this is the retry it was always meant to be: clear any
+  // partial results from the previous attempt so we don't duplicate questions.
   await supabase.from("placement_test_questions").delete().eq("placement_test_id", id);
   await supabase.from("placement_tests").update({ status: "segmenting", error_message: null }).eq("id", id);
 

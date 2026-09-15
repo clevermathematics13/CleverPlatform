@@ -653,9 +653,27 @@ interface TestItemRow {
   ib_question_code: string | null;
   subtopic_codes: string[] | null;
   sort_order: number;
+  stem_text: string | null;
   question_text: string | null;
   markscheme_text: string | null;
   source: string;
+}
+
+/**
+ * The text of one gradeable part: its question's stem, then the part itself.
+ *
+ * Both sources of a grading unit compose it the same way -- the IB bank from
+ * ib_questions.stem_latex + question_parts.content_latex, a custom item from
+ * test_items.stem_text + question_text -- so this is one function rather than
+ * the same two lines in both branches. A part that reads as a follow-on ("your
+ * expression from part (a)", "Rearrange the formula") is unmarkable without
+ * the stem, and the model is given no other route to it.
+ */
+export function composeQuestionText(
+  stem: string | null | undefined,
+  part: string | null | undefined,
+): string {
+  return [stem?.trim(), part?.trim()].filter(Boolean).join("\n\n");
 }
 
 interface QuestionRow {
@@ -708,7 +726,7 @@ export async function assembleMarkScheme(
   const { data: itemRows, error: itemsError } = await supabase
     .from("test_items")
     .select(
-      "id, question_number, part_label, max_marks, ib_question_code, subtopic_codes, sort_order, question_text, markscheme_text, source"
+      "id, question_number, part_label, max_marks, ib_question_code, subtopic_codes, sort_order, stem_text, question_text, markscheme_text, source"
     )
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
@@ -799,7 +817,7 @@ export async function assembleMarkScheme(
         partLabel: item.part_label ?? "",
         maxMarks: item.max_marks,
         questionCode: "",
-        questionLatex: item.question_text ?? "",
+        questionLatex: composeQuestionText(item.stem_text, item.question_text),
         markscheme: item.markscheme_text?.trim() ?? "",
         markschemeSource: (item.markscheme_text?.trim() ? "custom" : "none") as MarkschemeSource,
         commandTerms: [],
@@ -839,10 +857,7 @@ export async function assembleMarkScheme(
       markschemeSource = "draft";
     }
 
-    const stem = question?.stem_latex?.trim() ?? "";
-    const questionLatex = [stem, matched?.content_latex?.trim() ?? ""]
-      .filter(Boolean)
-      .join("\n\n");
+    const questionLatex = composeQuestionText(question?.stem_latex, matched?.content_latex);
 
     const commandTerms =
       matched?.command_terms && matched.command_terms.length > 0
