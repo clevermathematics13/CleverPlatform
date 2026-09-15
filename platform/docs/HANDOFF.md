@@ -2056,3 +2056,69 @@ larger nominal saving the easier migration of the two.
 
 Not a lever, so nobody should chase it: the scan PDF is 22% of the bill, is
 unique per student, and correctly sits after both breakpoints.
+
+## 22. Every even page of Block A's scan was upside down (14-15 Sep 2026)
+
+Block A's Key Assessment 1 was marked from a duplex scan in which **every even
+page was rotated 180 degrees** -- the ordinary ADF artifact where the reverse
+side of each sheet comes out inverted. Verified by rendering the stored split
+PDFs: pages 1, 3, 5, 7 upright and 2, 4, 6, 8 inverted, consistently across
+every student checked, with the rotation baked into the pixels (`/Rotate` is 0
+on all pages). **271 of the 504 graded parts** drew their evidence from an
+inverted page, and about half the evidence crops a teacher would have reviewed
+were upside down.
+
+**The reason this needs code and not care: the model did not notice.** On the
+inverted pages it reported **0% "no work found" and 77.9% high confidence**,
+against 1% and 89.1% on the upright ones. It read them, or believed it had.
+An upside-down scan is not a loud failure a teacher catches -- it is a quiet
+one that produces confident marks off pages nobody could read.
+
+`scripts/cv_crop_extract.py` had already called this shot in its header: pages
+reaching the crop stage "are assumed right-side-up", with a `rotation_hint`
+that "lets a caller override this per page if a future batch turns out to need
+it; default is 0". Nothing ever set it. This was that batch.
+
+**`lib/page-orientation.ts`** is what sets it: a Haiku check per page (the same
+model and one-page-per-request shape as the cover-page check, for the same cost
+reason), a deliberately conservative decision rule, and a corrector.
+
+- Only a **high**-confidence inversion is rotated. Rotating an upright page is
+  the worse error: an inverted page is at least visibly wrong in the crop a
+  teacher reviews, while a wrongly-rotated upright page turns good evidence
+  into bad and looks exactly like the defect it was meant to fix.
+- The corrector **redraws page content** rather than setting `/Rotate`. That is
+  not a style choice: this document's next readers do coordinate maths, and
+  `cv_crop_extract.py` records the pilot's two real bugs as "expansion math
+  done in raw rotated-scan pixel space silently inverting right/down, and a
+  duplicate rotation call". A redrawn page leaves no rotation metadata to
+  misinterpret. Pages are embedded, not re-rasterised: 7.91 MB in, 7.92 MB out,
+  no quality lost.
+- A page with no content stream (a blank back side) cannot be embedded and has
+  no ink to be upside down. It is carried through at the same size rather than
+  failing the student's repair -- the crop stage maps scan page N onto master
+  page N-1 by position, so dropping or resizing one would shift every crop
+  after it.
+
+**`scripts/repair-scan-orientation.ts`** applies it to an already-uploaded
+test. Dry run by default; `--write` uploads a corrected copy **beside** the
+original with an `-upright` suffix, never over it, and touches no database row
+at all. Validated against Block A on 15 Sep: Haiku called pages 2, 4, 6, 8
+INVERTED and 1, 3, 5, 7 upright, all at high confidence, matching the visual
+check exactly. Cost is one Haiku call per page -- a 14-student, 8-page class is
+~112 calls, well under a dollar, logged under the new `scan_orientation`
+pipeline in `ai_usage_log`.
+
+```bash
+npx tsx scripts/repair-scan-orientation.ts --test <uuid>            # dry run
+npx tsx scripts/repair-scan-orientation.ts --test <uuid> --write    # apply
+```
+
+Re-grade from the `-upright` objects afterwards; the queue route accepts any
+storagePath under `${testId}/${studentId}/`, so the new names qualify.
+
+**Still open.** Nothing yet runs this check on upload, so the next duplex scan
+has the same defect and the same silence. The natural home is the split route
+(`ai-grade/batch/[batchId]/split`), which already writes the per-student PDFs
+-- correcting there fixes grading and crops together, at about 2.4 cents per
+student. Until that lands, run the script against any new batch before marking.

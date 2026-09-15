@@ -16,6 +16,10 @@ export type UsagePipeline =
   | "na_assess_wide"
   | "na_assess_batch"
   | "na_cover_page"
+  // "Is this page upside down?", one Haiku call per scanned page. See
+  // lib/page-orientation.ts for why this check exists at all: a duplex scan
+  // inverts every reverse side, and the grading model does not notice.
+  | "scan_orientation"
   // Writing an original practice question from a bank question (Opus, one
   // call per question, at a teacher's desk rather than in a pipeline).
   | "practice_question";
