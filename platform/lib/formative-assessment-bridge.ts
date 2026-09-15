@@ -29,6 +29,20 @@ export type TestItemInsert = {
   question_number: number;
   part_label: string;
   max_marks: number;
+  /**
+   * The stem of the question this row is a part of, or null when the row IS
+   * the whole question (its text is already question_text) or the question
+   * carried no stem.
+   *
+   * Its own column rather than a prefix on question_text, because
+   * question_text is ALSO what lib/rubric-validator.ts checks each part
+   * against, and several of its rules would read a stem as the part's own
+   * words -- rule 10's self-numbering check is anchored to the start of the
+   * prompt, and WORKING_COMMAND / SUBSTITUTES_VALUES match words a stem may
+   * legitimately contain. Folding the stem in would have silently changed
+   * every one of those answers.
+   */
+  stem_text: string | null;
   question_text: string;
   markscheme_text: string;
   source: "custom";
@@ -40,6 +54,12 @@ export type TestItemInsert = {
  * subparts, one row per subpart) from a Formative Assessment's sections.
  * Numbering is global (1-based) across all sections, matching the same
  * convention used by lib/na-rubric-bridge.ts's buildRubricItemsFromSections.
+ *
+ * A subpart row carries its question's stem in stem_text, repeated on every
+ * subpart of that question. Without it a part is stored as the words of the
+ * command alone: Key Assessment 1 Q9(a) was "Rearrange the formula to make $x$
+ * the subject. Show every step." -- with the formula it names nowhere in the
+ * row, and so nowhere in what the AI marker was given to mark against.
  */
 export function buildTestItemsFromSections(
   testId: string,
@@ -54,6 +74,9 @@ export function buildTestItemsFromSections(
       questionNumber += 1;
 
       if (question.subparts && question.subparts.length > 0) {
+        // A whitespace-only stem is stored as no stem at all, rather than as a
+        // blank line every grading prompt for this question would then carry.
+        const stem = question.prompt?.trim() ? question.prompt : null;
         question.subparts.forEach((subpart, index) => {
           const partLabel = String.fromCharCode(97 + index); // a, b, c, ...
           rows.push({
@@ -61,6 +84,7 @@ export function buildTestItemsFromSections(
             question_number: questionNumber,
             part_label: partLabel,
             max_marks: subpart.marks ?? 0,
+            stem_text: stem,
             question_text: subpart.prompt ?? "",
             markscheme_text: subpart.markScheme ?? "",
             source: "custom",
@@ -73,6 +97,9 @@ export function buildTestItemsFromSections(
           question_number: questionNumber,
           part_label: "",
           max_marks: question.marks ?? 0,
+          // The prompt is the question_text below; repeating it here would
+          // hand the marker the same sentence twice.
+          stem_text: null,
           question_text: question.prompt ?? "",
           markscheme_text: question.markScheme ?? "",
           source: "custom",

@@ -5,6 +5,7 @@ import {
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
   buildGradingSystemPrompt,
+  composeQuestionText,
   isAaHlPaper2,
   isCustomAssessment,
   isImpliedToken,
@@ -1508,5 +1509,30 @@ describe("GRADING_SYSTEM_PROMPT content", () => {
     expect(GRADING_SYSTEM_PROMPT).toContain("CONSTANT TERM");
     expect(GRADING_SYSTEM_PROMPT).toContain("3x^2 - 5x + 7");
     expect(GRADING_SYSTEM_PROMPT).toMatch(/coefficient of x\^0/);
+  });
+});
+
+describe("composeQuestionText", () => {
+  it("puts the stem before the part, separated by a blank line", () => {
+    expect(composeQuestionText("Consider $px + q = rx + s$.", "Make $x$ the subject.")).toBe(
+      "Consider $px + q = rx + s$.\n\nMake $x$ the subject.",
+    );
+  });
+
+  it("returns the part alone when there is no stem", () => {
+    expect(composeQuestionText(null, "Make $x$ the subject.")).toBe("Make $x$ the subject.");
+    expect(composeQuestionText(undefined, "Make $x$ the subject.")).toBe("Make $x$ the subject.");
+    expect(composeQuestionText("   ", "Make $x$ the subject.")).toBe("Make $x$ the subject.");
+  });
+
+  it("returns the stem alone when the part is missing, rather than a stray blank line", () => {
+    expect(composeQuestionText("Consider $px + q = rx + s$.", null)).toBe(
+      "Consider $px + q = rx + s$.",
+    );
+  });
+
+  it("is empty when both are", () => {
+    expect(composeQuestionText(null, null)).toBe("");
+    expect(composeQuestionText("", "  ")).toBe("");
   });
 });

@@ -43,6 +43,65 @@ describe("buildTestItemsFromSections", () => {
     expect(rows[0].markscheme_text).toBe("A1");
   });
 
+  it("carries the question's stem onto every subpart row", () => {
+    const rows = buildTestItemsFromSections("test-1", [
+      section({
+        questions: [
+          {
+            prompt: "Consider the formula $px + q = rx + s$.",
+            marks: 4,
+            subparts: [
+              { prompt: "Rearrange the formula to make $x$ the subject.", marks: 3, markScheme: "M1M1A1" },
+              { prompt: "Write down the condition your answer requires.", marks: 1, markScheme: "A1" },
+            ],
+          },
+        ],
+      }),
+    ]);
+
+    expect(rows.map((r) => r.stem_text)).toEqual([
+      "Consider the formula $px + q = rx + s$.",
+      "Consider the formula $px + q = rx + s$.",
+    ]);
+    // The part's own words stay its own -- the validator reads this field.
+    expect(rows[0].question_text).toBe("Rearrange the formula to make $x$ the subject.");
+  });
+
+  it("leaves stem_text null on a whole-question row rather than repeating the prompt", () => {
+    const rows = buildTestItemsFromSections("test-1", [
+      section({ questions: [{ prompt: "Q1 prompt", marks: 2, markScheme: "A2" }] }),
+    ]);
+
+    expect(rows[0].stem_text).toBeNull();
+    expect(rows[0].question_text).toBe("Q1 prompt");
+  });
+
+  it("stores a blank stem as no stem", () => {
+    const rows = buildTestItemsFromSections("test-1", [
+      section({
+        questions: [
+          { prompt: "   ", marks: 1, subparts: [{ prompt: "find x", marks: 1, markScheme: "A1" }] },
+        ],
+      }),
+    ]);
+
+    expect(rows[0].stem_text).toBeNull();
+  });
+
+  it("does not let a stem displace the start of a subpart prompt", () => {
+    // rubric-validator's rule 10 matches a self-numbered prompt with /^.../,
+    // so question_text has to still BEGIN with the subpart's own first word.
+    const rows = buildTestItemsFromSections("test-1", [
+      section({
+        questions: [
+          { prompt: "A stem", marks: 1, subparts: [{ prompt: "(a) find x", marks: 1, markScheme: "A1" }] },
+        ],
+      }),
+    ]);
+
+    expect(rows[0].question_text.startsWith("(a)")).toBe(true);
+  });
+
   it("uses an empty part_label for a question with no subparts", () => {
     const rows = buildTestItemsFromSections("test-1", [
       section({ questions: [{ prompt: "Q1 prompt", marks: 2, markScheme: "A2" }] }),
