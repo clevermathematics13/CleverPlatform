@@ -40,6 +40,7 @@ export type TokIssueKind =
   | "count"
   | "stock-opener"
   | "unanchored"
+  | "leaks-answer"
   | "no-reflection-return"
   | "reflection-without-evidence";
 
@@ -203,6 +204,70 @@ function isAnchored(body: string, vocabulary: Set<string>): boolean {
   return false;
 }
 
+// ---- T9: a provocation may not print an answer the packet asks for --------
+
+/**
+ * An em dash, built at runtime to keep this source ASCII. Section headings
+ * read "Part 3 -- The p-value: ...", and only the "Part 3" half is wanted.
+ */
+const EM_DASH = String.fromCharCode(8212);
+
+function shortHeading(heading: string): string {
+  const cut = heading.indexOf(EM_DASH);
+  return (cut > 0 ? heading.slice(0, cut) : heading).trim();
+}
+
+type Slot = { kind: "prompt" | "answer"; where: string; text: string };
+
+/**
+ * The packet flattened into reading order, each piece of text tagged with
+ * whether the student is GIVEN it or asked to PRODUCE it.
+ *
+ * Order matters and is the whole mechanism: a number the packet hands over in
+ * a prompt is fair to quote, and the same number is not fair to quote if the
+ * first place it occurs is an answer. Answers follow their own prompt, so a
+ * value that is given and later restated in a mark scheme still resolves to
+ * "given".
+ */
+function readingOrder(draft: AssignmentDraft): Slot[] {
+  const slots: Slot[] = [];
+  for (const section of draft?.sections ?? []) {
+    const heading = shortHeading(section?.heading ?? "");
+    (section?.questions ?? []).forEach((question, index) => {
+      const where = `${heading} Q${index + 1}`;
+      if (question?.prompt) slots.push({ kind: "prompt", where, text: question.prompt });
+      for (const sub of question?.subparts ?? []) {
+        if (sub?.prompt) slots.push({ kind: "prompt", where, text: sub.prompt });
+      }
+      if (question?.answer) slots.push({ kind: "answer", where, text: question.answer });
+      for (const sub of question?.subparts ?? []) {
+        const subAnswer = (sub as { answer?: string })?.answer;
+        if (subAnswer) slots.push({ kind: "answer", where, text: subAnswer });
+      }
+    });
+  }
+  return slots;
+}
+
+/**
+ * Numbers stated in a provocation, ignoring its own cross-references.
+ *
+ * Only decimals and runs of three or more digits count. A bare "5" or "12"
+ * occurs everywhere in a mathematics packet, and treating those as citations
+ * would flag a provocation for saying "the 5% significance level" -- which the
+ * packet gives. The cost is that a small whole-number answer goes unchecked;
+ * that is the right side to err on for a check that must not cry wolf.
+ */
+function citedNumbers(body: string): string[] {
+  const withoutRefs = body.replace(/Part[ ]+[0-9]+/gi, " ").replace(/Q[ ]?[0-9]+/gi, " ");
+  return [...new Set(withoutRefs.match(/[0-9]+[.][0-9]+|[0-9]{3,}/g) ?? [])];
+}
+
+/** Where a number first occurs in reading order, or null if it never does. */
+function firstAppearance(slots: Slot[], value: string): Slot | null {
+  return slots.find((slot) => slot.text.includes(value)) ?? null;
+}
+
 function firstStockOpener(body: string): string | null {
   for (const { pattern, label } of STOCK_OPENERS) {
     if (pattern.test(body)) return label;
@@ -275,6 +340,25 @@ function collectIssues(draft: AssignmentDraft): TokIssue[] {
       detail:
         "Names nothing from this packet — no Part or question, no mathematical object, and no vocabulary this packet uses. It would fit any other packet unchanged.",
     });
+  });
+
+  // T9. A separate pass, and deliberately not folded into the loop above: a
+  // provocation can be perfectly anchored and still print an answer, which is
+  // exactly what the first real generation did.
+  const slots = readingOrder(draft);
+  provocations.forEach((provocation, index) => {
+    const body = (provocation?.body ?? "").trim();
+    if (!body) return;
+    for (const value of citedNumbers(body)) {
+      const first = firstAppearance(slots, value);
+      if (first?.kind !== "answer") continue;
+      issues.push({
+        kind: "leaks-answer",
+        rule: "T9",
+        location: `TOK provocation ${index + 1}`,
+        detail: `States ${value}, which this packet never gives — it is the answer to ${first.where}. The provocations are printed above Part 0, so this hands the student a result they are meant to derive.`,
+      });
+    }
   });
 
   // Only judged when the draft has a Reflection at all: a missing Reflection
