@@ -3,8 +3,12 @@ import {
   rematchUnmatchedSegments,
   AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY,
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
+  G9_STANDARD_LEVEL_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
   buildGradingSystemPrompt,
+  buildGradingUserPrompt,
+  buildStandardsRubricBlock,
+  isStandardsReferenced,
   isAaHlPaper2,
   isCustomAssessment,
   isImpliedToken,
@@ -13,6 +17,8 @@ import {
   type GradingUnit,
   type RosterEntry,
 } from "./ai-grading";
+import { KA1_UNIT1_ITEMS, KA1_UNIT1_RUBRIC } from "./fixtures/g9-standard-ka1-unit1";
+import { strandForItem } from "./standards-rubric";
 
 function unit(overrides: Partial<GradingUnit> = {}): GradingUnit {
   return {
@@ -1485,6 +1491,86 @@ describe("buildGradingSystemPrompt", () => {
     ]);
     expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
     expect(prompt).toContain(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES);
+  });
+});
+
+/** The KA1 Unit 1 paper as grading units, each carrying its strand. */
+function ka1Units(): GradingUnit[] {
+  return KA1_UNIT1_ITEMS.map((it) => {
+    const strand = strandForItem(KA1_UNIT1_RUBRIC, { question_number: it.questionNumber, part_label: it.partLabel })!;
+    return unit({
+      testItemId: `item-${it.questionNumber}${it.partLabel}`,
+      questionNumber: it.questionNumber,
+      partLabel: it.partLabel,
+      maxMarks: it.maxMarks,
+      questionCode: "",
+      questionLatex: it.questionText,
+      markscheme: it.markschemeText,
+      markschemeSource: "custom",
+      standards: { strand: { code: strand.code, name: strand.name, standards: strand.standards }, rubric: KA1_UNIT1_RUBRIC },
+    });
+  });
+}
+
+describe("Grade 9 Standard Level (standards-referenced) grading", () => {
+  it("isStandardsReferenced is decided by the unit carrying a rubric", () => {
+    expect(isStandardsReferenced(unit())).toBe(false);
+    expect(isStandardsReferenced(unit({ standards: null }))).toBe(false);
+    expect(isStandardsReferenced(ka1Units()[0])).toBe(true);
+  });
+
+  it("policy content is actually loaded from grading_policies/, not empty", () => {
+    expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).toContain("Grade 9 Standard Level");
+    expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).toContain("descriptor, not a token list");
+    expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).toContain("Omit numericCheck");
+  });
+
+  it("appends the Standard Level policy and the strand rubric, and NOT the Formative principles", () => {
+    const prompt = buildGradingSystemPrompt(ka1Units());
+    expect(prompt.startsWith(GRADING_SYSTEM_PROMPT)).toBe(true);
+    expect(prompt).toContain(G9_STANDARD_LEVEL_MARKING_PRINCIPLES);
+    expect(prompt).toContain("THIS ASSESSMENT'S STRAND RUBRIC");
+    expect(prompt).not.toContain(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES);
+    expect(prompt).not.toContain("Formative Assessment Marking Principles");
+  });
+
+  it("a custom test WITHOUT a rubric still gets the Formative principles, unchanged", () => {
+    const prompt = buildGradingSystemPrompt([unit({ markschemeSource: "custom", standards: null })]);
+    expect(prompt).toContain(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES);
+    expect(prompt).not.toContain(G9_STANDARD_LEVEL_MARKING_PRINCIPLES);
+  });
+
+  it("the strand block prints each strand's marks, parts, ranges and descriptors", () => {
+    const block = buildStandardsRubricBlock(KA1_UNIT1_RUBRIC, ka1Units());
+    expect(block).toContain("Strand A: Expressions: evaluate, write and rewrite (11 marks)");
+    expect(block).toContain("Parts: 1(a), 1(b), 1(c), 7(a), 7(b), 7(c), 8");
+    expect(block).toContain("Exceeding 10-11 / Meeting 8-9 / Approaching 5-7 / Beginning 0-4");
+    expect(block).toContain("Strand B: Arithmetic sequences and explicit rules (13 marks)");
+    expect(block).toContain("Exceeding 12-13 / Meeting 9-11 / Approaching 6-8 / Beginning 0-5");
+    expect(block).toContain("Strand D: Reasoning and justification (9 marks)");
+    expect(block).toContain("Parts: 2(d), 6(d), 7(d), 9(c)");
+    expect(block).toContain("F-LE.A.2 Build a linear rule");
+    expect(block).toContain("Approaching: Gives correct conclusions with little justification.");
+    expect(block).toContain("Level bands: Exceeding from 85%, Meeting from 65%, Approaching from 40%");
+  });
+
+  it("names the strand on each part in the user prompt", () => {
+    const prompt = buildGradingUserPrompt(ka1Units(), { testName: "KA1" });
+    expect(prompt).toContain("=== 2(d) ===");
+    expect(prompt).toContain("Strand: D -- Reasoning and justification");
+    expect(prompt).toContain("=== 8 ===\ntestItemId: item-8");
+    expect(prompt).toContain("Strand: A -- Expressions: evaluate, write and rewrite");
+  });
+
+  it("a unit with no strand context prints no Strand line", () => {
+    const prompt = buildGradingUserPrompt([unit()], {});
+    expect(prompt).not.toContain("Strand:");
+  });
+
+  it("the system prompt is identical for every unit order of the same test (cacheable)", () => {
+    const a = buildGradingSystemPrompt(ka1Units());
+    const b = buildGradingSystemPrompt([...ka1Units()].reverse());
+    expect(a).toBe(b);
   });
 });
 

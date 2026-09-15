@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import EvidenceBoxEditor from "@/components/EvidenceBoxEditor";
@@ -12,6 +12,8 @@ import {
   sortReviewRows,
 } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
+import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
+import { StandardsReportTable } from "@/components/StandardsReportTable";
 
 type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "none";
 type Confidence = "high" | "medium" | "low";
@@ -30,6 +32,12 @@ interface TestDetail {
   name: string;
   course_id: string;
   test_items: TestItem[];
+  /**
+   * The strand rubric of a Grade 9 Standard Level paper (tests.standards_rubric,
+   * see lib/standards-rubric.ts), or null. When present the review panel
+   * shows the student's strand levels alongside the marks being edited.
+   */
+  standards_rubric?: unknown;
 }
 
 interface StudentOption {
@@ -303,6 +311,15 @@ export function AiGradeClient({
   const reviewRequestSeq = useRef(0);
 
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
+
+  // A Standard Level paper's rubric, parsed once per test load. An
+  // unreadable one is treated as none here: the test detail page is where
+  // it gets fixed, and a review panel with no strand table is better than
+  // one that refuses to render.
+  const standardsRubric = useMemo(() => {
+    const parsed = parseStandardsRubric(test?.standards_rubric ?? null);
+    return parsed.ok ? parsed.rubric : null;
+  }, [test?.standards_rubric]);
   const classCount = new Set(students.map((s) => s.class_name ?? "")).size;
 
   // -- Absence: a student who did not sit the test ------------------------------
@@ -1006,6 +1023,18 @@ export function AiGradeClient({
   const maxTotal = test.test_items.reduce((s, i) => s + i.max_marks, 0);
   const suggestedTotal = results.reduce((s, r) => s + (drafts[r.id] ?? 0), 0);
   const focusRun = focusStudent ? runsByStudent[focusStudent] : null;
+  // The strand levels the marks on screen would give, recomputed as the
+  // teacher edits them -- so a change to one part shows what it does to the
+  // strand before it is accepted. Suggestions, not Clev's Marks: the
+  // standards report page is the one that reads accepted marks.
+  const liveStandardsReport =
+    standardsRubric && results.length > 0
+      ? buildStandardsReport(
+          standardsRubric,
+          test.test_items.map((i) => ({ id: i.id, question_number: i.question_number, part_label: i.part_label, max_marks: i.max_marks })),
+          Object.fromEntries(results.map((r) => [r.test_item_id, drafts[r.id] ?? 0]))
+        )
+      : null;
 
   return (
     <div className="space-y-6">
@@ -1137,6 +1166,19 @@ export function AiGradeClient({
               scanned PDF per student — the model marks it against the mark scheme stored in the
               PPQ bank. Nothing reaches Clev&apos;s Marks until you review and accept it below.
             </p>
+            {standardsRubric && (
+              <p className="mt-2 text-sm text-da-muted">
+                <span className="rounded border border-teal-400/40 bg-teal-500/15 px-1.5 py-0.5 text-xs font-medium text-teal-300">
+                  Standard Level
+                </span>{" "}
+                Marked under the Grade 9 Standard Level policy: {standardsRubric.strands.length} strands
+                ({standardsRubric.strands.map((s) => s.code).join(", ")}), reported as Exceeding / Meeting /
+                Approaching / Beginning.{" "}
+                <a href={`/dashboard/tests/${testId}/standards-report`} className="text-blue-300 hover:underline">
+                  Standards report →
+                </a>
+              </p>
+            )}
           </section>
 
           {/* -- Students ----------------------------------------------------- */}
@@ -1341,6 +1383,14 @@ export function AiGradeClient({
                         <li key={i}>⚠ {w}</li>
                       ))}
                     </ul>
+                  )}
+                  {liveStandardsReport && (
+                    <div className="mt-3 rounded-lg border border-da-border bg-da-bg/60 p-2">
+                      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
+                        Strand levels from the marks above (suggested, not yet Clev&apos;s Marks)
+                      </p>
+                      <StandardsReportTable report={liveStandardsReport} compact />
+                    </div>
                   )}
                 </div>
                 <button

@@ -32,7 +32,7 @@ export default async function TestDetailPage({
         .select(
           `id, name, short_name, test_date, exam_time, release_at, total_marks,
            course_id, hidden, hidden_from_gradebook, require_self_assessment,
-           boundary_set_id, paper_url, mark_scheme_url,
+           boundary_set_id, paper_url, mark_scheme_url, standards_rubric,
            paper_pdf_storage_path, mark_scheme_pdf_storage_path, pdfs_generated_at,
            courses!tests_course_id_fkey(name),
            test_items(id, question_number, part_label, max_marks, sort_order, ib_question_code, subtopic_codes)`

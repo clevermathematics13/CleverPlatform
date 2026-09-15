@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import type { TestRow } from "./page";
 import { ImportFromPpqModal } from "./import-from-ppq-modal";
@@ -237,6 +238,13 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
           >
             Import from PPQ Bank
           </button>
+          <Link
+            href="/dashboard/tests/standards-import"
+            title="Read a Grade 9 Standard Level paper and its teacher marking rubric from two PDFs into a gradeable test"
+            className="rounded-lg border border-teal-400/40 bg-teal-500/15 px-4 py-2 text-sm font-medium text-teal-300 hover:bg-teal-500/25"
+          >
+            Import Standard Level paper
+          </Link>
         </div>
       )}
 
@@ -467,6 +475,20 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                     {test.test_date && ` · ${test.test_date}`}
                     {formattedExamTime(test.exam_time) && ` ${formattedExamTime(test.exam_time)}`}
                     {` · ${test.test_items.length} questions · ${totalMax} marks`}
+                    {test.standards_rubric != null && (
+                      <>
+                        {" · "}
+                        <span
+                          className="rounded border border-teal-400/40 bg-teal-500/15 px-1.5 py-0.5 text-[11px] font-medium text-teal-300"
+                          title="Graded by strands into Exceeding / Meeting / Approaching / Beginning"
+                        >
+                          Standard Level
+                        </span>{" "}
+                        <a href={`/dashboard/tests/${test.id}/standards-report`} className="text-blue-300 hover:underline">
+                          Standards report →
+                        </a>
+                      </>
+                    )}
                   </p>
                   <label className="mt-1 inline-flex items-center gap-2 text-xs text-da-muted">
                     <input
