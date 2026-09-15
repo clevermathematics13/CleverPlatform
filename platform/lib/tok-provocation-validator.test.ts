@@ -215,6 +215,96 @@ describe("the Reflection return (T8)", () => {
   });
 });
 
+describe("T9: the provocations are printed before the work, so they cannot contain its answers", () => {
+  // The defect that prompted this rule, from the first real generation: a
+  // provocation opened "In Part 3 Q1 you will calculate a p-value of 0.0228",
+  // printing the answer to Part 3 on page 1. T1 had asked for "the specific
+  // number that came out of Q7" as the anchor, while the spec prints the
+  // provocations above Part 0 -- the two instructions were in direct conflict.
+  function statsDraft(body: string): AssignmentDraft {
+    return {
+      title: "From Bell Curve to Decision",
+      subtitle: "IBDP Mathematics",
+      instructions: [],
+      sections: [
+        {
+          heading: "Part 2 \u2014 The Test Statistic",
+          questions: [
+            {
+              prompt: "A sample of 25 bags gives a sample mean of 496.8 grams against a designed mean of 500 grams. Calculate the test statistic.",
+              marks: 3,
+              tier: 2,
+              answer: "$z = (496.8-500)/1.6 = -2.0$",
+            },
+          ],
+        },
+        {
+          heading: "Part 3 \u2014 The p-value",
+          questions: [
+            {
+              prompt: "Using the test statistic from Part 2, calculate the p-value, correct to 3 significant figures.",
+              marks: 2,
+              tier: 2,
+              answer: "$p = P(Z<-2.0) = 0.0228$ (3 s.f.)",
+            },
+          ],
+        },
+      ],
+      tokProvocations: [
+        { id: "tok1", body },
+        { id: "tok2", body: "Does the 5% significance level in Part 2 describe the machine, or the convention we agreed to judge it by?" },
+      ],
+      reflectionQuestions: [
+        "Take a position on a TOK provocation, citing the p-value you found in Part 3 as your evidence.",
+      ],
+    } as AssignmentDraft;
+  }
+
+  it("flags a provocation that prints an answer, and names the question it belongs to", () => {
+    const d = statsDraft("In Part 3 you will calculate a p-value of 0.0228. Does that number demonstrate the machine underfills, or only that the data would be surprising if it did not?");
+    const issues = validateDraftTokProvocations(d, "Grade 12");
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("leaks-answer");
+    expect(issues[0].rule).toBe("T9");
+    expect(issues[0].detail).toContain("0.0228");
+    expect(issues[0].detail).toContain("Part 3 Q1");
+  });
+
+  it("leaves alone a number the packet GIVES the student", () => {
+    // 496.8 and 500 are handed over in the Part 2 prompt. Quoting given data
+    // is how a provocation anchors -- flagging it would gut T1.
+    const d = statsDraft("Part 2 measures a sample mean of 496.8 grams against a designed mean of 500 grams. Does a gap that small describe the machine, or the sample?");
+    expect(validateDraftTokProvocations(d, "Grade 12")).toEqual([]);
+  });
+
+  it("leaves alone a hypothetical the provocation invents", () => {
+    // "0.012" appears nowhere in the packet: it is the provocation's own
+    // thought experiment, not a leak.
+    const d = statsDraft("If the test in Part 3 had returned 0.012 rather than the value you will find, the verdict would flip. Is that boundary a feature of the process, or a convention?");
+    expect(validateDraftTokProvocations(d, "Grade 12")).toEqual([]);
+  });
+
+  it("accepts a forward reference that names the quantity but not its value", () => {
+    // This is what T9 asks for, and it must stay legal -- pointing forward is
+    // how a provocation tells the student where the tension will bite.
+    const d = statsDraft("In Part 3 you will calculate a p-value for this test. Will a small one demonstrate that the machine underfills, or only that the data would be surprising if it did not?");
+    expect(validateDraftTokProvocations(d, "Grade 12")).toEqual([]);
+  });
+
+  it("does not police the Reflection, which comes after the work", () => {
+    // The fixture's reflection cites the Part 3 result on purpose: T8 requires
+    // exactly that, and T9 explicitly exempts it.
+    const d = statsDraft("Does the 1% threshold in Part 3 describe the world, or our agreement about it?");
+    expect(validateDraftTokProvocations(d, "Grade 12")).toEqual([]);
+  });
+
+  it("stays quiet on a packet with no answer key at all", () => {
+    const d = statsDraft("In Part 3 you will calculate a p-value of 0.0228.");
+    for (const s of d.sections) for (const q of s.questions) delete (q as { answer?: string }).answer;
+    expect(validateDraftTokProvocations(d, "Grade 12")).toEqual([]);
+  });
+});
+
 describe("pre-DP grades are not held to the bar", () => {
   it.each(["Grade 9", "Grade 10"])("%s returns no issues even on a bad draft", (grade) => {
     const d = draft({

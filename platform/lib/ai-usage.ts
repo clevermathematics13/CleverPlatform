@@ -18,7 +18,10 @@ export type UsagePipeline =
   | "na_cover_page"
   // Writing an original practice question from a bank question (Opus, one
   // call per question, at a teacher's desk rather than in a pipeline).
-  | "practice_question";
+  | "practice_question"
+  // Reading a Grade 9 Standard Level paper and its teacher rubric into a
+  // test (Opus, one call per assessment; app/api/standards-assessments).
+  | "standards_import";
 
 export type UsageRefType = "ai_grade_run" | "ai_grade_result" | "ai_grade_batch" | "na_crop" | "na_scan_batch";
 

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { abbreviateAssessmentName, assessmentShortName } from "@/lib/assessment-short-name";
 import type { OverrideMap, OverrideValue } from "@/lib/self-assessment-override-diff";
 import type { OverrideClass } from "@/lib/self-assessment-override-classes";
+import { StandardsRubricSection } from "./standards-rubric-section";
 
 export type BoundarySetOption = {
   id: string;
@@ -33,6 +34,8 @@ export type TestDetail = {
   paper_pdf_storage_path: string | null;
   mark_scheme_pdf_storage_path: string | null;
   pdfs_generated_at: string | null;
+  /** tests.standards_rubric -- the strand rubric of a Grade 9 Standard Level paper, or null. */
+  standards_rubric?: unknown;
   courses: { name: string } | null;
   test_items: {
     id: string;
@@ -416,6 +419,18 @@ export function TestDetailClient({
           </span>
         </label>
       </section>
+
+      {/* -- Standards rubric --------------------------------------------- */}
+      <StandardsRubricSection
+        testId={saved.id}
+        initialRubric={saved.standards_rubric ?? null}
+        items={items.map((it) => ({
+          id: it.id,
+          question_number: it.question_number,
+          part_label: it.part_label,
+          max_marks: it.max_marks,
+        }))}
+      />
 
       {/* -- Visibility --------------------------------------------------- */}
       <section className="space-y-3 rounded-xl border border-da-border bg-da-surface p-5 shadow-sm">
