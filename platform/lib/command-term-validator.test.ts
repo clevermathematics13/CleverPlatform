@@ -3,7 +3,7 @@ import {
   promptContainsCommandTerm,
   validateDraftCommandTerms,
 } from "./command-term-validator";
-import type { AssignmentDraft } from "./assignments";
+import { buildActivityGeneratorSystemPrompt, type AssignmentDraft } from "./assignments";
 
 describe("promptContainsCommandTerm", () => {
   it("accepts a canonical capitalized command term", () => {
@@ -51,6 +51,69 @@ describe("promptContainsCommandTerm", () => {
   it("rejects empty and whitespace-only prompts", () => {
     expect(promptContainsCommandTerm("")).toBe(false);
     expect(promptContainsCommandTerm("   ")).toBe(false);
+  });
+});
+
+describe("rule 11c's named exceptions", () => {
+  // These three read like instructions and are not on the canonical list.
+  // "Expand" and a bare "Write" were found by the validator on a real
+  // generated packet on the binomial theorem, where rule 11c banned them and
+  // register rule R1 ("you simplify, expand, factor or evaluate an
+  // EXPRESSION") endorsed them -- two rules in one prompt pulling opposite
+  // ways. 11c now names all three and says what to write instead.
+  const prompt = buildActivityGeneratorSystemPrompt("Grade 12");
+
+  it.each(["Simplify", "Expand", "Evaluate", "Factor", "Write down"])("11c names %s", (word) => {
+    const rule = prompt.slice(prompt.indexOf("11c."), prompt.indexOf("11b."));
+    expect(rule).toContain(word);
+  });
+
+  it("says the register and the canonical list are not in conflict", () => {
+    const rule = prompt.slice(prompt.indexOf("11c."), prompt.indexOf("11b."));
+    expect(rule).toMatch(/does NOT overrule the mathematical register/);
+  });
+
+  it("rejects the two phrasings a real packet actually shipped", () => {
+    // Verbatim from the generated induction packet.
+    expect(
+      promptContainsCommandTerm(
+        "Expand $(1+x)^4$ using the binomial theorem, writing each coefficient as a value of $C(4,k)$.",
+      ),
+    ).toBe(false);
+    expect(
+      promptContainsCommandTerm("Write $7^n$ as $(1+6)^n$ and use the binomial theorem to expand it."),
+    ).toBe(false);
+    // Found by the regeneration after the first fix: the same class, a third
+    // instance. All four register verbs are non-canonical, not just two.
+    expect(promptContainsCommandTerm("Evaluate $4!$.")).toBe(false);
+    expect(promptContainsCommandTerm("Factorise $x^2-5x+6$.")).toBe(false);
+  });
+
+  it("accepts every replacement the rule recommends", () => {
+    // The load-bearing one: advice that does not itself pass the validator
+    // would swap one broken question for another.
+    const fixed = [
+      "Find the expansion of $(1+x)^4$, writing each coefficient as a value of $C(4,k)$.",
+      "Write down the expansion of $(1+x)^4$ in ascending powers of $x$.",
+      "Write down $7^n$ in the form $(1+6)^n$.",
+      "Solve, giving your answer as a fraction in its lowest terms.",
+      "Calculate the value, giving your answer in its simplest form.",
+      "Calculate $4!$.",
+      "Find the value of $4!$.",
+      "Find the factors of $x^2-5x+6$.",
+      "Show that $x^2-5x+6=(x-2)(x-3)$.",
+    ];
+    for (const text of fixed) {
+      expect(promptContainsCommandTerm(text), `rule 11c recommends but validator rejects: ${text}`).toBe(true);
+    }
+  });
+
+  it("still allows the register's words in prose and as nouns", () => {
+    // R1 keeps "expand" as the right word for the operation; only the
+    // imperative is constrained. A question may say both.
+    expect(
+      promptContainsCommandTerm("Find the expansion of $(2+x)^5$ by expanding the bracket term by term."),
+    ).toBe(true);
   });
 });
 
