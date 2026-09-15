@@ -133,9 +133,24 @@ async function browserClient(): Promise<SupabaseClient> {
   }) as unknown as SupabaseClient;
 }
 
-/** Long enough for the background recovery and its refresh call to finish. */
-async function letRecoveryFinish() {
-  await new Promise((resolve) => setTimeout(resolve, 300));
+/**
+ * Wait for the background session recovery to finish.
+ *
+ * This was a flat 300ms sleep, and it was measured before being replaced: the
+ * whole file still passes with that sleep set to 0, so it was never holding
+ * anything together. What it was, was a bet -- on the recovery being quicker
+ * than a number nobody could justify -- charged at 300ms x 5 call sites on
+ * every run of the suite.
+ *
+ * getSession() awaits auth-js's own initializePromise, which IS the thing
+ * being waited for, and is the same signal startGoogleSignIn uses to fix the
+ * bug this file reproduces. So the wait is now the mechanism under test
+ * rather than a clock: it returns as soon as recovery is genuinely done, on
+ * any machine, and it cannot silently start passing for the wrong reason
+ * because a slow runner made the sleep too short.
+ */
+async function letRecoveryFinish(supabase: SupabaseClient) {
+  await supabase.auth.getSession();
 }
 
 describe("starting the Google sign-in with a stale session in the jar", () => {
@@ -147,7 +162,7 @@ describe("starting the Google sign-in with a stale session in the jar", () => {
       provider: "google",
       options: { redirectTo: REDIRECT },
     });
-    await letRecoveryFinish();
+    await letRecoveryFinish(supabase);
 
     expect(redirectedTo).toHaveLength(1);
     // The browser has left for Google, and the verifier the callback will ask
@@ -160,7 +175,7 @@ describe("starting the Google sign-in with a stale session in the jar", () => {
     const supabase = await browserClient();
 
     await startGoogleSignIn(supabase, REDIRECT);
-    await letRecoveryFinish();
+    await letRecoveryFinish(supabase);
 
     expect(redirectedTo).toHaveLength(1);
     expect(jar.get(VERIFIER_KEY)).toBeTruthy();
@@ -171,7 +186,7 @@ describe("starting the Google sign-in with a stale session in the jar", () => {
     const supabase = await browserClient();
 
     await startGoogleSignIn(supabase, REDIRECT);
-    await letRecoveryFinish();
+    await letRecoveryFinish(supabase);
 
     expect(jar.has(STORAGE_KEY)).toBe(false);
   });
@@ -186,7 +201,7 @@ describe("with no stale session", () => {
       provider: "google",
       options: { redirectTo: REDIRECT },
     });
-    await letRecoveryFinish();
+    await letRecoveryFinish(plain);
     expect(jar.get(VERIFIER_KEY)).toBeTruthy();
 
     jar.clear();
@@ -194,7 +209,7 @@ describe("with no stale session", () => {
 
     const waited = await browserClient();
     await startGoogleSignIn(waited, REDIRECT);
-    await letRecoveryFinish();
+    await letRecoveryFinish(waited);
     expect(jar.get(VERIFIER_KEY)).toBeTruthy();
   });
 });
