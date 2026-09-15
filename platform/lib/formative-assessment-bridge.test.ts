@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { buildTestItemsFromSections, computeTotalMarks } from "./formative-assessment-bridge";
+import {
+  buildTestItemsFromSections,
+  computeTotalMarks,
+  syncTestItems,
+} from "./formative-assessment-bridge";
 import type { AssignmentSection } from "./assignments";
 
 function section(overrides: Partial<AssignmentSection> = {}): AssignmentSection {
@@ -150,5 +154,231 @@ describe("computeTotalMarks", () => {
       }),
     ]);
     expect(total).toBe(4);
+  });
+});
+
+// ---- syncTestItems -------------------------------------------------------
+// The guarantee under test is a negative one -- that a row carrying student
+// work is never deleted -- so the double records every write and refuses the
+// delete-by-test_id call the destructive version used to make.
+
+type Row = Record<string, unknown>;
+
+function fakeDb(seed: {
+  test_items: Row[];
+  student_marks?: Row[];
+  ai_grade_results?: Row[];
+  mark_changes?: Row[];
+  student_self_scores?: Row[];
+}) {
+  const tables: Record<string, Row[]> = {
+    ai_grade_results: [],
+    mark_changes: [],
+    student_marks: [],
+    student_self_scores: [],
+    ...seed,
+  };
+  const calls = {
+    upserts: 0,
+    upserted: [] as Row[],
+    onConflict: undefined as string | undefined,
+    deletedIds: [] as string[],
+  };
+
+  function query(table: string) {
+    const filters: Array<(r: Row) => boolean> = [];
+    const self = {
+      select() {
+        return self;
+      },
+      eq(col: string, val: unknown) {
+        filters.push((r) => r[col] === val);
+        return self;
+      },
+      in(col: string, vals: unknown[]) {
+        filters.push((r) => vals.includes(r[col]));
+        return self;
+      },
+      then<T>(resolve: (v: { data: Row[]; error: null }) => T) {
+        const data = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+        return Promise.resolve({ data, error: null }).then(resolve);
+      },
+    };
+    return self;
+  }
+
+  const supabase = {
+    from(table: string) {
+      return {
+        select: () => query(table),
+        upsert(rows: Row[], opts?: { onConflict?: string }) {
+          calls.upserts++;
+          calls.upserted = rows;
+          calls.onConflict = opts?.onConflict;
+          return Promise.resolve({ error: null });
+        },
+        delete() {
+          return {
+            in(col: string, vals: string[]) {
+              calls.deletedIds.push(...vals);
+              tables[table] = (tables[table] ?? []).filter((r) => !vals.includes(r[col] as string));
+              return Promise.resolve({ error: null });
+            },
+            eq() {
+              throw new Error(
+                "delete().eq() -- the whole-test wipe this module must never do again",
+              );
+            },
+          };
+        },
+      };
+    },
+  };
+
+  return { supabase: supabase as unknown as Parameters<typeof syncTestItems>[0], calls, tables };
+}
+
+/** A stored row as the bridge would have written it. */
+function storedItem(id: string, questionNumber: number, partLabel: string, text: string): Row {
+  return {
+    id,
+    test_id: "test-1",
+    question_number: questionNumber,
+    part_label: partLabel,
+    question_text: text,
+    source: "custom",
+  };
+}
+
+const TWO_PARTER: AssignmentSection[] = [
+  section({
+    questions: [
+      {
+        prompt: "Consider $px + q = rx + s$.",
+        marks: 4,
+        subparts: [
+          { prompt: "Make $x$ the subject.", marks: 3, markScheme: "M1M1A1" },
+          { prompt: "State the condition.", marks: 1, markScheme: "A1" },
+        ],
+      },
+    ],
+  }),
+];
+
+describe("syncTestItems", () => {
+  it("updates a marked paper in place, deleting nothing", async () => {
+    const db = fakeDb({
+      test_items: [
+        storedItem("item-a", 1, "a", "Make $x$ the subject."),
+        storedItem("item-b", 1, "b", "State the condition."),
+      ],
+      student_marks: [{ test_item_id: "item-a" }, { test_item_id: "item-b" }],
+    });
+
+    const result = await syncTestItems(db.supabase, "test-1", TWO_PARTER);
+
+    expect(result).toMatchObject({ ok: true, synced: 2, removed: 0 });
+    expect(db.calls.deletedIds).toEqual([]);
+    expect(db.calls.onConflict).toBe("test_id,question_number,part_label");
+  });
+
+  it("refuses when a part that carries marks has gone from the draft", async () => {
+    const db = fakeDb({
+      test_items: [
+        storedItem("item-a", 1, "a", "Make $x$ the subject."),
+        storedItem("item-b", 1, "b", "State the condition."),
+        storedItem("item-c", 2, "", "A question the teacher just deleted."),
+      ],
+      student_marks: [{ test_item_id: "item-c" }],
+    });
+
+    const result = await syncTestItems(db.supabase, "test-1", TWO_PARTER);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("Q2");
+    // Refused means nothing happened at all, not "happened but reported".
+    expect(db.calls.upserts).toBe(0);
+    expect(db.calls.deletedIds).toEqual([]);
+    expect(db.tables.test_items).toHaveLength(3);
+  });
+
+  it("checks every table that cascades, not just student_marks", async () => {
+    for (const table of [
+      "ai_grade_results",
+      "mark_changes",
+      "student_self_scores",
+    ] as const) {
+      const db = fakeDb({
+        test_items: [
+          storedItem("item-a", 1, "a", "Make $x$ the subject."),
+          storedItem("item-b", 1, "b", "State the condition."),
+          storedItem("item-c", 2, "", "Deleted question."),
+        ],
+        [table]: [{ test_item_id: "item-c" }],
+      });
+
+      const result = await syncTestItems(db.supabase, "test-1", TWO_PARTER);
+      expect(result.ok, `${table} did not protect the row`).toBe(false);
+    }
+  });
+
+  it("removes a part that has gone and has nothing against it", async () => {
+    const db = fakeDb({
+      test_items: [
+        storedItem("item-a", 1, "a", "Make $x$ the subject."),
+        storedItem("item-b", 1, "b", "State the condition."),
+        storedItem("item-c", 2, "", "An unmarked question the teacher cut."),
+      ],
+    });
+
+    const result = await syncTestItems(db.supabase, "test-1", TWO_PARTER);
+
+    expect(result).toMatchObject({ ok: true, removed: 1 });
+    expect(db.calls.deletedIds).toEqual(["item-c"]);
+  });
+
+  it("allows a reworded part to keep its marks, and says which", async () => {
+    const db = fakeDb({
+      test_items: [
+        storedItem("item-a", 1, "a", "Rearrange to make x the subject."),
+        storedItem("item-b", 1, "b", "State the condition."),
+      ],
+      ai_grade_results: [{ test_item_id: "item-a" }],
+    });
+
+    const result = await syncTestItems(db.supabase, "test-1", TWO_PARTER);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.rewordedUnderStudentWork).toEqual(["Q1(a)"]);
+    expect(db.calls.deletedIds).toEqual([]);
+  });
+
+  it("says nothing about rewording when the part carries no marks", async () => {
+    const db = fakeDb({
+      test_items: [
+        storedItem("item-a", 1, "a", "Rearrange to make x the subject."),
+        storedItem("item-b", 1, "b", "State the condition."),
+      ],
+    });
+
+    const result = await syncTestItems(db.supabase, "test-1", TWO_PARTER);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.rewordedUnderStudentWork).toEqual([]);
+  });
+
+  it("will not overwrite a question-bank row sitting on a derived key", async () => {
+    const db = fakeDb({
+      test_items: [
+        { ...storedItem("item-a", 1, "a", "An IB part"), source: "ib" },
+        storedItem("item-b", 1, "b", "State the condition."),
+      ],
+    });
+
+    const result = await syncTestItems(db.supabase, "test-1", TWO_PARTER);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toContain("question bank");
+    expect(db.calls.upserts).toBe(0);
   });
 });

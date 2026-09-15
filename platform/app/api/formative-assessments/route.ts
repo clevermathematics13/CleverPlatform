@@ -334,6 +334,12 @@ export async function POST(req: Request) {
       test: saved,
       testItems: "synced",
       synced: syncResult.synced,
+      removed: syncResult.removed,
+      // A part whose wording moved out from under marks already awarded
+      // against it. syncTestItems allows this and names it; the creator says
+      // so, because the teacher is the only one who can tell an intended
+      // correction from a regenerated paper landing on the old part numbers.
+      rewordedUnderStudentWork: syncResult.rewordedUnderStudentWork,
       rubric,
       ...kindEcho,
       ...pdfs,
