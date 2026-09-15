@@ -305,11 +305,24 @@ const MYP_ROLLING_BUNDLE_RULES: string[] = [
   "25. Plant exactly two misconceptions across the packet, each targeting an error this cohort actually makes, and flag both in the Teacher's Companion with the misconception named.",
 ];
 
+/**
+ * Is this grade in the Diploma Programme?
+ *
+ * Exported because the TOK bar (lib/tok-provocations.ts) is spliced in for
+ * exactly these grades and the TOK validator
+ * (lib/tok-provocation-validator.ts) must check exactly the same set. Two
+ * copies of this condition would eventually disagree, and the failure would
+ * be a Grade 10 packet flagged against rules it was never given.
+ */
+export function isDiplomaProgrammeGrade(gradeLevel: string): boolean {
+  return gradeLevel === "Grade 12" || gradeLevel === "Grade 11";
+}
+
 export function buildActivityGeneratorSystemPrompt(
   gradeLevel: string,
   continuityContext?: string,
 ): string {
-  const isIB = gradeLevel === "Grade 12" || gradeLevel === "Grade 11";
+  const isIB = isDiplomaProgrammeGrade(gradeLevel);
   const isMYP = gradeLevel === "Grade 9" || gradeLevel === "Grade 10";
   // A literal double-quote character, built at runtime so the math-syntax rule
   // below can show a quoted-operator example via template-literal interpolation

@@ -16,6 +16,10 @@ import {
   type NumberingIssue,
   validateDraftNumbering,
 } from "@/lib/numbering-validator";
+import {
+  type TokIssue,
+  validateDraftTokProvocations,
+} from "@/lib/tok-provocation-validator";
 import { createClient } from "@/lib/supabase/client";
 // Moved out of this file so every /api/claude caller can read the stream the
 // route actually returns -- see claude-stream.ts.
@@ -86,6 +90,12 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   // duplicates, or go backwards — the "1... 5, 6" symptom of questions
   // silently dropped between the two generation passes.
   const [numberingIssues, setNumberingIssues] = useState<NumberingIssue[]>([]);
+  // TOK-provocation results for the most recent draft, on DP packets only.
+  // Non-empty means a provocation arrived that could have been written
+  // without reading the packet -- the exact bolted-on TOK the bar in
+  // lib/tok-provocations.ts exists to prevent. Empty on Grade 9/10, which
+  // are not held to that bar.
+  const [tokIssues, setTokIssues] = useState<TokIssue[]>([]);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isExpanded, setIsExpanded] = useState(true);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -475,6 +485,12 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       // generation passes — warn before the packet is downloaded.
       setNumberingIssues(validateDraftNumbering(sanitized));
 
+      // And for TOK: the bar tells the model what a provocation has to be,
+      // this reports the part of it a machine can decide. Warnings only, and
+      // deliberately quiet -- see the validator's header on why this one is
+      // biased toward under-flagging.
+      setTokIssues(validateDraftTokProvocations(sanitized, gradeLevel));
+
       setLastDraft(sanitized);
       onDraftGenerated(sanitized);
       setHistory([...nextHistory, { role: "assistant", content: rawText, draftTitle: sanitized.title }]);
@@ -778,6 +794,27 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
                 {numberingIssues.map((issue, i) => (
                   <li key={`${issue.kind}-${i}`} className="text-amber-200/90">
                     <span className="font-medium">{issue.location}:</span>{" "}
+                    <span className="text-amber-300/70">{issue.detail}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {tokIssues.length > 0 && (
+            <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">
+              <p className="font-semibold">
+                ⚠ {tokIssues.length} TOK issue{tokIssues.length === 1 ? "" : "s"} in this draft
+              </p>
+              <p className="mt-0.5 text-amber-300/80">
+                A provocation that names nothing from this packet could have been written without reading it.
+                Ask for a rewrite citing the rule below — the generator keeps the draft and revises it.
+              </p>
+              <ul className="mt-1 space-y-0.5">
+                {tokIssues.map((issue, i) => (
+                  <li key={`${issue.kind}-${i}`} className="text-amber-200/90">
+                    <span className="font-medium">{issue.location}</span>{" "}
+                    <span className="text-amber-300/60">({issue.rule})</span>{" "}
                     <span className="text-amber-300/70">{issue.detail}</span>
                   </li>
                 ))}
