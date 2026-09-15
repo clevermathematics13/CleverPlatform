@@ -28,6 +28,13 @@
  *     const data = await readClaudeStream(response);
  *
  * and everything downstream of that line is unchanged.
+ *
+ * 2026-09-15: the reconnect machinery below only ever ran when a connection
+ * ENDED. A connection that BROKE rejected instead, and the rejection escaped
+ * every layer of it -- so a teacher lost a finished 33,815-character packet to
+ * a two-second network blip while the run sat on the server marked succeeded.
+ * The reads and the reconnect fetch are guarded now; see readOneStream's loop
+ * for the evidence and for why the guards are as narrow as they are.
  * -----------------------------------------------------------------------------
  */
 
@@ -42,10 +49,13 @@ type StreamOutcome =
   | { status: "disconnected" };
 
 /**
- * Reads one SSE response until it signals completion/error, or the
- * connection ends without either. Increments chunkCountRef for every frame
- * successfully parsed, so a caller can resume from exactly that position if
- * the connection dropped mid-generation.
+ * Reads one SSE response until it signals completion/error, or the connection
+ * ends OR breaks without either -- both of which report as "disconnected", so
+ * the caller's single recovery path covers them equally. Increments
+ * chunkCountRef for every frame successfully parsed, so a caller can resume
+ * from exactly that position if the connection dropped mid-generation. A frame
+ * left half-received when the socket died is simply dropped: it was never
+ * counted, so the resume asks for it again.
  *
  * Frames look like:
  *   event: progress\ndata: {"phase":"resolving-attachments"}\n\n
@@ -64,15 +74,53 @@ async function readOneStream(
   const reader = res.body?.getReader();
   if (!reader) {
     // No streaming body support in this environment — fall back to a plain
-    // JSON parse rather than hanging forever.
-    return { status: "done", message: (await res.json()) as ClaudeResponse };
+    // JSON parse rather than hanging forever. If even that fails, the body was
+    // not a whole JSON document either: that is a dead connection by another
+    // name, so hand it to the caller's recovery path instead of throwing.
+    try {
+      return { status: "done", message: (await res.json()) as ClaudeResponse };
+    } catch {
+      return { status: "disconnected" };
+    }
   }
 
   const decoder = new TextDecoder();
   let buffer = "";
 
   while (true) {
-    const { done, value } = await reader.read();
+    // A dropped connection reaches this reader in one of TWO shapes, and until
+    // 2026-09-15 only one of them was handled:
+    //
+    //   - The socket ENDS. read() resolves with done:true, the loop breaks,
+    //     and the caller reconnects and polls status. That path worked.
+    //   - The socket BREAKS. read() REJECTS. In Chromium the rejection is
+    //     literally `TypeError: network error` (verified directly against a
+    //     killed socket -- as distinct from `Failed to fetch`, which is what a
+    //     request that never left the browser looks like). That rejection used
+    //     to escape this function, escape readClaudeStream's loop, and land in
+    //     the caller's catch, which showed the teacher the raw string
+    //     "network error" and threw the generation away.
+    //
+    // Production run a6d6801b (2026-09-15) is what that cost. The connection
+    // dropped three times on one packet: the first two ENDED and recovered
+    // silently via resume + status poll, the third BROKE -- and the packet the
+    // workflow went on to finish 90 seconds later (33,815 chars,
+    // status=succeeded, error=NULL) was discarded by a browser that already
+    // knew how to go and fetch it. Same network event, opposite outcomes,
+    // decided by nothing but which shape the browser happened to use.
+    //
+    // Both shapes now mean the same thing here: no live stream, ask the
+    // server. The catch is wrapped around the read and NOTHING else -- frame
+    // parsing, JSON.parse and onProgress stay outside it -- so a genuine bug
+    // in this file still surfaces as a bug instead of becoming an endless,
+    // silent reconnect loop.
+    let chunk: Awaited<ReturnType<typeof reader.read>>;
+    try {
+      chunk = await reader.read();
+    } catch {
+      return { status: "disconnected" };
+    }
+    const { done, value } = chunk;
     if (value) buffer += decoder.decode(value, { stream: true });
 
     let sepIndex: number;
@@ -170,7 +218,16 @@ export async function readClaudeStream(
   const generationId = initialRes.headers.get("x-generation-id");
   const chunkCountRef = { current: 0 };
   const startedAt = Date.now();
-  let res = initialRes;
+  // Null means "no live stream to read right now", which is the state between
+  // a dropped connection and a successful reconnect. It has to be a distinct
+  // state rather than "still holding the dead Response": readOneStream takes a
+  // reader off res.body and never releases the lock, so reading the same
+  // Response twice throws `ReadableStream is locked to a reader`. The old
+  // `continue` after a failed reconnect did exactly that -- it looped straight
+  // back to readOneStream(res) with the spent response -- and turned a
+  // recoverable 404 from the resume route into a second raw browser error in
+  // the teacher's face. Spent responses are dropped here instead.
+  let res: Response | null = initialRes;
   let reconnectIndex = 0;
   let lastPolledAt = 0;
 
@@ -195,10 +252,18 @@ export async function readClaudeStream(
   }
 
   while (true) {
-    const outcome = await readOneStream(res, onProgress, chunkCountRef);
+    if (res) {
+      const live = res;
+      // Spent the moment it is read: whether it ends, breaks or completes, its
+      // body is locked from here on and must never be handed back to
+      // readOneStream. Cleared BEFORE the await so every exit path below --
+      // including a `continue` from a failed reconnect -- leaves it cleared.
+      res = null;
+      const outcome = await readOneStream(live, onProgress, chunkCountRef);
 
-    if (outcome.status === "done") return outcome.message;
-    if (outcome.status === "error") throw new Error(outcome.message);
+      if (outcome.status === "done") return outcome.message;
+      if (outcome.status === "error") throw new Error(outcome.message);
+    }
 
     // Disconnected without a completion signal. Before deciding anything,
     // ask the server what actually happened - the run may well have
@@ -218,6 +283,13 @@ export async function readClaudeStream(
       );
     }
 
+    // Say we are between connections. checkStatus() above has just pushed the
+    // run's server-side phase, so without this the UI would sit on "Thinking
+    // through the source material..." for the whole backoff and a recovering
+    // generation would be indistinguishable from a frozen one. The resumed
+    // stream's own frames overwrite this within a frame or two.
+    onProgress({ phase: "reconnecting" });
+
     const backoff = RECONNECT_BACKOFF_MS[Math.min(reconnectIndex, RECONNECT_BACKOFF_MS.length - 1)];
     reconnectIndex++;
     await new Promise((r) => setTimeout(r, backoff));
@@ -231,7 +303,19 @@ export async function readClaudeStream(
     const resumeUrl =
       `/api/claude/resume/${runId}?startIndex=${chunkCountRef.current}` +
       (generationId ? `&generationId=${generationId}` : "");
-    const resumeRes = await fetch(resumeUrl);
+    // Same lesson as the read loop in readOneStream: a reconnect that cannot
+    // be made AT ALL (Chromium's `Failed to fetch` -- DNS gone, wifi dropped,
+    // proxy refusing) must not be more fatal than one that comes back 404.
+    // Both mean the same thing, "no live stream right now", and neither of
+    // them is what decides this run's fate: the status poll is.
+    let resumeRes: Response;
+    try {
+      resumeRes = await fetch(resumeUrl);
+    } catch {
+      const t = await checkStatus();
+      if (t) return t;
+      continue;
+    }
 
     if (!resumeRes.ok) {
       // A failed reconnect is not fatal while the run itself may be healthy:

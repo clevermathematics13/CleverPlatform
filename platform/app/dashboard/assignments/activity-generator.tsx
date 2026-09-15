@@ -563,17 +563,19 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
   const generatingLabel = !isGenerating
     ? null
-    : generationProgress?.phase === "resolving-attachments"
-      ? "Reading attachments…"
-      : generationProgress?.phase === "first-half:thinking"
-        ? "Thinking through the source material (part 1 of 2)…"
-        : generationProgress?.phase === "first-half:writing"
-          ? `Writing the first half… ${generationProgress.charCount?.toLocaleString() ?? ""} characters so far`
-          : generationProgress?.phase === "second-half:thinking"
-            ? "Thinking through the source material (part 2 of 2)…"
-            : generationProgress?.phase === "second-half:writing"
-              ? `Finishing the second half… ${generationProgress.charCount?.toLocaleString() ?? ""} characters so far`
-              : "Starting…";
+    : generationProgress?.phase === "reconnecting"
+      ? "Connection dropped — reconnecting, your packet is still generating…"
+      : generationProgress?.phase === "resolving-attachments"
+        ? "Reading attachments…"
+        : generationProgress?.phase === "first-half:thinking"
+          ? "Thinking through the source material (part 1 of 2)…"
+          : generationProgress?.phase === "first-half:writing"
+            ? `Writing the first half… ${generationProgress.charCount?.toLocaleString() ?? ""} characters so far`
+            : generationProgress?.phase === "second-half:thinking"
+              ? "Thinking through the source material (part 2 of 2)…"
+              : generationProgress?.phase === "second-half:writing"
+                ? `Finishing the second half… ${generationProgress.charCount?.toLocaleString() ?? ""} characters so far`
+                : "Starting…";
 
   return (
     <div className="rounded-xl border border-da-border bg-da-bg/40">
