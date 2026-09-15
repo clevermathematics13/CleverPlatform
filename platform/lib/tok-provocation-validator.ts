@@ -273,7 +273,7 @@ function collectIssues(draft: AssignmentDraft): TokIssue[] {
       rule: "T1/T5",
       location,
       detail:
-        "Names nothing from this packet -- no Part or question, no mathematical object, and no vocabulary this packet uses. It would fit any other packet unchanged.",
+        "Names nothing from this packet — no Part or question, no mathematical object, and no vocabulary this packet uses. It would fit any other packet unchanged.",
     });
   });
 
