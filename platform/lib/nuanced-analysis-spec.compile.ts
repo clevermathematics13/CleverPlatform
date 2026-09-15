@@ -18,6 +18,7 @@
  */
 
 import { mathematicalRegisterBlock } from "./mathematical-register";
+import { tokProvocationBlock } from "./tok-provocations";
 import type { NuancedAnalysisSpec } from "./nuanced-analysis-spec.schema";
 
 // Newline char built at runtime so this source file stays backslash-free
@@ -172,8 +173,7 @@ Framing text to use: "${s.plantedErrors.framingText}"
 TOK & INTERNATIONAL-MINDEDNESS
 ════════════════════════════════════════════════════════════════════════
 - Include EXACTLY ${s.tok.countExactly} TOK provocations, placed at the top and returned to in the Reflection. Each must be answerable using a SPECIFIC result from this packet (no abstract-only TOK).
-- Useful TOK angles:
-${bullets(s.tok.angles)}
+${tokProvocationBlock(s.tok.angles)}
 - International-mindedness: ${s.internationalMindedness.guidance}
 
 ════════════════════════════════════════════════════════════════════════

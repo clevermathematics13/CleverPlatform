@@ -94,6 +94,14 @@ TOK connections should not feel bolted on. They should emerge naturally from the
 
 Useful TOK angles include how a model shapes what we notice, how precision creates the appearance of certainty, how visual representations can persuade or mislead, and how assumptions affect conclusions.
 
+For DP packets this is no longer only a principle. The bar the generator is
+actually held to lives in `platform/lib/tok-provocations.ts` as numbered rules
+T1-T8, and both DP creators splice it in: the dashboard Nuanced Analysis tab
+via `buildActivityGeneratorSystemPrompt`, `/admin/create` via the spec
+compiler. Editing this section changes nothing about what gets generated --
+edit the module. Pre-DP (Grade 9/10) packets are deliberately outside it,
+since those students are not in TOK.
+
 ## Answer space design
 
 Answer boxes should be purposeful. Different response types need different spaces:
