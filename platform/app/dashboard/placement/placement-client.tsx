@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import { createClient } from "@/lib/supabase/client";
+import { resegmentBlockedReason } from "@/lib/placement-resegment";
 
 type PlacementStatus =
   | "uploaded"
@@ -460,7 +461,14 @@ function PlacementDetail({
     );
   }
 
-  const canSegment = test.status === "uploaded" || test.status === "error";
+  // Segmenting rebuilds the questions, and the marks hang off the rows it
+  // would replace -- so once anything is marked the API refuses. Withheld here
+  // rather than offered and rejected, using the API's own rule and wording so
+  // the two cannot drift.
+  const markedQuestions = questions.filter((q) => q.mark).length;
+  const resegmentBlocked = resegmentBlockedReason(markedQuestions);
+  const canSegment =
+    (test.status === "uploaded" || test.status === "error") && resegmentBlocked === null;
   const canGrade = test.status === "segmented" || (test.status === "error" && questions.length > 0);
   const canRecommend =
     test.status === "graded" || (test.status === "error" && questions.some((q) => q.mark));
@@ -641,6 +649,9 @@ function PlacementDetail({
                 ? "Retry segmentation"
                 : "Segment questions"}
             </button>
+          )}
+          {resegmentBlocked && (test.status === "uploaded" || test.status === "error") && (
+            <p className="w-full text-xs text-da-muted">{resegmentBlocked}</p>
           )}
           {canGrade && (
             <button
