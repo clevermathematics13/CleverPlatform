@@ -148,14 +148,27 @@ const ALIAS_MAP = new Map(MATH_ALIASES.map(([k, v]) => [k, v] as const));
  * delimited is its own author's, and the prelude's normalize-math handles it.
  */
 export function toTypstMath(expr: string): string {
-  return expr.replace(/[A-Za-z]+/g, (run) => {
-    if (run.length === 1) return run;
-    const lower = run.toLowerCase();
-    const alias = ALIAS_MAP.get(lower);
-    if (alias) return alias;
-    if (IDENT_SET.has(lower)) return run;
-    return run.split("").join(" ");
-  });
+  // Three things must survive untouched, and each one is a real string the
+  // generator emits:
+  //   "Var"        a quoted operator (11b requires the quotes) -- splitting
+  //                inside it yields "V a r"
+  //   lt.eq        a dotted Typst symbol name; "lt" and "eq" are not
+  //                identifiers on their own and would each be split
+  //   sin, alpha   ordinary identifiers
+  // Everything else that is 2+ letters is a juxtaposed product.
+  return expr.replace(
+    /"[^"]*"|[A-Za-z]+(?:\.[A-Za-z]+)+|[A-Za-z]+/g,
+    (run) => {
+      if (run.startsWith('"')) return run;   // quoted operator
+      if (run.includes(".")) return run;     // dotted symbol name
+      if (run.length === 1) return run;
+      const lower = run.toLowerCase();
+      const alias = ALIAS_MAP.get(lower);
+      if (alias) return alias;
+      if (IDENT_SET.has(lower)) return run;
+      return run.split("").join(" ");
+    },
+  );
 }
 
 type TokenKind =
@@ -243,15 +256,29 @@ function classify(token: string): TokenKind {
 export function typesetMath(text: string): string {
   if (typeof text !== "string" || text.length === 0) return text;
 
-  // Already-delimited segments are the generator doing its job. Split on "$"
-  // and process only the even (outside-math) pieces. An odd number of "$"
-  // means the delimiters are unbalanced -- most often a currency amount, per
-  // the 11d rule -- so the safe move is to touch nothing at all.
+  // An odd number of "$" means the delimiters are unbalanced -- most often a
+  // currency amount, per the 11d rule -- so the safe move is to touch nothing.
+  //
+  // Otherwise: typeset the pieces OUTSIDE $...$, and normalise the pieces
+  // INSIDE it. The inside pass is not belt-and-braces, it is the second bug
+  // this module was built for. The B.4 regeneration of 16 Sep 2026 emitted
+  // correct-looking delimiters and still printed 84 literal dollar signs,
+  // because it wrote juxtaposed products inside them -- "$a^2+2ab+b^2$",
+  // "$(ax+b)(cx+d)$", "$A x^2+Bx+C$". Typst reads "ab", "ax", "cx" and "Bx"
+  // as unknown variables, so rich()'s looks-like-math() rejects the segment
+  // and falls back to printing the WHOLE string literally. One bad segment
+  // poisons an entire prompt, which is why a single "2ab" put dollar signs on
+  // a printed international-mindedness paragraph.
+  //
+  // Running toTypstMath over the generator's own spans is a no-op on any
+  // segment that was already valid -- every run in it is a single letter, a
+  // known identifier, a dotted symbol or a quoted operator -- and a repair on
+  // the ones that were not.
   if (text.includes("$")) {
     const parts = text.split("$");
     if (parts.length % 2 === 0) return text;
     return parts
-      .map((part, i) => (i % 2 === 0 ? typesetSegment(part) : part))
+      .map((part, i) => (i % 2 === 0 ? typesetSegment(part) : toTypstMath(part)))
       .reduce((acc, part, i) => (i === 0 ? part : `${acc}$${part}`), "");
   }
 
