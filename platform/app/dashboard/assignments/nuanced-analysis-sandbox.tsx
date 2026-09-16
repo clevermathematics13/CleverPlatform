@@ -6,7 +6,7 @@
  * Full sandbox for creating, editing, and exporting Nuanced Analysis packets.
  *
  * Features:
- *   - Grade + course + section selection (was hardcoded to Grade 12)
+ *   - Course + section selection (the grade is derived from the course)
  *   - Continuity-aware generation: prior packets in the selected course are
  *     loaded and prepended to the generator's system prompt
  *   - AI-powered activity generator (ActivityGeneratorPanel)
@@ -42,16 +42,13 @@ import {
   type VocabularyCandidate,
 } from "@/lib/na-continuity";
 import { createClient } from "@/lib/supabase/client";
+import { buildNaCourseOptions, type GradeLevel } from "@/lib/na-course-options";
 import { NuancedAnalysisPreview } from "./nuanced-analysis-preview";
 import { ActivityGeneratorPanel } from "./activity-generator";
 import { EditTemplateModal } from "./edit-template-modal";
 import { ContinuityDigestModal } from "./continuity-digest-modal";
 import { LoadDraftModal } from "./load-draft-modal";
 import { DocumentOrchestratorService } from "@/lib/document-orchestrator-nuanced";
-
-type GradeLevel = "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
-
-const GRADE_LEVELS: GradeLevel[] = ["Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 
 type CourseOption = { id: string; name: string };
 
@@ -230,7 +227,6 @@ export function NuancedAnalysisSandbox() {
   const [loadDraftModalOpen, setLoadDraftModalOpen] = useState(false);
 
   // ---- Course / grade / section targeting ----
-  const [gradeLevel, setGradeLevel] = useState<GradeLevel>("Grade 12");
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [courseId, setCourseId] = useState<string>("");
   const [sectionCode, setSectionCode] = useState<string>("");
@@ -265,40 +261,29 @@ export function NuancedAnalysisSandbox() {
     };
   }, []);
 
-  // Grade 9 is taught as two curriculum TRACKS, not four separate class
-  // rosters: "Grade 9 Extended" (9A, 9C, 9G) and "Grade 9 Standard" (9D).
-  // Nuanced Analysis packets are shared across every class on a track, so
-  // continuity and saving must target one of two virtual courses created for
-  // exactly this purpose (see migration
-  // add_grade9_extended_standard_virtual_courses) — never an individual
-  // class's roster course. Those roster courses (9A, 9C, 9D, 9G) remain the
-  // FK target for students/gradebook/tests/Google Classroom sync and are
-  // deliberately excluded from this picker so a teacher can never
-  // accidentally save a Grade 9 packet's continuity against a single class
-  // instead of its whole track.
-  const GRADE_9_TRACK_COURSE_NAMES = useMemo(() => ["Grade 9 Extended", "Grade 9 Standard"], []);
+  // The three things a Nuanced Analysis can be written FOR: the DP course,
+  // and the two Grade 9 TRACKS. Which courses qualify, what each is called,
+  // and which grade each implies all live in lib/na-course-options.ts, where
+  // they are unit-tested against the teacher's real course list -- this used
+  // to be inline useMemo logic and shipped two bugs that no test could reach.
+  //
+  // There used to be a Grade selector beside this picker. The grade is not
+  // something to be picked: it follows from the course, and asking for both
+  // invited a mismatch between the packet's rules and the course its
+  // continuity was saved against.
+  //
+  // `now` is fixed for the lifetime of the panel so the option list keeps its
+  // identity across renders and no mid-render August rollover can make two
+  // renders disagree about the grade a cohort is in.
+  const now = useMemo(() => new Date(), []);
+  const courseOptions = useMemo(() => buildNaCourseOptions(courses, now), [courses, now]);
 
-  const gradeFilteredCourses = useMemo(() => {
-    if (gradeLevel === "Grade 9") {
-      return courses.filter((c) => GRADE_9_TRACK_COURSE_NAMES.includes(c.name));
-    }
-    return courses.filter((c) => !GRADE_9_TRACK_COURSE_NAMES.includes(c.name));
-  }, [courses, gradeLevel, GRADE_9_TRACK_COURSE_NAMES]);
-
-  // If the grade changes and the currently-selected course no longer belongs
-  // to that grade's offered list, clear the selection rather than silently
-  // keeping a stale course/section pairing (e.g. switching from Grade 9 to
-  // Grade 12 while "Grade 9 Extended" was still selected).
-  useEffect(() => {
-    setCourseId((current) => {
-      if (current && !gradeFilteredCourses.some((c) => c.id === current)) {
-        setSectionCode("");
-        return "";
-      }
-      return current;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gradeLevel]);
+  // The grade is DERIVED, never chosen. It still drives everything it always
+  // did -- which rules the generator gets, whether the TOK bar is spliced in,
+  // and which section-code format is required -- but it can no longer
+  // disagree with the course it is saved against.
+  const gradeLevel: GradeLevel =
+    courseOptions.find((o) => o.id === courseId)?.gradeLevel ?? "Grade 12";
 
   // Continuity for the selected course. Refetched when the course changes so
   // the generator never runs against a stale picture of what has been taught.
@@ -491,22 +476,7 @@ export function NuancedAnalysisSandbox() {
       {/* ---- Targeting bar ---- */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/40 px-4 py-2.5">
         <label className="flex items-center gap-1.5 text-xs text-da-muted">
-          Grade
-          <select
-            value={gradeLevel}
-            onChange={(e) => setGradeLevel(e.target.value as GradeLevel)}
-            className="rounded border border-da-border/50 bg-da-bg/30 px-2 py-1 text-xs text-da-text focus:outline-none"
-          >
-            {GRADE_LEVELS.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex items-center gap-1.5 text-xs text-da-muted">
-          {gradeLevel === "Grade 9" ? "Track" : "Course"}
+          Course
           <select
             value={courseId}
             onChange={(e) => {
@@ -516,9 +486,9 @@ export function NuancedAnalysisSandbox() {
             className="rounded border border-da-border/50 bg-da-bg/30 px-2 py-1 text-xs text-da-text focus:outline-none"
           >
             <option value="">— none (no continuity) —</option>
-            {gradeFilteredCourses.map((c) => (
+            {courseOptions.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.label}
               </option>
             ))}
           </select>
