@@ -359,3 +359,38 @@ describe("toTypstMath leaves valid generator math untouched", () => {
     expect(typesetMath(once)).toBe(once);
   });
 });
+
+describe("scope-and-sequence references stay out of the mathematics", () => {
+  // Shipped defect: the B.4 prerequisites line printed "b^2(A.3)" with the A
+  // set in math italic, because a lone capital letter is NEUTRAL and the
+  // equation beside it swallowed the citation. This course's packets cite each
+  // other constantly, so the case is common, not exotic.
+  it("does not absorb a trailing (A.3) into the span before it", () => {
+    const out = typesetMath("used to prove (a+b)(a+b) = a^2+2ab+b^2 (A.3); the vocabulary term");
+    expect(spans(out)).toEqual(["(a+b)(a+b) = a^2+2a b+b^2"]);
+    expect(out).toContain(" (A.3); the vocabulary term");
+  });
+
+  it("does not let a leading A.3: start a span", () => {
+    const out = typesetMath("the perfect square identity from A.3: (a+b)(a+b) = a^2+2ab+b^2");
+    expect(spans(out)).toEqual(["(a+b)(a+b) = a^2+2a b+b^2"]);
+    expect(out).toContain("from A.3: ");
+  });
+
+  it.each(["A.3", "(A.3)", "B.4", "(B.4)", "A.3.", "A.3;", "A.3:", "D.12"])(
+    "treats %s as prose",
+    (ref) => {
+      expect(typesetMath(`see ${ref} for the proof of x^2+8x+16`)).toContain(`see ${ref} for`);
+    },
+  );
+
+  it("still typesets the equation that follows a reference", () => {
+    const out = typesetMath("proved in A.3. Using grouping, show that x^2+8x+16 factors.");
+    expect(spans(out)).toEqual(["x^2+8x+16"]);
+    expect(out).toContain("proved in A.3.");
+  });
+
+  it("leaves a CCSS code alone, which is the same shape with more letters", () => {
+    expect(typesetMath("HSA.SSE.A.2 applies to x^2+5x+6")).toContain("HSA.SSE.A.2 applies to");
+  });
+});
