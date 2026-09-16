@@ -33,6 +33,21 @@
 
 import type { ClaudeResponse } from "@/lib/assignments";
 
+/**
+ * The run outlived the page's patience, not the other way round.
+ *
+ * Thrown only when the status route has been READ successfully and still says
+ * running. Callers should treat it as "come back later", never as a failure:
+ * the packet is still coming.
+ */
+export class GenerationStillRunningError extends Error {
+  readonly stillRunning = true;
+  constructor(message: string) {
+    super(message);
+    this.name = "GenerationStillRunningError";
+  }
+}
+
 /** What the generator is doing right now, for callers that show progress. */
 export type GenerationProgress = { phase: string; charCount?: number };
 
@@ -71,39 +86,89 @@ async function readOneStream(
   const decoder = new TextDecoder();
   let buffer = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (value) buffer += decoder.decode(value, { stream: true });
+  // EVERY exit from this loop is a RETURNED value, never a throw. That is the
+  // single most load-bearing line in this file.
+  //
+  // Chromium rejects a pending reader.read() with TypeError("network error")
+  // -- that exact lowercase string -- the moment the response body is cut
+  // mid-stream: a closing lid, a dropped wifi connection, a VPN flap, an RST.
+  // It used to propagate straight out of here, past the status poll below,
+  // past the reconnect, past the deadline, and out of readClaudeStream into
+  // the caller's catch, where the Activity Generator printed it in a red box.
+  //
+  // That is backwards in the worst way. Every one of those recovery
+  // mechanisms is reachable ONLY when this function RETURNS -- they consume a
+  // StreamOutcome, and a throw is not one. So the whole "poll ground truth so
+  // a finished packet is never lost" design, which the block comment below
+  // describes at length, was bypassed in exactly the case it exists for: the
+  // socket dying abruptly rather than politely. The run itself was usually
+  // alive and went on to write its packet to nuanced_generation_runs, which
+  // nobody ever read.
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: true });
 
-    let sepIndex: number;
-    while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
-      const rawFrame = buffer.slice(0, sepIndex);
-      buffer = buffer.slice(sepIndex + 2);
-      const eventMatch = rawFrame.match(/^event: (.+)$/m);
-      const dataMatch = rawFrame.match(/^data: (.+)$/m);
-      if (!eventMatch || !dataMatch) continue;
+      let sepIndex: number;
+      while ((sepIndex = buffer.indexOf("\n\n")) !== -1) {
+        const rawFrame = buffer.slice(0, sepIndex);
+        buffer = buffer.slice(sepIndex + 2);
+        const eventMatch = rawFrame.match(/^event: (.+)$/m);
+        const dataMatch = rawFrame.match(/^data: (.+)$/m);
+        if (!eventMatch || !dataMatch) continue;
 
-      let data: unknown;
-      try {
-        data = JSON.parse(dataMatch[1]);
-      } catch {
-        continue;
+        let data: unknown;
+        try {
+          data = JSON.parse(dataMatch[1]);
+        } catch {
+          continue;
+        }
+        chunkCountRef.current++;
+
+        if (eventMatch[1] === "progress") {
+          onProgress(data as GenerationProgress);
+        } else if (eventMatch[1] === "done") {
+          await cancelQuietly(reader);
+          return { status: "done", message: (data as { message: ClaudeResponse }).message };
+        } else if (eventMatch[1] === "error") {
+          await cancelQuietly(reader);
+          // NOT terminal on its own. lib/workflow-sse.ts re-badges ANY failure
+          // of its own server-side reader as an error frame, so this can be an
+          // infrastructure string about a run that is still going. The caller
+          // checks the database before believing it.
+          return { status: "error", message: (data as { message?: string }).message ?? "Claude API error" };
+        }
       }
-      chunkCountRef.current++;
 
-      if (eventMatch[1] === "progress") {
-        onProgress(data as GenerationProgress);
-      } else if (eventMatch[1] === "done") {
-        return { status: "done", message: (data as { message: ClaudeResponse }).message };
-      } else if (eventMatch[1] === "error") {
-        return { status: "error", message: (data as { message?: string }).message ?? "Claude API error" };
-      }
+      if (done) break;
     }
-
-    if (done) break;
+  } catch {
+    // Transport died. Not a generation failure, and not this function's to
+    // judge -- hand the caller a disconnect and let the status poll decide.
+    return { status: "disconnected" };
+  } finally {
+    // releaseLock() alone would leave the body neither drained nor cancelled,
+    // and the old code never released at all: a failed resume re-entered this
+    // function with the same Response, and getReader() threw on the still
+    // locked stream one iteration later.
+    try {
+      reader.releaseLock();
+    } catch {
+      // Already released by cancelQuietly on the done/error paths.
+    }
   }
 
+  await cancelQuietly(reader);
   return { status: "disconnected" };
+}
+
+/** Cancel a reader without letting the cancellation itself become an error. */
+async function cancelQuietly(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  try {
+    await reader.cancel();
+  } catch {
+    // The stream is already gone, which is the outcome we wanted anyway.
+  }
 }
 
 // Reconnecting is now a best-effort way to keep live progress flowing, NOT
@@ -128,7 +193,7 @@ const STATUS_POLL_INTERVAL_MS = 4000;
 const RECONNECT_BACKOFF_MS = [1000, 2000, 4000, 8000, 8000];
 
 type RunStatus = {
-  status: "running" | "succeeded" | "failed" | "unknown";
+  status: "running" | "succeeded" | "failed" | "unknown" | "unreachable";
   phase?: string | null;
   passCount?: number | null;
   charCount?: number | null;
@@ -136,13 +201,22 @@ type RunStatus = {
   error?: string | null;
 };
 
+/**
+ * Ground truth, or an honest admission that we could not reach it.
+ *
+ * The distinction matters more than it looks. This used to return null for a
+ * 500, a 401 and a network failure alike, which is the same value it returns
+ * for "no such run" -- so an unreachable status route was indistinguishable
+ * from a run that never existed. Anything deciding to give up on a packet has
+ * to be able to tell those apart.
+ */
 async function fetchRunStatus(generationId: string): Promise<RunStatus | null> {
   try {
     const res = await fetch(`/api/claude/status/${generationId}`);
-    if (!res.ok) return null;
+    if (!res.ok) return { status: "unreachable" };
     return (await res.json()) as RunStatus;
   } catch {
-    return null;
+    return { status: "unreachable" };
   }
 }
 
@@ -173,6 +247,10 @@ export async function readClaudeStream(
   let res = initialRes;
   let reconnectIndex = 0;
   let lastPolledAt = 0;
+  // Successful reads of the status route. The deadline below refuses to fire
+  // until at least one of these has happened, so an offline laptop cannot be
+  // mistaken for a stalled generation.
+  let provenStatusReads = 0;
 
   // Checks the server's view of the run. Returns a terminal result if there
   // is one, otherwise null (still running / not yet known).
@@ -182,6 +260,11 @@ export async function readClaudeStream(
     const status = await fetchRunStatus(generationId);
     if (!status) return null;
 
+    // An unreachable status route says nothing about the run. Do not let it
+    // advance the deadline's evidence count, and never treat it as failure.
+    if (status.status === "unreachable") return null;
+
+    provenStatusReads++;
     if (status.status === "succeeded" && status.text) {
       return asClaudeResponse(status.text, "end_turn");
     }
@@ -198,7 +281,23 @@ export async function readClaudeStream(
     const outcome = await readOneStream(res, onProgress, chunkCountRef);
 
     if (outcome.status === "done") return outcome.message;
-    if (outcome.status === "error") throw new Error(outcome.message);
+
+    if (outcome.status === "error") {
+      // An error frame is a CLAIM, and the database is the verdict.
+      // lib/workflow-sse.ts synthesizes one of these from any failure of its
+      // own server-side reader, so the message can be raw infrastructure text
+      // about a run that is still going -- or has already succeeded.
+      const terminalAfterError = await checkStatus();
+      if (terminalAfterError) return terminalAfterError;
+      if (provenStatusReads === 0) {
+        // Never got a readable row, so this frame is the only evidence there
+        // is. Believe it.
+        throw new Error(outcome.message);
+      }
+      // Otherwise the row was readable and did not say failed: the run is
+      // alive and the frame was about the socket. Fall through to the
+      // reconnect path below, which is what a disconnect does anyway.
+    }
 
     // Disconnected without a completion signal. Before deciding anything,
     // ask the server what actually happened - the run may well have
@@ -206,16 +305,28 @@ export async function readClaudeStream(
     const terminal = await checkStatus();
     if (terminal) return terminal;
 
-    if (Date.now() - startedAt > GENERATION_DEADLINE_MS) {
-      throw new Error(
-        "Generation has been running for over 25 minutes without completing. The run may still finish on the server - reopen this page shortly and it can be recovered. If it keeps happening, reduce the scope of the request.",
+    // The deadline is about a stalled RUN, so it may only fire on evidence
+    // that the run is stalled. Date.now() counts time the laptop spent
+    // suspended, and a wall clock alone cannot tell "generating for 25
+    // minutes" from "shut for 25 minutes" -- the second is the case the
+    // teacher was promised would work.
+    if (Date.now() - startedAt > GENERATION_DEADLINE_MS && provenStatusReads > 0) {
+      throw new GenerationStillRunningError(
+        `This generation has been going for over ${Math.round(GENERATION_DEADLINE_MS / 60000)} minutes. It is still running on the server and will finish without this page open - reopen the tab later to collect it.`,
       );
     }
 
     if (!runId) {
-      throw new Error(
-        "The connection closed before generation finished, and no resumable run ID was available to reconnect.",
-      );
+      // Without a run id there is nothing to reconnect to, but a generation id
+      // is still pollable -- and polling is the durable path. Only give up
+      // when there is neither.
+      if (!generationId) {
+        throw new Error(
+          "The connection closed before generation finished, and no resumable run ID was available to reconnect.",
+        );
+      }
+      await new Promise((r) => setTimeout(r, STATUS_POLL_INTERVAL_MS));
+      continue;
     }
 
     const backoff = RECONNECT_BACKOFF_MS[Math.min(reconnectIndex, RECONNECT_BACKOFF_MS.length - 1)];
@@ -231,9 +342,17 @@ export async function readClaudeStream(
     const resumeUrl =
       `/api/claude/resume/${runId}?startIndex=${chunkCountRef.current}` +
       (generationId ? `&generationId=${generationId}` : "");
-    const resumeRes = await fetch(resumeUrl);
+    // Offline, this rejects with TypeError("Failed to fetch") -- which used to
+    // escape readClaudeStream entirely, never reaching the !ok handling
+    // written directly below it for exactly this situation.
+    let resumeRes: Response | null = null;
+    try {
+      resumeRes = await fetch(resumeUrl);
+    } catch {
+      resumeRes = null;
+    }
 
-    if (!resumeRes.ok) {
+    if (!resumeRes || !resumeRes.ok) {
       // A failed reconnect is not fatal while the run itself may be healthy:
       // fall through, let the deadline and the status poll decide.
       const t = await checkStatus();
