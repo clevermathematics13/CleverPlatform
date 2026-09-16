@@ -6,7 +6,7 @@
  * Full sandbox for creating, editing, and exporting Nuanced Analysis packets.
  *
  * Features:
- *   - Grade + course + section selection (was hardcoded to Grade 12)
+ *   - Course + section selection (the grade is derived from the course)
  *   - Continuity-aware generation: prior packets in the selected course are
  *     loaded and prepended to the generator's system prompt
  *   - AI-powered activity generator (ActivityGeneratorPanel)
@@ -42,15 +42,13 @@ import {
   type VocabularyCandidate,
 } from "@/lib/na-continuity";
 import { createClient } from "@/lib/supabase/client";
+import { buildNaCourseOptions, type GradeLevel } from "@/lib/na-course-options";
 import { NuancedAnalysisPreview } from "./nuanced-analysis-preview";
 import { ActivityGeneratorPanel } from "./activity-generator";
 import { EditTemplateModal } from "./edit-template-modal";
 import { ContinuityDigestModal } from "./continuity-digest-modal";
 import { LoadDraftModal } from "./load-draft-modal";
 import { DocumentOrchestratorService } from "@/lib/document-orchestrator-nuanced";
-
-type GradeLevel = "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
-
 
 type CourseOption = { id: string; name: string };
 
@@ -263,56 +261,22 @@ export function NuancedAnalysisSandbox() {
     };
   }, []);
 
-  // Grade 9 is taught as two curriculum TRACKS, not four separate class
-  // rosters: "Grade 9 Extended" (9A, 9C, 9G) and "Grade 9 Standard" (9D).
-  // Nuanced Analysis packets are shared across every class on a track, so
-  // continuity and saving must target one of two virtual courses created for
-  // exactly this purpose (see migration
-  // add_grade9_extended_standard_virtual_courses) — never an individual
-  // class's roster course. Those roster courses (9A, 9C, 9D, 9G) remain the
-  // FK target for students/gradebook/tests/Google Classroom sync and are
-  // deliberately excluded from this picker so a teacher can never
-  // accidentally save a Grade 9 packet's continuity against a single class
-  // instead of its whole track.
-  const GRADE_9_TRACK_COURSE_NAMES = useMemo(() => ["Grade 9 Extended", "Grade 9 Standard"], []);
-
-  // The three things a Nuanced Analysis can be written FOR. Nothing else
-  // belongs in this picker.
+  // The three things a Nuanced Analysis can be written FOR: the DP course,
+  // and the two Grade 9 TRACKS. Which courses qualify, what each is called,
+  // and which grade each implies all live in lib/na-course-options.ts, where
+  // they are unit-tested against the teacher's real course list -- this used
+  // to be inline useMemo logic and shipped two bugs that no test could reach.
   //
-  // There used to be a Grade selector beside it, and the course list was
-  // filtered by it: Grade 9 showed the two tracks, and every other grade
-  // showed "all the rest". "All the rest" is the bug -- the roster courses
-  // 9A, 9C, 9D and 9G are not Grade 9 TRACKS, so they fell through the filter
-  // and appeared under Grade 11 and Grade 12, where a packet saved against
-  // one would have written a DP packet's continuity onto a single Grade 9
-  // class. The grade is not something to be picked anyway: it follows from
-  // the course, and asking for both invited exactly that mismatch.
+  // There used to be a Grade selector beside this picker. The grade is not
+  // something to be picked: it follows from the course, and asking for both
+  // invited a mismatch between the packet's rules and the course its
+  // continuity was saved against.
   //
-  // Roster courses stay out on purpose. They remain the FK target for
-  // students, gradebook, tests and Google Classroom sync, but a packet is
-  // taught to a whole track, so continuity must target the virtual track
-  // course (see migration add_grade9_extended_standard_virtual_courses).
-  const courseOptions = useMemo(() => {
-    const byName = (name: string) => courses.find((c) => c.name === name) ?? null;
-
-    // AA HL is named by cohort in the database (27AH is the class of 2027),
-    // and only one is ever un-archived at a time. The teacher does not think
-    // of it that way, so it is labelled by the course, not the cohort. If a
-    // second one is ever active, both are listed under their real names
-    // rather than one silently winning the "AAHL" label.
-    const aaHl = courses.filter((c) => /^\d{2}AH$/.test(c.name));
-    const dp = aaHl.map((c) => ({
-      id: c.id,
-      label: aaHl.length === 1 ? "AAHL" : `AAHL (${c.name})`,
-      gradeLevel: "Grade 12" as GradeLevel,
-    }));
-
-    const tracks = GRADE_9_TRACK_COURSE_NAMES.map((name) => byName(name))
-      .filter((c): c is CourseOption => c !== null)
-      .map((c) => ({ id: c.id, label: c.name, gradeLevel: "Grade 9" as GradeLevel }));
-
-    return [...dp, ...tracks];
-  }, [courses, GRADE_9_TRACK_COURSE_NAMES]);
+  // `now` is fixed for the lifetime of the panel so the option list keeps its
+  // identity across renders and no mid-render August rollover can make two
+  // renders disagree about the grade a cohort is in.
+  const now = useMemo(() => new Date(), []);
+  const courseOptions = useMemo(() => buildNaCourseOptions(courses, now), [courses, now]);
 
   // The grade is DERIVED, never chosen. It still drives everything it always
   // did -- which rules the generator gets, whether the TOK bar is spliced in,

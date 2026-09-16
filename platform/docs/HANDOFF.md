@@ -27,7 +27,15 @@ students, 113 `invited_students`. No admin panel, no public signup.
 **The GitHub repository is PUBLIC.** The previous handoff described the platform as
 "private", which is true of the product but not of the source. See §7.
 
-Courses: `26AH` (Y12 AA HL), `27AH` (Y11 AA HL), `9A` (`2abe4055`), `9A (2025-2026)`
+A DP course is named by COHORT: `<two-digit graduation year><two-letter course>`,
+where `AH`=AA HL, `AS`=AA SL, `IH`=AI HL, `IS`=AI SL. So `27AH` is the class of
+2027 taking AA HL. The COURSE (AAHL) spans Grade 11 and Grade 12, so a code alone
+never fixes a grade - the cohort's position in it does, and it is derived from the
+graduation year and the date (`lib/dp-course-code.ts`), never hardcoded. In the
+2026-27 school year `27AH` is Grade 12.
+
+Courses: `27AH` (`7abac7b1`, AA HL class of 2027), `26AH` (archived), `28IH`
+(archived, AI HL class of 2028), `9A` (`2abe4055`), `9A (2025-2026)`
 (`31370a33`, archived - do not delete), `Grade 9 Extended` (`b1d3b183`, virtual, no
 roster by design), `Grade 9 Standard` (`40ef6810`, virtual; its real class is
 `9D`, `9776610b`, 18 invited students; no NA packets, but its first summative
