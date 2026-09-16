@@ -7,6 +7,7 @@ import {
   fractionBoxToPoints,
   noExpansionCaps,
   anchorToEvidenceBox,
+  firstShiftedAnchorPage,
   computeExpansionCaps,
   normalizeFractionBox,
   padModelBox,
@@ -291,5 +292,65 @@ describe("anchorToEvidenceBox", () => {
     const onLetter = fractionBoxToPoints(box, { widthPt: 612, heightPt: 792 });
     expect(onLetter.x0Pt).toBeCloseTo(0.1 * 612, 8);
     expect(onLetter.y0Pt).toBeCloseTo(0.25 * 792, 8);
+  });
+});
+
+
+/**
+ * An 11-page booklet, 41 parts -- 9G's Formative Assessment 1, the paper this
+ * guard is live on. `pages` lists each part's anchored page in printing order;
+ * a test shifts some of them to describe what the model saw instead.
+ */
+const BOOKLET = [1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 7, 8, 9, 9, 10, 11, 11];
+
+const seen = (pages: number[], model: (page: number, i: number) => number) =>
+  pages.map((anchorPage, i) => ({ anchorPage, modelPage: model(anchorPage, i) }));
+
+describe("firstShiftedAnchorPage", () => {
+  it("finds no shift when the model reads every part where the layout puts it", () => {
+    expect(firstShiftedAnchorPage(seen(BOOKLET, (p) => p))).toBeNull();
+  });
+
+  it("finds no shift when nothing was localised", () => {
+    // Every part blank, or every box null -- no evidence, so no overruling.
+    expect(firstShiftedAnchorPage([])).toBeNull();
+  });
+
+  it("is not overruled by a single stray page from the model", () => {
+    // The model's box averages 89pt of error; one odd page is why anchors exist.
+    expect(firstShiftedAnchorPage(seen(BOOKLET, (p, i) => (i === 6 ? p + 3 : p)))).toBeNull();
+  });
+
+  it("is not overruled by scattered disagreements of different sizes", () => {
+    expect(
+      firstShiftedAnchorPage(seen(BOOKLET, (p, i) => (i === 2 ? p + 1 : i === 9 ? p + 4 : p)))
+    ).toBeNull();
+  });
+
+  it("catches a page inserted mid-booklet, which the count guard waves through", () => {
+    // A working sheet slipped in before page 9: pages 1-8 read true, and every
+    // part from 9 on is one page later than the layout says. Pages 1-8 keep
+    // their anchors, which is the point of returning the page rather than false.
+    expect(firstShiftedAnchorPage(seen(BOOKLET, (p) => (p >= 9 ? p + 1 : p)))).toBe(9);
+  });
+
+  it("catches a redone cover sheet at the front, which shifts the whole paper", () => {
+    expect(firstShiftedAnchorPage(seen(BOOKLET, (p) => p + 1))).toBe(1);
+  });
+
+  it("keeps the anchors when answers continue onto a later sheet mid-paper", () => {
+    // Two page-9 answers finished on page 11. Same direction, but the parts
+    // printed on 10 and 11 still read true, so the pages did not move.
+    expect(firstShiftedAnchorPage(seen(BOOKLET, (p, i) => (p === 9 && i < 14 ? 11 : p)))).toBeNull();
+  });
+
+  it("acts on a shift proven by only two parts, erring toward the model's box", () => {
+    expect(
+      firstShiftedAnchorPage([
+        { anchorPage: 1, modelPage: 1 },
+        { anchorPage: 10, modelPage: 11 },
+        { anchorPage: 11, modelPage: 12 },
+      ])
+    ).toBe(10);
   });
 });

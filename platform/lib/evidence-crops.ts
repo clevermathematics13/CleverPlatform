@@ -277,6 +277,74 @@ export function computeExpansionCaps(
  */
 export const ANCHOR_TOLERANCE_PT = 28;
 
+/** One part's two independent opinions about which page its work is on. */
+export interface AnchorPageObservation {
+  /** 1-indexed page the locked layout puts this part on. */
+  anchorPage: number;
+  /** 1-indexed page the grading model reported finding the handwriting on. */
+  modelPage: number;
+}
+
+/**
+ * The page from which a locked layout stops describing THIS scan, or null
+ * while it still does.
+ *
+ * Anchors address a student's scan by absolute page index, which holds only
+ * while the scan's pages 1..N are the booklet's pages 1..N in order. The
+ * caller's page-count guard catches a scan that is too SHORT, where a lost
+ * page puts everything after the gap on the wrong page. It deliberately lets
+ * a LONGER scan through, because the common cause is a trailing loose sheet
+ * after the booklet -- three of six sampled scans had one -- and that leaves
+ * every anchored page exactly where it was.
+ *
+ * What it cannot see is a page inserted anywhere but the end: a redone cover
+ * sheet at the front, a working sheet in the middle. The count still passes,
+ * and every anchor from the insertion onward then cuts one page early. That
+ * failure is silent, which is the worst property a crop can have -- the panel
+ * shows a confident crop of the wrong question's work, with nothing saying so.
+ *
+ * The only evidence available is that the model ALSO reports a page per part,
+ * read from the content rather than counted, so the two disagree exactly when
+ * the mapping has broken. They are not equally reliable -- the model's box
+ * measured 89pt of average error, which is why anchors exist at all -- so a
+ * disagreement is read as a shift only when it has the shape of one:
+ *
+ *   - Fewer than two disagreements is model noise. One anchor is not overruled
+ *     by one vision call.
+ *   - Disagreements by DIFFERENT amounts are noise too. A shift moves every
+ *     page after it by the same number.
+ *   - A constant offset over a contiguous TAIL of the paper is a shift. A
+ *     student who continued two answers onto a later sheet disagrees in the
+ *     same direction, but the parts printed between those pages still agree,
+ *     and that is what separates the two.
+ *
+ * It returns the page rather than a yes/no because the answer is not
+ * all-or-nothing, unlike the short-scan case: pages before an insertion are
+ * still the pages their regions were drawn on, so their anchors stay. Only
+ * parts at or past the returned page fall back to the model's own box. That
+ * is also what keeps the cost of a wrong call small -- a student who finished
+ * two answers on a loose back sheet loses the anchors for those parts, which
+ * were going to crop the page they abandoned, and keeps the other thirty-odd.
+ *
+ * Two shifted parts with no counter-evidence is thin, and it is allowed to
+ * decide, for that reason.
+ */
+export function firstShiftedAnchorPage(observations: AnchorPageObservation[]): number | null {
+  const disagreeing = observations.filter((o) => o.modelPage !== o.anchorPage);
+  if (disagreeing.length < 2) return null;
+
+  const offset = disagreeing[0].modelPage - disagreeing[0].anchorPage;
+  if (disagreeing.some((o) => o.modelPage - o.anchorPage !== offset)) return null;
+
+  // A shift runs to the end of the paper. Anything still agreeing at or after
+  // the first shifted page means the pages did not move under it.
+  const firstShifted = Math.min(...disagreeing.map((o) => o.anchorPage));
+  const stillHolds = observations.some(
+    (o) => o.anchorPage >= firstShifted && o.modelPage === o.anchorPage
+  );
+  return stillHolds ? null : firstShifted;
+}
+
 /** Absolute points on a page -> fractions of that same page. */
 export function pointsToFractions(points: PointBox, size: PageSizePt): Omit<EvidenceBox, "page"> {
   return {

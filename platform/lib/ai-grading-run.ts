@@ -42,9 +42,11 @@ import {
 import { cropRegions, cvServiceEndpoint, type CropRegion } from "./cv-crop-service";
 import {
   anchorToEvidenceBox,
+  firstShiftedAnchorPage,
   fractionBoxToPoints,
   padModelBox,
   pointsToFractions,
+  type AnchorPageObservation,
   type EvidenceBox,
   type PageSizePt,
 } from "./evidence-crops";
@@ -319,16 +321,40 @@ export async function fetchEvidenceCrops(
   // cropping confidently wrong regions for it. Longer is fine and common:
   // three of six sampled scans carried a trailing loose sheet after the
   // booklet's own pages, in order.
+  //
+  // But a long scan is only safe while the extra pages are at the END. A
+  // redone cover at the front, or a working sheet in the middle, passes this
+  // count and shifts every anchor after it by a page. The model's own reported
+  // page is the second opinion that catches it -- see firstShiftedAnchorPage
+  // for why a disagreement has to look like a shift before it is believed.
+  // Unlike the short-scan case this is not all-or-nothing: pages before an
+  // insertion are still the pages their regions were drawn on, so only the
+  // parts at or past the shift give up their anchor.
   const useAnchors = !!locked && pageCount >= locked.layout.page_count;
+  const pageObservations: AnchorPageObservation[] = [];
+  if (useAnchors) {
+    for (const g of grades) {
+      const anchor = locked!.anchors.get(anchorKey(g.unit.questionNumber, g.unit.partLabel || null));
+      const reported = g.item.evidenceBox;
+      // Only a part the model actually localised is evidence either way.
+      if (!anchor || !g.item.workFound || !reported) continue;
+      pageObservations.push({ anchorPage: anchor.page_index + 1, modelPage: reported.page });
+    }
+  }
+  const shiftedFrom = useAnchors ? firstShiftedAnchorPage(pageObservations) : null;
 
   const boxByQid = new Map<string, EvidenceBox>();
   const sourceByQid = new Map<string, "model" | "anchor">();
   const regions: CropRegion[] = [];
 
   for (const g of grades) {
-    const anchor = useAnchors
+    const drawn = useAnchors
       ? locked!.anchors.get(anchorKey(g.unit.questionNumber, g.unit.partLabel || null))
       : undefined;
+    // Past the shift, this part is no longer on the page its region was drawn
+    // on, so the region is dropped and the model's own box is used below.
+    const anchor =
+      drawn && (shiftedFrom === null || drawn.page_index + 1 < shiftedFrom) ? drawn : undefined;
 
     if (anchor) {
       const referenceSize = locked!.layout.reference_page_sizes?.[anchor.page_index];
