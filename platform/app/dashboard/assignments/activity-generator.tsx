@@ -23,7 +23,17 @@ import {
 import { createClient } from "@/lib/supabase/client";
 // Moved out of this file so every /api/claude caller can read the stream the
 // route actually returns -- see claude-stream.ts.
-import { readClaudeStream, type GenerationProgress } from "@/lib/claude-stream";
+import {
+  readClaudeStream,
+  GenerationStillRunningError,
+  type GenerationProgress,
+} from "@/lib/claude-stream";
+// A generation outlives this tab. The ticket is how the tab finds it again.
+import {
+  readTicketForGrade,
+  saveTicket,
+  clearTicket,
+} from "@/lib/generation-ticket";
 
 // ---- Types ----
 
@@ -96,6 +106,15 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
   // lib/tok-provocations.ts exists to prevent. Empty on Grade 9/10, which
   // are not held to that bar.
   const [tokIssues, setTokIssues] = useState<TokIssue[]>([]);
+  // A run this panel started that is still going, or has finished while the
+  // teacher was away. Deliberately NOT wired into isGenerating: a ticket must
+  // never disable the Send button on a page load days later.
+  const [pendingRun, setPendingRun] = useState<
+    | { kind: "running"; since: number }
+    | { kind: "ready"; generationId: string; rawText: string; prompt: string }
+    | { kind: "failed"; message: string }
+    | null
+  >(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [isExpanded, setIsExpanded] = useState(true);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -141,6 +160,100 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, []);
+
+  // ---- Collecting a run that finished while nobody was watching -----------
+  //
+  // WHY THIS IS NOT A MOUNT EFFECT. Closing a laptop lid suspends the tab; it
+  // does not unmount the page. So the literal case this exists for -- start a
+  // packet, shut the lid, open it later -- never fires a mount. It needs
+  // visibilitychange, and `online` for the wifi-drop case.
+  //
+  // WHY IT OFFERS RATHER THAN LOADS. Delivering straight into the sandbox
+  // would overwrite whatever the teacher has since typed or edited, minutes
+  // after they stopped expecting anything. The recovered packet waits behind
+  // one click instead.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function collect() {
+      if (cancelled || isGenerating) return;
+      const now = Date.now();
+      const ticket = readTicketForGrade(gradeLevel, now);
+      if (!ticket) return;
+
+      let status: {
+        status?: string;
+        text?: string | null;
+        error?: string | null;
+      } | null = null;
+      try {
+        const res = await fetch(`/api/claude/status/${ticket.generationId}`);
+        if (!res.ok) return; // Unreachable says nothing; keep the ticket.
+        status = await res.json();
+      } catch {
+        return; // Offline. The run is fine; try again on the next wake.
+      }
+      if (cancelled || !status) return;
+
+      if (status.status === "succeeded" && status.text) {
+        // Clear FIRST. If the text turns out to be unparseable, a ticket left
+        // in place would re-throw on every page load from now on.
+        clearTicket(ticket.generationId, now);
+        setPendingRun({
+          kind: "ready",
+          generationId: ticket.generationId,
+          rawText: status.text,
+          prompt: ticket.prompt,
+        });
+      } else if (status.status === "failed") {
+        clearTicket(ticket.generationId, now);
+        setPendingRun({ kind: "failed", message: status.error ?? "The generation failed on the server." });
+      } else if (status.status === "running") {
+        setPendingRun({ kind: "running", since: ticket.startedAt });
+      }
+    }
+
+    void collect();
+    const onWake = () => {
+      if (document.visibilityState === "visible") void collect();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("online", onWake);
+    window.addEventListener("focus", onWake);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("online", onWake);
+      window.removeEventListener("focus", onWake);
+    };
+  }, [gradeLevel, isGenerating]);
+
+  /** Hand a recovered packet to the sandbox, on the teacher's say-so. */
+  function loadRecovered(rawText: string, prompt: string) {
+    try {
+      const sanitized = parseAssignmentDraftJson(rawText);
+      setCommandTermIssues(validateDraftCommandTerms(sanitized));
+      setNumberingIssues(validateDraftNumbering(sanitized));
+      setTokIssues(validateDraftTokProvocations(sanitized, gradeLevel));
+      setLastDraft(sanitized);
+      onDraftGenerated(sanitized);
+      // Both turns, not just the packet: a history starting with an assistant
+      // message is rejected outright by the API on the next refinement.
+      setHistory([
+        { role: "user", content: prompt },
+        { role: "assistant", content: rawText, draftTitle: sanitized.title },
+      ]);
+      setPendingRun(null);
+      setError(null);
+    } catch (err) {
+      setPendingRun(null);
+      setError(
+        `That generation finished but could not be read back: ${
+          err instanceof Error ? err.message : "unknown error"
+        }`,
+      );
+    }
+  }
 
   function handleConnectDrive() {
     window.location.href = "/api/questions/connect-drive";
@@ -462,6 +575,24 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       // reconnects (via /api/claude/resume) if this connection is cut off,
       // and independently polls /api/claude/status for the run's real state,
       // so a finished packet is delivered even if every socket dies.
+      // Write the handle down BEFORE reading a single byte. Everything after
+      // this line can fail in a way that loses the connection but not the run,
+      // and this is what makes the run findable afterwards.
+      const generationId = res.headers.get("x-generation-id");
+      if (generationId) {
+        saveTicket(
+          {
+            v: 1,
+            generationId,
+            runId: res.headers.get("x-workflow-run-id"),
+            startedAt: Date.now(),
+            gradeLevel,
+            prompt: description.trim(),
+          },
+          Date.now(),
+        );
+      }
+
       const data = await readClaudeStream(res, setGenerationProgress);
       const stopReason = (data as { stop_reason?: string }).stop_reason;
       const rawText = data.content?.find((b: { type: string; text?: string }) => b.type === "text")?.text ?? "";
@@ -494,14 +625,25 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
       setLastDraft(sanitized);
       onDraftGenerated(sanitized);
       setHistory([...nextHistory, { role: "assistant", content: rawText, draftTitle: sanitized.title }]);
+      // Delivered. Nothing left to come back for.
+      if (generationId) clearTicket(generationId, Date.now());
+      setPendingRun(null);
 
       setTimeout(() => {
         if (historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight;
       }, 50);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unexpected error";
-      setError(msg);
-      setHistory(nextHistory);
+      // A generation that is still running is NOT an error, and must never be
+      // shown as one. The run is durable: it finishes on the server whether or
+      // not this tab, this connection or this laptop is still around.
+      if (err instanceof GenerationStillRunningError) {
+        setPendingRun({ kind: "running", since: Date.now() });
+        setHistory(nextHistory);
+      } else {
+        const msg = err instanceof Error ? err.message : "Unexpected error";
+        setError(msg);
+        setHistory(nextHistory);
+      }
     } finally {
       setIsGenerating(false);
       setGenerationProgress(null);
@@ -704,6 +846,13 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
             </div>
           )}
 
+          {isGenerating && (
+            <p className="text-[11px] text-da-muted/80">
+              Generating on the server. You can close this tab or shut the laptop \u2014 the packet will be waiting
+              here when you come back.
+            </p>
+          )}
+
           {/* Input + send */}
           <div className="flex gap-2 items-end">
             <textarea
@@ -757,6 +906,54 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
           {error && (
             <p className="text-xs text-red-400 border border-red-500/30 bg-red-500/10 rounded px-2 py-1">{error}</p>
+          )}
+
+          {pendingRun?.kind === "ready" && (
+            <div className="rounded border border-emerald-500/40 bg-emerald-500/10 px-2 py-1.5 text-xs text-emerald-300">
+              <p className="font-semibold">A packet finished while you were away</p>
+              <p className="mt-0.5 text-emerald-300/80">
+                It generated in the background and is waiting on the server. Loading it replaces whatever is in the
+                preview below.
+              </p>
+              <button
+                type="button"
+                onClick={() => loadRecovered(pendingRun.rawText, pendingRun.prompt)}
+                className="mt-1.5 rounded-lg border border-emerald-400/60 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/30"
+              >
+                Load it
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingRun(null)}
+                className="ml-2 rounded-lg border border-da-border/50 px-3 py-1 text-xs text-da-muted transition-colors hover:bg-da-hover"
+              >
+                Not now
+              </button>
+            </div>
+          )}
+
+          {pendingRun?.kind === "running" && (
+            <div className="rounded border border-sky-500/40 bg-sky-500/10 px-2 py-1.5 text-xs text-sky-300">
+              <p className="font-semibold">Still generating on the server</p>
+              <p className="mt-0.5 text-sky-300/80">
+                This packet is being built in the background. You can close this tab, or shut the laptop \u2014 it will
+                keep going, and it will be waiting here when you come back.
+              </p>
+            </div>
+          )}
+
+          {pendingRun?.kind === "failed" && (
+            <div className="rounded border border-red-500/30 bg-red-500/10 px-2 py-1.5 text-xs text-red-400">
+              <p className="font-semibold">A background generation failed</p>
+              <p className="mt-0.5 text-red-400/80">{pendingRun.message}</p>
+              <button
+                type="button"
+                onClick={() => setPendingRun(null)}
+                className="mt-1.5 rounded-lg border border-da-border/50 px-3 py-1 text-xs text-da-muted transition-colors hover:bg-da-hover"
+              >
+                Dismiss
+              </button>
+            </div>
           )}
 
           {commandTermIssues.length > 0 && (
