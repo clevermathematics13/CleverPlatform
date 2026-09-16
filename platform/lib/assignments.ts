@@ -3,6 +3,7 @@
 import { mathematicalRegisterBlock } from "./mathematical-register";
 import { tokProvocationBlock } from "./tok-provocations";
 import { sanitizeJsonBackslashes, sanitizeJsonEmbeddedQuotes } from "./json-repair";
+import { typesetDraftMath } from "./math-typesetting";
 
 export type DocumentKind = "activity-sheet" | "practice-set" | "investigation";
 
@@ -502,6 +503,18 @@ export function extractJsonObject(input: string): string {
   return input.slice(first, last + 1);
 }
 
+/**
+ * Normalises a raw AI draft into a usable AssignmentDraft.
+ *
+ * The last step is typesetDraftMath(), and it is not cosmetic. The 11b MATH
+ * rule asks the generator to delimit equations with $...$, and a request is
+ * all it is: the B.4 packet (Grade 9 Extended, 16 Sep 2026) came back with
+ * ZERO dollar signs in twelve pages and printed every equation as literal
+ * ASCII -- "a^2+2ab+b^2" -- to a class of fourteen-year-olds. Typesetting
+ * here rather than at render time means the packet is stored correct, so the
+ * saved row, the rubric items derived from it and the PDF all agree.
+ * See lib/math-typesetting.ts.
+ */
 export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
   const sections = Array.isArray(draft.sections)
     ? draft.sections
@@ -542,7 +555,7 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
     ? draft.instructions.filter((line) => typeof line === "string" && line.trim().length > 0)
     : [];
 
-  return {
+  return typesetDraftMath({
     title: (draft.title || "Untitled Assignment").trim(),
     subtitle: (draft.subtitle || "Mathematics").trim(),
     instructions: instructions.length > 0 ? instructions : ["Complete all questions and show working."],
@@ -575,7 +588,7 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
     ...(draft.showSectionScoreSummary !== undefined
       ? { showSectionScoreSummary: draft.showSectionScoreSummary }
       : {}),
-  };
+  });
 }
 
 /**

@@ -29,6 +29,7 @@
  */
 
 import { validateTemplateAst } from "./template-ast.schema";
+import { TYPST_MATH_IDENTS, MATH_ALIASES } from "./math-typesetting";
 import { buildTypstPayload } from "./typst-payload";
 import type { ActivityPayload } from "./typst-payload";
 
@@ -273,6 +274,17 @@ export function getActivityTypstSource(): string {
   ),
 )
 #set text(font: tmpl.typography.bodyFont, size: (tmpl.typography.bodySizePt) * 1pt)
+
+// Pin the math face explicitly rather than inheriting Typst's default.
+// New Computer Modern Math is the Computer Modern successor -- the face LaTeX
+// has set mathematics in for forty years -- and it is the ONLY math font the
+// shipped compiler carries (Libertinus Math, STIX Two Math and Fira Math were
+// all probed against this exact binary and are absent). Naming it here means
+// the packets' mathematics cannot silently change face if the bundled font
+// set ever shifts, and it documents that a math font is a deliberate choice
+// on a mathematics platform rather than an accident of the default.
+#show math.equation: set text(font: "New Computer Modern Math")
+
 #set par(leading: 0.65em)
 
 #let col-primary = rgb(tmpl.colors.primary)
@@ -382,36 +394,14 @@ export function getActivityTypstSource(): string {
 // (see typst-rich-inline-math.test.ts); an entry that Typst does NOT
 // define belongs in math-aliases below instead, never here alone, or a
 // genuine math segment using it aborts the whole compile.
-#let math-idents = (
-  "sin","cos","tan","sec","csc","cot","sinh","cosh","tanh",
-  "arcsin","arccos","arctan","log","ln","lg","exp","sqrt","root","abs",
-  "floor","ceil","sum","product","integral","lim","liminf","limsup",
-  "dif","diff","partial",
-  "infinity","approx","neq","leq","geq","cdot","pm","mp","equiv","prop",
-  "times","div","dot","plus","minus","in","subset","union","sect",
-  "min","max","mod","gcd","lcm","det","deg","dim","arg","ker","inf","sup",
-  "arrow","dots","mapsto","implies","iff","oplus","otimes",
-  "forall","exists","emptyset","nothing","because","therefore",
-  "frac","binom","vec","mat","cases","overline","underline","hat","tilde",
-  "macron","op","bb","cal","frak","upright",
-  "quad","star","compose","prec","succ",
-  "rr","zz","nn","qq","cc",
-  "alpha","beta","gamma","delta","epsilon","zeta","eta",
-  "theta","iota","kappa","lambda","mu","nu","xi","rho","sigma","tau",
-  "upsilon","phi","chi","psi","omega","pi",
-)
+#let math-idents = (${TYPST_MATH_IDENTS.map((i) => JSON.stringify(i)).join(", ")},)
 
 // Operator names the generator emits out of LaTeX habit that Typst math
 // does NOT define. They pass the identifier check above (so the segment
 // still counts as math) and are rewritten to the real Typst symbol just
 // before eval -- without this, eval() dies on "unknown variable: leq" and
 // takes the entire document with it.
-#let math-aliases = (
-  ("neq", "eq.not"), ("leq", "lt.eq"), ("geq", "gt.eq"),
-  ("cdot", "dot.op"), ("pm", "plus.minus"), ("mp", "minus.plus"),
-  ("implies", "arrow.r.double"), ("iff", "arrow.l.r.double"),
-  ("oplus", "plus.circle"), ("otimes", "times.circle"),
-)
+#let math-aliases = (${MATH_ALIASES.map(([a, b]) => `(${JSON.stringify(a)}, ${JSON.stringify(b)})`).join(", ")},)
 
 #let normalize-math(seg) = {
   let out = seg
