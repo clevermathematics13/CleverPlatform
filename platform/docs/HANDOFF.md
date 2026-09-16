@@ -139,6 +139,33 @@ must exercise Server Actions.
   is it mathematics rather than prose. Both halves are load-bearing -- see the
   comment on that function. The TS mirror of the gate is pinned against the
   shipped prelude in `latex-to-typst.compile.test.ts`.
+- **A currency dollar is escaped, not counted.** A.1 is set at a ticket
+  window, so it prices things, and a lone amount left an ODD number of `$` in
+  the line. Both ends of the pipeline used to give up on a line like that --
+  `typesetMath()` handed it back untypeset and `rich-legacy()` printed it
+  verbatim -- so A.1 priced its tickets correctly and typeset no mathematics
+  anywhere near a price. `escapeCurrencyDollars()` pairs greedily from the
+  left, asks whether the text between two `$` reads as mathematics, and writes
+  `\\$` over the ones that do not. THREE surfaces have to agree about that
+  escape: `rich-legacy()` in the Typst template reads it back as a dollar
+  sign, `splitSegments()` in `components/LatexRenderer.tsx` does the same for
+  the KaTeX preview, and every function on either side that splits on `$` must
+  mask it first (`maskCurrency`/`unmaskCurrency` in latex-to-typst.ts) -- the
+  escape carries a BACKSLASH, which is the whole of `isLatexMath()`'s test, so
+  an unmasked one turns the prose between two prices into italic mathematics.
+- **`typesetMath()` runs on its own output, so it must be idempotent.**
+  `sanitizeDraft()` typesets a packet when it is SAVED and `typesetDraftMath()`
+  typesets it again on every render. A span this module writes and then fails
+  to recognise on the way back in is silently destroyed: `$P(r)=0
+  arrow.l.r.double$` (which `toTypstMath()` produces from the word "iff") had
+  both delimiters escaped into dollar signs on the second pass. Pinned by the
+  "stable under a second pass" block in `math-typesetting.test.ts`.
+- **A dotted path is one symbol, and a brace on an exponent is always LaTeX.**
+  `arrow.l.r.double` is one identifier whose modifiers are not identifiers, so
+  only its head is checked. `^{1/2}` has no backslash but Typst PRINTS those
+  braces (the binomial packet read `(4+x){1 2}`), so it goes to the converter;
+  `{1, 2, 3}` does not, because braces off an attachment print as braces in
+  both languages.
 - **An ordinal and a slash between words are prose, not mathematics.** B.4
   shipped with "the $12t h$ century" (the digit-letter join read as an
   expression, then split to survive Typst) and with `$sum/product$` printed as

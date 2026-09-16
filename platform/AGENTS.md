@@ -10,6 +10,13 @@ These rules apply to **all LaTeX stored in `question_parts.content_latex` and `q
 
 They apply to **Nuanced Analysis packets** too. A packet's mathematics is LaTeX inside `$...$`, in every prose field of the draft — that is what the live preview renders with KaTeX, and `lib/latex-to-typst.ts` converts it to Typst when the PDF is built. Rule 11b of `buildActivityGeneratorSystemPrompt()` is where the generator is told so; the vector rules below are quoted in it verbatim, so change them in both places or neither.
 
+A literal dollar SIGN in packet prose is written `\\$`. An unescaped `$` is a
+math delimiter everywhere in this codebase, so a price written bare makes the
+count odd and the whole line stops being typeset -- see the currency entry in
+`docs/HANDOFF.md`. `escapeCurrencyDollars()` in `lib/math-typesetting.ts`
+applies the escape automatically when a packet is saved or rendered, so this
+matters when you are writing packet content or a test fixture by hand.
+
 ### Vector notation
 - **ALWAYS** use `\boldsymbol{}` (bold italic) for vector variables — e.g. `\boldsymbol{a}`, `\boldsymbol{s}`.
 - **NEVER** use `\mathbf{}` (bold upright), `\bm{}`, `\vec{}`, or `\overrightarrow{}` for named vector variables.
