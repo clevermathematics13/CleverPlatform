@@ -8,7 +8,7 @@
  * Implements all 8 Universal Design Layers:
  *   1. Structural Chunking — progress tracker, per-Part completability
  *   2. Tiered Entry Points — ★/★★/★★★ badges with colour coding
- *   3. Command-Term Accessibility — tear-off strip + demand-scale visual
+ *   3. Command-Term Accessibility — command-term strip + demand-scale visual
  *   4. Scaffolding Visibility — opt-in hints, per-question controls
  *   5. Vocabulary — defined on first use (via commandTerms strip)
  *   6. Proof & Diagram Scaffolding — labelled answer box types
@@ -17,7 +17,7 @@
  *
  * Fixed structural components rendered per DESIGN_INSTRUCTIONS §2:
  *   §2.1 Header: course, syllabusTopics, prerequisites, materials, name/date
- *   §2.2 Command Terms glossary (tear-off strip) + demand-scale visual
+ *   §2.2 Command Terms glossary (strip) + demand-scale visual
  *   §2.3 Vocabulary bold on first use (via commandTerms)
  *   §2.4 ATL statement (atl field)
  *   §2.5 TOK Provocations block (tokProvocations, exactly 2)
@@ -34,6 +34,14 @@
  *
  * Teacher's Companion is NOT rendered in this component. It is excluded
  * from the student-facing packet entirely.
+ *
+ * Those three click-to-edit fields -- the title, the section headings and the
+ * question prompts -- go through EditableMath below, which RENDERS their
+ * mathematics with KaTeX and shows the LaTeX source only while one is being
+ * edited. A packet is authored in LaTeX (rule 11b of
+ * buildActivityGeneratorSystemPrompt) and this is the surface a teacher
+ * proofreads it on, so showing the source at rest meant proofreading
+ * something no student would ever see.
  *
  * EVERY EDITABLE FIELD HERE MUST BE CONTROLLED (`value`), NEVER `defaultValue`.
  * The title, section headings and question prompts are click-to-edit inputs.
@@ -59,7 +67,7 @@
  * being uncontrolled, reopening this bug through a door the types say is shut.
  */
 
-import { useState } from "react";
+import { useState, type ChangeEvent, type FocusEvent, type KeyboardEvent } from "react";
 import LatexRenderer from "@/components/LatexRenderer";
 import {
   type AssignmentDraft,
@@ -81,6 +89,16 @@ export interface GeometricReading { body: string; }
 export interface PrerequisiteBox { items: string[]; }
 export interface TokProvocation { id: string; body: string; }
 export interface InternationalMindednessBox { body: string; }
+
+export interface AreaModel {
+  topLabels: string[];
+  sideLabels: string[];
+  /** Relative lengths, in one unit shared by both axes. See AreaModelSpec. */
+  topWeights?: number[];
+  sideWeights?: number[];
+  cells?: string[][];
+  caption?: string;
+}
 
 export interface NuancedQuestion {
   prompt: string;
@@ -110,6 +128,7 @@ export interface NuancedQuestion {
     skillTag?: string;
   }>;
   answerBoxLines?: number;
+  areaModel?: AreaModel;
   spotlight?: SpotlightBox;
   prerequisiteBox?: PrerequisiteBox;
   translationTable?: TranslationTable;
@@ -160,6 +179,111 @@ const DEMAND_SCALE = [
   { label: "Prove",      colour: "#dc2626" },
   { label: "Justify",    colour: "#991b1b" },
 ];
+
+// -- Editable, typeset text -----------------------------------------------------
+
+/**
+ * A field that READS as typeset mathematics and EDITS as LaTeX source.
+ *
+ * The problem it solves: every editable field in this preview used to be a
+ * bare input bound straight to the draft, so a teacher checking a packet saw
+ * "Write down the exact value of $\cos\left(\frac{3\pi}{2}\right)$" -- the
+ * source, not the mathematics. The printed PDF showed the cosine. So the one
+ * surface whose entire job is "see what the student will see" was the only
+ * surface that did not show it, and a wrong exponent or a missing bracket was
+ * invisible until the packet came off the printer.
+ *
+ * Both halves are needed, which is why this is a mode switch rather than a
+ * choice between them. Rendered-only would make the packet uneditable;
+ * source-only is what we had. So: click (or tab and press Enter) to edit,
+ * blur or press Escape to go back to reading it.
+ *
+ * The textarea is CONTROLLED, never `defaultValue` -- see this file's header
+ * comment for the bug that rule exists to prevent. Its onChange writes
+ * straight through with no transformation, so a keystroke round-trips
+ * unchanged and the caret stays put.
+ */
+function EditableMath({
+  value,
+  onChange,
+  className,
+  editClassName,
+  multiline = false,
+  title,
+  placeholder,
+}: {
+  value: string;
+  onChange?: (next: string) => void;
+  /** Applied in BOTH modes, so switching does not move the text. */
+  className?: string;
+  /** Extra classes for the editor only (borders, focus rings). */
+  editClassName?: string;
+  multiline?: boolean;
+  title?: string;
+  placeholder?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+
+  // Without a writer there is nothing to switch into: render and stop.
+  if (!onChange) return <span className={className}><LatexRenderer latex={value} /></span>;
+
+  if (editing) {
+    const commonProps = {
+      value,
+      autoFocus: true,
+      onChange: (e: ChangeEvent<HTMLTextAreaElement | HTMLInputElement>) => onChange(e.target.value),
+      onBlur: () => setEditing(false),
+      onKeyDown: (e: KeyboardEvent) => {
+        // Escape leaves the field as it stands. Nothing is reverted: every
+        // keystroke has already been written through to the draft, and a
+        // revert here would silently discard edits the preview has shown.
+        if (e.key === "Escape") {
+          e.preventDefault();
+          (e.target as HTMLElement).blur();
+        }
+      },
+      // The caret lands at the end rather than at the start, which is where
+      // autoFocus alone would leave it -- a teacher clicking a prompt is far
+      // more often appending than re-typing it from the front.
+      onFocus: (e: FocusEvent<HTMLTextAreaElement | HTMLInputElement>) => {
+        const el = e.target;
+        el.setSelectionRange(el.value.length, el.value.length);
+      },
+      placeholder,
+      className: `${className ?? ""} ${editClassName ?? ""} w-full bg-transparent focus:outline-none focus:ring-0`,
+    };
+    return multiline ? (
+      <textarea
+        {...commonProps}
+        rows={Math.max(2, Math.ceil((value?.length ?? 0) / 90))}
+        className={`${commonProps.className} resize-none border-0 p-0`}
+      />
+    ) : (
+      <input type="text" {...commonProps} />
+    );
+  }
+
+  return (
+    <span
+      role="textbox"
+      tabIndex={0}
+      title={title ?? "Click to edit"}
+      onClick={() => setEditing(true)}
+      onFocus={() => setEditing(true)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          setEditing(true);
+        }
+      }}
+      className={`${className ?? ""} block w-full cursor-text rounded-sm hover:bg-blue-50/60 focus:outline-none focus:ring-1 focus:ring-blue-300`}
+    >
+      {value?.trim()
+        ? <LatexRenderer latex={value} />
+        : <span className="text-gray-300">{placeholder ?? "Click to edit"}</span>}
+    </span>
+  );
+}
 
 // -- Helper sub-components ------------------------------------------------------
 
@@ -222,7 +346,7 @@ function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
       <div className="border-t-2 border-dashed border-teal-500 my-1" />
       <div className="bg-teal-700 px-3 py-1.5">
         <span className="text-[8.5pt] font-bold text-white uppercase tracking-wide">
-          Command Terms — Tear Off and Keep Beside You While Working
+          Command Terms
         </span>
       </div>
       <div className="bg-teal-50 px-3 pb-2 pt-1.5 border border-t-0 border-teal-200">
@@ -372,6 +496,60 @@ function GeometricBlock({ geo }: { geo: GeometricReading }) {
   );
 }
 
+/**
+ * The area model, drawn the same way the Typst template draws it: labels
+ * outside the rectangle, empty cells inside for the student to fill in.
+ *
+ * This preview and the PDF have to agree about it, because the preview is
+ * where a teacher checks the figure before it is printed.
+ */
+function AreaModelFigure({ model }: { model: AreaModel }) {
+  const { topLabels, sideLabels, topWeights, sideWeights, cells, caption } = model;
+  if (!topLabels?.length || !sideLabels?.length) return null;
+  // The same unit on both axes as the Typst template uses, so the preview and
+  // the printed page draw the same rectangle.
+  const UNIT = 16;
+  const colWidth = (i: number) => (topWeights?.[i] != null ? topWeights[i] * UNIT : 84);
+  const rowHeight = (i: number) => (sideWeights?.[i] != null ? sideWeights[i] * UNIT : 38);
+  return (
+    <div className="my-2">
+      <table className="mx-auto border-collapse">
+        <tbody>
+          <tr>
+            <td className="w-8" />
+            {topLabels.map((t, i) => (
+              <th
+                key={i}
+                style={{ width: colWidth(i) }}
+                className="pb-0.5 text-center text-[9pt] font-bold text-gray-900"
+              >
+                <LatexRenderer latex={t} />
+              </th>
+            ))}
+          </tr>
+          {sideLabels.map((side, r) => (
+            <tr key={r} style={{ height: rowHeight(r) }}>
+              <th className="pr-1 text-right text-[9pt] font-bold text-gray-900">
+                <LatexRenderer latex={side} />
+              </th>
+              {topLabels.map((_, c) => (
+                <td key={c} className="border border-gray-300 text-center align-middle text-[10pt] text-gray-900">
+                  {cells?.[r]?.[c] ? <LatexRenderer latex={cells[r][c]} /> : null}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {caption && (
+        <p className="mt-1 text-center text-[8pt] italic text-gray-500">
+          <LatexRenderer latex={caption} />
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AnswerBox({ lines, style }: { lines: number; style?: "boxes" | "lines" | "none" }) {
   if (!lines || style === "none") return null;
   return (
@@ -421,16 +599,14 @@ function QuestionBlock({
         <div className="flex-1 min-w-0">
           <div className="flex gap-2 items-start">
             <div className="flex-1 min-w-0">
-              {onPromptChange ? (
-                <textarea
-                  value={prompt}
-                  rows={Math.max(2, Math.ceil(prompt.length / 90))}
-                  onChange={(e) => onPromptChange(e.target.value)}
-                  className="w-full resize-none border-0 p-0 text-[10.5pt] text-gray-900 leading-relaxed focus:outline-none focus:ring-0 bg-transparent"
-                />
-              ) : (
-                <p className="text-[10.5pt] text-gray-900 leading-relaxed"><LatexRenderer latex={prompt} /></p>
-              )}
+              <EditableMath
+                value={prompt}
+                onChange={onPromptChange}
+                multiline
+                className="text-[10.5pt] text-gray-900 leading-relaxed"
+                title="Click to edit this prompt (LaTeX)"
+                placeholder="Write the question prompt"
+              />
               {q.tier && <TierBadge tier={q.tier} />}
 
               {/* Content and skill tags — visible to students */}
@@ -439,6 +615,7 @@ function QuestionBlock({
               {q.hint && (
                 <p className="text-[8.5pt] italic text-gray-400 mt-0.5">Hint: <LatexRenderer latex={q.hint} /></p>
               )}
+              {q.areaModel && <AreaModelFigure model={q.areaModel} />}
               {q.oralAlternative && (
                 <p className="text-[8pt] italic text-teal-600 mt-0.5">
                   You may respond to this question orally — ask your teacher.
@@ -614,12 +791,13 @@ export function NuancedAnalysisPreview({
           <p className="text-[9pt] font-bold uppercase tracking-widest text-teal-700 mb-1">
             {nd.course || "IBDP Mathematics AA HL"}
           </p>
-          <input
-            type="text"
+          <EditableMath
             value={draft.title ?? ""}
-            onChange={(e) => updateTitle(e.target.value)}
-            className="block w-full text-center text-[20pt] font-bold text-gray-900 border-0 border-b-2 border-transparent hover:border-blue-300 focus:border-blue-500 p-0 bg-transparent focus:outline-none focus:ring-0 mt-1 cursor-text transition-colors"
-            title="Click to edit title"
+            onChange={updateTitle}
+            className="text-center text-[20pt] font-bold text-gray-900 mt-1"
+            editClassName="border-0 border-b-2 border-transparent focus:border-blue-500 p-0 transition-colors"
+            title="Click to edit title (LaTeX)"
+            placeholder="Packet title"
           />
           <p className="text-[11pt] italic text-gray-500 mt-0.5">
             <LatexRenderer latex={nd.subtitle || draft.subtitle || "IBDP Mathematics — Analysis & Approaches HL"} />
@@ -717,13 +895,16 @@ export function NuancedAnalysisPreview({
               >
                 {isCollapsed ? "▶" : "▼"}
               </button>
-              <input
-                type="text"
-                value={section.heading ?? ""}
-                onChange={(e) => updateSectionHeading(si, e.target.value)}
-                className="flex-1 border-0 p-0 bg-transparent text-[13pt] font-bold text-gray-900 focus:outline-none focus:ring-0 cursor-text hover:border-b hover:border-blue-300 focus:border-b focus:border-blue-500"
-                title="Click to edit section heading"
-              />
+              <div className="flex-1 min-w-0">
+                <EditableMath
+                  value={section.heading ?? ""}
+                  onChange={(next) => updateSectionHeading(si, next)}
+                  className="text-[13pt] font-bold text-gray-900"
+                  editClassName="border-0 p-0 focus:border-b focus:border-blue-500"
+                  title="Click to edit section heading (LaTeX)"
+                  placeholder="Part heading"
+                />
+              </div>
             </div>
 
             {!isCollapsed && (

@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from "vitest";
 import { NodeCompiler } from "@myriaddreamin/typst-ts-node-compiler";
-import { typesetMath, typesetDraftMath, findUntypesetMath } from "./math-typesetting";
+import { typesetMath, toTypstMath, typesetDraftMath, findUntypesetMath } from "./math-typesetting";
 
 /** Pulls the $...$ spans out of a result, for asserting on what got wrapped. */
 function spans(s: string): string[] {
@@ -263,4 +263,205 @@ describe("findUntypesetMath", () => {
     expect(findUntypesetMath(null)).toEqual([]);
     expect(findUntypesetMath({ sections: "nope" })).toEqual([]);
   });
+});
+
+describe("generator-authored spans that Typst rejects (B.4 regeneration, 16 Sep 2026)", () => {
+  // The second bug. These prompts came back WITH correct-looking delimiters
+  // and still printed 84 literal dollar signs across 18 pages, because
+  // rich()'s looks-like-math() rejects a segment containing a juxtaposed
+  // product and then renders the whole string literally. Every string here
+  // is lifted from that PDF's text layer.
+  const fromPacket: [string, string][] = [
+    ["perfect square", "In section A.3 you proved that $(a+b)(a+b) = a^2+2ab+b^2$ for every value of $a$ and $b$."],
+    ["general product", "Find the expansion of $(ax+b)(cx+d)$ in terms of $a$, $b$, $c$ and $d$."],
+    ["capital coefficients", "Give your answer in the form $A x^2+Bx+C$."],
+    ["hint", "Hint: Distribute $(cx+d)$ over $ax$ first, then over $b$, then collect like terms."],
+    ["international mindedness", "meets when $(a+b)(a+b)$ is expanded to $a^2+2ab+b^2$: Yang Hui organised the coefficients"],
+    ["factoring in reverse", "reverse when it factors $x^2+8x+16$ as $(x+4)(x+4)$."],
+    ["branch A", "Investigate whether every trinomial of the form $x^2+bx+c$, where $b$ and $c$ are integers, can be factored."],
+  ];
+
+  const compiler2 = NodeCompiler.create();
+  function spanCompiles(mathSrc: string): boolean {
+    const escaped = mathSrc.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    try {
+      return compiler2.pdf({
+        mainFileContent: `#set page(width: 400pt, height: 80pt)\n#let r = eval("${escaped}", mode: "math")\n#r`,
+      }) != null;
+    } catch {
+      return false;
+    }
+  }
+
+  it.each(fromPacket)("repairs the span so Typst accepts it: %s", (_label, line) => {
+    for (const span of spans(typesetMath(line))) {
+      expect(spanCompiles(span), `span "${span}" still aborts the compile`).toBe(true);
+    }
+  });
+
+  it("splits the juxtaposed products that caused the fallback", () => {
+    const out = typesetMath("proved that $(a+b)(a+b) = a^2+2ab+b^2$ holds.");
+    expect(out).toBe("proved that $(a+b)(a+b) = a^2+2a b+b^2$ holds.");
+  });
+
+  it("repairs every span in a string, not just the first", () => {
+    const out = typesetMath("Find the expansion of $(ax+b)(cx+d)$ in the form $A x^2+Bx+C$.");
+    expect(spans(out)).toEqual(["(a x+b)(c x+d)", "A x^2+B x+C"]);
+  });
+
+  it("leaves the whole string alone when delimiters are unbalanced", () => {
+    const risky = "Pencils cost $2.50 and the expansion is 2ab per pack.";
+    expect(typesetMath(risky)).toBe(risky);
+  });
+});
+
+describe("toTypstMath leaves valid generator math untouched", () => {
+  // If the inside-span pass were not a no-op on correct math, it would
+  // silently damage every packet that was already right. These are the exact
+  // forms the 11b MATH rule asks for, and the cases typst-rich-inline-math
+  // already guards at the Typst end.
+  it.each([
+    "a div b := a times 1/b",
+    "macron(x)",
+    "sqrt(2) + pi",
+    "sin(x) + cos(x)",
+    "frac(1, 2)",
+    "x = plus.minus sqrt(7)",
+    "0 lt.eq x",
+    "a eq.not 0",
+    "x in RR",
+    "sum_(k=1)^n k",
+    "2a + c = 19",
+    "alpha + beta = gamma",
+  ])("is a no-op on: %s", (valid) => {
+    expect(toTypstMath(valid)).toBe(valid);
+  });
+
+  it("keeps a quoted operator whole", () => {
+    // Splitting inside the quotes would yield "V a r" on the printed page.
+    expect(toTypstMath('"Var"(X) = sigma^2')).toBe('"Var"(X) = sigma^2');
+  });
+
+  it("keeps dotted symbol names whole", () => {
+    // "lt" and "eq" are not identifiers on their own; splitting the dotted
+    // name would produce "l t.e q" and abort the compile.
+    expect(toTypstMath("arrow.r.double")).toBe("arrow.r.double");
+    expect(toTypstMath("plus.minus")).toBe("plus.minus");
+  });
+
+  it("still rewrites LaTeX-habit names to real Typst symbols", () => {
+    expect(toTypstMath("x leq 5")).toBe("x lt.eq 5");
+    expect(toTypstMath("a neq 0")).toBe("a eq.not 0");
+  });
+
+  it("is idempotent on generator spans", () => {
+    const once = typesetMath("expand $(ax+b)(cx+d)$ fully.");
+    expect(typesetMath(once)).toBe(once);
+  });
+});
+
+describe("scope-and-sequence references stay out of the mathematics", () => {
+  // Shipped defect: the B.4 prerequisites line printed "b^2(A.3)" with the A
+  // set in math italic, because a lone capital letter is NEUTRAL and the
+  // equation beside it swallowed the citation. This course's packets cite each
+  // other constantly, so the case is common, not exotic.
+  it("does not absorb a trailing (A.3) into the span before it", () => {
+    const out = typesetMath("used to prove (a+b)(a+b) = a^2+2ab+b^2 (A.3); the vocabulary term");
+    expect(spans(out)).toEqual(["(a+b)(a+b) = a^2+2a b+b^2"]);
+    expect(out).toContain(" (A.3); the vocabulary term");
+  });
+
+  it("does not let a leading A.3: start a span", () => {
+    const out = typesetMath("the perfect square identity from A.3: (a+b)(a+b) = a^2+2ab+b^2");
+    expect(spans(out)).toEqual(["(a+b)(a+b) = a^2+2a b+b^2"]);
+    expect(out).toContain("from A.3: ");
+  });
+
+  it.each(["A.3", "(A.3)", "B.4", "(B.4)", "A.3.", "A.3;", "A.3:", "D.12"])(
+    "treats %s as prose",
+    (ref) => {
+      expect(typesetMath(`see ${ref} for the proof of x^2+8x+16`)).toContain(`see ${ref} for`);
+    },
+  );
+
+  it("still typesets the equation that follows a reference", () => {
+    const out = typesetMath("proved in A.3. Using grouping, show that x^2+8x+16 factors.");
+    expect(spans(out)).toEqual(["x^2+8x+16"]);
+    expect(out).toContain("proved in A.3.");
+  });
+
+  it("leaves a CCSS code alone, which is the same shape with more letters", () => {
+    expect(typesetMath("HSA.SSE.A.2 applies to x^2+5x+6")).toContain("HSA.SSE.A.2 applies to");
+  });
+
+  // The IBDP half of the same idea, and it failed harder than the MYP half.
+  // "S3E11" has no two adjacent letters, so the prelude's looks-like-math()
+  // -- which only inspects runs of two or more letters -- waved the span
+  // through to eval(), where the whole code is ONE unknown variable. A packet
+  // subtitled "Nuanced Analysis Packet S3E11" did not print at all.
+  it.each(["S3E11", "(S3E11)", "S2E7", "S3E11.", "S3E11;"])(
+    "treats the IBDP packet code %s as prose",
+    (ref) => {
+      expect(typesetMath(`continues ${ref} with x^2+8x+16`)).toContain(`continues ${ref} with`);
+    },
+  );
+
+  it("keeps an IBDP packet code out of a subtitle entirely", () => {
+    expect(typesetMath("Nuanced Analysis Packet S3E11")).toBe("Nuanced Analysis Packet S3E11");
+  });
+});
+
+describe("prose the delimiters must not swallow", () => {
+  // Both of these were shipped in the B.4 packet, and both came from the same
+  // place: a signal that is unmistakably mathematical in an expression and
+  // ordinary punctuation in a sentence.
+  it("leaves an ordinal alone", () => {
+    // Printed as "$12t h$": the digit glued to a letter read as mathematics,
+    // then split into 12, t, h to survive Typst. A century is not a quantity.
+    expect(typesetMath("Bhaskara II, working in the 12th century, studied quadratics")).toBe(
+      "Bhaskara II, working in the 12th century, studied quadratics",
+    );
+    expect(typesetMath("the 1st, 2nd, 3rd and 21st terms")).toBe("the 1st, 2nd, 3rd and 21st terms");
+  });
+
+  it("leaves a slash between written words alone", () => {
+    // "sum" and "product" are both names of Typst big operators, so "$sum/
+    // product$" printed as a sigma over a pi in the prerequisite box.
+    expect(typesetMath("the sum/product pattern: the middle coefficient is a sum")).toBe(
+      "the sum/product pattern: the middle coefficient is a sum",
+    );
+    expect(typesetMath("state whether it is true and/or provable")).toBe(
+      "state whether it is true and/or provable",
+    );
+    expect(typesetMath("a speed of 60 km/h")).toBe("a speed of 60 km/h");
+  });
+
+  it("still reads a slash between symbols as division", () => {
+    expect(spans(typesetMath("Find x/y when x=6"))).toEqual(["x/y", "x=6"]);
+    expect(spans(typesetMath("compute 3/4 of the total"))).toEqual(["3/4"]);
+    expect(spans(typesetMath("the value of 2x/3"))).toEqual(["2x/3"]);
+  });
+});
+
+describe("a letter glued to a digit is never left inside a span", () => {
+  // Typst lexes "m1" as one identifier, and an unknown identifier aborts the
+  // document rather than degrading -- so this is a compile failure, not a
+  // cosmetic one. Only this direction matters: "6x" lexes as a number beside
+  // a variable and must keep its spacing, or every quadratic in the course
+  // changes shape.
+  it.each([
+    ["m1 = m2", "m 1 = m 2"],
+    ["A1 + B2", "A 1 + B 2"],
+    ["sigma1", "sigma 1"],
+    ["x2 + y2", "x 2 + y 2"],
+  ])("separates %s", (input, expected) => {
+    expect(toTypstMath(input)).toBe(expected);
+  });
+
+  it.each(["6x^2 + 11x + 3", "2a + c = 19", "10x - 4"])(
+    "leaves a digit-then-letter product exactly as written: %s",
+    (expr) => {
+      expect(toTypstMath(expr)).toBe(expr);
+    },
+  );
 });

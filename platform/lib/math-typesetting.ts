@@ -38,6 +38,8 @@
  * -----------------------------------------------------------------------------
  */
 
+import { isLatexMath } from "./latex-to-typst";
+
 /**
  * Identifiers Typst math actually defines.
  *
@@ -121,6 +123,39 @@ const MATH_CHARS = /^[0-9A-Za-z^_+\-*/=().,<>!|√±×÷≤≥≠]+$/;
 /** A parenthesised list label such as "(a)", "(ii)", "(B)" -- never math. */
 const LIST_LABEL = /^\([A-Za-z]{1,3}\)$/;
 
+/**
+ * A scope-and-sequence reference: "A.3", "(A.3)", "B.4;", "A.3:".
+ *
+ * These are everywhere in this course's prose -- the packets cite each other
+ * constantly -- and a single capital letter is otherwise NEUTRAL, so an
+ * adjacent equation absorbs the reference and prints it in math italic. The
+ * B.4 packet shipped with "b^2(A.3)" on its prerequisites line for exactly
+ * this reason: the "(A.3)" was swallowed into the span beside it.
+ *
+ * The IBDP half of the same idea, "S3E11", is here too, and it was missed the
+ * first time round with a worse consequence than italics. Its letters are
+ * never adjacent, so nothing downstream reads it as a word: hasMathSignal()
+ * sees the "3E" and calls it mathematics, and the prelude's looks-like-math()
+ * -- which only ever looks for runs of two or more LETTERS -- waves it
+ * through to eval(), where "S3E11" is one unknown variable and takes the
+ * whole document with it. A packet titled "Nuanced Analysis Packet S3E11"
+ * simply would not print. See api/nuanced-analyses/route.ts for where both
+ * code formats come from.
+ */
+const SECTION_REF = /^\(?(?:[A-Z]{1,2}\.\d{1,2}|S\d{1,2}E\d{1,2})\)?[.,;:]?$/;
+
+/**
+ * An ordinal: "12th", "1st", "21st". Prose, and it has to be said explicitly
+ * because every one of them carries a digit glued to a letter, which is
+ * otherwise the strongest math signal there is.
+ *
+ * Shipped defect this fixes: the B.4 packet's international-mindedness
+ * paragraph read "working in the $12t h$ century", because "12th" was wrapped
+ * as mathematics and then split into "12", "t", "h" to survive Typst. A
+ * century is not an expression.
+ */
+const ORDINAL = /^\d+(?:st|nd|rd|th)$/i;
+
 /** Trailing sentence punctuation, peeled off a span before wrapping. */
 const TRAILING_PUNCT = /[,.;:!?]+$/;
 
@@ -148,14 +183,45 @@ const ALIAS_MAP = new Map(MATH_ALIASES.map(([k, v]) => [k, v] as const));
  * delimited is its own author's, and the prelude's normalize-math handles it.
  */
 export function toTypstMath(expr: string): string {
-  return expr.replace(/[A-Za-z]+/g, (run) => {
+  // Three things must survive untouched, and each one is a real string the
+  // generator emits:
+  //   "Var"        a quoted operator (11b requires the quotes) -- splitting
+  //                inside it yields "V a r"
+  //   lt.eq        a dotted Typst symbol name; "lt" and "eq" are not
+  //                identifiers on their own and would each be split
+  //   sin, alpha   ordinary identifiers
+  // Everything else that is 2+ letters is a juxtaposed product.
+  const letters = (run: string): string => {
     if (run.length === 1) return run;
     const lower = run.toLowerCase();
     const alias = ALIAS_MAP.get(lower);
     if (alias) return alias;
     if (IDENT_SET.has(lower)) return run;
     return run.split("").join(" ");
-  });
+  };
+
+  return expr.replace(
+    /"[^"]*"|[A-Za-z]+(?:\.[A-Za-z]+)+|[A-Za-z]+[0-9][A-Za-z0-9]*|[A-Za-z]+/g,
+    (run) => {
+      if (run.startsWith('"')) return run;   // quoted operator
+      if (run.includes(".")) return run;     // dotted symbol name
+      if (/[0-9]/.test(run)) {
+        // A LETTER glued to a digit -- "m1", "A1", "S3E11", "x2". Typst lexes
+        // the whole run as ONE identifier, and an unknown identifier does not
+        // degrade: it aborts the document, so a subtitle reading "Packet
+        // S3E11" stops the packet printing at all. Separating the pieces
+        // renders identically and compiles.
+        //
+        // Only this direction is dangerous. A digit glued to a letter -- the
+        // "6x" of "6x^2 + 11x + 3" -- already lexes as a number beside a
+        // variable and is left exactly as written.
+        return (run.match(/[0-9]+|[A-Za-z]+/g) ?? [])
+          .map((piece) => (/^[0-9]/.test(piece) ? piece : letters(piece)))
+          .join(" ");
+      }
+      return letters(run);
+    },
+  );
 }
 
 type TokenKind =
@@ -185,7 +251,16 @@ function hasMathSignal(token: string): boolean {
   // into spaced single letters -- when "-" counted here. Subtraction still
   // reaches a span through a neighbouring token that carries a real signal
   // ("x^2 - 9" via the caret), so nothing genuine is lost.
-  if (/[A-Za-z0-9][+*/=][A-Za-z0-9]/.test(token)) return true; // ad+bc, x=3
+  if (/[A-Za-z0-9][+*=][A-Za-z0-9]/.test(token)) return true;  // ad+bc, x=3
+  // A slash is the weak one of the four, because English uses it as
+  // punctuation between whole words: "sum/product", "and/or", "km/h". It
+  // counts as division only when neither side is a written word -- "x/y",
+  // "3/4", "2x/3" all qualify; "sum/product" does not, and the B.4 packet
+  // printed it as a sigma over a pi because both happen to be the names of
+  // Typst's big operators.
+  if (/[A-Za-z0-9]\/[A-Za-z0-9]/.test(token) && !/(^|\/)[A-Za-z]{2,}(\/|$)/.test(token)) {
+    return true;
+  }
   if (/[√±×÷≤≥≠]/.test(token)) return true;
   return false;
 }
@@ -198,6 +273,14 @@ function classify(token: string): TokenKind {
   // numbering, and italicising it detaches it from every other label on
   // the page.
   if (LIST_LABEL.test(token)) return "prose";
+
+  // An ordinal is a word. Checked before the signal tests below, which would
+  // all read the digit-letter join in "12th" as mathematics.
+  if (ORDINAL.test(token.replace(TRAILING_PUNCT, ""))) return "prose";
+
+  // A section reference is a citation, not a quantity. Prose, so it can
+  // neither start a span nor be absorbed into one.
+  if (SECTION_REF.test(token)) return "prose";
 
   const bare = token.replace(TRAILING_PUNCT, "").replace(LEADING_PUNCT, "");
   if (bare.length === 0) return "neutral";
@@ -235,6 +318,73 @@ function classify(token: string): TokenKind {
 }
 
 /**
+ * Is what the author put between two dollar signs actually mathematics?
+ *
+ * Deliberately NOT the identifier check the Typst prelude's looks-like-math()
+ * runs. That one rejects any multi-letter run Typst does not define, which
+ * would throw out "a^2+2ab+b^2" -- the juxtaposed-product span that repairing
+ * generator output is FOR. This asks the weaker and more useful question: is
+ * there a token in here that is plainly English? One is enough, because a
+ * real equation has none.
+ */
+function segmentIsMath(segment: string): boolean {
+  return !segment
+    .split(/\s+/)
+    .filter((t) => t.length > 0)
+    .some((t) => classify(t) === "prose");
+}
+
+/**
+ * Would the Typst prelude's looks-like-math() evaluate this span, or refuse it?
+ *
+ * A TS mirror of the gate in typst-render.service.ts, reading the same two
+ * tables so the two cannot drift on WHICH identifiers count. It is not a
+ * second opinion about what is mathematics -- it is the same opinion, asked
+ * on this side of the wire, so a caller can know in advance that a span would
+ * be printed with its dollar signs rather than typeset.
+ */
+export function typstGateAccepts(span: string): boolean {
+  // Quoted spans are literal text in Typst math, so their words are fine.
+  const unquoted = span.replace(/"[^"]*"/g, " ");
+  // A letter glued to a digit is one identifier, and an unknown one aborts.
+  if (/[A-Za-z][A-Za-z0-9]*[0-9]/.test(unquoted)) return false;
+  for (const run of unquoted.match(/[A-Za-z]{2,}/g) ?? []) {
+    if (!IDENT_SET.has(run.toLowerCase())) return false;
+  }
+  return true;
+}
+
+/**
+ * Should this span be handed to the LaTeX-to-Typst converter?
+ *
+ * A backslash settles it: that is LaTeX and nothing else. The interesting
+ * case is a span with NO backslash, which is one of three things:
+ *
+ *   1. legacy Typst syntax from a packet written before the switch
+ *      ("a div b := a times 1/b", "macron(x)", "cos((3pi)/2)")
+ *   2. prose whose dollar signs paired up by accident
+ *      ("2.50 per package and pens cost ")
+ *   3. LaTeX that simply needed no command -- "A = ac", "a^2+2ab+b^2",
+ *      "Ax^2+Bx+C" -- which is most of the algebra in a Grade 9 packet
+ *
+ * The first renders correctly as it stands and must be left alone. The second
+ * must be left alone too, and printed verbatim, which is what the gate
+ * refusing it achieves. Only the third is a problem: the gate refuses it as
+ * well, because "ac" and "Ax" are unknown Typst identifiers, so it reaches
+ * the page as its own source code with the dollar signs showing.
+ *
+ * So: convert when the Typst side would refuse the span AND the span is not
+ * prose. Both halves are load-bearing. Without the first, legacy packets get
+ * re-read as LaTeX and "div" becomes "d i v". Without the second, a sentence
+ * about the price of pencils is typeset one italic letter at a time.
+ */
+export function spanIsForLatexConversion(span: string): boolean {
+  if (isLatexMath(span)) return true;
+  if (typstGateAccepts(span)) return false;
+  return segmentIsMath(span);
+}
+
+/**
  * Wraps the unwrapped mathematics in `text` with Typst `$...$` delimiters.
  *
  * Pure and idempotent: running it twice produces the same string, because
@@ -243,15 +393,45 @@ function classify(token: string): TokenKind {
 export function typesetMath(text: string): string {
   if (typeof text !== "string" || text.length === 0) return text;
 
-  // Already-delimited segments are the generator doing its job. Split on "$"
-  // and process only the even (outside-math) pieces. An odd number of "$"
-  // means the delimiters are unbalanced -- most often a currency amount, per
-  // the 11d rule -- so the safe move is to touch nothing at all.
+  // An odd number of "$" means the delimiters are unbalanced -- most often a
+  // currency amount, per the 11d rule -- so the safe move is to touch nothing.
+  //
+  // Otherwise: typeset the pieces OUTSIDE $...$, and normalise the pieces
+  // INSIDE it. The inside pass is not belt-and-braces, it is the second bug
+  // this module was built for. The B.4 regeneration of 16 Sep 2026 emitted
+  // correct-looking delimiters and still printed 84 literal dollar signs,
+  // because it wrote juxtaposed products inside them -- "$a^2+2ab+b^2$",
+  // "$(ax+b)(cx+d)$", "$A x^2+Bx+C$". Typst reads "ab", "ax", "cx" and "Bx"
+  // as unknown variables, so rich()'s looks-like-math() rejects the segment
+  // and falls back to printing the WHOLE string literally. One bad segment
+  // poisons an entire prompt, which is why a single "2ab" put dollar signs on
+  // a printed international-mindedness paragraph.
+  //
+  // Running toTypstMath over the generator's own spans is a no-op on any
+  // segment that was already valid -- every run in it is a single letter, a
+  // known identifier, a dotted symbol or a quoted operator -- and a repair on
+  // the ones that were not.
   if (text.includes("$")) {
     const parts = text.split("$");
     if (parts.length % 2 === 0) return text;
     return parts
-      .map((part, i) => (i % 2 === 0 ? typesetSegment(part) : part))
+      .map((part, i) => {
+        if (i % 2 === 0) return typesetSegment(part);
+        // A segment the generator wrote in LaTeX is already correct and is
+        // not ours to repair. toTypstMath() would shred it -- every letter of
+        // \frac is a letter, so "\frac{3\pi}{2}" comes back as "\f r a c{3\p i}
+        // {2}" -- and the draft is stored in LaTeX now, because that is what
+        // the preview renders. latex-to-typst.ts converts it at render time.
+        if (isLatexMath(part)) return part;
+        // Nor is a segment that is not mathematics at all. Two currency
+        // amounts in one sentence pair their dollar signs into a span that
+        // was never an equation -- "Pencils cost $2.50 per package and pens
+        // cost $3" -- and splitting its letter runs would turn the prose
+        // between them into "p e r p a c k a g e". rich() refuses to evaluate
+        // such a span and prints it verbatim; this leaves it something worth
+        // printing.
+        return segmentIsMath(part) ? toTypstMath(part) : part;
+      })
       .reduce((acc, part, i) => (i === 0 ? part : `${acc}$${part}`), "");
   }
 
@@ -321,17 +501,20 @@ function typesetSegment(segment: string): string {
 /** Every prose field on a question or subpart that should be typeset. */
 type ProseBearing = Record<string, unknown>;
 
-function typesetFields<T extends ProseBearing>(obj: T, fields: string[]): T {
+/** A transform applied to one prose string. */
+type ProseFn = (text: string) => string;
+
+function mapFields<T extends ProseBearing>(obj: T, fields: string[], fn: ProseFn): T {
   const next = { ...obj } as ProseBearing;
   for (const f of fields) {
-    if (typeof next[f] === "string") next[f] = typesetMath(next[f] as string);
+    if (typeof next[f] === "string") next[f] = fn(next[f] as string);
   }
   return next as T;
 }
 
 /**
- * Applies typesetMath across every student-visible and teacher-visible prose
- * field of an assignment draft.
+ * Applies `fn` to every student-visible and teacher-visible prose field of an
+ * assignment draft, and to nothing else.
  *
  * The field list is explicit rather than a deep walk over every string,
  * and that is deliberate. `contentTag` now carries CCSS codes for the
@@ -339,27 +522,46 @@ function typesetFields<T extends ProseBearing>(obj: T, fields: string[]): T {
  * read as variables joined by dots and italicise into nonsense. Tags,
  * identifiers and syllabus codes are label data, not mathematics, and are
  * left alone here on purpose.
+ *
+ * Two passes share this walk, and they must agree on the field list or the
+ * second would miss a field the first had filled with mathematics:
+ *   - typesetDraftMath(), which puts $...$ round mathematics that has none
+ *   - the LaTeX-to-Typst conversion in typst-payload.ts, which rewrites that
+ *     mathematics into what the PDF compiler evaluates
+ *
+ * Every field named here is one the Typst template renders through rich(),
+ * which is the only place a $...$ span means anything. A field rendered any
+ * other way must NOT be added: it would be handed a converted span it cannot
+ * typeset.
  */
-export function typesetDraftMath<T extends ProseBearing>(draft: T): T {
+export function mapDraftProse<T extends ProseBearing>(draft: T, fn: ProseFn): T {
   const d = { ...draft } as ProseBearing;
+  const mapStrings = (arr: unknown[]) =>
+    arr.map((s) => (typeof s === "string" ? fn(s) : s));
 
-  for (const f of ["title", "subtitle", "prerequisites", "materials", "atl", "compulsoryCore", "plantedErrorIntro"]) {
-    if (typeof d[f] === "string") d[f] = typesetMath(d[f] as string);
+  for (const f of [
+    "title", "subtitle", "syllabusTopics", "prerequisites", "materials",
+    "atl", "compulsoryCore", "plantedErrorIntro",
+  ]) {
+    if (typeof d[f] === "string") d[f] = fn(d[f] as string);
   }
 
-  if (Array.isArray(d.instructions)) {
-    d.instructions = (d.instructions as unknown[]).map((s) => (typeof s === "string" ? typesetMath(s) : s));
-  }
+  if (Array.isArray(d.instructions)) d.instructions = mapStrings(d.instructions as unknown[]);
   if (Array.isArray(d.reflectionQuestions)) {
-    d.reflectionQuestions = (d.reflectionQuestions as unknown[]).map((s) => (typeof s === "string" ? typesetMath(s) : s));
+    d.reflectionQuestions = mapStrings(d.reflectionQuestions as unknown[]);
+  }
+  if (Array.isArray(d.commandTerms)) {
+    d.commandTerms = (d.commandTerms as unknown[]).map((t) =>
+      t && typeof t === "object" ? mapFields(t as ProseBearing, ["term", "definition"], fn) : t,
+    );
   }
   if (Array.isArray(d.tokProvocations)) {
     d.tokProvocations = (d.tokProvocations as unknown[]).map((t) =>
-      t && typeof t === "object" ? typesetFields(t as ProseBearing, ["body"]) : t,
+      t && typeof t === "object" ? mapFields(t as ProseBearing, ["body"], fn) : t,
     );
   }
   if (d.internationalMindedness && typeof d.internationalMindedness === "object") {
-    d.internationalMindedness = typesetFields(d.internationalMindedness as ProseBearing, ["body"]);
+    d.internationalMindedness = mapFields(d.internationalMindedness as ProseBearing, ["body"], fn);
   }
 
   if (Array.isArray(d.sections)) {
@@ -368,10 +570,10 @@ export function typesetDraftMath<T extends ProseBearing>(draft: T): T {
 
       if (Array.isArray(s.questions)) {
         s.questions = (s.questions as ProseBearing[]).map((q) => {
-          const nq = typesetFields(q, ["prompt", "hint", "answer", "markScheme"]);
+          const nq = mapFields(q, ["prompt", "hint", "answer", "markScheme"], fn);
           if (Array.isArray(nq.subparts)) {
             nq.subparts = (nq.subparts as ProseBearing[]).map((sp) =>
-              typesetFields(sp, ["prompt", "hint", "answer", "markScheme"]),
+              mapFields(sp, ["prompt", "hint", "answer", "markScheme"], fn),
             );
           }
           return nq;
@@ -379,22 +581,20 @@ export function typesetDraftMath<T extends ProseBearing>(draft: T): T {
       }
 
       if (s.spotlight && typeof s.spotlight === "object") {
-        s.spotlight = typesetFields(s.spotlight as ProseBearing, ["body"]);
+        s.spotlight = mapFields(s.spotlight as ProseBearing, ["body"], fn);
       }
       if (s.geometricReading && typeof s.geometricReading === "object") {
-        s.geometricReading = typesetFields(s.geometricReading as ProseBearing, ["body"]);
+        s.geometricReading = mapFields(s.geometricReading as ProseBearing, ["body"], fn);
       }
       if (s.prerequisiteBox && typeof s.prerequisiteBox === "object") {
         const box = { ...(s.prerequisiteBox as ProseBearing) };
-        if (Array.isArray(box.items)) {
-          box.items = (box.items as unknown[]).map((x) => (typeof x === "string" ? typesetMath(x) : x));
-        }
+        if (Array.isArray(box.items)) box.items = mapStrings(box.items as unknown[]);
         s.prerequisiteBox = box;
       }
       if (s.translationTable && typeof s.translationTable === "object") {
         const tt = { ...(s.translationTable as ProseBearing) };
         if (Array.isArray(tt.rows)) {
-          tt.rows = (tt.rows as ProseBearing[]).map((r) => typesetFields(r, ["informal", "formal"]));
+          tt.rows = (tt.rows as ProseBearing[]).map((r) => mapFields(r, ["informal", "formal"], fn));
         }
         s.translationTable = tt;
       }
@@ -404,6 +604,13 @@ export function typesetDraftMath<T extends ProseBearing>(draft: T): T {
   }
 
   return d as T;
+}
+
+/**
+ * Wraps the undelimited mathematics in every prose field of a draft.
+ */
+export function typesetDraftMath<T extends ProseBearing>(draft: T): T {
+  return mapDraftProse(draft, typesetMath);
 }
 
 /**

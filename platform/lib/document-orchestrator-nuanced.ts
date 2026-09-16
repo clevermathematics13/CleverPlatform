@@ -248,6 +248,7 @@ function mapQuestion(
     tier: (q.tier as 1 | 2 | 3) ?? 1,
     prompt: q.prompt,
     answerBox: buildAnswerBoxSpec(q, template),
+    ...(q.areaModel ? { areaModel: q.areaModel } : {}),
     ...(q.hint ? { hint: q.hint } : {}),
     ...(q.answer ? { answer: q.answer } : {}),
   };

@@ -27,7 +27,15 @@ students, 113 `invited_students`. No admin panel, no public signup.
 **The GitHub repository is PUBLIC.** The previous handoff described the platform as
 "private", which is true of the product but not of the source. See §7.
 
-Courses: `26AH` (Y12 AA HL), `27AH` (Y11 AA HL), `9A` (`2abe4055`), `9A (2025-2026)`
+A DP course is named by COHORT: `<two-digit graduation year><two-letter course>`,
+where `AH`=AA HL, `AS`=AA SL, `IH`=AI HL, `IS`=AI SL. So `27AH` is the class of
+2027 taking AA HL. The COURSE (AAHL) spans Grade 11 and Grade 12, so a code alone
+never fixes a grade - the cohort's position in it does, and it is derived from the
+graduation year and the date (`lib/dp-course-code.ts`), never hardcoded. In the
+2026-27 school year `27AH` is Grade 12.
+
+Courses: `27AH` (`7abac7b1`, AA HL class of 2027), `26AH` (archived), `28IH`
+(archived, AI HL class of 2028), `9A` (`2abe4055`), `9A (2025-2026)`
 (`31370a33`, archived - do not delete), `Grade 9 Extended` (`b1d3b183`, virtual, no
 roster by design), `Grade 9 Standard` (`40ef6810`, virtual; its real class is
 `9D`, `9776610b`, 18 invited students; no NA packets, but its first summative
@@ -80,6 +88,70 @@ must exercise Server Actions.
 - **Both PDF pipelines are live.** Do not remove either.
 - **Typst payload is all-or-nothing.** A missing key in the Typst dict is a hard
   compile failure; `nonEmptyString()` enforces it.
+- **NA packets are AUTHORED IN LATEX and RENDERED AS TYPST.** The generator
+  writes `$\cos\left(\frac{3\pi}{2}\right)$` (rule 11b in
+  `buildActivityGeneratorSystemPrompt`), the draft stores exactly that, the
+  on-screen preview renders it with KaTeX, and `buildTypstPayload` converts
+  each span to Typst on the way to the compiler (`lib/latex-to-typst.ts`). It
+  ran the other way round until 16 Sep 2026 -- packets were written in Typst
+  syntax because that is what the PDF needed -- which made the PDF right and
+  the preview wrong: KaTeX rendered `$cos((3pi)/2)$` as a product of italic
+  letters, so the surface a teacher proofreads on showed something no student
+  would ever get. Do not "simplify" this back by teaching the generator Typst.
+  A `$...$` span with NO backslash in it is a packet saved before the switch
+  and still renders down the legacy path untouched.
+- **A newline in a prompt is a line on the page.** `rich()` splits on it
+  before it does anything else, so a stem followed by lettered items sets as
+  a list rather than a paragraph. Rule 6d of the generator prompt asks for
+  it. Note the tension with rule 30, which says a question with (a), (b), (c)
+  should be written as separate consecutive questions instead: lettered parts
+  inside one printed box are one scan anchor and one rubric item, so they
+  cannot be marked part by part. Rule 30 still stands; 6d governs the cases
+  where lettered parts are used anyway.
+- **Every packet page is numbered "N of M"**, from a `footer:` on the Typst
+  `#set page`. `counter(page).final()` needs the `context` block, because
+  Typst only knows the total once it has laid every page out. It is in the
+  template, so it covers existing packets and future ones alike with no data
+  migration -- but see the next bullet for what "existing packets" actually
+  means.
+- **Only B.4 has a `draft_content`.** A.1, A.2, A.2-P0, A.3 and three older
+  rows were seeded into the LEGACY columns (`parts`, `prerequisites`,
+  `vocabulary`, ...), and `GET /api/nuanced-analyses/[id]` selects
+  `draft_content` alone -- so those packets cannot be opened in the editor or
+  re-rendered to PDF at all. Reconstructing a draft from `parts` and
+  compiling it shows what a backfill would cost: A.1 (16pp), A.3 (17pp) and
+  A.2-P0 (3pp) render clean; A.2 aborts on "unexpected slash";
+  `quadratics-calculus-transition` and `polynomial-analysis` have a different
+  part shape and abort on a missing `heading` key; the binomial-expansion row
+  aborts on "unexpected hat".
+- **A question can print an area model** (`areaModel` on the question,
+  `AreaModelSpec` in typst-payload.ts): a labelled rectangle with empty cells
+  the student fills in. It exists because telling a fourteen-year-old to draw
+  the rectangle first assesses the drawing. Rendered by `area-model()` in the
+  Typst template and by `AreaModelFigure` in the preview -- both, because the
+  preview is where the figure is checked before it prints.
+- **A span the Typst gate refuses is read as LaTeX instead, unless it is
+  prose.** Most Grade 9 algebra needs no LaTeX command at all -- `A = ac`,
+  `a^2+2ab+b^2`, `Ax^2+Bx+C` -- so the backslash test cannot recognise it, and
+  the Typst side refuses it because `ac` and `Ax` are unknown identifiers,
+  which used to put the source on the page with its dollar signs showing.
+  `spanIsForLatexConversion()` asks both questions: would Typst refuse it, and
+  is it mathematics rather than prose. Both halves are load-bearing -- see the
+  comment on that function. The TS mirror of the gate is pinned against the
+  shipped prelude in `latex-to-typst.compile.test.ts`.
+- **An ordinal and a slash between words are prose, not mathematics.** B.4
+  shipped with "the $12t h$ century" (the digit-letter join read as an
+  expression, then split to survive Typst) and with `$sum/product$` printed as
+  a sigma over a pi, because `sum` and `product` are the names of Typst's big
+  operators. Both are fixed in `classify()`/`hasMathSignal()`; `x/y`, `3/4`
+  and `2x/3` are still division.
+- **A letter glued to a digit inside `$...$` aborts the whole PDF.** Typst
+  lexes `m1`, `A1`, `S3E11` as one identifier, and an unknown identifier is
+  not a degraded prompt but a document that will not print. `toTypstMath()`
+  separates them and the prelude's `looks-like-math()` refuses any span that
+  still contains one. A digit glued to a letter (`6x`) is fine and is left
+  alone. This is also why the DP packet code `S3E11` is classified as prose:
+  a packet subtitled "Nuanced Analysis Packet S3E11" used to fail to render.
 - **Sonnet 5 returns thinking blocks first.** Use
   `response.content.find(b => b.type === "text")`, never `content[0].text`.
 - **Supabase:** `CREATE OR REPLACE FUNCTION` fails silently on return-type change -

@@ -19,6 +19,13 @@
  * write both read `draft` state, which was correct throughout. Only the review
  * surface lied, which is the worst place for it: the teacher proofreads here.
  *
+ * The second invariant here is newer. Those same three fields used to show
+ * their RAW LaTeX at all times, so a teacher proofreading the packet read
+ * "$\cos\left(\frac{3\pi}{2}\right)$" where the student would get a
+ * cosine -- on the one surface whose whole job is to show what the student
+ * will see. They render typeset now and fall back to source only while being
+ * edited; see EditableMath in nuanced-analysis-preview.tsx.
+ *
  * There is no jsdom/testing-library harness in this repo (vitest runs plain
  * node), so this asserts the invariant against the source the way
  * typst-rich-inline-math.test.ts and na-assessment.test.ts do.
@@ -70,13 +77,34 @@ describe("NuancedAnalysisPreview keeps editable fields controlled", () => {
   it("still writes every edit back through onDraftChange", () => {
     // A controlled field with no change handler would be silently read-only,
     // which trades one broken review surface for another.
+    //
+    // The three fields now hand their writer to EditableMath rather than
+    // spelling out an onChange of their own, so the chain to assert is:
+    // field -> EditableMath -> the editor's own onChange -> draft state.
     for (const handler of [
-      "onChange={(e) => updateTitle(e.target.value)}",
-      "onChange={(e) => updateSectionHeading(si, e.target.value)}",
-      "onChange={(e) => onPromptChange(e.target.value)}",
+      "onChange={updateTitle}",
+      "onChange={(next) => updateSectionHeading(si, next)}",
+      "onChange={onPromptChange}",
     ]) {
       expect(code()).toContain(handler);
     }
+    expect(code()).toMatch(/onChange:\s*\([\s\S]*?\)\s*=>\s*onChange\(e\.target\.value\)/);
     expect(code()).toContain("onDraftChange?.({ ...draft, title });");
+  });
+
+  // The other half of the same review surface, and the reason EditableMath
+  // exists: a field whose SOURCE is all a teacher ever sees is a field where
+  // a wrong exponent or a missing bracket stays invisible until the packet is
+  // printed. Reading shows typeset mathematics; editing shows the LaTeX.
+  it("renders every editable field as typeset mathematics when not editing", () => {
+    const c = code();
+    expect(c).toMatch(/function EditableMath\(/);
+    // Not editing -> KaTeX, via the shared renderer.
+    expect(c).toMatch(/editing[\s\S]{0,4000}<LatexRenderer latex=\{value\} \/>/);
+    // Editing -> a controlled editor over the raw LaTeX, never defaultValue.
+    expect(c).toMatch(/const commonProps = \{\s*value,/);
+    // No editable field may go back to a bare textarea/input bound to the
+    // draft: that is the state this component replaced.
+    expect(c).not.toMatch(/value=\{prompt\}\s*\n\s*rows=/);
   });
 });

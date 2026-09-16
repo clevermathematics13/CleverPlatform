@@ -33,7 +33,8 @@
 // Pure string work, no Node built-ins -- safe on the browser side of the
 // chain described above. (Its TEST file imports the native compiler; the
 // module itself deliberately does not.)
-import { typesetDraftMath } from "./math-typesetting";
+import { typesetDraftMath, mapDraftProse, spanIsForLatexConversion } from "./math-typesetting";
+import { convertLatexSegmentsToTypst } from "./latex-to-typst";
 
 import type { TemplateAst } from "./template-ast.schema";
 // -- Activity content AST ------------------------------------------------------
@@ -44,14 +45,52 @@ import type { TemplateAst } from "./template-ast.schema";
  * Example:
  *   { type: "math", display: true, content: "f(x) = x^2 - 4x + 3" }
  *
- * The content is Typst math syntax (not LaTeX).  The AI generation pipeline
- * should output Typst math strings.  The frontend preview can convert KaTeX
- * strings to Typst where needed.
+ * Typst syntax here, and LaTeX everywhere a human or a generator writes: this
+ * node is a rendering detail of the payload, not a field of the draft, so it
+ * is already past the crossing. Packets are authored in LaTeX inside $...$
+ * (the preview renders it with KaTeX) and buildTypstPayload converts those
+ * spans on the way out -- see lib/latex-to-typst.ts.
  */
 export interface MathNode {
   type: "math";
   display: boolean;
   content: string;
+}
+
+/**
+ * A labelled rectangle partitioned into cells: the area model.
+ *
+ * It exists because "draw a rectangle of height x+3 and width x+2, cut it
+ * into four and write each area" asks a fourteen-year-old to construct the
+ * diagram before they can use it, and the construction is not what is being
+ * assessed. Printing the rectangle with its edges labelled and its cells
+ * empty puts the whole of the student's effort into the areas.
+ *
+ * The labels are ordinary packet prose and go through rich(), so they carry
+ * $...$ math like any other field.
+ */
+export interface AreaModelSpec {
+  /** Labels along the top edge, left to right. One per column. */
+  topLabels: string[];
+  /** Labels down the left edge, top to bottom. One per row. */
+  sideLabels: string[];
+  /**
+   * Relative lengths of the columns and rows, in ONE unit shared by both
+   * axes: topWeights [5, 2] with sideWeights [5, 3] draws x as a square with
+   * a narrow strip of width 2 beside it and a wider strip of height 3 below.
+   * Getting this right is not decoration -- a model whose x reads shorter
+   * going down than going across contradicts the algebra it is illustrating.
+   * Omit both for equal cells.
+   */
+  topWeights?: number[];
+  sideWeights?: number[];
+  /**
+   * Pre-filled cell contents, row-major, as a worked or partly worked
+   * example. Omit it, or leave an entry empty, for a cell the student fills.
+   */
+  cells?: string[][];
+  /** One line under the figure saying what to do with it. */
+  caption?: string;
 }
 
 /**
@@ -97,9 +136,17 @@ export interface ActivityQuestion {
   estimatedMinutes: number;
   /** Tier: 1 = ★ (entry), 2 = ★★ (standard), 3 = ★★★ (extension). */
   tier: 1 | 2 | 3;
-  /** Question prompt in plain text with Typst math syntax for equations. */
+  /**
+   * Question prompt in plain text, with its mathematics in $...$ spans.
+   *
+   * Those spans hold LaTeX as the generator wrote them and as the preview
+   * renders them; buildTypstPayload rewrites them into trusted Typst
+   * before the compiler sees this field. See lib/latex-to-typst.ts.
+   */
   prompt: string;
   answerBox: AnswerBoxSpec;
+  /** Printed between the prompt and the answer space. */
+  areaModel?: AreaModelSpec;
   cohesionOverride?: QuestionCohesionOverride;
   subparts?: ActivityQuestion[];
   /** Expected answer for the Teacher's Companion / mark scheme. */
@@ -242,10 +289,26 @@ export function buildTypstPayload(
     sections: annotatedSections,
   });
 
+  // Then translate the mathematics into the language the compiler reads.
+  //
+  // Packets are AUTHORED in LaTeX -- that is what the on-screen preview
+  // renders with KaTeX, and what every other mathematical surface in this
+  // codebase stores -- and Typst does not know what a backslash is. This is
+  // the one point every render passes through, so it is where the crossing
+  // happens: each $...$ span holding LaTeX becomes pre-converted Typst,
+  // marked trusted so rich() evaluates it directly. A span with no backslash
+  // in it is legacy Typst syntax from a packet saved before the switch, and
+  // is left exactly as it was, still guarded by rich()'s own identifier gate.
+  //
+  // See lib/latex-to-typst.ts.
+  const renderableContent = mapDraftProse(typesetContent, (text) =>
+    convertLatexSegmentsToTypst(text, spanIsForLatexConversion),
+  );
+
   return {
     schemaVersion: template.schemaVersion,
     template,
-    content: typesetContent,
+    content: renderableContent,
     renderOptions,
     metadata: {
       generatedAt: metadata.generatedAt ?? new Date().toISOString(),

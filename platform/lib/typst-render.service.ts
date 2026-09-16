@@ -30,6 +30,7 @@
 
 import { validateTemplateAst } from "./template-ast.schema";
 import { TYPST_MATH_IDENTS, MATH_ALIASES } from "./math-typesetting";
+import { TRUSTED_MATH_DELIM } from "./latex-to-typst";
 import { buildTypstPayload } from "./typst-payload";
 import type { ActivityPayload } from "./typst-payload";
 
@@ -255,6 +256,11 @@ function describeCompileError(err: unknown): string {
  * nothing else in the pipeline would catch it.
  */
 export function getActivityTypstSource(): string {
+  // The trusted-math marker, written as a Typst string escape rather than as
+  // a raw control character in the emitted source. Derived from the one
+  // constant latex-to-typst.ts wraps spans in, so the writer and the reader
+  // of the marker can never drift apart.
+  const trustedDelim = `"\\u{${TRUSTED_MATH_DELIM.codePointAt(0)!.toString(16)}}"`;
   return `
 // -- CleverPlatform Nuanced Analysis — Typst template ------------------------
 #let raw = sys.inputs.at("payload", default: "{}")
@@ -264,6 +270,14 @@ export function getActivityTypstSource(): string {
 #let opts = data.at("renderOptions", default: (:))
 
 #let page-size = if tmpl.document.pageSize == "a4" { "a4" } else { "us-letter" }
+// Every page carries its number and the total: "2 of 23".
+//
+// A packet is stapled, worked on over three lessons, torn apart at the
+// Teacher's Companion and scanned back in. Without the total, a student
+// holding page 14 cannot tell whether anything is missing, and neither can
+// whoever collects it. counter(page).final() is what makes the total
+// available -- it needs the context block, because Typst can only know how
+// many pages there are after it has laid them all out.
 #set page(
   paper: page-size,
   margin: (
@@ -272,6 +286,12 @@ export function getActivityTypstSource(): string {
     bottom: (tmpl.document.marginBottomMm) * 1mm,
     left: (tmpl.document.marginLeftMm) * 1mm,
   ),
+  footer: context [
+    #set align(center)
+    #text(size: 8pt, fill: rgb("#9ca3af"))[
+      #counter(page).display("1") of #counter(page).final().first()
+    ]
+  ],
 )
 #set text(font: tmpl.typography.bodyFont, size: (tmpl.typography.bodySizePt) * 1pt)
 
@@ -416,13 +436,25 @@ export function getActivityTypstSource(): string {
   // requires named operators be written that way ($"Var"(X)$) -- so the
   // words inside them are always valid and must not fail the check.
   let unquoted = seg.replace(regex("\\"[^\\"]*\\""), " ")
+  // A LETTER glued to a digit is one identifier to Typst -- "m1", "A1",
+  // "S3E11" -- and an unknown identifier aborts the whole document rather
+  // than degrading. The loop below cannot catch it: it looks for runs of two
+  // or more LETTERS, and those runs have none. This costs nothing in false
+  // rejections, because a span containing such an identifier could never
+  // have compiled in the first place; it only turns a packet that would not
+  // print into one that prints this span verbatim.
+  //
+  // A DIGIT glued to a letter is a different thing and is fine: "6x^2" lexes
+  // as a number beside a variable, which is why the pattern starts on a
+  // letter.
+  if unquoted.matches(regex("[A-Za-z][A-Za-z0-9]*[0-9]")).len() > 0 { return false }
   for m in unquoted.matches(regex("[A-Za-z]{2,}")) {
     if not math-idents.contains(lower(m.text)) { return false }
   }
   true
 }
 
-#let rich(s) = {
+#let rich-legacy(s) = {
   let parts = s.split("$")
   if calc.rem(parts.len(), 2) == 0 {
     return [#s]
@@ -444,6 +476,99 @@ export function getActivityTypstSource(): string {
     }
   }
   out
+}
+
+// The real rich(): a trusted channel first, the guessing one underneath.
+//
+// Spans wrapped in TRUSTED_MATH_DELIM were converted from LaTeX to Typst by
+// lib/latex-to-typst.ts, which built every bracket and every identifier in
+// them itself. They do not need looks-like-math()'s guess and must not be
+// subjected to it -- the gate rejects any multi-letter run it does not
+// recognise, which would throw out mat(delim: "[", ...) and every other
+// construct that carries a named argument.
+//
+// Everything OUTSIDE those markers is packet prose exactly as before, so the
+// currency-dollar protection that rich-legacy() exists for is untouched: a
+// legacy $...$ span still has to earn its evaluation.
+//
+// An odd marker count means the pairing was broken in transit; the whole
+// string then goes down the legacy path rather than evaluating half a span.
+#let rich-line(s) = {
+  let chunks = s.split(${trustedDelim})
+  if chunks.len() == 1 { return rich-legacy(s) }
+  if calc.rem(chunks.len(), 2) == 0 { return rich-legacy(s) }
+  let out = []
+  for (i, chunk) in chunks.enumerate() {
+    if calc.rem(i, 2) == 0 {
+      out += rich-legacy(chunk)
+    } else {
+      out += eval(chunk, mode: "math")
+    }
+  }
+  out
+}
+
+// A newline in a prompt is a line on the page.
+//
+// Without this, a question with lettered parts had only one shape available:
+// "(a) ... (b) ... (c) ..." run together in a paragraph, because a string
+// interpolated into Typst content renders its newlines as spaces. A student
+// scanning for part (d) then has to read the whole paragraph to find it.
+// Splitting here lets a prompt put its stem on one line and each lettered
+// part on its own, which is how the A.1 and A.2 packets read on paper.
+//
+// The split happens BEFORE any $-pairing, which is safe because a math span
+// never contains a newline -- the preview's own splitter assumes the same
+// (see splitSegments in components/LatexRenderer.tsx).
+#let rich(s) = {
+  let lines = s.split("\n")
+  if lines.len() == 1 { return rich-line(s) }
+  let out = []
+  for (i, line) in lines.enumerate() {
+    if i > 0 { out += linebreak() }
+    if line.trim() != "" { out += rich-line(line) }
+  }
+  out
+}
+
+// A labelled rectangle partitioned into cells: the area model.
+// See AreaModelSpec in typst-payload.ts for why a packet prints the rectangle
+// rather than asking the student to draw it.
+#let area-model(spec) = {
+  let tops = spec.at("topLabels", default: ())
+  let sides = spec.at("sideLabels", default: ())
+  let cells = spec.at("cells", default: ())
+  if tops.len() == 0 or sides.len() == 0 { return [] }
+  // Weights are lengths, in one shared unit across BOTH axes -- which is the
+  // whole point of an area model: the side of length x has to be drawn the
+  // same length going across as it is going down, or the picture contradicts
+  // the algebra. Equal cells when no weights are given.
+  let tw = spec.at("topWeights", default: ())
+  let sw = spec.at("sideWeights", default: ())
+  let unit = 16pt
+  let col-w = range(tops.len()).map(i => if tw.len() > i { tw.at(i) * unit } else { 84pt })
+  let row-h = range(sides.len()).map(i => if sw.len() > i { sw.at(i) * unit } else { 38pt })
+  block(breakable: false, width: 100%, inset: (y: 4pt))[
+    #align(center)[
+      #grid(
+        columns: (30pt,) + col-w,
+        rows: (14pt,) + row-h,
+        align: center + horizon,
+        [],
+        ..tops.map(t => text(size: 9pt, weight: "bold")[#rich(t)]),
+        ..range(sides.len()).map(r => (
+          text(size: 9pt, weight: "bold")[#rich(sides.at(r))],
+          ..range(tops.len()).map(c => rect(
+            width: 100%, height: 100%, stroke: 0.7pt + col-border, inset: 3pt,
+          )[#align(center + horizon)[#text(size: 10pt)[#if cells.len() > r and cells.at(r).len() > c { rich(cells.at(r).at(c)) }]]]),
+        )).flatten(),
+      )
+    ]
+    #if spec.at("caption", default: "") != "" [
+      #v(3pt)
+      #align(center)[#text(size: 8pt, style: "italic", fill: rgb("#6b7280"))[#rich(spec.caption)]]
+    ]
+  ]
 }
 
 // Header
@@ -491,20 +616,47 @@ export function getActivityTypstSource(): string {
 #v(8pt)
 
 // Progress tracker
+//
+// Each box carries its OWN section's heading. It used to print a running
+// count -- "Part 1" through "Part #sections" -- which silently assumed the
+// sections were named Part 1..N in order. They never are. The shipped B.4
+// packet has ten sections headed Part 0, Parts 1-5, Reflection, Optional
+// Extension, B.5 Pre-Class Prep and Teacher's Companion, so every box was
+// off by one against the page it referred to, and the last one pointed at a
+// section the student never receives. A.1 and A.2 had the same mismatch.
+//
+// Only the leading name is used, not the whole heading: "Part 4 -- Splitting
+// the Middle: Grouping as the General Method" is a title, not a tick-box
+// label, and ten of those would not fit on the line.
 #if tmpl.progressTracker.enabled [
-  #let n = content.sections.len()
-  #text(size:8pt,fill:rgb("#6b7280"))[
-    *#tmpl.progressTracker.label* #h(4pt)
-    #for i in range(n) [ Part #str(i+1) \u{25a1} #h(4pt) ]
+  #let tracker-label(h) = {
+    let parts = h.split("\u{2014}")          // em dash, as the headings use
+    let name = if parts.len() > 1 { parts.at(0) } else { h }
+    // This label is a plain string, not rich() content, so a trusted-math
+    // marker would print as a notdef box rather than typeset. Headings are
+    // never mathematics; drop the marker rather than risk the glyph.
+    name.replace(${trustedDelim}, "").trim()
+  }
+  // The Teacher's Companion is torn off before the packet is handed out, so
+  // a student cannot tick it. Drop it rather than print a box for a page
+  // they will never hold.
+  #let tracked = content.sections.filter(
+    (s) => not lower(s.heading).contains("companion")
+  )
+  #if tracked.len() > 0 [
+    #text(size:8pt,fill:rgb("#6b7280"))[
+      *#tmpl.progressTracker.label* #h(4pt)
+      #for s in tracked [ #tracker-label(s.heading) \u{25a1} #h(4pt) ]
+    ]
+    #v(6pt)
   ]
-  #v(6pt)
 ]
 
 // Command Terms strip
 #if "commandTerms" in content and content.commandTerms.len() > 0 [
   #line(length:100%,stroke:(dash:"dashed",thickness:0.5pt,paint:col-strip))
   #block(fill:col-strip.lighten(90%),width:100%,inset:(x:8pt,y:6pt))[
-    #block(fill:col-strip,inset:(x:6pt,y:3pt))[#text(size:8pt,weight:"bold",fill:white)[#upper("Command Terms — tear off and keep beside you")]]
+    #block(fill:col-strip,inset:(x:6pt,y:3pt))[#text(size:8pt,weight:"bold",fill:white)[#upper("Command Terms")]]
     #v(3pt)
     #table(columns:(80pt,1fr),stroke:0.3pt+col-border,
       ..for ct in content.commandTerms { (text(weight:"bold",size:9pt)[#rich(ct.term)],text(size:9pt)[#rich(ct.definition)]) }
@@ -563,6 +715,7 @@ export function getActivityTypstSource(): string {
         #text(weight:"bold")[#str(q.globalNumber).] #tier-badge(q.tier)
       ][
         #text[#rich(q.prompt)]
+        #if "areaModel" in q [ #area-model(q.areaModel) ]
         #if "hint" in q [ #v(2pt)#text(size:9pt,style:"italic",fill:rgb("#6b7280"))[Hint: #rich(q.hint)] ]
       ][
         #if tmpl.questionBlocks.showMarks [#text(size:8pt,fill:rgb("#6b7280"))[[#str(q.marks)M]]]
