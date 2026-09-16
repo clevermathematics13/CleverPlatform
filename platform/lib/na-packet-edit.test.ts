@@ -135,6 +135,14 @@ describe("buildPacketContentUpdate", () => {
     );
   });
 
+  it("stores the canonical course spelling, not the draft's own", () => {
+    // The manage tab's course filter groups on this column; a re-save from
+    // the editor must not reintroduce a spelling the save route would not.
+    expect(buildPacketContentUpdate(draft({ course: "Grade 9 Extended Mathematics" })).course).toBe(
+      "Grade 9 Mathematics (Extended)"
+    );
+  });
+
   it("never writes identity or placement columns", () => {
     // section_code is half the (course_id, section_code) key the sandbox
     // upsert conflicts on; writing it from the editor could repoint a packet

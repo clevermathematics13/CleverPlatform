@@ -15,6 +15,7 @@
  */
 
 import type { AssignmentDraft } from "./assignments";
+import { canonicalCourseLabel } from "./na-course-label";
 
 // ---- Lock ------------------------------------------------------------------
 
@@ -125,7 +126,9 @@ export function buildPacketContentUpdate(draft: AssignmentDraft): Record<string,
     ...(draft.tokProvocations?.length ? { tok_provocations: draft.tokProvocations } : {}),
     parts: draft.sections,
     draft_content: draft,
-    ...(draft.course ? { course: draft.course } : {}),
+    // Same canonical spelling the save route stores, so an edit cannot
+    // reintroduce a variant the manage tab would list as a separate course.
+    ...(draft.course ? { course: canonicalCourseLabel(draft.course) ?? draft.course } : {}),
     updated_at: new Date().toISOString(),
   };
 }

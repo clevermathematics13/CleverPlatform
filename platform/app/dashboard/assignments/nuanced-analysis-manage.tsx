@@ -19,6 +19,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { canonicalCourseLabel } from "@/lib/na-course-label";
 import { formatSavedDate } from "./format-date";
 
 type PacketSummary = {
@@ -86,14 +87,21 @@ export function NuancedAnalysisManage() {
     void loadPackets();
   }, []);
 
+  // The filter groups on the CANONICAL course label, not the raw column.
+  // `course` is free text the generator wrote, and it has spelt the same
+  // course several ways ("IBDP Mathematics AA HL" and "IBDP Mathematics:
+  // Analysis & Approaches HL" are one course); grouped on the raw string,
+  // this menu listed four courses for two. See lib/na-course-label.ts.
   const courses = useMemo(() => {
-    const set = new Set(packets.map((p) => p.course).filter(Boolean));
+    const set = new Set(
+      packets.map((p) => canonicalCourseLabel(p.course)).filter((c): c is string => c !== null),
+    );
     return Array.from(set).sort();
   }, [packets]);
 
   const visiblePackets = useMemo(() => {
     if (courseFilter === "all") return packets;
-    return packets.filter((p) => p.course === courseFilter);
+    return packets.filter((p) => canonicalCourseLabel(p.course) === courseFilter);
   }, [packets, courseFilter]);
 
   /**
@@ -237,7 +245,7 @@ export function NuancedAnalysisManage() {
                     <p className="mt-0.5 text-xs text-da-muted">{packet.subtitle}</p>
                   )}
                   <p className="mt-1 text-xs text-da-muted">
-                    {packet.course}
+                    {canonicalCourseLabel(packet.course) ?? packet.course}
                     {packet.section_code ? ` · Section ${packet.section_code}` : ""}
                     {packet.grade_level ? ` · ${packet.grade_level}` : ""}
                   </p>
