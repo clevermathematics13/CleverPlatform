@@ -51,7 +51,6 @@ import { DocumentOrchestratorService } from "@/lib/document-orchestrator-nuanced
 
 type GradeLevel = "Grade 9" | "Grade 10" | "Grade 11" | "Grade 12";
 
-const GRADE_LEVELS: GradeLevel[] = ["Grade 9", "Grade 10", "Grade 11", "Grade 12"];
 
 type CourseOption = { id: string; name: string };
 
@@ -230,7 +229,6 @@ export function NuancedAnalysisSandbox() {
   const [loadDraftModalOpen, setLoadDraftModalOpen] = useState(false);
 
   // ---- Course / grade / section targeting ----
-  const [gradeLevel, setGradeLevel] = useState<GradeLevel>("Grade 12");
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [courseId, setCourseId] = useState<string>("");
   const [sectionCode, setSectionCode] = useState<string>("");
@@ -278,27 +276,50 @@ export function NuancedAnalysisSandbox() {
   // instead of its whole track.
   const GRADE_9_TRACK_COURSE_NAMES = useMemo(() => ["Grade 9 Extended", "Grade 9 Standard"], []);
 
-  const gradeFilteredCourses = useMemo(() => {
-    if (gradeLevel === "Grade 9") {
-      return courses.filter((c) => GRADE_9_TRACK_COURSE_NAMES.includes(c.name));
-    }
-    return courses.filter((c) => !GRADE_9_TRACK_COURSE_NAMES.includes(c.name));
-  }, [courses, gradeLevel, GRADE_9_TRACK_COURSE_NAMES]);
+  // The three things a Nuanced Analysis can be written FOR. Nothing else
+  // belongs in this picker.
+  //
+  // There used to be a Grade selector beside it, and the course list was
+  // filtered by it: Grade 9 showed the two tracks, and every other grade
+  // showed "all the rest". "All the rest" is the bug -- the roster courses
+  // 9A, 9C, 9D and 9G are not Grade 9 TRACKS, so they fell through the filter
+  // and appeared under Grade 11 and Grade 12, where a packet saved against
+  // one would have written a DP packet's continuity onto a single Grade 9
+  // class. The grade is not something to be picked anyway: it follows from
+  // the course, and asking for both invited exactly that mismatch.
+  //
+  // Roster courses stay out on purpose. They remain the FK target for
+  // students, gradebook, tests and Google Classroom sync, but a packet is
+  // taught to a whole track, so continuity must target the virtual track
+  // course (see migration add_grade9_extended_standard_virtual_courses).
+  const courseOptions = useMemo(() => {
+    const byName = (name: string) => courses.find((c) => c.name === name) ?? null;
 
-  // If the grade changes and the currently-selected course no longer belongs
-  // to that grade's offered list, clear the selection rather than silently
-  // keeping a stale course/section pairing (e.g. switching from Grade 9 to
-  // Grade 12 while "Grade 9 Extended" was still selected).
-  useEffect(() => {
-    setCourseId((current) => {
-      if (current && !gradeFilteredCourses.some((c) => c.id === current)) {
-        setSectionCode("");
-        return "";
-      }
-      return current;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gradeLevel]);
+    // AA HL is named by cohort in the database (27AH is the class of 2027),
+    // and only one is ever un-archived at a time. The teacher does not think
+    // of it that way, so it is labelled by the course, not the cohort. If a
+    // second one is ever active, both are listed under their real names
+    // rather than one silently winning the "AAHL" label.
+    const aaHl = courses.filter((c) => /^\d{2}AH$/.test(c.name));
+    const dp = aaHl.map((c) => ({
+      id: c.id,
+      label: aaHl.length === 1 ? "AAHL" : `AAHL (${c.name})`,
+      gradeLevel: "Grade 12" as GradeLevel,
+    }));
+
+    const tracks = GRADE_9_TRACK_COURSE_NAMES.map((name) => byName(name))
+      .filter((c): c is CourseOption => c !== null)
+      .map((c) => ({ id: c.id, label: c.name, gradeLevel: "Grade 9" as GradeLevel }));
+
+    return [...dp, ...tracks];
+  }, [courses, GRADE_9_TRACK_COURSE_NAMES]);
+
+  // The grade is DERIVED, never chosen. It still drives everything it always
+  // did -- which rules the generator gets, whether the TOK bar is spliced in,
+  // and which section-code format is required -- but it can no longer
+  // disagree with the course it is saved against.
+  const gradeLevel: GradeLevel =
+    courseOptions.find((o) => o.id === courseId)?.gradeLevel ?? "Grade 12";
 
   // Continuity for the selected course. Refetched when the course changes so
   // the generator never runs against a stale picture of what has been taught.
@@ -491,22 +512,7 @@ export function NuancedAnalysisSandbox() {
       {/* ---- Targeting bar ---- */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-da-border bg-da-bg/40 px-4 py-2.5">
         <label className="flex items-center gap-1.5 text-xs text-da-muted">
-          Grade
-          <select
-            value={gradeLevel}
-            onChange={(e) => setGradeLevel(e.target.value as GradeLevel)}
-            className="rounded border border-da-border/50 bg-da-bg/30 px-2 py-1 text-xs text-da-text focus:outline-none"
-          >
-            {GRADE_LEVELS.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex items-center gap-1.5 text-xs text-da-muted">
-          {gradeLevel === "Grade 9" ? "Track" : "Course"}
+          Course
           <select
             value={courseId}
             onChange={(e) => {
@@ -516,9 +522,9 @@ export function NuancedAnalysisSandbox() {
             className="rounded border border-da-border/50 bg-da-bg/30 px-2 py-1 text-xs text-da-text focus:outline-none"
           >
             <option value="">— none (no continuity) —</option>
-            {gradeFilteredCourses.map((c) => (
+            {courseOptions.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.name}
+                {c.label}
               </option>
             ))}
           </select>
