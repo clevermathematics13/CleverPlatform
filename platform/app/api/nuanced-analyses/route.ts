@@ -31,6 +31,7 @@ import {
 } from "@/lib/na-continuity";
 import { syncRubricItems, type RubricSyncResult } from "@/lib/na-rubric-bridge";
 import { savePacketRow } from "@/lib/na-packet-save";
+import { packetCourseLabel } from "@/lib/na-course-label";
 import type { AssignmentDraft } from "@/lib/assignments";
 
 export const runtime = "nodejs";
@@ -214,7 +215,9 @@ export async function POST(req: Request) {
     slug,
     title: draft.title,
     subtitle: draft.subtitle ?? null,
-    course: draft.course ?? `${gradeLevel} Mathematics`,
+    // Canonical spelling, never the draft's own: the generator has written
+    // the same course four ways, and the manage tab groups on this column.
+    course: packetCourseLabel(draft.course, gradeLevel),
     course_id: courseId,
     owner_id: profile.id,
     grade_level: gradeLevel,

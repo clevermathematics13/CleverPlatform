@@ -376,7 +376,7 @@ export function buildActivityGeneratorSystemPrompt(
     "{",
     '  "title": "string — packet title",',
     '  "subtitle": "string — e.g. \\"Mastery Packet: IBDP Mathematics AA HL\\"",',
-    '  "course": "string — e.g. \\"IBDP Mathematics AA HL\\"",',
+    '  "course": "string — e.g. \\"IBDP Mathematics: Analysis & Approaches HL\\" or \\"Grade 9 Mathematics (Extended)\\"",',
     '  "syllabusTopics": "string",',
     '  "prerequisites": "string",',
     '  "materials": "string",',
