@@ -471,12 +471,14 @@ const BOTH_AS_IDIOM = /\bboth sides\b|\bboth accepted\b|\bboth are accepted\b/i;
  * KA1 Q13(b) is why this was added. Its scheme reads "R1 for reading 0.72c as
  * a 28% reduction AND giving the reason", while its question asked only
  * "explain why the student is wrong" -- so the paper printed one demand and
- * marked another. 8 of the 19 students who sat it scored 0, and the answers
- * behind those zeros are mostly the other reading: "0.72c != 0.7c", "if it
- * was 30% it would be 0.70c, so the student is wrong". Rule 14 checks a
- * question against its scheme where it can name the missing words; this rule
- * catches the shape that makes the misalignment easy to write in the first
- * place, whichever half is later judged the wrong one.
+ * marked another. 18 of the 33 graded responses scored 0, and most of those
+ * zeros are not mathematical failures: some name the 28% and give no reason,
+ * some give the reason and never name the 28%, and three answered the printed
+ * question exactly as printed ("0.72c != 0.7c", "if it was 30% it would be
+ * 0.70c, so the student is wrong") and were marked wrong for it. Rule 14
+ * checks a question against its scheme where it can name the missing words;
+ * this rule catches the shape that makes the misalignment easy to write in
+ * the first place, whichever half is later judged the wrong one.
  */
 const AND_AS_CONJUNCT = /\bAND\b/;
 
