@@ -6,8 +6,12 @@ import {
   SCHOOL_TIME_ZONE,
   formatAssessmentDate,
   groupAssessmentsByMonth,
+  resolveCalendarAssessments,
   todayInTimeZone,
-  type CalendarAssessment,
+  undatedTests,
+  type CourseDateOverride,
+  type DatedTest,
+  type TrackMember,
 } from "@/lib/assessment-calendar";
 
 /**
@@ -22,6 +26,12 @@ import {
  * Key assessments only: `assessment_kind = 'summative'`. Formatives and NA
  * packets are deliberately absent -- see lib/assessment-calendar.ts.
  *
+ * A test on a virtual track course is split across its classes when they did
+ * not sit it together: Key Assessment 1 is one row on Grade 9 Extended, and
+ * 9A and 9C sat it on 14 September while 9G sat it on the 15th. The per-class
+ * days live in `test_course_dates`; the classes a track covers come from
+ * `track_courses`.
+ *
  * A key assessment with NO date is not silently missing from this page. It is
  * counted at the bottom with a link to go and set one, because a calendar that
  * quietly omits a paper is worse than one that admits it does not know when it
@@ -32,15 +42,19 @@ export default async function CalendarPage() {
   if (profile.role !== "teacher") redirect("/dashboard");
 
   const supabase = await createClient();
-  const { data: tests, error } = await supabase
-    .from("tests")
-    .select(
-      // courses!tests_course_id_fkey for the same reason the Tests page names
-      // it: powerschool_export_files makes a bare `courses(name)` ambiguous.
-      `id, name, test_date, total_marks, courses!tests_course_id_fkey(name)`,
-    )
-    .eq("assessment_kind", "summative")
-    .order("test_date", { ascending: true, nullsFirst: false });
+  const [{ data: tests, error }, { data: perClass }, { data: track }] = await Promise.all([
+    supabase
+      .from("tests")
+      .select(
+        // courses!tests_course_id_fkey for the same reason the Tests page names
+        // it: powerschool_export_files makes a bare `courses(name)` ambiguous.
+        `id, name, test_date, total_marks, course_id, courses!tests_course_id_fkey(name)`,
+      )
+      .eq("assessment_kind", "summative")
+      .order("test_date", { ascending: true, nullsFirst: false }),
+    supabase.from("test_course_dates").select(`test_id, course_id, test_date, courses(name)`),
+    supabase.from("track_courses").select(`track_course_id, member_course_id, courses!track_courses_member_course_id_fkey(name)`),
+  ]);
 
   if (error) {
     return (
@@ -62,22 +76,51 @@ export default async function CalendarPage() {
     name: string;
     test_date: string | null;
     total_marks: number | null;
+    course_id: string;
     courses: { name: string } | null;
   }>;
 
-  const dated: CalendarAssessment[] = rows
-    .filter((r): r is typeof r & { test_date: string } => Boolean(r.test_date))
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      courseName: r.courses?.name ?? "No course",
-      testDate: r.test_date,
-      totalMarks: r.total_marks,
-    }));
+  const allTests: DatedTest[] = rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    courseId: r.course_id,
+    courseName: r.courses?.name ?? "No course",
+    testDate: r.test_date,
+    totalMarks: r.total_marks,
+  }));
 
-  const undated = rows.filter((r) => !r.test_date);
+  const overrides: CourseDateOverride[] = (
+    (perClass ?? []) as unknown as Array<{
+      test_id: string;
+      course_id: string;
+      test_date: string;
+      courses: { name: string } | null;
+    }>
+  ).map((r) => ({
+    testId: r.test_id,
+    courseId: r.course_id,
+    courseName: r.courses?.name ?? "No course",
+    testDate: r.test_date,
+  }));
+
+  const trackMembers: TrackMember[] = (
+    (track ?? []) as unknown as Array<{
+      track_course_id: string;
+      member_course_id: string;
+      courses: { name: string } | null;
+    }>
+  ).map((r) => ({
+    trackCourseId: r.track_course_id,
+    courseId: r.member_course_id,
+    courseName: r.courses?.name ?? "No course",
+  }));
+
+  const undated = undatedTests(allTests, overrides);
   const today = todayInTimeZone(SCHOOL_TIME_ZONE);
-  const months = groupAssessmentsByMonth(dated, today);
+  const months = groupAssessmentsByMonth(
+    resolveCalendarAssessments(allTests, overrides, trackMembers),
+    today,
+  );
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
@@ -108,7 +151,7 @@ export default async function CalendarPage() {
             </h2>
             <ul className="divide-y divide-slate-800 overflow-hidden rounded-lg border border-slate-700 bg-slate-900/40">
               {month.assessments.map((a) => (
-                <li key={a.id}>
+                <li key={`${a.id}:${a.courseName}`}>
                   <Link
                     href={`/dashboard/tests/${a.id}`}
                     className={`flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-3 transition-colors hover:bg-slate-800/60 ${
@@ -147,7 +190,7 @@ export default async function CalendarPage() {
                   href={`/dashboard/tests/${r.id}`}
                   className="text-amber-100 underline hover:text-amber-50"
                 >
-                  {r.courses?.name ?? "No course"} -- {r.name}
+                  {r.courseName} -- {r.name}
                 </Link>
               </li>
             ))}

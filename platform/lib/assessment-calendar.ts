@@ -32,12 +32,123 @@
 
 /** A dated key assessment, as the calendar page needs it. */
 export interface CalendarAssessment {
+  /** The test's own id -- a per-class entry still links to the one test. */
   id: string;
   name: string;
+  /** The class this entry is for: a real class (9A) once a track test has
+   *  been split per class, otherwise the test's own course. */
   courseName: string;
   /** Exactly as `tests.test_date` stores it: "YYYY-MM-DD". */
   testDate: string;
   totalMarks: number | null;
+}
+
+/** A test as the page reads it, before per-class dates are applied. */
+export interface DatedTest {
+  id: string;
+  name: string;
+  courseId: string;
+  courseName: string;
+  testDate: string | null;
+  totalMarks: number | null;
+}
+
+/** One row of `test_course_dates`: the day ONE class sat this test. */
+export interface CourseDateOverride {
+  testId: string;
+  courseId: string;
+  courseName: string;
+  testDate: string;
+}
+
+/** One row of `track_courses`: a real class inside a virtual track course. */
+export interface TrackMember {
+  trackCourseId: string;
+  courseId: string;
+  courseName: string;
+}
+
+/**
+ * The calendar's entries, with a track test split across its classes.
+ *
+ * Grade 9 Extended is one test row covering 9A, 9C and 9G, and the Course
+ * Outline gives each key assessment a two-day window because the classes do
+ * not all sit it together -- 9A and 9C sat Key Assessment 1 on 14 September,
+ * 9G on the 15th. So a track test becomes one entry per class.
+ *
+ * It splits ONLY when at least one class has a date of its own. A track whose
+ * classes all sat together stays a single entry under the track's name, rather
+ * than three identical rows saying the same thing three times. Within a split,
+ * a class with no row of its own inherits the test's date, so the teacher
+ * records only the exception -- 9G -- and 9A and 9C follow.
+ */
+export function resolveCalendarAssessments(
+  tests: DatedTest[],
+  overrides: CourseDateOverride[],
+  trackMembers: TrackMember[],
+): CalendarAssessment[] {
+  const membersByTrack = new Map<string, TrackMember[]>();
+  for (const member of trackMembers) {
+    const list = membersByTrack.get(member.trackCourseId) ?? [];
+    list.push(member);
+    membersByTrack.set(member.trackCourseId, list);
+  }
+
+  const overrideKey = (testId: string, courseId: string) => `${testId}|${courseId}`;
+  const overrideDate = new Map<string, string>();
+  const testsWithOverrides = new Set<string>();
+  for (const o of overrides) {
+    overrideDate.set(overrideKey(o.testId, o.courseId), o.testDate);
+    testsWithOverrides.add(o.testId);
+  }
+
+  const entries: CalendarAssessment[] = [];
+  for (const test of tests) {
+    const members = membersByTrack.get(test.courseId) ?? [];
+    const split = members.length > 0 && testsWithOverrides.has(test.id);
+
+    if (!split) {
+      // An override on the test's own course still applies -- a class course
+      // is allowed its own row even when it is nobody's track.
+      const date = overrideDate.get(overrideKey(test.id, test.courseId)) ?? test.testDate;
+      if (date) {
+        entries.push({
+          id: test.id,
+          name: test.name,
+          courseName: test.courseName,
+          testDate: date,
+          totalMarks: test.totalMarks,
+        });
+      }
+      continue;
+    }
+
+    for (const member of members) {
+      const date = overrideDate.get(overrideKey(test.id, member.courseId)) ?? test.testDate;
+      if (!date) continue;
+      entries.push({
+        id: test.id,
+        name: test.name,
+        courseName: member.courseName,
+        testDate: date,
+        totalMarks: test.totalMarks,
+      });
+    }
+  }
+
+  return entries;
+}
+
+/**
+ * The tests that will not appear on the calendar at all, because neither the
+ * test nor any of its classes has a date.
+ */
+export function undatedTests(
+  tests: DatedTest[],
+  overrides: CourseDateOverride[],
+): DatedTest[] {
+  const hasOverride = new Set(overrides.map((o) => o.testId));
+  return tests.filter((t) => !t.testDate && !hasOverride.has(t.id));
 }
 
 export interface CalendarMonth {

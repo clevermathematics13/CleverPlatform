@@ -4,12 +4,14 @@ import {
   formatAssessmentDate,
   formatAssessmentDateShort,
   groupAssessmentsByMonth,
-  monthKeyOf,
-  monthLabelOf,
   parseTestDate,
   relativeLabel,
+  resolveCalendarAssessments,
   todayInTimeZone,
+  undatedTests,
   type CalendarAssessment,
+  type DatedTest,
+  type TrackMember,
 } from "./assessment-calendar";
 
 function assessment(overrides: Partial<CalendarAssessment> = {}): CalendarAssessment {
@@ -168,5 +170,128 @@ describe("todayInTimeZone", () => {
     const instant = new Date("2026-09-15T03:00:00Z");
     expect(todayInTimeZone("UTC", instant)).toBe("2026-09-15");
     expect(todayInTimeZone("America/Chicago", instant)).toBe("2026-09-14");
+  });
+});
+
+// ---- per-class dates -----------------------------------------------------
+// Grade 9 Extended is one test row across 9A, 9C and 9G, and the Course
+// Outline gives every key assessment a two-day window because the classes do
+// not sit it together: 9A and 9C sat KA1 on 14 Sept, 9G on the 15th.
+
+const EXTENDED = "track-extended";
+const TRACK: TrackMember[] = [
+  { trackCourseId: EXTENDED, courseId: "c-9a", courseName: "9A" },
+  { trackCourseId: EXTENDED, courseId: "c-9c", courseName: "9C" },
+  { trackCourseId: EXTENDED, courseId: "c-9g", courseName: "9G" },
+];
+
+function trackTest(overrides: Partial<DatedTest> = {}): DatedTest {
+  return {
+    id: "ka1",
+    name: "Key Assessment 1",
+    courseId: EXTENDED,
+    courseName: "Grade 9 Extended",
+    testDate: "2026-09-14",
+    totalMarks: 50,
+    ...overrides,
+  };
+}
+
+describe("resolveCalendarAssessments", () => {
+  it("splits a track test across its classes, the exception overriding", () => {
+    const entries = resolveCalendarAssessments(
+      [trackTest()],
+      [{ testId: "ka1", courseId: "c-9g", courseName: "9G", testDate: "2026-09-15" }],
+      TRACK,
+    );
+
+    expect(entries).toEqual([
+      { id: "ka1", name: "Key Assessment 1", courseName: "9A", testDate: "2026-09-14", totalMarks: 50 },
+      { id: "ka1", name: "Key Assessment 1", courseName: "9C", testDate: "2026-09-14", totalMarks: 50 },
+      { id: "ka1", name: "Key Assessment 1", courseName: "9G", testDate: "2026-09-15", totalMarks: 50 },
+    ]);
+  });
+
+  it("every entry still links to the one test", () => {
+    const entries = resolveCalendarAssessments(
+      [trackTest()],
+      [{ testId: "ka1", courseId: "c-9g", courseName: "9G", testDate: "2026-09-15" }],
+      TRACK,
+    );
+    expect(new Set(entries.map((e) => e.id))).toEqual(new Set(["ka1"]));
+  });
+
+  it("does NOT split a track whose classes all sat together", () => {
+    // Three identical rows saying the same thing is noise, not information.
+    const entries = resolveCalendarAssessments([trackTest()], [], TRACK);
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].courseName).toBe("Grade 9 Extended");
+    expect(entries[0].testDate).toBe("2026-09-14");
+  });
+
+  it("leaves a plain class course alone", () => {
+    const entries = resolveCalendarAssessments(
+      [
+        {
+          id: "ka1-9d",
+          name: "Key Assessment 1 - Unit 1",
+          courseId: "c-9d",
+          courseName: "9D",
+          testDate: "2026-09-15",
+          totalMarks: 42,
+        },
+      ],
+      [],
+      TRACK,
+    );
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].courseName).toBe("9D");
+  });
+
+  it("honours a date set directly on a non-track course", () => {
+    const entries = resolveCalendarAssessments(
+      [
+        {
+          id: "t",
+          name: "T",
+          courseId: "c-9d",
+          courseName: "9D",
+          testDate: "2026-09-15",
+          totalMarks: null,
+        },
+      ],
+      [{ testId: "t", courseId: "c-9d", courseName: "9D", testDate: "2026-09-16" }],
+      TRACK,
+    );
+
+    expect(entries[0].testDate).toBe("2026-09-16");
+  });
+
+  it("drops a class with no date anywhere rather than inventing one", () => {
+    const entries = resolveCalendarAssessments(
+      [trackTest({ testDate: null })],
+      [{ testId: "ka1", courseId: "c-9g", courseName: "9G", testDate: "2026-09-15" }],
+      TRACK,
+    );
+
+    // 9A and 9C have nothing to inherit, so only 9G is dated.
+    expect(entries.map((e) => e.courseName)).toEqual(["9G"]);
+  });
+});
+
+describe("undatedTests", () => {
+  it("lists a test with no date on it or any of its classes", () => {
+    const bare = trackTest({ id: "ka2", testDate: null });
+    expect(undatedTests([bare], []).map((t) => t.id)).toEqual(["ka2"]);
+  });
+
+  it("does not list one whose classes carry the dates", () => {
+    const bare = trackTest({ id: "ka2", testDate: null });
+    const overrides = [
+      { testId: "ka2", courseId: "c-9g", courseName: "9G", testDate: "2026-10-13" },
+    ];
+    expect(undatedTests([bare], overrides)).toEqual([]);
   });
 });
