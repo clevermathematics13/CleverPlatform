@@ -30,6 +30,7 @@ import {
   type PacketDigest,
 } from "@/lib/na-continuity";
 import { syncRubricItems, type RubricSyncResult } from "@/lib/na-rubric-bridge";
+import { savePacketRow } from "@/lib/na-packet-save";
 import type { AssignmentDraft } from "@/lib/assignments";
 
 export const runtime = "nodejs";
@@ -199,10 +200,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Could not derive a slug from the packet" }, { status: 400 });
   }
 
-  // -- Upsert the packet ------------------------------------------------
-  // onConflict targets the (course_id, section_code) partial unique index added
-  // in migration 058, so re-saving a section replaces it instead of creating a
-  // second row that would then be counted twice in continuity.
+  // -- Save the packet --------------------------------------------------
+  // Re-saving a section REPLACES its packet rather than creating a second row.
+  // That is a lookup-then-insert-or-update rather than an .upsert(), because
+  // the uniqueness behind it -- uq_nuanced_analyses_course_section -- is a
+  // PARTIAL index, and PostgREST cannot name a partial index as an ON CONFLICT
+  // arbiter. The .upsert() this replaced therefore failed on EVERY save with
+  // "there is no unique or exclusion constraint matching the ON CONFLICT
+  // specification". See lib/na-packet-save.ts for the full account, including
+  // the three failure modes the split has to handle for itself.
 
   const row = {
     slug,
@@ -225,15 +231,12 @@ export async function POST(req: Request) {
     is_published: body.isPublished === true,
   };
 
-  const { data: saved, error: saveError } = await supabase
-    .from("nuanced_analyses")
-    .upsert(row, { onConflict: "course_id,section_code" })
-    .select("id, slug, section_code, grade_level, is_published")
-    .single();
+  const saveResult = await savePacketRow(supabase, { row, courseId, sectionCode });
 
-  if (saveError) {
-    return NextResponse.json({ error: saveError.message }, { status: 500 });
+  if (!saveResult.ok) {
+    return NextResponse.json({ error: saveResult.error }, { status: saveResult.status });
   }
+  const saved = saveResult.packet;
 
   // -- Sync the rubric (answer key) --------------------------------------
   // Also reported separately rather than rolled back, for the same reason as
