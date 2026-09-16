@@ -121,6 +121,17 @@ const MATH_CHARS = /^[0-9A-Za-z^_+\-*/=().,<>!|√±×÷≤≥≠]+$/;
 /** A parenthesised list label such as "(a)", "(ii)", "(B)" -- never math. */
 const LIST_LABEL = /^\([A-Za-z]{1,3}\)$/;
 
+/**
+ * A scope-and-sequence reference: "A.3", "(A.3)", "B.4;", "A.3:".
+ *
+ * These are everywhere in this course's prose -- the packets cite each other
+ * constantly -- and a single capital letter is otherwise NEUTRAL, so an
+ * adjacent equation absorbs the reference and prints it in math italic. The
+ * B.4 packet shipped with "b^2(A.3)" on its prerequisites line for exactly
+ * this reason: the "(A.3)" was swallowed into the span beside it.
+ */
+const SECTION_REF = /^\(?[A-Z]{1,2}\.\d{1,2}\)?[.,;:]?$/;
+
 /** Trailing sentence punctuation, peeled off a span before wrapping. */
 const TRAILING_PUNCT = /[,.;:!?]+$/;
 
@@ -211,6 +222,10 @@ function classify(token: string): TokenKind {
   // numbering, and italicising it detaches it from every other label on
   // the page.
   if (LIST_LABEL.test(token)) return "prose";
+
+  // A section reference is a citation, not a quantity. Prose, so it can
+  // neither start a span nor be absorbed into one.
+  if (SECTION_REF.test(token)) return "prose";
 
   const bare = token.replace(TRAILING_PUNCT, "").replace(LEADING_PUNCT, "");
   if (bare.length === 0) return "neutral";
