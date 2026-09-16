@@ -16,32 +16,31 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { NodeCompiler } from "@myriaddreamin/typst-ts-node-compiler";
+import { getActivityTypstSource } from "./typst-render.service";
 
 /**
- * Pull the live helper out of the service source rather than duplicating it,
- * so this test keeps exercising whatever actually ships.
+ * Pull the live helper out of the RENDERED template source rather than
+ * duplicating it, so this test keeps exercising whatever actually ships.
  *
- * The Typst source lives inside a JS template literal, so the raw file bytes
- * carry one extra level of backslash escaping (e.g. \\\\b on disk is \\b at
- * runtime). Decode that level here so the compiler sees the exact string the
- * service passes it — without this, any regex escape in the prelude tests a
- * different program than the one that ships.
+ * This used to read the raw bytes of typst-render.service.ts and undo one
+ * level of template-literal backslash escaping by hand. It cannot any more:
+ * `math-idents` and `math-aliases` are now interpolated from the single
+ * source of truth in math-typesetting.ts, so the bytes on disk contain a
+ * `${...}` expression where the tuple used to be, and slicing them yields a
+ * program that does not compile.
+ *
+ * Calling getActivityTypstSource() is the better test regardless — it is the
+ * exact string handed to the compiler in production, escaping already
+ * resolved, with no second-guessing of how many backslashes survive.
  */
 function shippedPrelude(): string {
-  const src = readFileSync(
-    join(process.cwd(), "lib", "typst-render.service.ts"),
-    "utf8"
-  );
+  const src = getActivityTypstSource();
   const start = src.indexOf("#let math-idents");
   const richAt = src.indexOf("#let rich(s) = {");
-  expect(start, "math-idents block missing from typst-render.service.ts").toBeGreaterThan(-1);
-  expect(richAt, "rich() missing from typst-render.service.ts").toBeGreaterThan(-1);
-  return src
-    .slice(start, src.indexOf("\n}", richAt) + 2)
-    .replace(/\\(.)/g, "$1");
+  expect(start, "math-idents block missing from the rendered Typst source").toBeGreaterThan(-1);
+  expect(richAt, "rich() missing from the rendered Typst source").toBeGreaterThan(-1);
+  return src.slice(start, src.indexOf("\n}", richAt) + 2);
 }
 
 const compiler = NodeCompiler.create();

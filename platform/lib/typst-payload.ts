@@ -30,6 +30,11 @@
  * -----------------------------------------------------------------------------
  */
 
+// Pure string work, no Node built-ins -- safe on the browser side of the
+// chain described above. (Its TEST file imports the native compiler; the
+// module itself deliberately does not.)
+import { typesetDraftMath } from "./math-typesetting";
+
 import type { TemplateAst } from "./template-ast.schema";
 // -- Activity content AST ------------------------------------------------------
 
@@ -227,13 +232,20 @@ export function buildTypstPayload(
     })),
   }));
 
+  // Typeset any mathematics that is still undelimited. sanitizeDraft() already
+  // does this for anything generated from now on, but packets saved BEFORE
+  // that existed -- A.1, A.2 and the first B.4 among them -- are stored with
+  // bare ASCII equations, and this is the only point every render passes
+  // through. Idempotent, so a correctly delimited packet is unchanged.
+  const typesetContent = typesetDraftMath({
+    ...content,
+    sections: annotatedSections,
+  });
+
   return {
     schemaVersion: template.schemaVersion,
     template,
-    content: {
-      ...content,
-      sections: annotatedSections,
-    },
+    content: typesetContent,
     renderOptions,
     metadata: {
       generatedAt: metadata.generatedAt ?? new Date().toISOString(),
