@@ -270,6 +270,14 @@ export function getActivityTypstSource(): string {
 #let opts = data.at("renderOptions", default: (:))
 
 #let page-size = if tmpl.document.pageSize == "a4" { "a4" } else { "us-letter" }
+// Every page carries its number and the total: "2 of 23".
+//
+// A packet is stapled, worked on over three lessons, torn apart at the
+// Teacher's Companion and scanned back in. Without the total, a student
+// holding page 14 cannot tell whether anything is missing, and neither can
+// whoever collects it. counter(page).final() is what makes the total
+// available -- it needs the context block, because Typst can only know how
+// many pages there are after it has laid them all out.
 #set page(
   paper: page-size,
   margin: (
@@ -278,6 +286,12 @@ export function getActivityTypstSource(): string {
     bottom: (tmpl.document.marginBottomMm) * 1mm,
     left: (tmpl.document.marginLeftMm) * 1mm,
   ),
+  footer: context [
+    #set align(center)
+    #text(size: 8pt, fill: rgb("#9ca3af"))[
+      #counter(page).display("1") of #counter(page).final().first()
+    ]
+  ],
 )
 #set text(font: tmpl.typography.bodyFont, size: (tmpl.typography.bodySizePt) * 1pt)
 
@@ -525,11 +539,20 @@ export function getActivityTypstSource(): string {
   let sides = spec.at("sideLabels", default: ())
   let cells = spec.at("cells", default: ())
   if tops.len() == 0 or sides.len() == 0 { return [] }
+  // Weights are lengths, in one shared unit across BOTH axes -- which is the
+  // whole point of an area model: the side of length x has to be drawn the
+  // same length going across as it is going down, or the picture contradicts
+  // the algebra. Equal cells when no weights are given.
+  let tw = spec.at("topWeights", default: ())
+  let sw = spec.at("sideWeights", default: ())
+  let unit = 16pt
+  let col-w = range(tops.len()).map(i => if tw.len() > i { tw.at(i) * unit } else { 84pt })
+  let row-h = range(sides.len()).map(i => if sw.len() > i { sw.at(i) * unit } else { 38pt })
   block(breakable: false, width: 100%, inset: (y: 4pt))[
     #align(center)[
       #grid(
-        columns: (30pt,) + tops.map(_ => 84pt),
-        rows: (14pt,) + sides.map(_ => 38pt),
+        columns: (30pt,) + col-w,
+        rows: (14pt,) + row-h,
         align: center + horizon,
         [],
         ..tops.map(t => text(size: 9pt, weight: "bold")[#rich(t)]),

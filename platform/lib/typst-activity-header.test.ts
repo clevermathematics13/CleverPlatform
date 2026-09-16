@@ -86,6 +86,23 @@ describe("the rendered packet header", () => {
     expect(text).toContain("Parts 0 to 2 are compulsory.");
   });
 
+  // A packet is stapled, worked over three lessons, torn apart at the
+  // Teacher's Companion and scanned back in. Without the total, nobody
+  // holding page 14 can tell whether anything is missing.
+  it("numbers every page, with the total", () => {
+    const text = renderText({});
+    const numbers = text.match(/\d+ of \d+/g) ?? [];
+    expect(numbers.length, "no page number on any page").toBeGreaterThan(0);
+    // Every page says the same total, and the total is the page count.
+    const totals = new Set(numbers.map((n) => n.split(" of ")[1]));
+    expect(totals.size, `pages disagree about the total: ${[...totals].join(", ")}`).toBe(1);
+    expect(Number([...totals][0])).toBe(numbers.length);
+    // They run 1..N in order.
+    expect(numbers.map((n) => Number(n.split(" ")[0]))).toEqual(
+      numbers.map((_, i) => i + 1),
+    );
+  });
+
   // The strip is a reference a student consults, not a thing to dismantle.
   // It used to be headed "Command Terms - tear off and keep beside you", in
   // the Typst template, the preview and the generic HTML pipeline alike, and

@@ -108,6 +108,22 @@ must exercise Server Actions.
   inside one printed box are one scan anchor and one rubric item, so they
   cannot be marked part by part. Rule 30 still stands; 6d governs the cases
   where lettered parts are used anyway.
+- **Every packet page is numbered "N of M"**, from a `footer:` on the Typst
+  `#set page`. `counter(page).final()` needs the `context` block, because
+  Typst only knows the total once it has laid every page out. It is in the
+  template, so it covers existing packets and future ones alike with no data
+  migration -- but see the next bullet for what "existing packets" actually
+  means.
+- **Only B.4 has a `draft_content`.** A.1, A.2, A.2-P0, A.3 and three older
+  rows were seeded into the LEGACY columns (`parts`, `prerequisites`,
+  `vocabulary`, ...), and `GET /api/nuanced-analyses/[id]` selects
+  `draft_content` alone -- so those packets cannot be opened in the editor or
+  re-rendered to PDF at all. Reconstructing a draft from `parts` and
+  compiling it shows what a backfill would cost: A.1 (16pp), A.3 (17pp) and
+  A.2-P0 (3pp) render clean; A.2 aborts on "unexpected slash";
+  `quadratics-calculus-transition` and `polynomial-analysis` have a different
+  part shape and abort on a missing `heading` key; the binomial-expansion row
+  aborts on "unexpected hat".
 - **A question can print an area model** (`areaModel` on the question,
   `AreaModelSpec` in typst-payload.ts): a labelled rectangle with empty cells
   the student fills in. It exists because telling a fourteen-year-old to draw

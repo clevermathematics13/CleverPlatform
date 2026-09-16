@@ -93,6 +93,9 @@ export interface InternationalMindednessBox { body: string; }
 export interface AreaModel {
   topLabels: string[];
   sideLabels: string[];
+  /** Relative lengths, in one unit shared by both axes. See AreaModelSpec. */
+  topWeights?: number[];
+  sideWeights?: number[];
   cells?: string[][];
   caption?: string;
 }
@@ -501,8 +504,13 @@ function GeometricBlock({ geo }: { geo: GeometricReading }) {
  * where a teacher checks the figure before it is printed.
  */
 function AreaModelFigure({ model }: { model: AreaModel }) {
-  const { topLabels, sideLabels, cells, caption } = model;
+  const { topLabels, sideLabels, topWeights, sideWeights, cells, caption } = model;
   if (!topLabels?.length || !sideLabels?.length) return null;
+  // The same unit on both axes as the Typst template uses, so the preview and
+  // the printed page draw the same rectangle.
+  const UNIT = 16;
+  const colWidth = (i: number) => (topWeights?.[i] != null ? topWeights[i] * UNIT : 84);
+  const rowHeight = (i: number) => (sideWeights?.[i] != null ? sideWeights[i] * UNIT : 38);
   return (
     <div className="my-2">
       <table className="mx-auto border-collapse">
@@ -510,18 +518,22 @@ function AreaModelFigure({ model }: { model: AreaModel }) {
           <tr>
             <td className="w-8" />
             {topLabels.map((t, i) => (
-              <th key={i} className="w-28 pb-0.5 text-center text-[9pt] font-bold text-gray-900">
+              <th
+                key={i}
+                style={{ width: colWidth(i) }}
+                className="pb-0.5 text-center text-[9pt] font-bold text-gray-900"
+              >
                 <LatexRenderer latex={t} />
               </th>
             ))}
           </tr>
           {sideLabels.map((side, r) => (
-            <tr key={r}>
+            <tr key={r} style={{ height: rowHeight(r) }}>
               <th className="pr-1 text-right text-[9pt] font-bold text-gray-900">
                 <LatexRenderer latex={side} />
               </th>
               {topLabels.map((_, c) => (
-                <td key={c} className="h-12 border border-gray-300 text-center align-middle text-[10pt] text-gray-900">
+                <td key={c} className="border border-gray-300 text-center align-middle text-[10pt] text-gray-900">
                   {cells?.[r]?.[c] ? <LatexRenderer latex={cells[r][c]} /> : null}
                 </td>
               ))}

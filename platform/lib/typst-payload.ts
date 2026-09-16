@@ -75,6 +75,16 @@ export interface AreaModelSpec {
   /** Labels down the left edge, top to bottom. One per row. */
   sideLabels: string[];
   /**
+   * Relative lengths of the columns and rows, in ONE unit shared by both
+   * axes: topWeights [5, 2] with sideWeights [5, 3] draws x as a square with
+   * a narrow strip of width 2 beside it and a wider strip of height 3 below.
+   * Getting this right is not decoration -- a model whose x reads shorter
+   * going down than going across contradicts the algebra it is illustrating.
+   * Omit both for equal cells.
+   */
+  topWeights?: number[];
+  sideWeights?: number[];
+  /**
    * Pre-filled cell contents, row-major, as a worked or partly worked
    * example. Omit it, or leave an entry empty, for a cell the student fills.
    */

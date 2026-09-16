@@ -327,6 +327,32 @@ describe("prompt line breaks and the area model", () => {
     expect(rects).toBeGreaterThanOrEqual(4);
   });
 
+  it("draws the cells in proportion to their lengths when weights are given", () => {
+    // A model with equal cells tells a student that 2 and 3 are the same
+    // length. The unit is shared across both axes, so the x cell is square.
+    const weighted = renderQuestion({
+      prompt: "Fill in the areas.",
+      areaModel: {
+        topLabels: [String.raw`$x$`, String.raw`$+2$`],
+        sideLabels: [String.raw`$x$`, String.raw`$+3$`],
+        topWeights: [5, 2],
+        sideWeights: [5, 3],
+      },
+    });
+    // A cell is a closed rectangle path, "M 0 0 L 0 h L w h L w 0 Z".
+    const sizes = [...weighted.matchAll(/M 0 0 L 0 ([\d.]+) L ([\d.]+) [\d.]+ L [\d.]+ 0 Z/g)]
+      .map((m) => [Math.round(Number(m[2])), Math.round(Number(m[1]))] as const);
+    const unique = [...new Set(sizes.map(([w, h]) => `${w}x${h}`))];
+    // Four cells, and they are NOT all the same size.
+    expect(sizes.length, `found ${sizes.length} cell rectangles`).toBeGreaterThanOrEqual(4);
+    expect(unique.length, `every cell is the same size: ${unique.join(", ")}`).toBeGreaterThan(1);
+    // The widest cell is wider than the narrowest by the ratio 5:2.
+    const widths = [...new Set(sizes.map(([w]) => w))].sort((a, b) => a - b);
+    const heights = [...new Set(sizes.map(([, h]) => h))].sort((a, b) => a - b);
+    expect(widths[widths.length - 1] / widths[0]).toBeCloseTo(5 / 2, 1);
+    expect(heights[heights.length - 1] / heights[0]).toBeCloseTo(5 / 3, 1);
+  });
+
   it("draws nothing at all when the model has no labels", () => {
     // A half-specified figure must not print an empty box on a student's page.
     const svg = renderQuestion({ prompt: "No figure here.", areaModel: { topLabels: [], sideLabels: [] } });
