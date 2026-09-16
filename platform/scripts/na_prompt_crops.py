@@ -186,14 +186,24 @@ def main() -> None:
 
     if args.sql:
         pv = config["packet_version_id"]
-        excluded = ", ".join("'" + q.replace("'", "''") + "'" for q in skipped)
+        # The exclusion clause is omitted entirely when nothing was skipped.
+        # `qid not in ()` is a syntax error, and a packet CAN skip nothing:
+        # A.1 and A.2 both skip sub-part boxes whose prompt is printed in the
+        # shared block above their question's first box, but A.3 prints one box
+        # per question and so has no sub-part boxes at all.
+        exclusion = (
+            "\n  and qid not in ("
+            + ", ".join("'" + q.replace("'", "''") + "'" for q in skipped)
+            + ")"
+            if skipped
+            else ""
+        )
         with open(args.sql, "w") as fh:
             fh.write(
                 "update na_anchors\n"
                 f"set prompt_crop_storage_path =\n"
                 f"      'na-crops/{pv}/prompts/' || id || '.png'\n"
-                f"where packet_version_id = '{pv}'\n"
-                f"  and qid not in ({excluded});\n"
+                f"where packet_version_id = '{pv}'{exclusion};\n"
             )
         print(f"wrote {args.sql}")
 

@@ -1,0 +1,44 @@
+{
+  "_": "A.3 'Key Algebraic Properties: Proving Expressions Are Equal'. Second config for na_derive_anchors.py, and the first on the tear-off template -- see template_profile below. Unlike A.2 this packet needs no mark_splits, no overrides and no manual_anchors: it prints 32 numbered questions against 32 answer boxes, one each, and every box is a plain filled-in-by-hand rectangle the detector can see.",
+
+  "packet_version_id": "997390bb-c0ab-43fe-a123-cfe5f3d80fbe",
+  "nuanced_analysis_id": "eda7bad6-0c7e-426d-97ff-d69e1d42c940",
+  "version_label": "A.3 v1 (print master)",
+  "anchor_source": "auto_fillrect",
+  "supabase_url": "https://qnawglgnoojrlaivylou.supabase.co",
+
+  "_template_profile": "A.1 and A.2 printed on a template whose answer boxes are FILLED rects at 50.83/544.50. A.3 printed on one whose answer boxes are STROKE-ONLY rects at 51.02/544.25 -- which is where the other template puts its information callouts, so reading this master with A.1's constants does not just miss the boxes, it matches the wrong ones. Naming the profile here makes the tool refuse to run if it is ever pointed at a master from the other template by mistake.",
+  "template_profile": "tear-off",
+
+  "_page_count": "16, and here that IS the document's own length: this packet prints in full, with no Extension section withheld the way A.1 and A.2 withheld theirs. The template prints no page footer at all, so there is no 'of N' to cross-check against -- the '-- N of 16 --' markers in source_materials.extracted_text are the upload pipeline's own page separators, not printed text.",
+  "page_count": 16,
+
+  "_uuid_namespace": "Rubric-item ids are uuid5(namespace, 'rubric:' + qid), so re-running the tool proposes the same ids instead of orphaning the anchors that point at them. Fresh namespace per packet.",
+  "uuid_namespace": "8f34f47b-d6b5-4470-9d74-e93b71f90e52",
+
+  "_rubric_source": "Same reasoning as A.2. lib/na-rubric-bridge.ts keys generated rubric rows on the parts[] ordinal, and skips any row whose source is not 'generated'. The printed numbering here is NOT the ordinal (it skips 6-9, see question_map), so this marker is what stops a later packet re-save from overwriting these rows with differently-numbered ones.",
+  "rubric_source": "authored_from_print",
+
+  "_question_map": "printed question number -> 1-based ordinal in the flattened parts[]. parts[] was authored FROM this print, in printed order, so the mapping is the identity apart from the gap in the printed numbering: the packet prints 1-5 and then jumps straight to 10, with no Q6, Q7, Q8 or Q9 anywhere in it. That gap is a defect in the packet's own numbering, not a missing question -- 32 numbers, 32 boxes, 32 marks pills, and --sql checks all 32 against the printed '[NM]' pill.",
+  "question_map": {
+    "1": 1, "2": 2, "3": 3, "4": 4, "5": 5,
+    "10": 6, "11": 7, "12": 8, "13": 9, "14": 10,
+    "15": 11, "16": 12, "17": 13, "18": 14, "19": 15,
+    "20": 16, "21": 17, "22": 18, "23": 19, "24": 20,
+    "25": 21, "26": 22, "27": 23, "28": 24, "29": 25,
+    "30": 26, "31": 27, "32": 28, "33": 29, "34": 30,
+    "35": 31, "36": 32
+  },
+
+  "_mark_splits": "None. Every printed question owns exactly one answer box, so each takes its whole printed total and there is nothing to divide. This is the one place A.3 is simpler than A.2, which had seven multi-box questions.",
+  "mark_splits": {},
+
+  "_open_rubric": "None. Every question in parts[] carries an authored answer, including the two that ask for a drawing (printed Q14's area diagram and Q31's four-region square), whose answers describe what the diagram has to show.",
+  "open_rubric": {},
+
+  "_overrides": "None. A.3 prints no unnumbered activity box -- there is no Desmos sandbox or equivalent thinking space, so no anchor needs to be marked ungraded.",
+  "overrides": [],
+
+  "_manual_anchors": "None. A.3 has no ruled table and no coordinate grid among its answer regions, so nothing is hidden from the detector the way A.2's Q19 reflection grid and A.1's Q26(a) grid were.",
+  "manual_anchors": []
+}

@@ -2102,3 +2102,110 @@ a Standard Level paper and links the report.
 - Nothing has been graded yet: no scans of KA1 existed when this was built,
   so the policy has not been measured on real work. The first class through
   it deserves the spot-check routine of §11.
+
+---
+
+## 22. A.3 set up as a scannable packet (16 Sep 2026)
+
+"Key Algebraic Properties: Proving Expressions Are Equal" (Unit 1, A.3) is the
+third packet to become scannable, and the first that had to be built from a PDF
+rather than from a row the platform already held. Packet
+`eda7bad6-0c7e-426d-97ff-d69e1d42c940`, packet version
+`997390bb-c0ab-43fe-a123-cfe5f3d80fbe`, 32 anchors, 124 marks, `page_count` 16.
+Four migrations, applied through MCP `apply_migration` and renamed to their
+ledger versions per §13: `20260916132044` (packet row, and the continuity
+digest's slug/title), `20260916132433` (packet version, 32 rubric items, 32
+anchors), `20260916132457` (master PDF path), `20260916132826` (32 prompt
+crops). 161 files / 161 rows.
+
+**A.3 did not exist as a packet.** The section was marked `done` in
+`na_continuity.unit_sequence`, it had a packet digest, and the printed PDF had
+been uploaded to `source_materials` - but there was no `nuanced_analyses` row,
+so B.4 was generated against a second-hand summary of a packet the platform did
+not hold. B.1, B.2 and B.3 are still in that state; their digests say so
+("RECONSTRUCTED DIGEST - not written from a saved packet") and no PDF for them
+has been uploaded, so there is nothing to build them from yet.
+
+**THE DIGEST IS NOT THE PACKET, and A.3 is the proof.** Every field of the new
+row was transcribed from the print master; nothing was taken from the digest,
+because the two disagree in ways that matter:
+
+| The A.3 digest says | The packet actually |
+|---|---|
+| proved `(a+b)(a+b) = a^2+2ab+b^2` | proves it in **x and y** (printed Q30); `2ab` appears nowhere, `2xy` four times |
+| applied a fundraiser revenue ledger, `12a+6c+6n` | uses a market stall (notebooks, pens, a bag fee) in Part 4; "fundraiser" and "ledger" appear nowhere |
+| credits al-Karaji | credits Liu Hui and **Yang Hui**; al-Karaji appears nowhere |
+| introduced "counterexample", command term "Distinguish" | neither word is printed |
+| TOK #2 is about whether the commutative property was discovered or agreed | TOK #2 is about an area diagram vs a chain of symbols |
+| title "Proving Two Expressions Are the Same" | is titled "Key Algebraic Properties: Proving Expressions Are Equal" |
+
+Only the slug and the title were corrected, because those have to match the
+packet row for the same reason A.1's and A.2's do. **The rest is left as it
+is**, deliberately: `where_it_left_off` is what B.4 was generated against, and
+B.4's Part 0 Q2, Part 2 and Part 5 all tell students "in section A.3 you proved
+`(a+b)(a+b) = a^2+2ab+b^2`" - a claim that is true in substance and wrong in its
+letters. Changing the digest without also re-cutting those three B.4 questions
+would leave the packet and the continuity record disagreeing in a new way.
+
+**A DIFFERENT TEMPLATE, and `na_derive_anchors.py` now knows about both.** A.1
+and A.2 printed on a template whose answer boxes are FILLED rects at
+50.83/544.50, with the callouts inset at 51.02/544.25. A.3 printed on one whose
+answer boxes are STROKE-ONLY grey rects **at 51.02/544.25** - the other
+template's callout signature. Pointed at A.3 with the old constants the tool
+found 0 anchors, and had the geometry been a little different it would have
+found the wrong ones. The two profiles now live in `PROFILES` at the top of the
+script and are detected from the PDF; a config may name one in
+`template_profile` and the tool refuses to run against a master that reads as
+the other. The labels differ too - `1.` with tier stars and a `[3M]` pill,
+against `Q1` and `Clev's Marks: 3` - and pill-to-question pairing moved from the
+line's bbox top to its **baseline**, because the math-italic glyphs (U+1D44E and
+friends) inflate a line's bbox by up to 28pt while baselines agree to within 2.
+**The regression test is A.2**: `--sql` against A.2's master with
+`na_packet_a2.json` still reproduces `20260909124540` byte for byte (md5
+`56ec519934016c6247a5c19a8bc5e094`). Run it before and after touching that
+script.
+
+**The master is the uploaded PDF, and it is genuinely of its time.** Typst
+0.13.1, created 2026-09-07T14:02:38Z, kept at
+`na-masters/997390bb-c0ab-43fe-a123-cfe5f3d80fbe/master.pdf` and byte-identical
+to `source_materials` `b368756b-4db9-452b-9270-bb681429faa5` (md5
+`1b6acc3b6bfdf52c3acdbf603bd4da1d`). Two defects date it: printed Q30 and Q31
+show raw `$...$` around their math, which `f0fd500` repaired afterwards, and it
+predates `d1ff83b`'s header change. A re-render today would carry neither, so
+this file cannot be a fresh render - which is the property §15 insists on.
+
+**Two content defects in the packet itself**, both the same class as A.2's
+compulsory-core text, and neither fixable retroactively in the copies students
+hold:
+
+- **The printed numbering skips 6-9.** It runs 1-5 and then jumps to 10,
+  continuing to 36 without further gaps. 32 numbers, 32 boxes, 32 marks pills.
+  No question is missing. `qid` follows the printed number, because that is what
+  a student writing in a box can see; `question_map` in the config carries the
+  offset to the `parts[]` ordinal.
+- **The TOK box points at a reflection the packet never prints.** "RETURN TO
+  THESE IN THE REFLECTION", but there is no reflection section and no
+  compulsory-core text either.
+
+**What a teacher should check before the first scan upload.**
+
+- **The 32 answer keys are authored, not transcribed.** A.3's master is the
+  student packet; no mark scheme for it exists in the platform or in Drive. The
+  keys were written from the mathematics of each question. They are the
+  equivalent of A.2's per-box mark splits (§15) - the thing most worth a read
+  before any of it is graded. `source = 'authored_from_print'` keeps
+  `lib/na-rubric-bridge.ts` from overwriting them on a later packet re-save.
+- **No mark splits exist and none are needed**, since every printed question
+  owns exactly one box and takes its whole printed total.
+- **`materials`, `atl_statement` and `teacher_companion` are null**, because
+  A.3's template prints no materials line, no ATL box and no companion. They are
+  null rather than invented.
+- **`draft_content` is null**, as it is on every other packet - see §15 for why
+  writing a partial one would replace the packet in the editor.
+- **Prompt crops: 32 of 32**, the first packet to skip none. A.1 skipped 9 of 40
+  and A.2 10 of 32, both sub-part boxes whose prompt is printed above their
+  question's first box; A.3 has no sub-part boxes. That turned up a latent bug in
+  `na_prompt_crops.py`, which emitted `and qid not in ()` - a syntax error - when
+  the skip list was empty. Fixed; A.2 regenerates unchanged.
+
+`scripts/na_packet_a3.json` is the config, kept beside A.2's.

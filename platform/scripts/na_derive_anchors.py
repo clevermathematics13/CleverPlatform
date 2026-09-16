@@ -93,7 +93,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from inspect_fillrects import inspect_fillrects  # noqa: E402
 
 # Full content column on the current NA template. Answer boxes only.
-ANSWER_X0, ANSWER_X1 = 50.83, 544.50
 X_TOLERANCE = 0.05
 # Below this a filled rect is a rule, a table row or a marks pill, not a box.
 MIN_BOX_W, MIN_BOX_H = 100.0, 30.0
@@ -102,6 +101,67 @@ PAGE_BOTTOM_CAP = 811.89
 EXPAND_X1 = 580.28
 # Clear space left between a crop's cap and the next printed box.
 CAP_GAP_PT = 4.0
+
+# ---- Template profiles -------------------------------------------------------
+# Two NA templates are in circulation and they disagree about the one thing this
+# tool keys on. On the template A.1 and A.2 were printed with, an answer box is
+# FILLED (a white interior over a blue-grey border rect) at 50.83/544.50 and the
+# information boxes sit inset at 51.02/544.25. On the one that printed A.3, the
+# answer box is a STROKE-ONLY grey rectangle -- and it sits at 51.02/544.25,
+# which is the other template's information-box signature. Reading A.3 with A.1's
+# constants therefore does not merely miss the boxes, it would have matched the
+# callouts, so the discriminator has to be the profile, not the x-signature alone.
+#
+# The label formats differ too: "Q7" with a "Clev's Marks: 4" pill against
+# "7." with a tier badge and a "[4M]" pill. --sql's marks cross-check is what
+# proves a question map rather than assuming it, so it needs both spellings.
+@dataclass(frozen=True)
+class Profile:
+    name: str
+    answer_x0: float
+    answer_x1: float
+    #: "filled" reads answer boxes from fill rects, "stroked" from stroke-only ones.
+    box_kind: str
+    #: Matches a question's printed label, capturing its number.
+    qlabel: str
+    #: Matches the marks pill anywhere in a line, capturing the number.
+    marks_pill: str
+    #: Matches a Part heading at the left margin, capturing its number in group
+    #: 1, or -- where the template also numbers appendix-style sections -- a
+    #: zone letter in group 2.
+    part_heading: str
+    #: Left-margin cutoff for a label. It has to clear the callout boxes' own
+    #: text inset, which on the tear-off template is 59.02 and holds numbered
+    #: TOK provocations that would otherwise read as question labels.
+    label_max_x: float
+
+
+PROFILES = [
+    Profile(
+        name="clev-marks",
+        answer_x0=50.83, answer_x1=544.50, box_kind="filled",
+        qlabel=r"^Q(\d{1,2})$",
+        marks_pill=r"Clev.s Marks:\s*(\d+)",
+        # \u00b7 is the middle dot the template prints between a Part's number
+        # and its title ("Part 0 - Warming the Engine"); written as an escape so
+        # this file stays pure ASCII.
+        part_heading="^Part (\\d)\\s*[\u00b7.]",
+        label_max_x=60.0,
+    ),
+    Profile(
+        name="tear-off",
+        answer_x0=51.02, answer_x1=544.25, box_kind="stroked",
+        # \u2605 is the tier star. It prints beside the number, sometimes with
+        # the prompt's first words glued on behind it, so the label cannot be
+        # anchored at both ends the way "Q7" can.
+        qlabel="^(\\d{1,2})\\.(?:\\s|\u2605|$)",
+        marks_pill=r"^\[(\d+)M\]$",
+        # \u2014 is the em dash between a heading's label and its title.
+        part_heading="^(?:Part (\\d)|Zone \\(([a-z])\\))\\s*\u2014",
+        label_max_x=55.0,
+    ),
+]
+PROFILE = PROFILES[0]
 
 COMMAND_TERMS = [
     "Compare and contrast", "Hence or otherwise", "Write down", "Write an expression",
@@ -119,16 +179,26 @@ class Box:
     y0: float
     x1: float
     y1: float
+    #: How the rectangle was drawn, "filled" or "stroked". It has to be carried
+    #: because the two templates' signatures overlap: the tear-off template's
+    #: tear-off command-terms strip is a FILLED box at 51.02/544.25, which is
+    #: exactly where that same template puts its STROKED answer boxes.
+    kind: str = "filled"
 
     @property
     def is_answer(self) -> bool:
         return (
-            abs(self.x0 - ANSWER_X0) < X_TOLERANCE and abs(self.x1 - ANSWER_X1) < X_TOLERANCE
+            self.kind == PROFILE.box_kind
+            and abs(self.x0 - PROFILE.answer_x0) < X_TOLERANCE
+            and abs(self.x1 - PROFILE.answer_x1) < X_TOLERANCE
         )
 
     @property
     def signature(self) -> str:
-        return f"{self.x0:.2f}/{self.x1:.2f}"
+        # The kind is part of the signature only when it is not the default, so
+        # a census over a filled-box template reads exactly as it always has.
+        suffix = "" if self.kind == "filled" else f" ({self.kind})"
+        return f"{self.x0:.2f}/{self.x1:.2f}{suffix}"
 
 
 @dataclass
@@ -146,7 +216,7 @@ class Anchor:
     letters: list[str] = field(default_factory=list)
 
 
-def _dedupe(rects: list[dict[str, Any]]) -> list[Box]:
+def _dedupe(rects: list[dict[str, Any]], kind: str = "filled") -> list[Box]:
     """Collapses the two rects a single printed box produces.
 
     Each box is drawn as an interior fill plus a border stroke offset by about
@@ -163,19 +233,66 @@ def _dedupe(rects: list[dict[str, Any]]) -> list[Box]:
             hit.x0 = min(hit.x0, r["x0_pt"])
             hit.x1 = max(hit.x1, r["x1_pt"])
         else:
-            out.append(Box(r["x0_pt"], r["y0_pt"], r["x1_pt"], r["y1_pt"]))
+            out.append(Box(r["x0_pt"], r["y0_pt"], r["x1_pt"], r["y1_pt"], kind))
     return out
 
 
-def read_boxes(pdf_bytes: bytes, page_count: int) -> dict[int, list[Box]]:
-    pages: dict[int, list[Box]] = {}
-    for i in range(page_count):
-        found = inspect_fillrects(pdf_bytes, i).get("filled", [])
-        wide = [
-            r for r in found
+def _stroke_rects(doc: pymupdf.Document, page_index: int) -> list[dict[str, float]]:
+    """Stroke-only rectangles, in the shape inspect_fillrects returns.
+
+    inspect_fillrects() deliberately keeps only shapes that carry a fill, so a
+    template whose answer box is an unfilled outline is invisible to it. Read
+    those straight off get_drawings() instead -- the same call it is built on.
+    """
+    out = []
+    for d in doc[page_index].get_drawings():
+        if d.get("type") != "s":
+            continue
+        r = pymupdf.Rect(d["rect"])
+        out.append({
+            "x0_pt": round(r.x0, 2), "y0_pt": round(r.y0, 2),
+            "x1_pt": round(r.x1, 2), "y1_pt": round(r.y1, 2),
+        })
+    return out
+
+
+def detect_profile(doc: pymupdf.Document, pdf_bytes: bytes) -> Profile:
+    """Pick the template profile whose answer-box signature this PDF actually has.
+
+    Falls back to the first profile so an unfamiliar template still reports its
+    x-signature census through --candidates rather than dying here -- seeing the
+    census is how you find out the template changed.
+    """
+    for profile in PROFILES:
+        for i in range(doc.page_count):
+            rects = (_stroke_rects(doc, i) if profile.box_kind == "stroked"
+                     else inspect_fillrects(pdf_bytes, i).get("filled", []))
+            for r in rects:
+                if (r["x1_pt"] - r["x0_pt"]) < MIN_BOX_W or (r["y1_pt"] - r["y0_pt"]) < MIN_BOX_H:
+                    continue
+                if (abs(r["x0_pt"] - profile.answer_x0) < X_TOLERANCE
+                        and abs(r["x1_pt"] - profile.answer_x1) < X_TOLERANCE):
+                    return profile
+    return PROFILES[0]
+
+
+def read_boxes(pdf_bytes: bytes, page_count: int, doc: pymupdf.Document) -> dict[int, list[Box]]:
+    def wide(rects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            r for r in rects
             if (r["x1_pt"] - r["x0_pt"]) >= MIN_BOX_W and (r["y1_pt"] - r["y0_pt"]) >= MIN_BOX_H
         ]
-        pages[i] = _dedupe(wide)
+
+    pages: dict[int, list[Box]] = {}
+    for i in range(page_count):
+        boxes = _dedupe(wide(inspect_fillrects(pdf_bytes, i).get("filled", [])), "filled")
+        if PROFILE.box_kind == "stroked":
+            # Deduped separately, not merged in: a filled box and a stroked one
+            # sharing a y-range are two different things here, and collapsing
+            # them would let a callout inherit the answer-box signature.
+            boxes = sorted(boxes + _dedupe(wide(_stroke_rects(doc, i)), "stroked"),
+                           key=lambda b: (b.y0, b.x0))
+        pages[i] = boxes
     return pages
 
 
@@ -185,33 +302,48 @@ def read_labels(doc: pymupdf.Document) -> tuple[list[tuple[int, float, int]], li
     All three are read off the left margin (question numbers and Part headings
     at x~51) or the marks pill at the right (x~478-497).
     """
-    qlabel = re.compile(r"^Q(\d{1,2})$")
-    # \u00b7 is the middle dot the template prints between a Part's number
-    # and its title ("Part 0 - Warming the Engine"); written as an escape so
-    # this file stays pure ASCII.
-    part = re.compile("^Part (\\d)\\s*[\u00b7.]")
-    marks_pill = re.compile(r"Clev.s Marks:\s*(\d+)")
+    qlabel = re.compile(PROFILE.qlabel)
+    part = re.compile(PROFILE.part_heading)
+    marks_pill = re.compile(PROFILE.marks_pill)
     labels: list[tuple[int, float, int]] = []
     parts: list[tuple[int, float, str]] = []
     pills: list[tuple[int, float, int]] = []
+    # Pairing a pill with its question is done on the BASELINE, not the bbox
+    # top. A line's bbox grows to fit its tallest glyph, and the math-italic
+    # letters (U+1D44E and friends) carry a much taller ascent than the text
+    # around them -- so on the tear-off template, where the question number can
+    # have the prompt's first words set beside it, a label and its own pill
+    # report bbox tops up to 28pt apart while their baselines agree to within
+    # 2pt. Everything else here still keys on the bbox, because that is what
+    # orders labels against box geometry.
+    label_baselines: dict[tuple[int, int], float] = {}
     for i in range(doc.page_count):
         for blk in doc[i].get_text("dict")["blocks"]:
             for ln in blk.get("lines", []):
                 text = "".join(s["text"] for s in ln["spans"]).strip()
                 x, y = ln["bbox"][0], ln["bbox"][1]
-                if x < 60 and qlabel.match(text):
-                    labels.append((i, y, int(qlabel.match(text).group(1))))
-                if x < 60 and part.match(text):
-                    parts.append((i, y, f"Part {part.match(text).group(1)}"))
+                baseline = ln["spans"][0]["origin"][1]
+                if x < PROFILE.label_max_x and qlabel.match(text):
+                    number = int(qlabel.match(text).group(1))
+                    labels.append((i, y, number))
+                    label_baselines.setdefault((i, number), baseline)
+                heading = part.match(text) if x < PROFILE.label_max_x else None
+                if heading:
+                    number, zone = heading.group(1), (heading.lastindex or 0) > 1 and heading.group(2)
+                    parts.append((i, y, f"Part {number}" if number else f"Zone ({zone})"))
                 m = marks_pill.search(text)
                 if m:
-                    pills.append((i, y, int(m.group(1))))
+                    pills.append((i, baseline, int(m.group(1))))
     labels.sort()
     parts.sort()
     # Pair each pill with the question label printed on its own line.
     printed_marks: dict[int, int] = {}
     for pi, py, value in pills:
-        near = [(abs(py - ly), n) for (p, ly, n) in labels if p == pi and abs(py - ly) < 12]
+        near = [
+            (abs(py - base), n)
+            for ((p, n), base) in label_baselines.items()
+            if p == pi and abs(py - base) < 12
+        ]
         if near:
             printed_marks[min(near)[1]] = value
     return labels, parts, printed_marks
@@ -559,8 +691,16 @@ def main() -> None:
 
     pdf_bytes = open(args.pdf, "rb").read()
     doc = pymupdf.open(args.pdf)
-    pages = read_boxes(pdf_bytes, doc.page_count)
+    global PROFILE
+    PROFILE = detect_profile(doc, pdf_bytes)
+    pages = read_boxes(pdf_bytes, doc.page_count, doc)
     config = json.load(open(args.config)) if args.config else {}
+    expected = config.get("template_profile")
+    if expected and expected != PROFILE.name:
+        raise SystemExit(
+            f"config expects the '{expected}' template but this PDF reads as "
+            f"'{PROFILE.name}' -- you are not holding the master this config was written for"
+        )
 
     if args.layout:
         dump_layout(doc, pages)
@@ -573,12 +713,13 @@ def main() -> None:
         for boxes in pages.values():
             for b in boxes:
                 census[b.signature] = census.get(b.signature, 0) + 1
-        print("x-signature census (x0/x1 -> count); answer boxes are "
-              f"{ANSWER_X0:.2f}/{ANSWER_X1:.2f}:")
+        answer_sig = f"{PROFILE.answer_x0:.2f}/{PROFILE.answer_x1:.2f}"
+        print(f"template profile: {PROFILE.name} ({PROFILE.box_kind} answer boxes)")
+        print(f"x-signature census (x0/x1 -> count); answer boxes are {answer_sig}:")
         for sig, n in sorted(census.items(), key=lambda kv: -kv[1]):
-            mark = "  <- answer boxes" if sig == f"{ANSWER_X0:.2f}/{ANSWER_X1:.2f}" else ""
+            mark = "  <- answer boxes" if sig == answer_sig else ""
             print(f"   {sig:>16}  x{n}{mark}")
-        footer = re.search(r"Page \d+ of (\d+)", doc[0].get_text())
+        footer = re.search(r"(?:Page )?\d+ of (\d+)", doc[0].get_text())
         print(f"\npages in this PDF: {doc.page_count}"
               f"   document's own total: {footer.group(1) if footer else 'unknown'}"
               "   (page_count must be the former)")
