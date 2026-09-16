@@ -139,7 +139,7 @@ COMMAND TERMS
 - Bold each command term on first use${s.commandTerms.boldMainMathematicalObject ? " and bold the main mathematical object in each stem" : ""}.
 - One instruction per sentence; separate context (boxed) from task demand.
 - Every "Hence" must name the earlier result to use.
-- Provide a tear-off glossary with a demand scale, and a Command-Term Spotlight. Spotlight guidance: ${s.commandTerms.spotlightGuidance}
+- Provide a command-term glossary strip with a demand scale, and a Command-Term Spotlight. Never tell the student to tear it off or keep it beside them. Spotlight guidance: ${s.commandTerms.spotlightGuidance}
 Canonical command-term glossary to draw from:
 ${commandGlossary}
 

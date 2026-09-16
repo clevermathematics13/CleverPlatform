@@ -380,7 +380,7 @@ export const CANONICAL_AAHL_SPEC: NuancedAnalysisSpec = {
         name: "Command-Term Accessibility",
         primaryBeneficiaries: ["ELL", "dyslexia", "autism spectrum", "maths anxiety"],
         rules: [
-          { id: "l3-glossary", rule: "Mandatory tear-off command-term glossary with demand scale." },
+          { id: "l3-glossary", rule: "Mandatory command-term glossary strip with demand scale." },
           { id: "l3-bold", rule: "Bold the command term on first use; never use a term not in the glossary without defining it at point of use." },
           { id: "l3-hence-pointer", rule: "'Hence' questions must name which preceding result to use, e.g. 'Hence (using your answer to Q7)…'." },
           { id: "l3-gloss", rule: "For ELL, add a one-line plain-English gloss after formal terms on first use." },

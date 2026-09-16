@@ -36,7 +36,7 @@ Every Nuanced Analysis must contain these sections, in this order:
 
 ### 2.2 Command Terms Glossary Table
 - Always present at the top of every activity.
-- Always printed on a **tear-off strip** (horizontal rule above and below) so students can keep it beside them while working.
+- Always printed on a **bounded strip** (dashed horizontal rule above and below), set apart from the questions so it can be found at a glance. Do NOT label it as a tear-off, and do not tell the student to keep it beside them: the strip is a reference, and the packet does not instruct anyone to dismantle it.
 - Include a **demand-scale visual** alongside the table: a horizontal spectrum from *write down* (low output demand) to *prove* (high output demand), with each command term placed on it.
 - Include a **Command-Term Spotlight** callout box highlighting the most commonly confused pair of terms in this particular activity.
 
@@ -117,7 +117,7 @@ Apply every layer to every new activity. These are non-negotiable defaults, not 
 **Primary beneficiaries:** ELL students, dyslexia, autism spectrum, mathematics anxiety.
 
 **Rules:**
-- The glossary table (Section 2.2) is mandatory and must be on the tear-off strip.
+- The glossary table (Section 2.2) is mandatory and must be on the command-term strip.
 - First occurrence of each command term in a question: **bold** the term.
 - Use **colour-coding** in the PDF/print version to signal output demand:
   - Blue border = answer only (*write down*, *state*)

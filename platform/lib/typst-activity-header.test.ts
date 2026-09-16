@@ -86,6 +86,22 @@ describe("the rendered packet header", () => {
     expect(text).toContain("Parts 0 to 2 are compulsory.");
   });
 
+  // The strip is a reference a student consults, not a thing to dismantle.
+  // It used to be headed "Command Terms - tear off and keep beside you", in
+  // the Typst template, the preview and the generic HTML pipeline alike, and
+  // the design doc mandated the wording, so removing it from one renderer
+  // would have left the other two saying it.
+  it("labels the command-term strip without telling anyone to tear it off", () => {
+    const text = renderText({
+      commandTerms: [{ term: "Prove", definition: "Establish it for every value." }],
+    });
+    expect(text).toContain("COMMAND TERMS");
+    expect(text).toContain("Prove");
+    for (const phrase of ["TEAR OFF", "Tear off", "tear off", "KEEP BESIDE", "keep beside"]) {
+      expect(text, `the strip still says "${phrase}"`).not.toContain(phrase);
+    }
+  });
+
   it("renders currency prose in a header field literally instead of as math", () => {
     // Two dollar amounts in one sentence read as a $...$ math span; evaluating
     // that fragment is what once took the whole document down (see

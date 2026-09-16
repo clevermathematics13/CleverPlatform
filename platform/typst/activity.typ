@@ -225,14 +225,14 @@
   #v(8pt)
 ]
 
-// ── Command Terms tear-off strip ──────────────────────────────────────────────
+// ── Command Terms strip ──────────────────────────────────────────────
 #if content.has("commandTerms") and content.commandTerms.len() > 0 [
   #line(length: 100%, stroke: (dash: "dashed", thickness: 0.7pt, paint: col-strip))
   #v(2pt)
   #block(width: 100%, fill: col-strip.lighten(88%), inset: 0pt)[
     #block(fill: col-strip, width: 100%, inset: (x: 8pt, y: 3pt))[
       #text(size: 8pt, weight: "bold", fill: white)[
-        #upper("Command Terms — Tear off and keep beside you while working")
+        #upper("Command Terms")
       ]
     ]
     #block(inset: (x: 8pt, top: 6pt, bottom: 4pt))[

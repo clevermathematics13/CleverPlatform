@@ -8,7 +8,7 @@
  *   4. Emit      — return the final HTML string ready for Puppeteer
  *
  * The HTML/CSS produced here mirrors the NuancedAnalysisPreview component:
- *   - Teal command-terms tear-off strip with dashed border
+ *   - Teal command-terms strip with dashed border
  *   - Teal school name header, bold centred title, italic subtitle
  *   - Full-width name/date write-in lines (border-bottom, with space above)
  *   - Tier badges ★/★★/★★★ coloured (emerald/blue/purple)
@@ -355,7 +355,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
     .score-summary-table td:last-child { text-align: right; width: 60px; }
     .score-summary-total td { font-weight: 700; background: #f3f4f6; }
 
-    /* -- Command terms tear-off strip -- */
+    /* -- Command terms strip -- */
     .ct-wrap {
       margin: 16px 0;
       break-inside: avoid;
@@ -869,7 +869,7 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
   const commandTermsHtml = Array.isArray(nd.commandTerms) && nd.commandTerms.length > 0
     ? `<div class="ct-wrap">
         <div class="ct-dashed-top"></div>
-        <div class="ct-header">Command Terms — Tear Off and Keep Beside You While Working</div>
+        <div class="ct-header">Command Terms</div>
         <div class="ct-body">
           <table class="ct-table">
             <tbody>

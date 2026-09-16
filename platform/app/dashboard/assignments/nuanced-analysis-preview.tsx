@@ -8,7 +8,7 @@
  * Implements all 8 Universal Design Layers:
  *   1. Structural Chunking — progress tracker, per-Part completability
  *   2. Tiered Entry Points — ★/★★/★★★ badges with colour coding
- *   3. Command-Term Accessibility — tear-off strip + demand-scale visual
+ *   3. Command-Term Accessibility — command-term strip + demand-scale visual
  *   4. Scaffolding Visibility — opt-in hints, per-question controls
  *   5. Vocabulary — defined on first use (via commandTerms strip)
  *   6. Proof & Diagram Scaffolding — labelled answer box types
@@ -17,7 +17,7 @@
  *
  * Fixed structural components rendered per DESIGN_INSTRUCTIONS §2:
  *   §2.1 Header: course, syllabusTopics, prerequisites, materials, name/date
- *   §2.2 Command Terms glossary (tear-off strip) + demand-scale visual
+ *   §2.2 Command Terms glossary (strip) + demand-scale visual
  *   §2.3 Vocabulary bold on first use (via commandTerms)
  *   §2.4 ATL statement (atl field)
  *   §2.5 TOK Provocations block (tokProvocations, exactly 2)
@@ -343,7 +343,7 @@ function CommandTermsStrip({ terms }: { terms: CommandTermEntry[] }) {
       <div className="border-t-2 border-dashed border-teal-500 my-1" />
       <div className="bg-teal-700 px-3 py-1.5">
         <span className="text-[8.5pt] font-bold text-white uppercase tracking-wide">
-          Command Terms — Tear Off and Keep Beside You While Working
+          Command Terms
         </span>
       </div>
       <div className="bg-teal-50 px-3 pb-2 pt-1.5 border border-t-0 border-teal-200">
