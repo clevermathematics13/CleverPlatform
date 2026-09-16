@@ -90,6 +90,13 @@ export interface PrerequisiteBox { items: string[]; }
 export interface TokProvocation { id: string; body: string; }
 export interface InternationalMindednessBox { body: string; }
 
+export interface AreaModel {
+  topLabels: string[];
+  sideLabels: string[];
+  cells?: string[][];
+  caption?: string;
+}
+
 export interface NuancedQuestion {
   prompt: string;
   marks?: number;
@@ -118,6 +125,7 @@ export interface NuancedQuestion {
     skillTag?: string;
   }>;
   answerBoxLines?: number;
+  areaModel?: AreaModel;
   spotlight?: SpotlightBox;
   prerequisiteBox?: PrerequisiteBox;
   translationTable?: TranslationTable;
@@ -485,6 +493,51 @@ function GeometricBlock({ geo }: { geo: GeometricReading }) {
   );
 }
 
+/**
+ * The area model, drawn the same way the Typst template draws it: labels
+ * outside the rectangle, empty cells inside for the student to fill in.
+ *
+ * This preview and the PDF have to agree about it, because the preview is
+ * where a teacher checks the figure before it is printed.
+ */
+function AreaModelFigure({ model }: { model: AreaModel }) {
+  const { topLabels, sideLabels, cells, caption } = model;
+  if (!topLabels?.length || !sideLabels?.length) return null;
+  return (
+    <div className="my-2">
+      <table className="mx-auto border-collapse">
+        <tbody>
+          <tr>
+            <td className="w-8" />
+            {topLabels.map((t, i) => (
+              <th key={i} className="w-28 pb-0.5 text-center text-[9pt] font-bold text-gray-900">
+                <LatexRenderer latex={t} />
+              </th>
+            ))}
+          </tr>
+          {sideLabels.map((side, r) => (
+            <tr key={r}>
+              <th className="pr-1 text-right text-[9pt] font-bold text-gray-900">
+                <LatexRenderer latex={side} />
+              </th>
+              {topLabels.map((_, c) => (
+                <td key={c} className="h-12 border border-gray-300 text-center align-middle text-[10pt] text-gray-900">
+                  {cells?.[r]?.[c] ? <LatexRenderer latex={cells[r][c]} /> : null}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {caption && (
+        <p className="mt-1 text-center text-[8pt] italic text-gray-500">
+          <LatexRenderer latex={caption} />
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AnswerBox({ lines, style }: { lines: number; style?: "boxes" | "lines" | "none" }) {
   if (!lines || style === "none") return null;
   return (
@@ -550,6 +603,7 @@ function QuestionBlock({
               {q.hint && (
                 <p className="text-[8.5pt] italic text-gray-400 mt-0.5">Hint: <LatexRenderer latex={q.hint} /></p>
               )}
+              {q.areaModel && <AreaModelFigure model={q.areaModel} />}
               {q.oralAlternative && (
                 <p className="text-[8pt] italic text-teal-600 mt-0.5">
                   You may respond to this question orally — ask your teacher.

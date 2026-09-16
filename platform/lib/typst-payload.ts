@@ -58,6 +58,32 @@ export interface MathNode {
 }
 
 /**
+ * A labelled rectangle partitioned into cells: the area model.
+ *
+ * It exists because "draw a rectangle of height x+3 and width x+2, cut it
+ * into four and write each area" asks a fourteen-year-old to construct the
+ * diagram before they can use it, and the construction is not what is being
+ * assessed. Printing the rectangle with its edges labelled and its cells
+ * empty puts the whole of the student's effort into the areas.
+ *
+ * The labels are ordinary packet prose and go through rich(), so they carry
+ * $...$ math like any other field.
+ */
+export interface AreaModelSpec {
+  /** Labels along the top edge, left to right. One per column. */
+  topLabels: string[];
+  /** Labels down the left edge, top to bottom. One per row. */
+  sideLabels: string[];
+  /**
+   * Pre-filled cell contents, row-major, as a worked or partly worked
+   * example. Omit it, or leave an entry empty, for a cell the student fills.
+   */
+  cells?: string[][];
+  /** One line under the figure saying what to do with it. */
+  caption?: string;
+}
+
+/**
  * AnswerBoxSpec defines the answer space for a single question.
  */
 export interface AnswerBoxSpec {
@@ -109,6 +135,8 @@ export interface ActivityQuestion {
    */
   prompt: string;
   answerBox: AnswerBoxSpec;
+  /** Printed between the prompt and the answer space. */
+  areaModel?: AreaModelSpec;
   cohesionOverride?: QuestionCohesionOverride;
   subparts?: ActivityQuestion[];
   /** Expected answer for the Teacher's Companion / mark scheme. */

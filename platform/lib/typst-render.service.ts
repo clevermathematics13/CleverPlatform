@@ -479,7 +479,7 @@ export function getActivityTypstSource(): string {
 //
 // An odd marker count means the pairing was broken in transit; the whole
 // string then goes down the legacy path rather than evaluating half a span.
-#let rich(s) = {
+#let rich-line(s) = {
   let chunks = s.split(${trustedDelim})
   if chunks.len() == 1 { return rich-legacy(s) }
   if calc.rem(chunks.len(), 2) == 0 { return rich-legacy(s) }
@@ -492,6 +492,60 @@ export function getActivityTypstSource(): string {
     }
   }
   out
+}
+
+// A newline in a prompt is a line on the page.
+//
+// Without this, a question with lettered parts had only one shape available:
+// "(a) ... (b) ... (c) ..." run together in a paragraph, because a string
+// interpolated into Typst content renders its newlines as spaces. A student
+// scanning for part (d) then has to read the whole paragraph to find it.
+// Splitting here lets a prompt put its stem on one line and each lettered
+// part on its own, which is how the A.1 and A.2 packets read on paper.
+//
+// The split happens BEFORE any $-pairing, which is safe because a math span
+// never contains a newline -- the preview's own splitter assumes the same
+// (see splitSegments in components/LatexRenderer.tsx).
+#let rich(s) = {
+  let lines = s.split("\n")
+  if lines.len() == 1 { return rich-line(s) }
+  let out = []
+  for (i, line) in lines.enumerate() {
+    if i > 0 { out += linebreak() }
+    if line.trim() != "" { out += rich-line(line) }
+  }
+  out
+}
+
+// A labelled rectangle partitioned into cells: the area model.
+// See AreaModelSpec in typst-payload.ts for why a packet prints the rectangle
+// rather than asking the student to draw it.
+#let area-model(spec) = {
+  let tops = spec.at("topLabels", default: ())
+  let sides = spec.at("sideLabels", default: ())
+  let cells = spec.at("cells", default: ())
+  if tops.len() == 0 or sides.len() == 0 { return [] }
+  block(breakable: false, width: 100%, inset: (y: 4pt))[
+    #align(center)[
+      #grid(
+        columns: (30pt,) + tops.map(_ => 84pt),
+        rows: (14pt,) + sides.map(_ => 38pt),
+        align: center + horizon,
+        [],
+        ..tops.map(t => text(size: 9pt, weight: "bold")[#rich(t)]),
+        ..range(sides.len()).map(r => (
+          text(size: 9pt, weight: "bold")[#rich(sides.at(r))],
+          ..range(tops.len()).map(c => rect(
+            width: 100%, height: 100%, stroke: 0.7pt + col-border, inset: 3pt,
+          )[#align(center + horizon)[#text(size: 10pt)[#if cells.len() > r and cells.at(r).len() > c { rich(cells.at(r).at(c)) }]]]),
+        )).flatten(),
+      )
+    ]
+    #if spec.at("caption", default: "") != "" [
+      #v(3pt)
+      #align(center)[#text(size: 8pt, style: "italic", fill: rgb("#6b7280"))[#rich(spec.caption)]]
+    ]
+  ]
 }
 
 // Header
@@ -638,6 +692,7 @@ export function getActivityTypstSource(): string {
         #text(weight:"bold")[#str(q.globalNumber).] #tier-badge(q.tier)
       ][
         #text[#rich(q.prompt)]
+        #if "areaModel" in q [ #area-model(q.areaModel) ]
         #if "hint" in q [ #v(2pt)#text(size:9pt,style:"italic",fill:rgb("#6b7280"))[Hint: #rich(q.hint)] ]
       ][
         #if tmpl.questionBlocks.showMarks [#text(size:8pt,fill:rgb("#6b7280"))[[#str(q.marks)M]]]

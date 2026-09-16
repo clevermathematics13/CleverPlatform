@@ -100,6 +100,20 @@ must exercise Server Actions.
   would ever get. Do not "simplify" this back by teaching the generator Typst.
   A `$...$` span with NO backslash in it is a packet saved before the switch
   and still renders down the legacy path untouched.
+- **A newline in a prompt is a line on the page.** `rich()` splits on it
+  before it does anything else, so a stem followed by lettered items sets as
+  a list rather than a paragraph. Rule 6d of the generator prompt asks for
+  it. Note the tension with rule 30, which says a question with (a), (b), (c)
+  should be written as separate consecutive questions instead: lettered parts
+  inside one printed box are one scan anchor and one rubric item, so they
+  cannot be marked part by part. Rule 30 still stands; 6d governs the cases
+  where lettered parts are used anyway.
+- **A question can print an area model** (`areaModel` on the question,
+  `AreaModelSpec` in typst-payload.ts): a labelled rectangle with empty cells
+  the student fills in. It exists because telling a fourteen-year-old to draw
+  the rectangle first assesses the drawing. Rendered by `area-model()` in the
+  Typst template and by `AreaModelFigure` in the preview -- both, because the
+  preview is where the figure is checked before it prints.
 - **A span the Typst gate refuses is read as LaTeX instead, unless it is
   prose.** Most Grade 9 algebra needs no LaTeX command at all -- `A = ac`,
   `a^2+2ab+b^2`, `Ax^2+Bx+C` -- so the backslash test cannot recognise it, and

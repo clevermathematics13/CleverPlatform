@@ -269,6 +269,86 @@ describe("the TS mirror of the Typst gate", () => {
   });
 });
 
+describe("prompt line breaks and the area model", () => {
+  /** The words on the page, with the markup stripped out. */
+  const svgText = (svg: string) => svg.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+  /** Renders one question through the shipped template and returns the SVG. */
+  function renderQuestion(q: Record<string, unknown>): string {
+    const draft = {
+      title: "T", subtitle: "S", instructions: ["Do it."],
+      sections: [{ heading: "Part 0", questions: [{ marks: 2, tier: 1, ...q }] }],
+    } as unknown as AssignmentDraft;
+    const built = DocumentOrchestratorService.build(draft, undefined, {
+      includeTeacherCompanion: false, includeAnswerKey: false,
+    });
+    if (!built.success) throw new Error(built.error);
+    return compiler.svg({ mainFileContent: source, inputs: { payload: JSON.stringify(buildTypstPayload(built.payload)) } });
+  }
+
+  /**
+   * How many separately laid-out text runs the page has. Typst emits one
+   * text-selection div per run, so a prompt that breaks into more lines
+   * produces more of them -- which is what "on its own line" means here.
+   */
+  const runs = (svg: string) => (svg.match(/class="tsel"/g) ?? []).length;
+
+  it("puts each lettered part of a prompt on its own line", () => {
+    // Run together in a paragraph, a student hunting for part (d) has to read
+    // the whole thing. The prompt carries newlines; the page must keep them.
+    const inline = renderQuestion({ prompt: "Write down each. (a) First item. (b) Second item. (c) Third item." });
+    const listed = renderQuestion({ prompt: "Write down each.\n(a) First item.\n(b) Second item.\n(c) Third item." });
+    expect(svgText(inline)).toContain("Third item");
+    expect(svgText(listed)).toContain("Third item");
+    // Same words, three newlines, three more lines on the page.
+    expect(runs(listed)).toBe(runs(inline) + 3);
+  });
+
+  it("still renders a single-line prompt as one line", () => {
+    const svg = renderQuestion({ prompt: String.raw`Find the value of $\frac{1}{2}$ exactly.` });
+    expect(svg).toContain("Find");
+    expect(svg).not.toContain("frac");
+  });
+
+  it("prints the area model with its labels and one cell per pairing", () => {
+    const svg = renderQuestion({
+      prompt: "Fill in the areas.",
+      areaModel: {
+        topLabels: [String.raw`$x$`, String.raw`$+2$`],
+        sideLabels: [String.raw`$x$`, String.raw`$+3$`],
+        caption: "Height x+3, width x+2.",
+      },
+    });
+    expect(svg).toContain("Fill in the areas");
+    expect(svg).toContain("Height");
+    // Two columns by two rows is four cells, each drawn as its own rectangle
+    // path; the figure is the only thing on this page that draws any.
+    const rects = (svg.match(/<path class="typst-shape"/g) ?? []).length;
+    expect(rects).toBeGreaterThanOrEqual(4);
+  });
+
+  it("draws nothing at all when the model has no labels", () => {
+    // A half-specified figure must not print an empty box on a student's page.
+    const svg = renderQuestion({ prompt: "No figure here.", areaModel: { topLabels: [], sideLabels: [] } });
+    expect(svg).toContain("No figure here");
+  });
+
+  it("typesets a pre-filled cell as mathematics, not as its source", () => {
+    const svg = renderQuestion({
+      prompt: "Worked example.",
+      areaModel: {
+        topLabels: [String.raw`$x$`], sideLabels: [String.raw`$x$`],
+        cells: [[String.raw`$x^2$`]],
+      },
+    });
+    expect(svg).toContain("Worked example");
+    const dollarIds = [
+      ...compiler.svg({ mainFileContent: `#"$"` }).matchAll(/<path[^>]*id="([^"]+)"/g),
+    ].map((m) => m[1]);
+    expect(dollarIds.some((id) => svg.includes(id))).toBe(false);
+  });
+});
+
 describe("a whole packet of LaTeX renders", () => {
   it("compiles a draft whose every field is LaTeX", () => {
     const draft = {
