@@ -8,6 +8,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 These rules apply to **all LaTeX stored in `question_parts.content_latex` and `question_parts.markscheme_latex`**, all Claude prompts in this codebase, and any manually written question content. They are enforced by `postProcessMathpixLatex()` and the Claude normalisation pass in `/api/questions/ocr-latex`.
 
+They apply to **Nuanced Analysis packets** too. A packet's mathematics is LaTeX inside `$...$`, in every prose field of the draft — that is what the live preview renders with KaTeX, and `lib/latex-to-typst.ts` converts it to Typst when the PDF is built. Rule 11b of `buildActivityGeneratorSystemPrompt()` is where the generator is told so; the vector rules below are quoted in it verbatim, so change them in both places or neither.
+
 ### Vector notation
 - **ALWAYS** use `\boldsymbol{}` (bold italic) for vector variables — e.g. `\boldsymbol{a}`, `\boldsymbol{s}`.
 - **NEVER** use `\mathbf{}` (bold upright), `\bm{}`, `\vec{}`, or `\overrightarrow{}` for named vector variables.

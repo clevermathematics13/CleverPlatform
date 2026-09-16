@@ -393,4 +393,43 @@ describe("scope-and-sequence references stay out of the mathematics", () => {
   it("leaves a CCSS code alone, which is the same shape with more letters", () => {
     expect(typesetMath("HSA.SSE.A.2 applies to x^2+5x+6")).toContain("HSA.SSE.A.2 applies to");
   });
+
+  // The IBDP half of the same idea, and it failed harder than the MYP half.
+  // "S3E11" has no two adjacent letters, so the prelude's looks-like-math()
+  // -- which only inspects runs of two or more letters -- waved the span
+  // through to eval(), where the whole code is ONE unknown variable. A packet
+  // subtitled "Nuanced Analysis Packet S3E11" did not print at all.
+  it.each(["S3E11", "(S3E11)", "S2E7", "S3E11.", "S3E11;"])(
+    "treats the IBDP packet code %s as prose",
+    (ref) => {
+      expect(typesetMath(`continues ${ref} with x^2+8x+16`)).toContain(`continues ${ref} with`);
+    },
+  );
+
+  it("keeps an IBDP packet code out of a subtitle entirely", () => {
+    expect(typesetMath("Nuanced Analysis Packet S3E11")).toBe("Nuanced Analysis Packet S3E11");
+  });
+});
+
+describe("a letter glued to a digit is never left inside a span", () => {
+  // Typst lexes "m1" as one identifier, and an unknown identifier aborts the
+  // document rather than degrading -- so this is a compile failure, not a
+  // cosmetic one. Only this direction matters: "6x" lexes as a number beside
+  // a variable and must keep its spacing, or every quadratic in the course
+  // changes shape.
+  it.each([
+    ["m1 = m2", "m 1 = m 2"],
+    ["A1 + B2", "A 1 + B 2"],
+    ["sigma1", "sigma 1"],
+    ["x2 + y2", "x 2 + y 2"],
+  ])("separates %s", (input, expected) => {
+    expect(toTypstMath(input)).toBe(expected);
+  });
+
+  it.each(["6x^2 + 11x + 3", "2a + c = 19", "10x - 4"])(
+    "leaves a digit-then-letter product exactly as written: %s",
+    (expr) => {
+      expect(toTypstMath(expr)).toBe(expr);
+    },
+  );
 });

@@ -30,6 +30,7 @@
 
 import { validateTemplateAst } from "./template-ast.schema";
 import { TYPST_MATH_IDENTS, MATH_ALIASES } from "./math-typesetting";
+import { TRUSTED_MATH_DELIM } from "./latex-to-typst";
 import { buildTypstPayload } from "./typst-payload";
 import type { ActivityPayload } from "./typst-payload";
 
@@ -255,6 +256,11 @@ function describeCompileError(err: unknown): string {
  * nothing else in the pipeline would catch it.
  */
 export function getActivityTypstSource(): string {
+  // The trusted-math marker, written as a Typst string escape rather than as
+  // a raw control character in the emitted source. Derived from the one
+  // constant latex-to-typst.ts wraps spans in, so the writer and the reader
+  // of the marker can never drift apart.
+  const trustedDelim = `"\\u{${TRUSTED_MATH_DELIM.codePointAt(0)!.toString(16)}}"`;
   return `
 // -- CleverPlatform Nuanced Analysis — Typst template ------------------------
 #let raw = sys.inputs.at("payload", default: "{}")
@@ -416,13 +422,25 @@ export function getActivityTypstSource(): string {
   // requires named operators be written that way ($"Var"(X)$) -- so the
   // words inside them are always valid and must not fail the check.
   let unquoted = seg.replace(regex("\\"[^\\"]*\\""), " ")
+  // A LETTER glued to a digit is one identifier to Typst -- "m1", "A1",
+  // "S3E11" -- and an unknown identifier aborts the whole document rather
+  // than degrading. The loop below cannot catch it: it looks for runs of two
+  // or more LETTERS, and those runs have none. This costs nothing in false
+  // rejections, because a span containing such an identifier could never
+  // have compiled in the first place; it only turns a packet that would not
+  // print into one that prints this span verbatim.
+  //
+  // A DIGIT glued to a letter is a different thing and is fine: "6x^2" lexes
+  // as a number beside a variable, which is why the pattern starts on a
+  // letter.
+  if unquoted.matches(regex("[A-Za-z][A-Za-z0-9]*[0-9]")).len() > 0 { return false }
   for m in unquoted.matches(regex("[A-Za-z]{2,}")) {
     if not math-idents.contains(lower(m.text)) { return false }
   }
   true
 }
 
-#let rich(s) = {
+#let rich-legacy(s) = {
   let parts = s.split("$")
   if calc.rem(parts.len(), 2) == 0 {
     return [#s]
@@ -441,6 +459,36 @@ export function getActivityTypstSource(): string {
       out += [#part]
     } else {
       out += eval(normalize-math(part), mode: "math")
+    }
+  }
+  out
+}
+
+// The real rich(): a trusted channel first, the guessing one underneath.
+//
+// Spans wrapped in TRUSTED_MATH_DELIM were converted from LaTeX to Typst by
+// lib/latex-to-typst.ts, which built every bracket and every identifier in
+// them itself. They do not need looks-like-math()'s guess and must not be
+// subjected to it -- the gate rejects any multi-letter run it does not
+// recognise, which would throw out mat(delim: "[", ...) and every other
+// construct that carries a named argument.
+//
+// Everything OUTSIDE those markers is packet prose exactly as before, so the
+// currency-dollar protection that rich-legacy() exists for is untouched: a
+// legacy $...$ span still has to earn its evaluation.
+//
+// An odd marker count means the pairing was broken in transit; the whole
+// string then goes down the legacy path rather than evaluating half a span.
+#let rich(s) = {
+  let chunks = s.split(${trustedDelim})
+  if chunks.len() == 1 { return rich-legacy(s) }
+  if calc.rem(chunks.len(), 2) == 0 { return rich-legacy(s) }
+  let out = []
+  for (i, chunk) in chunks.enumerate() {
+    if calc.rem(i, 2) == 0 {
+      out += rich-legacy(chunk)
+    } else {
+      out += eval(chunk, mode: "math")
     }
   }
   out
@@ -507,7 +555,10 @@ export function getActivityTypstSource(): string {
   #let tracker-label(h) = {
     let parts = h.split("\u{2014}")          // em dash, as the headings use
     let name = if parts.len() > 1 { parts.at(0) } else { h }
-    name.trim()
+    // This label is a plain string, not rich() content, so a trusted-math
+    // marker would print as a notdef box rather than typeset. Headings are
+    // never mathematics; drop the marker rather than risk the glyph.
+    name.replace(${trustedDelim}, "").trim()
   }
   // The Teacher's Companion is torn off before the packet is handed out, so
   // a student cannot tick it. Drop it rather than print a box for a page

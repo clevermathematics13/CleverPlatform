@@ -80,6 +80,25 @@ must exercise Server Actions.
 - **Both PDF pipelines are live.** Do not remove either.
 - **Typst payload is all-or-nothing.** A missing key in the Typst dict is a hard
   compile failure; `nonEmptyString()` enforces it.
+- **NA packets are AUTHORED IN LATEX and RENDERED AS TYPST.** The generator
+  writes `$\cos\left(\frac{3\pi}{2}\right)$` (rule 11b in
+  `buildActivityGeneratorSystemPrompt`), the draft stores exactly that, the
+  on-screen preview renders it with KaTeX, and `buildTypstPayload` converts
+  each span to Typst on the way to the compiler (`lib/latex-to-typst.ts`). It
+  ran the other way round until 16 Sep 2026 -- packets were written in Typst
+  syntax because that is what the PDF needed -- which made the PDF right and
+  the preview wrong: KaTeX rendered `$cos((3pi)/2)$` as a product of italic
+  letters, so the surface a teacher proofreads on showed something no student
+  would ever get. Do not "simplify" this back by teaching the generator Typst.
+  A `$...$` span with NO backslash in it is a packet saved before the switch
+  and still renders down the legacy path untouched.
+- **A letter glued to a digit inside `$...$` aborts the whole PDF.** Typst
+  lexes `m1`, `A1`, `S3E11` as one identifier, and an unknown identifier is
+  not a degraded prompt but a document that will not print. `toTypstMath()`
+  separates them and the prelude's `looks-like-math()` refuses any span that
+  still contains one. A digit glued to a letter (`6x`) is fine and is left
+  alone. This is also why the DP packet code `S3E11` is classified as prose:
+  a packet subtitled "Nuanced Analysis Packet S3E11" used to fail to render.
 - **Sonnet 5 returns thinking blocks first.** Use
   `response.content.find(b => b.type === "text")`, never `content[0].text`.
 - **Supabase:** `CREATE OR REPLACE FUNCTION` fails silently on return-type change -

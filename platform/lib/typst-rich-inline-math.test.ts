@@ -110,6 +110,20 @@ describe("rich() inline math", () => {
     expect(compiles(text)).toBe(true);
   });
 
+  // A letter glued to a digit is ONE identifier to Typst, and an unknown
+  // identifier aborts the whole document. The identifier gate used to miss
+  // these entirely: it looks for runs of two or more LETTERS, and "S3E11"
+  // has none. A packet subtitled "Nuanced Analysis Packet S3E11" -- the DP
+  // section-code format from api/nuanced-analyses/route.ts -- would not
+  // print at all.
+  it.each([
+    ["an IBDP packet code", "Nuanced Analysis Packet $S3E11$ continues the thread."],
+    ["a subscript written without an underscore", "Assume $m1 = m2$ throughout."],
+    ["a labelled point", "Let $A1$ be the first vertex."],
+  ])("refuses an alphanumeric identifier rather than aborting: %s", (_label, text) => {
+    expect(compiles(text)).toBe(true);
+  });
+
   // Genuine math must actually typeset, not silently fall back to literal
   // text -- "it compiled" alone would pass even if every segment degraded.
   it("typesets math instead of printing the dollar signs", () => {
