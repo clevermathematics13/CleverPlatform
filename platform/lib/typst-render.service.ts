@@ -491,13 +491,37 @@ export function getActivityTypstSource(): string {
 #v(8pt)
 
 // Progress tracker
+//
+// Each box carries its OWN section's heading. It used to print a running
+// count -- "Part 1" through "Part #sections" -- which silently assumed the
+// sections were named Part 1..N in order. They never are. The shipped B.4
+// packet has ten sections headed Part 0, Parts 1-5, Reflection, Optional
+// Extension, B.5 Pre-Class Prep and Teacher's Companion, so every box was
+// off by one against the page it referred to, and the last one pointed at a
+// section the student never receives. A.1 and A.2 had the same mismatch.
+//
+// Only the leading name is used, not the whole heading: "Part 4 -- Splitting
+// the Middle: Grouping as the General Method" is a title, not a tick-box
+// label, and ten of those would not fit on the line.
 #if tmpl.progressTracker.enabled [
-  #let n = content.sections.len()
-  #text(size:8pt,fill:rgb("#6b7280"))[
-    *#tmpl.progressTracker.label* #h(4pt)
-    #for i in range(n) [ Part #str(i+1) \u{25a1} #h(4pt) ]
+  #let tracker-label(h) = {
+    let parts = h.split("\u{2014}")          // em dash, as the headings use
+    let name = if parts.len() > 1 { parts.at(0) } else { h }
+    name.trim()
+  }
+  // The Teacher's Companion is torn off before the packet is handed out, so
+  // a student cannot tick it. Drop it rather than print a box for a page
+  // they will never hold.
+  #let tracked = content.sections.filter(
+    (s) => not lower(s.heading).contains("companion")
+  )
+  #if tracked.len() > 0 [
+    #text(size:8pt,fill:rgb("#6b7280"))[
+      *#tmpl.progressTracker.label* #h(4pt)
+      #for s in tracked [ #tracker-label(s.heading) \u{25a1} #h(4pt) ]
+    ]
+    #v(6pt)
   ]
-  #v(6pt)
 ]
 
 // Command Terms strip
