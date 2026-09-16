@@ -304,6 +304,22 @@ const MYP_ROLLING_BUNDLE_RULES: string[] = [
   "23. Pre-DP command-term demand bands, applied consistently: Write down / State / List = 1 mark; Calculate = 3; Interpret / Describe / Explain / Determine = 4-5; Show that / Justify = 6-7.",
   "24. Age register: Grade 9 students are 14-15. Keep sentences short and concrete. Introduce formal notation only after the idea it names has been met informally in the same packet.",
   "25. Plant exactly two misconceptions across the packet, each targeting an error this cohort actually makes, and flag both in the Teacher's Companion with the misconception named.",
+  "",
+  // Measured from the two packets actually taught and marked in Grade 9
+  // Extended -- A.1 "Sixty Times a Person" and A.2 "What Undoing Really
+  // Means" -- not invented. Both are EIGHT sections with identical roles in
+  // the same order, and a packet generated without rules 26-30 came back with
+  // five sections, no Reflection, no Optional Extension, and subparts
+  // throughout, which neither model uses at all. The shape is the house
+  // style; describing it is cheaper than a teacher rebuilding it by hand.
+  "PACKET SHAPE (Grade 9/10) — follow the shape of the packets this course has already taught:",
+  "26. Produce EIGHT sections, in this order: Part 0, then five named teaching Parts, then Reflection, then Optional Extension. Reflection and Optional Extension are full sections in the sections array with their own questions, NOT the short top-level reflectionQuestions field, which you still fill in as well.",
+  "27. Part 0 is headed exactly 'Part 0 — Warming the Engine'. 3-4 questions, 10-11 marks in total, every question tier 1. Parts 1-5 carry evocative thematic headings naming the idea they turn on, in the register of 'Part 1 — The Anatomy of an Expression', 'Part 2 — One Situation, Four Languages', 'Part 4 — Two Expressions, One Truth' — never a bare label like 'Part 1 — Structure' or 'Part 2 — Practice'. Each teaching Part carries 3-6 questions and 12-24 marks, and each gets a prerequisiteBox; give a spotlight to about two of them, not all five.",
+  "28. The Reflection section carries exactly 3 questions, around 15-16 marks, all tier 2, and they are always these three: (a) a concept-map question asking the student to list at least six ideas, words or results this analysis confirmed or connected, answered in a table (this is the one question that takes answerBoxColumns, weighted per rule 6b); (b) a representation question asking them to compare the same object as it appeared in several different languages across the packet; (c) a TOK position statement telling them to return to the two provocations, choose one, take a position and defend it with a specific numbered result from this packet.",
+  "29. The Optional Extension section carries 3-4 questions, EVERY ONE worth 0 marks and tier 3. The first two or three are headed 'Branch A — ', 'Branch B — ', 'Branch C — ', each a genuinely different direction out of the packet rather than more of the same practice. The last is headed 'Toolbox Wondering (exploration seed)' and states an explicit 'Initial research question:' a student could actually pursue.",
+  "30. Do NOT use subparts. Neither model packet contains a single one: every question stands alone with its own number and its own marks, and a question that would have had (a), (b), (c) is written as separate consecutive questions instead. This matters beyond style -- each printed question becomes its own anchor box for scanning and AI marking, and lettered subparts inside one box cannot be marked separately. The only answerBoxColumns in the packet is the Reflection concept map from rule 28.",
+  "31. Aim for 25-35 questions and 100-132 marks across the whole packet, and let the tiers climb: Part 0 entirely tier 1, the middle Parts mixing tier 1 and 2, the later Parts mixing tier 2 and 3.",
+  "32. Do not reuse a section heading an earlier packet in this course already used; the continuity block lists them. A heading that merely rephrases one (a 'Backward' where the course already has a 'Backwards') is a reuse.",
 ];
 
 /**
