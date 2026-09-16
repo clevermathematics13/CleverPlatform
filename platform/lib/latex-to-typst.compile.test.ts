@@ -459,3 +459,40 @@ describe("a whole packet of LaTeX renders", () => {
     expect(dollarIds.some((id) => svg.includes(id))).toBe(false);
   });
 });
+
+describe("a two-character relation is one glyph, not two characters", () => {
+  /** The glyphs Typst actually laid out, in order. */
+  function glyphs(typst: string): string {
+    const svg = compiler.svg({
+      mainFileContent: `#set page(width: auto, height: auto, margin: 4pt)\n#eval(${JSON.stringify(typst)}, mode: "math")\n`,
+    }) as string;
+    return [...svg.matchAll(/<h5:div class="tsel"[^>]*>([\s\S]*?)<\/h5:div>/g)]
+      .map((m) => m[1].replace(/<[^>]+>/g, ""))
+      .join("");
+  }
+
+  // ":=" is the definitional symbol this whole course is built on -- A.2
+  // defines subtraction and division as "a - b := a + (-b)" and
+  // "a \div b := a \times \frac{1}{b}", and B.1 quotes both back. The
+  // tokenizer used to hand ":" and "=" to the emitter separately, which put
+  // a space through the middle: Typst sets ":=" as one ligature and ": ="
+  // as a colon beside an equals sign.
+  it.each([
+    [String.raw`a - b := a + (-b)`, "≔"],
+    [String.raw`a \div b := a \times \frac{1}{b}`, "≔"],
+    [String.raw`x <= 3`, "≤"],
+    [String.raw`x >= 3`, "≥"],
+    [String.raw`a != b`, "≠"],
+  ])("sets %s with %s", (latex, glyph) => {
+    const out = glyphs(latexToTypst(latex));
+    expect(out).toContain(glyph);
+    // And the halves are not ALSO on the page beside the ligature.
+    expect(out).not.toMatch(/:\s*=/);
+  });
+
+  it("still keeps a comma its own token inside a call", () => {
+    // The pair rule must not start swallowing characters that have to stay
+    // apart; "f(1,2)" is a pair and Typst spaces it.
+    expect(glyphs(latexToTypst("f(1,2)"))).toContain(",");
+  });
+});

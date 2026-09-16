@@ -240,11 +240,26 @@ function tokenize(src: string): Tok[] {
       i += num[0].length;
       continue;
     }
+    // Multi-character relations that Typst has a single glyph for. Emitted
+    // as one token so the emitter cannot put a space through the middle of
+    // them: ":=" is the definitional symbol this course is built on
+    // ("$a - b := a + (-b)$" is A.2's central definition), and Typst renders
+    // ":=" as the ligature but ": =" as a colon beside an equals sign.
+    const pair = src.slice(i, i + 2);
+    if (RELATION_PAIRS.has(pair)) {
+      out.push({ t: "ch", v: pair });
+      i += 2;
+      continue;
+    }
+
     out.push({ t: "ch", v: c });
     i += 1;
   }
   return out;
 }
+
+/** Two-character relations Typst sets as one glyph. */
+const RELATION_PAIRS = new Set([":=", "=:", "<=", ">=", "!=", "::", "..."]);
 
 // -- Symbol tables -------------------------------------------------------------
 //
