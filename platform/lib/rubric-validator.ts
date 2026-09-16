@@ -456,10 +456,36 @@ function ruleCodeSum(part: FlatPart, out: RubricFinding[]): void {
  */
 const BOTH_AS_IDIOM = /\bboth sides\b|\bboth accepted\b|\bboth are accepted\b/i;
 
+/**
+ * The other way a scheme writes a conjunct: an uppercase AND.
+ *
+ * Case is the whole signal here, and it is narrow on purpose. A lowercase
+ * "and" in a mark scheme is almost always prose -- "expand and simplify",
+ * "accept 0.72c and 72% of c" -- and 24 of the 76 one-mark parts in the live
+ * corpus carry one, so reading every "and" as a conjunct would bury the rule
+ * under its own noise within a single paper. An uppercase AND is written to
+ * mean exactly this and nothing else: it appears on 6 of those 103 parts,
+ * every one of them genuinely gated on two things at once, and three were
+ * already caught by the word "both" standing beside it.
+ *
+ * KA1 Q13(b) is why this was added. Its scheme reads "R1 for reading 0.72c as
+ * a 28% reduction AND giving the reason", while its question asked only
+ * "explain why the student is wrong" -- so the paper printed one demand and
+ * marked another. 8 of the 19 students who sat it scored 0, and the answers
+ * behind those zeros are mostly the other reading: "0.72c != 0.7c", "if it
+ * was 30% it would be 0.70c, so the student is wrong". Rule 14 checks a
+ * question against its scheme where it can name the missing words; this rule
+ * catches the shape that makes the misalignment easy to write in the first
+ * place, whichever half is later judged the wrong one.
+ */
+const AND_AS_CONJUNCT = /\bAND\b/;
+
 /** Rule 9: a single code gated on two independent conditions. */
 function ruleConjunctOnOneMark(part: FlatPart, out: RubricFinding[]): void {
-  const conjunct = (text: string) =>
-    /\bboth\b/i.test(text.replace(BOTH_AS_IDIOM, ""));
+  const conjunct = (text: string) => {
+    const literal = text.replace(BOTH_AS_IDIOM, "");
+    return /\bboth\b/i.test(literal) || AND_AS_CONJUNCT.test(literal);
+  };
 
   const codes = allocatedCodes(part.scheme);
   const report = (code: string) => {

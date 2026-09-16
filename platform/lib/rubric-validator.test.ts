@@ -387,6 +387,35 @@ describe("validateRubric", () => {
     expect(r9?.severity).toBe("warn");
   });
 
+  it("warns on a conjunct joined by AND rather than spelled with 'both'", () => {
+    // KA1 Q13(b), verbatim, and the reason this case exists: one R1 buying
+    // two separate things, on a paper that then asked for neither by name.
+    const findings = validateRubric(
+      draftOf([
+        { prompt: "Use your expression to explain why the student is wrong.", marks: 1,
+          markScheme:
+            "R1 for reading 0.72c as a 28% reduction AND giving the reason (the second " +
+            "discount applies to the reduced price). Stating '28% not 30%' with no reason " +
+            "earns 0. FT from an incorrect (a) that is correctly interpreted." },
+      ])
+    );
+    const r9 = findings.find((f) => f.rule === 9);
+    expect(r9?.code).toBe("single-mark-two-conditions");
+    expect(r9?.message).toContain("R1");
+  });
+
+  it("reads a lowercase 'and' as the prose it almost always is", () => {
+    // 24 of the 76 one-mark parts in the live corpus contain one. Case is the
+    // signal; without that restriction this rule fires on most of the paper.
+    const findings = validateRubric(
+      draftOf([
+        { prompt: "Expand the brackets and collect like terms.", marks: 1,
+          markScheme: "A1 for 11k - 18. Accept 11k and -18 written in either order." },
+      ])
+    );
+    expect(codesOf(findings)).not.toContain("single-mark-two-conditions");
+  });
+
   // -- summary + robustness --------------------------------------------------
   it("treats warnings as publishable and blocks only on blocking findings", () => {
     const warnOnly = summarizeRubricFindings(
