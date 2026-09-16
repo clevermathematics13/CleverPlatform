@@ -166,6 +166,25 @@ const LIST_LABEL = /^\([A-Za-z]{1,3}\)$/;
 const SECTION_REF = /^\(?(?:[A-Z]{1,2}\.\d{1,2}|S\d{1,2}E\d{1,2})\)?[.,;:]?$/;
 
 /**
+ * A curriculum standards code: "HSA.REI.B.4b", "HSA.SSE.A.1a-b", "6.EE.A.2a-b",
+ * "7.EE.A.1", "MP.7". A citation, never a quantity.
+ *
+ * SECTION_REF above catches this course's own section codes; these are the
+ * OTHER kind of reference a Grade 9 packet carries, and there is one on every
+ * single question. Nothing recognised them, so "HSA.REI.B.4b" was read as
+ * mathematics -- a dotted path with a letter glued to a digit at the end --
+ * and the whole code printed in italic mathematical type, letter by spaced
+ * letter, as the contentTag under every question and across the header's
+ * Syllabus Topics line. B.4 is in the table with thirteen of them.
+ *
+ * The discriminator is a run of two or more CAPITALS in one dot-separated
+ * segment: HSA, REI, SSE, APR, CED, EE, MP. Typst's own dotted symbol paths
+ * are lower case ("arrow.l.r.double"), and a decimal has no letters at all,
+ * so neither is caught.
+ */
+const STANDARDS_REF = /^\(?[0-9A-Za-z]+(?:\.[0-9A-Za-z-]+)+\)?[.,;:]?$/;
+
+/**
  * An ordinal: "12th", "1st", "21st". Prose, and it has to be said explicitly
  * because every one of them carries a digit glued to a letter, which is
  * otherwise the strongest math signal there is.
@@ -298,6 +317,13 @@ function classify(token: string): TokenKind {
   // An ordinal is a word. Checked before the signal tests below, which would
   // all read the digit-letter join in "12th" as mathematics.
   if (ORDINAL.test(token.replace(TRAILING_PUNCT, ""))) return "prose";
+
+  // A standards code is a citation, not a quantity, and every question in a
+  // Grade 9 packet carries one.
+  {
+    const bare = token.replace(TRAILING_PUNCT, "");
+    if (STANDARDS_REF.test(bare) && /[A-Z]{2,}/.test(bare)) return "prose";
+  }
 
   // A section reference is a citation, not a quantity. Prose, so it can
   // neither start a span nor be absorbed into one.

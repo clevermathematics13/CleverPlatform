@@ -24,6 +24,19 @@
  * well-formed input — it's safe to apply unconditionally before every parse,
  * not just as a fallback after a failure.
  */
+/**
+ * The LaTeX commands beginning with "n", anchored at the start of what
+ * follows a backslash. A word boundary closes each one so "\\nexists" is the
+ * command and "\\nexplain" is a line break before the word "explain".
+ *
+ * b, f, r and t are NOT given the same treatment: \b, \f, \r and \t mean
+ * backspace, form feed, carriage return and tab, none of which has any
+ * business in packet prose, while \beta, \frac, \rightarrow and \times all
+ * do. For those four the old assumption -- it is LaTeX -- is simply correct.
+ */
+const N_COMMAND =
+  /^n(?:abla|atural|cong|e|eg|egthinspace|eq|ewline|exists|geq|gtr|leftarrow|leq|less|mid|olimits|onumber|ot|otin|parallel|rightarrow|sim|subseteq|supseteq|u|umber)(?![A-Za-z])/;
+
 export function sanitizeJsonBackslashes(text: string): string {
   let result = "";
   let inString = false;
@@ -61,9 +74,28 @@ export function sanitizeJsonBackslashes(text: string): string {
         i += 6;
         continue;
       }
-      // Anything else — including b/f/n/r/t, which in this domain are almost
-      // always the start of an unescaped LaTeX command, not an intentional
-      // control character — needs its backslash escaped.
+      // "\\n" is the ambiguous one, and it is ambiguous in both directions:
+      // it begins the JSON newline escape AND a dozen LaTeX commands. Rule 6d
+      // of the generator prompt asks the model for "\\n" wherever a prompt
+      // needs a line break, so this case is common and deliberate; \neq and
+      // \nabla are equally real. Treating every one as LaTeX -- as this did
+      // -- destroyed every line break in a generated packet, and did worse
+      // than destroy it: the literal backslash left behind is the whole of
+      // isLatexMath()'s test, so the prose either side was then converted as
+      // mathematics. "without expanding any of them.\\n(i)" printed as
+      // italic t-h-e-m-dot-n-bracket-i.
+      //
+      // The n-initial LaTeX commands are a short, closed list, so name them
+      // rather than guessing: anything else after the backslash is the line
+      // break it looks like.
+      if (next === "n" && !N_COMMAND.test(text.slice(i + 1))) {
+        result += ch + next;
+        i += 2;
+        continue;
+      }
+
+      // Anything else is the start of an unescaped LaTeX command, not a
+      // control character, and needs its backslash escaped.
       result += "\\\\";
       i += 1;
       continue;

@@ -618,3 +618,34 @@ describe("LaTeX that carries no backslash, and prose markup that does", () => {
     expect(typesetMath(broken)).toBe(broken);
   });
 });
+
+describe("a standards code is a citation, not a quantity", () => {
+  // Every question in a Grade 9 packet carries a CCSS code as its contentTag,
+  // and the header carries a line of them. Nothing recognised them, so
+  // "HSA.REI.B.4b" -- a dotted path ending in a letter glued to a digit --
+  // was read as mathematics and printed in italic type, letter by spaced
+  // letter, under every question on the page. B.4 is in the table with
+  // thirteen of them.
+  it.each([
+    "HSA.REI.B.4b — solve quadratic equations by factoring",
+    "HSA.SSE.A.1b — interpret a part of an expression as a single entity",
+    "HSA.SSE.A.1a-b (interpret parts of an expression)",
+    "6.EE.A.2a-b (write and identify parts of expressions)",
+    "7.EE.A.1; MP.3 (construct viable arguments) and MP.7.",
+  ])("leaves %s alone", (tag) => {
+    expect(typesetMath(tag)).toBe(tag);
+  });
+
+  it("still typesets the mathematics beside a code", () => {
+    const out = typesetMath("HSA.APR.C.4, evidenced by the proof of (a+b)(a+b) = a^2+2ab+b^2");
+    expect(out).toContain("HSA.APR.C.4,");
+    expect(spans(out)).toEqual(["(a+b)(a+b) = a^2+2a b+b^2"]);
+  });
+
+  it("does not let the rule swallow a Typst symbol path", () => {
+    // arrow.l.r.double is a dotted path too, and it IS mathematics. The
+    // discriminator is a run of two or more CAPITALS in one segment.
+    expect(typstGateAccepts("P(r)=0 arrow.l.r.double")).toBe(true);
+    expect(typesetMath("Find x/y when x=6")).toBe("Find $x/y$ when $x=6$");
+  });
+});
