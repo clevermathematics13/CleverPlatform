@@ -783,7 +783,16 @@ export function isLatexMath(segment: string): boolean {
  * Pure and idempotent: the sentinel-wrapped output contains no $ pair for a
  * second pass to find.
  */
-export function convertLatexSegmentsToTypst(text: string): string {
+export function convertLatexSegmentsToTypst(
+  text: string,
+  /**
+   * Decides, per span, whether to convert. Defaults to "does it contain a
+   * backslash", which is the exact test for hand-written LaTeX. Callers that
+   * can tell more -- typst-payload.ts knows what the Typst side would refuse
+   * -- pass their own; see spanIsForLatexConversion in math-typesetting.ts.
+   */
+  shouldConvert: (span: string) => boolean = isLatexMath,
+): string {
   if (typeof text !== "string" || !text.includes("$")) return text;
   // $$...$$ is display math in LaTeX and nothing at all here: the packet
   // template has one delimiter, and a $$ pair splits into two EMPTY math
@@ -800,7 +809,7 @@ export function convertLatexSegmentsToTypst(text: string): string {
   return parts
     .map((part, i) => {
       if (i % 2 === 0) return part;
-      if (!isLatexMath(part)) return `$${part}$`;
+      if (!shouldConvert(part)) return `$${part}$`;
       const { typst } = latexToTypstVerbose(part);
       // A segment that converts to nothing at all (only ignored commands)
       // keeps its original delimiters rather than vanishing from the page.

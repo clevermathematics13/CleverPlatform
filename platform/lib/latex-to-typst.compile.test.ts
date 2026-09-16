@@ -21,6 +21,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { NodeCompiler } from "@myriaddreamin/typst-ts-node-compiler";
 import { latexToTypst, convertLatexSegmentsToTypst } from "./latex-to-typst";
+import { typstGateAccepts, spanIsForLatexConversion } from "./math-typesetting";
 import { getActivityTypstSource, buildTypstPayload } from "./typst-render.service";
 import { DocumentOrchestratorService } from "./document-orchestrator-nuanced";
 import type { AssignmentDraft } from "./assignments";
@@ -204,6 +205,67 @@ describe("rich() and the trusted-math channel", () => {
       const line = convertLatexSegmentsToTypst(`Show that $${latex}$ holds.`);
       expect(() => compiler.pdf(richDoc(line)), `rich() failed on: ${latex}`).not.toThrow();
     }
+  });
+});
+
+describe("the TS mirror of the Typst gate", () => {
+  /**
+   * typstGateAccepts() predicts, on this side of the wire, whether rich() will
+   * evaluate a span or print it verbatim -- and spanIsForLatexConversion()
+   * decides what to do about it. A mirror that drifts from the thing it
+   * mirrors is worse than no mirror: it would route a span the Typst side
+   * accepts through the LaTeX converter, and "a div b" would print "d i v".
+   *
+   * So the prediction is checked against the real prelude, by rendering the
+   * span and looking for the dollar-sign glyph: a span the gate refused
+   * reaches the page with its delimiters showing, and one it accepted does
+   * not.
+   */
+  function richPrintsLiterally(span: string): boolean {
+    const dollarIds = [
+      ...compiler.svg({ mainFileContent: `#"$"` }).matchAll(/<path[^>]*id="([^"]+)"/g),
+    ].map((m) => m[1]);
+    const svg = compiler.svg({
+      mainFileContent: `${prelude}\n#rich(json.decode(sys.inputs.at("t")))\n`,
+      inputs: { t: JSON.stringify(`x $${span}$ y`) },
+    });
+    return dollarIds.some((id) => svg.includes(id));
+  }
+
+  it.each([
+    // Accepted by the gate: legacy Typst that renders as written.
+    "a div b := a times 1/b",
+    "cos((3pi)/2)",
+    "macron(x)",
+    "x^2 - 9",
+    "(x+3)(x-3)",
+    "frac(1, 2)",
+    "sqrt(2) + pi",
+    "a^2+2a b+b^2",
+    // Refused by the gate: LaTeX that needs no command, and one prose span.
+    "A=ac",
+    "Ax^2+Bx+C",
+    "a^2+2ab+b^2",
+    "6x^2+11x+3 = (2x+3)(3x+1)",
+    "m1 = m2",
+    "S3E11",
+    "2.50 per package and pens cost ",
+  ])("predicts what rich() does with: %s", (span) => {
+    expect(typstGateAccepts(span)).toBe(!richPrintsLiterally(span));
+  });
+
+  it("routes a refused span to the converter unless it is prose", () => {
+    // Refused AND mathematics -> convert, because the alternative is printing
+    // "$A=ac$" on a student's page.
+    expect(spanIsForLatexConversion("A=ac")).toBe(true);
+    expect(spanIsForLatexConversion("a^2+2ab+b^2")).toBe(true);
+    // Refused AND prose -> leave it, so rich() prints the sentence verbatim.
+    expect(spanIsForLatexConversion("2.50 per package and pens cost ")).toBe(false);
+    // Accepted -> leave it, whatever it looks like.
+    expect(spanIsForLatexConversion("a div b := a times 1/b")).toBe(false);
+    expect(spanIsForLatexConversion("cos((3pi)/2)")).toBe(false);
+    // A backslash settles it before either question is asked.
+    expect(spanIsForLatexConversion(String.raw`\frac{1}{2}`)).toBe(true);
   });
 });
 

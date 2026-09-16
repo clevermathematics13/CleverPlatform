@@ -92,6 +92,21 @@ must exercise Server Actions.
   would ever get. Do not "simplify" this back by teaching the generator Typst.
   A `$...$` span with NO backslash in it is a packet saved before the switch
   and still renders down the legacy path untouched.
+- **A span the Typst gate refuses is read as LaTeX instead, unless it is
+  prose.** Most Grade 9 algebra needs no LaTeX command at all -- `A = ac`,
+  `a^2+2ab+b^2`, `Ax^2+Bx+C` -- so the backslash test cannot recognise it, and
+  the Typst side refuses it because `ac` and `Ax` are unknown identifiers,
+  which used to put the source on the page with its dollar signs showing.
+  `spanIsForLatexConversion()` asks both questions: would Typst refuse it, and
+  is it mathematics rather than prose. Both halves are load-bearing -- see the
+  comment on that function. The TS mirror of the gate is pinned against the
+  shipped prelude in `latex-to-typst.compile.test.ts`.
+- **An ordinal and a slash between words are prose, not mathematics.** B.4
+  shipped with "the $12t h$ century" (the digit-letter join read as an
+  expression, then split to survive Typst) and with `$sum/product$` printed as
+  a sigma over a pi, because `sum` and `product` are the names of Typst's big
+  operators. Both are fixed in `classify()`/`hasMathSignal()`; `x/y`, `3/4`
+  and `2x/3` are still division.
 - **A letter glued to a digit inside `$...$` aborts the whole PDF.** Typst
   lexes `m1`, `A1`, `S3E11` as one identifier, and an unknown identifier is
   not a degraded prompt but a document that will not print. `toTypstMath()`

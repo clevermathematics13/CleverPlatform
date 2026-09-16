@@ -144,6 +144,18 @@ const LIST_LABEL = /^\([A-Za-z]{1,3}\)$/;
  */
 const SECTION_REF = /^\(?(?:[A-Z]{1,2}\.\d{1,2}|S\d{1,2}E\d{1,2})\)?[.,;:]?$/;
 
+/**
+ * An ordinal: "12th", "1st", "21st". Prose, and it has to be said explicitly
+ * because every one of them carries a digit glued to a letter, which is
+ * otherwise the strongest math signal there is.
+ *
+ * Shipped defect this fixes: the B.4 packet's international-mindedness
+ * paragraph read "working in the $12t h$ century", because "12th" was wrapped
+ * as mathematics and then split into "12", "t", "h" to survive Typst. A
+ * century is not an expression.
+ */
+const ORDINAL = /^\d+(?:st|nd|rd|th)$/i;
+
 /** Trailing sentence punctuation, peeled off a span before wrapping. */
 const TRAILING_PUNCT = /[,.;:!?]+$/;
 
@@ -239,7 +251,16 @@ function hasMathSignal(token: string): boolean {
   // into spaced single letters -- when "-" counted here. Subtraction still
   // reaches a span through a neighbouring token that carries a real signal
   // ("x^2 - 9" via the caret), so nothing genuine is lost.
-  if (/[A-Za-z0-9][+*/=][A-Za-z0-9]/.test(token)) return true; // ad+bc, x=3
+  if (/[A-Za-z0-9][+*=][A-Za-z0-9]/.test(token)) return true;  // ad+bc, x=3
+  // A slash is the weak one of the four, because English uses it as
+  // punctuation between whole words: "sum/product", "and/or", "km/h". It
+  // counts as division only when neither side is a written word -- "x/y",
+  // "3/4", "2x/3" all qualify; "sum/product" does not, and the B.4 packet
+  // printed it as a sigma over a pi because both happen to be the names of
+  // Typst's big operators.
+  if (/[A-Za-z0-9]\/[A-Za-z0-9]/.test(token) && !/(^|\/)[A-Za-z]{2,}(\/|$)/.test(token)) {
+    return true;
+  }
   if (/[√±×÷≤≥≠]/.test(token)) return true;
   return false;
 }
@@ -252,6 +273,10 @@ function classify(token: string): TokenKind {
   // numbering, and italicising it detaches it from every other label on
   // the page.
   if (LIST_LABEL.test(token)) return "prose";
+
+  // An ordinal is a word. Checked before the signal tests below, which would
+  // all read the digit-letter join in "12th" as mathematics.
+  if (ORDINAL.test(token.replace(TRAILING_PUNCT, ""))) return "prose";
 
   // A section reference is a citation, not a quantity. Prose, so it can
   // neither start a span nor be absorbed into one.
@@ -307,6 +332,56 @@ function segmentIsMath(segment: string): boolean {
     .split(/\s+/)
     .filter((t) => t.length > 0)
     .some((t) => classify(t) === "prose");
+}
+
+/**
+ * Would the Typst prelude's looks-like-math() evaluate this span, or refuse it?
+ *
+ * A TS mirror of the gate in typst-render.service.ts, reading the same two
+ * tables so the two cannot drift on WHICH identifiers count. It is not a
+ * second opinion about what is mathematics -- it is the same opinion, asked
+ * on this side of the wire, so a caller can know in advance that a span would
+ * be printed with its dollar signs rather than typeset.
+ */
+export function typstGateAccepts(span: string): boolean {
+  // Quoted spans are literal text in Typst math, so their words are fine.
+  const unquoted = span.replace(/"[^"]*"/g, " ");
+  // A letter glued to a digit is one identifier, and an unknown one aborts.
+  if (/[A-Za-z][A-Za-z0-9]*[0-9]/.test(unquoted)) return false;
+  for (const run of unquoted.match(/[A-Za-z]{2,}/g) ?? []) {
+    if (!IDENT_SET.has(run.toLowerCase())) return false;
+  }
+  return true;
+}
+
+/**
+ * Should this span be handed to the LaTeX-to-Typst converter?
+ *
+ * A backslash settles it: that is LaTeX and nothing else. The interesting
+ * case is a span with NO backslash, which is one of three things:
+ *
+ *   1. legacy Typst syntax from a packet written before the switch
+ *      ("a div b := a times 1/b", "macron(x)", "cos((3pi)/2)")
+ *   2. prose whose dollar signs paired up by accident
+ *      ("2.50 per package and pens cost ")
+ *   3. LaTeX that simply needed no command -- "A = ac", "a^2+2ab+b^2",
+ *      "Ax^2+Bx+C" -- which is most of the algebra in a Grade 9 packet
+ *
+ * The first renders correctly as it stands and must be left alone. The second
+ * must be left alone too, and printed verbatim, which is what the gate
+ * refusing it achieves. Only the third is a problem: the gate refuses it as
+ * well, because "ac" and "Ax" are unknown Typst identifiers, so it reaches
+ * the page as its own source code with the dollar signs showing.
+ *
+ * So: convert when the Typst side would refuse the span AND the span is not
+ * prose. Both halves are load-bearing. Without the first, legacy packets get
+ * re-read as LaTeX and "div" becomes "d i v". Without the second, a sentence
+ * about the price of pencils is typeset one italic letter at a time.
+ */
+export function spanIsForLatexConversion(span: string): boolean {
+  if (isLatexMath(span)) return true;
+  if (typstGateAccepts(span)) return false;
+  return segmentIsMath(span);
 }
 
 /**

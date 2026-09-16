@@ -33,7 +33,7 @@
 // Pure string work, no Node built-ins -- safe on the browser side of the
 // chain described above. (Its TEST file imports the native compiler; the
 // module itself deliberately does not.)
-import { typesetDraftMath, mapDraftProse } from "./math-typesetting";
+import { typesetDraftMath, mapDraftProse, spanIsForLatexConversion } from "./math-typesetting";
 import { convertLatexSegmentsToTypst } from "./latex-to-typst";
 
 import type { TemplateAst } from "./template-ast.schema";
@@ -263,7 +263,9 @@ export function buildTypstPayload(
   // is left exactly as it was, still guarded by rich()'s own identifier gate.
   //
   // See lib/latex-to-typst.ts.
-  const renderableContent = mapDraftProse(typesetContent, convertLatexSegmentsToTypst);
+  const renderableContent = mapDraftProse(typesetContent, (text) =>
+    convertLatexSegmentsToTypst(text, spanIsForLatexConversion),
+  );
 
   return {
     schemaVersion: template.schemaVersion,

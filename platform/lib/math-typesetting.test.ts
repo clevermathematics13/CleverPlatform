@@ -411,6 +411,38 @@ describe("scope-and-sequence references stay out of the mathematics", () => {
   });
 });
 
+describe("prose the delimiters must not swallow", () => {
+  // Both of these were shipped in the B.4 packet, and both came from the same
+  // place: a signal that is unmistakably mathematical in an expression and
+  // ordinary punctuation in a sentence.
+  it("leaves an ordinal alone", () => {
+    // Printed as "$12t h$": the digit glued to a letter read as mathematics,
+    // then split into 12, t, h to survive Typst. A century is not a quantity.
+    expect(typesetMath("Bhaskara II, working in the 12th century, studied quadratics")).toBe(
+      "Bhaskara II, working in the 12th century, studied quadratics",
+    );
+    expect(typesetMath("the 1st, 2nd, 3rd and 21st terms")).toBe("the 1st, 2nd, 3rd and 21st terms");
+  });
+
+  it("leaves a slash between written words alone", () => {
+    // "sum" and "product" are both names of Typst big operators, so "$sum/
+    // product$" printed as a sigma over a pi in the prerequisite box.
+    expect(typesetMath("the sum/product pattern: the middle coefficient is a sum")).toBe(
+      "the sum/product pattern: the middle coefficient is a sum",
+    );
+    expect(typesetMath("state whether it is true and/or provable")).toBe(
+      "state whether it is true and/or provable",
+    );
+    expect(typesetMath("a speed of 60 km/h")).toBe("a speed of 60 km/h");
+  });
+
+  it("still reads a slash between symbols as division", () => {
+    expect(spans(typesetMath("Find x/y when x=6"))).toEqual(["x/y", "x=6"]);
+    expect(spans(typesetMath("compute 3/4 of the total"))).toEqual(["3/4"]);
+    expect(spans(typesetMath("the value of 2x/3"))).toEqual(["2x/3"]);
+  });
+});
+
 describe("a letter glued to a digit is never left inside a span", () => {
   // Typst lexes "m1" as one identifier, and an unknown identifier aborts the
   // document rather than degrading -- so this is a compile failure, not a
