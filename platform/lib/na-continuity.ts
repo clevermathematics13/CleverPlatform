@@ -192,6 +192,15 @@ function bulletList(label: string, items: string[]): string[] {
  *
  * `targetSection` is the section about to be generated; the block describes
  * everything before it and surfaces any prep note attached to it.
+ *
+ * "Everything before it" is literal, and it is why the target's OWN digest is
+ * dropped below. A section that already has one is being REGENERATED, and its
+ * digest describes the packet about to be replaced -- so leaving it in tells
+ * the model that this packet's headings, TOK provocations, misconceptions and
+ * worked expressions are all spent and must not be reused. That is the exact
+ * opposite of the instruction: a regeneration is usually asked for because
+ * the previous attempt should be improved on, not avoided. The digest is
+ * rewritten from the new packet on save, so nothing is lost by omitting it.
  */
 export function buildContinuityContext(
   record: ContinuityRecord | null,
@@ -199,14 +208,18 @@ export function buildContinuityContext(
 ): string {
   if (!record || record.packets.length === 0) return "";
 
-  const lines: string[] = [
-    "-- TEACHING CONTINUITY (authoritative — read before generating) --",
-    "",
-    "This packet is one instalment in a sequence. Prior packets in this course:",
-    "",
-  ];
+  const priorPackets = record.packets.filter((p) => p.section !== targetSection);
+  // Regenerating the FIRST packet of a course leaves nothing before it. The
+  // scope-and-sequence spine below is still worth sending; a "Prior packets"
+  // heading with nothing under it is not.
+  if (priorPackets.length === 0 && record.unitSequence.length === 0) return "";
 
-  for (const p of record.packets) {
+  const lines: string[] = ["-- TEACHING CONTINUITY (authoritative — read before generating) --", ""];
+  if (priorPackets.length > 0) {
+    lines.push("This packet is one instalment in a sequence. Prior packets in this course:", "");
+  }
+
+  for (const p of priorPackets) {
     lines.push(`▸ ${p.section} — "${p.title}"`);
     if (p.whereItLeftOff) lines.push(`  Where it left off: ${p.whereItLeftOff}`);
     lines.push(...bulletList("  Vocabulary introduced", p.vocabularyIntroduced));
@@ -240,11 +253,11 @@ export function buildContinuityContext(
   }
 
   // Prohibitions, aggregated across every prior packet.
-  const spentTok = record.packets.flatMap((p) => p.tokProvocationsUsed);
-  const spentIm = record.packets.flatMap((p) => p.internationalMindednessUsed);
-  const spentVocab = record.packets.flatMap((p) => p.vocabularyIntroduced);
-  const spentMisconceptions = record.packets.flatMap((p) => p.misconceptionsPlanted);
-  const spentContent = record.packets.flatMap((p) => p.contentSpent ?? []);
+  const spentTok = priorPackets.flatMap((p) => p.tokProvocationsUsed);
+  const spentIm = priorPackets.flatMap((p) => p.internationalMindednessUsed);
+  const spentVocab = priorPackets.flatMap((p) => p.vocabularyIntroduced);
+  const spentMisconceptions = priorPackets.flatMap((p) => p.misconceptionsPlanted);
+  const spentContent = priorPackets.flatMap((p) => p.contentSpent ?? []);
 
   lines.push("DO NOT REPEAT — the following are already spent in this course:");
   lines.push(...bulletList("TOK provocations already asked", spentTok));

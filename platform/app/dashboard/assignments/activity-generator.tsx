@@ -848,7 +848,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
 
           {isGenerating && (
             <p className="text-[11px] text-da-muted/80">
-              Generating on the server. You can close this tab or shut the laptop \u2014 the packet will be waiting
+              Generating on the server. You can close this tab or shut the laptop — the packet will be waiting
               here when you come back.
             </p>
           )}
@@ -936,7 +936,7 @@ export function ActivityGeneratorPanel({ gradeLevel, formatting, onDraftGenerate
             <div className="rounded border border-sky-500/40 bg-sky-500/10 px-2 py-1.5 text-xs text-sky-300">
               <p className="font-semibold">Still generating on the server</p>
               <p className="mt-0.5 text-sky-300/80">
-                This packet is being built in the background. You can close this tab, or shut the laptop \u2014 it will
+                This packet is being built in the background. You can close this tab, or shut the laptop — it will
                 keep going, and it will be waiting here when you come back.
               </p>
             </div>
