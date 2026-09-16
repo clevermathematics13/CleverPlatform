@@ -172,6 +172,12 @@ function buildTeacherCompanionLookup(
  * Vocabulary as {informal, formal} pairs for the target's two-column
  * "what you say / what you write" translation table.
  *
+ * Only the {student_speak, ib_rigor} encoding belongs here: it IS a
+ * say-it/write-it pair. The {term, definition} encoding is a command-term
+ * glossary, and goes to normalizeCommandTerms() below instead -- sending it
+ * to both printed A.3's seventeen terms twice, once as a translation table
+ * and again as the Command Terms strip.
+ *
  * A bare-string entry is a term with no gloss - there is no second column to
  * put anywhere - so it is dropped rather than rendered as a half-empty row.
  * Those packets keep their vocabulary in the source record; it is only this
@@ -183,11 +189,36 @@ function normalizeVocabulary(
   const rows: Array<{ informal: string; formal: string }> = [];
   for (const v of vocabulary) {
     if (typeof v === "string") continue;
+    if (!v.student_speak && !v.ib_rigor) continue;
     const informal = v.student_speak ?? v.term;
     const formal = v.ib_rigor ?? v.definition;
     if (informal && formal) rows.push({ informal, formal });
   }
   return rows;
+}
+
+/**
+ * The command-term glossary, recovered from the vocabulary column.
+ *
+ * A sandbox save writes draft.commandTerms straight into `vocabulary` (see
+ * buildPacketContentUpdate in na-packet-edit.ts), so a {term, definition}
+ * entry is a command term that has been round-tripped through the column and
+ * needs putting back where it came from. Without this the strip vanished on
+ * the way out, and -- once a draft is persisted -- the next editor save wrote
+ * the empty commandTerms back over the column and lost the terms for good.
+ *
+ * Both halves are required: the Typst template reads ct.definition directly,
+ * and a missing key there is a compile error, not a blank cell.
+ */
+function normalizeCommandTerms(
+  vocabulary: RawVocabularyEntry[]
+): Array<{ term: string; definition: string }> {
+  const terms: Array<{ term: string; definition: string }> = [];
+  for (const v of vocabulary) {
+    if (typeof v === "string") continue;
+    if (v.term && v.definition) terms.push({ term: v.term, definition: v.definition });
+  }
+  return terms;
 }
 
 /** TOK provocations as {id, body}, from either a bare string or an object. */
@@ -290,6 +321,7 @@ function normalizePart(
 export function convertNuancedAnalysisToDraft(row: NuancedAnalysisRow): AssignmentDraft {
   const companionByKey = buildTeacherCompanionLookup(row.teacher_companion);
   const vocabularyRows = normalizeVocabulary(row.vocabulary ?? []);
+  const commandTerms = normalizeCommandTerms(row.vocabulary ?? []);
   const tokProvocations = normalizeTokProvocations(row.tok_provocations ?? []);
 
   // Shape C has no part_number to sort by; its array order IS the order.
@@ -317,9 +349,14 @@ export function convertNuancedAnalysisToDraft(row: NuancedAnalysisRow): Assignme
   const draft: AssignmentDraft = {
     title: row.title,
     subtitle: row.subtitle ?? "",
+    // One line, and only one that is true of every packet in the table.
+    // A second line used to promise "non-exact numerical answers to 3
+    // significant figures" -- boilerplate on an algebra packet that never
+    // produces a decimal, and the reason it was asked for removal. A packet
+    // that really does need a rounding convention should say so in its own
+    // words, which is what the sandbox generator writes.
     instructions: [
       "Show all working clearly — a correct final answer with no working shown will not receive full marks.",
-      "Unless told otherwise, give non-exact numerical answers to 3 significant figures.",
     ],
     sections,
     ...(row.course ? { course: row.course } : {}),
@@ -331,6 +368,7 @@ export function convertNuancedAnalysisToDraft(row: NuancedAnalysisRow): Assignme
       : {}),
     ...(row.materials ? { materials: row.materials } : {}),
     ...(row.atl_statement ? { atl: row.atl_statement } : {}),
+    ...(commandTerms.length > 0 ? { commandTerms } : {}),
     ...(tokProvocations.length > 0 ? { tokProvocations } : {}),
   };
 

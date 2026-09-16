@@ -146,3 +146,71 @@ describe("rich() inline math", () => {
     expect(dollarGlyphIds.some((id) => proseSvg.includes(id))).toBe(true);
   });
 });
+
+describe("the escaped dollar, end to end", () => {
+  // Written by escapeCurrencyDollars() in math-typesetting.ts. Compiling is
+  // only half the claim -- the whole point is that the dollar reaches the page
+  // and the backslash does not -- so these assert on the rendered text.
+  const BACKSLASH = String.fromCharCode(92);
+
+  /** The text the compiler actually laid out, in reading order. */
+  function rendered(text: string): string {
+    const svg = compiler.svg({
+      mainFileContent: `${prelude}\n#rich(${JSON.stringify(text)})\n`,
+    }) as string;
+    return [...svg.matchAll(/<h5:div class="tsel"[^>]*>([\s\S]*?)<\/h5:div>/g)]
+      .map((m) => m[1].replace(/<[^>]+>/g, ""))
+      .join("")
+      .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">");
+  }
+
+  it("prints a dollar sign and no backslash", () => {
+    const out = rendered(`A family holding exactly ${BACKSLASH}$575 wants to spend all of it.`);
+    expect(out).toContain("$575");
+    expect(out).not.toContain(BACKSLASH);
+  });
+
+  it("prices the line AND typesets the expression on it", () => {
+    // The A.1 case the escape exists for. Before it, one loose price made the
+    // dollar count odd and this whole sentence printed as plain text.
+    const out = rendered(
+      `The situation: adults cost ${BACKSLASH}$60, children cost ${BACKSLASH}$30, ` +
+        `total = $60a + 30c$.`,
+    );
+    expect(out).toContain("$60");
+    expect(out).toContain("$30");
+    expect(out).not.toContain(BACKSLASH);
+    // Rendered as math, the juxtaposed product is spaced out by Typst; as
+    // prose it would still read "60a". The space is the evidence.
+    expect(out).toMatch(/60\s*𝑎/u);
+  });
+
+  it("still gives up gracefully on a span that is really prose", () => {
+    const out = rendered("Pencils cost $2.50 per package and pens cost $3 per package.");
+    expect(out).toContain("$2.50 per package");
+    expect(out).not.toContain(BACKSLASH);
+  });
+});
+
+describe("a dotted symbol path is one identifier", () => {
+  // toTypstMath() expands the word "iff" to arrow.l.r.double, and the gate
+  // then rejected the span for "double" -- so the polynomial packet's Factor
+  // Theorem was typeset by this pipeline and refused by it, printing as its
+  // own source code.
+  it.each([
+    ["iff, as the wrapper writes it", "Factor Theorem: $P(r)=0 arrow.l.r.double$ (x-r) is a factor."],
+    ["implies", "If $x > 2 arrow.r.double x^2 > 4$ then done."],
+    ["a two-part path", "The limit $x arrow.r 0$ is taken."],
+  ])("evaluates %s", (_label, text) => {
+    expect(compiles(text)).toBe(true);
+  });
+
+  it("does not let an unknown bare word through with it", () => {
+    // The dotted rule must not become a hole in the gate: this still has to
+    // be refused and printed verbatim rather than evaluated.
+    expect(compiles("The value $2.50 per package arrow.r.double x$ is wrong.")).toBe(true);
+  });
+});

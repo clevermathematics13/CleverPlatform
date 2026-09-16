@@ -38,7 +38,13 @@
  * -----------------------------------------------------------------------------
  */
 
-import { isLatexMath } from "./latex-to-typst";
+import {
+  isLatexMath,
+  ESCAPED_DOLLAR,
+  maskCurrency,
+  unmaskCurrency,
+  unwrapProseTextCommands,
+} from "./latex-to-typst";
 
 /**
  * Identifiers Typst math actually defines.
@@ -117,8 +123,23 @@ const ENGLISH_STOPWORDS = new Set([
   "cases", "star", "quad", "dots", "op", "prop", "abs", "arrow", "product",
 ]);
 
-/** Characters that may appear inside an unwrapped math token. */
-const MATH_CHARS = /^[0-9A-Za-z^_+\-*/=().,<>!|√±×÷≤≥≠]+$/;
+/** A single backslash, kept out of the string literals that need one. */
+const BACKSLASH = String.fromCharCode(92);
+
+// ESCAPED_DOLLAR / CURRENCY_MASK live beside TRUSTED_MATH_DELIM in
+// latex-to-typst.ts: they are one delimiter convention, shared by every
+// function on either side that splits a string on "$".
+
+/**
+ * Characters that may appear inside an unwrapped math token.
+ *
+ * The LaTeX four -- backslash and the two kinds of bracket -- are here
+ * because packets are authored in LaTeX now, so a token in a $...$ span can
+ * legitimately be "\frac{1}{2}" or "^{n}C_{r}". Without them such a token
+ * failed this test, classified as prose, and was left on the legacy Typst
+ * path where it aborts the document.
+ */
+const MATH_CHARS = /^[0-9A-Za-z^_+\-*/=().,<>!|{}[\]\\√±×÷≤≥≠]+$/;
 
 /** A parenthesised list label such as "(a)", "(ii)", "(B)" -- never math. */
 const LIST_LABEL = /^\([A-Za-z]{1,3}\)$/;
@@ -300,6 +321,12 @@ function classify(token: string): TokenKind {
 
   const letters = bare.replace(/[^A-Za-z]/g, "");
 
+  // No letters at all, and every character one mathematics uses: "4)", "(2",
+  // "12,". English has no such word, so it can never be the thing that ends a
+  // span -- and when it was, it ended one mid-bracket. "25p + 18(p + 4)" was
+  // cut after "18(p" because ")" carried no letters and fell through to prose.
+  if (letters.length === 0) return "neutral";
+
   // A single letter is a variable when it sits beside mathematics, and the
   // English article "a" otherwise. Neutral, so adjacency decides.
   if (letters.length === 1) return "neutral";
@@ -315,6 +342,26 @@ function classify(token: string): TokenKind {
   }
 
   return "prose";
+}
+
+/**
+ * Does every bracket this span opens get closed inside it?
+ *
+ * A span that does not is the A.2 defect: "the expression 25p + 18(p + 4)
+ * represents" was cut after "18(p", because the ")" of "4)" carries no
+ * letters and classifies as prose. That left an unclosed bracket in one span
+ * and, further along the same sentence, started the NEXT span at a bare "/",
+ * which is not an expression at all -- Typst answered "unexpected slash" and
+ * refused to print the packet.
+ */
+function bracketsBalanced(text: string): boolean {
+  const closes: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+  const open: string[] = [];
+  for (const ch of text) {
+    if (ch === "(" || ch === "[" || ch === "{") open.push(ch);
+    else if (ch in closes && open.pop() !== closes[ch]) return false;
+  }
+  return open.length === 0;
 }
 
 /**
@@ -348,7 +395,26 @@ export function typstGateAccepts(span: string): boolean {
   const unquoted = span.replace(/"[^"]*"/g, " ");
   // A letter glued to a digit is one identifier, and an unknown one aborts.
   if (/[A-Za-z][A-Za-z0-9]*[0-9]/.test(unquoted)) return false;
-  for (const run of unquoted.match(/[A-Za-z]{2,}/g) ?? []) {
+  // An attachment with nothing to attach to. Typst answers "unexpected hat"
+  // and refuses the document; LaTeX is perfectly happy with it, which is how
+  // "$^{n}C_{r}$" -- a GDC button, written the way the calculator prints it --
+  // got into a packet. The converter gives it a zero-width base instead.
+  if (/(^|[\s(\[{,;+\-*/=])[\^_]/.test(unquoted)) return false;
+  // "^{...}" is LaTeX grouping, and Typst PRINTS those braces rather than
+  // reading them as an exponent: "$(4+x)^{1/2}$" -- which has no backslash in
+  // it, so nothing else here calls it LaTeX -- came out as "(4+x){1 2}" on
+  // the binomial packet's page. Typst spells the same thing "^(1/2)", so a
+  // brace attached to an attachment is never Typst and always LaTeX.
+  if (/[\^_]\s*\{/.test(unquoted)) return false;
+  // A dotted path is ONE Typst symbol -- "arrow.l.r.double" is the double
+  // left-right arrow -- and its modifiers are not identifiers in their own
+  // right. Checking them as if they were rejected the span for "double", and
+  // the span in question is one this module WROTE: toTypstMath() expands the
+  // word "iff" to exactly that arrow, so the Factor Theorem in the polynomial
+  // packet was typeset and then refused, and printed as its own source code.
+  // Only the head has to be known.
+  const paths = unquoted.replace(/[A-Za-z]+(?:\.[A-Za-z]+)+/g, (run) => run.split(".")[0]);
+  for (const run of paths.match(/[A-Za-z]{2,}/g) ?? []) {
     if (!IDENT_SET.has(run.toLowerCase())) return false;
   }
   return true;
@@ -390,8 +456,92 @@ export function spanIsForLatexConversion(span: string): boolean {
  * Pure and idempotent: running it twice produces the same string, because
  * anything already inside $...$ is copied through untouched.
  */
+/**
+ * Escapes a "$" that is a currency sign rather than a math delimiter.
+ *
+ * The A.1 packet is set at a ticket window, so it prices things: "$60 per
+ * adult", "$120 in total", "exactly $570". Thirteen of its lines carry one
+ * such amount and nothing else with a dollar in it, which leaves an ODD
+ * number of "$" in the line -- and both ends of the pipeline give up on a
+ * line like that. typesetMath() returned it untouched (so "60a + 30c" in the
+ * same sentence never became mathematics at all), and rich-legacy() printed
+ * the whole string verbatim. The packet was priced correctly and had no
+ * mathematics typeset anywhere near a price.
+ *
+ * Pairing greedily from the left is what tells the two apart, and it is the
+ * same question rich-legacy() already asks: does the text between this "$"
+ * and the next one read as mathematics? If it does, they are delimiters and
+ * both are left alone. If it does not -- "60 for an adult and " -- the
+ * opening one is a dollar sign, and escaping it lets the NEXT "$" try again
+ * against the one after it. That is what keeps a line that carries both
+ * kinds intact:
+ *
+ *   cost $60 for an adult and $30 for a child, so the total is $60a + 30c$
+ *   cost \$60 for an adult and \$30 for a child, so the total is $60a + 30c$
+ *
+ * A "$" with no partner at all is a dollar sign by the same reasoning.
+ */
+function escapeCurrencyDollars(text: string): string {
+  if (!text.includes("$")) return text;
+
+  const out: string[] = [];
+  let i = 0;
+  for (;;) {
+    const open = text.indexOf("$", i);
+    if (open === -1) {
+      out.push(text.slice(i));
+      return out.join("");
+    }
+    // An author who already escaped it has settled the question.
+    if (open > 0 && text[open - 1] === BACKSLASH) {
+      out.push(text.slice(i, open + 1));
+      i = open + 1;
+      continue;
+    }
+
+    const close = text.indexOf("$", open + 1);
+    const span = close === -1 ? null : text.slice(open + 1, close);
+    // Every test that could call this span mathematics, because escaping is
+    // destructive and this function runs on its own output: typesetDraftMath
+    // re-typesets already-typeset content at render time, so a delimiter it
+    // fails to recognise the second time round gets escaped into a dollar
+    // sign and the span stops being mathematics. That is not hypothetical --
+    // "$P(r)=0 arrow.l.r.double$" is a span this module WROTE (toTypstMath
+    // expands "iff"), and segmentIsMath alone reads the arrow's modifiers as
+    // four prose words. typstGateAccepts knows better, so it is asked too.
+    //
+    // "$$" is a display delimiter, not an empty span, and is not ours to
+    // touch; convertLatexSegmentsToTypst normalises it before we see it.
+    const isDelimiter =
+      span !== null &&
+      (span === "" || isLatexMath(span) || typstGateAccepts(span) || segmentIsMath(span));
+
+    if (isDelimiter) {
+      out.push(text.slice(i, (close as number) + 1));
+      i = (close as number) + 1;
+      continue;
+    }
+
+    out.push(text.slice(i, open), BACKSLASH, "$");
+    i = open + 1;
+  }
+}
+
 export function typesetMath(text: string): string {
   if (typeof text !== "string" || text.length === 0) return text;
+
+  // Settle what each "$" IS before counting them, then hide the ones that
+  // turned out to be currency. Until this ran, a lone price made the count
+  // odd and the whole line was handed back untypeset -- see
+  // escapeCurrencyDollars above for what that cost A.1.
+  // Prose styling first: \textit{...} can WRAP math spans, so its braces
+  // have to go before anything starts counting delimiters.
+  const masked = maskCurrency(escapeCurrencyDollars(unwrapProseTextCommands(text)));
+  return unmaskCurrency(typesetDelimited(masked));
+}
+
+/** typesetMath's body, with every remaining "$" known to be a delimiter. */
+function typesetDelimited(text: string): string {
 
   // An odd number of "$" means the delimiters are unbalanced -- most often a
   // currency amount, per the 11d rule -- so the safe move is to touch nothing.
@@ -482,6 +632,42 @@ function typesetSegment(segment: string): string {
     ) {
       end -= 1;
     }
+
+    // A span must close every bracket it opens, and must not end on an
+    // operator -- and fixing either can break the other, so they are settled
+    // together. Shrinking from the right is the safe direction: the pieces
+    // given back become ordinary prose, which is this module's whole posture.
+    for (;;) {
+      const before = end;
+      while (end > lastMath && !bracketsBalanced(pieces.slice(start, end + 1).join(""))) end -= 1;
+      while (
+        end > lastMath &&
+        (kinds[end] === "space" || /^[+\-*/=<>|]+$/.test(pieces[end].replace(TRAILING_PUNCT, "")))
+      ) {
+        end -= 1;
+      }
+      if (end === before) break;
+    }
+
+    // And it must not OPEN on an operator. The trailing-operator walk above
+    // has always existed; without its mirror, "... + 4)) / 25p would" starts
+    // a span at the slash.
+    let from = start;
+    while (
+      from < end &&
+      (kinds[from] === "space" || /^[+\-*/=<>|]+$/.test(pieces[from].replace(LEADING_PUNCT, "")))
+    ) {
+      from += 1;
+    }
+
+    // Still unbalanced after all that, or nothing left worth wrapping: leave
+    // the whole run as the prose it came in as.
+    if (from > end || !bracketsBalanced(pieces.slice(from, end + 1).join(""))) {
+      for (let k = i; k <= end && k < pieces.length; k += 1) out.push(pieces[k]);
+      i = end + 1;
+      continue;
+    }
+    start = from;
 
     // Drop whatever was already emitted for the reclaimed prefix.
     out.length -= i - start;

@@ -105,10 +105,27 @@ describe("buildPacketContentUpdate", () => {
     const out = buildPacketContentUpdate(draft());
     expect(out.syllabus_topics).toEqual([]);
     expect(out.prerequisites).toEqual([]);
-    expect(out.vocabulary).toEqual([]);
-    expect(out.tok_provocations).toEqual([]);
     expect(out.materials).toBeNull();
     expect(out.atl_statement).toBeNull();
+  });
+
+  it("leaves vocabulary and TOK alone when the draft has none to write", () => {
+    // Not the same case as the empty arrays above. The editor has no UI for
+    // either column, so a draft without them has not had them deleted -- it
+    // never carried them. Four packets in the table keep bare-term
+    // vocabulary that AssignmentDraft has no slot for, and writing [] here
+    // would have erased those terms on the first save anyone made.
+    const out = buildPacketContentUpdate(draft());
+    expect(out).not.toHaveProperty("vocabulary");
+    expect(out).not.toHaveProperty("tok_provocations");
+  });
+
+  it("writes vocabulary and TOK when the draft does carry them", () => {
+    const terms = [{ term: "Prove", definition: "Establish truth by rigorous reasoning." }];
+    const tok = [{ id: "tok1", body: "Is a proof a discovery or a decision?" }];
+    const out = buildPacketContentUpdate(draft({ commandTerms: terms, tokProvocations: tok }));
+    expect(out.vocabulary).toEqual(terms);
+    expect(out.tok_provocations).toEqual(tok);
   });
 
   it("only sets course when the draft carries one", () => {

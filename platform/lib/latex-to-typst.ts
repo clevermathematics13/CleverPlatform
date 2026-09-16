@@ -79,6 +79,97 @@
  */
 export const TRUSTED_MATH_DELIM = "\u0001";
 
+/**
+ * A dollar SIGN, as opposed to a math delimiter: backslash then dollar.
+ *
+ * Packet prose prices things -- A.1 is set at a ticket window -- and a lone
+ * amount used to leave an odd number of "$" in the line, which made both
+ * typesetMath() and the Typst prelude hand the whole line back untouched.
+ * escapeCurrencyDollars() in math-typesetting.ts decides which "$" is which
+ * and writes this escape over the ones that are currency; rich-legacy() in
+ * the Typst template reads it back as a dollar sign.
+ *
+ * Every function that splits a string on "$" has to mask this first, or the
+ * dollar inside it re-enters the pairing it was just taken out of -- and
+ * here that is worse than a miscount, because the escape carries a
+ * BACKSLASH, which is the whole of isLatexMath()'s test. "cost \$2.50 per
+ * package and pens cost \$3" split into a span ending in a backslash, was
+ * read as LaTeX on the strength of it, and printed the prose between two
+ * prices as italic mathematics.
+ */
+export const ESCAPED_DOLLAR = `${String.fromCharCode(92)}$`;
+
+/** Stands in for ESCAPED_DOLLAR while a "$" split is in progress. */
+export const CURRENCY_MASK = String.fromCharCode(2);
+
+/** Hides escaped dollars so a "$" split sees only real delimiters. */
+export function maskCurrency(text: string): string {
+  return text.split(ESCAPED_DOLLAR).join(CURRENCY_MASK);
+}
+
+/** Puts them back. */
+export function unmaskCurrency(text: string): string {
+  return text.split(CURRENCY_MASK).join(ESCAPED_DOLLAR);
+}
+
+/**
+ * Commands that style PROSE rather than mathematics, and so never reach the
+ * math converter: they sit outside $...$, wrapping ordinary text that may
+ * itself contain math spans.
+ */
+const PROSE_TEXT_COMMANDS = ["textit", "textbf", "textrm", "textsf", "texttt", "emph", "underline"];
+
+/**
+ * Unwraps a prose-level styling command, keeping everything inside it.
+ *
+ * The binomial packet quotes a flawed student solution as
+ * \textit{'$(4+x)^{1/2} = ...$, valid for $|x|<1$.'} -- prose markup around
+ * a passage that contains its own math spans. Nothing in this pipeline knew
+ * the command: it is not math, so the converter never saw it, and the Typst
+ * template interpolates a prose string without re-parsing markup. So
+ * "\textit{" and its closing brace printed on the page as themselves.
+ *
+ * The emphasis is dropped rather than translated. Carrying it through would
+ * mean emitting Typst markup into a string the template deliberately does
+ * NOT re-parse -- the guarantee that stops packet prose being read as
+ * source -- and the text here is already quoted, so the italics were
+ * decorative. Losing a font and keeping the sentence is the right trade;
+ * printing the command name is not a trade at all.
+ */
+export function unwrapProseTextCommands(text: string): string {
+  if (!text.includes(BACKSLASH_CHAR)) return text;
+  let out = text;
+  for (const name of PROSE_TEXT_COMMANDS) {
+    const opener = `${BACKSLASH_CHAR}${name}{`;
+    for (;;) {
+      const at = out.indexOf(opener);
+      if (at === -1) break;
+      // Walk to the brace that closes this one, so a nested group inside the
+      // passage does not end it early.
+      let depth = 0;
+      let end = -1;
+      for (let i = at + opener.length - 1; i < out.length; i += 1) {
+        if (out[i] === "{") depth += 1;
+        else if (out[i] === "}") {
+          depth -= 1;
+          if (depth === 0) {
+            end = i;
+            break;
+          }
+        }
+      }
+      // Unbalanced: leave it exactly as written rather than swallowing the
+      // rest of the string.
+      if (end === -1) break;
+      out = out.slice(0, at) + out.slice(at + opener.length, end) + out.slice(end + 1);
+    }
+  }
+  return out;
+}
+
+/** One backslash, kept out of the string literals that need one. */
+const BACKSLASH_CHAR = String.fromCharCode(92);
+
 // -- Tokenizer -----------------------------------------------------------------
 
 type Tok =
@@ -794,6 +885,11 @@ export function convertLatexSegmentsToTypst(
   shouldConvert: (span: string) => boolean = isLatexMath,
 ): string {
   if (typeof text !== "string" || !text.includes("$")) return text;
+  // A currency escape is not a delimiter and must not be counted as one --
+  // see ESCAPED_DOLLAR. Masked for the whole of the split below, and put
+  // back on the way out.
+  const masked = maskCurrency(text);
+  if (masked !== text) return unmaskCurrency(convertLatexSegmentsToTypst(masked, shouldConvert));
   // $$...$$ is display math in LaTeX and nothing at all here: the packet
   // template has one delimiter, and a $$ pair splits into two EMPTY math
   // segments with the expression stranded between them as prose, which is how

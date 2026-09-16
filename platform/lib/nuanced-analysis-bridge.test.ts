@@ -250,16 +250,33 @@ describe("convertNuancedAnalysisToDraft", () => {
       expect(draft.sections[1].translationTable).toBeUndefined();
     });
 
-    it("maps {term, definition} pairs, the shape a sandbox save writes", () => {
+    it("returns {term, definition} pairs to commandTerms, where they came from", () => {
+      // A sandbox save writes draft.commandTerms into this column, so this
+      // encoding is a command-term glossary making a round trip -- not a
+      // say-it/write-it pair. Sending it to the translation table as well
+      // printed A.3's seventeen terms twice on the same packet.
       const draft = convertNuancedAnalysisToDraft(
         baseRow({
           parts: [{ heading: "One", questions: [] }],
           vocabulary: [{ term: "Prove", definition: "Establish truth by rigorous reasoning." }],
         })
       );
-      expect(draft.sections[0].translationTable?.rows).toEqual([
-        { informal: "Prove", formal: "Establish truth by rigorous reasoning." },
+      expect(draft.commandTerms).toEqual([
+        { term: "Prove", definition: "Establish truth by rigorous reasoning." },
       ]);
+      expect(draft.sections[0].translationTable).toBeUndefined();
+    });
+
+    it("keeps a half-written {term, definition} entry out of the strip", () => {
+      // The Typst template reads ct.definition directly; a missing key there
+      // is a compile error, not a blank cell.
+      const draft = convertNuancedAnalysisToDraft(
+        baseRow({
+          parts: [{ heading: "One", questions: [] }],
+          vocabulary: [{ term: "Prove" }, { definition: "No term." }],
+        })
+      );
+      expect(draft.commandTerms).toBeUndefined();
     });
 
     it("drops bare-string vocabulary — there is no second column to fill", () => {

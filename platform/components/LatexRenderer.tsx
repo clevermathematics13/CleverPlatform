@@ -55,11 +55,19 @@ function parseColSpec(spec: string): { aligns: ("l" | "r" | "c")[]; hasBorders: 
 
 // Split a string into alternating text / math segments.
 // Recognises: \[...\] (display), \(...\) (inline), $$...$$ (display), $...$ (inline).
+/** One backslash, kept out of the regex literals that need one. */
+const BACKSLASH = String.fromCharCode(92);
+
 function splitSegments(
   src: string
 ): { type: "text" | "inline" | "display"; content: string }[] {
+  // The escaped dollar comes FIRST so it is consumed as text before any
+  // branch can read it as an opening delimiter. Packet prose prices things
+  // (an escaped dollar before "60 per adult"), and lib/math-typesetting.ts marks those dollars so
+  // the Typst side keeps them out of its pairing; the preview has to agree
+  // with it, or the editor shows a backslash the printed page does not have.
   const re =
-    /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^$\n]*?)\$/g;
+    /\\\$|\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^$\n]*?)\$/g;
   const segments: { type: "text" | "inline" | "display"; content: string }[] =
     [];
   let last = 0;
@@ -68,6 +76,11 @@ function splitSegments(
   while ((match = re.exec(src)) !== null) {
     if (match.index > last) {
       segments.push({ type: "text", content: src.slice(last, match.index) });
+    }
+    if (match[0] === `${BACKSLASH}$`) {
+      segments.push({ type: "text", content: "$" });
+      last = match.index + match[0].length;
+      continue;
     }
     const display = match[1] ?? match[3];
     const inline = match[2] ?? match[4];

@@ -261,6 +261,14 @@ export function getActivityTypstSource(): string {
   // constant latex-to-typst.ts wraps spans in, so the writer and the reader
   // of the marker can never drift apart.
   const trustedDelim = `"\\u{${TRUSTED_MATH_DELIM.codePointAt(0)!.toString(16)}}"`;
+  // The same treatment for the currency escape: `BS` is one backslash, so
+  // `escapedDollar` is the Typst literal for the two characters
+  // escapeCurrencyDollars() writes, and `dollarSentinel` is a private code
+  // point one above the trusted marker -- it exists only between this
+  // module's two replace() calls and can never occur in packet prose.
+  const BS = String.fromCharCode(92);
+  const escapedDollar = `"${BS}${BS}$"`;
+  const dollarSentinel = `"${BS}u{2}"`;
   return `
 // -- CleverPlatform Nuanced Analysis — Typst template ------------------------
 #let raw = sys.inputs.at("payload", default: "{}")
@@ -448,31 +456,58 @@ export function getActivityTypstSource(): string {
   // as a number beside a variable, which is why the pattern starts on a
   // letter.
   if unquoted.matches(regex("[A-Za-z][A-Za-z0-9]*[0-9]")).len() > 0 { return false }
-  for m in unquoted.matches(regex("[A-Za-z]{2,}")) {
+  // A dotted path is ONE symbol -- "arrow.l.r.double" -- and its modifiers
+  // are not identifiers in their own right. See typstGateAccepts() in
+  // lib/math-typesetting.ts: the same check there rejected a span this
+  // pipeline had just written itself.
+  let paths = unquoted.replace(
+    regex("([A-Za-z]+)(\\.[A-Za-z]+)+"),
+    m => m.captures.at(0),
+  )
+  for m in paths.matches(regex("[A-Za-z]{2,}")) {
     if not math-idents.contains(lower(m.text)) { return false }
   }
   true
 }
 
-#let rich-legacy(s) = {
+// An ESCAPED dollar is a dollar SIGN, and never a delimiter.
+//
+// A.1 is set at a ticket window, so it prices things: sixty per adult, five
+// hundred and seventy in total. Thirteen of its lines carried one such
+// amount and nothing else with a dollar in it, which left an ODD number of
+// "$" in the line -- and both ends of the pipeline gave up on a line like
+// that. lib/math-typesetting.ts handed it back untypeset, so an expression
+// in the same sentence never became mathematics; this function then printed
+// the whole line verbatim. A.1 priced its tickets correctly and typeset no
+// mathematics anywhere near a price.
+//
+// escapeCurrencyDollars() in that module now decides which "$" is which and
+// marks the currency ones. All this has to do is take them out of the
+// pairing, and put them back once the pairing is settled -- including on
+// every path that gives up, or the escape itself would print.
+#let dollar-sign = ${dollarSentinel}
+
+#let rich-legacy(raw) = {
+  let s = raw.replace(${escapedDollar}, dollar-sign)
+  let literal = raw.replace(${escapedDollar}, "$")
   let parts = s.split("$")
   if calc.rem(parts.len(), 2) == 0 {
-    return [#s]
+    return [#literal]
   }
   // A candidate segment that is really prose means the $-pairing was never
   // math; render the string exactly as written rather than evaluating a
   // fragment that would take the whole document down with it.
   for (i, part) in parts.enumerate() {
     if calc.rem(i, 2) == 1 and not looks-like-math(part) {
-      return [#s]
+      return [#literal]
     }
   }
   let out = []
   for (i, part) in parts.enumerate() {
     if calc.rem(i, 2) == 0 {
-      out += [#part]
+      out += [#part.replace(dollar-sign, "$")]
     } else {
-      out += eval(normalize-math(part), mode: "math")
+      out += eval(normalize-math(part.replace(dollar-sign, "$")), mode: "math")
     }
   }
   out

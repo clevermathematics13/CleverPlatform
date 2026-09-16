@@ -15,7 +15,16 @@
 
 import { describe, it, expect } from "vitest";
 import { NodeCompiler } from "@myriaddreamin/typst-ts-node-compiler";
-import { typesetMath, toTypstMath, typesetDraftMath, findUntypesetMath } from "./math-typesetting";
+import {
+  typesetMath,
+  toTypstMath,
+  typesetDraftMath,
+  findUntypesetMath,
+  typstGateAccepts,
+  spanIsForLatexConversion,
+} from "./math-typesetting";
+
+const BACKSLASH = String.fromCharCode(92);
 
 /** Pulls the $...$ spans out of a result, for asserting on what got wrapped. */
 function spans(s: string): string[] {
@@ -111,11 +120,35 @@ describe("typesetMath — already-delimited input", () => {
     expect(typesetMath(once)).toBe(once);
   });
 
-  it("touches nothing when dollar signs are unbalanced", () => {
-    // Rule 11d: a stray currency dollar. Wrapping anything here risks pairing
-    // it with a real delimiter elsewhere and aborting the compile.
-    const risky = "Pencils cost $2.50 per package and x^2 pens cost 3 dollars.";
-    expect(typesetMath(risky)).toBe(risky);
+  it("marks a stray currency dollar instead of giving up on the line", () => {
+    // Rule 11d used to be enforced by doing nothing at all: an odd number of
+    // "$" meant hands off the whole string, so a price in a sentence stopped
+    // every expression in the SAME sentence from being typeset. Thirteen
+    // lines of A.1 -- a packet set at a ticket window -- were left with no
+    // mathematics for exactly this reason.
+    //
+    // Escaping the dollar settles what it is, and the rest of the line is
+    // then ordinary work. The escape is what rich-legacy() in the Typst
+    // prelude reads back as a dollar sign.
+    const out = typesetMath("Pencils cost $2.50 per package and x^2 pens cost 3 dollars.");
+    expect(out).toBe(`Pencils cost ${BACKSLASH}$2.50 per package and $x^2$ pens cost 3 dollars.`);
+  });
+
+  it("still reads a real span as a span when a price shares the line", () => {
+    // The pairing is greedy from the left, so the two prices settle first and
+    // the delimiters that remain are the ones the author meant.
+    const out = typesetMath(
+      "Tickets cost $60 for an adult and $30 for a child, so the total is $60a + 30c$.",
+    );
+    expect(out).toBe(
+      `Tickets cost ${BACKSLASH}$60 for an adult and ${BACKSLASH}$30 for a child, ` +
+        `so the total is $60a + 30c$.`,
+    );
+  });
+
+  it("leaves an already-escaped dollar exactly as it is", () => {
+    const once = typesetMath("A family holding exactly $575 wants to spend all of it.");
+    expect(typesetMath(once)).toBe(once);
   });
 
   it("typesets only outside existing spans", () => {
@@ -309,9 +342,9 @@ describe("generator-authored spans that Typst rejects (B.4 regeneration, 16 Sep 
     expect(spans(out)).toEqual(["(a x+b)(c x+d)", "A x^2+B x+C"]);
   });
 
-  it("leaves the whole string alone when delimiters are unbalanced", () => {
-    const risky = "Pencils cost $2.50 and the expansion is 2ab per pack.";
-    expect(typesetMath(risky)).toBe(risky);
+  it("marks the price, then repairs the expression beside it", () => {
+    const out = typesetMath("Pencils cost $2.50 and the expansion is 2ab per pack.");
+    expect(out).toBe(`Pencils cost ${BACKSLASH}$2.50 and the expansion is $2a b$ per pack.`);
   });
 });
 
@@ -464,4 +497,124 @@ describe("a letter glued to a digit is never left inside a span", () => {
       expect(toTypstMath(expr)).toBe(expr);
     },
   );
+});
+
+describe("a span the wrapper builds must be something Typst can evaluate", () => {
+  // All four cases below come from the A.2 and binomial packets, which had
+  // sat unrenderable in the table for weeks. None of them is a content
+  // problem: the prose was fine and the author wrote nothing unusual. The
+  // wrapper built the broken span itself, and Typst -- which has no try/catch
+  // around eval(.., mode: "math") -- answered by refusing the whole document.
+
+  it("never closes a span with a bracket still open", () => {
+    // The defect: ")" carries no letters, fell through to "prose", and ended
+    // the span there -- so "18(p" went to Typst with nothing to close it.
+    const out = typesetMath(
+      "explain what the expression 25p + 18(p + 4) represents, and the expression (25p + 18(p + 4)) / 25p would",
+    );
+    for (const span of spans(out)) {
+      const depth = [...span].reduce((d, c) => d + (c === "(" ? 1 : c === ")" ? -1 : 0), 0);
+      expect(depth, `unbalanced span: ${span}`).toBe(0);
+    }
+  });
+
+  it("never opens a span on a bare operator", () => {
+    // The consequence of the case above: the tail of the same sentence began
+    // a fresh span at the "/", and Typst answered "unexpected slash".
+    for (const span of spans(typesetMath("and the expression (25p + 18(p + 4)) / 25p would"))) {
+      expect(span, "span opens on an operator").not.toMatch(/^\s*[+\-*/=<>|]/);
+    }
+  });
+
+  it("keeps a bracketed quantity whole rather than cutting it in half", () => {
+    expect(spans(typesetMath("explain what the expression 25p + 18(p + 4) represents"))).toEqual([
+      "25p + 18(p + 4)",
+    ]);
+  });
+});
+
+describe("typstGateAccepts — which spans the old Typst path may still have", () => {
+  it("keeps legacy Typst-syntax spans on the legacy path", () => {
+    // These have no backslash, so isLatexMath says no; the gate is the only
+    // thing that decides, and it must still say yes or every packet written
+    // before the LaTeX switch changes shape.
+    for (const span of ["x^2", "a div b := a times 1/b", "cos((3pi)/2)", "6x^2 + 11x + 3"]) {
+      expect(typstGateAccepts(span), span).toBe(true);
+    }
+  });
+
+  it("refuses an attachment with no base, and sends it to be converted", () => {
+    // "$^{n}C_{r}$" is how a GDC prints nCr, and it is exactly what the
+    // binomial packet was authored with. Typst answers "unexpected hat".
+    for (const span of ["^{n}C_{r}", "_{n}P_{r}"]) {
+      expect(typstGateAccepts(span), span).toBe(false);
+      expect(spanIsForLatexConversion(span), span).toBe(true);
+    }
+  });
+
+  it("refuses a letter glued to a digit, which Typst reads as one unknown name", () => {
+    expect(typstGateAccepts("S3E11")).toBe(false);
+  });
+
+  it("does not claim prose for the converter just because it has no backslash", () => {
+    // The counterweight to the two rules above: a sentence fragment must fail
+    // segmentIsMath and stay prose, or the converter mangles ordinary text.
+    expect(spanIsForLatexConversion("2.50 per package and pens cost ")).toBe(false);
+  });
+});
+
+describe("typesetMath is stable under a second pass", () => {
+  // Not a nicety. sanitizeDraft() typesets a packet when it is SAVED, and
+  // typesetDraftMath() typesets it again on every render -- so a second pass
+  // is the normal case, not an edge one, and anything this module does that
+  // it cannot recognise on the way back in silently destroys content.
+  //
+  // The escape is what made that sharp. "$P(r)=0 arrow.l.r.double$" is a span
+  // this module writes itself (toTypstMath expands "iff"), and reading its
+  // arrow modifiers as four prose words on the second pass turned both of its
+  // delimiters into dollar signs. The polynomial packet's Factor Theorem
+  // printed as its own source code.
+  it.each([
+    "Factor Theorem: P(r)=0 iff (x-r) is a factor of P(x).",
+    "Tickets cost $60 for an adult and $30 for a child, so the total is 60a + 30c.",
+    "A family holding exactly $575 wants to spend all of it on tickets.",
+    "Pencils cost $2.50 per package and pens cost $3 per package.",
+    "Recall $(x+y)^2$ means $(x+y)$ times $(x+y)$, not $x^2$ added to $y^2$ directly.",
+    "Show that $(x+3)(x+3) = x^2 + 6x + 9$, naming the property used.",
+    "The theorem $(1+x)^n = 1 + nx + \\ldots$ requires the bracket to start with $1$.",
+  ])("settles after one pass: %s", (line) => {
+    const once = typesetMath(line);
+    expect(typesetMath(once)).toBe(once);
+    // And a third, since the second pass is what the render path actually does.
+    expect(typesetMath(typesetMath(once))).toBe(once);
+  });
+});
+
+describe("LaTeX that carries no backslash, and prose markup that does", () => {
+  it("sends brace-grouped exponents to the converter, not to Typst raw", () => {
+    // "$(4+x)^{1/2}$" has no backslash, so isLatexMath says no and the span
+    // went to Typst as written -- which PRINTS the braces: the binomial
+    // packet's page read "(4+x){1 2}". Typst spells it "^(1/2)", so a brace
+    // on an attachment is always LaTeX.
+    expect(typstGateAccepts("(4+x)^{1/2}")).toBe(false);
+    expect(spanIsForLatexConversion("(4+x)^{1/2}")).toBe(true);
+  });
+
+  it("still leaves set notation on the legacy path", () => {
+    // The counterweight: braces that are NOT on an attachment print as
+    // braces in both languages, and the converter would drop them.
+    expect(typstGateAccepts("{1, 2, 3}")).toBe(true);
+  });
+
+  it("keeps the passage and drops the prose command that wrapped it", () => {
+    const quoted = `${BACKSLASH}textit{'$(4+x)^{1/2} = 2$, valid for $|x|<1$.'}`;
+    expect(typesetMath(`a flawed solution: ${quoted}`)).toBe(
+      "a flawed solution: '$(4+x)^{1/2} = 2$, valid for $|x|<1$.'",
+    );
+  });
+
+  it("leaves an unbalanced prose command exactly as written", () => {
+    const broken = `see ${BACKSLASH}textit{the rest of this line never closes`;
+    expect(typesetMath(broken)).toBe(broken);
+  });
 });

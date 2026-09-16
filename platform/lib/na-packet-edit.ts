@@ -114,8 +114,15 @@ export function buildPacketContentUpdate(draft: AssignmentDraft): Record<string,
     prerequisites: draft.prerequisites ? [draft.prerequisites] : [],
     materials: draft.materials ?? null,
     atl_statement: draft.atl ?? null,
-    vocabulary: draft.commandTerms ?? [],
-    tok_provocations: draft.tokProvocations ?? [],
+    // Written only when the draft actually carries them. The editor has no
+    // UI for either -- it passes whatever the draft already held straight
+    // back -- so an empty list here never means "the teacher deleted these",
+    // it means the draft never had them. Four packets keep their vocabulary
+    // as bare terms with no gloss, which has no slot in AssignmentDraft at
+    // all; writing `[]` over that column on the first save would have thrown
+    // the terms away without anyone touching them.
+    ...(draft.commandTerms?.length ? { vocabulary: draft.commandTerms } : {}),
+    ...(draft.tokProvocations?.length ? { tok_provocations: draft.tokProvocations } : {}),
     parts: draft.sections,
     draft_content: draft,
     ...(draft.course ? { course: draft.course } : {}),
