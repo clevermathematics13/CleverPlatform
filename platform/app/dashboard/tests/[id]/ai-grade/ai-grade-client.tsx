@@ -10,6 +10,7 @@ import {
   runsForStudent,
   rowsForRun,
   sortReviewRows,
+  partitionByConfidence,
 } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
@@ -248,6 +249,15 @@ export function AiGradeClient({
   const [drafts, setDrafts] = useState<Record<string, number>>({}); // keyed by result.id
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
+  /**
+   * Whether the review panel's high-confidence parts are shown. They sit
+   * behind one summary row, which starts OPEN: the panel still leads with the
+   * parts that need a human, but a confident mark is a mark going into Clev's
+   * Marks, so it is on screen unless the teacher folds it away. Reset to open
+   * for every student -- a fold applies to the paper in front of you, not to
+   * the next one.
+   */
+  const [highConfidenceOpen, setHighConfidenceOpen] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   /** Result id currently fetching its full source page (see openBoxEditor). */
   const [pageImageLoadingId, setPageImageLoadingId] = useState<string | null>(null);
@@ -567,6 +577,7 @@ export function AiGradeClient({
     setDrafts({});
     setSelected(new Set());
     setExpanded(null);
+    setHighConfidenceOpen(true);
     setEditingEvidenceId(null);
     setPreviousMarks({});
   }, []);
@@ -669,6 +680,16 @@ export function AiGradeClient({
     setStatusLine(null);
     setError(null);
     await loadResultsFor(studentId);
+  };
+
+  /**
+   * Collapses the review panel under a student's row. The panel is rendered
+   * inside the roster now, so "Review" has to be a toggle -- there is no
+   * scrolling away from a section that sits between two students.
+   */
+  const closeReview = () => {
+    clearReview();
+    setFocusStudent(null);
   };
 
   // -- Run grading (fresh upload or re-use stored scan) --
@@ -1000,6 +1021,24 @@ export function AiGradeClient({
       return next;
     });
 
+  /**
+   * Selects, or clears, every confident part the summary row is hiding, so a
+   * teacher can accept the lot without expanding it. Only parts not already in
+   * Clev's Marks are touched -- an accepted one is done with.
+   */
+  const toggleAllHighConfidence = (rows: ResultRow[]) => {
+    if (rows.length === 0) return;
+    const allSelected = rows.every((r) => selected.has(r.id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const r of rows) {
+        if (allSelected) next.delete(r.id);
+        else next.add(r.id);
+      }
+      return next;
+    });
+  };
+
   const toggleQuestionImage = (resultId: string) =>
     setQuestionImageShown((prev) => {
       const next = new Set(prev);
@@ -1052,6 +1091,556 @@ export function AiGradeClient({
           Object.fromEntries(results.map((r) => [r.test_item_id, drafts[r.id] ?? 0]))
         )
       : null;
+
+  // -- One review row, plus its "Why?" panel -------------------------------
+  // Rendered from two lists -- the parts needing a look, and the confident
+  // ones behind the summary row -- so the caller passes the row that precedes
+  // it in ITS OWN list: that is what decides whether this row prints its
+  // question's shared stem.
+  const renderResultRow = (r: ResultRow, prevRow: ResultRow | undefined) => {
+    const meta = itemById.get(r.test_item_id);
+    const label = itemLabel(meta);
+    const isOpen = expanded === r.id;
+    // The stem is stored on every part row, so printing it per row would
+    // repeat "Look at this expression..." four times down Q1. Print it on the
+    // first part of each question only, the way the paper itself reads.
+    const prevMeta = prevRow ? itemById.get(prevRow.test_item_id) : undefined;
+    const stem =
+      meta?.stem_text?.trim() && meta.question_number !== prevMeta?.question_number
+        ? meta.stem_text.trim()
+        : null;
+    return (
+      <Fragment key={r.id}>
+        <tr className="border-b border-da-border">
+          <td className="px-4 py-2">
+            <input
+              type="checkbox"
+              checked={selected.has(r.id)}
+              onChange={() => toggle(r.id)}
+              aria-label={`Accept ${label}`}
+            />
+          </td>
+          <td className="px-2 py-2 font-medium text-da-text">
+            <div className="flex items-center gap-2">
+              <span>{label}</span>
+              {/* The question itself, at a glance. It was already in
+                  the expanded panel below, but two clicks deep (Why?,
+                  then the collapsed Question toggle) -- so marking a
+                  row meant remembering what the question asked.
+                  Click enlarges it in the same lightbox the panel
+                  uses. Rows whose part has no image on file in the
+                  PPQ bank simply show the label, as before. */}
+              {r.question_image_urls.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setLightboxUrl(r.question_image_urls[0])}
+                  title={`Enlarge the question for ${label}`}
+                  className="relative shrink-0 rounded border border-da-border hover:border-blue-400"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={r.question_image_urls[0]}
+                    alt={`Question ${label}`}
+                    // object-CONTAIN, not cover: a cropped thumbnail showed
+                    // the top-left corner of the question and hid the rest,
+                    // which is worse than useless on a question whose figure
+                    // sits at the bottom. Whole question, scaled down.
+                    className="h-40 w-96 cursor-zoom-in rounded bg-white/5 object-contain"
+                  />
+                  {r.question_image_urls.length > 1 && (
+                    <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 text-[10px] leading-4 text-white">
+                      +{r.question_image_urls.length - 1}
+                    </span>
+                  )}
+                </button>
+              ) : (
+                (stem || meta?.question_text?.trim()) && (
+                  // A teacher-authored part has no image anywhere -- not in
+                  // the PPQ bank, and a Grade 9 paper has no locked layout to
+                  // cut one from -- so the question itself is the text.
+                  // Clamped to two lines, with the full wording on hover, so
+                  // a long stem cannot stretch the row.
+                  <span className="max-w-md text-xs font-normal">
+                    {stem && (
+                      <span
+                        title={stem}
+                        className="line-clamp-2 text-da-text/80"
+                      >
+                        <LatexRenderer latex={stem} />
+                      </span>
+                    )}
+                    {meta?.question_text?.trim() && (
+                      <span
+                        title={meta.question_text}
+                        className="line-clamp-2 text-da-muted"
+                      >
+                        <LatexRenderer latex={meta.question_text} />
+                      </span>
+                    )}
+                  </span>
+                )
+              )}
+            </div>
+          </td>
+          <td className="px-2 py-2">
+            <input
+              type="number"
+              min={0}
+              max={r.max_marks}
+              value={drafts[r.id] ?? 0}
+              onChange={(e) =>
+                setDrafts((prev) => ({
+                  ...prev,
+                  [r.id]: Math.max(
+                    0,
+                    Math.min(r.max_marks, Number(e.target.value))
+                  ),
+                }))
+              }
+              className="w-16 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
+            />
+            {previousMarks[r.test_item_id] !== undefined &&
+              previousMarks[r.test_item_id] !== r.suggested_marks && (
+                <span
+                  className="ml-2 whitespace-nowrap rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-300"
+                  title="The previous completed run suggested a different mark for this part -- the model is not certain here, so it is worth a look."
+                >
+                  was {previousMarks[r.test_item_id]}
+                </span>
+              )}
+          </td>
+          <td className="px-2 py-2 text-da-muted">{r.max_marks}</td>
+          <td className="px-2 py-2">
+            <span
+              className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
+            >
+              {r.confidence}
+            </span>
+            {!r.work_found && (
+              <span className="ml-2 text-xs text-da-muted">no attempt found</span>
+            )}
+          </td>
+          <td className="px-2 py-2 text-xs text-da-muted">
+            {SOURCE_LABEL[r.markscheme_source]}
+          </td>
+          <td className="px-2 py-2">
+            {r.accepted ? (
+              <span className="text-xs text-green-300">accepted</span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => acceptOne(r.id)}
+                disabled={acceptingRowId === r.id}
+                className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
+              >
+                {acceptingRowId === r.id ? "Accepting…" : "Accept"}
+              </button>
+            )}
+          </td>
+          <td className="px-2 py-2">
+            <button
+              type="button"
+              onClick={() => setExpanded(isOpen ? null : r.id)}
+              className="text-xs text-blue-300 hover:underline"
+            >
+              {isOpen ? "Hide" : "Why?"}
+            </button>
+          </td>
+        </tr>
+
+        {isOpen && (
+          <tr className="bg-da-hover">
+            <td colSpan={8} className="px-6 py-4">
+              <div className="space-y-3">
+                {r.mark_breakdown.length > 0 && (
+                  <div className="space-y-1.5">
+                    {groupMarkBreakdownByPart(r.mark_breakdown).map((group, gi) => (
+                      <div key={gi} className="flex flex-wrap items-center gap-2">
+                        {group.part && (
+                          <span className="text-xs font-semibold text-da-muted">{group.part}</span>
+                        )}
+                        {group.entries.map((b, i) => (
+                          <span
+                            key={i}
+                            className={`rounded border px-2 py-0.5 text-xs ${
+                              b.awarded
+                                ? "border-green-400/40 bg-green-500/15 text-green-300"
+                                : "border-da-border bg-da-surface text-da-muted line-through"
+                            }`}
+                            title={b.note}
+                          >
+                            {b.token}
+                          </span>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {r.question_image_urls.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => toggleQuestionImage(r.id)}
+                      className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
+                    >
+                      <span>{questionImageShown.has(r.id) ? "▾" : "▸"}</span>
+                      Question
+                    </button>
+                    {questionImageShown.has(r.id) && (
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {r.question_image_urls.map((url, i) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={i}
+                            src={url}
+                            alt="Question source image"
+                            title="Click to enlarge"
+                            onClick={() => setLightboxUrl(url)}
+                            className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex items-center gap-2">
+                    {r.evidence_image_url ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleEvidenceImage(r.id)}
+                        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
+                      >
+                        <span>{evidenceImageShown.has(r.id) ? "▾" : "▸"}</span>
+                        Student&apos;s work
+                      </button>
+                    ) : (
+                      <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                        Student&apos;s work
+                      </p>
+                    )}
+                    {r.evidence_box_source === "teacher" && (
+                      <span
+                        title="You drew this region by hand; the crop was re-cut from it."
+                        className="rounded border border-green-400/40 bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-green-300"
+                      >
+                        Region set by you
+                      </span>
+                    )}
+                    {r.evidence_box_source === "anchor" && (
+                      <span
+                        title="Cut from this paper's locked layout, not located by the marker."
+                        className="rounded border border-blue-400/40 bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-300"
+                      >
+                        Paper layout
+                      </span>
+                    )}
+                    {!r.evidence_image_url && (
+                      <button
+                        type="button"
+                        onClick={() => openBoxEditor(r, label)}
+                        disabled={pageImageLoadingId === r.id}
+                        title="Open the scanned page and draw where this part's work is"
+                        className="text-xs text-blue-400 underline underline-offset-2 hover:text-blue-300 disabled:opacity-50"
+                      >
+                        {pageImageLoadingId === r.id ? "Opening…" : "Locate on page"}
+                      </button>
+                    )}
+                  </div>
+                  <div className="mt-1 space-y-2">
+                    {evidenceImageShown.has(r.id) && r.evidence_image_url && (
+                      <div className="relative inline-block">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={r.evidence_image_url}
+                          alt="Cropped scan region the model read this part's work from"
+                          title="Click to enlarge"
+                          onClick={() => setLightboxUrl(r.evidence_image_url)}
+                          className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => openBoxEditor(r, label)}
+                          disabled={pageImageLoadingId === r.id}
+                          title="Show the full page this crop came from, and redraw the region if it is wrong"
+                          className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-black/60 text-xs text-white hover:bg-black/80 disabled:opacity-50"
+                        >
+                          {pageImageLoadingId === r.id ? "…" : "⤢"}
+                        </button>
+                      </div>
+                    )}
+                    {editingEvidenceId === r.id ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={evidenceDraft[r.id] ?? ""}
+                          onChange={(e) =>
+                            setEvidenceDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
+                          }
+                          rows={3}
+                          placeholder="Correct the transcription of the student's work for this part -- checked against the scan above -- then save to re-grade it."
+                          className="w-full rounded border border-da-border p-2 font-mono text-xs focus:ring-2 focus:ring-blue-400"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => saveEvidence(r)}
+                            disabled={regradingId === r.id}
+                            className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {regradingId === r.id ? "Re-grading…" : "Save & re-grade"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditEvidence}
+                            disabled={regradingId === r.id}
+                            className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => startEditEvidence(r)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            startEditEvidence(r);
+                          }
+                        }}
+                        title="Click to fix transcription"
+                        className="cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/30"
+                      >
+                        {r.evidence ? (
+                          <LatexRenderer latex={r.evidence} />
+                        ) : (
+                          <p className="text-xs text-da-muted">
+                            No transcription on file -- click to add one.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {r.markscheme_image_urls.length > 0 && (
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => toggleMarkschemeImage(r.id)}
+                      className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
+                    >
+                      <span>{markschemeImageShown.has(r.id) ? "▾" : "▸"}</span>
+                      Mark scheme
+                    </button>
+                    {markschemeImageShown.has(r.id) && (
+                      <div className="mt-1 flex flex-wrap gap-2">
+                        {r.markscheme_image_urls.map((url, i) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={i}
+                            src={url}
+                            alt="Mark scheme source image"
+                            title="Click to enlarge"
+                            onClick={() => setLightboxUrl(url)}
+                            className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {r.reasoning && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Examiner reasoning
+                    </p>
+                    <div className="mt-1 rounded border border-da-border bg-da-surface p-3">
+                      <LatexRenderer latex={r.reasoning} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  };
+
+  // -- One student's review table, rendered inline under their roster row --
+  // Its rows are split in two: the parts that still need a human first, then
+  // every high-confidence part under one summary row that folds them away.
+  const renderReviewPanel = () => {
+    const ordered = sortReviewRows(results, (r) => itemById.get(r.test_item_id));
+    const { high, needsLook } = partitionByConfidence(ordered);
+    // What the summary row has to answer without being expanded: how many
+    // parts, what they add up to, and whether any of them is the kind of
+    // "confident" a teacher would still want to see -- no working found, or a
+    // mark that moved since the previous run.
+    const highSuggested = high.reduce((sum, r) => sum + (drafts[r.id] ?? 0), 0);
+    const highMax = high.reduce((sum, r) => sum + r.max_marks, 0);
+    const highNoWork = high.filter((r) => !r.work_found).length;
+    const highChanged = high.filter(
+      (r) =>
+        previousMarks[r.test_item_id] !== undefined &&
+        previousMarks[r.test_item_id] !== r.suggested_marks
+    ).length;
+    const highAccepted = high.filter((r) => r.accepted).length;
+    // The summary row's own checkbox covers the confident parts not yet in
+    // Clev's Marks -- the ones it is hiding that an accept would still act on.
+    const highPending = high.filter((r) => !r.accepted);
+    const highPendingSelected = highPending.filter((r) => selected.has(r.id)).length;
+    return (
+      <div className="rounded-lg border border-da-border bg-da-surface shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-4 py-3">
+          <div>
+            <h3 className="text-sm font-bold text-da-text">
+              Review — {students.find((s) => s.profile_id === focusStudent)?.display_name}
+            </h3>
+            <p className="text-xs text-da-muted">
+              Suggested total {suggestedTotal} / {maxTotal}. Edit any value before accepting.
+              {needsLook.length === 0 &&
+                high.length > 0 &&
+                " Every part came back high confidence — nothing is flagged for a look."}
+            </p>
+            {focusStudent && newerAttemptByStudent[focusStudent] && (
+              <p className="mt-1 text-xs text-amber-300">
+                {newerAttemptByStudent[focusStudent].status === "submitted" ? (
+                  <>⚠ Being marked overnight — results appear here when they arrive. Showing the last completed run.</>
+                ) : (
+                  <>
+                    ⚠ A newer re-mark {newerAttemptByStudent[focusStudent].status === "failed" ? "failed" : "is still running"}
+                    {newerAttemptByStudent[focusStudent].error ? ` — ${newerAttemptByStudent[focusStudent].error}` : ""}. Showing the last completed run.
+                  </>
+                )}
+              </p>
+            )}
+            {focusRun?.coverage?.warnings && focusRun.coverage.warnings.length > 0 && (
+              <ul className="mt-2 space-y-0.5 text-xs text-amber-300">
+                {focusRun.coverage.warnings.map((w, i) => (
+                  <li key={i}>⚠ {w}</li>
+                ))}
+              </ul>
+            )}
+            {liveStandardsReport && (
+              <div className="mt-3 rounded-lg border border-da-border bg-da-bg/60 p-2">
+                <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
+                  Strand levels from the marks above (suggested, not yet Clev&apos;s Marks)
+                </p>
+                <StandardsReportTable report={liveStandardsReport} compact />
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={acceptSelected}
+            disabled={accepting || selected.size === 0}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {accepting ? "Writing…" : `Accept ${selected.size} into Clev's Marks`}
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
+                <th className="px-4 py-2 font-semibold">
+                  <span className="sr-only">Accept</span>
+                </th>
+                <th className="px-2 py-2 font-semibold">Question</th>
+                <th className="px-2 py-2 font-semibold">Suggested</th>
+                <th className="px-2 py-2 font-semibold">Max</th>
+                <th className="px-2 py-2 font-semibold">Confidence</th>
+                <th className="px-2 py-2 font-semibold">Mark scheme</th>
+                <th className="px-2 py-2 font-semibold">Status</th>
+                <th className="px-2 py-2 font-semibold" />
+              </tr>
+            </thead>
+            <tbody>
+              {needsLook.map((r, i) => renderResultRow(r, needsLook[i - 1]))}
+
+              {high.length > 0 && (
+                <>
+                  <tr className="border-b border-da-border bg-da-hover/60">
+                    <td className="px-4 py-2">
+                      <input
+                        type="checkbox"
+                        checked={highPending.length > 0 && highPendingSelected === highPending.length}
+                        // Some-but-not-all shows as the mixed state rather
+                        // than unchecked, so the box never claims none of the
+                        // hidden parts is selected when some of them are.
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate =
+                              highPendingSelected > 0 && highPendingSelected < highPending.length;
+                          }
+                        }}
+                        disabled={highPending.length === 0}
+                        onChange={() => toggleAllHighConfidence(highPending)}
+                        title={
+                          highPending.length === 0
+                            ? "Every high-confidence part is already in Clev's Marks"
+                            : `Accept all ${highPending.length} high-confidence part(s) not yet in Clev's Marks`
+                        }
+                        aria-label="Accept every high-confidence part not yet in Clev's Marks"
+                      />
+                    </td>
+                    <td colSpan={7} className="px-2 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setHighConfidenceOpen((open) => !open)}
+                          aria-expanded={highConfidenceOpen}
+                          title="Clev was confident about these parts — expand to check any of them"
+                          className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
+                        >
+                          <span>{highConfidenceOpen ? "▾" : "▸"}</span>
+                          {high.length} high-confidence part{high.length === 1 ? "" : "s"}
+                        </button>
+                        <span
+                          className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE.high}`}
+                        >
+                          high
+                        </span>
+                        <span className="text-xs text-da-muted">
+                          {highSuggested}/{highMax} suggested
+                          {highAccepted > 0 && ` · ${highAccepted} accepted`}
+                        </span>
+                        {highNoWork > 0 && (
+                          <span
+                            className="text-xs text-amber-300"
+                            title="Clev was confident there is no attempt to mark for these parts. Expand to check them against the scan."
+                          >
+                            · {highNoWork} with no attempt found
+                          </span>
+                        )}
+                        {highChanged > 0 && (
+                          <span
+                            className="text-xs text-amber-300"
+                            title="The previous completed run suggested a different mark for these parts. Expand to see which."
+                          >
+                            · {highChanged} changed since the last run
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {highConfidenceOpen && high.map((r, i) => renderResultRow(r, high[i - 1]))}
+                </>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -1230,6 +1819,7 @@ export function AiGradeClient({
                     ? (s.class_name ?? "Other")
                     : null;
                 const busy = busyStudent === s.profile_id;
+                const reviewOpen = focusStudent === s.profile_id;
                 const absent = absentStudents.has(s.profile_id);
                 const run = runsByStudent[s.profile_id];
                 const newerAttempt = newerAttemptByStudent[s.profile_id];
@@ -1332,10 +1922,19 @@ export function AiGradeClient({
                         {run?.status === "complete" && (
                           <button
                             type="button"
-                            onClick={() => openReview(s.profile_id)}
+                            onClick={() => {
+                              if (reviewOpen) closeReview();
+                              else void openReview(s.profile_id);
+                            }}
+                            aria-expanded={reviewOpen}
+                            title={
+                              reviewOpen
+                                ? "Collapse this student's marks"
+                                : "Show this student's marks below this row"
+                            }
                             className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover"
                           >
-                            Review →
+                            {reviewOpen ? "Hide review ▴" : "Review ▾"}
                           </button>
                         )}
 
@@ -1365,460 +1964,30 @@ export function AiGradeClient({
                         )}
                       </div>
                     </li>
+                    {/* This student's marks, inline under their own row. It
+                        used to be one section at the foot of the page, which
+                        meant scrolling away from the roster -- and away from
+                        the name -- to read them. */}
+                    {reviewOpen && (
+                      <li className="bg-da-hover/30 px-5 py-4">
+                        {resultsStudent === s.profile_id ? (
+                          results.length > 0 ? (
+                            renderReviewPanel()
+                          ) : (
+                            <p className="text-xs text-da-muted">
+                              This run has no marked parts to review.
+                            </p>
+                          )
+                        ) : (
+                          <p className="text-xs text-da-muted">Loading this student&apos;s marks…</p>
+                        )}
+                      </li>
+                    )}
                   </Fragment>
                 );
               })}
             </ul>
           </section>
-
-          {/* -- Review table ---------------------------------------------- */}
-          {focusStudent && resultsStudent === focusStudent && results.length > 0 && (
-            <section className="rounded-xl border border-da-border bg-da-surface shadow-sm">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-da-border px-5 py-3">
-                <div>
-                  <h2 className="text-lg font-bold text-da-text">
-                    Review — {students.find((s) => s.profile_id === focusStudent)?.display_name}
-                  </h2>
-                  <p className="text-xs text-da-muted">
-                    Suggested total {suggestedTotal} / {maxTotal}. Edit any value before accepting.
-                  </p>
-                  {focusStudent && newerAttemptByStudent[focusStudent] && (
-                    <p className="mt-1 text-xs text-amber-300">
-                      {newerAttemptByStudent[focusStudent].status === "submitted" ? (
-                        <>⚠ Being marked overnight — results appear here when they arrive. Showing the last completed run.</>
-                      ) : (
-                        <>
-                          ⚠ A newer re-mark {newerAttemptByStudent[focusStudent].status === "failed" ? "failed" : "is still running"}
-                          {newerAttemptByStudent[focusStudent].error ? ` — ${newerAttemptByStudent[focusStudent].error}` : ""}. Showing the last completed run.
-                        </>
-                      )}
-                    </p>
-                  )}
-                  {focusRun?.coverage?.warnings && focusRun.coverage.warnings.length > 0 && (
-                    <ul className="mt-2 space-y-0.5 text-xs text-amber-300">
-                      {focusRun.coverage.warnings.map((w, i) => (
-                        <li key={i}>⚠ {w}</li>
-                      ))}
-                    </ul>
-                  )}
-                  {liveStandardsReport && (
-                    <div className="mt-3 rounded-lg border border-da-border bg-da-bg/60 p-2">
-                      <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
-                        Strand levels from the marks above (suggested, not yet Clev&apos;s Marks)
-                      </p>
-                      <StandardsReportTable report={liveStandardsReport} compact />
-                    </div>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={acceptSelected}
-                  disabled={accepting || selected.size === 0}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {accepting ? "Writing…" : `Accept ${selected.size} into Clev's Marks`}
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-da-border text-left text-xs uppercase tracking-wide text-da-muted">
-                      <th className="px-4 py-2 font-semibold">
-                        <span className="sr-only">Accept</span>
-                      </th>
-                      <th className="px-2 py-2 font-semibold">Question</th>
-                      <th className="px-2 py-2 font-semibold">Suggested</th>
-                      <th className="px-2 py-2 font-semibold">Max</th>
-                      <th className="px-2 py-2 font-semibold">Confidence</th>
-                      <th className="px-2 py-2 font-semibold">Mark scheme</th>
-                      <th className="px-2 py-2 font-semibold">Status</th>
-                      <th className="px-2 py-2 font-semibold" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortReviewRows(results, (r) => itemById.get(r.test_item_id))
-                      .map((r, idx, rows) => {
-                        const meta = itemById.get(r.test_item_id);
-                        const label = itemLabel(meta);
-                        const isOpen = expanded === r.id;
-                        // The stem is stored on every part row, so printing it
-                        // per row would repeat "Look at this expression..."
-                        // four times down Q1. Print it on the first part of
-                        // each question only, the way the paper itself reads.
-                        const prevMeta = idx > 0 ? itemById.get(rows[idx - 1].test_item_id) : undefined;
-                        const stem =
-                          meta?.stem_text?.trim() && meta.question_number !== prevMeta?.question_number
-                            ? meta.stem_text.trim()
-                            : null;
-                        return (
-                          <Fragment key={r.id}>
-                            <tr className="border-b border-da-border">
-                              <td className="px-4 py-2">
-                                <input
-                                  type="checkbox"
-                                  checked={selected.has(r.id)}
-                                  onChange={() => toggle(r.id)}
-                                  aria-label={`Accept ${label}`}
-                                />
-                              </td>
-                              <td className="px-2 py-2 font-medium text-da-text">
-                                <div className="flex items-center gap-2">
-                                  <span>{label}</span>
-                                  {/* The question itself, at a glance. It was already in
-                                      the expanded panel below, but two clicks deep (Why?,
-                                      then the collapsed Question toggle) -- so marking a
-                                      row meant remembering what the question asked.
-                                      Click enlarges it in the same lightbox the panel
-                                      uses. Rows whose part has no image on file in the
-                                      PPQ bank simply show the label, as before. */}
-                                  {r.question_image_urls.length > 0 ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => setLightboxUrl(r.question_image_urls[0])}
-                                      title={`Enlarge the question for ${label}`}
-                                      className="relative shrink-0 rounded border border-da-border hover:border-blue-400"
-                                    >
-                                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                                      <img
-                                        src={r.question_image_urls[0]}
-                                        alt={`Question ${label}`}
-                                        // object-CONTAIN, not cover: a cropped thumbnail showed
-                                        // the top-left corner of the question and hid the rest,
-                                        // which is worse than useless on a question whose figure
-                                        // sits at the bottom. Whole question, scaled down.
-                                        className="h-40 w-96 cursor-zoom-in rounded bg-white/5 object-contain"
-                                      />
-                                      {r.question_image_urls.length > 1 && (
-                                        <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 text-[10px] leading-4 text-white">
-                                          +{r.question_image_urls.length - 1}
-                                        </span>
-                                      )}
-                                    </button>
-                                  ) : (
-                                    (stem || meta?.question_text?.trim()) && (
-                                      // A teacher-authored part has no image anywhere -- not in
-                                      // the PPQ bank, and a Grade 9 paper has no locked layout to
-                                      // cut one from -- so the question itself is the text.
-                                      // Clamped to two lines, with the full wording on hover, so
-                                      // a long stem cannot stretch the row.
-                                      <span className="max-w-md text-xs font-normal">
-                                        {stem && (
-                                          <span
-                                            title={stem}
-                                            className="line-clamp-2 text-da-text/80"
-                                          >
-                                            <LatexRenderer latex={stem} />
-                                          </span>
-                                        )}
-                                        {meta?.question_text?.trim() && (
-                                          <span
-                                            title={meta.question_text}
-                                            className="line-clamp-2 text-da-muted"
-                                          >
-                                            <LatexRenderer latex={meta.question_text} />
-                                          </span>
-                                        )}
-                                      </span>
-                                    )
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-2 py-2">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={r.max_marks}
-                                  value={drafts[r.id] ?? 0}
-                                  onChange={(e) =>
-                                    setDrafts((prev) => ({
-                                      ...prev,
-                                      [r.id]: Math.max(
-                                        0,
-                                        Math.min(r.max_marks, Number(e.target.value))
-                                      ),
-                                    }))
-                                  }
-                                  className="w-16 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
-                                />
-                                {previousMarks[r.test_item_id] !== undefined &&
-                                  previousMarks[r.test_item_id] !== r.suggested_marks && (
-                                    <span
-                                      className="ml-2 rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-xs text-amber-300"
-                                      title="The previous completed run suggested a different mark for this part -- the model is not certain here, so it is worth a look."
-                                    >
-                                      was {previousMarks[r.test_item_id]}
-                                    </span>
-                                  )}
-                              </td>
-                              <td className="px-2 py-2 text-da-muted">{r.max_marks}</td>
-                              <td className="px-2 py-2">
-                                <span
-                                  className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
-                                >
-                                  {r.confidence}
-                                </span>
-                                {!r.work_found && (
-                                  <span className="ml-2 text-xs text-da-muted">no attempt found</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-2 text-xs text-da-muted">
-                                {SOURCE_LABEL[r.markscheme_source]}
-                              </td>
-                              <td className="px-2 py-2">
-                                {r.accepted ? (
-                                  <span className="text-xs text-green-300">accepted</span>
-                                ) : (
-                                  <button
-                                    type="button"
-                                    onClick={() => acceptOne(r.id)}
-                                    disabled={acceptingRowId === r.id}
-                                    className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
-                                  >
-                                    {acceptingRowId === r.id ? "Accepting…" : "Accept"}
-                                  </button>
-                                )}
-                              </td>
-                              <td className="px-2 py-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setExpanded(isOpen ? null : r.id)}
-                                  className="text-xs text-blue-300 hover:underline"
-                                >
-                                  {isOpen ? "Hide" : "Why?"}
-                                </button>
-                              </td>
-                            </tr>
-
-                            {isOpen && (
-                              <tr className="bg-da-hover">
-                                <td colSpan={8} className="px-6 py-4">
-                                  <div className="space-y-3">
-                                    {r.mark_breakdown.length > 0 && (
-                                      <div className="space-y-1.5">
-                                        {groupMarkBreakdownByPart(r.mark_breakdown).map((group, gi) => (
-                                          <div key={gi} className="flex flex-wrap items-center gap-2">
-                                            {group.part && (
-                                              <span className="text-xs font-semibold text-da-muted">{group.part}</span>
-                                            )}
-                                            {group.entries.map((b, i) => (
-                                              <span
-                                                key={i}
-                                                className={`rounded border px-2 py-0.5 text-xs ${
-                                                  b.awarded
-                                                    ? "border-green-400/40 bg-green-500/15 text-green-300"
-                                                    : "border-da-border bg-da-surface text-da-muted line-through"
-                                                }`}
-                                                title={b.note}
-                                              >
-                                                {b.token}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-
-                                    {r.question_image_urls.length > 0 && (
-                                      <div>
-                                        <button
-                                          type="button"
-                                          onClick={() => toggleQuestionImage(r.id)}
-                                          className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
-                                        >
-                                          <span>{questionImageShown.has(r.id) ? "▾" : "▸"}</span>
-                                          Question
-                                        </button>
-                                        {questionImageShown.has(r.id) && (
-                                          <div className="mt-1 flex flex-wrap gap-2">
-                                            {r.question_image_urls.map((url, i) => (
-                                              // eslint-disable-next-line @next/next/no-img-element
-                                              <img
-                                                key={i}
-                                                src={url}
-                                                alt="Question source image"
-                                                title="Click to enlarge"
-                                                onClick={() => setLightboxUrl(url)}
-                                                className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
-                                              />
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    <div>
-                                      <div className="flex items-center gap-2">
-                                        {r.evidence_image_url ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => toggleEvidenceImage(r.id)}
-                                            className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
-                                          >
-                                            <span>{evidenceImageShown.has(r.id) ? "▾" : "▸"}</span>
-                                            Student&apos;s work
-                                          </button>
-                                        ) : (
-                                          <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
-                                            Student&apos;s work
-                                          </p>
-                                        )}
-                                        {r.evidence_box_source === "teacher" && (
-                                          <span
-                                            title="You drew this region by hand; the crop was re-cut from it."
-                                            className="rounded border border-green-400/40 bg-green-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-green-300"
-                                          >
-                                            Region set by you
-                                          </span>
-                                        )}
-                                        {r.evidence_box_source === "anchor" && (
-                                          <span
-                                            title="Cut from this paper's locked layout, not located by the marker."
-                                            className="rounded border border-blue-400/40 bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-300"
-                                          >
-                                            Paper layout
-                                          </span>
-                                        )}
-                                        {!r.evidence_image_url && (
-                                          <button
-                                            type="button"
-                                            onClick={() => openBoxEditor(r, label)}
-                                            disabled={pageImageLoadingId === r.id}
-                                            title="Open the scanned page and draw where this part's work is"
-                                            className="text-xs text-blue-400 underline underline-offset-2 hover:text-blue-300 disabled:opacity-50"
-                                          >
-                                            {pageImageLoadingId === r.id ? "Opening…" : "Locate on page"}
-                                          </button>
-                                        )}
-                                      </div>
-                                      <div className="mt-1 space-y-2">
-                                        {evidenceImageShown.has(r.id) && r.evidence_image_url && (
-                                          <div className="relative inline-block">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img
-                                              src={r.evidence_image_url}
-                                              alt="Cropped scan region the model read this part's work from"
-                                              title="Click to enlarge"
-                                              onClick={() => setLightboxUrl(r.evidence_image_url)}
-                                              className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
-                                            />
-                                            <button
-                                              type="button"
-                                              onClick={() => openBoxEditor(r, label)}
-                                              disabled={pageImageLoadingId === r.id}
-                                              title="Show the full page this crop came from, and redraw the region if it is wrong"
-                                              className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded bg-black/60 text-xs text-white hover:bg-black/80 disabled:opacity-50"
-                                            >
-                                              {pageImageLoadingId === r.id ? "…" : "⤢"}
-                                            </button>
-                                          </div>
-                                        )}
-                                        {editingEvidenceId === r.id ? (
-                                          <div className="space-y-2">
-                                            <textarea
-                                              value={evidenceDraft[r.id] ?? ""}
-                                              onChange={(e) =>
-                                                setEvidenceDraft((prev) => ({ ...prev, [r.id]: e.target.value }))
-                                              }
-                                              rows={3}
-                                              placeholder="Correct the transcription of the student's work for this part -- checked against the scan above -- then save to re-grade it."
-                                              className="w-full rounded border border-da-border p-2 font-mono text-xs focus:ring-2 focus:ring-blue-400"
-                                            />
-                                            <div className="flex gap-2">
-                                              <button
-                                                type="button"
-                                                onClick={() => saveEvidence(r)}
-                                                disabled={regradingId === r.id}
-                                                className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-                                              >
-                                                {regradingId === r.id ? "Re-grading…" : "Save & re-grade"}
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={cancelEditEvidence}
-                                                disabled={regradingId === r.id}
-                                                className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
-                                              >
-                                                Cancel
-                                              </button>
-                                            </div>
-                                          </div>
-                                        ) : (
-                                          <div
-                                            role="button"
-                                            tabIndex={0}
-                                            onClick={() => startEditEvidence(r)}
-                                            onKeyDown={(e) => {
-                                              if (e.key === "Enter" || e.key === " ") {
-                                                e.preventDefault();
-                                                startEditEvidence(r);
-                                              }
-                                            }}
-                                            title="Click to fix transcription"
-                                            className="cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/30"
-                                          >
-                                            {r.evidence ? (
-                                              <LatexRenderer latex={r.evidence} />
-                                            ) : (
-                                              <p className="text-xs text-da-muted">
-                                                No transcription on file -- click to add one.
-                                              </p>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {r.markscheme_image_urls.length > 0 && (
-                                      <div>
-                                        <button
-                                          type="button"
-                                          onClick={() => toggleMarkschemeImage(r.id)}
-                                          className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
-                                        >
-                                          <span>{markschemeImageShown.has(r.id) ? "▾" : "▸"}</span>
-                                          Mark scheme
-                                        </button>
-                                        {markschemeImageShown.has(r.id) && (
-                                          <div className="mt-1 flex flex-wrap gap-2">
-                                            {r.markscheme_image_urls.map((url, i) => (
-                                              // eslint-disable-next-line @next/next/no-img-element
-                                              <img
-                                                key={i}
-                                                src={url}
-                                                alt="Mark scheme source image"
-                                                title="Click to enlarge"
-                                                onClick={() => setLightboxUrl(url)}
-                                                className="max-h-64 cursor-zoom-in rounded border border-da-border hover:border-blue-400"
-                                              />
-                                            ))}
-                                          </div>
-                                        )}
-                                      </div>
-                                    )}
-
-                                    {r.reasoning && (
-                                      <div>
-                                        <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
-                                          Examiner reasoning
-                                        </p>
-                                        <div className="mt-1 rounded border border-da-border bg-da-surface p-3">
-                                          <LatexRenderer latex={r.reasoning} />
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
         </>
       )}
 

@@ -146,11 +146,21 @@ The structure is not guessable, and each of these cost a wasted run:
 
 - **The roster loads after hydration, long past `networkidle`.** Waiting on
   `networkidle` finds only "Loading this assessment…". Wait for that text to
-  detach, then for a `Review →` button to be visible.
-- **Crops are two levels deep.** Click `Review →` for a student, then wait for
-  the `Review — <name>` heading (it renders below the roster, so scroll it into
-  view). Each part is a table row with a **`Why?`** expander; the crop lives
-  inside that, behind a further **`Student's work`** toggle.
+  detach, then for a `Review ▾` button to be visible. It is a toggle: the same
+  button reads `Hide review ▴` once that student's panel is open, so match it
+  loosely rather than on the arrow.
+- **The review panel opens inside the roster**, as a row directly under the
+  student it belongs to - not as a section at the foot of the page. Wait for
+  the `Review — <name>` heading and scroll it into view.
+- **The confident parts are foldable.** Every high-confidence part sits under
+  one summary row reading `N high-confidence parts`, which starts open but can
+  be folded away, and its rows leave the DOM when it is. Check its
+  `aria-expanded` and expand if needed before looking a part up: a folded-away
+  part reports as "no row found for this part label", which reads like missing
+  data and is not.
+- **Crops are two levels deep.** Each part is a table row with a **`Why?`**
+  expander; the crop lives inside that, behind a further **`Student's work`**
+  toggle.
 - **`Why?` behaves like an accordion** - opening one closes the last. To
   capture several parts, open, screenshot, close, move on. Batch-clicking six
   of them leaves exactly one open.
