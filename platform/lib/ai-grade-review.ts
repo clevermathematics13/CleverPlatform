@@ -112,3 +112,34 @@ export function sortReviewRows<T>(rows: T[], itemFor: (row: T) => ReviewItemRef 
     return ka.roman - kb.roman;
   });
 }
+
+/** Minimal shape of an ai_grade_results row needed to split the review table. */
+export interface ReviewConfidenceRef {
+  confidence: string;
+}
+
+/**
+ * Splits already-ordered review rows into the parts a teacher still has to
+ * look at and the high-confidence ones the panel minimizes behind a single
+ * summary row.
+ *
+ * A full paper is 20-plus rows of which most are marked "high", so the parts
+ * that actually need a human -- the medium, the low, the ones with no working
+ * found -- were scattered down a table the teacher had to read end to end.
+ * Collapsing the confident ones puts them one click away instead of in the
+ * way.
+ *
+ * Relative order is preserved inside both halves, so each still reads in
+ * paper order when the caller has sorted the input with sortReviewRows.
+ */
+export function partitionByConfidence<T extends ReviewConfidenceRef>(
+  rows: T[]
+): { high: T[]; needsLook: T[] } {
+  const high: T[] = [];
+  const needsLook: T[] = [];
+  for (const row of rows) {
+    if (row.confidence === "high") high.push(row);
+    else needsLook.push(row);
+  }
+  return { high, needsLook };
+}

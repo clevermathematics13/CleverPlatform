@@ -4,6 +4,7 @@ import {
   rowsForRun,
   partSortKey,
   sortReviewRows,
+  partitionByConfidence,
 } from "./ai-grade-review";
 
 const LUCIANA = "42d4dd74-a367-4776-b45b-c1702989dbe8";
@@ -157,5 +158,64 @@ describe("sortReviewRows", () => {
     ];
     sortReviewRows(rows, itemFor);
     expect(rows.map((r) => r.id)).toEqual(["4b", "4a"]);
+  });
+});
+
+describe("partitionByConfidence", () => {
+  type Row = { id: string; confidence: string };
+
+  it("separates the high-confidence rows from the ones needing a look", () => {
+    const rows: Row[] = [
+      { id: "1", confidence: "high" },
+      { id: "2", confidence: "low" },
+      { id: "3", confidence: "high" },
+      { id: "4", confidence: "medium" },
+    ];
+    const { high, needsLook } = partitionByConfidence(rows);
+    expect(high.map((r) => r.id)).toEqual(["1", "3"]);
+    expect(needsLook.map((r) => r.id)).toEqual(["2", "4"]);
+  });
+
+  // Both halves are rendered as tables, so each must still read in paper
+  // order -- which is the order sortReviewRows already put them in.
+  it("keeps the incoming order inside each half", () => {
+    const rows: Row[] = [
+      { id: "1a", confidence: "medium" },
+      { id: "1b", confidence: "high" },
+      { id: "2", confidence: "high" },
+      { id: "3", confidence: "low" },
+      { id: "4", confidence: "high" },
+    ];
+    const { high, needsLook } = partitionByConfidence(rows);
+    expect(high.map((r) => r.id)).toEqual(["1b", "2", "4"]);
+    expect(needsLook.map((r) => r.id)).toEqual(["1a", "3"]);
+  });
+
+  it("treats an unrecognised confidence as needing a look", () => {
+    const { high, needsLook } = partitionByConfidence([
+      { id: "1", confidence: "HIGH" },
+      { id: "2", confidence: "" },
+    ]);
+    expect(high).toEqual([]);
+    expect(needsLook.map((r) => r.id)).toEqual(["1", "2"]);
+  });
+
+  it("handles an all-high run and an empty run", () => {
+    const allHigh = partitionByConfidence([
+      { id: "1", confidence: "high" },
+      { id: "2", confidence: "high" },
+    ]);
+    expect(allHigh.high).toHaveLength(2);
+    expect(allHigh.needsLook).toEqual([]);
+    expect(partitionByConfidence([])).toEqual({ high: [], needsLook: [] });
+  });
+
+  it("does not mutate the input array", () => {
+    const rows: Row[] = [
+      { id: "1", confidence: "high" },
+      { id: "2", confidence: "low" },
+    ];
+    partitionByConfidence(rows);
+    expect(rows.map((r) => r.id)).toEqual(["1", "2"]);
   });
 });
