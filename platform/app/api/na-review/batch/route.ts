@@ -8,12 +8,9 @@ import {
   loadInvitedRoster,
   matchSegmentsToInvitedRoster,
   scanCoverPages,
-  COVER_PAGE_CHECK_MODEL,
-  COVER_PAGE_CHECK_SYSTEM_PROMPT,
-  buildCoverPageCheckUserPrompt,
-  validateCoverPageCheck,
   type CoverPageCheck,
 } from "@/lib/na-scanning";
+import { runCoverPageCheck } from "@/lib/cover-page-check";
 
 export const maxDuration = 300;
 
@@ -227,7 +224,8 @@ export async function POST(request: NextRequest) {
   // Extracts a single page as its own one-page PDF and asks whether it's a
   // cover page (and if so, whose). One page per request is what keeps this
   // clear of Anthropic's document-size and page-count limits entirely. The
-  // roster name list is baked into the prompt (see buildCoverPageCheckUserPrompt)
+  // roster name list is baked into the prompt (see buildCoverPageCheckUserPrompt
+  // in lib/na-scanning.ts)
   // so the model is doing constrained recognition against the real class
   // roster rather than open-vocabulary handwriting OCR.
   const checkPage = async (page: number): Promise<CoverPageCheck> => {
@@ -244,36 +242,21 @@ export async function POST(request: NextRequest) {
       singlePageDoc.addPage(copied);
       const singlePageBytes = await singlePageDoc.save();
 
-      const message = await anthropic.messages.create({
-        model: COVER_PAGE_CHECK_MODEL,
-        max_tokens: 512,
-        system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: "application/pdf",
-                  data: Buffer.from(singlePageBytes).toString("base64"),
-                },
-              },
-              { type: "text", text: buildCoverPageCheckUserPrompt(rosterNames) },
-            ],
-          },
-        ],
+      // An unmatched cover page gets a second read by a stronger model
+      // (lib/cover-page-check.ts), recorded under its own pipeline.
+      const outcome = await runCoverPageCheck({
+        anthropic,
+        pdfBase64: Buffer.from(singlePageBytes).toString("base64"),
+        rosterNames,
+        onUsage: ({ stage, model, usage }) =>
+          recordUsage(supabase, {
+            pipeline: stage === "escalation" ? "na_cover_page_escalation" : "na_cover_page",
+            model,
+            usage,
+            ref: { type: "na_scan_batch", id: batch.id },
+          }),
       });
-      await recordUsage(supabase, {
-        pipeline: "na_cover_page",
-        model: COVER_PAGE_CHECK_MODEL,
-        usage: message.usage,
-        ref: { type: "na_scan_batch", id: batch.id },
-      });
-      const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-      const validated = validateCoverPageCheck(text);
-      return validated.ok ? validated.result : notCover;
+      return outcome.ok ? outcome.result : notCover;
     } catch {
       // A failed check reads as "not a cover page": scanCoverPages keeps
       // searching its window and falls back to the expected boundary with a

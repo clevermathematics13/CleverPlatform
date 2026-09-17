@@ -1643,36 +1643,88 @@ function normaliseName(name: string): string {
     .trim();
 }
 
-/** Standard Levenshtein edit distance between two strings. */
-function levenshteinDistance(a: string, b: string): number {
+/**
+ * Letter pairs that handwriting OCR regularly swaps: each is a substitution
+ * that costs half an edit in handwritingEditDistance, because seeing one
+ * where the roster has the other is weak evidence of a different name.
+ * Curated from misreads seen on real cover pages (a looped V read as N,
+ * o and e, l and t) plus the standard confusions of cursive and print.
+ * Order within a pair does not matter.
+ */
+const CONFUSABLE_LETTER_PAIRS: ReadonlyArray<[string, string]> = [
+  ["n", "v"], ["u", "v"], ["u", "n"], ["r", "v"], ["r", "n"], ["m", "n"],
+  ["h", "n"], ["h", "b"], ["k", "h"], ["l", "t"], ["l", "i"], ["i", "j"],
+  ["f", "t"], ["e", "o"], ["a", "o"], ["a", "u"], ["c", "e"], ["g", "q"],
+  ["g", "y"], ["y", "j"], ["s", "z"],
+];
+
+/**
+ * Two letters read where the roster has one, or the reverse: "Vicente"
+ * came back as "Nicolite" because the n was read as l-i. Each is a
+ * half-edit too. [two letters, one letter].
+ */
+const CONFUSABLE_LETTER_SPLITS: ReadonlyArray<[string, string]> = [
+  ["li", "n"], ["ii", "u"], ["rn", "m"], ["nn", "m"], ["cl", "d"], ["vv", "w"],
+];
+
+const CONFUSION_COST = 0.5;
+
+const confusableSubstitutions = new Set(
+  CONFUSABLE_LETTER_PAIRS.flatMap(([a, b]) => [a + b, b + a])
+);
+const confusableSplits = new Map(CONFUSABLE_LETTER_SPLITS);
+
+/**
+ * Edit distance between two name tokens where a known handwriting
+ * confusion is half an edit. Plain Levenshtein otherwise: an unrelated
+ * substitution, an insertion or a deletion each cost one. So "nicolite"
+ * and "vicente" are 1.5 apart (n/v, o/e, li/n) where Levenshtein says 4,
+ * while "nicolas" and "vicente" stay 4 apart -- the discount only reaches
+ * the misreads that handwriting actually produces.
+ */
+function handwritingEditDistance(a: string, b: string): number {
   if (a === b) return 0;
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  // d[i][j] is the distance between a[0..i) and b[0..j).
+  const d: number[][] = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0))
+  );
   for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
     for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+      const ca = a[i - 1];
+      const cb = b[j - 1];
+      const sub = ca === cb ? 0 : confusableSubstitutions.has(ca + cb) ? CONFUSION_COST : 1;
+      let best = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + sub);
+      // Two letters of a read as one letter of b, and the reverse.
+      if (i >= 2 && confusableSplits.get(a[i - 2] + ca) === cb) {
+        best = Math.min(best, d[i - 2][j - 1] + CONFUSION_COST);
+      }
+      if (j >= 2 && confusableSplits.get(b[j - 2] + cb) === ca) {
+        best = Math.min(best, d[i - 1][j - 2] + CONFUSION_COST);
+      }
+      d[i][j] = best;
     }
-    prev = cur;
   }
-  return prev[b.length];
+  return d[a.length][b.length];
 }
 
 /**
  * Two name tokens count as the same word if they're identical, or close
- * enough that a coincidental match is unlikely — a single edit for short
+ * enough that a coincidental match is unlikely -- a single edit for short
  * tokens, proportionally more for longer ones (two edits in a 6-letter
  * word is still clearly the same name; the same two edits in a 4-letter
  * word usually isn't). Catches common handwriting-OCR misreads ("Felloh"
  * or "Kelloh" for "Fellah", "Seungjin" for "Seungjun") without conflating
  * genuinely different short names (kept exact-only below 4 characters).
+ * The distance is handwriting-aware (above), so a misread made of known
+ * letter confusions ("Nicolite" for Vicente) fits inside the same budget
+ * that an arbitrary respelling would not.
  */
 function tokensMatch(a: string, b: string): boolean {
   if (a === b) return true;
   if (a.length < 4 || b.length < 4) return false;
-  const dist = levenshteinDistance(a, b);
+  const dist = handwritingEditDistance(a, b);
   const maxLen = Math.max(a.length, b.length);
   const allowed = maxLen < 6 ? 1 : Math.floor(maxLen * 0.34);
   return dist <= allowed;

@@ -513,6 +513,98 @@ export function validateCoverPageCheck(
 }
 
 // -----------------------------------------------------------------------------
+// Second read of an unmatched cover page
+// -----------------------------------------------------------------------------
+//
+// Haiku reads the name off a whole page that the API has downsized to about
+// 1500px on its long side, so a handwritten name is a strip a few dozen
+// pixels tall. Most names survive that; a looped V read as an N ("Nicolite"
+// for Vicente) does not, and once Haiku has transcribed a name that is on
+// no roster it leaves rosterMatch null and the teacher picks by hand. A
+// second, stronger read of JUST those pages is cheap -- two or three pages
+// in a class scan against a hundred and fifty Haiku checks -- so an
+// unmatched cover page is re-read by Sonnet with the roster and Haiku's
+// own transcription before the segments are proposed. Cover pages Haiku
+// already matched, and pages that are not cover pages, never reach it.
+
+/**
+ * The model for the second read. Sonnet, not Opus: the question is still
+ * "which of these fifteen names is this handwriting?", and what the first
+ * read lacked was vision quality, not reasoning.
+ */
+export const COVER_PAGE_NAME_ESCALATION_MODEL = "claude-sonnet-5";
+
+/**
+ * Whether a first read should be sent for a second one: it found a cover
+ * page, a roster was supplied, and no roster entry was matched. A page
+ * with no roster to match against has nothing to gain from a second read,
+ * and a page that is not a cover page is not this stage's question.
+ */
+export function needsNameEscalation(check: CoverPageCheck, rosterSize: number): boolean {
+  return check.isCoverPage && rosterSize > 0 && !check.rosterMatch?.trim();
+}
+
+/**
+ * The user prompt for the second read. The same JSON contract as the first
+ * (the same validator reads the answer), with two additions: the first
+ * read's transcription, so the model knows what was tried and why it is
+ * being asked, and the handwriting confusions that most often turn a real
+ * name into one that is on no roster.
+ */
+export function buildCoverPageEscalationUserPrompt(rosterNames: string[], firstRead: CoverPageCheck): string {
+  const firstName = firstRead.studentName?.trim();
+  const attempt = firstName
+    ? `A first, quicker read of this page transcribed the handwritten name as "${firstName}", which matches no roster entry.`
+    : "A first, quicker read of this page confirmed it is a cover page but could not read the handwritten name.";
+  const rosterBlock = `ROSTER (${rosterNames.length} students actually enrolled in this class):\n${rosterNames
+    .map((n) => `- ${n}`)
+    .join("\n")}`;
+  return `This page is a student's cover page. ${attempt}
+
+Read the handwritten name again, carefully, and decide which roster entry it is. Every student whose script is in this scan is on the roster, so the right answer is very likely one of these names; a transcription that is on no roster is far more likely to be a misread than a student who is not enrolled. Compare the handwriting against each roster entry in turn: the number of letters, the tall and hanging letters, the first letter's shape. Handwriting that is regularly misread: a looped V or U read as N, n read as li or u, rn read as m, cl read as d, l and t, i and l, o and e, a and o, c and e, g and q, f and t.
+
+${rosterBlock}
+
+If the handwriting plausibly matches exactly ONE roster entry, set rosterMatch to that entry's name EXACTLY as it appears above. If it could be more than one entry, or genuinely matches none, set rosterMatch to null. studentName is your own best raw reading of the handwriting either way. Keep isCoverPage true.
+
+Return the JSON object now.`;
+}
+
+/**
+ * Fold the second read into the first. The first read's cover-page decision
+ * stands whatever the second says -- the second read was asked about the
+ * NAME, and letting it flip isCoverPage would re-segment the scan on the
+ * answer to a question it was not asked. A roster match from the second
+ * read replaces the first's empty one, with the second read's confidence,
+ * and its note records both readings so the review table shows why the
+ * name changed. Without a match, the stronger model's raw reading is kept
+ * (when it has one) and the teacher still picks by hand.
+ */
+export function mergeEscalatedCoverPageCheck(first: CoverPageCheck, second: CoverPageCheck): CoverPageCheck {
+  const firstName = first.studentName?.trim() || null;
+  const secondName = second.studentName?.trim() || null;
+  const secondMatch = second.rosterMatch?.trim() || null;
+  const secondNote = second.note?.trim();
+  const readAs = firstName ? `first read as '${firstName}'` : "first read could not read the name";
+  if (secondMatch) {
+    return {
+      isCoverPage: first.isCoverPage,
+      studentName: secondName ?? firstName,
+      rosterMatch: secondMatch,
+      confidence: second.confidence,
+      note: `${secondNote ? `${secondNote}; ` : ""}${readAs}, matched to '${secondMatch}' on a second read`,
+    };
+  }
+  return {
+    ...first,
+    studentName: secondName ?? firstName,
+    note: `${first.note?.trim() ? `${first.note.trim()}; ` : ""}a second read ${
+      secondName ? `read it as '${secondName}' and ` : ""
+    }could not match it to the roster either`,
+  };
+}
+
+// -----------------------------------------------------------------------------
 // Cover-page-only segmentation (the cheap path)
 // -----------------------------------------------------------------------------
 //

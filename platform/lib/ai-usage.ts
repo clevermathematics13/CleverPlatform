@@ -11,11 +11,16 @@ export type UsagePipeline =
   | "ai_grade_segment"
   | "ai_grade_chunk_cover"
   | "ai_grade_cover_page"
+  // The second read of a cover page whose name the first read could not
+  // place on the roster (lib/cover-page-check.ts). Its own row so the
+  // cost of the stronger model stays visible next to the Haiku checks.
+  | "ai_grade_cover_page_escalation"
   | "ai_grade_blank_check"
   | "na_assess"
   | "na_assess_wide"
   | "na_assess_batch"
   | "na_cover_page"
+  | "na_cover_page_escalation"
   // Writing an original practice question from a bank question (Opus, one
   // call per question, at a teacher's desk rather than in a pipeline).
   | "practice_question"

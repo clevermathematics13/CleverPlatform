@@ -181,6 +181,21 @@ must exercise Server Actions.
   a packet subtitled "Nuanced Analysis Packet S3E11" used to fail to render.
 - **Sonnet 5 returns thinking blocks first.** Use
   `response.content.find(b => b.type === "text")`, never `content[0].text`.
+- **A cover page Haiku cannot place on the roster is read a second time by
+  Sonnet.** The API downsizes a whole page to ~1500px, so a handwritten name
+  is a strip a few dozen pixels tall and a looped V reads as an N ("Nicolite"
+  for Vicente, 16 Sep 2026). `runCoverPageCheck()` in `lib/cover-page-check.ts`
+  is the ONE place both batch pipelines and the worker make the check; it
+  sends the same page to `COVER_PAGE_NAME_ESCALATION_MODEL` with the roster
+  and Haiku's transcription when Haiku found a cover page but no roster match
+  (`pipeline = 'ai_grade_cover_page_escalation'` / `'na_cover_page_escalation'`,
+  a few pages per class). The second read can change the name, never the
+  cover-page decision (`mergeEscalatedCoverPageCheck`). Downstream,
+  `matchSegmentsToRoster` in `lib/ai-grading.ts` scores a known handwriting
+  confusion (n/v, o/e, li/n, rn/m, ...) as half an edit, so a misread built
+  only of those still lands inside the two-edit budget. A student a teacher
+  picks by hand can still be remembered as an alias (`name_aliases`), which
+  short-circuits both.
 - **Supabase:** `CREATE OR REPLACE FUNCTION` fails silently on return-type change -
   use `DROP` + `CREATE` as separate calls. `execute_sql` returns one result set per
   call. Use `public.set_updated_at()` (no `moddatetime`). Revoke EXECUTE from PUBLIC

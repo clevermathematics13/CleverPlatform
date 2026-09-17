@@ -20,14 +20,8 @@ import {
   type ProposedSegment,
   type RosterEntry,
 } from "@/lib/ai-grading";
-import {
-  COVER_PAGE_CHECK_MODEL,
-  COVER_PAGE_CHECK_SYSTEM_PROMPT,
-  buildCoverPageCheckUserPrompt,
-  loadInvitedRoster,
-  validateCoverPageCheck,
-  type CoverPageCheck,
-} from "@/lib/na-scanning";
+import { loadInvitedRoster, type CoverPageCheck } from "@/lib/na-scanning";
+import { runCoverPageCheck } from "@/lib/cover-page-check";
 import { QUICK_READ_MAX_PAGES, segmentByCoverPages } from "@/lib/cover-page-segmentation";
 import { chunkFileName, needsChunking, planBatchChunks, type ChunkLimits } from "@/lib/batch-chunking";
 import { applyBlankPages, detectBlankPages } from "@/lib/blank-pages";
@@ -269,34 +263,20 @@ async function chunkOversizedUpload(args: {
 }) {
   const { supabase, anthropic, sourceDoc, buffer, pageCount, storagePath, fileName, rosterNames, readMode } = args;
 
+  // The chunker only needs to know WHETHER a page is a cover, so an
+  // unmatched name gets no second read here; the part's own quick read
+  // will ask about the same page again with escalation on.
   const isCoverPage = async (page: number): Promise<boolean> => {
-    const message = await anthropic.messages.create({
-      model: COVER_PAGE_CHECK_MODEL,
-      max_tokens: 512,
-      system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: { type: "base64", media_type: "application/pdf", data: await singlePagePdf(sourceDoc, page) },
-            },
-            { type: "text", text: buildCoverPageCheckUserPrompt(rosterNames) },
-          ],
-        },
-      ],
+    const outcome = await runCoverPageCheck({
+      anthropic,
+      pdfBase64: await singlePagePdf(sourceDoc, page),
+      rosterNames,
+      escalateUnmatched: false,
+      // No batch row exists yet for the parent upload (its parts get their
+      // own rows when they are segmented), so the usage has no ref.
+      onUsage: ({ model, usage }) => recordUsage(supabase, { pipeline: "ai_grade_chunk_cover", model, usage }),
     });
-    // No batch row exists yet for the parent upload (its parts get their
-    // own rows when they are segmented), so the usage has no ref.
-    await recordUsage(supabase, {
-      pipeline: "ai_grade_chunk_cover",
-      model: COVER_PAGE_CHECK_MODEL,
-      usage: message.usage,
-    });
-    const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-    const validated = validateCoverPageCheck(text);
-    return validated.ok && validated.result.isCoverPage;
+    return outcome.ok && outcome.result.isCoverPage;
   };
 
   const plan = await planBatchChunks({
@@ -624,39 +604,30 @@ export async function POST(
     // the whole verdict rather than just the boolean: the cover page's name
     // is read in the SAME request as the is-this-a-cover decision, so
     // asking "whose is it?" separately would double the cost of the read.
+    // A cover page whose name Haiku cannot place on the roster gets one
+    // more read by a stronger model (lib/cover-page-check.ts) -- a handful
+    // of pages per class, recorded under their own pipeline so the spend
+    // is visible.
     const rosterNames = roster.map((r) => r.displayName);
     const checkPage = async (page: number): Promise<CoverPageCheck> => {
-      const message = await anthropic.messages.create({
-        model: COVER_PAGE_CHECK_MODEL,
-        max_tokens: 512,
-        system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: { type: "base64", media_type: "application/pdf", data: await singlePagePdf(sourceDoc, page) },
-              },
-              { type: "text", text: buildCoverPageCheckUserPrompt(rosterNames) },
-            ],
-          },
-        ],
+      const outcome = await runCoverPageCheck({
+        anthropic,
+        pdfBase64: await singlePagePdf(sourceDoc, page),
+        rosterNames,
+        onUsage: ({ stage, model, usage }) =>
+          recordUsage(supabase, {
+            pipeline: stage === "escalation" ? "ai_grade_cover_page_escalation" : "ai_grade_cover_page",
+            model,
+            usage,
+            ref: { type: "ai_grade_batch", id: batch.id },
+          }),
       });
-      await recordUsage(supabase, {
-        pipeline: "ai_grade_cover_page",
-        model: COVER_PAGE_CHECK_MODEL,
-        usage: message.usage,
-        ref: { type: "ai_grade_batch", id: batch.id },
-      });
-      const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-      const validated = validateCoverPageCheck(text);
       // Throw rather than report "not a cover page": an unreadable answer is
       // no evidence about the page, and swallowing it would fold a student's
       // script silently into the student before them. segmentByCoverPages
       // records the throw as checkFailed and warns about that page instead.
-      if (!validated.ok) throw new Error(validated.error);
-      return validated.result;
+      if (!outcome.ok) throw new Error(outcome.error);
+      return outcome.result;
     };
 
     const plan = await segmentByCoverPages({ pageCount, checkPage });
