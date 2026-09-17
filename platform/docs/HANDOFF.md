@@ -366,8 +366,25 @@ grading call, it returns a confabulated reading. Measured 14 Sep 2026 on a one-p
 fixture, three runs at temperature 0, each reporting the page's content at both its
 top and its bottom when it carried that content once.
 
-So scans must arrive upright, and a duplex batch with every even page rotated is
-fixed BEFORE upload - in Acrobat, Rotate Pages / Even Pages Only / 180. The
+**Partly no longer true for the TEST AI-grading path, 16 Sep 2026.** The
+synchronous grade route and the overnight queue route now run
+`lib/scan-orientation.ts` on every student scan before it is marked: one Haiku
+call reads which way up each page's printed text is, pdf-lib writes /Rotate 180
+onto the inverted pages (what Acrobat writes), and the corrected PDF replaces
+the stored one at the same path, so the crop service and "Locate on page" read
+the same upright pages the marker did. Found on Key Assessment 1 (Grade 9
+Extended): the 15 Sep batch of 19 had been fixed in Acrobat, the 16 Sep batch
+of 13 had not, and every crop from an even page of those 13 was upside down in
+the review panel (first seen on Kaito Fujii's Q13(b)). The check was validated
+on all 32 of those scans before it shipped: 13/13 inverted-even-page scans and
+19/19 upright scans read correctly. The 13 stored scans were then corrected in
+place and those students re-marked from the upright pages. It is best-effort by design (a failed or
+miscounted answer grades the scan as it is, with a console warning), and it does
+NOT cover the NA scan pipeline below, which still requires upright input.
+
+For the NA pipeline, scans must arrive upright, and a duplex batch with every
+even page rotated is fixed BEFORE upload - in Acrobat, Rotate Pages / Even
+Pages Only / 180. The
 `/Rotate 180` that writes is honoured the whole way down, verified the same day:
 `pdf-lib`'s `copyPages` preserves it through the split routes (and the
 `canCopySourceWhole` path is a byte-for-byte Storage copy), PyMuPDF's `get_pixmap`

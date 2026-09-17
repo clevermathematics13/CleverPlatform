@@ -12,6 +12,9 @@ export type UsagePipeline =
   | "ai_grade_chunk_cover"
   | "ai_grade_cover_page"
   | "ai_grade_blank_check"
+  // Reading which way up each page of a student scan is, before it is marked
+  // (Haiku, one call per scan; lib/scan-orientation.ts).
+  | "ai_grade_orientation"
   | "na_assess"
   | "na_assess_wide"
   | "na_assess_batch"

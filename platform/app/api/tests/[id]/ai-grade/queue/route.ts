@@ -14,8 +14,17 @@ import {
   loadGradeableMarkScheme,
   loadStudentDisplayName,
 } from "@/lib/ai-grading-run";
+import { uprightScan } from "@/lib/scan-orientation";
 
 export const maxDuration = 300;
+
+/**
+ * How many scans have their orientation checked at once. Each check is one
+ * Haiku call of a few seconds; a class of 20 done one at a time would spend
+ * most of the 300s budget waiting, and done all at once would hit the rate
+ * limit. Four keeps a full batch under half a minute.
+ */
+const ORIENTATION_CHECK_CONCURRENCY = 4;
 
 /**
  * How many students go into one submitted batch.
@@ -254,6 +263,30 @@ export async function POST(
 
   const remaining = students.slice(stoppedAt);
 
+  // -- Orientation -----------------------------------------------------------
+  // Same correction the synchronous route makes, for the same reason: a duplex
+  // scan whose even pages are upside down is otherwise marked from confabulated
+  // readings and reviewed against inverted crops. Done here, before the runs
+  // are opened, so a scan that cannot be checked is still submitted as it is.
+  // The stored scan is replaced in place, so `storagePath` stays valid.
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  for (let start = 0; start < collected.length; start += ORIENTATION_CHECK_CONCURRENCY) {
+    const slice = collected.slice(start, start + ORIENTATION_CHECK_CONCURRENCY);
+    await Promise.all(
+      slice.map(async (c) => {
+        const upright = await uprightScan({
+          anthropic,
+          supabase,
+          bucket: SCAN_BUCKET,
+          storagePath: c.storagePath,
+          buffer: Buffer.from(c.scanBase64, "base64"),
+        });
+        if (upright.warning) console.warn(`[ai-grade queue] ${c.studentId}: ${upright.warning}`);
+        c.scanBase64 = upright.base64;
+      })
+    );
+  }
+
   if (collected.length === 0) {
     // Every student this call reached had an unusable scan. No batch is
     // created (Anthropic rejects an empty request list) and no run is opened.
@@ -315,8 +348,6 @@ export async function POST(
       cacheTtl: "5m",
     }),
   }));
-
-  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   let anthropicBatchId: string;
   try {
