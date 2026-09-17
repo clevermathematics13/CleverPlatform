@@ -34,10 +34,23 @@
  * that mismatch is visible, and refuses a whole-test run without --yes. Scope
  * with --run when a test has been sat more than once.
  *
+ * SECOND MODE, --widen-model, for a paper with NO layout. Drawing regions for
+ * a whole paper is the real fix and this is not a substitute for it, but it
+ * needs no regions at all. The model's box is not merely wrong, it is wrong
+ * in a measured DIRECTION -- the work sits a mean 0.106 page-heights below the
+ * box centre -- so re-cutting each stored model box with its bottom edge
+ * dropped by MODEL_DOWNWARD_BIAS recovers most of the work the original crop
+ * cut off, using the coordinates already on the row and no model call. The
+ * box stays stamped source='model', because a widened guess is still a guess
+ * and must keep saying so in the review table. This is exactly what
+ * padModelBox now does at grading time; this applies it to rows marked before
+ * that change.
+ *
  * Usage (from platform/):
  *   npx tsx scripts/recut-evidence-crops.ts --test <testId> --dry-run --limit 5
  *   npx tsx scripts/recut-evidence-crops.ts --run <runId> --yes
  *   npx tsx scripts/recut-evidence-crops.ts --test <testId> --yes --snapshot recut.json
+ *   npx tsx scripts/recut-evidence-crops.ts --test <testId> --widen-model --yes
  *   npx tsx scripts/recut-evidence-crops.ts --revert recut.json
  *
  * Flags:
@@ -47,6 +60,7 @@
  *   --snapshot <path>  where to write the undo file (default recut-snapshot-<ts>.json)
  *   --dry-run          report what would change, write nothing
  *   --yes              required to write when the scope is a whole test
+ *   --widen-model      no layout needed: re-cut model boxes with a lower bottom edge
  *   --revert <path>    restore the three columns from a snapshot and exit
  *
  * Storage retention: superseded crops are kept. Nothing in this repo deletes
@@ -62,6 +76,7 @@ import {
   anchorToEvidenceBox,
   fractionBoxToPoints,
   pointsToFractions,
+  MODEL_DOWNWARD_BIAS,
   type EvidenceBox,
   type PageSizePt,
 } from "../lib/evidence-crops";
@@ -84,6 +99,7 @@ const TEST_ID = value("test");
 const RUN_IDS = values("run");
 const LIMIT = value("limit") ? Number(value("limit")) : Infinity;
 const DRY_RUN = flag("dry-run");
+const WIDEN_MODEL = flag("widen-model");
 const YES = flag("yes");
 const REVERT_FROM = value("revert");
 const SNAPSHOT_PATH =
@@ -209,20 +225,24 @@ async function main() {
     .eq("is_active", true)
     .eq("anchors_locked", true)
     .maybeSingle();
-  if (!layout) {
-    console.error("This assessment has no active LOCKED paper layout. Draw and lock one first.");
+  if (!layout && !WIDEN_MODEL) {
+    console.error(
+      "This assessment has no active LOCKED paper layout. Draw and lock one first, or pass --widen-model to re-cut the model's own boxes lower instead."
+    );
     process.exit(1);
   }
 
-  const { data: anchorRows } = await supabase
+  const { data: anchorRows } = layout
+    ? await supabase
     .from("test_item_anchors")
     .select(
       "question_number, part_label, page_index, x0_pt, y0_pt, x1_pt, y1_pt, expand_max_x1_pt, expand_max_y1_pt"
     )
-    .eq("layout_id", layout.id);
+    .eq("layout_id", layout.id)
+    : { data: [] };
   const anchors = new Map<string, AnchorRow>();
   for (const a of (anchorRows ?? []) as AnchorRow[]) anchors.set(anchorKey(a.question_number, a.part_label), a);
-  if (anchors.size === 0) {
+  if (anchors.size === 0 && !WIDEN_MODEL) {
     console.error("That layout has no regions drawn on it.");
     process.exit(1);
   }
@@ -231,9 +251,15 @@ async function main() {
 
   // The mismatch this script cannot detect for you -- see the header. Printed
   // every time, so a re-sat paper is visible before anything is written.
-  const referenceRun = runs.find((r) => r.id === layout.reference_run_id);
-  console.log(`layout       : "${layout.label}" (${layout.page_count} pages, ${anchors.size} regions)`);
-  console.log(`reference    : ${referenceRun ? `run of ${referenceRun.created_at}` : "not among these runs"}`);
+  const referenceRun = runs.find((r) => r.id === layout?.reference_run_id);
+  console.log(
+    WIDEN_MODEL
+      ? `mode         : --widen-model (no layout; each model box re-cut ${MODEL_DOWNWARD_BIAS} of a page lower)`
+      : `layout       : "${layout!.label}" (${layout!.page_count} pages, ${anchors.size} regions)`
+  );
+  if (!WIDEN_MODEL) {
+    console.log(`reference    : ${referenceRun ? `run of ${referenceRun.created_at}` : "not among these runs"}`);
+  }
   console.log(`runs to recut: ${selected.length} (${selected[0].created_at} .. ${selected[selected.length - 1].created_at})`);
   // A single named run is an explicit choice; a whole assessment needs --yes.
   const scopeConfirmed = RUN_IDS.length > 0 || YES;
@@ -299,7 +325,7 @@ async function main() {
     // Same gate the grading route applies: a scan shorter than the booklet has
     // lost a page, so every page after the gap is a different page from the one
     // the regions were drawn on.
-    if (pageCount < (layout.page_count as number)) {
+    if (!WIDEN_MODEL && pageCount < (layout!.page_count as number)) {
       console.log(`  run ${run.id}: ${pageCount}-page scan is short of the ${layout.page_count}-page paper, skipped`);
       skipped++;
       continue;
@@ -310,11 +336,37 @@ async function main() {
     for (const result of results) {
       const item = itemById.get(result.test_item_id as string);
       if (!item) continue;
+
+      // --widen-model: the row already carries the coordinates, so the only
+      // arithmetic is dropping the bottom edge. A row cut from a layout or
+      // drawn by the teacher is left alone -- neither is a biased guess, and
+      // overwriting a teacher's decision is the one thing this must not do.
+      if (WIDEN_MODEL) {
+        const stored = result.evidence_box as EvidenceBox | null;
+        const storedSource = (result.evidence_box_source as string | null) ?? "model";
+        if (!stored || storedSource !== "model") continue;
+        const pageIndex = stored.page - 1;
+        const scanSize = pageSizePt[pageIndex];
+        if (pageIndex < 0 || !scanSize) continue;
+        if (stored.y1 >= 1) continue;
+        const widened: EvidenceBox = {
+          ...stored,
+          y1: Math.min(1, stored.y1 + MODEL_DOWNWARD_BIAS),
+        };
+        boxByResult.set(result.id as string, widened);
+        regions.push({
+          qid: result.id as string,
+          pageIndex,
+          ...fractionBoxToPoints(widened, scanSize),
+        });
+        continue;
+      }
+
       const anchor = anchors.get(
         anchorKey(item.question_number as number, (item.part_label as string | null) || null)
       );
       if (!anchor) continue;
-      const referenceSize = (layout.reference_page_sizes as PageSizePt[])?.[anchor.page_index];
+      const referenceSize = (layout!.reference_page_sizes as PageSizePt[])?.[anchor.page_index];
       const scanSize = pageSizePt[anchor.page_index];
       if (!referenceSize || !scanSize) continue;
 
@@ -392,7 +444,9 @@ async function main() {
       const result = results.find((r) => r.id === crop.qid)!;
       const box = boxByResult.get(crop.qid)!;
 
-      const storagePath = `${testId}/${subjectId}/evidence/${run.id}/${result.test_item_id}--anchor-${Date.now()}.png`;
+      const storagePath = `${testId}/${subjectId}/evidence/${run.id}/${result.test_item_id}--${
+        WIDEN_MODEL ? "widened" : "anchor"
+      }-${Date.now()}.png`;
       const { error: uploadErr } = await supabase.storage
         .from(SCAN_BUCKET)
         .upload(storagePath, Buffer.from(crop.imageBase64!, "base64"), {
@@ -407,7 +461,7 @@ async function main() {
       const patch = {
         evidence_image_path: storagePath,
         evidence_box: box,
-        evidence_box_source: "anchor",
+        evidence_box_source: WIDEN_MODEL ? "model" : "anchor",
       };
       assertOnlyWritableColumns(patch);
       const { error: updateErr } = await supabase

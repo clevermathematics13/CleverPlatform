@@ -68,13 +68,40 @@ const clamp01 = (n: number) => Math.max(0, Math.min(1, n));
  *
  * These exist because the model's box skews tight -- it clips the tail of a
  * line that runs further right or lower than expected, e.g. a final numeric
- * answer after an "=". They do NOT fix the model's much larger vertical
- * mislocation (measured mean 0.106 page-heights below the box centre, against
- * a floor of 0.03), and they are deliberately NOT applied to a teacher-drawn
+ * answer after an "=". They are deliberately NOT applied to a teacher-drawn
  * box, which is a decision rather than an estimate.
  */
 export const PAD_PROPORTION = 0.18;
 export const PAD_FLOOR = 0.03;
+
+/**
+ * Extra downward growth for a model-reported box, on TOP of the symmetric
+ * padding above.
+ *
+ * The model's box is not merely tight, it sits systematically HIGH: the work
+ * it describes is a measured mean 0.106 page-heights below the box centre.
+ * The symmetric padding never addressed that -- its floor is 0.03 -- so a box
+ * that landed on the printed question stopped exactly where the handwriting
+ * underneath began, and the crop showed the part BEFORE this one: its answer
+ * above, this part's printed prompt at the bottom, and this part's own answer
+ * just out of frame. On Key Assessment 1 that is what every part of Q4 looked
+ * like (17 Sep 2026); the transcription in `evidence` was right each time, so
+ * only the picture was wrong, which is the failure mode hardest to notice.
+ *
+ * Extending y1 alone is deliberate. Shifting the whole box down by the bias
+ * would trade one miss for another whenever the box was already right,
+ * whereas growing the bottom edge keeps every correct box correct and rescues
+ * the biased ones. The cost is a taller crop that may also show the start of
+ * the NEXT part's answer -- acceptable, because the part's own printed label
+ * is inside the crop, and a crop with one answer too many beats a crop with
+ * none. 0.15 covers the measured 0.106 with margin.
+ *
+ * This is mitigation, not a cure. A paper with a locked layout takes the
+ * anchor path above and never comes near this function; that is the real fix
+ * for a paper marked often enough to be worth 
+ * drawing regions for.
+ */
+export const MODEL_DOWNWARD_BIAS = 0.15;
 
 /**
  * Clamp, reject, and pad one model-reported box.
@@ -84,10 +111,13 @@ export const PAD_FLOOR = 0.03;
  * grading" outcome the grading route has always taken; a missing crop is fine,
  * a nonsense one is not.
  *
- * Kept byte-compatible with what is already in ai_grade_results.evidence_box:
- * lib/evidence-crops.test.ts replays real padded boxes from a graded paper
- * through it and requires exact equality, so a change in this arithmetic
- * cannot pass unnoticed.
+ * The three other edges stay byte-compatible with what is already in
+ * ai_grade_results.evidence_box: lib/evidence-crops.test.ts replays real
+ * padded boxes from a graded paper through it and requires exact equality on
+ * x0/y0/x1, so a change in that arithmetic cannot pass unnoticed. Only the
+ * bottom edge moved, and it moved on purpose -- see MODEL_DOWNWARD_BIAS.
+ * Rows already in the database keep the box they were written with; this
+ * changes what the NEXT run stores and crops.
  */
 export function padModelBox(box: EvidenceBox): EvidenceBox | null {
   const rawX0 = clamp01(box.x0);
@@ -104,7 +134,7 @@ export function padModelBox(box: EvidenceBox): EvidenceBox | null {
     x0: clamp01(rawX0 - padX),
     y0: clamp01(rawY0 - padY),
     x1: clamp01(rawX1 + padX),
-    y1: clamp01(rawY1 + padY),
+    y1: clamp01(rawY1 + padY + MODEL_DOWNWARD_BIAS),
   };
 }
 

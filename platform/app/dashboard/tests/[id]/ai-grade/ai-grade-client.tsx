@@ -1679,6 +1679,22 @@ export function AiGradeClient({
                                             Paper layout
                                           </span>
                                         )}
+                                        {/* A model-located region is an estimate, and a biased one --
+                                            it reads high, so the crop can show the part above this
+                                            one. Badging it is the difference between a teacher
+                                            spotting that and trusting it: the mark is argued from
+                                            the transcription below, which stays right even when the
+                                            picture is wrong. Only shown when there IS a crop; a row
+                                            with none already says so with "Locate on page". */}
+                                        {(r.evidence_box_source === "model" || !r.evidence_box_source) &&
+                                          r.evidence_image_url && (
+                                            <span
+                                              title="The marker estimated this region rather than cutting it from a locked paper layout, and its estimates read high. Check the crop shows THIS part's answer; if it does not, use the ⤢ button to redraw it."
+                                              className="rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300"
+                                            >
+                                              Located by marker
+                                            </span>
+                                          )}
                                         {!r.evidence_image_url && (
                                           <button
                                             type="button"

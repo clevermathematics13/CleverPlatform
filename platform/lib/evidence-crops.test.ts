@@ -11,6 +11,7 @@ import {
   computeExpansionCaps,
   normalizeFractionBox,
   padModelBox,
+  MODEL_DOWNWARD_BIAS,
 } from "./evidence-crops";
 
 describe("normalizeFractionBox", () => {
@@ -101,6 +102,11 @@ describe("noExpansionCaps", () => {
  *
  * Both branches are represented: the PAD_FLOOR branch (short boxes, where
  * 0.18 x height falls under 0.03) and the proportional branch (tall ones).
+ *
+ * The bottom edge is the one deliberate departure: since MODEL_DOWNWARD_BIAS
+ * was added (17 Sep 2026) y1 sits that much lower than the stored value, so
+ * these rows pin x0/y0/x1 exactly and y1 at stored + bias. Anything else
+ * moving is still drift.
  */
 const PRODUCTION_PADDING_CASES: [string, [number, number, number, number], [number, number, number, number]][] = [
   ["Q1(a)", [0.15, 0.52, 0.25, 0.55], [0.12, 0.49, 0.28, 0.58]],
@@ -117,16 +123,35 @@ const PRODUCTION_PADDING_CASES: [string, [number, number, number, number], [numb
 
 describe("padModelBox", () => {
   it.each(PRODUCTION_PADDING_CASES)(
-    "reproduces the stored box for %s",
+    "reproduces the stored box's sides and top for %s, with y1 a bias lower",
     (_label, [x0, y0, x1, y1], [ex0, ey0, ex1, ey1]) => {
       const padded = padModelBox({ page: 3, x0, y0, x1, y1 });
       expect(padded).not.toBeNull();
       expect(padded!.x0).toBeCloseTo(ex0, 10);
       expect(padded!.y0).toBeCloseTo(ey0, 10);
       expect(padded!.x1).toBeCloseTo(ex1, 10);
-      expect(padded!.y1).toBeCloseTo(ey1, 10);
+      expect(padded!.y1).toBeCloseTo(Math.min(1, ey1 + MODEL_DOWNWARD_BIAS), 10);
     }
   );
+
+  // The regression this bias was added for: Key Assessment 1 Q4(b), whose
+  // stored box (0.0134, 0.15) -> (0.5166, 0.25) cropped to a picture of part
+  // (a)'s answer with (b)'s printed prompt along the bottom edge. (b)'s own
+  // handwriting sits just under that edge, so the crop had to reach past it.
+  it("reaches below the printed prompt a biased box stops at", () => {
+    const padded = padModelBox({ page: 3, x0: 0.08, y0: 0.18, x1: 0.45, y1: 0.22 })!;
+    expect(padded.y0).toBeCloseTo(0.15, 10);
+    expect(padded.y1).toBeCloseTo(0.4, 10);
+    // The part's answer line sat around 0.27-0.31 of the page height.
+    expect(padded.y1).toBeGreaterThan(0.31);
+  });
+
+  it("leaves the top edge alone, so a box that was already right stays right", () => {
+    const raw = { page: 2, x0: 0.1, y0: 0.35, x1: 0.9, y1: 0.45 };
+    const padded = padModelBox(raw)!;
+    expect(padded.y0).toBeLessThan(raw.y0);
+    expect(padded.y0).toBeCloseTo(0.32, 10);
+  });
 
   it("keeps the page it was given", () => {
     expect(padModelBox({ page: 7, x0: 0.1, y0: 0.2, x1: 0.4, y1: 0.5 })?.page).toBe(7);
