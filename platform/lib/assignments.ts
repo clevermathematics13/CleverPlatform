@@ -1,5 +1,6 @@
 // Shared types and utilities for assignment sandboxes across all grade levels
 
+import { askWhatYouMarkBlock } from "./ask-what-you-mark";
 import { mathematicalRegisterBlock } from "./mathematical-register";
 import { tokProvocationBlock } from "./tok-provocations";
 import { sanitizeJsonBackslashes, sanitizeJsonEmbeddedQuotes } from "./json-repair";
@@ -460,6 +461,8 @@ export function buildActivityGeneratorSystemPrompt(
     // one-line rule 12 above rather than the full bar.
     ...(isIB ? ["", tokProvocationBlock()] : []),
     "",
+    askWhatYouMarkBlock(),
+    "",
     mathematicalRegisterBlock(),
     ...(continuityContext ? ["", continuityContext] : []),
   ].join("\n");
@@ -508,6 +511,8 @@ export function buildSystemPrompt(gradeLevel: string): string {
     "- Include a mix of procedural fluency and reasoning.",
     "- Ensure marks are sensible for each prompt.",
     "- Keep prompts plain text (no markdown).",
+    "",
+    askWhatYouMarkBlock(),
     "",
     mathematicalRegisterBlock(),
   ].join("\n");
