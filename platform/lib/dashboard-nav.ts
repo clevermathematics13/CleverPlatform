@@ -16,6 +16,7 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
   if (role === "teacher") {
     return [
       ...shared,
+      { href: "/dashboard/lessons", label: "Lessons", icon: "\u{1F4A1}" },
       { href: "/dashboard/questions", label: "PPQ Bank", icon: "❓" },
       { href: "/dashboard/practice-sets", label: "Practice Sets", icon: "\u{1F4D0}" },
       // The same page the class gets, opened as yourself: a working answer
@@ -41,14 +42,21 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
   }
 
   if (role === "student") {
-    // A Grade 9 student's whole use of the platform is reading feedback --
+    // A Grade 9 student's use of the platform was ONLY reading feedback --
     // not a Dashboard whose tiles lead where they have no reason to go --
-    // but that now comes from two separate places: Nuanced Analysis packets
+    // and that comes from two separate places: Nuanced Analysis packets
     // (na-feedback) and Clev's Marks on a Tests-based assessment like a
     // Formative Assessment (reflection). Both need a menu entry, or a
     // student whose class only uses one of the two has no way to reach it.
+    //
+    // Lessons is the first entry here that is not feedback, and it leads the
+    // list because it is the only one that comes BEFORE the work: a mini
+    // lesson is what you read to be able to start the worksheet. The two
+    // feedback destinations are what you read afterwards, so they keep their
+    // order behind it.
     if (isGrade9) {
       return [
+        { href: "/dashboard/lessons", label: "Lessons", icon: "\u{1F4A1}" },
         { href: "/dashboard/na-feedback", label: "Feedback", icon: "\u{1F4DD}" },
         { href: "/dashboard/reflection", label: "Test Feedback", icon: "\u{1FA9E}" },
       ];
@@ -59,8 +67,14 @@ export function getNavigation(role: string, isGrade9 = false): NavigationItem[] 
     // page says plainly when there is nothing yet. The dashboard TILE is the
     // conditional one, because a tile is a claim that there is something to
     // open. Grade 9 is excluded above -- practice sets are a DP thing.
+    // Lessons is static here for the same reason Practice is: the page says
+    // plainly what has been published, and every lesson card names the class
+    // it was written for. Filtering the list by the reader's own course is
+    // per-course RELEASE, which is one of the three things that would move
+    // lesson content into the database -- see lib/lessons/types.ts.
     return [
       ...shared,
+      { href: "/dashboard/lessons", label: "Lessons", icon: "\u{1F4A1}" },
       { href: "/dashboard/practice", label: "Practice", icon: "\u{1F4D0}" },
       { href: "/dashboard/games", label: "Live Game", icon: "\u{1F3AE}" },
     ];

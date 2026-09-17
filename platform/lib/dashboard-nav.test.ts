@@ -4,14 +4,29 @@ import { getNavigation, getSettingsNavigation, deriveDashboardView } from "./das
 describe("getNavigation", () => {
   it("gives a Grade 9 student both feedback destinations: NA packets and Tests-based reflection", () => {
     const nav = getNavigation("student", true);
-    expect(nav.map((n) => n.href)).toEqual(["/dashboard/na-feedback", "/dashboard/reflection"]);
-    expect(nav[0].label).toBe("Feedback");
+    expect(nav.map((n) => n.href)).toEqual([
+      "/dashboard/lessons",
+      "/dashboard/na-feedback",
+      "/dashboard/reflection",
+    ]);
+    expect(nav.find((n) => n.href === "/dashboard/na-feedback")?.label).toBe("Feedback");
+  });
+
+  // Lessons is the one entry a Grade 9 student opens BEFORE doing the work.
+  // Leading with it is the whole reason it was added ahead of the two
+  // feedback destinations rather than after them.
+  it("puts Lessons first in the Grade 9 menu, ahead of the feedback destinations", () => {
+    expect(getNavigation("student", true)[0]).toMatchObject({
+      href: "/dashboard/lessons",
+      label: "Lessons",
+    });
   });
 
   it("gives a non-Grade-9 student the Dashboard, Practice and the Live Game", () => {
     const nav = getNavigation("student", false);
     expect(nav.map((n) => n.href)).toEqual([
       "/dashboard",
+      "/dashboard/lessons",
       "/dashboard/practice",
       "/dashboard/games",
     ]);
@@ -69,7 +84,11 @@ describe("deriveDashboardView", () => {
   it("swaps to the Grade 9 student menu when viewing a Grade 9 student", () => {
     const r = derive("davi");
     expect(r.viewing?.name).toBe("Davi Verma");
-    expect(r.navigation.map((n) => n.href)).toEqual(["/dashboard/na-feedback", "/dashboard/reflection"]);
+    expect(r.navigation.map((n) => n.href)).toEqual([
+      "/dashboard/lessons",
+      "/dashboard/na-feedback",
+      "/dashboard/reflection",
+    ]);
     expect(r.settingsNavigation).toEqual([]);
   });
 
@@ -77,6 +96,7 @@ describe("deriveDashboardView", () => {
     const r = derive("dp");
     expect(r.navigation.map((n) => n.href)).toEqual([
       "/dashboard",
+      "/dashboard/lessons",
       "/dashboard/practice",
       "/dashboard/games",
     ]);
@@ -123,5 +143,48 @@ describe("the teacher's route into the student practice page", () => {
       (n) => n.href === "/dashboard/practice"
     );
     expect(studentPractice?.label).toBe("Practice");
+  });
+});
+
+describe("the Lessons section", () => {
+  // A mini lesson is shared class content with no per-student data on it, so
+  // unlike every other student destination it has to appear for the teacher
+  // AND the class, and the teacher's entry is not a separate "as a student"
+  // preview -- it is the same page with the teacher layer turned on.
+  it("reaches the teacher and every kind of student", () => {
+    for (const nav of [
+      getNavigation("teacher"),
+      getNavigation("student", true),
+      getNavigation("student", false),
+    ]) {
+      expect(nav.map((n) => n.href)).toContain("/dashboard/lessons");
+    }
+  });
+
+  it("uses one label and one icon everywhere, so it is the same section", () => {
+    const entries = [
+      getNavigation("teacher"),
+      getNavigation("student", true),
+      getNavigation("student", false),
+    ].map((nav) => nav.find((n) => n.href === "/dashboard/lessons")!);
+    for (const e of entries) {
+      expect(e.label).toBe("Lessons");
+      expect(e.icon).toBe(entries[0].icon);
+    }
+  });
+
+  it("does not collide with another destination's icon in the same menu", () => {
+    for (const nav of [
+      getNavigation("teacher"),
+      getNavigation("student", true),
+      getNavigation("student", false),
+    ]) {
+      const icons = nav.map((n) => n.icon);
+      expect(new Set(icons).size).toBe(icons.length);
+    }
+  });
+
+  it("is not offered to a parent", () => {
+    expect(getNavigation("parent").map((n) => n.href)).not.toContain("/dashboard/lessons");
   });
 });

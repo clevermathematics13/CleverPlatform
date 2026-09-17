@@ -4,6 +4,7 @@ import { resolveViewAs } from "@/lib/view-as";
 import { getShowHiddenStudents } from "@/lib/teacher-preferences";
 import { DeployCard } from "./deploy-card";
 import { getStudentCourseIds, hasReleasedPracticeSet } from "@/lib/practice-set-service";
+import { listLessons } from "@/lib/lessons";
 import {
   FeedbackIcon,
   LiveGameIcon,
@@ -133,6 +134,14 @@ async function TeacherDashboard({
         value={String(assignmentsRes.count ?? 0)}
         description="Active assignments"
         href="/dashboard/assignments"
+      />
+      {/* A count, not a conditional tile: this is the teacher's stat grid,
+          where "0" is a fact worth showing, the way Assignments shows it. */}
+      <DashboardCard
+        title="Lessons"
+        value={String(listLessons().length)}
+        description="Published mini lessons"
+        href="/dashboard/lessons"
       />
       <DashboardCard
         title="PPQ Questions"
