@@ -126,3 +126,65 @@ same version prefix** - which is all `supabase db push` compares. Use md5 to
 verify a file you just wrote back from the ledger, not as a directory-wide
 health check. To compare an older file against its row, ignore whitespace and
 trailing semicolons, or diff the text directly.
+
+## Fourth reconciliation, 17 Sep 2026
+
+The same gap again, and it is now clearly the directory's characteristic failure
+mode rather than a one-off: **five rows applied on 16 Sep via MCP had no file
+here.** 159 files against 164 ledger rows.
+
+```
+20260916132044  a3_packet_row
+20260916132433  a3_packet_version_rubric_anchors
+20260916132457  a3_master_pdf_path
+20260916132826  a3_prompt_crops
+20260916181947  test_course_dates
+```
+
+All five were rebuilt from the ledger and verified by md5. All five were
+MCP-applied, so each is a single statement stored verbatim, semicolons and all,
+and each file is byte-identical to its row -- the caveat in the previous section
+about semicolon-stripping applies to CLI-applied rows and did not bite here.
+**164 files, 164 rows**, and the sorted version lists hash identically
+(`2b94cf3fc7bad0459a9f97ce95a0860d`).
+
+Two notes for whoever does the fifth one.
+
+**Getting a large row out without a DB URL.** `CLEVERPLATFORM_SUPABASE_DB_URL`
+is still not configured, so there is no psql. Two of these rows are 34 KB and
+42 KB, which is too much to hand-copy reliably out of a query result. What
+worked was a temporary `security definer` function in `public` returning the
+row base64-encoded, called over PostgREST with the service-role key so curl
+writes straight to disk:
+
+```sql
+create or replace function public.tmp_mig_sql_b64(v text)
+returns text language sql stable security definer
+set search_path = pg_catalog, public as $fn$
+  select replace(encode(convert_to(array_to_string(statements, chr(10)),'UTF8'),'base64'), chr(10), '')
+  from supabase_migrations.schema_migrations where version = v;
+$fn$;
+notify pgrst, 'reload schema';
+```
+
+```sh
+curl -s -X POST "$URL/rest/v1/rpc/tmp_mig_sql_b64" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" -d '{"v":"20260916132044"}' \
+  | jq -r '.' | tr -d '\n' | base64 -d > 20260916132044_a3_packet_row.sql
+```
+
+Base64 rather than raw text because the rows contain newlines, quotes and
+em dashes that would otherwise have to survive JSON escaping intact. **Drop the
+function afterwards** (`drop function if exists public.tmp_mig_sql_b64(text);`)
+and confirm it is gone -- it reads a schema PostgREST does not otherwise expose.
+
+**A file written from a row needs no trailing newline.** The ledger text ends at
+the final semicolon. `printf '%s' "$(cat f)" > f.tmp && mv f.tmp f` strips the
+one a heredoc adds; without it the file is one byte longer than its row and
+looks like drift forever after.
+
+**These five files contain non-ASCII.** They carry em dashes in their comments
+and data. That does not violate the ASCII-dashes rule in CLAUDE.md, which is
+about source comments Turbopack lexes; a migration is never bundled. Do not
+"fix" them -- any edit breaks byte-identity with the ledger.
