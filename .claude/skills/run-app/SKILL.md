@@ -152,11 +152,12 @@ The structure is not guessable, and each of these cost a wasted run:
 - **The review panel opens inside the roster**, as a row directly under the
   student it belongs to - not as a section at the foot of the page. Wait for
   the `Review — <name>` heading and scroll it into view.
-- **Most parts are minimized.** Every high-confidence part sits behind one
-  summary row reading `N high-confidence parts`, and those rows are not in the
-  DOM until it is expanded (it carries `aria-expanded`). A confident part
-  looked up before expanding reports as "no row found for this part label",
-  which reads like missing data and is not.
+- **The confident parts are foldable.** Every high-confidence part sits under
+  one summary row reading `N high-confidence parts`, which starts open but can
+  be folded away, and its rows leave the DOM when it is. Check its
+  `aria-expanded` and expand if needed before looking a part up: a folded-away
+  part reports as "no row found for this part label", which reads like missing
+  data and is not.
 - **Crops are two levels deep.** Each part is a table row with a **`Why?`**
   expander; the crop lives inside that, behind a further **`Student's work`**
   toggle.

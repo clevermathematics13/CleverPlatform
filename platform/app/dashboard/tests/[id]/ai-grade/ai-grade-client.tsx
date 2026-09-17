@@ -250,12 +250,14 @@ export function AiGradeClient({
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
   /**
-   * Whether the review panel's high-confidence parts are un-minimized. Most of
-   * a paper comes back "high", so the panel leads with the parts that need a
-   * human and keeps the confident ones behind one summary row -- expanded only
-   * when the teacher asks, and re-minimized for every student.
+   * Whether the review panel's high-confidence parts are shown. They sit
+   * behind one summary row, which starts OPEN: the panel still leads with the
+   * parts that need a human, but a confident mark is a mark going into Clev's
+   * Marks, so it is on screen unless the teacher folds it away. Reset to open
+   * for every student -- a fold applies to the paper in front of you, not to
+   * the next one.
    */
-  const [highConfidenceOpen, setHighConfidenceOpen] = useState(false);
+  const [highConfidenceOpen, setHighConfidenceOpen] = useState(true);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   /** Result id currently fetching its full source page (see openBoxEditor). */
   const [pageImageLoadingId, setPageImageLoadingId] = useState<string | null>(null);
@@ -575,7 +577,7 @@ export function AiGradeClient({
     setDrafts({});
     setSelected(new Set());
     setExpanded(null);
-    setHighConfidenceOpen(false);
+    setHighConfidenceOpen(true);
     setEditingEvidenceId(null);
     setPreviousMarks({});
   }, []);
@@ -1473,7 +1475,7 @@ export function AiGradeClient({
 
   // -- One student's review table, rendered inline under their roster row --
   // Its rows are split in two: the parts that still need a human first, then
-  // a single summary row holding every high-confidence part, minimized.
+  // every high-confidence part under one summary row that folds them away.
   const renderReviewPanel = () => {
     const ordered = sortReviewRows(results, (r) => itemById.get(r.test_item_id));
     const { high, needsLook } = partitionByConfidence(ordered);

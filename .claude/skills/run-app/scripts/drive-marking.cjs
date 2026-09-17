@@ -110,10 +110,11 @@ if (!TEST_ID || !SESSION) {
   await heading.scrollIntoViewIfNeeded();
   await page.waitForTimeout(1500);
 
-  // Every high-confidence part is minimized behind one summary row, so most
-  // of a paper's rows are not in the DOM until it is expanded. Un-minimize it
-  // before looking for any part -- otherwise a confident part reports as "no
-  // row found for this part label" and looks like a data problem.
+  // Every high-confidence part sits under one summary row. It starts open, but
+  // it can be folded away, and its rows leave the DOM when it is -- so expand
+  // it unless it already is before looking for any part, otherwise a confident
+  // part reports as "no row found for this part label" and looks like a data
+  // problem.
   const highGroup = page.getByRole("button", { name: /high-confidence part/ });
   if ((await highGroup.count()) > 0) {
     await highGroup.first().scrollIntoViewIfNeeded();
