@@ -27,8 +27,9 @@ export default async function LessonsPage({
       <header>
         <h1 className="font-serif text-3xl text-da-text">Lessons</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-da-muted">
-          Short lessons that give you the tools for a worksheet before you start it. Work through the
-          slides, try each check question before you reveal the answer, then go and do the paper.
+          Each lesson comes in three parts. Read the short slides first, one idea at a time. Then start
+          the worksheet, and if a question stops you, open the hint for that exact question. Come back to
+          the review slides once the work is done.
         </p>
       </header>
 
@@ -50,7 +51,8 @@ export default async function LessonsPage({
                 <h2 className="mt-2 font-serif text-xl text-da-text">{lesson.title}</h2>
                 <p className="mt-2 text-sm leading-relaxed text-da-muted">{lesson.summary}</p>
                 <p className="mt-4 font-mono text-[11px] tracking-wide text-da-muted/70">
-                  {lesson.slideCount} slides &middot; about {lesson.minutes} minutes
+                  {lesson.learnCount} slides to read &middot; about {lesson.minutes} minutes &middot;{" "}
+                  {lesson.hintCount} questions with hints
                 </p>
               </Link>
             </li>
