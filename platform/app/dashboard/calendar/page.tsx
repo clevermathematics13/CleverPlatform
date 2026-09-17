@@ -13,6 +13,7 @@ import {
   type DatedTest,
   type TrackMember,
 } from "@/lib/assessment-calendar";
+import { courseMeetsOn } from "@/lib/block-rotation";
 
 /**
  * When the key assessments are, across every class.
@@ -36,6 +37,12 @@ import {
  * counted at the bottom with a link to go and set one, because a calendar that
  * quietly omits a paper is worse than one that admits it does not know when it
  * is.
+ *
+ * Each date is checked against the block rotation (lib/block-rotation.ts) and
+ * flagged when the class does not meet that day -- the exact mistake this page
+ * was showing before it knew about per-class dates, when all three Extended
+ * classes sat under 14 September and 9G does not meet on the 14th. Only a
+ * definite `false` is flagged; "cannot say" is left alone.
  */
 export default async function CalendarPage() {
   const profile = await requireTeacher();
@@ -167,6 +174,14 @@ export default async function CalendarPage() {
                     <span className="text-sm text-slate-300">{a.name}</span>
                     {a.totalMarks !== null && (
                       <span className="text-xs text-slate-500">{a.totalMarks} marks</span>
+                    )}
+                    {courseMeetsOn(a.courseName, a.testDate) === false && (
+                      <span
+                        className="rounded bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-300"
+                        title={`${a.courseName} does not meet on this day in the Semester 1 block rotation.`}
+                      >
+                        {a.courseName} does not meet this day
+                      </span>
                     )}
                     <span className="ml-auto text-xs text-slate-500">{a.relative}</span>
                   </Link>
