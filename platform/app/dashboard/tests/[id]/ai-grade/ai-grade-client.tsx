@@ -25,6 +25,23 @@ interface TestItem {
   question_number: number;
   part_label: string | null;
   max_marks: number;
+  /**
+   * The question as the teacher authored it (test_items.question_text), for a
+   * test built in the Formative Assessment creator -- null on a test whose
+   * parts come from the PPQ bank, where the question is a scanned IMAGE in
+   * question_images instead. The marking row shows whichever of the two this
+   * part actually has; a Grade 9 paper has only the text, an IB paper only
+   * the image.
+   */
+  question_text: string | null;
+  /**
+   * The shared lead-in the parts of this question hang off
+   * (test_items.stem_text), repeated on every part row in the database. Often
+   * the whole of what a part means -- "Write the coefficient of k^2" cannot be
+   * marked without "Look at this expression: -9k^2 + 5k - sqrt(7)" -- which is
+   * why composeQuestionText gives it to the grader too.
+   */
+  stem_text: string | null;
 }
 
 interface TestDetail {
@@ -1421,10 +1438,19 @@ export function AiGradeClient({
                   </thead>
                   <tbody>
                     {sortReviewRows(results, (r) => itemById.get(r.test_item_id))
-                      .map((r) => {
+                      .map((r, idx, rows) => {
                         const meta = itemById.get(r.test_item_id);
                         const label = itemLabel(meta);
                         const isOpen = expanded === r.id;
+                        // The stem is stored on every part row, so printing it
+                        // per row would repeat "Look at this expression..."
+                        // four times down Q1. Print it on the first part of
+                        // each question only, the way the paper itself reads.
+                        const prevMeta = idx > 0 ? itemById.get(rows[idx - 1].test_item_id) : undefined;
+                        const stem =
+                          meta?.stem_text?.trim() && meta.question_number !== prevMeta?.question_number
+                            ? meta.stem_text.trim()
+                            : null;
                         return (
                           <Fragment key={r.id}>
                             <tr className="border-b border-da-border">
@@ -1436,7 +1462,68 @@ export function AiGradeClient({
                                   aria-label={`Accept ${label}`}
                                 />
                               </td>
-                              <td className="px-2 py-2 font-medium text-da-text">{label}</td>
+                              <td className="px-2 py-2 font-medium text-da-text">
+                                <div className="flex items-center gap-2">
+                                  <span>{label}</span>
+                                  {/* The question itself, at a glance. It was already in
+                                      the expanded panel below, but two clicks deep (Why?,
+                                      then the collapsed Question toggle) -- so marking a
+                                      row meant remembering what the question asked.
+                                      Click enlarges it in the same lightbox the panel
+                                      uses. Rows whose part has no image on file in the
+                                      PPQ bank simply show the label, as before. */}
+                                  {r.question_image_urls.length > 0 ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => setLightboxUrl(r.question_image_urls[0])}
+                                      title={`Enlarge the question for ${label}`}
+                                      className="relative shrink-0 rounded border border-da-border hover:border-blue-400"
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={r.question_image_urls[0]}
+                                        alt={`Question ${label}`}
+                                        // object-CONTAIN, not cover: a cropped thumbnail showed
+                                        // the top-left corner of the question and hid the rest,
+                                        // which is worse than useless on a question whose figure
+                                        // sits at the bottom. Whole question, scaled down.
+                                        className="h-20 w-44 cursor-zoom-in rounded bg-white/5 object-contain"
+                                      />
+                                      {r.question_image_urls.length > 1 && (
+                                        <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 text-[10px] leading-4 text-white">
+                                          +{r.question_image_urls.length - 1}
+                                        </span>
+                                      )}
+                                    </button>
+                                  ) : (
+                                    (stem || meta?.question_text?.trim()) && (
+                                      // A teacher-authored part has no image anywhere -- not in
+                                      // the PPQ bank, and a Grade 9 paper has no locked layout to
+                                      // cut one from -- so the question itself is the text.
+                                      // Clamped to two lines, with the full wording on hover, so
+                                      // a long stem cannot stretch the row.
+                                      <span className="max-w-md text-xs font-normal">
+                                        {stem && (
+                                          <span
+                                            title={stem}
+                                            className="line-clamp-2 text-da-text/80"
+                                          >
+                                            <LatexRenderer latex={stem} />
+                                          </span>
+                                        )}
+                                        {meta?.question_text?.trim() && (
+                                          <span
+                                            title={meta.question_text}
+                                            className="line-clamp-2 text-da-muted"
+                                          >
+                                            <LatexRenderer latex={meta.question_text} />
+                                          </span>
+                                        )}
+                                      </span>
+                                    )
+                                  )}
+                                </div>
+                              </td>
                               <td className="px-2 py-2">
                                 <input
                                   type="number"
