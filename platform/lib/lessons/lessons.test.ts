@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
 import katex from "katex";
 import { allLessons, getLesson, listLessons } from "./index";
-import type { Lesson } from "./types";
+import { ACT_ORDER, coverageFromHints, slidesInAct, type Lesson } from "./types";
 
 /** Lesson content is hand-authored TypeScript, so the things that would
  *  otherwise only show up on a student's screen are checked here instead:
- *  a dropped backslash, an odd dollar count, a slide id the coverage map
- *  points at that does not exist.
+ *  a dropped backslash, an odd dollar count, a hint pointing at a slide that
+ *  does not exist.
  *
  *  The KaTeX pass is the important one. `"\\frac"` in a TS string literal is
  *  a backslash and `"\frac"` is a form feed followed by "rac", and the second
@@ -31,18 +31,15 @@ function* walkStrings(value: unknown, path = ""): Generator<[string, string]> {
 }
 
 /** The inline-math split the renderer performs, narrowed to what a test
- *  needs: the spans, and nothing else. Mirrors splitSegments() in
- *  components/LatexRenderer.tsx closely enough to catch a broken span --
- *  notably that an inline span may NOT contain a newline. */
+ *  needs. Mirrors splitSegments() in components/LatexRenderer.tsx closely
+ *  enough to catch a broken span -- notably that an inline span may NOT
+ *  contain a newline. */
 const INLINE_SPAN = /\$([^$\n]*?)\$/g;
 
 function mathSpans(text: string): string[] {
   return [...text.matchAll(INLINE_SPAN)].map((m) => m[1]);
 }
 
-/** Dollars that are real delimiters, i.e. not written as an escaped
- *  currency sign. There is no currency in these lessons, but the count has
- *  to agree with the renderer's rule either way. */
 function delimiterDollarCount(text: string): number {
   return (text.replace(/\\\$/g, "").match(/\$/g) ?? []).length;
 }
@@ -69,7 +66,8 @@ describe("the lesson registry", () => {
     for (const row of listLessons()) {
       expect(row.summary).not.toContain("$");
       expect(row.summary.length).toBeGreaterThan(20);
-      expect(row.slideCount).toBeGreaterThan(0);
+      expect(row.learnCount).toBeGreaterThan(0);
+      expect(row.hintCount).toBeGreaterThan(0);
       expect(row.minutes).toBeGreaterThan(0);
     }
   });
@@ -77,6 +75,9 @@ describe("the lesson registry", () => {
 
 describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, lesson: Lesson) => {
   const strings = [...walkStrings(lesson)];
+  const learn = slidesInAct(lesson, "learn");
+  const hint = slidesInAct(lesson, "hint");
+  const review = slidesInAct(lesson, "review");
 
   it("has every mathematics span render through KaTeX", () => {
     const failures: string[] = [];
@@ -97,23 +98,16 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
     expect(odd).toEqual([]);
   });
 
-  // An inline span cannot straddle a line break, so every authored string is
-  // one line and the arrays carry the structure. A newline that creeps in
-  // silently turns the rest of the line into literal dollars and raw LaTeX.
   it("keeps every string on a single line", () => {
     const multiline = strings.filter(([, t]) => t.includes("\n")).map(([p]) => p);
     expect(multiline).toEqual([]);
   });
 
-  // The renderer collapses runs of spaces, so two expressions joined by two
-  // spaces become one run-on line.
   it("never joins content with a double space", () => {
     const runOn = strings.filter(([, t]) => t.includes("  ")).map(([p, t]) => `${p}: ${t}`);
     expect(runOn).toEqual([]);
   });
 
-  // CLAUDE.md: ASCII only. An en-dash or a curly quote here also means two
-  // typographic conventions on one page.
   it("uses ASCII characters only", () => {
     const offenders: string[] = [];
     for (const [path, text] of strings) {
@@ -128,9 +122,6 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
   });
 
   it("avoids the LaTeX commands this repo has ruled out", () => {
-    // \xrightarrow is absent from older KaTeX builds and from restricted
-    // macro whitelists; the rest are the vector-notation rules in AGENTS.md,
-    // plus \times, which this codebase writes as \cdot.
     const banned = ["\\xrightarrow", "\\bm{", "\\mathbf{", "\\vec{", "\\overrightarrow{", "\\times"];
     const hits: string[] = [];
     for (const [path, text] of strings) {
@@ -140,8 +131,6 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
   });
 
   it("braces every fraction argument", () => {
-    // \tfrac12 is valid KaTeX but an editing landmine: changing it to
-    // \tfrac1{10} by hand silently produces \frac{1}{1}0.
     const unbraced: string[] = [];
     for (const [path, text] of strings) {
       const m = text.match(/\\[dt]?frac(?!\{)/g);
@@ -151,15 +140,11 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
   });
 
   it("writes a rounded value with \\approx rather than a trailing ellipsis", () => {
-    // $1.67\ldots$ for 10/6 asserts digits that are not there. \ldots is for
-    // a true expansion only.
-    const bad = strings
-      .filter(([, t]) => /\d\.\d+\\ldots/.test(t))
-      .map(([p, t]) => `${p}: ${t}`);
+    const bad = strings.filter(([, t]) => /\d\.\d+\\ldots/.test(t)).map(([p, t]) => `${p}: ${t}`);
     expect(bad).toEqual([]);
   });
 
-  it("gives every slide a unique id, a positive length and some student-facing body", () => {
+  it("gives every slide a unique id and some student-facing body", () => {
     const ids = lesson.slides.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const s of lesson.slides) {
@@ -168,6 +153,78 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
       expect(s.body.length).toBeGreaterThan(0);
       expect(s.title.length).toBeGreaterThan(0);
       expect(s.purpose.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("orders the slides act by act, so Next never jumps backwards through the lesson", () => {
+    const seen = lesson.slides.map((s) => s.act);
+    const firstIndexOf = ACT_ORDER.map((a) => seen.indexOf(a)).filter((i) => i >= 0);
+    const lastIndexOf = ACT_ORDER.map((a) => seen.lastIndexOf(a)).filter((i) => i >= 0);
+    for (let i = 1; i < firstIndexOf.length; i++) {
+      expect(firstIndexOf[i]).toBeGreaterThan(lastIndexOf[i - 1]);
+    }
+  });
+
+  // ---- One idea per slide. This is the whole reason the lesson is split
+  // into acts, so it is worth failing a build over.
+
+  it("keeps a learn slide to one idea: at most six body lines and one worked example", () => {
+    const tooBig = learn
+      .filter((s) => s.body.length > 6 || s.examples.length > 1)
+      .map((s) => `${s.id}: ${s.body.length} body lines, ${s.examples.length} examples`);
+    expect(tooBig).toEqual([]);
+  });
+
+  it("keeps a worked example to one screen: at most six steps", () => {
+    const tooLong = lesson.slides
+      .flatMap((s) => s.examples.map((e) => ({ s, e })))
+      .filter(({ e }) => e.steps.length > 6)
+      .map(({ s, e }) => `${s.id} / ${e.title}: ${e.steps.length} steps`);
+    expect(tooLong).toEqual([]);
+  });
+
+  it("keeps a hint slide to hints: no examples, tables, plots or check questions", () => {
+    const heavy = hint
+      .filter((s) => s.examples.length > 0 || s.table || s.plot || s.check || s.body.length > 2)
+      .map((s) => s.id);
+    expect(heavy).toEqual([]);
+  });
+
+  // ---- Hints
+
+  it("gives every hint slide a question, a source and at least one hint", () => {
+    for (const s of hint) {
+      expect(s.questionRef).toBeTruthy();
+      expect(s.source).toBeTruthy();
+      expect(s.hints.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("points every hint back at a slide in the learn act", () => {
+    const learnIds = new Set(learn.map((s) => s.id));
+    const dangling = hint
+      .flatMap((s) => s.hints.map((h) => ({ s, h })))
+      .filter(({ h }) => !learnIds.has(h.backTo))
+      .map(({ s, h }) => `${s.id} -> ${h.backTo}`);
+    expect(dangling).toEqual([]);
+  });
+
+  // A hint is a first move. The moment it states the ratio or the difference
+  // it has done the question, and the hint act stops being usable during the
+  // work. Answers live in `answers`, behind the teacher layer.
+  it("never lets a hint give the answer away", () => {
+    const leaks = hint
+      .flatMap((s) => s.hints.map((h) => ({ s, h })))
+      .filter(({ h }) => /\b[rd]\s*=/.test(h.hint))
+      .map(({ s, h }) => `${s.id}: ${h.hint}`);
+    expect(leaks).toEqual([]);
+  });
+
+  it("leaves hints off the learn and review slides", () => {
+    for (const s of [...learn, ...review]) {
+      expect(s.hints).toEqual([]);
+      expect(s.questionRef).toBeNull();
+      expect(s.source).toBeNull();
     }
   });
 
@@ -180,8 +237,6 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
     }
   });
 
-  // A plot is a claim about a sequence. If the points do not actually follow
-  // the rule the series names, the figure teaches the wrong shape.
   it("plots points that really do follow the sequence they claim", () => {
     for (const s of lesson.slides) {
       if (!s.plot) continue;
@@ -190,14 +245,10 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
         expect(ys.length).toBeGreaterThan(2);
         if (series.kind === "geometric") {
           const r = ys[1] / ys[0];
-          for (let i = 1; i < ys.length; i++) {
-            expect(ys[i] / ys[i - 1]).toBeCloseTo(r, 9);
-          }
+          for (let i = 1; i < ys.length; i++) expect(ys[i] / ys[i - 1]).toBeCloseTo(r, 9);
         } else {
           const d = ys[1] - ys[0];
-          for (let i = 1; i < ys.length; i++) {
-            expect(ys[i] - ys[i - 1]).toBeCloseTo(d, 9);
-          }
+          for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBeCloseTo(d, 9);
         }
         for (const [x, y] of series.points) {
           expect(x).toBeLessThanOrEqual(s.plot.xMax);
@@ -205,24 +256,11 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
         }
       }
       expect(s.plot.yStep).toBeGreaterThan(0);
-      // An axis whose interval does not divide its maximum leaves the top
-      // gridline off the axis.
       expect(s.plot.yMax % s.plot.yStep).toBe(0);
     }
   });
 
-  it("points every coverage entry at a slide that exists", () => {
-    const ids = new Set(lesson.slides.map((s) => s.id));
-    const dangling = lesson.coverageMap.filter((c) => !ids.has(c.slideId)).map((c) => c.question);
-    expect(dangling).toEqual([]);
-  });
-
-  it("maps each source question exactly once", () => {
-    const keys = lesson.coverageMap.map((c) => `${c.source} ${c.question}`);
-    expect(new Set(keys).size).toBe(keys.length);
-  });
-
-  it("gives the teacher answers wherever a slide asks a check question", () => {
+  it("gives the teacher an answer wherever a slide asks a check question", () => {
     for (const s of lesson.slides) {
       if (!s.check) continue;
       expect(s.check.question.length).toBeGreaterThan(0);
@@ -233,29 +271,43 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
 
 describe("lesson 1.6, specifically", () => {
   const lesson = getLesson("1-6-describing-geometric-patterns")!;
+  const coverage = coverageFromHints(lesson);
 
   it("is published", () => {
     expect(lesson).toBeDefined();
     expect(lesson.code).toBe("1.6");
   });
 
-  // The census the review established: 7 exploration items, 7 Check Your
-  // Understanding items, 19 homework items.
-  it("covers all 33 questions across both worksheets", () => {
-    const bySource = (s: string) => lesson.coverageMap.filter((c) => c.source === s).length;
+  it("runs in three acts", () => {
+    expect(slidesInAct(lesson, "learn").length).toBeGreaterThan(0);
+    expect(slidesInAct(lesson, "hint").length).toBeGreaterThan(0);
+    expect(slidesInAct(lesson, "review").length).toBeGreaterThan(0);
+  });
+
+  it("has one hint slide per worksheet question", () => {
+    const bySource = (s: string) => slidesInAct(lesson, "hint").filter((x) => x.source === s).length;
     expect(bySource("exploration")).toBe(7);
-    expect(bySource("check-your-understanding")).toBe(7);
-    expect(bySource("homework")).toBe(19);
-    expect(lesson.coverageMap.length).toBe(33);
+    expect(bySource("check-your-understanding")).toBe(2);
+    expect(bySource("homework")).toBe(10);
+  });
+
+  // The census the review established: 7 exploration items, 7 Check Your
+  // Understanding items (Q1 a-d and Q2 a-c), 19 homework items.
+  it("covers all 33 question parts across both worksheets", () => {
+    const parts = (s: string) => coverage.filter((c) => c.source === s).length;
+    expect(parts("exploration")).toBe(7);
+    expect(parts("check-your-understanding")).toBe(7);
+    expect(parts("homework")).toBe(19);
+    expect(coverage.length).toBe(33);
   });
 
   // The primer runs BEFORE students explore. The exploration is a knockout
   // tournament that halves 64 teams, and a primer that works that context
-  // has answered exploration Q1, Q2, Q4 and Q5 in advance. This is the
-  // regression test for exactly that, because it is invisible on the page:
-  // the slide reads perfectly well, it just spoils the activity.
-  it("never uses the exploration's own context in a primer slide", () => {
-    const primerText = lesson.slides
+  // has answered exploration Q1, Q2, Q4 and Q5 in advance. Scoped to LEARN
+  // slides on purpose: a hint slide names the question freely, because by
+  // then the student is holding the worksheet.
+  it("never uses the exploration's own context in a primer learn slide", () => {
+    const primerText = slidesInAct(lesson, "learn")
       .filter((s) => s.phase === "primer")
       .flatMap((s) => [
         s.title,
@@ -272,30 +324,25 @@ describe("lesson 1.6, specifically", () => {
     }
   });
 
-  // The one outright wrong statement the review found in the first draft:
-  // "$0<r<1$ means decreasing" is false when the terms are negative.
   it("teaches direction as sign-aware, not as a fact about r alone", () => {
-    const rSlide = lesson.slides.find((s) => s.id === "what-r-tells-you")!;
-    const all = [...rSlide.body, ...rSlide.examples.flatMap((e) => [...e.steps, e.answer])].join(" ");
-    // The negative-terms, fractional-ratio case must be worked, and must be
-    // called increasing.
+    const slide = lesson.slides.find((s) => s.id === "increasing-or-decreasing")!;
+    const all = [...slide.body, ...slide.examples.flatMap((e) => [...e.steps, e.answer])].join(" ");
     expect(all).toContain("-100");
     expect(all).toMatch(/INCREASING/);
-    // And the table must say out loud that its right-hand column assumes
-    // positive terms.
-    expect(rSlide.table?.caption.toUpperCase()).toContain("POSITIVE");
+    // And the size-only slide must say out loud that it is not the whole story.
+    const sizeSlide = lesson.slides.find((s) => s.id === "what-r-does-to-size")!;
+    expect(sizeSlide.table?.caption).toMatch(/next slide/i);
   });
 
   it("teaches both explicit rules, because homework Q6(a) leaves the kind open", () => {
-    const slide = lesson.slides.find((s) => s.id === "jump-ahead-explicit-rule")!;
-    const body = slide.body.join(" ");
-    expect(body).toContain("a_1 \\cdot r^{\\,n-1}");
-    expect(body).toContain("a_1 + (n-1)d");
+    const geo = lesson.slides.find((s) => s.id === "nth-term-geometric")!;
+    const ari = lesson.slides.find((s) => s.id === "nth-term-arithmetic")!;
+    expect(geo.body.join(" ")).toContain("a_1 \\cdot r^{\\,n-1}");
+    expect(ari.body.join(" ")).toContain("a_1 + (n-1)d");
   });
 
   it("names the misconceptions that produce the likeliest wrong answers", () => {
     const text = lesson.misconceptions.map((m) => m.misconception + m.howToFixIt).join(" ");
-    // Reversed ratio, the two percent-to-ratio errors, and the shape rule.
     expect(text).toContain("LATER divided by EARLIER");
     expect(text).toContain("0.1");
     expect(text).toContain("90\\%");
@@ -309,15 +356,17 @@ describe("lesson 1.6, specifically", () => {
     expect(items).toContain("Q6");
   });
 
-  it("gives the exit ticket a rubric students can see", () => {
+  it("puts the exit ticket and its rubric in the review act", () => {
+    const exit = slidesInAct(lesson, "review").find((s) => s.id === "review-exit-ticket")!;
+    expect(exit).toBeDefined();
+    expect(exit.table?.rows).toHaveLength(3);
     expect(lesson.exitTicket.rubric).toHaveLength(3);
-    expect(lesson.exitTicket.task.length).toBeGreaterThan(40);
   });
 
-  it("has a core spine that fits inside one period", () => {
-    const core = lesson.slides.filter((s) => s.core);
-    expect(core.length).toBeGreaterThan(0);
-    const coreMinutes = core.reduce((sum, s) => sum + s.minutes, 0);
-    expect(coreMinutes).toBeLessThanOrEqual(30);
+  it("has a primer short enough to teach before the exploration", () => {
+    const primerMinutes = slidesInAct(lesson, "learn")
+      .filter((s) => s.phase === "primer")
+      .reduce((sum, s) => sum + s.minutes, 0);
+    expect(primerMinutes).toBeLessThanOrEqual(20);
   });
 });

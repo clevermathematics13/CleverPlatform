@@ -1,11 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { LessonMath } from "@/components/lessons/LessonMath";
 import { SequencePlotFigure } from "@/components/lessons/SequencePlotFigure";
-import type { CheckQuestion, Lesson, LessonSlide } from "@/lib/lessons/types";
+import {
+  ACT_LABEL,
+  ACT_ORDER,
+  coverageFromHints,
+  type CheckQuestion,
+  type Lesson,
+  type LessonAct,
+  type LessonSlide,
+} from "@/lib/lessons/types";
 
-/** The mini lesson, one slide at a time.
+/** The mini lesson, one slide at a time, in three acts.
+ *
+ *  The act tabs are not decoration: they are how a student uses this. Read
+ *  the Learn act before the work; open one Hint slide when a question stops
+ *  you; go to Review afterwards. A flat deck of forty-odd slides would make
+ *  the Hint act unreachable, which is the act students actually need mid-
+ *  worksheet.
  *
  *  There is no Tabs, Accordion, Carousel or Card primitive in this repo and
  *  no components/ui directory, so this is built from the two idioms that
@@ -14,7 +28,7 @@ import type { CheckQuestion, Lesson, LessonSlide } from "@/lib/lessons/types";
  *  invent a third look.
  *
  *  Only the current slide is mounted. LatexRenderer shares one token counter
- *  across a render pass and recurses for tabular cells, so mounting thirteen
+ *  across a render pass and recurses for tabular cells, so mounting forty
  *  slides' worth of math at once is not the cheap leaf it looks like.
  *
  *  `isTeacher` gates a whole extra layer -- purpose, teacher note, answers,
@@ -25,26 +39,46 @@ export function LessonClient({ lesson, isTeacher }: { lesson: Lesson; isTeacher:
   const [index, setIndex] = useState(0);
   const [showTeacherLayer, setShowTeacherLayer] = useState(isTeacher);
   const slide = lesson.slides[index];
+  const teacherLayer = isTeacher && showTeacherLayer;
 
-  const go = useCallback(
-    (next: number) => {
-      setIndex((i) => Math.min(lesson.slides.length - 1, Math.max(0, next === -1 ? i - 1 : next === -2 ? i + 1 : next)));
+  const byId = useMemo(() => {
+    const m = new Map<string, number>();
+    lesson.slides.forEach((s, i) => m.set(s.id, i));
+    return m;
+  }, [lesson.slides]);
+
+  const goToId = useCallback(
+    (id: string) => {
+      const i = byId.get(id);
+      if (i !== undefined) setIndex(i);
+    },
+    [byId],
+  );
+
+  const step = useCallback(
+    (delta: number) => {
+      setIndex((i) => Math.min(lesson.slides.length - 1, Math.max(0, i + delta)));
     },
     [lesson.slides.length],
   );
 
   // Arrow keys move between slides, the way a deck does. Ignored while a
-  // form control has focus so the reveal buttons still behave normally.
+  // control has focus so the reveal and jump buttons still behave normally.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = document.activeElement;
       if (el && ["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(el.tagName)) return;
-      if (e.key === "ArrowLeft") go(-1);
-      if (e.key === "ArrowRight") go(-2);
+      if (e.key === "ArrowLeft") step(-1);
+      if (e.key === "ArrowRight") step(1);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [go]);
+  }, [step]);
+
+  // Position within the act, which is what the footer counts. A global
+  // "slide 24 of 43" tells a student nothing about where they are.
+  const actSlides = lesson.slides.filter((s) => s.act === slide.act);
+  const posInAct = actSlides.findIndex((s) => s.id === slide.id) + 1;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -56,40 +90,27 @@ export function LessonClient({ lesson, isTeacher }: { lesson: Lesson; isTeacher:
             You are seeing the teacher layer: what each slide is for, what to watch for, and the answers.
             Students never see it.
           </p>
-          <button
-            type="button"
-            onClick={() => setShowTeacherLayer((v) => !v)}
-            className="da-btn shrink-0 text-xs"
-          >
+          <button type="button" onClick={() => setShowTeacherLayer((v) => !v)} className="da-btn shrink-0 text-xs">
             {showTeacherLayer ? "Hide teacher notes" : "Show teacher notes"}
           </button>
         </div>
       )}
 
-      <SlideRail
-        slides={lesson.slides}
-        index={index}
-        onPick={go}
-        showCore={isTeacher && showTeacherLayer}
-      />
+      <ActTabs lesson={lesson} current={slide.act} onPick={goToId} />
+      <SlideRail lesson={lesson} act={slide.act} currentId={slide.id} onPick={goToId} showCore={teacherLayer} />
 
-      <SlideView slide={slide} showTeacherLayer={isTeacher && showTeacherLayer} />
+      <SlideView slide={slide} lesson={lesson} showTeacherLayer={teacherLayer} onJump={goToId} />
 
       <div className="mt-6 flex items-center justify-between gap-4">
-        <button
-          type="button"
-          onClick={() => go(-1)}
-          disabled={index === 0}
-          className="da-btn disabled:opacity-40"
-        >
+        <button type="button" onClick={() => step(-1)} disabled={index === 0} className="da-btn disabled:opacity-40">
           Back
         </button>
         <span className="font-mono text-xs tracking-wide text-da-muted">
-          Slide {index + 1} of {lesson.slides.length}
+          {ACT_LABEL[slide.act]} &middot; {posInAct} of {actSlides.length}
         </span>
         <button
           type="button"
-          onClick={() => go(-2)}
+          onClick={() => step(1)}
           disabled={index === lesson.slides.length - 1}
           className="da-btn disabled:opacity-40"
         >
@@ -97,7 +118,7 @@ export function LessonClient({ lesson, isTeacher }: { lesson: Lesson; isTeacher:
         </button>
       </div>
 
-      <LessonAppendix lesson={lesson} showTeacherLayer={isTeacher && showTeacherLayer} />
+      <LessonAppendix lesson={lesson} showTeacherLayer={teacherLayer} onJump={goToId} />
     </div>
   );
 }
@@ -117,67 +138,162 @@ function LessonHeader({ lesson }: { lesson: Lesson }) {
         <LessonMath text={lesson.bigIdea} className="mt-2 text-sm leading-relaxed text-da-text" />
       </div>
       {lesson.materials.length > 0 && (
-        <p className="mt-4 text-xs leading-relaxed text-da-muted">
-          Use this alongside: {lesson.materials.join("; ")}.
-        </p>
+        <p className="mt-4 text-xs leading-relaxed text-da-muted">Use this alongside: {lesson.materials.join("; ")}.</p>
       )}
     </header>
   );
 }
 
+const ACT_BLURB: Record<LessonAct, string> = {
+  learn: "Read these before you start the worksheets.",
+  hint: "Open the slide for whichever question has stopped you. Hints only, no answers.",
+  review: "Come back here once the work is done.",
+};
+
+function ActTabs({
+  lesson,
+  current,
+  onPick,
+}: {
+  lesson: Lesson;
+  current: LessonAct;
+  onPick: (id: string) => void;
+}) {
+  return (
+    <div className="mt-6">
+      <nav className="flex flex-wrap gap-2" aria-label="Parts of this lesson">
+        {ACT_ORDER.map((act) => {
+          const first = lesson.slides.find((s) => s.act === act);
+          if (!first) return null;
+          const count = lesson.slides.filter((s) => s.act === act).length;
+          return (
+            <button
+              key={act}
+              type="button"
+              onClick={() => onPick(first.id)}
+              aria-current={act === current ? "true" : undefined}
+              className={
+                act === current
+                  ? "rounded-lg border border-da-accent bg-da-accent px-4 py-2 text-sm font-medium text-da-on-accent"
+                  : "rounded-lg border border-da-border bg-da-surface px-4 py-2 text-sm text-da-muted hover:border-da-accent/50 hover:text-da-text"
+              }
+            >
+              {ACT_LABEL[act]}
+              <span className="ml-2 font-mono text-[11px] opacity-70">{count}</span>
+            </button>
+          );
+        })}
+      </nav>
+      <p className="mt-2 text-xs leading-relaxed text-da-muted">{ACT_BLURB[current]}</p>
+    </div>
+  );
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  exploration: "Exploration",
+  "check-your-understanding": "Check Your Understanding",
+  homework: "Homework",
+};
+
+/** The rail shows only the CURRENT act. Forty numbered pills in one row is
+ *  not a menu, it is wallpaper.
+ *
+ *  In the hint act the pills carry the question label rather than an index,
+ *  and are grouped by worksheet: a student mid-homework is looking for "Q7",
+ *  not for "slide 27". */
 function SlideRail({
-  slides,
-  index,
+  lesson,
+  act,
+  currentId,
   onPick,
   showCore,
 }: {
-  slides: LessonSlide[];
-  index: number;
-  onPick: (n: number) => void;
+  lesson: Lesson;
+  act: LessonAct;
+  currentId: string;
+  onPick: (id: string) => void;
   showCore: boolean;
 }) {
+  const slides = lesson.slides.filter((s) => s.act === act);
+
+  const pill = (s: LessonSlide, label: string) => (
+    <button
+      key={s.id}
+      type="button"
+      onClick={() => onPick(s.id)}
+      title={s.title}
+      aria-current={s.id === currentId ? "step" : undefined}
+      className={
+        s.id === currentId
+          ? "rounded-full border border-da-accent bg-da-accent px-3 py-1 text-xs font-medium text-da-on-accent"
+          : "rounded-full border border-da-border bg-da-surface px-3 py-1 text-xs text-da-muted hover:border-da-accent/50 hover:text-da-text"
+      }
+    >
+      {label}
+      {showCore && act === "learn" && !s.core && <span className="ml-1 opacity-60">&bull;</span>}
+    </button>
+  );
+
+  if (act === "hint") {
+    const sources = ["exploration", "check-your-understanding", "homework"] as const;
+    return (
+      <div className="mt-4 space-y-2" aria-label="Questions">
+        {sources.map((src) => {
+          const group = slides.filter((s) => s.source === src);
+          if (group.length === 0) return null;
+          return (
+            <div key={src} className="flex flex-wrap items-center gap-2">
+              <span className="w-full font-mono text-[10px] tracking-widest text-da-muted sm:w-52">
+                {SOURCE_LABEL[src].toUpperCase()}
+              </span>
+              {group.map((s) => pill(s, (s.questionRef ?? "").replace(/^.*\b(Q\d+)$/, "$1")))}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
-    <nav className="mt-6 flex flex-wrap gap-2" aria-label="Slides">
-      {slides.map((s, i) => (
-        <button
-          key={s.id}
-          type="button"
-          onClick={() => onPick(i)}
-          title={s.title}
-          aria-current={i === index ? "step" : undefined}
-          className={
-            i === index
-              ? "rounded-full border border-da-accent bg-da-accent px-3 py-1 text-xs font-medium text-da-on-accent"
-              : "rounded-full border border-da-border bg-da-surface px-3 py-1 text-xs text-da-muted hover:border-da-accent/50 hover:text-da-text"
-          }
-        >
-          {i + 1}
-          {showCore && !s.core && <span className="ml-1 opacity-60">&bull;</span>}
-        </button>
-      ))}
-      {showCore && (
-        <span className="self-center pl-2 text-[11px] text-da-muted">
-          &bull; marks a slide outside the core spine
-        </span>
+    <nav className="mt-4 flex flex-wrap gap-2" aria-label="Slides">
+      {slides.map((s, i) => pill(s, String(i + 1)))}
+      {showCore && act === "learn" && (
+        <span className="self-center pl-2 text-[11px] text-da-muted">&bull; marks a slide outside the core spine</span>
       )}
     </nav>
   );
 }
 
-function SlideView({ slide, showTeacherLayer }: { slide: LessonSlide; showTeacherLayer: boolean }) {
+function SlideView({
+  slide,
+  lesson,
+  showTeacherLayer,
+  onJump,
+}: {
+  slide: LessonSlide;
+  lesson: Lesson;
+  showTeacherLayer: boolean;
+  onJump: (id: string) => void;
+}) {
   return (
     <article className="mt-4 rounded-xl border border-da-border bg-da-surface p-6 shadow-sm shadow-black/30">
       <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={
-            slide.phase === "primer"
-              ? "rounded-full border border-da-info/40 bg-da-info/10 px-2.5 py-0.5 font-mono text-[10px] tracking-widest text-da-info"
-              : "rounded-full border border-da-amber/40 bg-da-amber/10 px-2.5 py-0.5 font-mono text-[10px] tracking-widest text-da-amber"
-          }
-        >
-          {slide.phase === "primer" ? "BEFORE THE EXPLORATION" : "AFTER THE EXPLORATION"}
-        </span>
-        {showTeacherLayer && (
+        {slide.act === "hint" ? (
+          <span className="rounded-full border border-da-accent/40 bg-da-accent/10 px-2.5 py-0.5 font-mono text-[10px] tracking-widest text-da-accent">
+            {(slide.questionRef ?? "").toUpperCase()}
+          </span>
+        ) : slide.act === "learn" ? (
+          <span
+            className={
+              slide.phase === "primer"
+                ? "rounded-full border border-da-info/40 bg-da-info/10 px-2.5 py-0.5 font-mono text-[10px] tracking-widest text-da-info"
+                : "rounded-full border border-da-amber/40 bg-da-amber/10 px-2.5 py-0.5 font-mono text-[10px] tracking-widest text-da-amber"
+            }
+          >
+            {slide.phase === "primer" ? "BEFORE THE EXPLORATION" : "AFTER THE EXPLORATION"}
+          </span>
+        ) : null}
+        {showTeacherLayer && slide.act === "learn" && (
           <span className="font-mono text-[10px] tracking-widest text-da-muted">
             {slide.minutes} MIN &middot; {slide.core ? "CORE" : "AS NEEDED"}
           </span>
@@ -199,6 +315,8 @@ function SlideView({ slide, showTeacherLayer }: { slide: LessonSlide; showTeache
         ))}
       </div>
 
+      {slide.hints.length > 0 && <HintList slide={slide} lesson={lesson} onJump={onJump} />}
+
       {slide.table && (
         <div className="mt-6 overflow-x-auto">
           <p className="mb-2 text-xs text-da-muted">{slide.table.caption}</p>
@@ -206,10 +324,7 @@ function SlideView({ slide, showTeacherLayer }: { slide: LessonSlide; showTeache
             <thead>
               <tr>
                 {slide.table.headers.map((h) => (
-                  <th
-                    key={h}
-                    className="border border-da-border bg-da-hover px-3 py-2 text-left font-medium text-da-text"
-                  >
+                  <th key={h} className="border border-da-border bg-da-hover px-3 py-2 text-left font-medium text-da-text">
                     <LessonMath text={h} />
                   </th>
                 ))}
@@ -234,9 +349,7 @@ function SlideView({ slide, showTeacherLayer }: { slide: LessonSlide; showTeache
 
       {slide.examples.map((ex) => (
         <section key={ex.title} className="mt-6 rounded-lg border border-da-border bg-da-bg/60 p-4">
-          <h3 className="font-mono text-[11px] tracking-widest text-da-amber">
-            {ex.title.toUpperCase()}
-          </h3>
+          <h3 className="font-mono text-[11px] tracking-widest text-da-amber">{ex.title.toUpperCase()}</h3>
           <ol className="mt-3 space-y-2">
             {ex.steps.map((step, i) => (
               <li key={i} className="flex gap-3">
@@ -255,15 +368,14 @@ function SlideView({ slide, showTeacherLayer }: { slide: LessonSlide; showTeache
 
       {showTeacherLayer && (slide.teacherNote || slide.answers.length > 0) && (
         <section className="mt-6 rounded-lg border border-da-warning/30 bg-da-warning/5 p-4">
-          <h3 className="font-mono text-[11px] tracking-widest text-da-warning">TEACHER NOTE</h3>
           {slide.teacherNote && (
-            <LessonMath
-              text={slide.teacherNote}
-              className="mt-2 text-sm leading-relaxed text-da-text"
-            />
+            <>
+              <h3 className="font-mono text-[11px] tracking-widest text-da-warning">TEACHER NOTE</h3>
+              <LessonMath text={slide.teacherNote} className="mt-2 text-sm leading-relaxed text-da-text" />
+            </>
           )}
           {slide.answers.length > 0 && (
-            <div className="mt-3 border-t border-da-warning/20 pt-3">
+            <div className={slide.teacherNote ? "mt-3 border-t border-da-warning/20 pt-3" : ""}>
               <p className="font-mono text-[11px] tracking-widest text-da-warning">ANSWERS</p>
               <div className="mt-2 space-y-1.5">
                 {slide.answers.map((a, i) => (
@@ -275,6 +387,44 @@ function SlideView({ slide, showTeacherLayer }: { slide: LessonSlide; showTeache
         </section>
       )}
     </article>
+  );
+}
+
+/** One nudge per part, each with a way back to the slide that teaches it.
+ *  The jump is the point: a hint that is not enough should cost one click,
+ *  not a hunt through the Learn act. */
+function HintList({
+  slide,
+  lesson,
+  onJump,
+}: {
+  slide: LessonSlide;
+  lesson: Lesson;
+  onJump: (id: string) => void;
+}) {
+  return (
+    <div className="mt-5 space-y-3">
+      {slide.hints.map((h, i) => {
+        const target = lesson.slides.find((s) => s.id === h.backTo);
+        return (
+          <div key={i} className="rounded-lg border border-da-border bg-da-bg/60 p-4">
+            <div className="flex gap-3">
+              {h.part && <span className="shrink-0 font-mono text-xs text-da-accent">{h.part}</span>}
+              <LessonMath text={h.hint} className="text-[15px] leading-relaxed text-da-text" />
+            </div>
+            {target && (
+              <button
+                type="button"
+                onClick={() => onJump(target.id)}
+                className="da-btn da-btn-link mt-3 text-xs"
+              >
+                Still stuck? Go to &ldquo;{target.title}&rdquo;
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -299,7 +449,17 @@ function CheckPanel({ check }: { check: CheckQuestion }) {
   );
 }
 
-function LessonAppendix({ lesson, showTeacherLayer }: { lesson: Lesson; showTeacherLayer: boolean }) {
+function LessonAppendix({
+  lesson,
+  showTeacherLayer,
+  onJump,
+}: {
+  lesson: Lesson;
+  showTeacherLayer: boolean;
+  onJump: (id: string) => void;
+}) {
+  const coverage = coverageFromHints(lesson);
+
   return (
     <div className="mt-10 space-y-6">
       <Panel title="Words you need">
@@ -318,62 +478,19 @@ function LessonAppendix({ lesson, showTeacherLayer }: { lesson: Lesson; showTeac
 
       <Panel title="Warm up first">
         <p className="mb-3 text-xs text-da-muted">
-          If any of these five are hard, say so before the lesson starts. They are the skills every
-          question below leans on.
+          If any of these five are hard, say so before the lesson starts. Every question below leans on them.
         </p>
         <ol className="space-y-3">
           {lesson.warmUp.map((w, i) => (
-            <li key={i} className="flex gap-3">
-              <span className="mt-0.5 shrink-0 font-mono text-[11px] text-da-muted">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <LessonMath text={w.question} className="text-sm leading-relaxed text-da-text" />
-                {showTeacherLayer && (
-                  <LessonMath text={w.answer} className="mt-1 text-sm leading-relaxed text-da-success" />
-                )}
-              </div>
+            <li key={i} className="min-w-0">
+              <LessonMath text={w.question} className="text-sm leading-relaxed text-da-text" />
+              {showTeacherLayer && (
+                <LessonMath text={w.answer} className="mt-1 text-sm leading-relaxed text-da-success" />
+              )}
             </li>
           ))}
         </ol>
       </Panel>
-
-      <Panel title="What you should be able to do">
-        <ul className="space-y-2">
-          {lesson.learningTargets.map((t, i) => (
-            <li key={i} className="flex gap-3">
-              <span className="mt-1 shrink-0 text-da-accent">&bull;</span>
-              <LessonMath text={t} className="text-sm leading-relaxed text-da-text" />
-            </li>
-          ))}
-        </ul>
-      </Panel>
-
-      <Panel title="Exit ticket">
-        <LessonMath text={lesson.exitTicket.task} className="text-sm leading-relaxed text-da-text" />
-        <p className="mt-4 font-mono text-[11px] tracking-widest text-da-muted">HOW IT IS MARKED</p>
-        <ul className="mt-2 space-y-2">
-          {lesson.exitTicket.rubric.map((r, i) => (
-            <li key={i} className="flex gap-3">
-              <span className="mt-0.5 shrink-0 font-mono text-[11px] text-da-muted">1</span>
-              <LessonMath text={r} className="text-sm leading-relaxed text-da-text" />
-            </li>
-          ))}
-        </ul>
-      </Panel>
-
-      {lesson.challenge.length > 0 && (
-        <Panel title="If you finish early">
-          <ol className="space-y-4">
-            {lesson.challenge.map((c, i) => (
-              <li key={i}>
-                <LessonMath text={c.task} className="text-sm leading-relaxed text-da-text" />
-                {showTeacherLayer && (
-                  <LessonMath text={c.answer} className="mt-1 text-sm leading-relaxed text-da-success" />
-                )}
-              </li>
-            ))}
-          </ol>
-        </Panel>
-      )}
 
       {showTeacherLayer && (
         <>
@@ -394,55 +511,53 @@ function LessonAppendix({ lesson, showTeacherLayer }: { lesson: Lesson; showTeac
             <ol className="space-y-5">
               {lesson.misconceptions.map((m, i) => (
                 <li key={i}>
-                  <LessonMath
-                    text={m.misconception}
-                    className="text-sm font-medium leading-relaxed text-da-danger"
-                  />
-                  <LessonMath
-                    text={m.whyItHappens}
-                    className="mt-1 text-sm leading-relaxed text-da-muted"
-                  />
-                  <LessonMath
-                    text={m.howToFixIt}
-                    className="mt-1 text-sm leading-relaxed text-da-text"
-                  />
+                  <LessonMath text={m.misconception} className="text-sm font-medium leading-relaxed text-da-danger" />
+                  <LessonMath text={m.whyItHappens} className="mt-1 text-sm leading-relaxed text-da-muted" />
+                  <LessonMath text={m.howToFixIt} className="mt-1 text-sm leading-relaxed text-da-text" />
                 </li>
               ))}
             </ol>
           </Panel>
 
-          <Panel title="Every question on both worksheets, and the slide that covers it">
+          <Panel title="Every question, and the slide that teaches it">
+            <p className="mb-3 text-xs leading-relaxed text-da-muted">
+              Built from the hint slides, so it cannot drift from what students are actually shown.
+            </p>
             <div className="overflow-x-auto">
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr>
-                    {["Worksheet", "Question", "What they must do", "Slide"].map((h) => (
-                      <th
-                        key={h}
-                        className="border border-da-border bg-da-hover px-3 py-2 text-left font-medium text-da-text"
-                      >
+                    {["Question", "Part", "The hint they get", "Teaches it"].map((h) => (
+                      <th key={h} className="border border-da-border bg-da-hover px-3 py-2 text-left font-medium text-da-text">
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {lesson.coverageMap.map((c, i) => (
-                    <tr key={i}>
-                      <td className="border border-da-border px-3 py-2 align-top text-xs text-da-muted">
-                        {c.source}
-                      </td>
-                      <td className="border border-da-border px-3 py-2 align-top whitespace-nowrap text-da-text">
-                        {c.question}
-                      </td>
-                      <td className="border border-da-border px-3 py-2 align-top text-da-text">
-                        <LessonMath text={c.demand} />
-                      </td>
-                      <td className="border border-da-border px-3 py-2 align-top text-xs text-da-muted">
-                        {lesson.slides.find((s) => s.id === c.slideId)?.title ?? c.slideId}
-                      </td>
-                    </tr>
-                  ))}
+                  {coverage.map((c, i) => {
+                    const target = lesson.slides.find((s) => s.id === c.backTo);
+                    return (
+                      <tr key={i}>
+                        <td className="border border-da-border px-3 py-2 align-top text-xs whitespace-nowrap text-da-muted">
+                          {c.questionRef}
+                        </td>
+                        <td className="border border-da-border px-3 py-2 align-top text-xs text-da-text">{c.part || "-"}</td>
+                        <td className="border border-da-border px-3 py-2 align-top text-da-text">
+                          <LessonMath text={c.hint} />
+                        </td>
+                        <td className="border border-da-border px-3 py-2 align-top text-xs">
+                          <button
+                            type="button"
+                            onClick={() => onJump(c.backTo)}
+                            className="da-btn da-btn-link text-xs"
+                          >
+                            {target?.title ?? c.backTo}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -457,14 +572,8 @@ function LessonAppendix({ lesson, showTeacherLayer }: { lesson: Lesson; showTeac
                 {lesson.openQuestions.map((q, i) => (
                   <li key={i}>
                     <LessonMath text={q.item} className="text-sm font-medium text-da-warning" />
-                    <LessonMath
-                      text={q.whyUnresolved}
-                      className="mt-1 text-sm leading-relaxed text-da-muted"
-                    />
-                    <LessonMath
-                      text={q.whatWasDone}
-                      className="mt-1 text-sm leading-relaxed text-da-text"
-                    />
+                    <LessonMath text={q.whyUnresolved} className="mt-1 text-sm leading-relaxed text-da-muted" />
+                    <LessonMath text={q.whatWasDone} className="mt-1 text-sm leading-relaxed text-da-text" />
                   </li>
                 ))}
               </ol>

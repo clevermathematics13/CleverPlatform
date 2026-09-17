@@ -17,7 +17,8 @@ export function listLessons(): {
   title: string;
   courseLabel: string;
   summary: string;
-  slideCount: number;
+  learnCount: number;
+  hintCount: number;
   minutes: number;
 }[] {
   return LESSONS.map((l) => ({
@@ -29,8 +30,14 @@ export function listLessons(): {
     // for a student, which is exactly what the card wants, and keeping one
     // copy means the card can never drift from the lesson.
     summary: stripMath(l.bigIdea),
-    slideCount: l.slides.length,
-    minutes: l.slides.reduce((sum, s) => sum + s.minutes, 0),
+    // Counted per act rather than in total. "43 slides" is true and reads as
+    // a wall; what a student wants to know is how much there is to READ, and
+    // separately that there is a hint waiting for every question.
+    learnCount: l.slides.filter((s) => s.act === "learn").length,
+    hintCount: l.slides.filter((s) => s.act === "hint").length,
+    // Minutes are the teaching time, so only the learn act counts: the hint
+    // act is opened one slide at a time during the work, not taught.
+    minutes: l.slides.filter((s) => s.act === "learn").reduce((sum, s) => sum + s.minutes, 0),
   }));
 }
 

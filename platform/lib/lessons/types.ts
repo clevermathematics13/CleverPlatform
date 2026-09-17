@@ -42,12 +42,36 @@
  *    runs of spaces and they become one run-on line. Use a new array entry,
  *    or `\quad` inside a single span.
  *  - ASCII only. No en-dashes, em-dashes, curly quotes or box-drawing.
+ *  - ONE IDEA PER SLIDE. A learn slide carries at most one worked example
+ *    and at most six body lines; the test enforces both. A slide that wants
+ *    a second example wants to be two slides.
  */
 
-/** Where a slide sits relative to the exploration activity. A `primer` slide
- *  is safe to teach BEFORE students explore; a `formalise` slide names what
- *  they found afterwards. The split is load-bearing: a primer that works the
- *  exploration's own context has answered it for them. */
+/** The three acts a lesson runs in, and the order the rail shows them.
+ *
+ *  This split is the whole shape of the lesson. `learn` slides teach one
+ *  idea each and carry no reference to any particular worksheet question;
+ *  `hint` slides carry nothing but a nudge per question part and point back
+ *  at the learn slide that covers it; `review` slides come after the work.
+ *  Keeping them apart is what stops a teaching slide turning into a wall of
+ *  worked examples, which is what the first version of this lesson did. */
+export type LessonAct = "learn" | "hint" | "review";
+
+export const ACT_ORDER: LessonAct[] = ["learn", "hint", "review"];
+
+export const ACT_LABEL: Record<LessonAct, string> = {
+  learn: "Learn it",
+  hint: "Stuck on a question?",
+  review: "After the work",
+};
+
+/** Where a LEARN slide sits relative to the exploration activity. A `primer`
+ *  slide is safe to teach BEFORE students explore; a `formalise` slide names
+ *  what they found afterwards. The split is load-bearing: a primer that
+ *  works the exploration's own context has answered it for them.
+ *
+ *  Meaningless on `hint` and `review` slides, which are both after the fact.
+ *  Those carry "formalise" and the UI does not badge them. */
 export type LessonPhase = "primer" | "formalise";
 
 export interface WorkedExample {
@@ -91,32 +115,56 @@ export interface CheckQuestion {
 
 /** An extension task for a student who finishes early. Separate from
  *  CheckQuestion because it is a piece of work to go and do, not a question
- *  to answer in your head -- and because both of these deliberately pick up
- *  the lesson's own loose ends (the negative root, the decade-versus-year
- *  wording) rather than being harder arithmetic. */
+ *  to answer in your head. */
 export interface ChallengeTask {
   task: string;
   answer: string;
 }
 
+/** One nudge for one part of one worksheet question.
+ *
+ *  A hint is a first move, not a method and never an answer: "divide a term
+ *  by the one before it" rather than "$r = \tfrac{3}{5}$, so the terms
+ *  shrink". `backTo` is the learn slide that carries the actual teaching, so
+ *  a student who needs more than a nudge has somewhere to go, and so the
+ *  coverage table can be derived rather than maintained twice. */
+export interface QuestionHint {
+  /** The part label as the worksheet prints it: "(a)", "(b)", or "" when
+   *  the question has no lettered parts. */
+  part: string;
+  hint: string;
+  /** A slides[].id of an act: "learn" slide. */
+  backTo: string;
+}
+
 export interface LessonSlide {
-  /** Stable kebab-case id. It is the anchor in the URL and the key the
-   *  coverage map points at, so renaming one is a breaking change. */
+  /** Stable kebab-case id. It is the anchor the hints point at, so renaming
+   *  one is a breaking change. */
   id: string;
+  act: LessonAct;
   title: string;
   phase: LessonPhase;
   minutes: number;
-  /** The core spine a 45-minute period must cover. Everything else is day
-   *  two or as-needed, which is what `pacing` explains. */
+  /** The core spine a single period must cover. Everything else is day two
+   *  or as-needed, which is what `pacing` explains. Only meaningful on
+   *  learn slides. */
   core: boolean;
-  /** Teacher-facing. Names the source questions this slide unlocks. */
+  /** Teacher-facing, one short sentence. */
   purpose: string;
-  /** Student-facing, one line per entry. */
+  /** Student-facing, one line per entry. At most six on a learn slide. */
   body: string[];
+  /** At most ONE on a learn slide. */
   examples: WorkedExample[];
   table: LessonTable | null;
   plot: SequencePlot | null;
   check: CheckQuestion | null;
+  /** Which worksheet question this hint slide is for, as the student sees
+   *  it printed: "Homework Q7". Null on learn and review slides. */
+  questionRef: string | null;
+  /** Which worksheet it is on. Null on learn and review slides. */
+  source: "exploration" | "check-your-understanding" | "homework" | null;
+  /** One entry per part. Empty on learn and review slides. */
+  hints: QuestionHint[];
   /** Commentary only. Answers live in `answers` so a teacher scanning
    *  mid-class finds them under their own heading instead of buried in the
    *  last clause of a paragraph. */
@@ -134,16 +182,6 @@ export interface Misconception {
   misconception: string;
   whyItHappens: string;
   howToFixIt: string;
-}
-
-/** One question of the source worksheets, mapped to the slide that equips a
- *  student for it. The map is exhaustive by test: every question in both
- *  documents appears exactly once. */
-export interface CoverageEntry {
-  source: "exploration" | "check-your-understanding" | "homework";
-  question: string;
-  demand: string;
-  slideId: string;
 }
 
 /** Something the author could not settle from the source material. Recorded
@@ -172,9 +210,38 @@ export interface Lesson {
   misconceptions: Misconception[];
   exitTicket: { task: string; rubric: string[] };
   challenge: ChallengeTask[];
-  coverageMap: CoverageEntry[];
   openQuestions: OpenQuestion[];
   /** The worksheets this lesson is the key to. Titles only -- the PDFs
    *  themselves are handed out on paper or through Google Classroom. */
   materials: string[];
+}
+
+/** The slides of one act, in order. */
+export function slidesInAct(lesson: Lesson, act: LessonAct): LessonSlide[] {
+  return lesson.slides.filter((s) => s.act === act);
+}
+
+/** Every hint in the lesson, flattened, with the question it belongs to.
+ *
+ *  This is the coverage map. It is DERIVED rather than stored, because a
+ *  hand-maintained second list of "every question and the slide that covers
+ *  it" drifts from the hints the moment either is edited. */
+export function coverageFromHints(lesson: Lesson): {
+  source: NonNullable<LessonSlide["source"]>;
+  questionRef: string;
+  part: string;
+  hint: string;
+  backTo: string;
+}[] {
+  return lesson.slides
+    .filter((s) => s.act === "hint")
+    .flatMap((s) =>
+      s.hints.map((h) => ({
+        source: s.source!,
+        questionRef: s.questionRef!,
+        part: h.part,
+        hint: h.hint,
+        backTo: h.backTo,
+      })),
+    );
 }
