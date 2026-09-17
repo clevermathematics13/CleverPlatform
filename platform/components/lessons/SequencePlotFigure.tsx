@@ -34,11 +34,14 @@ export function SequencePlotFigure({ plot }: { plot: SequencePlot }) {
 
   const yTicks: number[] = [];
   for (let v = 0; v <= plot.yMax + 1e-9; v += plot.yStep) yTicks.push(Number(v.toFixed(6)));
-  const xTicks = Array.from({ length: plot.xMax + 1 }, (_, i) => i);
+  const xTicks: number[] = [];
+  for (let v = 0; v <= plot.xMax + 1e-9; v += plot.xStep) xTicks.push(Number(v.toFixed(6)));
 
-  // Two series at most in practice; the second is the contrast case.
-  const seriesColor = (kind: SequencePlot["series"][number]["kind"], index: number) =>
-    index === 0 ? (kind === "geometric" ? "#e0405f" : "#7cc4ff") : kind === "geometric" ? "#e0405f" : "#7cc4ff";
+  // Two series at most in practice; the second is the contrast case. The
+  // curve gets the accent, anything straight gets the cool blue, so the two
+  // shapes stay distinguishable without reading the legend.
+  const seriesColor = (kind: SequencePlot["series"][number]["kind"]) =>
+    kind === "geometric" ? "#e0405f" : "#7cc4ff";
 
   return (
     <figure className="mt-5 rounded-lg border border-da-border bg-da-bg/60 p-4">
@@ -122,7 +125,7 @@ export function SequencePlotFigure({ plot }: { plot: SequencePlot }) {
         </text>
 
         {/* ---- The terms */}
-        {plot.series.map((s, si) => (
+        {plot.series.map((s) => (
           <g key={s.label}>
             {s.points.map(([n, v]) => (
               <circle
@@ -130,7 +133,7 @@ export function SequencePlotFigure({ plot }: { plot: SequencePlot }) {
                 cx={x(n)}
                 cy={y(v)}
                 r={5}
-                fill={seriesColor(s.kind, si)}
+                fill={seriesColor(s.kind)}
                 stroke="#0f0b0d"
                 strokeWidth={1.5}
               />
@@ -143,11 +146,11 @@ export function SequencePlotFigure({ plot }: { plot: SequencePlot }) {
         {plot.caption}
         {plot.series.length > 1 && (
           <span className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
-            {plot.series.map((s, si) => (
+            {plot.series.map((s) => (
               <span key={s.label} className="inline-flex items-center gap-2">
                 <span
                   className="inline-block h-2.5 w-2.5 rounded-full"
-                  style={{ backgroundColor: seriesColor(s.kind, si) }}
+                  style={{ backgroundColor: seriesColor(s.kind) }}
                 />
                 {s.label}
               </span>
