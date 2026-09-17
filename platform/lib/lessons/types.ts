@@ -101,9 +101,17 @@ export interface SequencePlot {
   /** The y-axis interval, chosen deliberately. Plotting 64 down to 2 in
    *  steps of 1 runs off the page, which is the point of the example. */
   yStep: number;
+  /** The x-axis interval. A plot running to $12$ does not want thirteen
+   *  labelled ticks. */
+  xStep: number;
   series: {
     label: string;
-    kind: "geometric" | "arithmetic";
+    /** How the points are meant to sit, which the test then verifies:
+     *  `geometric` is a constant RATIO between consecutive y values,
+     *  `arithmetic` a constant DIFFERENCE, and `linear` collinear in
+     *  (x, y) -- which is what you need when x is a measured quantity
+     *  rather than a term number, so the points are not evenly spaced. */
+    kind: "geometric" | "arithmetic" | "linear";
     points: [number, number][];
   }[];
 }
@@ -129,8 +137,10 @@ export interface ChallengeTask {
  *  a student who needs more than a nudge has somewhere to go, and so the
  *  coverage table can be derived rather than maintained twice. */
 export interface QuestionHint {
-  /** The part label as the worksheet prints it: "(a)", "(b)", or "" when
-   *  the question has no lettered parts. */
+  /** The part label as the worksheet prints it: "(a)", "(b)", or "" when the
+   *  question has no lettered parts. Where a question has no letters but two
+   *  genuinely different first moves, a short descriptive label ("counting
+   *  the points") is allowed and reads better than two unlabelled hints. */
   part: string;
   hint: string;
   /** A slides[].id of an act: "learn" slide. */

@@ -145,7 +145,7 @@ function LessonHeader({ lesson }: { lesson: Lesson }) {
 }
 
 const ACT_BLURB: Record<LessonAct, string> = {
-  learn: "Read these before you start the worksheets.",
+  learn: "Start with the BEFORE THE EXPLORATION slides. The rest are for after you have explored, and some of them give the exploration away.",
   hint: "Open the slide for whichever question has stopped you. Hints only, no answers.",
   review: "Come back here once the work is done.",
 };

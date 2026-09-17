@@ -246,9 +246,20 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
         if (series.kind === "geometric") {
           const r = ys[1] / ys[0];
           for (let i = 1; i < ys.length; i++) expect(ys[i] / ys[i - 1]).toBeCloseTo(r, 9);
-        } else {
+        } else if (series.kind === "arithmetic") {
           const d = ys[1] - ys[0];
           for (let i = 1; i < ys.length; i++) expect(ys[i] - ys[i - 1]).toBeCloseTo(d, 9);
+        } else {
+          // linear: collinear in (x, y). The x values need not be evenly
+          // spaced, which is the whole reason this kind exists -- 1.7 plots
+          // area against a measured boundary count, not against a term
+          // number. Cross-product of the two step vectors must vanish.
+          const [x0, y0] = series.points[0];
+          const [x1, y1] = series.points[1];
+          for (let i = 2; i < series.points.length; i++) {
+            const [xi, yi] = series.points[i];
+            expect((x1 - x0) * (yi - y0) - (y1 - y0) * (xi - x0)).toBeCloseTo(0, 9);
+          }
         }
         for (const [x, y] of series.points) {
           expect(x).toBeLessThanOrEqual(s.plot.xMax);
@@ -257,6 +268,8 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
       }
       expect(s.plot.yStep).toBeGreaterThan(0);
       expect(s.plot.yMax % s.plot.yStep).toBe(0);
+      expect(s.plot.xStep).toBeGreaterThan(0);
+      expect(s.plot.xMax % s.plot.xStep).toBe(0);
     }
   });
 
@@ -361,6 +374,94 @@ describe("lesson 1.6, specifically", () => {
     expect(exit).toBeDefined();
     expect(exit.table?.rows).toHaveLength(3);
     expect(lesson.exitTicket.rubric).toHaveLength(3);
+  });
+
+  it("has a primer short enough to teach before the exploration", () => {
+    const primerMinutes = slidesInAct(lesson, "learn")
+      .filter((s) => s.phase === "primer")
+      .reduce((sum, s) => sum + s.minutes, 0);
+    expect(primerMinutes).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("lesson 1.7, specifically", () => {
+  const lesson = getLesson("1-7-connecting-patterns-across-representations")!;
+  const coverage = coverageFromHints(lesson);
+
+  it("is published", () => {
+    expect(lesson).toBeDefined();
+    expect(lesson.code).toBe("1.7");
+  });
+
+  it("has one hint slide per worksheet question", () => {
+    const bySource = (s: string) => slidesInAct(lesson, "hint").filter((x) => x.source === s).length;
+    expect(bySource("exploration")).toBe(5);
+    expect(bySource("check-your-understanding")).toBe(2);
+    expect(bySource("homework")).toBe(0);
+  });
+
+  // Exploration Q1-Q5 and Check Your Understanding Q1, Q2(a), Q2(b). Q1 of
+  // the exploration gets two hints because counting the points and finding
+  // the area are genuinely different first moves.
+  it("covers every question part on the sheet", () => {
+    expect(coverage.filter((c) => c.source === "exploration").length).toBe(6);
+    expect(coverage.filter((c) => c.source === "check-your-understanding").length).toBe(3);
+    expect(coverage.length).toBe(9);
+  });
+
+  // The exploration IS the discovery of A = B/2 + 1. A primer slide that
+  // states it, or that pairs a boundary count with an area for the same
+  // shape, has done the exploration for the student. The primer teaches the
+  // two measurements on shapes that are not on the sheet, and never states
+  // both numbers for one shape.
+  it("never gives the relationship away in a primer slide", () => {
+    const primer = slidesInAct(lesson, "learn").filter((s) => s.phase === "primer");
+    const text = primer
+      .flatMap((s) => [
+        s.title,
+        ...s.body,
+        ...s.examples.flatMap((e) => [e.title, ...e.steps, e.answer]),
+        s.check?.question ?? "",
+        s.check?.answer ?? "",
+      ])
+      .join(" ")
+      .toLowerCase();
+
+    // The rule itself, in any of the forms it is written elsewhere.
+    for (const spoiler of ["b + 1", "\\tfrac{1}{2}b", "pick", "interior point", "6.5", "51"]) {
+      expect(text).not.toContain(spoiler);
+    }
+    // And no primer slide may pair a boundary count with an area.
+    for (const s of primer) {
+      const own = [...s.body, ...s.examples.flatMap((e) => [...e.steps, e.answer])].join(" ").toLowerCase();
+      const namesPoints = own.includes("boundary point");
+      const namesArea = own.includes("area");
+      expect(`${s.id}: points=${namesPoints} area=${namesArea}`).not.toBe(`${s.id}: points=true area=true`);
+    }
+  });
+
+  it("teaches the four representations by name", () => {
+    const slide = lesson.slides.find((s) => s.id === "four-representations")!;
+    const cells = (slide.table?.rows ?? []).map((r) => r[0].toLowerCase());
+    for (const r of ["table", "graph", "words", "equation"]) {
+      expect(cells).toContain(r);
+    }
+  });
+
+  it("records why the rule works, which the worksheet never says", () => {
+    const items = lesson.openQuestions
+      .map((q) => [q.item, q.whyUnresolved, q.whatWasDone].join(" "))
+      .join(" ");
+    expect(items).toContain("interior dots");
+    // And the teacher is told it on the review slide, not only in the notes.
+    const review = lesson.slides.find((s) => s.id === "review-the-rule")!;
+    expect(review.teacherNote).toContain("Pick");
+  });
+
+  it("flags the duplicated figure label and the missing homework sheet", () => {
+    const items = lesson.openQuestions.map((q) => q.item).join(" ");
+    expect(items).toContain("C twice");
+    expect(items).toContain("homework");
   });
 
   it("has a primer short enough to teach before the exploration", () => {

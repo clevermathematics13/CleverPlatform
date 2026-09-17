@@ -670,6 +670,7 @@ const LEARN: LessonSlide[] = [
       xMax: 5,
       yMax: 16,
       yStep: 4,
+      xStep: 1,
       series: [
         {
           label: "Geometric, r = 2",
