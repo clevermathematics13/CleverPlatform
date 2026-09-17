@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
     "@sparticuz/chromium-min",
     "@myriaddreamin/typst-ts-node-compiler",
     "heic-convert",
+    // Read by lib/paper-layout-derive.ts to find the answer-box marks in a
+    // generated paper. Kept out of the bundle: it ships its own worker and
+    // canvas shims that only make sense on the server.
+    "pdfjs-dist",
     "libheif-js",
   ],
   // public/ is served statically, which does not put it on the lambda's
