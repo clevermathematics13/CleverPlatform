@@ -7,12 +7,9 @@ import {
   loadInvitedProfileIds,
   matchSegmentsToInvitedRoster,
   scanCoverPages,
-  COVER_PAGE_CHECK_MODEL,
-  COVER_PAGE_CHECK_SYSTEM_PROMPT,
-  buildCoverPageCheckUserPrompt,
-  validateCoverPageCheck,
   type CoverPageCheck,
 } from "../lib/na-scanning";
+import { runCoverPageCheck } from "../lib/cover-page-check";
 import { recordUsage } from "../lib/ai-usage";
 
 const MAX_CONSECUTIVE_API_ERRORS = 3;
@@ -111,37 +108,25 @@ export async function runSegmentAndSplit(
       singlePageDoc.addPage(copied);
       const singlePageBytes = await singlePageDoc.save();
 
-      const message = await anthropic.messages.create({
-        model: COVER_PAGE_CHECK_MODEL,
-        max_tokens: 512,
-        system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: "application/pdf",
-                  data: Buffer.from(singlePageBytes).toString("base64"),
-                },
-              },
-              { type: "text", text: buildCoverPageCheckUserPrompt(rosterNames) },
-            ],
-          },
-        ],
+      // The same check the interactive route makes, second read of an
+      // unmatched cover page included (lib/cover-page-check.ts). Only the
+      // first read can throw out of here -- a failed second read keeps the
+      // first verdict -- so the error counter below still measures Haiku.
+      const outcome = await runCoverPageCheck({
+        anthropic,
+        pdfBase64: Buffer.from(singlePageBytes).toString("base64"),
+        rosterNames,
+        onUsage: async ({ stage, model, usage }) => {
+          if (stage === "first") consecutiveApiErrors = 0;
+          await recordUsage(supabase, {
+            pipeline: stage === "escalation" ? "na_cover_page_escalation" : "na_cover_page",
+            model,
+            usage,
+            ref: { type: "na_scan_batch", id: batch.id },
+          });
+        },
       });
-      consecutiveApiErrors = 0;
-      await recordUsage(supabase, {
-        pipeline: "na_cover_page",
-        model: COVER_PAGE_CHECK_MODEL,
-        usage: message.usage,
-        ref: { type: "na_scan_batch", id: batch.id },
-      });
-      const text = message.content.map((b) => (b.type === "text" ? b.text : "")).join("\n");
-      const validated = validateCoverPageCheck(text);
-      return validated.ok ? validated.result : notCover;
+      return outcome.ok ? outcome.result : notCover;
     } catch {
       // Unlike the interactive route (which treats every failure, API or
       // otherwise, as "not a cover page" and keeps going -- fine for one

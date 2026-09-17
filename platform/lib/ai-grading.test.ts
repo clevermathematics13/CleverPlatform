@@ -149,6 +149,57 @@ describe("matchSegmentsToRoster", () => {
     expect(result.matchedStudentId).toBe("s2");
   });
 
+  // Regression: a real cover page. Vicente wrote his name with a looped V
+  // and an n whose arch opened; Haiku read it as "Nicolite", which plain
+  // Levenshtein puts four edits from "vicente" (two allowed for an
+  // eight-letter word). Every one of those edits is a known handwriting
+  // confusion (n/v, o/e, li/n), so the handwriting-aware distance fits
+  // it inside the budget -- against the whole class, not just Vicente.
+  describe("handwriting-aware misreads against a real 9-student roster (names changed)", () => {
+    const roster: RosterEntry[] = [
+      { profileId: "1", displayName: "Diego Figueroa" },
+      { profileId: "2", displayName: "Yani Shi" },
+      { profileId: "3", displayName: "Vicente Alarcon" },
+      { profileId: "4", displayName: "Karolina Ferguson" },
+      { profileId: "5", displayName: "Benjamin Arias" },
+      { profileId: "6", displayName: "Arianna Bonfil" },
+      { profileId: "7", displayName: "Vania De Los Heros" },
+      { profileId: "8", displayName: "Emilia Duarte" },
+      { profileId: "9", displayName: "Agustina Fernandez" },
+    ];
+
+    it("matches 'Nicolite' to Vicente", () => {
+      const [result] = matchSegmentsToRoster([segment("Nicolite")], roster);
+      expect(result.matchedStudentId).toBe("3");
+    });
+
+    it("matches a first name whose n was read as u", () => {
+      const [result] = matchSegmentsToRoster([segment("Beujamin Arias")], roster);
+      expect(result.matchedStudentId).toBe("5");
+    });
+
+    it("does not stretch to a different name of the same length", () => {
+      // "nicolas" is still four edits from "vicente" -- l/n, a/t and s/e
+      // are not confusions -- and matches nobody here.
+      const [result] = matchSegmentsToRoster([segment("Nicolas")], roster);
+      expect(result.matchedStudentId).toBeNull();
+    });
+
+    it("does not let the discount confuse Vania with Vicente", () => {
+      const [vania] = matchSegmentsToRoster([segment("Vania")], roster);
+      expect(vania.matchedStudentId).toBe("7");
+      const [vicente] = matchSegmentsToRoster([segment("Vicente")], roster);
+      expect(vicente.matchedStudentId).toBe("3");
+    });
+
+    it("every student's own full name still self-matches", () => {
+      for (const target of roster) {
+        const [result] = matchSegmentsToRoster([segment(target.displayName)], roster);
+        expect(result.matchedStudentId).toBe(target.profileId);
+      }
+    });
+  });
+
   it("still matches on an exact full-name equal string", () => {
     const roster: RosterEntry[] = [{ profileId: "s1", displayName: "Camilla Fernandez" }];
     const [result] = matchSegmentsToRoster([segment("Camilla Fernandez")], roster);

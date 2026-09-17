@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { transcriptionHasUnreadableGap, transcriptionStatesTruncation } from "./na-scanning";
+import {
+  buildCoverPageEscalationUserPrompt,
+  mergeEscalatedCoverPageCheck,
+  needsNameEscalation,
+  transcriptionHasUnreadableGap,
+  transcriptionStatesTruncation,
+  type CoverPageCheck,
+} from "./na-scanning";
 
 // Strings here are taken from A.1's real transcriptions, so the cases track
 // what the assessor actually writes rather than what it might write.
@@ -160,5 +167,114 @@ describe("transcriptionStatesTruncation", () => {
       expect(transcriptionStatesTruncation(stated)).toBe(true);
       expect(transcriptionHasUnreadableGap(stated)).toBe(true);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Second read of an unmatched cover page
+// ---------------------------------------------------------------------------
+
+function check(overrides: Partial<CoverPageCheck> = {}): CoverPageCheck {
+  return {
+    isCoverPage: true,
+    studentName: "Nicolite",
+    rosterMatch: null,
+    confidence: "low",
+    note: "handwriting is difficult to read",
+    ...overrides,
+  };
+}
+
+describe("needsNameEscalation", () => {
+  it("asks for a second read of a cover page with a roster and no match", () => {
+    expect(needsNameEscalation(check(), 9)).toBe(true);
+  });
+
+  it("asks even when the first read could not read the name at all", () => {
+    expect(needsNameEscalation(check({ studentName: null }), 9)).toBe(true);
+  });
+
+  it("leaves a matched cover page alone", () => {
+    expect(needsNameEscalation(check({ rosterMatch: "Vicente Alarcon" }), 9)).toBe(false);
+  });
+
+  it("treats a blank roster match as no match", () => {
+    expect(needsNameEscalation(check({ rosterMatch: "  " }), 9)).toBe(true);
+  });
+
+  it("never asks about a page that is not a cover page", () => {
+    expect(needsNameEscalation(check({ isCoverPage: false }), 9)).toBe(false);
+  });
+
+  it("has nothing to ask when no roster was supplied", () => {
+    expect(needsNameEscalation(check(), 0)).toBe(false);
+  });
+});
+
+describe("buildCoverPageEscalationUserPrompt", () => {
+  const roster = ["Vicente Alarcon", "Vania De Los Heros"];
+
+  it("tells the model what the first read saw and lists the roster", () => {
+    const prompt = buildCoverPageEscalationUserPrompt(roster, check());
+    expect(prompt).toContain('transcribed the handwritten name as "Nicolite"');
+    expect(prompt).toContain("ROSTER (2 students");
+    expect(prompt).toContain("- Vicente Alarcon");
+    expect(prompt).toContain("- Vania De Los Heros");
+    expect(prompt).toContain("Return the JSON object now.");
+  });
+
+  it("says so when the first read had no name to offer", () => {
+    const prompt = buildCoverPageEscalationUserPrompt(roster, check({ studentName: null }));
+    expect(prompt).toContain("could not read the handwritten name");
+    expect(prompt).not.toContain("transcribed");
+  });
+});
+
+describe("mergeEscalatedCoverPageCheck", () => {
+  it("takes the second read's match, confidence and reading, and records both readings", () => {
+    const merged = mergeEscalatedCoverPageCheck(
+      check(),
+      check({ studentName: "Vicente", rosterMatch: "Vicente Alarcon", confidence: "high", note: "looped V, n read as li" })
+    );
+    expect(merged.rosterMatch).toBe("Vicente Alarcon");
+    expect(merged.studentName).toBe("Vicente");
+    expect(merged.confidence).toBe("high");
+    expect(merged.note).toContain("looped V, n read as li");
+    expect(merged.note).toContain("first read as 'Nicolite'");
+    expect(merged.note).toContain("matched to 'Vicente Alarcon' on a second read");
+  });
+
+  it("never lets the second read flip the cover-page decision", () => {
+    const merged = mergeEscalatedCoverPageCheck(
+      check(),
+      check({ isCoverPage: false, rosterMatch: "Vicente Alarcon", confidence: "high" })
+    );
+    expect(merged.isCoverPage).toBe(true);
+    expect(merged.rosterMatch).toBe("Vicente Alarcon");
+  });
+
+  it("keeps the first verdict when the second read matches nobody either, noting the attempt", () => {
+    const merged = mergeEscalatedCoverPageCheck(check(), check({ studentName: "Nicolete", note: "still unclear" }));
+    expect(merged.rosterMatch).toBeNull();
+    expect(merged.confidence).toBe("low");
+    expect(merged.studentName).toBe("Nicolete");
+    expect(merged.note).toContain("handwriting is difficult to read");
+    expect(merged.note).toContain("read it as 'Nicolete'");
+    expect(merged.note).toContain("could not match it to the roster either");
+  });
+
+  it("keeps the first reading when the second read has none", () => {
+    const merged = mergeEscalatedCoverPageCheck(check(), check({ studentName: null, note: "" }));
+    expect(merged.studentName).toBe("Nicolite");
+    expect(merged.note).toContain("a second read could not match it to the roster either");
+  });
+
+  it("falls back to the first reading when the match arrives without one", () => {
+    const merged = mergeEscalatedCoverPageCheck(
+      check(),
+      check({ studentName: "  ", rosterMatch: "Vicente Alarcon", confidence: "medium", note: "" })
+    );
+    expect(merged.studentName).toBe("Nicolite");
+    expect(merged.note).toBe("first read as 'Nicolite', matched to 'Vicente Alarcon' on a second read");
   });
 });
