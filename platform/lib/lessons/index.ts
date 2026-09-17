@@ -1,6 +1,7 @@
 import type { Lesson } from "./types";
 import { lesson16 } from "./lesson-1-6";
 import { lesson17 } from "./lesson-1-7";
+import { lesson21 } from "./lesson-2-1";
 
 export type { Lesson } from "./types";
 
@@ -10,7 +11,7 @@ export type { Lesson } from "./types";
  *  put it in this array. lessons.test.ts then checks its mathematics spans,
  *  its coverage map and its slide ids without anyone having to remember to
  *  write a test for it. */
-const LESSONS: Lesson[] = [lesson16, lesson17];
+const LESSONS: Lesson[] = [lesson16, lesson17, lesson21];
 
 export function listLessons(): {
   slug: string;
