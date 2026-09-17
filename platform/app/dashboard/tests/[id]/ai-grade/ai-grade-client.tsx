@@ -1487,7 +1487,7 @@ export function AiGradeClient({
                                         // the top-left corner of the question and hid the rest,
                                         // which is worse than useless on a question whose figure
                                         // sits at the bottom. Whole question, scaled down.
-                                        className="h-20 w-44 cursor-zoom-in rounded bg-white/5 object-contain"
+                                        className="h-40 w-96 cursor-zoom-in rounded bg-white/5 object-contain"
                                       />
                                       {r.question_image_urls.length > 1 && (
                                         <span className="absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 text-[10px] leading-4 text-white">
