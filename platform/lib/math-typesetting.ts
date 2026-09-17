@@ -776,6 +776,37 @@ export function mapDraftProse<T extends ProseBearing>(draft: T, fn: ProseFn): T 
     d.internationalMindedness = mapFields(d.internationalMindedness as ProseBearing, ["body"], fn);
   }
 
+  // The Teacher's Companion is prose like any other, and it is the one block
+  // a teacher reads while marking, so its mathematics has to be typeset too.
+  // Missing it printed "$sec^2 y$" with its dollar signs showing on the only
+  // page the instructor keeps.
+  if (d.teacherCompanion && typeof d.teacherCompanion === "object") {
+    const tc = mapFields(d.teacherCompanion as ProseBearing, ["designNote"], fn);
+    if (Array.isArray(tc.tieredDeadlines)) {
+      tc.tieredDeadlines = (tc.tieredDeadlines as ProseBearing[]).map((r) =>
+        mapFields(r, ["slot", "covers"], fn),
+      );
+    }
+    if (Array.isArray(tc.integrationMap)) {
+      tc.integrationMap = (tc.integrationMap as ProseBearing[]).map((r) =>
+        mapFields(r, ["element", "location"], fn),
+      );
+    }
+    if (Array.isArray(tc.partNotes)) {
+      tc.partNotes = (tc.partNotes as ProseBearing[]).map((n) => {
+        const note = mapFields(n, ["part", "timing", "purpose", "ifStuck"], fn);
+        if (Array.isArray(note.watchFor)) note.watchFor = mapStrings(note.watchFor as unknown[]);
+        return note;
+      });
+    }
+    if (Array.isArray(tc.plantedErrors)) {
+      tc.plantedErrors = (tc.plantedErrors as ProseBearing[]).map((e) =>
+        mapFields(e, ["question", "misconceptionName", "errorDescription", "correctAnswer", "hlConcept"], fn),
+      );
+    }
+    d.teacherCompanion = tc;
+  }
+
   if (Array.isArray(d.sections)) {
     d.sections = (d.sections as ProseBearing[]).map((section) => {
       const s = { ...section };

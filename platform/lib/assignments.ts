@@ -159,6 +159,53 @@ export type CommandTermEntry = { term: string; definition: string };
 export type TokProvocation = { id: string; body: string };
 export type InternationalMindednessBox = { body: string };
 
+/**
+ * The packet-level Teacher's Companion: how to RUN the packet, not what the
+ * answers are.
+ *
+ * WHY IT CARRIES NO ANSWER SKETCHES. Every question already holds its own
+ * `answer`, and na_rubric_items is the authoritative key, exported by
+ * /api/na-review/rubric/[id]?format=html. A second copy here would be a
+ * second answer key, and the two would drift the first time a question was
+ * edited. What a teacher cannot get anywhere else is the pacing, the errors
+ * worth circulating for, and the one hint to give -- so that is what this is.
+ *
+ * Printed only when a render passes renderOptions.includeTeacherCompanion,
+ * and the page says to remove it before the packet is handed out. It is NOT
+ * a section: a section in `sections` prints in every copy, including the
+ * students', which is why this is a field of its own.
+ */
+export type TeacherCompanionPartNote = {
+  /** The Part this note is about, spelled as its heading or as "Part 3". */
+  part: string;
+  /** Time on the clock, e.g. "25 min, in class". */
+  timing?: string;
+  /** What the Part is for, in one sentence. */
+  purpose?: string;
+  /** Errors to expect, specific enough to recognise while circulating. */
+  watchFor?: string[];
+  /** The single hint to give a stuck student, and no more than that. */
+  ifStuck?: string;
+};
+
+export type TeacherCompanion = {
+  /** Why the packet is built the way it is. */
+  designNote?: string;
+  /** Which lesson slot covers what. */
+  tieredDeadlines?: Array<{ slot: string; covers: string }>;
+  /** IB element -> where it lives in this packet. */
+  integrationMap?: Array<{ element: string; location: string }>;
+  partNotes?: TeacherCompanionPartNote[];
+  /** The deliberate errors, named so a teacher can mark them consistently. */
+  plantedErrors?: Array<{
+    question: string;
+    misconceptionName: string;
+    errorDescription: string;
+    correctAnswer?: string;
+    hlConcept?: string;
+  }>;
+};
+
 export type AssignmentSection = {
   heading: string;
   questions: AssignmentQuestion[];
@@ -197,6 +244,8 @@ export type AssignmentDraft = {
   reteachGuide?: ReteachGuideEntry[];
   /** Formative Assessment: render a per-section "Score: ___/N" summary box on the title page. */
   showSectionScoreSummary?: boolean;
+  /** Instructor-only pacing and teaching notes; see TeacherCompanion. */
+  teacherCompanion?: TeacherCompanion;
 };
 
 export type ClaudeTextBlock = { type: string; text?: string };
@@ -625,6 +674,7 @@ export function sanitizeDraft(draft: AssignmentDraft): AssignmentDraft {
     ...(draft.showSectionScoreSummary !== undefined
       ? { showSectionScoreSummary: draft.showSectionScoreSummary }
       : {}),
+    ...(draft.teacherCompanion ? { teacherCompanion: draft.teacherCompanion } : {}),
   });
 }
 

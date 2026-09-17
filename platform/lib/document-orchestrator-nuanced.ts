@@ -39,6 +39,7 @@ import type {
   AssignmentDraft,
   AssignmentSection,
   AssignmentQuestion,
+  TeacherCompanion,
 } from "./assignments";
 
 // -- NuancedDraft shape (extended from AssignmentDraft) ------------------------
@@ -186,6 +187,78 @@ function sanitiseInternationalMindedness(
   if (!im) return undefined;
   const body = nonEmptyString(im.body);
   return body ? { body } : undefined;
+}
+
+/**
+ * Sanitise the Teacher's Companion, to the same all-or-nothing rule as the
+ * boxes above: the Typst dict cannot be handed a key whose value is the wrong
+ * shape, and a companion is the one block a render can be asked for by name,
+ * so a malformed one must degrade to "no companion" rather than to no packet.
+ * Every sub-list is dropped when empty, and the whole thing when nothing
+ * usable survives -- which restores the bare stub page the renderer printed
+ * before this existed.
+ */
+function sanitiseTeacherCompanion(
+  tc: TeacherCompanion | undefined
+): TeacherCompanion | undefined {
+  if (!tc || typeof tc !== "object") return undefined;
+
+  const designNote = nonEmptyString(tc.designNote);
+
+  const tieredDeadlines = (Array.isArray(tc.tieredDeadlines) ? tc.tieredDeadlines : [])
+    .map((r) => ({ slot: nonEmptyString(r?.slot), covers: nonEmptyString(r?.covers) }))
+    .filter((r): r is { slot: string; covers: string } => Boolean(r.slot && r.covers));
+
+  const integrationMap = (Array.isArray(tc.integrationMap) ? tc.integrationMap : [])
+    .map((r) => ({ element: nonEmptyString(r?.element), location: nonEmptyString(r?.location) }))
+    .filter((r): r is { element: string; location: string } => Boolean(r.element && r.location));
+
+  const partNotes = (Array.isArray(tc.partNotes) ? tc.partNotes : [])
+    .map((n) => {
+      const part = nonEmptyString(n?.part);
+      if (!part) return null;
+      const watchFor = (Array.isArray(n?.watchFor) ? n.watchFor : [])
+        .map((w) => nonEmptyString(w))
+        .filter((w): w is string => Boolean(w));
+      const timing = nonEmptyString(n?.timing);
+      const purpose = nonEmptyString(n?.purpose);
+      const ifStuck = nonEmptyString(n?.ifStuck);
+      return {
+        part,
+        ...(timing ? { timing } : {}),
+        ...(purpose ? { purpose } : {}),
+        ...(watchFor.length > 0 ? { watchFor } : {}),
+        ...(ifStuck ? { ifStuck } : {}),
+      };
+    })
+    .filter((n): n is NonNullable<typeof n> => n !== null);
+
+  const plantedErrors = (Array.isArray(tc.plantedErrors) ? tc.plantedErrors : [])
+    .map((e) => {
+      const question = nonEmptyString(e?.question);
+      const misconceptionName = nonEmptyString(e?.misconceptionName);
+      const errorDescription = nonEmptyString(e?.errorDescription);
+      if (!question || !misconceptionName || !errorDescription) return null;
+      const correctAnswer = nonEmptyString(e?.correctAnswer);
+      const hlConcept = nonEmptyString(e?.hlConcept);
+      return {
+        question,
+        misconceptionName,
+        errorDescription,
+        ...(correctAnswer ? { correctAnswer } : {}),
+        ...(hlConcept ? { hlConcept } : {}),
+      };
+    })
+    .filter((e): e is NonNullable<typeof e> => e !== null);
+
+  const cleaned: TeacherCompanion = {
+    ...(designNote ? { designNote } : {}),
+    ...(tieredDeadlines.length > 0 ? { tieredDeadlines } : {}),
+    ...(integrationMap.length > 0 ? { integrationMap } : {}),
+    ...(partNotes.length > 0 ? { partNotes } : {}),
+    ...(plantedErrors.length > 0 ? { plantedErrors } : {}),
+  };
+  return Object.keys(cleaned).length > 0 ? cleaned : undefined;
 }
 
 /**
@@ -347,6 +420,7 @@ export const DocumentOrchestratorService = {
       const internationalMindedness = sanitiseInternationalMindedness(
         nd.internationalMindedness
       );
+      const teacherCompanion = sanitiseTeacherCompanion(nd.teacherCompanion);
 
       // The DESIGN_INSTRUCTIONS 2.1 header fields. These were passed through
       // raw, which was survivable only because the Typst template ignored them
@@ -377,6 +451,7 @@ export const DocumentOrchestratorService = {
         ...(commandTerms ? { commandTerms } : {}),
         ...(tokProvocations ? { tokProvocations } : {}),
         ...(internationalMindedness ? { internationalMindedness } : {}),
+        ...(teacherCompanion ? { teacherCompanion } : {}),
       };
 
       const payload: ActivityPayload = {

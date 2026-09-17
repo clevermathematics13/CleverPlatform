@@ -779,13 +779,96 @@ export function getActivityTypstSource(): string {
 ]
 
 // Teacher's Companion
+//
+// Every block below is optional and guarded with .at(.., default: ..): a
+// packet written before this existed has no teacherCompanion at all, and the
+// Typst dict is all-or-nothing, so an unguarded field access would not print
+// a thinner companion -- it would refuse to print the packet.
+//
+// There are deliberately no answer sketches here. The authoritative key is
+// na_rubric_items, exported by /api/na-review/rubric/[id]?format=html, and a
+// second copy would drift from it the first time a question was edited.
 #if opts.at("includeTeacherCompanion",default:false) [
   #pagebreak()
   #line(length:100%,stroke:2pt+col-accent)
   #v(4pt)
   #text(size:14pt,weight:"bold",fill:col-accent)[Teacher's Companion]
   #v(2pt)
-  #callout-box(text(size:9pt)[*For the instructor only.* Remove before distributing.],fill-color:rgb("#faf5ff"),border-color:col-accent)
+  #callout-box(text(size:9pt)[*For the instructor only.* Remove before distributing. The answer key is a separate document.],fill-color:rgb("#faf5ff"),border-color:col-accent)
+
+  #let tc = content.at("teacherCompanion", default: (:))
+
+  #if "designNote" in tc [
+    #v(8pt)
+    #text(size:10.5pt,weight:"bold")[A. Why the packet is built this way]
+    #v(3pt)
+    #text(size:9.5pt)[#rich(tc.designNote)]
+  ]
+
+  #let slots = tc.at("tieredDeadlines", default: ())
+  #if slots.len() > 0 [
+    #v(8pt)
+    #text(size:10.5pt,weight:"bold")[B. What fits in which slot]
+    #v(3pt)
+    #table(columns:(auto,1fr),stroke:0.4pt+col-border,
+      table.header(text(weight:"bold",size:9pt)[Slot],text(weight:"bold",size:9pt)[Covers]),
+      ..for r in slots { (text(size:9pt)[#rich(r.slot)],text(size:9pt)[#rich(r.covers)]) }
+    )
+  ]
+
+  #let imap = tc.at("integrationMap", default: ())
+  #if imap.len() > 0 [
+    #v(8pt)
+    #text(size:10.5pt,weight:"bold")[C. Integration map]
+    #v(3pt)
+    #table(columns:(auto,1fr),stroke:0.4pt+col-border,
+      table.header(text(weight:"bold",size:9pt)[IB element],text(weight:"bold",size:9pt)[Where it lives]),
+      ..for r in imap { (text(size:9pt,weight:"bold")[#rich(r.element)],text(size:9pt)[#rich(r.location)]) }
+    )
+  ]
+
+  #let notes = tc.at("partNotes", default: ())
+  #if notes.len() > 0 [
+    #v(8pt)
+    #text(size:10.5pt,weight:"bold")[D. Running it, Part by Part]
+    #for n in notes [
+      #v(5pt)
+      #block(breakable:false)[
+        #text(size:9.5pt,weight:"bold")[#rich(n.part)]
+        #if "timing" in n [ #h(4pt) #text(size:8.5pt,fill:col-accent)[#rich(n.timing)] ]
+        #if "purpose" in n [ #v(2pt) #text(size:9pt,style:"italic")[#rich(n.purpose)] ]
+        #let watch = n.at("watchFor", default: ())
+        #if watch.len() > 0 [
+          #v(2pt)
+          #text(size:8.5pt,weight:"bold",fill:rgb("#b45309"))[WATCH FOR]
+          #for w in watch [
+            #v(1pt)
+            #text(size:9pt)[- #rich(w)]
+          ]
+        ]
+        #if "ifStuck" in n [
+          #v(2pt)
+          #text(size:9pt)[*If stuck:* #rich(n.ifStuck)]
+        ]
+      ]
+    ]
+  ]
+
+  #let errs = tc.at("plantedErrors", default: ())
+  #if errs.len() > 0 [
+    #v(8pt)
+    #text(size:10.5pt,weight:"bold")[E. Planted errors]
+    #for e in errs [
+      #v(4pt)
+      #block(breakable:false)[
+        #text(size:9.5pt,weight:"bold")[#rich(e.question) -- #rich(e.misconceptionName)]
+        #v(2pt)
+        #text(size:9pt)[#rich(e.errorDescription)]
+        #if "correctAnswer" in e [ #v(2pt) #text(size:9pt)[*Correct:* #rich(e.correctAnswer)] ]
+        #if "hlConcept" in e [ #v(2pt) #text(size:9pt)[*HL concept:* #rich(e.hlConcept)] ]
+      ]
+    ]
+  ]
 ]
 `;
 }

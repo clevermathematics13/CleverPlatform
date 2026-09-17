@@ -37,6 +37,7 @@ import { typesetDraftMath, mapDraftProse, spanIsForLatexConversion } from "./mat
 import { convertLatexSegmentsToTypst } from "./latex-to-typst";
 
 import type { TemplateAst } from "./template-ast.schema";
+import type { TeacherCompanion } from "./assignments";
 // -- Activity content AST ------------------------------------------------------
 
 /**
@@ -213,6 +214,12 @@ export interface ActivityContentAst {
   tokProvocations?: TokProvocation[];
   internationalMindedness?: InternationalMindednessBox;
   commandTerms?: Array<{ term: string; definition: string }>;
+  /**
+   * Instructor-only pacing and teaching notes, printed only when
+   * renderOptions.includeTeacherCompanion is set. Deliberately NOT a section:
+   * a section prints in every copy, this prints in one.
+   */
+  teacherCompanion?: TeacherCompanion;
   sections: ActivitySection[];
 }
 
