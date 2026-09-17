@@ -77,3 +77,20 @@ correctly through the rest of a multi-step working should cost the mark for
 that one error once — not again at every later step that correctly used the
 carried-through value. This is exactly what follow-through (FT) marks are
 for.
+
+## 8. A mark scheme may not require what the question did not ask
+
+Where the mark scheme gates a mark on something the question's own wording
+never asked the student to produce, do not withhold the mark for its
+absence. Apply the rest of the scheme's demands as written.
+
+A scheme reading "R1 for stating the true value AND giving the reason" on a
+part that asks only "explain why the student is wrong" is exactly this case.
+The student was asked for the reason, so a correct reason earns the mark and
+the unstated value costs nothing. This is not leniency. It is the difference
+between a mathematical failure and a failure to guess an unstated
+requirement, and only the first one is being assessed.
+
+The test is the wording of the part in front of you, not what a fuller
+answer might have said. Where the part DOES ask for both things, both are
+still required.
