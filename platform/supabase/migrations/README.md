@@ -126,3 +126,59 @@ same version prefix** - which is all `supabase db push` compares. Use md5 to
 verify a file you just wrote back from the ledger, not as a directory-wide
 health check. To compare an older file against its row, ignore whitespace and
 trailing semicolons, or diff the text directly.
+
+## Fourth reconciliation, 18 Sep 2026
+
+The same gap as the second and third, grown to eight: the ledger held 167 rows
+against 158 files here, so eight versions had been applied through MCP
+`apply_migration` and their files never committed. Seven were rebuilt from the
+ledger in this pass:
+
+```
+20260916132044  a3_packet_row                        34081 chars
+20260916132433  a3_packet_version_rubric_anchors     42473
+20260916132457  a3_master_pdf_path                     924
+20260916132826  a3_prompt_crops                       1003
+20260916181947  test_course_dates                     2215
+20260917103734  backfill_aahl_na_continuity          19449
+20260918123826  ka1_unit1_scheme_asks_what_it_marks   7349
+```
+
+The eighth, `20260918182655_tests_activity_rubric`, is delivered by its own
+pull request rather than duplicated here, so this branch lands at 166 files
+against 167 rows and the two match once that merges.
+
+**Why it mattered this time.** `platform-supabase-migrations.yml` cannot push
+while remote versions are missing locally -- the CLI refuses with "Remote
+migration versions not found in local migrations directory", which is the fail
+-safe the section above describes. A green run of that workflow was therefore
+a skipped run, not a successful one.
+
+**All eight were MCP-applied, which made the rebuild clean.** As the section
+above explains, `apply_migration` stores the submitted text verbatim as a
+SINGLE statement, semicolons and all, so writing these back out produced valid
+SQL directly -- none of the terminator-stripping that makes a CLI-applied row
+unsafe to rebuild this way. Every file was verified by md5 against
+`array_to_string(statements, E'\n')` and matches exactly, allowing for the
+trailing newline each file carries and the ledger's text does not.
+
+**One trap when you verify, found the hard way.** Postgres `length()` counts
+CHARACTERS and `wc -c` counts BYTES. `a3_packet_row` is 34081 characters and
+34135 bytes, because of its em dashes, and comparing the two reads as
+corruption when nothing is wrong. Compare md5s, which settle it; a length
+check adds nothing once the md5 matches.
+
+The check that found the gap, and that should be run whenever a migration is
+applied outside the CLI:
+
+```sh
+# ledger versions vs file versions -- both lists should be identical
+ls platform/supabase/migrations/*.sql | sed -E 's#.*/([0-9]+)_.*#\1#' | sort > /tmp/files
+# select version from supabase_migrations.schema_migrations order by version  -> /tmp/ledger
+comm -3 /tmp/ledger /tmp/files
+```
+
+Run it in BOTH directions. A ledger version with no file blocks CI, which is
+what happened here; a file with no ledger version is the dangerous one, since
+`supabase db push` treats it as pending and would execute it against
+production. There were none of the latter.
