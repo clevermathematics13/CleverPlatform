@@ -417,6 +417,148 @@ describe("validateGradeResponse", () => {
     ).toBe(true);
   });
 
+  // Production defect, Grade 9 Key Assessment 1 Q8 (5 marks, run
+  // db680dc9): the model itself contradicted its own output -- every one of
+  // the five breakdown tokens was marked not-awarded while the prose ended
+  // "This is verification by substitution, earning 2 marks per the rubric".
+  // The rule above resolved the number correctly to 0, and the run-level
+  // warning recorded why, but that warning renders in a block of its own,
+  // nowhere near the part. What the teacher saw on the row was "0" beside a
+  // paragraph still arguing for 2, and nothing on the row connecting them.
+  // The number being right is not enough: the reasoning field is what a
+  // teacher reads to decide whether to accept a mark, so a correction that
+  // leaves it contradicting the award is the defect this pins.
+  it("appends a correction to the reasoning when the breakdown lowers the mark, so the prose never contradicts the award", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 2,
+          confidence: "medium",
+          workFound: true,
+          markBreakdown: [
+            { token: "M1", awarded: false, note: "Expansion not shown correctly" },
+            { token: "A1", awarded: false, note: "Did not collect into form (3 + 2j)x + (3k - 4j)" },
+            { token: "M2", awarded: false, note: "Did not set up coefficient equation to find j" },
+            { token: "A2", awarded: false, note: "Did not set up constant equation" },
+            { token: "A3", awarded: false, note: "Values of j and k not determined" },
+          ],
+          reasoning:
+            "This is verification by substitution, earning 2 marks per the rubric.",
+          evidence: "3(x + 7) + 4(6x - 4) = 11x + 5",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 5 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    // The mark itself still resolves the way it always did.
+    expect(grade.clampedMarks).toBe(0);
+    expect(grade.confidence).toBe("low");
+    // The model's own sentence is kept verbatim -- it is the evidence that
+    // the correction was needed -- but it no longer stands alone.
+    expect(grade.item.reasoning).toContain("earning 2 marks per the rubric");
+    expect(grade.item.reasoning).toContain("Correction:");
+    expect(grade.item.reasoning).toContain("the mark breakdown awards 0 token(s)");
+    expect(grade.item.reasoning).toContain("corrected to 0");
+  });
+
+  // The addendum is written in the same settled examiner voice rule 18
+  // demands of the model, so it must survive the deliberation/hedging scan
+  // that runs after it. A correction phrased as second-guessing would flag
+  // every corrected part as "exposes internal deliberation" and bury the
+  // real ones.
+  it("writes the correction in settled examiner voice, so it does not trip the deliberation scan", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 2,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "M1", awarded: false, note: "No valid method shown" },
+            { token: "A1", awarded: false, note: "Answer incorrect" },
+          ],
+          reasoning: "M1 and A1 are both awarded.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(
+      result.outcome.warnings.some((w) => w.includes("exposes internal deliberation"))
+    ).toBe(false);
+    expect(
+      result.outcome.warnings.some((w) => w.includes("hedges on reading"))
+    ).toBe(false);
+  });
+
+  // Same contradiction, the other direction: the breakdown is not allowed to
+  // raise the mark, so the prose that argued for the higher number is the one
+  // left standing against a lower award.
+  it("appends a correction when a breakdown awarding more than proposed is refused the raise", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            { token: "M1", awarded: true, note: "Both expressions substituted" },
+            { token: "A1", awarded: true, note: "Correct values: 108 and 156" },
+          ],
+          reasoning: "The student made an arithmetic error on the first expression.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    expect(grade.clampedMarks).toBe(1);
+    expect(grade.item.reasoning).toContain("The student made an arithmetic error");
+    expect(grade.item.reasoning).toContain("the award was kept at 1");
+  });
+
+  // The max-marks clamp is the same class of contradiction and was equally
+  // silent: a reasoning that talks about 7 marks beside an award of 5.
+  it("appends a correction when an over-award is clamped to the part's maximum", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 7,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [],
+          reasoning: "All seven marks are earned.",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 5 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    expect(grade.clampedMarks).toBe(5);
+    expect(grade.item.reasoning).toContain("All seven marks are earned.");
+    expect(grade.item.reasoning).toContain("clamped to 5");
+  });
+
   it("leaves suggestedMarks untouched when it already matches the breakdown", () => {
     const raw = JSON.stringify({
       items: [

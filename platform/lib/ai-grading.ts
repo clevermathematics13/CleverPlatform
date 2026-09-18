@@ -370,11 +370,20 @@ export function validateGradeResponse(
     }
     seen.add(item.testItemId);
 
+    // Every correction this pass makes to the mark is also written into the
+    // item's own `reasoning` -- see the addendum block below, which runs once
+    // after the LAST of them. Declared up here because the first correction,
+    // clamping an over-award to the part's maximum, happens immediately.
+    const reasoningCorrections: string[] = [];
+
     let clampedMarks = item.suggestedMarks;
     let confidence: Confidence = item.confidence;
     if (clampedMarks > unit.maxMarks) {
       warnings.push(
         `${unitLabel(unit)}: model awarded ${item.suggestedMarks} of a possible ${unit.maxMarks}; clamped to ${unit.maxMarks} and flagged low confidence`
+      );
+      reasoningCorrections.push(
+        `This reasoning reports ${item.suggestedMarks} mark(s) for a part worth ${unit.maxMarks}; the award was clamped to ${unit.maxMarks} and flagged for teacher review.`
       );
       clampedMarks = unit.maxMarks;
       confidence = "low";
@@ -399,10 +408,12 @@ export function validateGradeResponse(
     // (pre-correction) award, and nothing else here touches that paragraph.
     // Left alone, a teacher reads a reasoning field that still claims "full
     // marks" for a mark this function just withdrew. reasoningCorrections
-    // collects one short addendum per override so the visible reasoning
-    // stays truthful, without rewriting the model's own prose (which risks
-    // leaving a broken or misleading sentence behind).
-    const reasoningCorrections: string[] = [];
+    // (declared above, next to its first writer) collects one short addendum
+    // per correction so the visible reasoning stays truthful, without
+    // rewriting the model's own prose (which risks leaving a broken or
+    // misleading sentence behind). Every correction in this function writes
+    // to it, not just these loops -- see the breakdown/suggestedMarks
+    // reconciliation below.
 
     for (const entry of item.markBreakdown) {
       if (!entry.numericCheck) continue;
@@ -520,11 +531,6 @@ export function validateGradeResponse(
       }
     }
 
-    if (reasoningCorrections.length > 0) {
-      const addendum = reasoningCorrections.join(" ");
-      item.reasoning = item.reasoning ? `${item.reasoning} (Correction: ${addendum})` : `Correction: ${addendum}`;
-    }
-
     // The model is instructed that awarded mark_breakdown tokens must sum to
     // suggestedMarks (every token here is a single mark — M1/A1/R1/AG, never
     // M2/A2), but it doesn't always follow its own arithmetic. When it
@@ -553,14 +559,31 @@ export function validateGradeResponse(
     // itself reported, and the grant loop depends on the raise to take
     // effect. Any excess beyond that is the model disagreeing with itself:
     // suggestedMarks stands and a human is asked instead.
+    //
+    // Whichever number wins, the model's own `reasoning` paragraph was written
+    // to justify the number that LOST, so it goes into reasoningCorrections
+    // exactly like the deterministic overrides above do. Production evidence,
+    // Grade 9 Key Assessment 1 Q8 (5 marks): the breakdown awarded no token,
+    // the prose ended "This is verification by substitution, earning 2 marks
+    // per the rubric", and this rule resolved it to 0. The mark was right and
+    // the run-level warning said so -- but the warning renders in a separate
+    // block from the part, so what the teacher read on the row was a 0 beside
+    // a paragraph still arguing for 2, with nothing on the row to reconcile
+    // them. A silent contradiction in the one field a teacher reads to decide
+    // whether to accept a mark is the defect, independently of which number
+    // the rule keeps.
     if (item.markBreakdown.length > 0) {
       const awardedCount = item.markBreakdown.filter((b) => b.awarded).length;
       const raiseCeiling = Math.min(clampedMarks + grantedCount, unit.maxMarks);
       if (awardedCount < clampedMarks) {
+        const corrected = Math.min(awardedCount, unit.maxMarks);
         warnings.push(
           `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown only awards ${awardedCount} token(s); corrected to ${awardedCount} and flagged low confidence`
         );
-        clampedMarks = Math.min(awardedCount, unit.maxMarks);
+        reasoningCorrections.push(
+          `This reasoning argues for ${clampedMarks} mark(s), but the mark breakdown awards ${awardedCount} token(s); the award was corrected to ${corrected} and flagged for teacher review.`
+        );
+        clampedMarks = corrected;
         confidence = "low";
       } else if (awardedCount > clampedMarks) {
         const raised = Math.min(awardedCount, raiseCeiling);
@@ -568,10 +591,27 @@ export function validateGradeResponse(
           warnings.push(
             `${unitLabel(unit)}: model reported ${clampedMarks} mark(s) but its own breakdown awards ${awardedCount} token(s); kept ${raised} — a breakdown is never used to raise a mark beyond what this pass granted — and flagged for teacher review`
           );
+          reasoningCorrections.push(
+            `The mark breakdown awards ${awardedCount} token(s) against the ${clampedMarks} mark(s) this reasoning argues for; a breakdown is never used to raise a mark beyond what this pass granted, so the award was kept at ${raised} and flagged for teacher review.`
+          );
         }
         clampedMarks = raised;
         confidence = "low";
       }
+    }
+
+    // One addendum, appended after the LAST correction above, so the reasoning
+    // a teacher reads on the row never contradicts the mark beside it. The
+    // model's own prose is never edited or deleted -- rewriting someone else's
+    // sentence to remove a number risks leaving a broken or misleading
+    // half-sentence, and the original wording is also the evidence that the
+    // correction was needed. Placed before the deliberation/hedging scan
+    // below deliberately: the addendum is examiner-voice settled text, so it
+    // must pass that scan like any other reasoning, and would be a defect if
+    // it did not.
+    if (reasoningCorrections.length > 0) {
+      const addendum = reasoningCorrections.join(" ");
+      item.reasoning = item.reasoning ? `${item.reasoning} (Correction: ${addendum})` : `Correction: ${addendum}`;
     }
 
     // A mark scheme we could only guess at should never be reported as high confidence.
