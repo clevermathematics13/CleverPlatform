@@ -35,6 +35,15 @@ Design docs (read before any NA content or PDF layout work):
   non-null, IN PLACE OF the Formative Assessment principles. Edit the .md
   file, not a copy of its text. The strands, level bands and part map are
   data on the test (lib/standards-rubric.ts), never code.
+- Exploration/homework (ACTIVITY) marking policy lives in
+  platform/grading_policies/mathmedic_activity_marking_principles.md — loaded
+  at runtime by lib/ai-grading.ts for any test whose tests.activity_rubric is
+  non-null, IN PLACE OF BOTH the Formative Assessment and the Standard Level
+  principles. Edit the .md file, not a copy of its text. It deliberately
+  REVERSES the "a bare answer earns no method mark" rule the other two share,
+  because an Exploration is sat before the lesson. The learning targets,
+  outcome bands and part map are data on the test (lib/activity-rubric.ts),
+  never code; the classes it is offered for are ACTIVITY_COURSE_NAMES there.
 - NA student feedback voice lives in
   platform/feedback_voice/na_student_feedback_voice.md — loaded at runtime by
   lib/na-assessment.ts (buildAssessmentSystemPrompt), not just documentation.

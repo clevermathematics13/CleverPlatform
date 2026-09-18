@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { INVITED_SUBJECT_PREFIX } from "./grading-subject";
-import { fetchAllRows, loadInvitedRoster } from "./na-scanning";
+import { loadReportRoster } from "./report-roster";
 import {
   buildStandardsReport,
   parseStandardsRubric,
@@ -13,15 +12,9 @@ import {
  * The class's strand levels for one Standard Level test, from Clev's Marks.
  *
  * Shared by the standards report page and its CSV route so the two cannot
- * disagree about who is on the roster or which marks count. The roster rule
- * is the AI grader's: the test's own class plus its track siblings (a Grade
- * 9 test is attached to one class and sat by the track), registered students
- * from `students` and never-logged-in ones from `invited_students`, each
- * under the same opaque subject id the marks are keyed by.
- *
- * Marks are student_marks -- what a teacher has ACCEPTED -- not AI
- * suggestions. A level here is a level that has been signed off part by
- * part, which is the only kind that belongs on a report.
+ * disagree about who is on the roster or which marks count. The roster and
+ * the marks come from lib/report-roster.ts, which the Exploration/homework
+ * report uses too -- see that file for the rule, which is the AI grader's.
  */
 
 export interface StandardsReportRow {
@@ -73,109 +66,22 @@ export async function loadStandardsReportData(
   if (itemsError) return { ok: false, status: 500, error: itemsError.message };
   const items = (itemRows ?? []) as RubricItem[];
 
-  // -- Roster ---------------------------------------------------------------
   const courseId = (test.course_id as string | null) ?? null;
-  let sourceCourseIds: string[] = [];
-  let courseNames: Record<string, string> = {};
-  const students: { subjectId: string; name: string; courseId: string }[] = [];
-  if (courseId) {
-    const resolution = await loadInvitedRoster(supabase, courseId, { includeTrackSiblings: true });
-    sourceCourseIds = resolution.sourceCourseIds;
-    courseNames = resolution.sourceCourseNames;
+  const roster = await loadReportRoster(supabase, {
+    testId,
+    courseId,
+    itemIds: items.map((i) => i.id),
+    showHidden: options.showHidden,
+  });
+  if (!roster.ok) return roster;
 
-    let query = supabase
-      .from("students")
-      .select("profile_id, course_id, profiles:profile_id(display_name)")
-      .in("course_id", sourceCourseIds);
-    if (!options.showHidden) query = query.eq("hidden", false);
-    const { data: registered, error: regError } = await query;
-    if (regError) return { ok: false, status: 500, error: regError.message };
-
-    const seen = new Set<string>();
-    for (const s of registered ?? []) {
-      const pid = s.profile_id as string | null;
-      if (!pid || seen.has(pid)) continue;
-      seen.add(pid);
-      const prof = s.profiles as unknown;
-      const displayName =
-        prof && typeof prof === "object" && !Array.isArray(prof)
-          ? (prof as { display_name: string | null }).display_name
-          : Array.isArray(prof) && prof.length > 0
-            ? (prof[0] as { display_name: string | null }).display_name
-            : null;
-      students.push({ subjectId: pid, name: displayName ?? "Unknown", courseId: s.course_id as string });
-    }
-    for (const r of resolution.roster) {
-      if (r.profileId) {
-        if (seen.has(r.profileId)) continue;
-        seen.add(r.profileId);
-        students.push({ subjectId: r.profileId, name: r.fullName, courseId: r.sourceCourseId });
-      } else {
-        students.push({ subjectId: `${INVITED_SUBJECT_PREFIX}${r.invitedId}`, name: r.fullName, courseId: r.sourceCourseId });
-      }
-    }
-  }
-
-  // -- Marks and absences -----------------------------------------------------
-  const marksBySubject = new Map<string, Map<string, number>>();
-  const itemIds = items.map((i) => i.id);
-  if (itemIds.length > 0) {
-    let rawMarks: { test_item_id: string; student_id: string | null; invited_student_id: string | null; marks_awarded: number }[];
-    try {
-      rawMarks = await fetchAllRows((from, to) =>
-        supabase
-          .from("student_marks")
-          .select("test_item_id, student_id, invited_student_id, marks_awarded")
-          .in("test_item_id", itemIds)
-          .order("id", { ascending: true })
-          .range(from, to)
-      );
-    } catch (e) {
-      return { ok: false, status: 500, error: e instanceof Error ? e.message : String(e) };
-    }
-    for (const m of rawMarks) {
-      const subjectId =
-        m.student_id ?? (m.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${m.invited_student_id}` : null);
-      if (!subjectId) continue;
-      let map = marksBySubject.get(subjectId);
-      if (!map) {
-        map = new Map();
-        marksBySubject.set(subjectId, map);
-      }
-      map.set(m.test_item_id, m.marks_awarded);
-    }
-  }
-
-  const absent = new Set<string>();
-  const { data: absences } = await supabase
-    .from("test_absences")
-    .select("profile_id, invited_student_id")
-    .eq("test_id", testId);
-  for (const a of absences ?? []) {
-    const subjectId = a.profile_id ?? (a.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${a.invited_student_id}` : null);
-    if (subjectId) absent.add(subjectId);
-  }
-
-  const lastName = (n: string) => n.trim().split(/\s+/).slice(-1)[0] ?? n;
-  const classIndex = new Map(sourceCourseIds.map((id, i) => [id, i]));
-  const rows: StandardsReportRow[] = students
-    .map((s) => ({
-      classOrder: classIndex.get(s.courseId) ?? 0,
-      row: {
-        subjectId: s.subjectId,
-        name: s.name,
-        className: courseNames[s.courseId] ?? null,
-        absent: absent.has(s.subjectId),
-        report: buildStandardsReport(rubric, items, marksBySubject.get(s.subjectId) ?? new Map()),
-      },
-    }))
-    .sort(
-      (a, b) =>
-        a.classOrder - b.classOrder ||
-        lastName(a.row.name).localeCompare(lastName(b.row.name)) ||
-        a.row.name.localeCompare(b.row.name)
-    )
-    .map((x) => x.row);
+  const rows: StandardsReportRow[] = roster.data.subjects.map((s) => ({
+    subjectId: s.subjectId,
+    name: s.name,
+    className: s.className,
+    absent: s.absent,
+    report: buildStandardsReport(rubric, items, s.marks),
+  }));
 
   return {
     ok: true,
@@ -184,7 +90,7 @@ export async function loadStandardsReportData(
       rubric,
       items,
       rows,
-      classCount: new Set(students.map((s) => s.courseId)).size,
+      classCount: roster.data.classCount,
     },
   };
 }

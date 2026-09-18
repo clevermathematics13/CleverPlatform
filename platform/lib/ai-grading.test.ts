@@ -5,10 +5,13 @@ import {
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
   G9_STANDARD_LEVEL_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
+  MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES,
+  buildActivityRubricBlock,
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
   buildStandardsRubricBlock,
   composeQuestionText,
+  isActivity,
   isStandardsReferenced,
   isAaHlPaper2,
   isCustomAssessment,
@@ -19,7 +22,9 @@ import {
   type RosterEntry,
 } from "./ai-grading";
 import { KA1_UNIT1_ITEMS, KA1_UNIT1_RUBRIC } from "./fixtures/g9-standard-ka1-unit1";
+import { EXPLORATION_1_1_ITEMS, EXPLORATION_1_1_RUBRIC } from "./fixtures/mathmedic-exploration-1-1";
 import { strandForItem } from "./standards-rubric";
+import { targetsForItem } from "./activity-rubric";
 
 function unit(overrides: Partial<GradingUnit> = {}): GradingUnit {
   return {
@@ -1671,5 +1676,120 @@ describe("composeQuestionText", () => {
   it("is empty when both are", () => {
     expect(composeQuestionText(null, null)).toBe("");
     expect(composeQuestionText("", "  ")).toBe("");
+  });
+});
+
+/** Exploration 1.1 as grading units, each carrying the learning target(s) it feeds. */
+function exploration11Units(): GradingUnit[] {
+  return EXPLORATION_1_1_ITEMS.map((it) => {
+    const targets = targetsForItem(EXPLORATION_1_1_RUBRIC, {
+      question_number: it.questionNumber,
+      part_label: it.partLabel || null,
+    });
+    return unit({
+      testItemId: `item-${it.questionNumber}${it.partLabel}`,
+      questionNumber: it.questionNumber,
+      partLabel: it.partLabel,
+      maxMarks: it.maxMarks,
+      questionCode: "",
+      questionLatex: it.questionText,
+      markscheme: it.markschemeText,
+      markschemeSource: "custom",
+      activity: {
+        targets: targets.map((t) => ({ code: t.code, name: t.name })),
+        rubric: EXPLORATION_1_1_RUBRIC,
+      },
+    });
+  });
+}
+
+describe("Exploration and homework (activity) grading", () => {
+  it("isActivity is decided by the unit carrying a rubric", () => {
+    expect(isActivity(unit())).toBe(false);
+    expect(isActivity(unit({ activity: null }))).toBe(false);
+    expect(isActivity(exploration11Units()[0])).toBe(true);
+  });
+
+  it("policy content is actually loaded from grading_policies/, not empty", () => {
+    expect(MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES).toContain("Exploration and Homework");
+    expect(MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES).toContain("A bare correct answer still shows the idea");
+    expect(MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES).toContain("Omit");
+  });
+
+  it("appends the activity policy and the learning targets, and NEITHER other policy", () => {
+    // The trap this pins: an activity's items are source = 'custom', so the
+    // Formative branch would fire on them if the dispatch were a chain of
+    // independent ifs rather than an else-if chain.
+    const units = exploration11Units();
+    expect(units.every((u) => u.markschemeSource === "custom")).toBe(true);
+
+    const prompt = buildGradingSystemPrompt(units);
+    expect(prompt.startsWith(GRADING_SYSTEM_PROMPT)).toBe(true);
+    expect(prompt).toContain(MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES);
+    expect(prompt).toContain("THIS ACTIVITY'S LEARNING TARGETS");
+    expect(prompt).not.toContain(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES);
+    expect(prompt).not.toContain("Formative Assessment Marking Principles");
+    expect(prompt).not.toContain(G9_STANDARD_LEVEL_MARKING_PRINCIPLES);
+    expect(prompt).not.toContain("THIS ASSESSMENT'S STRAND RUBRIC");
+  });
+
+  it("an activity that somehow also carries strands is marked as an activity", () => {
+    const strand = strandForItem(KA1_UNIT1_RUBRIC, { question_number: 1, part_label: "a" })!;
+    const prompt = buildGradingSystemPrompt([
+      unit({
+        markschemeSource: "custom",
+        standards: { strand: { code: strand.code, name: strand.name, standards: strand.standards }, rubric: KA1_UNIT1_RUBRIC },
+        activity: { targets: [{ code: "LT1", name: "Relationships" }], rubric: EXPLORATION_1_1_RUBRIC },
+      }),
+    ]);
+    expect(prompt).toContain(MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES);
+    expect(prompt).not.toContain(G9_STANDARD_LEVEL_MARKING_PRINCIPLES);
+  });
+
+  it("a custom test without an activity rubric still gets the Formative principles, unchanged", () => {
+    const prompt = buildGradingSystemPrompt([unit({ markschemeSource: "custom", activity: null })]);
+    expect(prompt).toContain(G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES);
+    expect(prompt).not.toContain(MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES);
+  });
+
+  it("the learning-target block prints each target, its note and its parts", () => {
+    const block = buildActivityRubricBlock(EXPLORATION_1_1_RUBRIC, exploration11Units());
+    expect(block).toContain("LT1: Look for relationships between variables (7 marks of evidence)");
+    expect(block).toContain("Parts: 1, 2, 9(a), 10(b)");
+    expect(block).toContain("LT2: Use operations to describe a relationship between variables (6 marks of evidence)");
+    expect(block).toContain("LT3: Evaluate an expression by substituting a value for a variable (8 marks of evidence)");
+    expect(block).toContain("PEMDAS");
+    expect(block).toContain("sat BEFORE the lesson");
+  });
+
+  it("the block prints NO thresholds or mark ranges, unlike the strand block", () => {
+    // Deliberate: the outcome bands roll accepted marks up afterwards and are
+    // none of the model's business. Handing it the arithmetic would invite
+    // exactly the level-computing the policy forbids.
+    const block = buildActivityRubricBlock(EXPLORATION_1_1_RUBRIC, exploration11Units());
+    expect(block).not.toContain("Mark ranges");
+    // The outcome words appear exactly once, in the line that tells the model
+    // the platform computes them -- never against a target or a mark count.
+    expect(block.match(/Got it/g)?.length).toBe(1);
+    expect(block).toContain(
+      "The platform computes Got it / Almost / Not yet per learning target from the marks a teacher accepts. You report marks per part only."
+    );
+    for (const target of EXPLORATION_1_1_RUBRIC.targets) {
+      const line = block.split("\n").find((l) => l.startsWith(`--- ${target.code}:`))!;
+      expect(line).not.toMatch(/Got it|Almost|Not yet/);
+    }
+  });
+
+  it("is byte-identical however the units are ordered, so the prompt stays cacheable", () => {
+    const forwards = buildActivityRubricBlock(EXPLORATION_1_1_RUBRIC, exploration11Units());
+    const backwards = buildActivityRubricBlock(EXPLORATION_1_1_RUBRIC, [...exploration11Units()].reverse());
+    expect(backwards).toBe(forwards);
+  });
+
+  it("names the learning target on each part in the user prompt", () => {
+    const prompt = buildGradingUserPrompt(exploration11Units(), { testName: "Exploration 1.1" });
+    expect(prompt).toContain("Evidence of: LT3 Evaluate an expression by substituting a value for a variable");
+    // Q10(b) feeds two targets, and both are named on it.
+    expect(prompt).toContain("Evidence of: LT1 Look for relationships between variables; LT2 Use operations to describe a relationship between variables");
   });
 });

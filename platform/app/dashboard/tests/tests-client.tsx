@@ -245,6 +245,13 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
           >
             Import Standard Level paper
           </Link>
+          <Link
+            href="/dashboard/tests/activity-import"
+            title="Read a Math Medic Exploration or homework and its answer key from two PDFs into a markable activity"
+            className="rounded-lg border border-sky-400/40 bg-sky-500/15 px-4 py-2 text-sm font-medium text-sky-300 hover:bg-sky-500/25"
+          >
+            Import Exploration or homework
+          </Link>
         </div>
       )}
 
@@ -486,6 +493,20 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                         </span>{" "}
                         <a href={`/dashboard/tests/${test.id}/standards-report`} className="text-blue-300 hover:underline">
                           Standards report →
+                        </a>
+                      </>
+                    )}
+                    {test.activity_rubric != null && (
+                      <>
+                        {" · "}
+                        <span
+                          className="rounded border border-sky-400/40 bg-sky-500/15 px-1.5 py-0.5 text-[11px] font-medium text-sky-300"
+                          title="Marked as an activity and reported as Got it / Almost / Not yet per learning target"
+                        >
+                          Activity
+                        </span>{" "}
+                        <a href={`/dashboard/tests/${test.id}/activity-report`} className="text-blue-300 hover:underline">
+                          Activity report →
                         </a>
                       </>
                     )}

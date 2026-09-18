@@ -2225,3 +2225,123 @@ a Standard Level paper and links the report.
 - Nothing has been graded yet: no scans of KA1 existed when this was built,
   so the policy has not been measured on real work. The first class through
   it deserves the spot-check routine of §11.
+
+## 22. Explorations and homework: a third way to read a paper (18 Sep 2026)
+
+The teacher supplied Math Medic's Exploration 1.1 ("Equations that Describe
+Patterns" - Callie's Catering Company, 8 questions on page 1 and a Check
+Your Understanding on page 2) with its answer key, and asked for these to go
+through the platform the way Grade 9 Extended Nuanced Analysis does, but
+"differently". They do not fit either existing route, and the reason is not
+mechanical:
+
+- **The NA pipeline is closed to them.** It is bound to a packet whose anchor
+  geometry `auto_fillrect` derives from the drawn answer boxes of a master
+  PDF (§5). A Math Medic worksheet has no drawn answer boxes - students write
+  in open space - and no `nuanced_analyses` record.
+- **The test path fits, but both its policies answer the wrong question.** An
+  Exploration is sat BEFORE the lesson. Being wrong on it is the design; a
+  class that gets full marks has been given the wrong Exploration. The
+  Formative and Standard Level policies both mark work a student has already
+  been taught, and both withhold method marks from a bare correct answer.
+
+### What was built
+
+**The rubric is data on the test** (`tests.activity_rubric`, jsonb, migration
+`20260918000000`), validated by `ActivityRubricSchema` in
+`lib/activity-rubric.ts`: LEARNING TARGETS (code, name, the QuickNotes note,
+part refs), and outcome bands as proportions. The lesson's own targets - Math
+Medic prints them as "LT #1", "LT #2", "LT #3" on the key - are the grouping,
+the way strands are on a Standard Level paper. Nothing in code knows how many
+there are.
+
+**Outcomes, not levels or marks.** A part is worth 1 or 2 marks, and
+`outcomeForPart` reads them as Got it / Almost / Not yet with no thresholds
+at all: a 1-mark part is one idea and has no Almost. A TARGET spans several
+parts and does band, at 80% and 50% (`DEFAULT_OUTCOME_BANDS`), deliberately
+more forgiving than the Standard Level 85/65/40 - reading Almost as Got it
+costs little, the reverse reteaches a student who already knew it. Thresholds
+use `minMarksForBand` imported from `lib/standards-rubric.ts`, so a
+proportion lands on the same mark count whichever table prints it, and part
+refs ("2d", "5") are that module's grammar too.
+
+**Marks are plumbing, and the module says so in its header.** Every validator
+downstream is built on `suggestedMarks` being a whole number of awarded tokens
+in 0..maxMarks, so an activity uses that machinery rather than fighting it.
+There is deliberately NO overall figure anywhere - no total, no percentage:
+"Got it on LT1, Not yet on LT3" is the point, and rolling it into one number
+is the grade this route exists to avoid.
+
+**The marking policy** is `grading_policies/mathmedic_activity_marking_principles.md`,
+loaded at module init by `lib/ai-grading.ts` like the other three and
+dispatched by `isActivity()`. The dispatch is an ELSE-IF CHAIN and that is
+load-bearing: an activity's items are `source = 'custom'`, so the Formative
+branch would otherwise fire on every one of them. A test carrying both an
+activity rubric and a standards rubric is marked as an activity, with a
+warning from `assembleMarkScheme` saying so. The policy's substantive
+departure is rule 2: a bare correct answer DOES show the idea and earns the
+mark, except where the part itself asks the student to describe, explain or
+show. It also asks for a teaching next step in `reasoning` ("multiplied by 8
+instead of dividing - is running the rule forwards in both directions", not
+"incorrect"), and tells the model that a blank is information about where a
+student stopped. `buildActivityRubricBlock` prints the targets but NO
+thresholds - unlike the strand block - because handing the model the
+arithmetic would invite exactly the outcome-computing the policy forbids.
+
+**The importer** (`/dashboard/tests/activity-import`) takes the worksheet and
+the key as PDFs; `POST /api/activity-assessments/extract` sends both to
+`claude-opus-5` as document blocks with structured output
+(`lib/activity-import.ts`). Documents rather than text is not a preference
+here: a Math Medic key is the worksheet with the answers written on it BY
+HAND, and the text layer of the 1.1 key renders its handwriting as
+"c=8t orE=t" and "entreestituted 8(b- 3)=C". The reader also ASSIGNS the
+marks, since the worksheet prints none - 2 where a part holds two separable
+ideas, 1 where it holds one.
+
+**The check that does not exist, and why it is called out on screen.** The
+Standard Level importer catches a part read as "2d" when it said "2a" by the
+strand totals failing to add up (§21). Nothing here can play that role: no
+printed marks, no printed totals. `validateActivityDraft` is therefore
+structural only (no part twice, every part has an answer, every part is
+evidence of something, targets name parts that exist), a test pins that
+halving every part's marks is a silently valid draft, and the importer page
+says plainly that the teacher's eye is the real check.
+
+**The report** is `/dashboard/tests/[id]/activity-report` with a CSV at
+`/api/tests/[id]/activity-report/csv`. The tally at the top - how many
+students at each outcome per target - is the thing the route exists for;
+the per-student grid below is who to sit with. `lib/report-roster.ts` was
+extracted from `lib/standards-report-data.ts` so both reports share one
+roster-and-marks rule (the grader's: class plus track siblings, registered
+plus invited, accepted marks only) rather than two copies that can drift.
+
+**Scope: 9D only, for now.** `ACTIVITY_COURSE_NAMES` in
+`lib/activity-rubric.ts`, enforced in the save route as well as the dropdown.
+Math Medic runs in the Extended classes too and DP homework would fit, so
+the list is expected to grow; widen it there, not at each call site.
+
+**Gradebook: off unless asked.** An activity saves `hidden`,
+`require_self_assessment = false`, and `hidden_from_gradebook` true unless
+the teacher ticks "Show this in the gradebook" on the importer.
+
+### Deliberately not done, and what to check first
+
+- **The migration has NOT been applied.** The file is written with a
+  placeholder version; per `supabase/migrations/README.md` it must be applied
+  through MCP `apply_migration` and then renamed to the version the ledger
+  assigns. Until then `tests.activity_rubric` does not exist and every query
+  selecting it fails. This is the one production step outstanding.
+- **Nothing has been graded through it.** The policy has not been measured on
+  real student work, exactly as §21 had to say about Standard Level. The
+  first class through deserves the spot-check routine of §11.
+- **Segmentation will not find these students.** The cover-page check wants a
+  printed header, a handwritten `Name:` field and little worked mathematics
+  (`lib/na-scanning.ts:474`). Exploration 1.1 has a printed title, NO name
+  field at all, and page 1 will be covered in work. Quick read will mis-split
+  it. The batch tab's segment table is editable, and at exactly 2 pages per
+  student typing the ranges by hand is mechanical - but a teacher who does
+  not know this will think the upload is broken. A pages-per-student option
+  on the batch upload is the obvious fix and was not built.
+- The AI-grade review panel does not yet show a live target table the way it
+  shows a live strand table. `ActivityReportTable` renders without hooks
+  specifically so it can, when someone wires it in.

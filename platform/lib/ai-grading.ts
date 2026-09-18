@@ -15,6 +15,12 @@ import {
   type RubricStrand,
   type StandardsRubric,
 } from "./standards-rubric";
+import {
+  parseActivityRubric,
+  targetsForItem,
+  type ActivityRubric,
+  type LearningTarget,
+} from "./activity-rubric";
 
 /**
  * AI-assisted grading of scanned student work against the PPQ mark scheme.
@@ -93,12 +99,30 @@ export interface GradingUnit {
    * could forget.
    */
   standards?: UnitStandards | null;
+  /**
+   * The learning target(s) this part is evidence of on a Math Medic
+   * Exploration or a homework, plus the whole rubric they came from
+   * (tests.activity_rubric, see lib/activity-rubric.ts). Null or absent on
+   * every other test. Rides on the unit for exactly the reason `standards`
+   * does -- so that every sender builds the same system prompt through
+   * buildGradingSystemPrompt(units) with no second argument to forget.
+   *
+   * Unlike a strand, this is a LIST: one Exploration question routinely
+   * shows more than one learning target.
+   */
+  activity?: UnitActivity | null;
 }
 
 /** See GradingUnit.standards. The rubric object is shared by every unit of a test. */
 export interface UnitStandards {
   strand: Pick<RubricStrand, "code" | "name" | "standards">;
   rubric: StandardsRubric;
+}
+
+/** See GradingUnit.activity. The rubric object is shared by every unit of a test. */
+export interface UnitActivity {
+  targets: Pick<LearningTarget, "code" | "name">[];
+  rubric: ActivityRubric;
 }
 
 /**
@@ -109,6 +133,17 @@ export interface UnitStandards {
  */
 export function isStandardsReferenced(u: Pick<GradingUnit, "standards">): boolean {
   return !!u.standards;
+}
+
+/**
+ * Whether a unit belongs to an ACTIVITY -- a Math Medic Exploration or a
+ * homework, whose test carries an activity rubric. Scope of
+ * grading_policies/mathmedic_activity_marking_principles.md, which on such a
+ * paper REPLACES BOTH the Formative Assessment principles and the Standard
+ * Level principles in the system prompt.
+ */
+export function isActivity(u: Pick<GradingUnit, "activity">): boolean {
+  return !!u.activity;
 }
 
 /**
@@ -744,7 +779,7 @@ export async function assembleMarkScheme(
   // grading nothing, as long as the teacher is told.
   const { data: testRow, error: testError } = await supabase
     .from("tests")
-    .select("standards_rubric")
+    .select("standards_rubric, activity_rubric")
     .eq("id", testId)
     .maybeSingle();
   if (testError) throw new Error(`Failed to load the test: ${testError.message}`);
@@ -754,6 +789,34 @@ export async function assembleMarkScheme(
     if (parsed.ok) rubric = parsed.rubric;
     else warnings.push(`This test's standards rubric could not be read and was ignored: ${parsed.error}`);
   }
+
+  // An Exploration or homework carries its learning targets on the test, the
+  // same shape of thing one hop along -- read once here so every unit shares
+  // one rubric object. See GradingUnit.activity.
+  let activityRubric: ActivityRubric | null = null;
+  {
+    const parsed = parseActivityRubric(testRow?.activity_rubric ?? null);
+    if (parsed.ok) activityRubric = parsed.rubric;
+    else warnings.push(`This activity's learning targets could not be read and were ignored: ${parsed.error}`);
+  }
+  if (activityRubric && rubric) {
+    // Both would select a policy, and buildGradingSystemPrompt resolves the
+    // tie towards the activity. Say so rather than letting the paper be
+    // marked under a policy the teacher did not expect.
+    warnings.push(
+      "This test carries BOTH a standards rubric and activity learning targets. It is being marked as an activity; clear one of the two on the test's detail page."
+    );
+  }
+  const activityFor = (item: TestItemRow): UnitActivity | null => {
+    if (!activityRubric) return null;
+    const targets = targetsForItem(activityRubric, item);
+    if (targets.length === 0) {
+      warnings.push(
+        `${item.question_number}${item.part_label ? `(${item.part_label})` : ""}: in no learning target -- marked under the activity policy but reported nowhere.`
+      );
+    }
+    return { targets: targets.map((t) => ({ code: t.code, name: t.name })), rubric: activityRubric };
+  };
   const standardsFor = (item: TestItemRow): UnitStandards | null => {
     if (!rubric) return null;
     const strand = strandForItem(rubric, item);
@@ -826,6 +889,7 @@ export async function assembleMarkScheme(
         level: null,
         paper: null,
         standards: standardsFor(item),
+        activity: activityFor(item),
       };
     }
 
@@ -895,6 +959,7 @@ export async function assembleMarkScheme(
       level: question?.level ?? null,
       paper: question?.paper ?? null,
       standards: standardsFor(item),
+      activity: activityFor(item),
     };
   });
 
@@ -1240,6 +1305,26 @@ function loadG9StandardLevelPolicy(): string {
 
 export const G9_STANDARD_LEVEL_MARKING_PRINCIPLES = loadG9StandardLevelPolicy();
 
+const MATHMEDIC_ACTIVITY_POLICY_PATH = path.join(
+  process.cwd(),
+  "grading_policies",
+  "mathmedic_activity_marking_principles.md"
+);
+
+function loadMathMedicActivityPolicy(): string {
+  try {
+    return fs.readFileSync(MATHMEDIC_ACTIVITY_POLICY_PATH, "utf8");
+  } catch (e) {
+    throw new Error(
+      `Could not load the Exploration/homework marking principles from ${MATHMEDIC_ACTIVITY_POLICY_PATH}: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    );
+  }
+}
+
+export const MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES = loadMathMedicActivityPolicy();
+
 /**
  * The rubric's strand table as the marker reads it: each strand's name, the
  * standards it assesses, which parts feed it, the mark ranges its level
@@ -1288,6 +1373,54 @@ export function buildStandardsRubricBlock(rubric: StandardsRubric, units: Pick<G
 }
 
 /**
+ * The rubric's learning-target table as the marker reads it: each target's
+ * name, the lesson's own note about it, and which parts are evidence of it.
+ * Per-test text (the same for every student), so it belongs in the cached
+ * system prompt next to the policy it illustrates.
+ *
+ * DELIBERATELY UNLIKE the strand block above, this one prints no thresholds
+ * and no mark ranges. The Standard Level block prints them because its
+ * descriptors calibrate partial credit WITHIN a part; an activity's outcome
+ * bands do no such work, they only roll accepted marks up afterwards. Putting
+ * them in front of the model would be handing it the arithmetic the policy
+ * spends a paragraph telling it not to do.
+ */
+export function buildActivityRubricBlock(
+  rubric: ActivityRubric,
+  units: Pick<GradingUnit, "questionNumber" | "partLabel" | "maxMarks">[]
+): string {
+  const lines: string[] = [];
+  if (rubric.source) lines.push(`Source: ${rubric.source}`);
+  lines.push(
+    `This is ${rubric.kind === "exploration" ? "an EXPLORATION, sat BEFORE the lesson it introduces" : "a HOMEWORK, sat after the lesson"}.`,
+    "",
+    "The platform computes Got it / Almost / Not yet per learning target from the marks a teacher accepts. You report marks per part only.",
+    ""
+  );
+
+  for (const target of rubric.targets) {
+    // In the rubric's own order, not the units', so the block -- and the
+    // cached system prompt it sits in -- is byte-identical however the
+    // units happen to be listed.
+    const parts = target.parts
+      .map((ref) =>
+        units.find(
+          (u) =>
+            normalisePartRef(ref) ===
+            partRefForItem({ question_number: u.questionNumber, part_label: u.partLabel })
+        )
+      )
+      .filter((u): u is (typeof units)[number] => u !== undefined);
+    const max = parts.reduce((s, u) => s + u.maxMarks, 0);
+    lines.push(`--- ${target.code}: ${target.name} (${max} marks of evidence) ---`);
+    if (target.note) lines.push(target.note);
+    lines.push(`Parts: ${parts.map((u) => unitLabel(u)).join(", ") || "(none on this activity)"}`);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+/**
  * The system prompt for a specific grading call: the universal marking
  * rules, plus any policy document whose scope applies to at least one unit
  * being graded. Every route that calls the grading model builds its system
@@ -1309,13 +1442,40 @@ Numerical Accuracy (applies to this assessment)
 ${AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY}`;
   }
 
-  // A Grade 9 Standard Level paper is graded under its own policy, which
-  // stands IN PLACE OF the Formative Assessment (Grade 9 Extended) principles
-  // rather than on top of them: the two disagree on what a mark scheme is
-  // (a descriptor with a strand context versus a printed M/A/R/FT token
-  // list), and a prompt carrying both would leave the model to pick.
+  // Three policies, one of which applies, chosen most specific first.
+  //
+  // An ACTIVITY (Exploration or homework) is graded under its own policy,
+  // which stands IN PLACE OF BOTH the others. It has to: it reverses the
+  // rule they share about a bare correct answer earning no method mark,
+  // because on pre-instruction work a correct answer with no working is
+  // still evidence the student has the idea. A prompt carrying that
+  // contradiction twice would leave the model to pick. An activity's items
+  // are source = 'custom', so the Formative branch below WOULD otherwise
+  // fire on it -- the else-if chain is what stops that.
+  //
+  // A Grade 9 Standard Level paper likewise stands in place of the Formative
+  // Assessment (Grade 9 Extended) principles rather than on top of them: the
+  // two disagree on what a mark scheme is (a descriptor with a strand
+  // context versus a printed M/A/R/FT token list).
+  const activity = units.find((u) => u.activity)?.activity;
   const standards = units.find((u) => u.standards)?.standards;
-  if (standards) {
+  if (activity) {
+    prompt += `
+
+===============================================================================
+ADDITIONAL POLICY -- Exploration and Homework Marking Principles
+(applies to this activity; NEITHER the Formative Assessment principles NOR
+the Grade 9 Standard Level principles apply)
+===============================================================================
+
+${MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES}
+
+===============================================================================
+THIS ACTIVITY'S LEARNING TARGETS
+===============================================================================
+
+${buildActivityRubricBlock(activity.rubric, units)}`;
+  } else if (standards) {
     prompt += `
 
 ===============================================================================
@@ -1362,6 +1522,14 @@ function buildUnitBlock(u: GradingUnit): string {
   if (u.commandTerms.length > 0) lines.push(`Command term(s): ${u.commandTerms.join(", ")}`);
   if (u.standards) {
     lines.push(`Strand: ${u.standards.strand.code} -- ${u.standards.strand.name} (see THIS ASSESSMENT'S STRAND RUBRIC in the system prompt)`);
+  }
+  if (u.activity) {
+    const targets = u.activity.targets;
+    lines.push(
+      targets.length > 0
+        ? `Evidence of: ${targets.map((t) => `${t.code} ${t.name}`).join("; ")} (see THIS ACTIVITY'S LEARNING TARGETS in the system prompt)`
+        : `Evidence of: no learning target -- mark it under the activity policy anyway.`
+    );
   }
   if (u.markschemeSource === "whole_question") {
     lines.push(
