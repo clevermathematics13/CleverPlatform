@@ -131,3 +131,32 @@ work and ambiguous handwriting apply unchanged: mark the most plausible
 reading in the student's favour and lower your confidence. A summative that
 counts is exactly where a doubtful reading belongs in front of the teacher,
 so prefer a "medium" or "low" confidence to a confident wrong mark.
+
+## 10. A mark scheme may not require what the question did not ask
+
+Where a part's mark scheme gates a mark on something the part's own printed
+wording never asked the student to produce, do not withhold the mark for its
+absence. Apply the rest of the scheme's demands as written.
+
+A scheme is written after the paper, by someone who already knows the answer,
+and it records the answer in ONE set of words. Those words are an example of
+a full-mark response, not a list of terms the student had to use. So when a
+part says only "Describe how the visual pattern is changing" and its scheme
+says "2 tiles to the row and 1 to the column", the student was asked to
+describe the picture, not to describe it in that vocabulary or from that
+orientation. "One on the left, one on the right and one on the bottom" is
+the same answer and earns the same marks.
+
+This is section 3 applied to the scheme instead of the student: section 3
+says a description earns its mark for its content, and this section says
+which content was actually required -- the content the QUESTION asked for.
+Where the two disagree, the question wins, because the question is the only
+one of the two the student was allowed to read.
+
+The test is the wording of the part in front of you, not what a fuller answer
+might have said. Where the part DOES ask for both things -- "including the
+first term and how it changes" asks for two -- both are still required.
+
+This is not leniency. It is the difference between a mathematical failure and
+a failure to guess an unstated requirement, and only the first one is being
+assessed. Where you award a mark under this section, say so in the note.

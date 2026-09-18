@@ -759,6 +759,87 @@ function ruleMathematicalRegister(parts: FlatPart[], out: RubricFinding[]): void
   }
 }
 
+/**
+ * Rule 16 -- an open "describe" part whose scheme marks the vocabulary.
+ *
+ * KA1 Unit 1 (Standard Level) Q9(a) printed, in full:
+ *
+ *   "Describe how the visual pattern is changing. You may use colours or
+ *    symbols to support your description."  [2]
+ *
+ * and was marked:
+ *
+ *   "one for naming which parts grow and by how much (2 in the row, 1 in
+ *    the column), one for a description that would let someone draw the
+ *    next figure."
+ *
+ * The question asked for a description. The scheme asked for a description
+ * in two particular nouns. Of the 15 who sat it, 12 described the growth
+ * correctly and 9 of those lost marks on the wording: "adding one unit to
+ * the left, right and bottom every figure" scored 0, while "two on each
+ * side and one on the bottom" -- the same answer -- scored 2. The tell is
+ * the same one ask-what-you-mark names: when a scheme demands more than its
+ * prompt, the extra demand lands on whichever student is read strictly.
+ *
+ * Rule 9 catches this shape only when the extra demand is joined by an
+ * uppercase AND. Q9(a)'s is joined by a comma and a parenthesis, so nothing
+ * flagged it. This rule takes the other route: on a part whose command is
+ * open -- "describe how", "explain what", with no "including ..." naming
+ * what to cover -- a scheme that gates a mark on the student NAMING
+ * something has to say, in the scheme, that its own words are an example
+ * and not a required form. Two ways to clear it, and both are one sentence:
+ * ask for the vocabulary in the question, or free it in the scheme.
+ *
+ * A warning, not a block. Some open parts really are marked on naming a
+ * term the unit has taught, and a teacher who means that should not have to
+ * argue with a regex.
+ */
+
+/** "Describe how ...", "Explain what ..." -- a command with no named target. */
+const OPEN_DESCRIPTION =
+  /\b(?:describe|explain)\s+(?:how|what|why|the\s+(?:pattern|rule|sequence|change|relationship))\b/i;
+
+/**
+ * The question enumerating what the description must cover, which is what
+ * makes a demand askable. Q2(a) -- "Describe the sequence in words,
+ * INCLUDING the first term and how it changes" -- asks for two things and
+ * may require two; it must not be flagged for doing so.
+ */
+const QUESTION_ENUMERATES =
+  /\b(?:including|include|be sure to|make sure|state|name|list|give)\b/i;
+
+/** A mark gated on the student naming, stating or mentioning something. */
+const NAMING_GATE =
+  /\b(?:for|must|requires?)\s+(?:also\s+)?(?:naming|names?|stating|states?|saying|says?|mentioning|mentions?|identifying|identifies|using\s+the\s+(?:word|term|phrase))\b[^.;]{0,90}/i;
+
+/**
+ * The scheme freeing its own wording. Deliberately broad: a teacher may
+ * write "accept any wording", "in whatever words", "not the vocabulary" or
+ * "do not require the word 'column'", and all four discharge the same duty.
+ */
+const WORDING_FREED =
+  /\b(?:any\s+(?:wording|words|phrasing)|in\s+(?:their\s+own|whatever|any)\s+words|equivalent\s+(?:wording|phrasing|words)|not\s+(?:on\s+)?the\s+(?:vocabulary|wording|words)|do\s+not\s+require\s+the\s+(?:word|term|phrase)|whatever\s+vocabulary|content,?\s+not\s+(?:its\s+)?wording|same\s+answer)\b/i;
+
+function ruleOpenDescriptionVocabulary(part: FlatPart, out: RubricFinding[]): void {
+  if (!OPEN_DESCRIPTION.test(part.question)) return;
+  if (QUESTION_ENUMERATES.test(part.question)) return;
+  const gate = NAMING_GATE.exec(part.scheme);
+  if (!gate) return;
+  if (WORDING_FREED.test(part.scheme)) return;
+
+  out.push({
+    rule: 16,
+    code: "open-description-marks-vocabulary",
+    severity: "warn",
+    part: part.label,
+    message:
+      `${part.printedLabel} asks only for a description, and the scheme gates a mark on ` +
+      `"${gate[0].trim()}". A student who describes the same thing in their own words ` +
+      "has answered the question as printed. Either ask for the wording in the question, " +
+      "or say in the scheme that its own words are an example and not a required form.",
+  });
+}
+
 export function validateRubric(
   draft: AssignmentDraft,
   /** Paper-level facts the draft does not carry; see RubricContext. */
@@ -783,6 +864,7 @@ export function validateRubric(
     ruleSimplifyAlignment(part, findings);
     ruleCodeSum(part, findings);
     ruleConjunctOnOneMark(part, findings);
+    ruleOpenDescriptionVocabulary(part, findings);
     ruleQuestionNumbersItself(part, findings);
     ruleSubpartNumbersItself(part, findings);
   }

@@ -13,6 +13,37 @@
  * and the source the seed migration for the live test was written from. It
  * is NOT read at runtime: the live copy is the tests / test_items rows plus
  * tests.standards_rubric, editable on the test's detail page.
+ *
+ * REVISED 18 Sep 2026, before any mark on this paper was accepted. Four
+ * parts demanded more than their printed questions asked, and the live rows
+ * were corrected to match (migration 20260918_*_ka1_unit1_scheme_asks_what_it_marks).
+ *
+ *   Q9 stem  The transcription stood in for a figure the database cannot
+ *     hold, and while doing so it stated the ANSWER to part (a) -- "each new
+ *     figure adds 2 tiles to the row and 1 tile to the column". The scheme
+ *     was then written in those nouns and the grader read them as the
+ *     required form. The stem now describes the three printed figures and
+ *     nothing about how they grow. It also had the line RISING from the row;
+ *     every student who described its direction put it below, so the stem no
+ *     longer claims one.
+ *   Q9(a)  "Describe how the visual pattern is changing" [2], marked "one
+ *     for naming which parts grow and by how much (2 in the row, 1 in the
+ *     column)". Twelve of the fifteen described the growth correctly and
+ *     nine lost marks on vocabulary: "adding one unit to the left, right and
+ *     bottom every figure" scored 0 while "two on each side and one on the
+ *     bottom" scored 2.
+ *   Q9(c)  The question asks how the rule relates to "your answer from part
+ *     (a)"; the scheme required a link to the official structure instead.
+ *   Q7(d)  The question asks whether the expression works for all $x$, and
+ *     for an explanation. The scheme required a counterexample AND the
+ *     condition under which it does work, which the question never asks for;
+ *     the part averaged 0.13 of 2 marks.
+ *
+ * The guard against writing this again is lib/ask-what-you-mark.ts (the
+ * generator half) and section 10 of the Standard Level marking policy (the
+ * marker half). Neither reached this paper: it was transcribed rather than
+ * generated, and the Standard Level policy replaces the Formative one, whose
+ * section 8 carried the marker half. See lib/scheme-may-not-exceed-question.test.ts.
  */
 
 import type { StandardsRubric } from "../standards-rubric";
@@ -40,7 +71,7 @@ const Q6_SEQUENCE =
 const Q7_CONTEXT =
   "The 84 students in fifth grade are gathering in the auditorium. The teachers choose $x$ students to perform a skit, and then split the remaining students into equal groups of 5 for a project activity.";
 const Q9_CONTEXT =
-  "Look at the pattern made from arrangements of $1 \\times 1$ square tiles: Figure 1 has 4 tiles, Figure 2 has 7 tiles, Figure 3 has 10 tiles. Each figure is a row of tiles with a column of tiles rising from it; each new figure adds 2 tiles to the row and 1 tile to the column.";
+  "Look at the pattern made from arrangements of $1 \\times 1$ square tiles. [Marker's note, describing the figures PRINTED on the paper. The student read no such sentence, so none of its words are required in any answer: Figure 1 is a row of 3 tiles with 1 further tile meeting the row at its centre (4 tiles); Figure 2 is a row of 5 with a line of 2 (7 tiles); Figure 3 is a row of 7 with a line of 3 (10 tiles).]";
 
 export const KA1_UNIT1_ITEMS: SeedItem[] = [
   // -- Q1: evaluate expressions [3] ------------------------------------------
@@ -224,7 +255,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     maxMarks: 2,
     questionText: `${Q7_CONTEXT} Does your expression in part (c) yield a valid whole number of groups for all whole-number values of $x$? Explain.`,
     markschemeText:
-      "A full-mark response says NO, gives a counterexample, and says when it works: for example $x = 5$ gives $79 \\div 5 = 15.8$, not a whole number; the expression gives a whole number only when $84 - x$ is a multiple of 5 (i.e. $x = 4, 9, 14, \\ldots$, or $x$ ends in 4 or 9), and $x$ must not exceed 84. 2 marks: one for a correct counterexample (or an equivalent demonstration that some $x$ fails), one for a correct condition on $x$ for the expression to work. A bare \"no\" earns 0; \"no, because not all numbers divide by 5\" with no example and no condition earns 0.",
+      "A full-mark response answers what was asked: NO, with mathematics behind it. Either route is complete on its own -- a counterexample worked through ($x = 5$ gives $79 \\div 5 = 15.8$, not a whole number), or the general reason ($84 - x$ has to be a multiple of 5, and it is not for every whole-number $x$). The question asks whether the expression works for all $x$, and for an explanation; it does NOT ask for the condition under which it does work, so do not require one. 2 marks: one for the conclusion NO reached from mathematics rather than asserted, one for the supporting reason being correct and complete. A student who gives both a counterexample and the condition has answered more than was asked, and earns 2, not more. A bare \"no\" earns 0, and \"no, because you never know what $x$ might be\" earns 0 -- neither contains any mathematics. \"No, it only works when $x$ is divisible by 5\" earns 1: the conclusion is right and divisibility is the right idea, but the condition is on the wrong quantity.",
   },
   // -- Q8: equivalent expressions [5] ------------------------------------------
   {
@@ -243,7 +274,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     maxMarks: 2,
     questionText: `${Q9_CONTEXT} Describe how the visual pattern is changing. You may use colours or symbols to support your description.`,
     markschemeText:
-      "A full-mark response says where the new tiles go: each figure adds 2 tiles to the row and 1 tile to the column (3 new tiles per figure, placed at those positions). 2 marks: one for naming which parts grow and by how much (2 in the row, 1 in the column), one for a description that would let someone draw the next figure. A description giving only the total change (\"it adds 3 each time\") earns 1. An annotated sketch showing the added tiles counts as description.",
+      "A full-mark response describes the change well enough that a reader could draw the next figure: 3 tiles are added each time, one at each of the three growing ends -- the two ends of the row, and the far end of the line meeting it. 2 marks: one for the amount (3 tiles per figure, or 2 on one part and 1 on the other), one for WHERE the new tiles go. The question asks only for a description, so mark the content and not the vocabulary: \"one on the left, one on the right and one on the bottom\", \"two on each side and one below\", \"each arm grows by one\" and \"2 in the row, 1 in the column\" are the same answer, and each earns both marks. Do not require the words \"row\" or \"column\", and do not require the orientation to match this note -- which way the line runs is what the student sees on the page, not a mathematical claim. A description giving only the total change (\"it adds 3 each time\"), with nothing about where, earns 1. An annotated sketch showing the added tiles counts as description.",
   },
   {
     questionNumber: 9,
@@ -251,7 +282,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     maxMarks: 1,
     questionText: `${Q9_CONTEXT} How many squares are in Figure 5? Explain how you know using your description from part (a). You may sketch on the grid.`,
     markschemeText:
-      "A full-mark response gives 16 squares, explained from the structure: Figure 3 has 10, so Figure 4 has 13 and Figure 5 has 16 (adding 3 each time), or from a row of 11 and a column of 5 above it. Answer: 16. Follow-through from a wrong but consistently applied description in part (a).",
+      "A full-mark response gives 16 squares, explained from the structure: Figure 3 has 10, so Figure 4 has 13 and Figure 5 has 16 (adding 3 each time), or from a row of 11 and a line of 5 meeting it. Answer: 16. Follow-through from a wrong but consistently applied description in part (a).",
   },
   {
     questionNumber: 9,
@@ -259,7 +290,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     maxMarks: 2,
     questionText: `${Q9_CONTEXT} Write an expression that would give the number of squares in Figure $n$. How does your explicit rule relate to your answer from part (a)?`,
     markschemeText:
-      "A full-mark response gives $3n + 1$ (accept equivalents such as $4 + 3(n - 1)$) AND links its parts to the figure: the $3n$ is the 3 tiles added per figure (2 in the row, 1 in the column), the $+1$ is the corner tile (or the one tile that is there before any growth). 2 marks: one for a correct expression, one for explaining what $3n$ and $+1$ each count in the picture. A correct expression with no link to the figure earns 1.",
+      "A full-mark response gives $3n + 1$ (accept equivalents such as $4 + 3(n - 1)$) AND relates it to the student's OWN answer to part (a), which is what the question asks for. 2 marks: one for a correct expression, one for the link. The link earns its mark when the student says what the 3 counts -- the tiles added per figure, in whatever words their own (a) used (\"the 3 is the 3 squares added each time\"; \"the common difference is 3, which is the 2 on the sides and the 1 below\"). Naming what the $+1$ counts (the one tile that is there before any growth) is a fuller answer, but the question does not ask for the two parts separately, so do not withhold the mark for its absence. A correct expression with no reference to the pattern at all earns 1; \"it relates because it works when I test Figure 3\" is a verification rather than a link, and earns nothing for the link. Follow-through: a student whose (a) was wrong earns the link mark for relating the rule to what they themselves described.",
   },
 ];
 

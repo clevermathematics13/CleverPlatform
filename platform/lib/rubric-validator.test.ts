@@ -543,3 +543,81 @@ describe("rule 15 -- the mathematical register", () => {
     expect(findings.filter((f) => f.code === "loose-mathematical-register")).toEqual([]);
   });
 });
+
+describe("validateRubric, rule 16", () => {
+  // -- Rule 16 --------------------------------------------------------------
+  it("catches an open 'describe' part whose scheme marks the vocabulary", () => {
+    // KA1 Unit 1 Q9(a), verbatim on both sides. Nine of the twelve students
+    // who described the growth correctly lost marks for not using these nouns.
+    const findings = validateRubric(
+      draftOf([
+        {
+          prompt:
+            "Describe how the visual pattern is changing. You may use colours or symbols to support your description.",
+          marks: 2,
+          markScheme:
+            "A full-mark response says where the new tiles go. 2 marks: one for naming which " +
+            "parts grow and by how much (2 in the row, 1 in the column), one for a description " +
+            "that would let someone draw the next figure. A description giving only the total " +
+            "change earns 1.",
+        },
+      ])
+    );
+    const finding = findings.find((f) => f.rule === 16);
+    expect(codesOf(findings)).toContain("open-description-marks-vocabulary");
+    expect(finding?.severity).toBe("warn");
+    // The message has to quote the clause, or a teacher cannot tell which
+    // half of a long scheme tripped it.
+    expect(finding?.message).toContain("for naming which parts grow");
+  });
+
+  it("clears the same part once the scheme frees its own wording", () => {
+    const findings = validateRubric(
+      draftOf([
+        {
+          prompt:
+            "Describe how the visual pattern is changing. You may use colours or symbols to support your description.",
+          marks: 2,
+          markScheme:
+            "A full-mark response says where the new tiles go. 2 marks: one for naming which " +
+            "parts grow and by how much, one for a description that would let someone draw the " +
+            "next figure. Judge this on content, not wording: \"one on the left, one on the right " +
+            "and one on the bottom\" and \"2 in the row, 1 in the column\" are the same answer.",
+        },
+      ])
+    );
+    expect(codesOf(findings)).not.toContain("open-description-marks-vocabulary");
+  });
+
+  it("does not flag a question that enumerates what the description must cover", () => {
+    // KA1 Q2(a) asks for two things outright, so its scheme may require two.
+    // This is the case rule 16 must never fire on -- the demand IS askable.
+    const findings = validateRubric(
+      draftOf([
+        {
+          prompt: "Describe the sequence in words, including the first term and how it changes.",
+          marks: 1,
+          markScheme:
+            "A full-mark response names the first term 88 and states the change of -6 each term. " +
+            "\"It goes down by 6\" alone earns 0.",
+        },
+      ])
+    );
+    expect(codesOf(findings)).not.toContain("open-description-marks-vocabulary");
+  });
+
+  it("does not flag an open description whose scheme gates on content, not naming", () => {
+    const findings = validateRubric(
+      draftOf([
+        {
+          prompt: "Describe how the pattern of tiles is changing.",
+          marks: 1,
+          markScheme:
+            "R1 for a description that would let a reader draw the next figure. A restatement of " +
+            "the tile counts earns 0.",
+        },
+      ])
+    );
+    expect(codesOf(findings)).not.toContain("open-description-marks-vocabulary");
+  });
+});
