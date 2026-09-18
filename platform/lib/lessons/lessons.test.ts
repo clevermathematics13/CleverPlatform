@@ -31,13 +31,44 @@ function* walkStrings(value: unknown, path = ""): Generator<[string, string]> {
 }
 
 /** The inline-math split the renderer performs, narrowed to what a test
- *  needs. Mirrors splitSegments() in components/LatexRenderer.tsx closely
- *  enough to catch a broken span -- notably that an inline span may NOT
- *  contain a newline. */
-const INLINE_SPAN = /\$([^$\n]*?)\$/g;
-
+ *  needs. Mirrors splitSegments() in components/LatexRenderer.tsx: an
+ *  ESCAPED dollar is recognised first and is not a delimiter, and an inline
+ *  span may NOT contain a newline.
+ *
+ *  A plain /\$([^$\n]*?)\$/ is not good enough once a lesson mentions money.
+ *  On "costs \$40.68 and \$30.59" it pairs the two escaped signs, hands
+ *  KaTeX the prose between them and fails a correct line. The renderer does
+ *  not make that mistake, so neither should the test. */
 function mathSpans(text: string): string[] {
-  return [...text.matchAll(INLINE_SPAN)].map((m) => m[1]);
+  const spans: string[] = [];
+  let i = 0;
+  while (i < text.length) {
+    // An escaped dollar is a literal sign, never a delimiter.
+    if (text[i] === "\\" && text[i + 1] === "$") {
+      i += 2;
+      continue;
+    }
+    if (text[i] === "$") {
+      let j = i + 1;
+      let buf = "";
+      while (j < text.length && text[j] !== "\n" && text[j] !== "$") {
+        if (text[j] === "\\" && text[j + 1] === "$") {
+          buf += "\\$";
+          j += 2;
+          continue;
+        }
+        buf += text[j];
+        j += 1;
+      }
+      if (text[j] === "$") {
+        spans.push(buf);
+        i = j + 1;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return spans;
 }
 
 function delimiterDollarCount(text: string): number {
@@ -137,6 +168,19 @@ describe.each(LESSONS.map((l) => [l.slug, l] as const))("lesson %s", (_slug, les
       if (m) unbraced.push(`${path}: ${m.join(", ")}`);
     }
     expect(unbraced).toEqual([]);
+  });
+
+  // splitSegments() closes an inline span on the FIRST bare dollar it meets,
+  // so an escaped dollar INSIDE math truncates the span and feeds KaTeX a
+  // lone backslash. Money belongs in prose as \$, outside the math.
+  it("never puts an escaped dollar inside a math span", () => {
+    const inside: string[] = [];
+    for (const [path, text] of strings) {
+      for (const span of mathSpans(text)) {
+        if (span.includes("\\$")) inside.push(`${path}: ${span}`);
+      }
+    }
+    expect(inside).toEqual([]);
   });
 
   it("writes a rounded value with \\approx rather than a trailing ellipsis", () => {
@@ -462,6 +506,85 @@ describe("lesson 1.7, specifically", () => {
     const items = lesson.openQuestions.map((q) => q.item).join(" ");
     expect(items).toContain("C twice");
     expect(items).toContain("homework");
+  });
+
+  it("has a primer short enough to teach before the exploration", () => {
+    const primerMinutes = slidesInAct(lesson, "learn")
+      .filter((s) => s.phase === "primer")
+      .reduce((sum, s) => sum + s.minutes, 0);
+    expect(primerMinutes).toBeLessThanOrEqual(20);
+  });
+});
+
+describe("lesson 2.1, specifically", () => {
+  const lesson = getLesson("2-1-proportional-reasoning")!;
+  const coverage = coverageFromHints(lesson);
+
+  it("is published, and opens unit 2", () => {
+    expect(lesson).toBeDefined();
+    expect(lesson.code).toBe("2.1");
+  });
+
+  it("has one hint slide per worksheet question", () => {
+    const bySource = (s: string) => slidesInAct(lesson, "hint").filter((x) => x.source === s).length;
+    expect(bySource("exploration")).toBe(7);
+    expect(bySource("check-your-understanding")).toBe(3);
+  });
+
+  // Exploration Q1-Q7, then CYU Q1(a)-(e), Q2 and Q3.
+  it("covers every question part on the sheet", () => {
+    expect(coverage.filter((c) => c.source === "exploration").length).toBe(7);
+    expect(coverage.filter((c) => c.source === "check-your-understanding").length).toBe(7);
+    expect(coverage.length).toBe(14);
+  });
+
+  // Q5 and Q6 of the exploration ARE the discovery that the gas relationship
+  // is proportional and starts at the origin. A primer slide that names
+  // either has done the exploration for the student, and the primer also
+  // avoids the gas context entirely so no worked pair is handed over.
+  it("never names the discovery, or the gas context, in a primer slide", () => {
+    const text = slidesInAct(lesson, "learn")
+      .filter((s) => s.phase === "primer")
+      .flatMap((s) => [
+        s.title,
+        ...s.body,
+        ...s.examples.flatMap((e) => [e.title, ...e.steps, e.answer]),
+        s.check?.question ?? "",
+        s.check?.answer ?? "",
+      ])
+      .join(" ")
+      .toLowerCase();
+
+    for (const spoiler of ["proportional", "origin", "y = kx", "3.39", "gallon", "40.68"]) {
+      expect(text).not.toContain(spoiler);
+    }
+  });
+
+  // The whole lesson turns on this being said out loud, because CYU Q3 is a
+  // table that starts at the origin and is NOT proportional.
+  it("says the origin is necessary but not sufficient", () => {
+    const slide = lesson.slides.find((s) => s.id === "through-the-origin")!;
+    const body = slide.body.join(" ");
+    expect(body).toContain("NOT enough");
+    expect(slide.teacherNote).toContain("CYU Q3");
+    // And the trap is the first of the review traps.
+    const traps = lesson.slides.find((s) => s.id === "review-traps")!;
+    expect(traps.body[0]).toContain("Necessary");
+  });
+
+  it("gives the t-shirt table its real per-shirt rates in the answer key", () => {
+    const slide = lesson.slides.find((s) => s.id === "hint-cyu-q3")!;
+    const answers = slide.answers.join(" ");
+    for (const rate of ["12", "11", "10"]) expect(answers).toContain(rate);
+    expect(answers).toContain("NOT proportional");
+  });
+
+  it("records the untidy Q4 answer and the image-read pump value", () => {
+    const items = lesson.openQuestions
+      .map((q) => [q.item, q.whyUnresolved, q.whatWasDone].join(" "))
+      .join(" ");
+    expect(items).toContain("9.02");
+    expect(items).toContain("17.465");
   });
 
   it("has a primer short enough to teach before the exploration", () => {

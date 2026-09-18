@@ -97,7 +97,9 @@ if (!TEST_ID || !SESSION) {
   try {
     await page.getByText("Loading this assessment…").waitFor({ state: "detached", timeout: 60000 });
   } catch { /* already gone */ }
-  const reviewButtons = page.getByRole("button", { name: /Review\s*→/ });
+  // The roster button is a toggle: "Review ▾" open, "Hide review ▴" once
+  // open. Matched loosely so an arrow change does not break this again.
+  const reviewButtons = page.getByRole("button", { name: /^Review[\s\u25be\u2192]*$/ });
   await reviewButtons.first().waitFor({ state: "visible", timeout: 60000 });
   const students = await reviewButtons.count();
   await page.screenshot({ path: path.join(OUT, "01-roster.png") });
@@ -107,6 +109,20 @@ if (!TEST_ID || !SESSION) {
   await heading.waitFor({ state: "visible", timeout: 90000 });
   await heading.scrollIntoViewIfNeeded();
   await page.waitForTimeout(1500);
+
+  // Every high-confidence part sits under one summary row. It starts open, but
+  // it can be folded away, and its rows leave the DOM when it is -- so expand
+  // it unless it already is before looking for any part, otherwise a confident
+  // part reports as "no row found for this part label" and looks like a data
+  // problem.
+  const highGroup = page.getByRole("button", { name: /high-confidence part/ });
+  if ((await highGroup.count()) > 0) {
+    await highGroup.first().scrollIntoViewIfNeeded();
+    if ((await highGroup.first().getAttribute("aria-expanded")) !== "true") {
+      await highGroup.first().click();
+      await page.waitForTimeout(500);
+    }
+  }
 
   const whys = page.getByRole("button", { name: /^Why\?$/ });
   const partCount = await whys.count();

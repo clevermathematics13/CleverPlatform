@@ -531,6 +531,32 @@ Server-side Google OAuth token store. Replaces browser-cookie token storage so t
 | `created_at` | timestamp with time zone | default `now()` |
 | `invited_student_id` | uuid, nullable | FK invited_students(id) on delete set null |
 
+### `mastery_analyses`
+
+One cached AI mastery write-up per student. `app/api/mastery/analysis/route.ts`
+spends a Claude call producing it and stores it here so the next page load can
+show it without paying again; `app/dashboard/mastery/page.tsx` reads it back and
+renders it as `savedAnalysis`.
+
+Keyed on `student_id` as the PRIMARY KEY rather than a surrogate `id` with a
+unique index beside it -- one analysis per student is the whole semantic, and a
+primary key is non-partial, so PostgREST can infer it for the route's
+`onConflict: "student_id"`. RLS is scoped per student: a teacher reads and
+writes any row, a student only their own. That write policy is load-bearing --
+the route authenticates with `getApiUser()` (any signed-in user, not
+`getApiTeacher()`) and takes `studentId` from the submitted form, so the
+application layer does not stop a student naming somebody else.
+
+Created 17 Sep 2026. It had never existed: the route logs its upsert error and
+returns the analysis regardless, so every analysis simply regenerated at full
+cost and "saved analysis" was always null.
+
+| column | type | default |
+|---|---|---|
+| `student_id` | uuid, primary key | FK profiles(id) on delete cascade |
+| `analysis_text` | text |  |
+| `generated_at` | timestamp with time zone | default `now()` — written explicitly by the route so the stored value matches the one returned in the same response |
+
 ### `na_anchors`
 
 | column | type | default |
