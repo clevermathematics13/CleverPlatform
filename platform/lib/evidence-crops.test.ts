@@ -12,6 +12,7 @@ import {
   normalizeFractionBox,
   padModelBox,
   MODEL_DOWNWARD_BIAS,
+  widenStoredModelBox,
 } from "./evidence-crops";
 
 describe("normalizeFractionBox", () => {
@@ -377,5 +378,39 @@ describe("firstShiftedAnchorPage", () => {
         { anchorPage: 11, modelPage: 12 },
       ])
     ).toBe(10);
+  });
+});
+
+describe("widenStoredModelBox", () => {
+  it("drops the bottom edge by the bias and leaves the other three alone", () => {
+    // Key Assessment 1 Q4(b) exactly as it is stored today.
+    const stored = { page: 3, x0: 0.0134, y0: 0.15, x1: 0.5166, y1: 0.25 };
+    const widened = widenStoredModelBox(stored)!;
+    expect(widened).toMatchObject({ page: 3, x0: 0.0134, y0: 0.15, x1: 0.5166 });
+    expect(widened.y1).toBeCloseTo(0.4, 10);
+  });
+
+  it("agrees with what padModelBox would store for the same raw box", () => {
+    // The re-cut of an old row and a freshly marked one must not differ, or a
+    // paper would carry two kinds of model crop.
+    const raw = { page: 3, x0: 0.08, y0: 0.18, x1: 0.45, y1: 0.22 };
+    const storedUnderOldArithmetic = { page: 3, x0: 0.0134, y0: 0.15, x1: 0.5166, y1: 0.25 };
+    const fresh = padModelBox(raw)!;
+    const widened = widenStoredModelBox(storedUnderOldArithmetic)!;
+    expect(widened.y1).toBeCloseTo(fresh.y1, 10);
+    expect(widened.y0).toBeCloseTo(fresh.y0, 10);
+  });
+
+  it("declines a box already at the foot of the page", () => {
+    expect(widenStoredModelBox({ page: 1, x0: 0.1, y0: 0.9, x1: 0.9, y1: 1 })).toBeNull();
+  });
+
+  it("declines a box that could never be cropped", () => {
+    expect(widenStoredModelBox({ page: 1, x0: 0.5, y0: 0.5, x1: 0.5, y1: 0.6 })).toBeNull();
+  });
+
+  it("never runs off the bottom of the page", () => {
+    const widened = widenStoredModelBox({ page: 1, x0: 0.1, y0: 0.8, x1: 0.9, y1: 0.95 })!;
+    expect(widened.y1).toBe(1);
   });
 });

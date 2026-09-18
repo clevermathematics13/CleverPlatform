@@ -77,6 +77,7 @@ import {
   fractionBoxToPoints,
   pointsToFractions,
   MODEL_DOWNWARD_BIAS,
+  widenStoredModelBox,
   type EvidenceBox,
   type PageSizePt,
 } from "../lib/evidence-crops";
@@ -348,11 +349,8 @@ async function main() {
         const pageIndex = stored.page - 1;
         const scanSize = pageSizePt[pageIndex];
         if (pageIndex < 0 || !scanSize) continue;
-        if (stored.y1 >= 1) continue;
-        const widened: EvidenceBox = {
-          ...stored,
-          y1: Math.min(1, stored.y1 + MODEL_DOWNWARD_BIAS),
-        };
+        const widened = widenStoredModelBox(stored);
+        if (!widened) continue;
         boxByResult.set(result.id as string, widened);
         regions.push({
           qid: result.id as string,

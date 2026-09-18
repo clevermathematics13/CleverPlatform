@@ -138,6 +138,28 @@ export function padModelBox(box: EvidenceBox): EvidenceBox | null {
   };
 }
 
+/**
+ * The same downward growth padModelBox now applies, for a box that was already
+ * stored by the OLD symmetric arithmetic.
+ *
+ * Rows written before MODEL_DOWNWARD_BIAS existed carry a bottom edge that
+ * stops where the printed prompt does, with the handwriting just under it.
+ * Re-cutting them needs no model call and no new coordinates -- the row
+ * already has the box, and the only thing wrong with it is how far down it
+ * reaches. Dropping that edge by the same bias gives exactly what padModelBox
+ * would produce today for the same raw box, so a re-cut row and a freshly
+ * marked one agree to the last decimal.
+ *
+ * Returns null when there is nothing to gain -- a box already touching the
+ * foot of the page -- so a caller can skip it rather than re-cut an identical
+ * picture and pay for the storage.
+ */
+export function widenStoredModelBox(box: EvidenceBox): EvidenceBox | null {
+  if (!(box.x1 > box.x0) || !(box.y1 > box.y0)) return null;
+  if (box.y1 >= 1) return null;
+  return { ...box, y1: clamp01(box.y1 + MODEL_DOWNWARD_BIAS) };
+}
+
 export type NormalizeResult = { ok: true; box: EvidenceBox } | { ok: false; error: string };
 
 /**
