@@ -5,7 +5,7 @@ import {
   buildGradingSystemPrompt,
   type GradingUnit,
 } from "./ai-grading";
-import { KA1_UNIT1_RUBRIC } from "./fixtures/g9-standard-ka1-unit1";
+import { KA1_UNIT1_ITEMS, KA1_UNIT1_RUBRIC } from "./fixtures/g9-standard-ka1-unit1";
 
 /**
  * The marking half of ask-what-you-mark, pinned across EVERY policy that
@@ -86,5 +86,74 @@ describe("the clause reaches the prompt a Standard Level paper is marked under",
     expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).toContain("Describe how the visual pattern is changing");
     expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).toContain("2 tiles to the row and 1 to the column");
     expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).toMatch(/one on the right and one on the bottom/i);
+  });
+});
+
+/**
+ * A part's demands are written down in THREE places, and the grading prompt
+ * carries all three: the part's own mark scheme, the STRAND DESCRIPTOR for
+ * the strand it belongs to, and the marking policy. The 18 Sep fix corrected
+ * the first and missed the other two, so both demands it withdrew from Q7(d)
+ * and Q9(c) were still live guidance in the same prompt as the corrected
+ * schemes -- and section 5 tells the grader to mark part-way answers against
+ * exactly those descriptors.
+ *
+ * Nothing caught that, because nothing reads the descriptors and the schemes
+ * together. This does. It is deliberately specific rather than clever: a
+ * general "no descriptor exceeds its parts" check would need to understand
+ * the mathematics, while these three strings are the actual demands that
+ * actually cost students marks, and a reseed or a hand-edit that brings any
+ * of them back is the regression worth failing on.
+ */
+describe("a strand descriptor may not re-impose a withdrawn demand", () => {
+  const descriptorText = KA1_UNIT1_RUBRIC.strands
+    .flatMap((s) => Object.values(s.descriptors))
+    .join("\n");
+
+  it.each([
+    // Q9(a): the clause that scored "left, right and bottom" 0 and "each side
+    // and the bottom" 2. Withdrawn from the scheme; it lived on in strand C.
+    ["naming which parts grow", "Q9(a) vocabulary demand"],
+    // Q7(d): the question asks whether it works for all x, never for the
+    // condition under which it does. Withdrawn; it lived on in strand D.
+    ["correct condition for whole-number groups", "Q7(d) unasked condition"],
+    // Q9(c): the question asks for a link to the student's OWN part (a).
+    ["links 3n and +1 to parts of the figure", "Q9(c) link to the official figure"],
+  ])("no descriptor still carries the %s", (withdrawn) => {
+    expect(descriptorText).not.toContain(withdrawn);
+  });
+
+  it("and the schemes they were withdrawn from have not regained them", () => {
+    const scheme = (n: number, p: string) =>
+      KA1_UNIT1_ITEMS.find((i) => i.questionNumber === n && i.partLabel === p)!.markschemeText;
+
+    // Q9(a) must say, in some form, that the wording is not the thing marked.
+    expect(scheme(9, "a")).toMatch(/not the vocabulary|Do not require the words/);
+    // Q7(d) must not require the condition on top of a counterexample.
+    expect(scheme(7, "d")).toMatch(/does NOT ask for the condition/);
+    // Q9(c) must judge the link against the student's own part (a).
+    expect(scheme(9, "c")).toMatch(/OWN answer to part \(a\)/);
+  });
+
+  it("section 5 subordinates a descriptor to the part's own scheme", () => {
+    // Without this, a stale descriptor and a corrected scheme sit in one
+    // prompt with nothing saying which one wins.
+    expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).toContain(
+      "A descriptor never outranks the part's own mark scheme"
+    );
+    expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).toMatch(
+      /the scheme wins and the descriptor is stale/
+    );
+  });
+
+  it("section 5 no longer cites a guess-and-check cap the rubric dropped", () => {
+    // Q8's live scheme says "do not cap it, and do not call it
+    // guess-and-check". Section 5 used to tell the grader the opposite.
+    expect(G9_STANDARD_LEVEL_MARKING_PRINCIPLES).not.toContain(
+      '"guess-and-check" for the equivalent-expressions question is'
+    );
+    expect(
+      KA1_UNIT1_RUBRIC.strands.find((s) => s.code === "A")!.descriptors.approaching
+    ).not.toContain("guess-and-check");
   });
 });

@@ -82,10 +82,17 @@ leaves room for judgement: an "off-by-one rule such as 88 - 6n" is a named
 Meeting-level slip, so it earns the difference-mark and loses the
 constant-mark; "the context expression is missing its brackets" is a named
 Approaching-level error, so it earns 0 on the one-mark part that asks for the
-expression; "guess-and-check" for the equivalent-expressions question is
-named at Approaching, so it is capped as the scheme says. The descriptors
-tell you how the teacher thinks about the errors; the part's mark scheme
-tells you how many marks each is worth.
+expression. The descriptors tell you how the teacher thinks about the errors;
+the part's mark scheme tells you how many marks each is worth.
+
+A descriptor never outranks the part's own mark scheme, and never adds a
+requirement to it. A strand descriptor is written across SEVERAL parts at
+once, so it is the loosest thing in this prompt and the last to be corrected
+when a part is fixed: if a descriptor names a demand the part's scheme does
+not make, the scheme wins and the descriptor is stale. Read it for how much a
+part-way answer is worth, never for what the student had to produce. Section
+10 applies to a descriptor exactly as it does to a scheme -- neither can
+require what the question did not ask.
 
 ## 6. Follow-through, and one error costs one mark
 
