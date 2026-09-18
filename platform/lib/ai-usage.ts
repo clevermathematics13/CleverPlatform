@@ -29,7 +29,12 @@ export type UsagePipeline =
   | "practice_question"
   // Reading a Grade 9 Standard Level paper and its teacher rubric into a
   // test (Opus, one call per assessment; app/api/standards-assessments).
-  | "standards_import";
+  | "standards_import"
+  // Reading a Math Medic worksheet and its answer key into an activity
+  // (Opus, one call per activity; app/api/activity-assessments). Its own row
+  // rather than sharing standards_import's: these arrive every lesson rather
+  // than once a unit, so the running cost is worth seeing separately.
+  | "activity_import";
 
 export type UsageRefType = "ai_grade_run" | "ai_grade_result" | "ai_grade_batch" | "na_crop" | "na_scan_batch";
 
