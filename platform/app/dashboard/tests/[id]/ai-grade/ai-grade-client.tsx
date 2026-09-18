@@ -1021,6 +1021,49 @@ export function AiGradeClient({
       return next;
     });
 
+  /** Re-cutting this student's marker-located crops lower (widen-crops route). */
+  const [wideningCrops, setWideningCrops] = useState(false);
+
+  // How many crops on screen the MARKER placed. Those are the biased ones -- a
+  // teacher-drawn or layout-cut region is not this button's business -- so this
+  // is also whether the button is worth showing at all.
+  const modelCropCount = results.filter(
+    (r) => (r.evidence_box_source ?? "model") === "model" && r.evidence_image_url
+  ).length;
+
+  /**
+   * Re-cut every marker-located crop on this student lower, so each reaches the
+   * handwriting instead of stopping at the printed prompt above it. Costs no
+   * model call and cannot change a mark -- see the widen-crops route.
+   */
+  const widenCrops = async () => {
+    if (!focusRunId || !focusStudent) return;
+    setWideningCrops(true);
+    setStatusLine("Re-cutting this student's crops lower…");
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/widen-crops`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runId: focusRunId }),
+      });
+      if (!ok) {
+        setStatusLine((data?.error as string) ?? "Could not re-cut this student's crops.");
+        return;
+      }
+      const widened = Number(data?.widened ?? 0);
+      // Reloaded rather than patched: every widened row has a new image path
+      // whose signed URL is minted server-side.
+      await loadResultsFor(focusStudent);
+      setStatusLine(
+        widened > 0
+          ? `${widened} crop(s) re-cut lower. The marks are unchanged.`
+          : ((data?.message as string) ?? "Nothing needed re-cutting on this student.")
+      );
+    } finally {
+      setWideningCrops(false);
+    }
+  };
+
   /**
    * Selects, or clears, every confident part the summary row is hiding, so a
    * teacher can accept the lot without expanding it. Only parts not already in
@@ -1337,6 +1380,22 @@ export function AiGradeClient({
                         Paper layout
                       </span>
                     )}
+                    {/* A model-located region is an estimate, and a biased one --
+                        it reads high, so the crop can show the part above this
+                        one. Badging it is the difference between a teacher
+                        spotting that and trusting it: the mark is argued from
+                        the transcription below, which stays right even when the
+                        picture is wrong. Only shown when there IS a crop; a row
+                        with none already says so with "Locate on page". */}
+                    {(r.evidence_box_source === "model" || !r.evidence_box_source) &&
+                      r.evidence_image_url && (
+                        <span
+                          title="The marker estimated this region rather than cutting it from a locked paper layout, and its estimates read high. Check the crop shows THIS part's answer; if it does not, use the ⤢ button to redraw it, or Fix crops above to re-cut every one lower."
+                          className="rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-300"
+                        >
+                          Located by marker
+                        </span>
+                      )}
                     {!r.evidence_image_url && (
                       <button
                         type="button"
@@ -1537,14 +1596,29 @@ export function AiGradeClient({
               </div>
             )}
           </div>
-          <button
-            type="button"
-            onClick={acceptSelected}
-            disabled={accepting || selected.size === 0}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {accepting ? "Writing…" : `Accept ${selected.size} into Clev's Marks`}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Only offered when there is something biased to fix. A paper with
+                a locked layout has measured regions and never shows this. */}
+            {modelCropCount > 0 && (
+              <button
+                type="button"
+                onClick={widenCrops}
+                disabled={wideningCrops}
+                title={`Re-cut the ${modelCropCount} crop(s) the marker located on this student, reaching further down the page so each one shows the answer rather than the question above it. No mark changes.`}
+                className="rounded-lg border border-amber-400/40 px-3 py-2 text-sm font-medium text-amber-300 hover:bg-amber-500/15 disabled:opacity-50"
+              >
+                {wideningCrops ? "Re-cutting…" : "Fix crops"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={acceptSelected}
+              disabled={accepting || selected.size === 0}
+              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {accepting ? "Writing…" : `Accept ${selected.size} into Clev's Marks`}
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">

@@ -53,6 +53,7 @@ import {
   type ValidatedFormattingRequirements,
 } from "./template-schema";
 import { escapeHtml, formatQuestionLabel } from "./assignments";
+import { ANCHOR_MARK_CSS, anchorMarkHtml } from "./paper-anchor-marks";
 import { buildExamConditionsHtml, EXAM_CONDITIONS_CSS, marksLabel } from "./exam-conditions";
 
 // -- KaTeX rendering -----------------------------------------------------------
@@ -139,14 +140,14 @@ function answerLinesHtml(lines: number, lineHeightMm: number): string {
  *    printable page, so `break-inside: avoid` can always be honoured and
  *    Chromium never has to invent its own split point.
  */
-function renderAnswerBox(lines: number, lineHeightMm: number): string {
+function renderAnswerBox(lines: number, lineHeightMm: number, marks = ""): string {
   if (lines <= 0) return "";
 
   const requestedHeightMm = lines * lineHeightMm;
 
   if (requestedHeightMm <= MAX_SINGLE_BOX_HEIGHT_MM) {
     // Rule 1 — fits entirely; one atomic unbreakable block.
-    return `<div class="answer-box">${answerLinesHtml(lines, lineHeightMm)}</div>`;
+    return `<div class="answer-box">${marks}${answerLinesHtml(lines, lineHeightMm)}</div>`;
   }
 
   // Rule 2/3 — does not fit on one page. Split into a capped first box and
@@ -158,7 +159,7 @@ function renderAnswerBox(lines: number, lineHeightMm: number): string {
   const remainingLines = Math.max(MIN_CONTINUATION_LINES, lines - firstBoxLines);
 
   return `
-    <div class="answer-box">${answerLinesHtml(firstBoxLines, lineHeightMm)}</div>
+    <div class="answer-box">${marks}${answerLinesHtml(firstBoxLines, lineHeightMm)}</div>
     <div class="continuation-label">Continued working space — see next page</div>
     <div class="answer-box continuation-box">${answerLinesHtml(remainingLines, lineHeightMm)}</div>`;
 }
@@ -170,11 +171,11 @@ function renderAnswerBox(lines: number, lineHeightMm: number): string {
  * term (solve/show/hence/determine) requires visible working to be marked,
  * not just a final value.
  */
-function renderWorkingAndAnswerBox(lines: number, lineHeightMm: number): string {
+function renderWorkingAndAnswerBox(lines: number, lineHeightMm: number, marks = ""): string {
   const workingLines = Math.max(MIN_USEFUL_LINES, lines);
   return `
     <div class="working-box-label">Working / reasoning</div>
-    ${renderAnswerBox(workingLines, lineHeightMm)}
+    ${renderAnswerBox(workingLines, lineHeightMm, marks)}
     <div class="answer-line-row"><span class="answer-line-label">Answer</span><span class="answer-line-rule"></span></div>`;
 }
 
@@ -212,7 +213,15 @@ function renderQuestion(
   questionIndex: number,
   sectionIndex: number,
   formatting: ValidatedFormattingRequirements,
-  globalAnswerLines: number
+  globalAnswerLines: number,
+  /**
+   * The number test_items stores this question under -- a single counter
+   * running across every section, exactly as buildTestItemsFromSections
+   * increments it. Printed invisibly into each answer box so the layout
+   * deriver can name the part a box belongs to without re-deriving it.
+   * Undefined for the mark scheme, which is never marked up.
+   */
+  questionNumber?: number
 ): string {
   const label = formatQuestionLabel(sectionIndex, questionIndex, formatting.numberingStyle);
   const marksHtml = formatting.includeMarksColumn
@@ -236,9 +245,11 @@ function renderQuestion(
           // for one that asks for a single word or value.
           const spAnswerLines =
             sp.answerBoxLines ?? Math.max(MIN_USEFUL_LINES, Math.ceil(answerLines / 2));
+          const spAnchorMarks =
+            questionNumber === undefined ? "" : anchorMarkHtml(questionNumber, spLabel);
           const spAnswerHtml = sp.requiresWorking
-            ? renderWorkingAndAnswerBox(spAnswerLines, formatting.answerLineHeightMm)
-            : renderAnswerBox(spAnswerLines, formatting.answerLineHeightMm);
+            ? renderWorkingAndAnswerBox(spAnswerLines, formatting.answerLineHeightMm, spAnchorMarks)
+            : renderAnswerBox(spAnswerLines, formatting.answerLineHeightMm, spAnchorMarks);
           return `
             <div class="subpart">
               <span class="subpart-label">(${spLabel})</span>
@@ -249,10 +260,11 @@ function renderQuestion(
         }).join("")
       : "";
 
+  const mainAnchorMarks = questionNumber === undefined ? "" : anchorMarkHtml(questionNumber, "");
   const mainAnswerBox = !subpartsHtml
     ? question.requiresWorking
-      ? renderWorkingAndAnswerBox(answerLines, formatting.answerLineHeightMm)
-      : renderAnswerBox(answerLines, formatting.answerLineHeightMm)
+      ? renderWorkingAndAnswerBox(answerLines, formatting.answerLineHeightMm, mainAnchorMarks)
+      : renderAnswerBox(answerLines, formatting.answerLineHeightMm, mainAnchorMarks)
     : "";
 
   // Rule 2 — if the prompt + a *minimum useful* answer box can't both fit on
@@ -578,6 +590,7 @@ function buildCss(formatting: ValidatedFormattingRequirements): string {
       align-items: start;
     }
     .subpart-label { font-weight: 500; font-size: ${formatting.fontSize}pt; }
+${ANCHOR_MARK_CSS}
     .answer-box {
       margin: 6px 0 2px 0;
       background: #fafafa;
@@ -918,6 +931,18 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
   // Detect teacher companion boundary
   const teacherIdx = sections.findIndex((s) => /teacher.{0,10}companion/i.test(s.heading));
 
+  // Where each section's questions start in the single counter test_items is
+  // keyed by. Computed up front rather than mutated inside .map(), so it does
+  // not depend on the callback running in order.
+  const questionNumberBase: number[] = [];
+  {
+    let running = 0;
+    for (const s of sections) {
+      questionNumberBase.push(running);
+      running += ((s as ExtendedSection).questions ?? []).length;
+    }
+  }
+
   const sectionsHtml = sections.map((section, sectionIndex) => {
     const sec = section as ExtendedSection;
 
@@ -942,7 +967,14 @@ function buildHtml(validated: ValidatedAssignmentPdfRequest, answerLines: number
         </div>` : "";
 
     const questionBlocksHtml = sec.questions.map((q, qIdx) =>
-      renderQuestion(q as QuestionWithExtras, qIdx, sectionIndex, formatting, answerLines)
+      renderQuestion(
+        q as QuestionWithExtras,
+        qIdx,
+        sectionIndex,
+        formatting,
+        answerLines,
+        questionNumberBase[sectionIndex] + qIdx + 1
+      )
     ).join("");
 
     const translationHtml = sec.translationTable
