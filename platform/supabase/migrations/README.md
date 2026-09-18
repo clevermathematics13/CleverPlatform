@@ -182,3 +182,29 @@ Run it in BOTH directions. A ledger version with no file blocks CI, which is
 what happened here; a file with no ledger version is the dangerous one, since
 `supabase db push` treats it as pending and would execute it against
 production. There were none of the latter.
+
+### Merge the PR carrying the missing file FIRST
+
+A reconciliation split across two pull requests leaves the directory short
+between the two merges, and this workflow runs on every push to main -- so the
+first merge goes red even though both PRs are correct.
+
+That is what happened here, and it was avoidable. `20260918182655` belonged to
+the feature PR that applied it; the reconciliation PR deliberately left it out,
+because adding it in both places is an add/add conflict on merge. The
+reconciliation was merged first, so for the few seconds between the two merges
+main held 166 files against 167 rows and run #89 failed with the usual
+"Remote migration versions not found in local migrations directory", naming
+that version. Run #90, on the next merge, was green.
+
+So when a reconciliation and a feature PR each carry part of the set, merge the
+one holding the version the other omits first. Nothing is broken if you get it
+the wrong way round -- `supabase db push` fails safe and applies nothing -- but
+main carries a red run that means nothing, which is exactly the kind of noise
+that trains people to ignore this workflow.
+
+**Never run the `supabase migration repair --status reverted <version>` command
+the failure message suggests** unless you have established the migration really
+was reverted. On this class of failure it has not been: the row is applied and
+live, and only its file is missing. Repairing it would tell the ledger a lie
+about production.
