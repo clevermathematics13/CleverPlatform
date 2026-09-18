@@ -227,6 +227,19 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
       "A full-mark response says NO, gives a counterexample, and says when it works: for example $x = 5$ gives $79 \\div 5 = 15.8$, not a whole number; the expression gives a whole number only when $84 - x$ is a multiple of 5 (i.e. $x = 4, 9, 14, \\ldots$, or $x$ ends in 4 or 9), and $x$ must not exceed 84. 2 marks: one for a correct counterexample (or an equivalent demonstration that some $x$ fails), one for a correct condition on $x$ for the expression to work. A bare \"no\" earns 0; \"no, because not all numbers divide by 5\" with no example and no condition earns 0.",
   },
   // -- Q8: equivalent expressions [5] ------------------------------------------
+  //
+  // Amended 18 Sep 2026, and deliberately no longer a transcription of the
+  // original rubric line. As first written, this mark scheme capped
+  // "guess-and-check that reaches j = 4 and k = 7 with a verification shown"
+  // at 2 marks, and strand A's Approaching descriptor named guess-and-check.
+  // The printed question asks for the values and for algebraic steps; it does
+  // not prescribe a method, so the cap penalised a requirement the students
+  // were never given. It also could not be applied consistently: on the first
+  // graded batch two students submitted the same substitute-and-expand
+  // argument and the grader gave one 5 and the other 0, because nothing in
+  // the scheme distinguished "verification" from "algebra". Any valid
+  // algebraic route to the values now earns the full 5, and strand A's
+  // descriptors were amended to match -- both here and on the live rows.
   {
     questionNumber: 8,
     partLabel: "",
@@ -234,7 +247,7 @@ export const KA1_UNIT1_ITEMS: SeedItem[] = [
     questionText:
       "Expression A, $3(x + k) + j(2x - 4)$, and Expression B, $11x + 5$, are equivalent. What must be the value of $j$ and $k$? Show your algebraic steps.",
     markschemeText:
-      "A full-mark response expands, matches coefficients, and solves: $3(x + k) + j(2x - 4) = 3x + 3k + 2jx - 4j = (3 + 2j)x + (3k - 4j)$; matching with $11x + 5$ gives $3 + 2j = 11$ so $j = 4$, and $3k - 4j = 5$ so $3k - 16 = 5$ and $k = 7$. Answer: $j = 4$, $k = 7$. 5 marks: one for expanding both brackets correctly, one for collecting into the form $(3 + 2j)x + (3k - 4j)$, one for setting up the $x$-coefficient equation and finding $j = 4$, one for setting up the constant equation, one for $k = 7$. Guess-and-check that reaches $j = 4$ and $k = 7$ with a verification shown earns at most 2 (the rubric's Approaching descriptor names guess-and-check); correct answers with no algebra earn 0.",
+      "The question asks for the values of $j$ and $k$ and for algebraic steps; it does not prescribe a method, so ANY valid algebraic route to $j = 4$, $k = 7$ earns all 5 marks. Route 1 (match coefficients): $3(x + k) + j(2x - 4) = 3x + 3k + 2jx - 4j = (3 + 2j)x + (3k - 4j)$; matching with $11x + 5$ gives $3 + 2j = 11$ so $j = 4$, and $3k - 4j = 5$ so $3k - 16 = 5$ and $k = 7$. Route 2 (substitute and verify): $3(x + 7) + 4(2x - 4) = 3x + 21 + 8x - 16 = 11x + 5$, which IS Expression B, so $j = 4$ and $k = 7$ are the values that make the two expressions equivalent. Route 2 is a complete algebraic argument and earns the same 5 marks as Route 1 - do not cap it, and do not call it guess-and-check. Answer: $j = 4$, $k = 7$. 5 marks: one for expanding both brackets correctly (either $3x + 3k + 2jx - 4j$, or $3x + 21 + 8x - 16$ once the values are substituted); one for collecting into a single linear expression (either $(3 + 2j)x + (3k - 4j)$, or $11x + 5$); one for $j = 4$; one for work connecting the constant terms (either $3k - 4j = 5$, or $21 - 16 = 5$); one for $k = 7$. Judge each of the five on its own evidence, whichever route the student took. A copying slip when restating Expression A - for example writing $4(6x - 4)$ but expanding it correctly as $8x - 16$ - is a notation slip, not an expansion error. Correct values with no working at all earn the two answer marks.",
   },
   // -- Q9: tile pattern [5] ----------------------------------------------------
   {
@@ -280,11 +293,11 @@ export const KA1_UNIT1_RUBRIC: StandardsRubric = {
       parts: ["1a", "1b", "1c", "7a", "7b", "7c", "8"],
       descriptors: {
         exceeding:
-          "Evaluates every expression accurately, including negatives, brackets and powers, with each substitution shown. Writes (84 - x) / 5 with correct grouping and uses it. Expands, groups and matches coefficients to find j = 4 and k = 7 with complete algebra.",
+          "Evaluates every expression accurately, including negatives, brackets and powers, with each substitution shown. Writes (84 - x) / 5 with correct grouping and uses it. Finds j = 4 and k = 7 with complete algebra by any valid route - matching coefficients, or substituting the values and expanding to show the two expressions are equivalent.",
         meeting:
-          "Evaluates most expressions correctly, with one slip in signs or order of operations. Writes and uses a correct expression from the context. Finds j and k algebraically, with at most one small error or missing step.",
+          "Evaluates most expressions correctly, with one slip in signs or order of operations. Writes and uses a correct expression from the context. Finds j and k with algebra shown, by any route, with at most one small error or missing step.",
         approaching:
-          "Substitutes correctly but makes repeated sign or order-of-operations errors. The context expression is missing its brackets, or only the numerical cases are right. Expands Expression A but cannot set up both matching equations, or uses guess-and-check.",
+          "Substitutes correctly but makes repeated sign or order-of-operations errors. The context expression is missing its brackets, or only the numerical cases are right. Expands Expression A but does not reach both values.",
         beginning:
           "Substitution is incomplete or incorrect. Cannot represent the context with an expression. Makes little or no progress with equivalent expressions.",
       },
