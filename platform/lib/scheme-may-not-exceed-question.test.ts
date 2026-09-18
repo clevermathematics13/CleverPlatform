@@ -107,7 +107,7 @@ describe("the clause reaches the prompt a Standard Level paper is marked under",
  */
 describe("a strand descriptor may not re-impose a withdrawn demand", () => {
   const descriptorText = KA1_UNIT1_RUBRIC.strands
-    .flatMap((s) => Object.values(s.descriptors))
+    .flatMap((s) => Object.values(s.descriptors ?? {}))
     .join("\n");
 
   it.each([
@@ -153,7 +153,7 @@ describe("a strand descriptor may not re-impose a withdrawn demand", () => {
       '"guess-and-check" for the equivalent-expressions question is'
     );
     expect(
-      KA1_UNIT1_RUBRIC.strands.find((s) => s.code === "A")!.descriptors.approaching
+      KA1_UNIT1_RUBRIC.strands.find((s) => s.code === "A")!.descriptors?.approaching ?? ""
     ).not.toContain("guess-and-check");
   });
 });

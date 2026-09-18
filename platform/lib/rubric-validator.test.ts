@@ -545,15 +545,18 @@ describe("rule 15 -- the mathematical register", () => {
 });
 
 describe("validateRubric, rule 16", () => {
-  // -- Rule 16 --------------------------------------------------------------
+  const OPEN = "Describe how the visual pattern is changing. You may use colours or symbols to support your description.";
+  const fires = (prompt: string, markScheme: string) =>
+    codesOf(validateRubric(draftOf([{ prompt, marks: 2, markScheme }])))
+      .includes("open-description-marks-vocabulary");
+
   it("catches an open 'describe' part whose scheme marks the vocabulary", () => {
     // KA1 Unit 1 Q9(a), verbatim on both sides. Nine of the twelve students
     // who described the growth correctly lost marks for not using these nouns.
     const findings = validateRubric(
       draftOf([
         {
-          prompt:
-            "Describe how the visual pattern is changing. You may use colours or symbols to support your description.",
+          prompt: OPEN,
           marks: 2,
           markScheme:
             "A full-mark response says where the new tiles go. 2 marks: one for naming which " +
@@ -566,58 +569,120 @@ describe("validateRubric, rule 16", () => {
     const finding = findings.find((f) => f.rule === 16);
     expect(codesOf(findings)).toContain("open-description-marks-vocabulary");
     expect(finding?.severity).toBe("warn");
-    // The message has to quote the clause, or a teacher cannot tell which
-    // half of a long scheme tripped it.
+    // The message quotes the clause, or a teacher cannot tell which half of a
+    // long scheme tripped it.
     expect(finding?.message).toContain("for naming which parts grow");
   });
 
-  it("clears the same part once the scheme frees its own wording", () => {
-    const findings = validateRubric(
-      draftOf([
-        {
-          prompt:
-            "Describe how the visual pattern is changing. You may use colours or symbols to support your description.",
-          marks: 2,
-          markScheme:
-            "A full-mark response says where the new tiles go. 2 marks: one for naming which " +
-            "parts grow and by how much, one for a description that would let someone draw the " +
-            "next figure. Judge this on content, not wording: \"one on the left, one on the right " +
-            "and one on the bottom\" and \"2 in the row, 1 in the column\" are the same answer.",
-        },
-      ])
-    );
-    expect(codesOf(findings)).not.toContain("open-description-marks-vocabulary");
+  // The first version of this rule fired on the case above and on almost
+  // nothing else: 1 of 16 defect-carrying pairs, and that one was the text it
+  // had been written from. These are the shapes it missed. Each is a way a
+  // teacher really writes a vocabulary gate, so each is its own row.
+  it.each([
+    ["must include the word", "The description must include the word 'column'."],
+    ["credit only where the student writes", "Credit only where the student writes 'row' and 'column'."],
+    ["award only if identified", "Award the second mark only if both the row and the column are identified."],
+    ["requires the terms", "R1 requires the terms 'horizontal' and 'vertical'."],
+    ["should refer to", "The answer should refer to the rows."],
+    ["accept only answers that use", "Accept only answers that use the words 'row' and 'column'."],
+    ["withheld until the words appear", "Do not award the second mark unless the words 'row' and 'column' appear."],
+    ["itemised on mentions", "1 mark: mentions the row; 1 mark: mentions the column."],
+    ["correct use of the term", "M1 for the correct use of the term 'linear'."],
+    ["expected wording", "Expected wording: 'the row grows by 2 and the column by 1'."],
+    ["for stating", "B1 for stating the row growth and the column growth."],
+  ])("catches a vocabulary gate written as %s", (_name, scheme) => {
+    expect(fires(OPEN, scheme)).toBe(true);
   });
 
-  it("does not flag a question that enumerates what the description must cover", () => {
-    // KA1 Q2(a) asks for two things outright, so its scheme may require two.
-    // This is the case rule 16 must never fire on -- the demand IS askable.
-    const findings = validateRubric(
-      draftOf([
-        {
-          prompt: "Describe the sequence in words, including the first term and how it changes.",
-          marks: 1,
-          markScheme:
-            "A full-mark response names the first term 88 and states the change of -6 each term. " +
-            "\"It goes down by 6\" alone earns 0.",
-        },
-      ])
-    );
-    expect(codesOf(findings)).not.toContain("open-description-marks-vocabulary");
+  it("clears the part once the scheme frees its own wording", () => {
+    expect(
+      fires(
+        OPEN,
+        "2 marks: one for naming which parts grow and by how much, one for a description that " +
+          "would let someone draw the next figure. Judge this on content, not wording: \"one on " +
+          "the left, one on the right and one on the bottom\" and \"2 in the row, 1 in the column\" " +
+          "are the same answer."
+      )
+    ).toBe(false);
+  });
+
+  it("clears a gate the scheme frees as the student's own words", () => {
+    expect(fires(OPEN, "B1 for naming the row and the column, in the student's own words.")).toBe(false);
+  });
+
+  it("does not flag the paper's own enumerating part", () => {
+    // KA1 Q2(a), verbatim. Clean because the question asks for both things.
+    expect(
+      fires(
+        "Describe the sequence in words, including the first term and how it changes.",
+        "A full-mark response names the first term 88 and states the change of -6 each term. " +
+          "\"It goes down by 6\" alone earns 0."
+      )
+    ).toBe(false);
+  });
+
+  it("suppresses only when the question asks for what the gate withholds", () => {
+    // Same scheme both times, so the enumeration in the prompt is the only
+    // difference. This is what pins the question-side comparison; a suppressor
+    // keyed on an instruction verb anywhere in the prompt would pass the first
+    // half and fail the point of the rule.
+    const scheme = "B1 for naming the first term 88 and stating the change of -6 each term.";
+    expect(fires("Describe the sequence in words.", scheme)).toBe(true);
+    expect(
+      fires("Describe the sequence in words, including the first term and how it changes.", scheme)
+    ).toBe(false);
+  });
+
+  it("does not read an instruction about the answer's medium as enumeration", () => {
+    // "Give your answer in words" is about the medium, not about what to
+    // describe, and must not silence the rule.
+    expect(fires("Describe how the graph changes. Give your answer in words.", "B1 for naming the row and the column.")).toBe(true);
+  });
+
+  it("does not flag a refusal clause that happens to contain a naming verb", () => {
+    // Rejecting a wrong answer is the job, not a vocabulary gate -- even when
+    // the refusal is phrased with the same words a gate uses. The fixture has
+    // to actually trip NAMING_GATE, or it pins nothing: with a scheme that
+    // never matches in the first place, the rule returns before the guard and
+    // the test passes against a build with no guard at all.
+    expect(fires(OPEN, "Do not award a mark for naming the row alone.")).toBe(false);
+  });
+
+  it("still flags a refusal that withholds the mark UNTIL wording appears", () => {
+    // The defect written backwards. "unless/until/without" turns a refusal
+    // back into a gate, so the guard must not swallow this one.
+    expect(
+      fires(OPEN, "Do not award the second mark unless the words 'row' and 'column' appear.")
+    ).toBe(true);
+  });
+
+  it("does not flag a plain refusal with no gate in it", () => {
+    expect(
+      fires(
+        OPEN,
+        "Do not award a bare restatement of the tile counts. R1 for a description that would " +
+          "let a reader draw the next figure."
+      )
+    ).toBe(false);
   });
 
   it("does not flag an open description whose scheme gates on content, not naming", () => {
+    expect(
+      fires(
+        "Describe how the pattern of tiles is changing.",
+        "R1 for a description that would let a reader draw the next figure. A restatement of " +
+          "the tile counts earns 0."
+      )
+    ).toBe(false);
+  });
+
+  it("fails if the rule is unregistered from validateRubric", () => {
+    // Every other test here asserts a NEGATIVE for at least one fixture, and
+    // a negative passes just as well against a rule that no longer runs. This
+    // one, and the positives above, are the whole safety net.
     const findings = validateRubric(
-      draftOf([
-        {
-          prompt: "Describe how the pattern of tiles is changing.",
-          marks: 1,
-          markScheme:
-            "R1 for a description that would let a reader draw the next figure. A restatement of " +
-            "the tile counts earns 0.",
-        },
-      ])
+      draftOf([{ prompt: OPEN, marks: 2, markScheme: "The description must include the word 'column'." }])
     );
-    expect(codesOf(findings)).not.toContain("open-description-marks-vocabulary");
+    expect(findings.some((f) => f.rule === 16)).toBe(true);
   });
 });

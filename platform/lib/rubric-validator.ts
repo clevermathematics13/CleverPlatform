@@ -40,7 +40,8 @@ import { findLooseRegisterTerms } from "./mathematical-register";
 export type RubricFindingSeverity = "block" | "warn";
 
 export interface RubricFinding {
-  /** 1-15, matching the audit or review that motivated each rule. */
+  /** The audit or review that motivated the rule. Not dense, and not unique:
+   *  rule 10 labels findings from two unrelated functions. */
   rule: number;
   /** Stable slug, safe to match on in tests and UI. */
   code: string;
@@ -777,40 +778,72 @@ function ruleMathematicalRegister(parts: FlatPart[], out: RubricFinding[]): void
  * in two particular nouns. Of the 15 who sat it, 12 described the growth
  * correctly and 9 of those lost marks on the wording: "adding one unit to
  * the left, right and bottom every figure" scored 0, while "two on each
- * side and one on the bottom" -- the same answer -- scored 2. The tell is
- * the same one ask-what-you-mark names: when a scheme demands more than its
- * prompt, the extra demand lands on whichever student is read strictly.
+ * side and one on the bottom" -- the same answer -- scored 2.
  *
  * Rule 9 catches this shape only when the extra demand is joined by an
  * uppercase AND. Q9(a)'s is joined by a comma and a parenthesis, so nothing
- * flagged it. This rule takes the other route: on a part whose command is
- * open -- "describe how", "explain what", with no "including ..." naming
- * what to cover -- a scheme that gates a mark on the student NAMING
- * something has to say, in the scheme, that its own words are an example
- * and not a required form. Two ways to clear it, and both are one sentence:
- * ask for the vocabulary in the question, or free it in the scheme.
+ * flagged it.
+ *
+ * HOW THIS RULE DECIDES, and why it is not a keyword list. The first
+ * version of it was: does the scheme contain a naming verb, and does the
+ * question contain an enumerating verb? That version fired on 1 of 16
+ * defect-carrying pairs a teacher might really write -- and the one it
+ * caught was the verbatim Q9(a) text it had been written from, which was
+ * also its own unit test. A guard that recognises only its own regression
+ * test is worse than none, because it reads as coverage.
+ *
+ * So the question side is not a verb list at all. It is rule A1 of
+ * ask-what-you-mark, executed: take the words the scheme will WITHHOLD a
+ * mark for, and look for each of them in the question's own words. If the
+ * question already names them, the demand is askable and the part is fine
+ * -- that is Q2(a), "Describe the sequence in words, INCLUDING the first
+ * term and how it changes", against a scheme gating on the first term. If
+ * it does not, the student was asked for one thing and marked on another.
  *
  * A warning, not a block. Some open parts really are marked on naming a
  * term the unit has taught, and a teacher who means that should not have to
- * argue with a regex.
+ * argue with a regex; the escape is one sentence in the scheme saying its
+ * own words are an example.
  */
 
 /** "Describe how ...", "Explain what ..." -- a command with no named target. */
 const OPEN_DESCRIPTION =
-  /\b(?:describe|explain)\s+(?:how|what|why|the\s+(?:pattern|rule|sequence|change|relationship))\b/i;
+  /\b(?:describe|explain|comment\s+on|what\s+do\s+you\s+notice(?:\s+about)?|say\s+(?:what|how))\b(?:\s+(?:how|what|why|whether|the|this|these|your|in\s+your\s+own\s+words))?/i;
 
 /**
- * The question enumerating what the description must cover, which is what
- * makes a demand askable. Q2(a) -- "Describe the sequence in words,
- * INCLUDING the first term and how it changes" -- asks for two things and
- * may require two; it must not be flagged for doing so.
+ * A mark gated on the student NAMING something, as opposed to a scheme that
+ * merely describes a good answer. The "for|must|requires" lead-in is what
+ * separates "one for naming which parts grow" (a gate) from "a full-mark
+ * response names ..." (a description of the answer), so it is kept -- but a
+ * teacher writes the same gate in several other shapes, and the first
+ * version of this rule reached only the first of the four below.
  */
-const QUESTION_ENUMERATES =
-  /\b(?:including|include|be sure to|make sure|state|name|list|give)\b/i;
-
-/** A mark gated on the student naming, stating or mentioning something. */
-const NAMING_GATE =
-  /\b(?:for|must|requires?)\s+(?:also\s+)?(?:naming|names?|stating|states?|saying|says?|mentioning|mentions?|identifying|identifies|using\s+the\s+(?:word|term|phrase))\b[^.;]{0,90}/i;
+const NAMING_GATE = new RegExp(
+  [
+    // (a) a gate lead-in followed by a verb of naming. "using/including/
+    //     containing" are admitted only with a vocabulary object, since both
+    //     are ordinary content words ("must include a description of both").
+    "\\b(?:for|must|requires?|should|needs?\\s+to|has\\s+to|only\\s+if|unless|provided\\s+that|where)\\s+" +
+      "(?:also\\s+)?(?:the\\s+(?:student|answer|description|candidate|response|pupil)\\s+)?" +
+      "(?:naming|names?|named|stating|states?|stated|saying|says?|said|mentioning|mentions?|mentioned|" +
+      "identifying|identifies|identified|referring\\s+to|refers?\\s+to|writing|writes?|written|" +
+      "(?:using|uses?|used|including|includes?|included|containing|contains?)\\s+" +
+      "(?:the\\s+|a\\s+|both\\s+)?(?:words?|terms?|phrase|phrasing|wording|vocabulary))" +
+      "\\b[^.;]{0,90}",
+    // (b) a conditional whose condition is a passive naming verb.
+    "\\b(?:only\\s+if|unless|provided\\s+that)\\b[^.;]{0,70}?" +
+      "\\b(?:named|identified|stated|mentioned|written|appears?|appear)\\b",
+    // (c) a gate lead-in and, in the same clause, an explicit vocabulary
+    //     noun. The noun is required: a bare quotation is an exemplar of a
+    //     correct answer, which is how mark schemes normally read.
+    "\\b(?:must|should|needs?|require[sd]?|only|expected|credit|award|accept|for|using|uses?|used)\\b" +
+      "[^.;]{0,60}?\\b(?:words?|terms?|phrase|phrasing|wording|vocabulary)\\b[^.;]{0,60}",
+    // (d) a mark itemised on a naming verb.
+    "(?:^|[.;:]|\\b(?:[MABR]\\d|\\d\\s*marks?)\\b)[^.;]{0,20}?" +
+      "\\b(?:mentions?|names?|states?|identifies|refers?\\s+to|uses?)\\s+the\\s+[a-z]+",
+  ].join("|"),
+  "i",
+);
 
 /**
  * The scheme freeing its own wording. Deliberately broad: a teacher may
@@ -818,14 +851,94 @@ const NAMING_GATE =
  * "do not require the word 'column'", and all four discharge the same duty.
  */
 const WORDING_FREED =
-  /\b(?:any\s+(?:wording|words|phrasing)|in\s+(?:their\s+own|whatever|any)\s+words|equivalent\s+(?:wording|phrasing|words)|not\s+(?:on\s+)?the\s+(?:vocabulary|wording|words)|do\s+not\s+require\s+the\s+(?:word|term|phrase)|whatever\s+vocabulary|content,?\s+not\s+(?:its\s+)?wording|same\s+answer)\b/i;
+  /\b(?:any\s+(?:wording|words|phrasing)|own\s+words|in\s+(?:their\s+own|whatever|any)\s+words|equivalent\s+(?:wording|phrasing|words)|not\s+(?:on\s+)?the\s+(?:vocabulary|wording|words)|do\s+not\s+require\s+the\s+(?:word|term|phrase)|whatever\s+vocabulary|content,?\s+not\s+(?:its\s+)?wording|same\s+answer)\b/i;
+
+/** A clause REFUSING a wrong answer, which is the job, not a gate. */
+const NEGATED_CLAUSE = /\b(?:do\s+not|don't|never|no)\s+(?:award|credit|accept|marks?|give)\b/i;
+
+/**
+ * ...except where the refusal is itself the vocabulary demand. "Do not award
+ * unless the word 'column' appears" withholds a mark until wording appears,
+ * which is the defect written backwards; "do not award a bare restatement"
+ * is not.
+ */
+const WITHHELD_FOR_WORDING =
+  /\b(?:unless|until|without|fails?\s+to|omit(?:s|ting)?|(?:does|do)\s+not\s+(?:use|say|state|mention|include|name))\b/i;
+
+function inRejectionClause(scheme: string, at: number): boolean {
+  const sentStart = Math.max(0, scheme.lastIndexOf(".", at) + 1);
+  const dot = scheme.indexOf(".", at);
+  const sentence = scheme.slice(sentStart, dot < 0 ? scheme.length : dot);
+  const neg = NEGATED_CLAUSE.exec(sentence);
+  if (!neg) return false;
+  // A refusal ends at the next coordinator: "Do not award a bare
+  // restatement, and award B1 for naming the row" is two clauses, and the
+  // second is a gate in its own right.
+  const after = sentence.slice(neg.index);
+  const coord = after.search(/,\s+and\s+|\s*;\s*|\s+but\s+/i);
+  const span = coord < 0 ? after : after.slice(0, coord);
+  const spanStart = sentStart + neg.index;
+  if (at < spanStart || at >= spanStart + span.length) return false;
+  return !WITHHELD_FOR_WORDING.test(span);
+}
+
+/** The gate's own lead-in, stripped so only the demanded words remain. */
+const GATE_LEAD =
+  /^\W*(?:for|must|requires?|should|needs?\s+to|has\s+to|only\s+if|unless|provided\s+that|where|credit|award|accept|expected)\s+(?:also\s+)?(?:the\s+(?:student|answer|description|candidate|response|pupil)\s+)?(?:naming|names?|named|stating|states?|stated|saying|says?|said|mentioning|mentions?|mentioned|identifying|identifies|identified|referring\s+to|refers?\s+to|writing|writes?|written|using|uses?|used|including|includes?|included|containing|contains?)?\s*/i;
+
+/** A following mark code ends the clause; the 90-char tail otherwise runs on. */
+const NEXT_CODE = /\s*,?\s*\b[ABMR]\d\b/i;
+
+const GATE_STOPWORDS = new Set([
+  "the", "and", "for", "with", "that", "this", "from", "they", "them", "their", "its", "any", "all",
+  "one", "two", "both", "each", "also", "not", "but", "are", "was", "were", "will", "would", "should",
+  "must", "can", "you", "your", "has", "have", "how", "much", "many", "which", "what", "when", "where",
+  "who", "why", "than", "then", "into", "over", "under", "about", "some", "more", "most", "other",
+  "such", "only", "just", "very", "out", "off", "per", "mark", "marks", "marked", "marking", "allow",
+  "accept", "award", "awarded", "point", "points", "correct", "correctly", "student", "students",
+  "answer", "answers", "does", "did", "been", "being", "because", "there", "here", "these", "those",
+  "own", "word", "words", "term", "terms", "phrase", "wording", "vocabulary", "grow", "grows", "part",
+  "parts", "response", "full", "describe", "description", "given", "give", "gives",
+  // The naming verbs themselves. A gate reads "for naming X and stating Y",
+  // and GATE_LEAD strips only the first of those; the second is marking
+  // furniture in the middle of the clause, not part of the demand. Leaving
+  // them in made Q2(a) -- whose question DOES ask for both things -- fail the
+  // comparison on the word "stating" alone.
+  "naming", "names", "named", "stating", "states", "stated", "saying", "says", "said",
+  "mentioning", "mentions", "mentioned", "identifying", "identifies", "identified",
+  "referring", "refers", "writing", "writes", "written", "using", "uses", "used",
+  "including", "includes", "included", "containing", "contains",
+]);
+
+function contentWords(text: string): string[] {
+  return (text.toLowerCase().match(/[a-z][a-z-]{2,}/g) ?? []).filter((w) => !GATE_STOPWORDS.has(w));
+}
+
+/**
+ * Rule A1 of ask-what-you-mark, executed: does the question already ask for
+ * the words this gate will withhold a mark for?
+ *
+ * Only the gate's own clause is compared, not the whole scheme, and the
+ * lead-in and marking furniture are stripped first, so what remains is the
+ * demand itself. An empty comparison counts as asked -- with nothing
+ * specific demanded there is nothing the student could have failed to guess.
+ */
+function questionAsksForGate(question: string, gateClause: string): boolean {
+  const codeAt = gateClause.search(NEXT_CODE);
+  const demand = (codeAt > 0 ? gateClause.slice(0, codeAt) : gateClause).replace(GATE_LEAD, "");
+  const demanded = contentWords(demand);
+  if (demanded.length === 0) return true;
+  const asked = new Set(contentWords(question));
+  return demanded.every((w) => asked.has(w) || [...asked].some((a) => a.startsWith(w) || w.startsWith(a)));
+}
 
 function ruleOpenDescriptionVocabulary(part: FlatPart, out: RubricFinding[]): void {
   if (!OPEN_DESCRIPTION.test(part.question)) return;
-  if (QUESTION_ENUMERATES.test(part.question)) return;
   const gate = NAMING_GATE.exec(part.scheme);
   if (!gate) return;
   if (WORDING_FREED.test(part.scheme)) return;
+  if (inRejectionClause(part.scheme, gate.index)) return;
+  if (questionAsksForGate(part.question, gate[0])) return;
 
   out.push({
     rule: 16,
@@ -839,6 +952,7 @@ function ruleOpenDescriptionVocabulary(part: FlatPart, out: RubricFinding[]): vo
       "or say in the scheme that its own words are an example and not a required form.",
   });
 }
+
 
 export function validateRubric(
   draft: AssignmentDraft,
