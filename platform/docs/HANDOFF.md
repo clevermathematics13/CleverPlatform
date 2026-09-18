@@ -2248,7 +2248,7 @@ mechanical:
 ### What was built
 
 **The rubric is data on the test** (`tests.activity_rubric`, jsonb, migration
-`20260918000000`), validated by `ActivityRubricSchema` in
+`20260918182655`), validated by `ActivityRubricSchema` in
 `lib/activity-rubric.ts`: LEARNING TARGETS (code, name, the QuickNotes note,
 part refs), and outcome bands as proportions. The lesson's own targets - Math
 Medic prints them as "LT #1", "LT #2", "LT #3" on the key - are the grouping,
@@ -2326,11 +2326,32 @@ the teacher ticks "Show this in the gradebook" on the importer.
 
 ### Deliberately not done, and what to check first
 
-- **The migration has NOT been applied.** The file is written with a
-  placeholder version; per `supabase/migrations/README.md` it must be applied
-  through MCP `apply_migration` and then renamed to the version the ledger
-  assigns. Until then `tests.activity_rubric` does not exist and every query
-  selecting it fails. This is the one production step outstanding.
+- ~~The migration has NOT been applied.~~ **Applied 18 Sep 2026** through MCP
+  `apply_migration` as `tests_activity_rubric`; the ledger assigned version
+  `20260918182655` and the file was renamed from its placeholder
+  `20260918000000` to match. Verified: `tests.activity_rubric` is jsonb and
+  nullable, all 8 existing tests carry null, and the file is byte-identical
+  to the ledger's stored SQL apart from its trailing newline (file md5
+  `344e4a1...` with it, `e1485e8...` without, which is the ledger's).
+
+  **Why the order mattered, for the next person adding a column here.**
+  `assembleMarkScheme` selects `activity_rubric`, and every grading path goes
+  through it, while `app/dashboard/tests/page.tsx` selects it too. Deploying
+  that code before the column existed would have failed both on an unknown
+  column -- all AI grading and the Tests list, not just activities. Adding a
+  nullable column first is invisible to the running code; merging first is
+  not.
+
+- **The migrations directory has drifted again, and this is NOT that drift.**
+  Before this migration the ledger held 166 rows against 158 files here; it
+  now holds 167 against 159. Eight ledger versions have no file, which is the
+  same "applied via MCP, file never committed" gap the README's second and
+  third reconciliations describe, and it means
+  `platform-supabase-migrations.yml` cannot push from CI (the CLI refuses
+  when remote versions are missing locally). A fourth reconciliation is owed.
+  It was left alone here deliberately: rebuilding eight files from the ledger
+  is its own job with its own verification, and folding it into a feature
+  branch would have hidden it.
 - **Nothing has been graded through it.** The policy has not been measured on
   real student work, exactly as §21 had to say about Standard Level. The
   first class through deserves the spot-check routine of §11.
