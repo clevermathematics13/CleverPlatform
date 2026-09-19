@@ -528,21 +528,41 @@ export function validateGradeResponse(
     // may end up awarding MORE than suggestedMarks: each one is a mark this
     // pass added deterministically, so the consistency rule below must let
     // the total rise by exactly this many and no further.
+    //
+    // A GRANT requires actual proof, unlike a withdrawal above: `result.ok`
+    // and a classification other than `numerically_incorrect` are both true
+    // when the check genuinely matched AND when it couldn't be run at all
+    // (an unparseable value defers to the model as `ok: true` /
+    // `cannot_determine` -- see numerical-accuracy.ts). Withdrawing on that
+    // is safe (it only ever leaves a claimed award standing); granting on it
+    // is not -- it would hand a mark to "could not check" as if it were
+    // "checked and correct". `result.verified` and an explicit
+    // `correct_at_required_precision` / `correct_but_under_precise`
+    // classification are the only two things that mean the value was
+    // actually shown correct.
     let grantedCount = 0;
     for (const entry of item.markBreakdown) {
       if (entry.awarded) continue;
       let grant: string | null = null;
       if (entry.numericCheck) {
         const result = matchesRequiredPrecision(entry.numericCheck);
-        if (result.ok) grant = `${entry.token}'s own reported numericCheck indicates the value satisfies the required precision (${result.reason})`;
+        if (result.ok && result.verified) {
+          grant = `${entry.token}'s own reported numericCheck indicates the value satisfies the required precision (${result.reason})`;
+        }
       } else if (entry.impliedMethodEvidence) {
         const result = classifyUnderPrecision(entry.impliedMethodEvidence);
-        if (result.classification !== "numerically_incorrect") {
+        if (
+          result.classification === "correct_at_required_precision" ||
+          result.classification === "correct_but_under_precise"
+        ) {
           grant = `${entry.token}'s own reported impliedMethodEvidence indicates the value does support the implied method (${result.reason})`;
         }
       } else if (entry.intermediateValueCheck) {
         const result = classifyUnderPrecision(entry.intermediateValueCheck);
-        if (result.classification !== "numerically_incorrect") {
+        if (
+          result.classification === "correct_at_required_precision" ||
+          result.classification === "correct_but_under_precise"
+        ) {
           grant = `${entry.token}'s own reported intermediateValueCheck indicates the value is a valid rounding of the reference (${result.reason})`;
         }
       }

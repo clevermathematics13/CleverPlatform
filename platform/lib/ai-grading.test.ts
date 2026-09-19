@@ -1037,6 +1037,51 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.grades[0].item.reasoning).toBe("0.81 is insufficiently precise, so A0.");
   });
 
+  // The deterministic grant-loop bug: matchesRequiredPrecision() returns
+  // `ok: true` both when a value is genuinely verified correct AND when it
+  // could not be parsed at all (deferring to the model). Gating the grant on
+  // `ok` alone -- as this loop used to -- would treat "could not check" the
+  // same as "checked and correct" and hand the model a mark it withheld for
+  // an unparseable, symbolic reported value. Confirmed unreproduced in
+  // production (0 of 5 real grants ever hit this branch) before this test
+  // was added; it exists so it never gets the chance to.
+  it("does not grant a withheld mark whose numericCheck cannot be verified deterministically", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "pi/4 is a symbolic exact form, cannot confirm it equals the decimal reference",
+              numericCheck: {
+                reportedValue: "pi/4",
+                referenceValue: "0.785398",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "Could not confirm pi/4 numerically, so A0.",
+          evidence: "pi/4",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    expect(grade.clampedMarks).toBe(0);
+    expect(grade.item.markBreakdown[0].awarded).toBe(false);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
   it("grants a withheld Method mark whose own impliedMethodEvidence actually supports it", () => {
     const raw = JSON.stringify({
       items: [
@@ -1076,6 +1121,47 @@ describe("validateGradeResponse", () => {
     ).toBe(true);
   });
 
+  // Same grant-loop bug as the numericCheck case above, for
+  // impliedMethodEvidence: classifyUnderPrecision() returns "cannot_determine"
+  // (not "numerically_incorrect") for an exact-precision claim, since an
+  // exact requirement has no under-precise variant to check. The old
+  // `classification !== "numerically_incorrect"` grant condition treated
+  // that the same as a genuine "correct_but_under_precise" finding.
+  it("does not grant a withheld Method mark whose impliedMethodEvidence cannot be classified", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "(M1)",
+              awarded: false,
+              note: "Cannot confirm this exact-value claim supports the method",
+              impliedMethodEvidence: {
+                reportedValue: "8",
+                referenceValue: "8.0001",
+                precisionType: "exact",
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(result.outcome.grades[0].item.markBreakdown[0].awarded).toBe(false);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
   it("does not touch an ordinary intermediate accuracy mark with no intermediateValueCheck attached", () => {
     const raw = JSON.stringify({
       items: [
@@ -1096,6 +1182,42 @@ describe("validateGradeResponse", () => {
     if (!result.ok) return;
 
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  // Same grant-loop bug once more, for intermediateValueCheck.
+  it("does not grant a withheld intermediate accuracy mark whose intermediateValueCheck cannot be classified", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "Cannot confirm this exact-value intermediate claim",
+              intermediateValueCheck: {
+                reportedValue: "8",
+                referenceValue: "8.0001",
+                precisionType: "exact",
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(result.outcome.grades[0].item.markBreakdown[0].awarded).toBe(false);
     expect(result.outcome.warnings).toHaveLength(0);
   });
 

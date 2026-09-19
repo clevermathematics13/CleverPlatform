@@ -49,7 +49,24 @@ export interface NumericCheck {
 }
 
 export interface NumericCheckResult {
+  /**
+   * Whether this result DISPROVES a claimed match. True both when the value
+   * is genuinely verified correct AND when the check could not be run at
+   * all (unparseable value, deferring to the model) -- it only ever means
+   * "not disproved". Safe to gate a WITHDRAWAL on `!ok`, since both of
+   * those `ok: true` cases correctly leave a claimed award standing. NOT
+   * safe to gate a GRANT on `ok` alone -- see `verified`.
+   */
   ok: boolean;
+  /**
+   * True only when this result reflects an actual deterministic comparison
+   * that came out matching -- never true merely because parsing failed and
+   * the check was skipped. A grant loop (unlike a withdrawal loop) must gate
+   * on `ok && verified`, not `ok` alone: granting a mark the model itself
+   * withheld requires genuine proof it was wrong to withhold it, and
+   * "could not check" is not proof of anything.
+   */
+  verified: boolean;
   reason: string;
 }
 
@@ -211,6 +228,7 @@ function matchesSingleReference(
   if (referenceNum === null) {
     return {
       ok: true,
+      verified: false,
       reason:
         "could not parse a plain numeric value to verify deterministically -- deferring to the model's own judgement",
     };
@@ -220,9 +238,10 @@ function matchesSingleReference(
     const tolerance = Math.max(1e-9, Math.abs(referenceNum) * 1e-9);
     const matches = Math.abs(reportedNum - referenceNum) <= tolerance;
     return matches
-      ? { ok: true, reason: "matches the required exact value" }
+      ? { ok: true, verified: true, reason: "matches the required exact value" }
       : {
           ok: false,
+          verified: false,
           reason: `"${reportedValue}" does not match the required exact value ${referenceValue}`,
         };
   }
@@ -236,13 +255,18 @@ function matchesSingleReference(
   // A bare integer numerically equal to the correct rounded value is never
   // wrong just because its trailing zeros look ambiguous (policy section 6).
   if (!reportedValue.includes(".") && Number(reportedValue) === Number(requiredRounded)) {
-    return { ok: true, reason: "matches the required rounded value (trailing zeros in a whole number are not penalized)" };
+    return {
+      ok: true,
+      verified: true,
+      reason: "matches the required rounded value (trailing zeros in a whole number are not penalized)",
+    };
   }
 
   const reportedRounded = roundFn(reportedValue, digits);
   if (reportedRounded !== requiredRounded) {
     return {
       ok: false,
+      verified: false,
       reason: `"${reportedValue}" rounds to ${reportedRounded} at ${digits} ${unit}, not the required ${requiredRounded}`,
     };
   }
@@ -254,17 +278,19 @@ function matchesSingleReference(
   if (reportedPrecisionCount < digits) {
     return {
       ok: false,
+      verified: false,
       reason: `"${reportedValue}" has only ${reportedPrecisionCount} ${unit}; ${digits} are required`,
     };
   }
   if (!allowExcessPrecision && reportedPrecisionCount > digits) {
     return {
       ok: false,
+      verified: false,
       reason: `"${reportedValue}" has ${reportedPrecisionCount} ${unit}; exactly ${digits} were required and excess precision is not accepted under the strict default`,
     };
   }
 
-  return { ok: true, reason: `matches the required value at ${digits} ${unit}` };
+  return { ok: true, verified: true, reason: `matches the required value at ${digits} ${unit}` };
 }
 
 /**
@@ -285,6 +311,7 @@ export function matchesRequiredPrecision(
   if (reportedNum === null) {
     return {
       ok: true,
+      verified: false,
       reason:
         "could not parse a plain numeric value to verify deterministically -- deferring to the model's own judgement",
     };
