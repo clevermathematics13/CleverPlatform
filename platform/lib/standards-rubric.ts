@@ -36,6 +36,7 @@
  */
 
 import { z } from "zod";
+import { parseStandardEntry, validateStandardCode } from "./ccss-math-codes";
 
 // -----------------------------------------------------------------------------
 // Performance levels
@@ -113,16 +114,30 @@ export const LevelDescriptorsSchema = z
 
 export type LevelDescriptors = z.infer<typeof LevelDescriptorsSchema>;
 
-export const RubricStrandSchema = z.object({
-  /** Short and unique within the rubric: "A", "B", ... or anything the teacher uses. */
-  code: z.string().trim().min(1).max(8),
-  name: z.string().trim().min(1),
-  /** The standards this strand assesses, each as its code plus wording: "F-LE.A.2 Build a linear rule from ...". */
-  standards: z.array(z.string().trim().min(1)).default([]),
-  /** Every part that counts towards this strand. A part belongs to exactly one strand. */
-  parts: z.array(PartRefSchema).min(1),
-  descriptors: LevelDescriptorsSchema.optional(),
-});
+export const RubricStrandSchema = z
+  .object({
+    /** Short and unique within the rubric: "A", "B", ... or anything the teacher uses. */
+    code: z.string().trim().min(1).max(8),
+    name: z.string().trim().min(1),
+    /** The standards this strand assesses, each as its code plus wording: "F-LE.A.2 Build a linear rule from ...". */
+    standards: z.array(z.string().trim().min(1)).default([]),
+    /** Every part that counts towards this strand. A part belongs to exactly one strand. */
+    parts: z.array(PartRefSchema).min(1),
+    descriptors: LevelDescriptorsSchema.optional(),
+  })
+  .superRefine((strand, ctx) => {
+    strand.standards.forEach((entry, i) => {
+      const { code } = parseStandardEntry(entry);
+      const result = validateStandardCode(code);
+      if (!result.ok) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["standards", i],
+          message: `Strand ${strand.code}: ${result.reason}`,
+        });
+      }
+    });
+  });
 
 export type RubricStrand = z.infer<typeof RubricStrandSchema>;
 

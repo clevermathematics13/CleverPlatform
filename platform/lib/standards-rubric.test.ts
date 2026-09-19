@@ -185,6 +185,24 @@ describe("rubric schema", () => {
     expect(StandardsRubricSchema.safeParse(r).success).toBe(false);
   });
 
+  it("rejects a strand citing a standard code from a domain that does not exist", () => {
+    const r = base();
+    r.strands[0].standards.push("Z-FAKE.A.1 Not a real standard.");
+    const parsed = StandardsRubricSchema.safeParse(r);
+    expect(parsed.success).toBe(false);
+    expect(JSON.stringify(parsed.error?.issues)).toContain("Strand A:");
+  });
+
+  it("rejects a Grade 9 standard code -- CCSS has no grade-9-specific domains", () => {
+    const r = base();
+    r.strands[0].standards.push("9.EE.A.1 Made up.");
+    expect(StandardsRubricSchema.safeParse(r).success).toBe(false);
+  });
+
+  it("accepts the fixture's real standards[] entries unchanged", () => {
+    expect(StandardsRubricSchema.safeParse(base()).success).toBe(true);
+  });
+
   it("parseStandardsRubric treats null as no rubric and reports bad input", () => {
     expect(parseStandardsRubric(null)).toEqual({ ok: true, rubric: null });
     expect(parseStandardsRubric(undefined)).toEqual({ ok: true, rubric: null });

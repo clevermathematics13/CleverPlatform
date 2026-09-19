@@ -58,9 +58,19 @@ per section with `pypdf.PdfWriter`, and call `.extract_text()` per page for
 the companion `.txt` file. Page ranges for each section are recorded in
 `sections_manifest.json`.
 
-## Not currently wired into validation
+## Validation
 
-`standards[]` on a strand is free text — nothing in `standards-rubric.ts`
-checks a code against this document, so a typo'd or invented standard code
-will pass silently today. This folder makes that checkable by hand (or by a
-future validator); it does not itself change any runtime behavior.
+`platform/lib/ccss-math-codes.ts` is the validator, wired into
+`RubricStrandSchema` in `standards-rubric.ts`: saving a rubric with a
+`standards[]` entry whose code has an invented or misspelled domain (or a
+grade that doesn't have one, like "9.EE.A.1" — Grade 9 content lives under
+the High School domains, not its own) is now rejected, everywhere a rubric is
+written (`PUT /api/tests/[id]/standards-rubric`, the raw-JSON editor, and the
+AI standards-import flow all go through this schema).
+
+It checks the code's grammar and domain against `CCSS_MATH_DOMAINS`, a list
+read off this document's own domain headers (grades 6–8 and every High School
+category, plus MP1–MP8) — not the exact cluster letter or standard number,
+which the document's layout does not make reliable to derive automatically
+without risking wrong data presented as authoritative. See the header comment
+in `ccss-math-codes.ts` for what is and isn't caught.
