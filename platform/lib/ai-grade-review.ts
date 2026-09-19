@@ -144,3 +144,27 @@ export function partitionByConfidence<T extends ReviewConfidenceRef>(
   }
   return { high, needsLook };
 }
+
+/** Minimal shape of an ai_grade_results row needed to decide a default checkbox state. */
+export interface ReviewPreselectRef {
+  accepted: boolean;
+  work_found: boolean;
+  confidence: string;
+}
+
+/**
+ * Whether a review row's "accept into Clev's Marks" checkbox should start
+ * ticked when a student's results first load.
+ *
+ * Deliberately narrower than "not already accepted, and the model found
+ * work": that pre-selected medium and low confidence suggestions the same
+ * as high-confidence ones, so a teacher who trusted the pre-ticked state and
+ * clicked "Accept N into Clev's Marks" without opening every row could write
+ * a suggestion the model itself flagged as needing a look straight into a
+ * student's grade. Only a high-confidence suggestion the model actually
+ * found work for gets to default to accepted; everything gradeNeedsReview
+ * (lib/ai-grading.ts) would flag starts unticked, same predicate, one place.
+ */
+export function shouldPreselect(row: ReviewPreselectRef): boolean {
+  return !row.accepted && row.work_found && row.confidence === "high";
+}

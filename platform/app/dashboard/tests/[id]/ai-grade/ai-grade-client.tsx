@@ -11,6 +11,7 @@ import {
   rowsForRun,
   sortReviewRows,
   partitionByConfidence,
+  shouldPreselect,
 } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
@@ -671,9 +672,7 @@ export function AiGradeClient({
         setResults(rowsForLatest);
         setResultsStudent(studentId);
         setDrafts(Object.fromEntries(rowsForLatest.map((r) => [r.id, r.suggested_marks])));
-        setSelected(
-          new Set(rowsForLatest.filter((r) => !r.accepted && r.work_found).map((r) => r.id))
-        );
+        setSelected(new Set(rowsForLatest.filter(shouldPreselect).map((r) => r.id)));
         if (latestRun) {
           setRunsByStudent((prev) => ({ ...prev, [studentId]: latestRun }));
           setAcceptanceByRun((prev) => ({
