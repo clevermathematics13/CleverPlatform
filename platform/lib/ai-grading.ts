@@ -966,6 +966,37 @@ export async function assembleMarkScheme(
   return { units, warnings };
 }
 
+/** How much of an assessment's mark scheme is actually gradeable, and what is missing. */
+export interface MarkSchemeCoverage {
+  partsInAssessment: number;
+  partsWithoutMarkscheme: number;
+  /** Sum of maxMarks over gradeable units only -- the ceiling a grading run can actually reach. */
+  maxTotal: number;
+  /** Sum of maxMarks over every unit -- the assessment's real, printed total. */
+  testTotalMarks: number;
+  /** Labels of the units with no usable mark scheme, e.g. ["6(a)", "6(b)"]. */
+  ungradedLabels: string[];
+}
+
+/**
+ * Summarise assembleMarkScheme()'s output into the numbers a teacher needs to
+ * judge whether an assessment can be graded in full, before or after a run.
+ *
+ * Pulled out of persistGradeOutcome (lib/ai-grading-run.ts) so a pre-flight
+ * check on the ai-grade page and the post-run coverage banner read the exact
+ * same arithmetic instead of two hand-copies that can drift.
+ */
+export function summarizeCoverage(units: GradingUnit[]): MarkSchemeCoverage {
+  const ungraded = units.filter((u) => u.markschemeSource === "none");
+  return {
+    partsInAssessment: units.length,
+    partsWithoutMarkscheme: ungraded.length,
+    maxTotal: units.reduce((s, u) => (u.markschemeSource === "none" ? s : s + u.maxMarks), 0),
+    testTotalMarks: units.reduce((s, u) => s + u.maxMarks, 0),
+    ungradedLabels: ungraded.map(unitLabel),
+  };
+}
+
 export interface MarkschemeImageRef {
   testItemId: string;
   storagePath: string;

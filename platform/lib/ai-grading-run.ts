@@ -34,6 +34,7 @@ import {
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
   gradeNeedsReview,
+  summarizeCoverage,
   unitLabel,
   type GradingSubject,
   type GradingUnit,
@@ -466,7 +467,6 @@ export async function persistGradeOutcome(args: {
   runId: string;
   scanBase64: string;
   units: GradingUnit[];
-  gradeable: GradingUnit[];
   assemblyWarnings: string[];
   grades: ValidatedGrade[];
   warnings: string[];
@@ -482,7 +482,6 @@ export async function persistGradeOutcome(args: {
     runId,
     scanBase64,
     units,
-    gradeable,
     assemblyWarnings,
     grades,
     warnings,
@@ -573,14 +572,14 @@ export async function persistGradeOutcome(args: {
   // testTotalMarks is the assessment's real total, so the UI can show
   // "17/20 of 33" instead of a misleading "17/20" when parts are missing
   // a mark scheme.
-  const maxTotal = gradeable.reduce((s, u) => s + u.maxMarks, 0);
-  const testTotalMarks = units.reduce((s, u) => s + u.maxMarks, 0);
+  const { partsInAssessment, partsWithoutMarkscheme, maxTotal, testTotalMarks } =
+    summarizeCoverage(units);
   const needsReview = grades.filter(gradeNeedsReview).map((g) => unitLabel(g.unit));
 
   const coverage: GradeCoverage = {
-    partsInAssessment: units.length,
+    partsInAssessment,
     partsGraded: grades.length,
-    partsWithoutMarkscheme: units.length - gradeable.length,
+    partsWithoutMarkscheme,
     suggestedTotal,
     maxTotal,
     testTotalMarks,

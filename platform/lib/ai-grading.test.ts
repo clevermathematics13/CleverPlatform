@@ -17,6 +17,7 @@ import {
   isCustomAssessment,
   isImpliedToken,
   matchSegmentsToRoster,
+  summarizeCoverage,
   validateGradeResponse,
   type GradingUnit,
   type RosterEntry,
@@ -1488,6 +1489,52 @@ describe("isCustomAssessment", () => {
     expect(isCustomAssessment({ markschemeSource: "custom" })).toBe(true);
     expect(isCustomAssessment({ markschemeSource: "part_latex" })).toBe(false);
     expect(isCustomAssessment({ markschemeSource: "none" })).toBe(false);
+  });
+});
+
+describe("summarizeCoverage", () => {
+  it("reports full coverage when every unit has a mark scheme", () => {
+    const units = [
+      unit({ testItemId: "1", questionNumber: 1, maxMarks: 7 }),
+      unit({ testItemId: "2", questionNumber: 2, maxMarks: 5, markschemeSource: "whole_question" }),
+    ];
+    expect(summarizeCoverage(units)).toEqual({
+      partsInAssessment: 2,
+      partsWithoutMarkscheme: 0,
+      maxTotal: 12,
+      testTotalMarks: 12,
+      ungradedLabels: [],
+    });
+  });
+
+  it("excludes markschemeSource 'none' units from maxTotal but keeps them in testTotalMarks", () => {
+    // K06P1's real shape, 27 Aug audit reproduced live: Q6(a)/Q6(b) matched a
+    // question in the bank but no part, whole-question or draft mark scheme --
+    // the case the gradebook and PowerSchool export were silently treating as
+    // "these 7 marks were not earned" rather than "these 7 marks cannot be
+    // earned at all".
+    const units = [
+      unit({ testItemId: "1", questionNumber: 5, partLabel: "", maxMarks: 4 }),
+      unit({ testItemId: "2", questionNumber: 6, partLabel: "a", maxMarks: 3, markschemeSource: "none" }),
+      unit({ testItemId: "3", questionNumber: 6, partLabel: "b", maxMarks: 4, markschemeSource: "none" }),
+    ];
+    expect(summarizeCoverage(units)).toEqual({
+      partsInAssessment: 3,
+      partsWithoutMarkscheme: 2,
+      maxTotal: 4,
+      testTotalMarks: 11,
+      ungradedLabels: ["6(a)", "6(b)"],
+    });
+  });
+
+  it("returns zeroed totals for an empty assessment", () => {
+    expect(summarizeCoverage([])).toEqual({
+      partsInAssessment: 0,
+      partsWithoutMarkscheme: 0,
+      maxTotal: 0,
+      testTotalMarks: 0,
+      ungradedLabels: [],
+    });
   });
 });
 

@@ -209,13 +209,31 @@ function itemLabel(item: TestItem | undefined): string {
     : `Q${item.question_number}`;
 }
 
+/** Mirrors lib/ai-grading.ts's MarkSchemeCoverage -- only the fields this page renders. */
+export interface MarkSchemeCoverageSummary {
+  partsInAssessment: number;
+  partsWithoutMarkscheme: number;
+  maxTotal: number;
+  testTotalMarks: number;
+  ungradedLabels: string[];
+}
+
 export function AiGradeClient({
   testId,
   assessmentKind = "formative",
+  coverage = null,
 }: {
   testId: string;
   /** Decides what "Accept all" actually covers -- see lib/summative-grading-gate.ts. */
   assessmentKind?: AssessmentKind;
+  /**
+   * The PPQ bank's coverage of this assessment's mark scheme, computed once
+   * server-side (app/dashboard/tests/[id]/ai-grade/page.tsx) from the same
+   * assembleMarkScheme() join a grading run itself uses. null only when that
+   * assembly failed outright -- the grading route will report the same error
+   * the moment a teacher tries to grade.
+   */
+  coverage?: MarkSchemeCoverageSummary | null;
 }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
   /** Result of GET /api/health/anthropic: null until checked; error string when the key cannot complete a call. */
@@ -1730,6 +1748,25 @@ export function AiGradeClient({
             usual cause is the account running out of credit: Anthropic Console → Plans &amp; Billing.
           </p>
           <p className="mt-1 break-words font-mono text-xs text-red-300/90">{apiHealthError}</p>
+        </div>
+      )}
+
+      {coverage && coverage.partsWithoutMarkscheme > 0 && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-400/60 bg-amber-500/15 px-4 py-3 text-sm text-amber-200"
+        >
+          <p className="font-semibold">
+            Incomplete mark scheme: {coverage.partsWithoutMarkscheme} of {coverage.partsInAssessment}{" "}
+            part{coverage.partsInAssessment === 1 ? "" : "s"} cannot be graded.
+          </p>
+          <p className="mt-1">
+            {coverage.ungradedLabels.join(", ")} have no mark scheme in the PPQ bank. Grading will
+            skip them: suggested totals below will be out of {coverage.maxTotal}, not this paper&apos;s
+            full {coverage.testTotalMarks}, and the gradebook will show the same reduced total against
+            the full {coverage.testTotalMarks} it lists for this assessment. Extract the missing mark
+            schemes in the PPQ Bank before treating a total here as final.
+          </p>
         </div>
       )}
 

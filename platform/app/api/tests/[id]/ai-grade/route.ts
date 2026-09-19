@@ -499,7 +499,6 @@ export async function POST(
     runId: run.id,
     scanBase64,
     units,
-    gradeable,
     assemblyWarnings,
     grades,
     warnings,

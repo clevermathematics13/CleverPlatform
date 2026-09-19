@@ -698,7 +698,6 @@ export async function POST(
         runId: run.id,
         scanBase64,
         units: markScheme.units,
-        gradeable: markScheme.gradeable,
         assemblyWarnings: markScheme.assemblyWarnings,
         grades: validation.outcome.grades,
         warnings,

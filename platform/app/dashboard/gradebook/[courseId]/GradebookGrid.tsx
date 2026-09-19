@@ -57,6 +57,20 @@ export type Test = {
   /** Subtotal bands for the expanded view, in display order. */
   sections: TestSection[];
   items: TestItem[];
+  /**
+   * How much of this test's mark scheme the PPQ bank actually covers, from
+   * assembleMarkScheme() (lib/ai-grading.ts), computed once server-side
+   * (page.tsx). null for a test whose coverage could not be computed --
+   * treated the same as "fully covered" here, since the AI-grade page itself
+   * reports that failure the moment a teacher tries to grade it.
+   *
+   * Every score below is still earned / test.total_marks -- this never
+   * changes that arithmetic. It exists only so a teacher can tell a real
+   * shortfall apart from marks the paper's mark scheme cannot award at all:
+   * without it, a paper with 7 of 70 marks ungradeable reads exactly like a
+   * student who lost those 7 marks outright.
+   */
+  coverage: { partsWithoutMarkscheme: number; maxTotal: number; ungradedLabels: string[] } | null;
 };
 
 export type Student = {
@@ -320,6 +334,24 @@ function SetBadge({ name }: { name: string | null }) {
       title={`Grade boundaries: ${name}`}
     >
       {name}
+    </span>
+  );
+}
+
+/**
+ * Small warning pill for a test whose PPQ bank coverage is incomplete --
+ * shown next to SetBadge in the collapsed test header. Absent (not merely
+ * blank) when coverage is full, so it never competes for attention with the
+ * common case.
+ */
+function CoverageBadge({ coverage }: { coverage: Test["coverage"] }) {
+  if (!coverage || coverage.partsWithoutMarkscheme === 0) return null;
+  return (
+    <span
+      className="inline-block text-[9px] font-mono font-bold px-1 py-px rounded bg-amber-500/20 text-amber-400 leading-none"
+      title={`Incomplete mark scheme: ${coverage.ungradedLabels.join(", ")} cannot be graded (no mark scheme in the PPQ bank). Scores here are out of this test's full total, not the ${coverage.maxTotal} marks that can actually be earned.`}
+    >
+      ⚠
     </span>
   );
 }
@@ -1345,6 +1377,10 @@ export function GradebookGrid({
                     className={`${thBase} min-w-22.5 max-w-32.5`}
                     title={`${test.name}${test.test_date ? " · " + test.test_date : ""}\nBoundary set: ${
                       test.boundary_set_name ?? "unassigned (approx.)"
+                    }${
+                      test.coverage && test.coverage.partsWithoutMarkscheme > 0
+                        ? `\n⚠ Incomplete mark scheme: ${test.coverage.ungradedLabels.join(", ")} cannot be graded`
+                        : ""
                     }\nClick the name to open this assessment`}
                   >
                     {/* The name is the way in to the assessment itself -- where
@@ -1366,6 +1402,7 @@ export function GradebookGrid({
                     )}
                     <span className="mt-0.5 flex items-center justify-center gap-1">
                       <SetBadge name={test.boundary_set_name} />
+                      <CoverageBadge coverage={test.coverage} />
                     </span>
                     <ViewPills
                       test={test}

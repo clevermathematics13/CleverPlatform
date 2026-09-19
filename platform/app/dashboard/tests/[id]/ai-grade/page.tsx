@@ -3,6 +3,7 @@ import { requireTeacher } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { AiGradeClient } from "./ai-grade-client";
 import { parseAssessmentKind } from "@/lib/assessment-kind";
+import { assembleMarkScheme, summarizeCoverage } from "@/lib/ai-grading";
 
 export default async function AiGradePage({
   params,
@@ -20,6 +21,19 @@ export default async function AiGradePage({
     .maybeSingle();
 
   if (!test) notFound();
+
+  // Pre-flight: a teacher should know BEFORE spending a grading call whether
+  // this paper's mark scheme is fully covered by the PPQ bank. Reuses the
+  // exact same join assembleMarkScheme() runs at grading time, so this can
+  // never disagree with what a run actually does.
+  let coverage = null;
+  try {
+    const { units } = await assembleMarkScheme(supabase, id);
+    coverage = summarizeCoverage(units);
+  } catch {
+    // A broken assembly is reported once the teacher tries to grade (the
+    // route already surfaces that error); the page itself still renders.
+  }
 
   return (
     <div className="max-w-6xl">
@@ -54,6 +68,7 @@ export default async function AiGradePage({
       <AiGradeClient
         testId={test.id as string}
         assessmentKind={parseAssessmentKind(test.assessment_kind)}
+        coverage={coverage}
       />
     </div>
   );
