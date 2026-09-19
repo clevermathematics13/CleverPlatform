@@ -1,0 +1,407 @@
+Common Core State StandardS for matHematICS
+GloSSary   |   85
+Addition and subtraction within 5, 10, 20, 100, or 1000.	Addition	or	subtraction	
+of	two	whole	numbers	with	whole	number	answers,	and	with	sum	or	minuend	
+in	the	range	0-5,	0-10,	0-20,	or	0-100,	respectively.	Example:	8	+	2	=	10	is	an	
+addition	within	10,	14	–	5	=	9	is	a	subtraction	within	20,	and	55	–	18	=	37	is	a	
+subtraction	within	100.
+Additive inverses.	Two	numbers	whose	sum	is	0	are	additive	inverses	of	one	
+another.	Example:	3/ 4	and	–	3/ 4	are	additive	inverses	of	one	another	because	
+3/ 4	+	(–	3/ 4)	=	(–	3/ 4)	+	3/ 4	=	0.
+Associative property of addition.	See	T able	3	in	this	Glossary.
+Associative property of multiplication. See	T able	3	in	this	Glossary.
+Bivariate data. Pairs	of	linked	numerical	observations.	Example:	a	list	of	heights	
+and	weights	for	each	player	on	a	football	team. 
+Box plot.	A	method	of	visually	displaying	a	distribution	of	data	values	by	using	
+the	median,	quartiles,	and	extremes	of	the	data	set.	A	box	shows	the	middle	
+50%	of	the	data.1
+Commutative property.	See	T able	3	in	this	Glossary.
+Complex fraction.	A	fraction	A/B	where	A	and/or	B	are	fractions	(B	nonzero).
+Computation algorithm.	A	set	of	predefined	steps	applicable	to	a	class	of	
+problems	that	gives	the	correct	result	in	every	case	when	the	steps	are	carried	
+out	correctly.	See also:	computation	strategy.
+Computation strategy.	Purposeful	manipulations	that	may	be	chosen	for	
+specific	problems,	may	not	have	a	fixed	order,	and	may	be	aimed	at	converting	
+one	problem	into	another.	See also:	computation	algorithm.
+Congruent.	Two	plane	or	solid	figures	are	congruent	if	one	can	be	obtained	from	
+the	other	by	rigid	motion	(a	sequence	of	rotations,	reflections,	and	translations).
+Counting on.	A	strategy	for	finding	the	number	of	objects	in	a	group	without	
+having	to	count	every	member	of	the	group.	For	example,	if	a	stack	of	books	
+is	known	to	have	8	books	and	3	more	books	are	added	to	the	top,	it	is	not	
+necessary	to	count	the	stack	all	over	again.	One	can	find	the	total	by	counting 
+on—pointing	to	the	top	book	and	saying	“eight,”	following	this	with	“nine,	ten,	
+eleven.	There	are	eleven	books	now.”
+Dot plot. See: line	plot.
+Dilation.	A	transformation	that	moves	each	point	along	the	ray	through	the	
+point	emanating	from	a	fixed	center,	and	multiplies	distances	from	the	center	by	
+a	common	scale	factor.
+Expanded form.	A	multi-digit	number	is	expressed	in	expanded	form	when	it	is	
+written	as	a	sum	of	single-digit	multiples	of	powers	of	ten.	For	example,	643	=	
+600	+	40	+	3.
+Expected value. For	a	random	variable,	the	weighted	average	of	its	possible	
+values,	with	weights	given	by	their	respective	probabilities.	
+First quartile. For	a	data	set	with	median	M,	the	first	quartile	is	the	median	of	
+the	data	values	less	than	M.	Example:	For	the	data	set	{1,	3,	6,	7 ,	10,	12,	14,	15,	22,	
+120},	the	first	quartile	is	6.2		See also:	median,	third	quartile,	interquartile	range.
+Fraction.	A	number	expressible	in	the	form	a/b	where	a	is	a	whole	number	and	
+b	is	a	positive	whole	number.	(The	word	fraction	in	these	standards	always	refers	
+to	a	non-negative	number.)	See also:	rational	number.
+Identity property of 0.	See	T able	3	in	this	Glossary.
+Independently combined probability models.		Two	probability	models	are	
+said	to	be	combined	independently	if	the	probability	of	each	ordered	pair	in	
+the	combined	model	equals	the	product	of	the	original	probabilities	of	the	two	
+individual	outcomes	in	the	ordered	pair.
+1Adapted	from	Wisconsin	Department	of	Public	Instruction,	http:/ /dpi.wi.gov/
+standards/mathglos.html,	accessed	March	2,	2010.
+2Many	different	methods	for	computing	quartiles	are	in	use.	The	method	defined	
+here	is	sometimes	called	the	Moore	and	McCabe	method.	See	Langford,	E.,	
+“Quartiles	in	Elementary	Statistics,”	Journal of Statistics Education	Volume	14,	
+Number	3	(2006).
+Glossary
+
+Common Core State StandardS for matHematICS
+GloSSary   |   86
+Integer.	A	number	expressible	in	the	form	a	or	–a	for	some	whole	number	a.
+Interquartile Range. A	measure	of	variation	in	a	set	of	numerical	data,	the	
+interquartile	range	is	the	distance	between	the	first	and	third	quartiles	of	
+the	data	set.	Example:	For	the	data	set	{1,	3,	6,	7 ,	10,	12,	14,	15,	22,	120},	the	
+interquartile	range	is	15	–	6	=	9.	See also:	first	quartile,	third	quartile.
+Line plot.	A	method	of	visually	displaying	a	distribution	of	data	values	where	
+each	data	value	is	shown	as	a	dot	or	mark	above	a	number	line.	Also	known	as	a	
+dot	plot.3	
+Mean.	A	measure	of	center	in	a	set	of	numerical	data,	computed	by	adding	the	
+values	in	a	list	and	then	dividing	by	the	number	of	values	in	the	list.4	Example:	
+For	the	data	set	{1,	3,	6,	7 ,	10,	12,	14,	15,	22,	120},	the	mean	is	21.	
+Mean absolute deviation.	A	measure	of	variation	in	a	set	of	numerical	data,	
+computed	by	adding	the	distances	between	each	data	value	and	the	mean,	then	
+dividing	by	the	number	of	data	values.	Example:	For	the	data	set	{2,	3,	6,	7 ,	10,	
+12,	14,	15,	22,	120},	the	mean	absolute	deviation	is	20.
+Median.	A	measure	of	center	in	a	set	of	numerical	data.	The	median	of	a	list	of	
+values	is	the	value	appearing	at	the	center	of	a	sorted	version	of	the	list—or	the	
+mean	of	the	two	central	values,	if	the	list	contains	an	even	number	of	values.	
+Example:	For	the	data	set	{2,	3,	6,	7 ,	10,	12,	14,	15,	22,	90},	the	median	is	11.
+Midline. In	the	graph	of	a	trigonometric	function,	the	horizontal	line	halfway	
+between	its	maximum	and	minimum	values.
+Multiplication and division within 100.	Multiplication	or	division	of	two	whole	
+numbers	with	whole	number	answers,	and	with	product	or	dividend	in	the	range	
+0-100.	Example:	72	÷	8	=	9.
+Multiplicative inverses.	Two	numbers	whose	product	is	1	are	multiplicative	
+inverses	of	one	another.	Example:		3/ 4	and	4/3	are	multiplicative	inverses	of	one	
+another	because	3/ 4	×	4/3	=	4/3	×	3/ 4	=	1.
+Number line diagram. A	diagram	of	the	number	line	used	to	represent	numbers	
+and	support	reasoning	about	them.	In	a	number	line	diagram	for	measurement	
+quantities,	the	interval	from	0	to	1	on	the	diagram	represents	the	unit	of	measure	
+for	the	quantity. 
+Percent rate of change.	A	rate	of	change	expressed	as	a	percent.	Example:	if	a	
+population	grows	from	50	to	55	in	a	year,	it	grows	by	5/50	=	10%	per	year.
+Probability distribution.	The	set	of	possible	values	of	a	random	variable	with	a	
+probability	assigned	to	each.	
+Properties of operations.	See	T able	3	in	this	Glossary.
+Properties of equality.	See	T able	4	in	this	Glossary.
+Properties of inequality.	See	T able	5	in	this	Glossary.
+Properties of operations.	See	T able	3	in	this	Glossary.
+Probability.	A	number	between	0	and	1	used	to	quantify	likelihood	for	processes	
+that	have	uncertain	outcomes	(such	as	tossing	a	coin,	selecting	a	person	at	
+random	from	a	group	of	people,	tossing	a	ball	at	a	target,	or	testing	for	a	
+medical	condition).
+Probability model. A	probability	model	is	used	to	assign	probabilities	to	
+outcomes	of	a	chance	process	by	examining	the	nature	of	the	process.	The	set	
+of	all	outcomes	is	called	the	sample	space,	and	their	probabilities	sum	to	1.	See 
+also: uniform	probability	model.
+Random variable. An	assignment	of	a	numerical	value	to	each	outcome	in	a	
+sample	space.
+Rational expression.	A	quotient	of	two	polynomials	with	a	non-zero	
+denominator.
+Rational number.	A	number	expressible	in	the	form	a/b		or	– a/b		for	some	
+fraction	a/b.	The	rational	numbers	include	the	integers.
+Rectilinear figure. A	polygon	all	angles	of	which	are	right	angles.
+Rigid motion.	A	transformation	of	points	in	space	consisting	of	a	sequence	of	
+3Adapted	from	Wisconsin	Department	of	Public	Instruction,	op. cit.
+4T o	be	more	precise,	this	defines	the	arithmetic mean.
+
+Common Core State StandardS for matHematICS
+GloSSary   |   87
+one	or	more	translations,	reflections,	and/or	rotations.	Rigid	motions	are	here	
+assumed	to	preserve	distances	and	angle	measures.
+Repeating decimal.	The	decimal	form	of	a	rational	number.	See also:	terminating	
+decimal.
+Sample space.	In	a	probability	model	for	a	random	process,	a	list	of	the	
+individual	outcomes	that	are	to	be	considered.
+Scatter plot. A	graph	in	the	coordinate	plane	representing	a	set	of	bivariate	
+data.	For	example,	the	heights	and	weights	of	a	group	of	people	could	be	
+displayed	on	a	scatter	plot.5
+Similarity transformation.	A	rigid	motion	followed	by	a	dilation.
+T ape diagram.	A	drawing	that	looks	like	a	segment	of	tape,	used	to	illustrate	
+number	relationships.	Also	known	as	a	strip	diagram,	bar	model,	fraction	strip,	or	
+length	model.
+T erminating decimal. A	decimal	is	called	terminating	if	its	repeating	digit	is	0.	
+Third quartile.	For	a	data	set	with	median	M,	the	third	quartile	is	the	median	of	
+the	data	values	greater	than	M.	Example:	For	the	data	set	{2,	3,	6,	7 ,	10,	12,	14,	
+15,	22,	120},	the	third	quartile	is	15.	See also:	median,	first	quartile,	interquartile	
+range.
+Transitivity principle for indirect measurement. If	the	length	of	object	A	is	
+greater	than	the	length	of	object	B,	and	the	length	of	object	B	is	greater	than	
+the	length	of	object	C,	then	the	length	of	object	A	is	greater	than	the	length	of	
+object	C.	This	principle	applies	to	measurement	of	other	quantities	as	well.
+Uniform probability model.		A	probability	model	which	assigns	equal	
+probability	to	all	outcomes.		See also:	probability	model.
+Vector. A	quantity	with	magnitude	and	direction	in	the	plane	or	in	space,	
+defined	by	an	ordered	pair	or	triple	of	real	numbers.
+Visual fraction model. A	tape	diagram,	number	line	diagram,	or	area	model.
+Whole numbers.	The	numbers	0,	1,	2,	3,	….
+5Adapted	from	Wisconsin	Department	of	Public	Instruction,	op. cit.
+
+Common Core State StandardS for matHematICS
+GloSSary   |   88
+Table 1.	Common	addition	and	subtraction	situations.6
+result Unknown Change Unknown Start Unknown
+add to
+Two	bunnies	sat	on	the	grass.	
+Three	more	bunnies	hopped	
+there.	How	many	bunnies	are	
+on	the	grass	now?
+2	+	3	=	?
+Two	bunnies	were	sitting	
+on	the	grass.	Some	more	
+bunnies	hopped	there.	Then	
+there	were	five	bunnies.	How	
+many	bunnies	hopped	over	
+to	the	first	two?
+2	+	?	=	5
+Some	bunnies	were	sitting	
+on	the	grass.	Three	more	
+bunnies	hopped	there.	Then	
+there	were	five	bunnies.	How	
+many	bunnies	were	on	the	
+grass	before?
+?	+	3	=	5
+take from 
+Five	apples	were	on	the	
+table.	I	ate	two	apples.	How	
+many	apples	are	on	the	table	
+now?
+5	–	2	=	?
+Five	apples	were	on	the	
+table.	I	ate	some	apples.	
+Then	there	were	three	
+apples.	How	many	apples	did	
+I	eat?
+5	–	?	=	3
+Some	apples	were	on	the	
+table.	I	ate	two	apples.	Then	
+there	were	three	apples.	How	
+many	apples	were	on	the	
+table	before?
+?	–	2	=	3
+total Unknown addend Unknown Both addends Unknown1
+Put together/ 
+take apart2
+Three	red	apples	and	two	
+green	apples	are	on	the	
+table.	How	many	apples	are	
+on	the	table?
+3	+	2	=	?
+Five	apples	are	on	the	table.	
+Three	are	red	and	the	rest	
+are	green.	How	many	apples	
+are	green?
+3	+	?	=	5,		5	–	3	=	?
+Grandma	has	five	flowers.	
+How	many	can	she	put	in	her	
+red	vase	and	how	many	in	
+her	blue	vase?
+5	=	0	+	5,	5	=	5	+	0
+5	=	1	+	4,	5	=	4	+	1
+5	=	2	+	3,	5	=	3	+	2
+difference Unknown Bigger Unknown Smaller Unknown
+Compare3
+(“How	many	more?”	version):
+Lucy	has	two	apples.	Julie	
+has	five	apples.	How	many	
+more	apples	does	Julie	have	
+than	Lucy?	
+(“How	many	fewer?”	version):
+Lucy	has	two	apples.	Julie	
+has	five	apples.	How	many	
+fewer	apples	does	Lucy	have	
+than	Julie?
+2	+	?	=	5,		5	–	2	=	?
+(Version	with	“more”):
+Julie	has	three	more	apples	
+than	Lucy.	Lucy	has	two	
+apples.	How	many	apples	
+does	Julie	have?	
+(Version	with	“fewer”):
+Lucy	has	3	fewer	apples	than	
+Julie.	Lucy	has	two	apples.	
+How	many	apples	does	Julie	
+have?
+2	+	3	=	?,		3	+	2	=	?
+(Version	with	“more”):
+Julie	has	three	more	apples	
+than	Lucy.	Julie	has	five	
+apples.	How	many	apples	
+does	Lucy	have?	
+(Version	with	“fewer”):
+Lucy	has	3	fewer	apples	than	
+Julie.		Julie	has	five	apples.	
+How	many	apples	does	Lucy	
+have?
+5	–	3	=	?,		?	+	3	=	5
+6Adapted	from	Box	2-4	of	Mathematics	Learning	in	Early	Childhood,	National	Research	Council	(2009,	pp.	32,	33).
+1These	take	apart	situations	can	be	used	to	show	all	the	decompositions	of	a	given	number.	The	associated	equations,	which	
+have	the	total	on	the	left	of	the	equal	sign,	help	children	understand	that	the	=	sign	does	not	always	mean	makes	or	results	in	
+but	always	does	mean	is	the	same	number	as.
+2Either	addend	can	be	unknown,	so	there	are	three	variations	of	these	problem	situations.		Both	Addends	Unknown	is	a	pro-
+ductive	extension	of	this	basic	situation,	especially	for	small	numbers	less	than	or	equal	to	10.
+3For	the	Bigger	Unknown	or	Smaller	Unknown	situations,	one	version	directs	the	correct	operation	(the	version	using	more	
+for	the	bigger	unknown	and	using	less	for	the	smaller	unknown).		The	other	versions	are	more	difficult.
+
+Common Core State StandardS for matHematICS
+GloSSary   |   89
+Table 2. Common	multiplication	and	division	situations.7
+Unknown Product
+Group Size Unknown
+(“How	many	in	each	group?”	
+Division)
+number of Groups Unknown
+(“How	many	groups?”	Division)
+3 × 6 = ? 3 × ? = 18, and 18 ÷ 3 = ? ? × 6 = 18, and 18 ÷ 6 = ?
+equal 
+Groups
+There	are	3	bags	with	6	plums	
+in	each	bag.	How	many	plums	
+are	there	in	all?
+Measurement example.	Y ou	
+need	3	lengths	of	string,	each	
+6	inches	long.	How	much	string	
+will	you	need	altogether?
+If	18	plums	are	shared	equally	
+into	3	bags,	then	how	many	
+plums	will	be	in	each	bag?
+Measurement example.	Y ou	
+have	18	inches	of	string,	which	
+you	will	cut	into	3	equal	pieces.	
+How	long	will	each	piece	of	
+string	be?	
+If	18	plums	are	to	be	packed	6	
+to	a	bag,	then	how	many	bags	
+are	needed?
+Measurement example.	Y ou	
+have	18	inches	of	string,	which	
+you	will	cut	into	pieces	that	are	
+6	inches	long.	How	many	pieces	
+of	string	will	you	have?
+arrays,4 
+area5
+There	are	3	rows	of	apples	
+with	6	apples	in	each	row.	How	
+many	apples	are	there?
+Area example.	What	is	the	area	
+of	a	3	cm	by	6	cm	rectangle?
+If	18	apples	are	arranged	into	3	
+equal	rows,	how	many	apples	
+will	be	in	each	row?
+Area example.	A	rectangle	has	
+area	18	square	centimeters.	If	
+one	side	is	3	cm	long,	how	long	
+is	a	side	next	to	it?
+If	18	apples	are	arranged	into	
+equal	rows	of	6	apples,	how	
+many	rows	will	there	be?
+Area example.	A	rectangle	has	
+area	18	square	centimeters.	If	
+one	side	is	6	cm	long,	how	long	
+is	a	side	next	to	it?
+Compare
+A	blue	hat	costs	$6.	A	red	hat	
+costs	3	times	as	much	as	the	
+blue	hat.	How	much	does	the	
+red	hat	cost?
+Measurement example.	A	
+rubber	band	is	6	cm	long.	How	
+long	will	the	rubber	band	be	
+when	it	is	stretched	to	be	3	
+times	as	long?
+A	red	hat	costs	$18	and	that	is	
+3	times	as	much	as	a	blue	hat	
+costs.	How	much	does	a	blue	
+hat	cost?
+Measurement example.	A	
+rubber	band	is	stretched	to	be	
+18	cm	long	and	that	is	3	times	
+as	long	as	it	was	at	first.	How	
+long	was	the	rubber	band	at	
+first?
+A	red	hat	costs	$18	and	a	blue	
+hat	costs	$6.	How	many	times	
+as	much	does	the	red	hat	cost	
+as	the	blue	hat?
+Measurement example.	A	
+rubber	band	was	6	cm	long	at	
+first.	Now	it	is	stretched	to	be	
+18	cm	long.	How	many	times	as	
+long	is	the	rubber	band	now	as	
+it	was	at	first?
+General a	×	b	=	? a	×	? =	p,	and	p	÷ a	=	? ?	×	b	=	p, and p	÷ b =	?
+7The	first	examples	in	each	cell	are	examples	of	discrete	things.	These	are	easier	for	students	and	should	be	given	
+before	the	measurement	examples.
+4The	language	in	the	array	examples	shows	the	easiest	form	of	array	problems.		A	harder	form	is	to	use	the	terms	rows	and	
+columns:		The	apples	in	the	grocery	window	are	in	3	rows	and	6	columns.		How	many	apples	are	in	there?		Both	forms	are	
+valuable.
+5Area	involves	arrays	of	squares	that	have	been	pushed	together	so	that	there	are	no	gaps	or	overlaps,	so	array	problems	
+include	these	especially	important	measurement	situations.
+
+Common Core State StandardS for matHematICS
+GloSSary   |   90
+Table 3.	The	properties	of	operations.	Here	a,	b	and	c	stand	for	arbitrary	numbers	in	a	given	number	system.	The	
+properties	of	operations	apply	to	the	rational	number	system,	the	real	number	system,	and	the	complex	number	
+system.
+Associative property of addition
+Commutative property of addition
+Additive identity property of 0
+Existence of additive inverses
+Associative property of multiplication 
+Commutative property of multiplication
+Multiplicative identity property of 1
+Existence of multiplicative inverses
+Distributive property of multiplication over addition
+(a + b)	+ c = a + (b + c)
+a + b	= b + a
+a + 0 = 0	+ a	= a
+For	every	a	there	exists	–a	so	that	a	+	(–a)	= (–a)	+	a	=	0.
+(a × b)	× c = a × (b × c)
+a × b	= b × a
+a × 1	= 1	×	a	= a
+For	every	a	≠	0	there	exists	1/a	so	that	a	×	1/a	=	1/a	× a	=	1.
+a ×	(b + c) = a × b + a × c
+Table 4.	The	properties	of	equality.	Here	a,	b	and	c	stand	for	arbitrary	numbers	in	the	rational,	real,	or	complex	number	
+systems.
+Reflexive property of equality
+Symmetric property of equality
+Transitive property of equality
+Addition property of equality
+Subtraction property of equality
+Multiplication property of equality
+Division property of equality
+Substitution property of equality
+a	=	a
+If a = b,	then b = a.
+If a = b and b = c,	then a = c.
+If a = b,	then a + c = b + c.
+If a = b,	then a – c = b – c.
+If a = b,	then a × c = b × c.
+If a = b and c ≠ 0,	then a ÷ c = b ÷ c.
+If	a	=	b,	then	b	may	be	substituted	for	a	
+in	any	expression	containing	a.
+Table 5.	The	properties	of	inequality.	Here	a,	b	and	c	stand	for	arbitrary	numbers	in	the	rational	or	real	number	
+systems.
+Exactly	one	of	the	following	is	true:	a	<	b,	a	=	b,	a	>	b.
+If	a	>	b	and	b	>	c	then	a	>	c.
+If	a	>	b,	then	b	<	a.
+If	a	>	b,	then	–a	<	–b.
+If a	>	b,	then	a	±	c	>	b	±	c.
+If	a	>	b	and	c	>	0,	then	a ×	c	>	b ×	c.
+If	a	>	b	and	c	<	0,	then	a ×	c	<	b ×	c.
+If	a	>	b	and	c	>	0,	then	a ÷	c	>	b ÷	c.
+If	a	>	b	and	c	<	0,	then	a ÷	c	<	b ÷	c.

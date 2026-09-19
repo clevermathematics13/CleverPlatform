@@ -1,0 +1,219 @@
+Common Core State StandardS for matHematICS
+HIGH SCHool   |   57
+mathematics Standards for High School
+The	high	school	standards	specify	the	mathematics	that	all	students	should	
+study	in	order	to	be	college	and	career	ready.	Additional	mathematics	that	
+students	should	learn	in	order	to	take	advanced	courses	such	as	calculus,	
+advanced	statistics,	or	discrete	mathematics	is	indicated	by	(+),	as	in	this	
+example:	
+(+)	Represent	complex	numbers	on	the	complex	plane	in	rectangular	
+and	polar	form	(including	real	and	imaginary	numbers).	
+All	standards	without	a	(+)	symbol	should	be	in	the	common	mathematics	
+curriculum	for	all	college	and	career	ready	students.	Standards	with	a	(+)	
+symbol	may	also	appear	in	courses	intended	for	all	students.
+The	high	school	standards	are	listed	in	conceptual	categories:
+•	 Number	and	Quantity
+•	 Algebra
+•	 Functions
+•	 Modeling
+•	 Geometry
+•	 Statistics	and	Probability
+Conceptual	categories	portray	a	coherent	view	of	high	school	
+mathematics;	a	student’s	work	with	functions,	for	example,	crosses	a	
+number	of	traditional	course	boundaries,	potentially	up	through	and	
+including	calculus.
+Modeling	is	best	interpreted	not	as	a	collection	of	isolated	topics	but	in	
+relation	to	other	standards.	Making	mathematical	models	is	a	Standard	for	
+Mathematical	Practice,	and	specific	modeling	standards	appear	throughout	
+the	high	school	standards	indicated	by	a	star	symbol	(★).	The	star	symbol	
+sometimes	appears	on	the	heading	for	a	group	of	standards;	in	that	case,	it	
+should	be	understood	to	apply	to	all	standards	in	that	group.
+
+Common Core State StandardS for matHematICS
+HIGH SCHool — nUmber and qUantIty   |   58
+mathematics | High School—number and 
+Quantity
+Numbers and Number Systems.	During	the	years	from	kindergarten	to	eighth	
+grade,	students	must	repeatedly	extend	their	conception	of	number.	At	first,	
+“number”	means	“counting	number”:	1,	2,	3...	Soon	after	that,	0	is	used	to	represent	
+“none”	and	the	whole	numbers	are	formed	by	the	counting	numbers	together	
+with	zero.	The	next	extension	is	fractions.	At	first,	fractions	are	barely	numbers	
+and	tied	strongly	to	pictorial	representations.	Y et	by	the	time	students	understand	
+division	of	fractions,	they	have	a	strong	concept	of	fractions	as	numbers	and	have	
+connected	them,	via	their	decimal	representations,	with	the	base-ten	system	used	
+to	represent	the	whole	numbers.	During	middle	school,	fractions	are	augmented	by	
+negative	fractions	to	form	the	rational	numbers.	In	Grade	8,	students	extend	this	
+system	once	more,	augmenting	the	rational	numbers	with	the	irrational	numbers	
+to	form	the	real	numbers.	In	high	school,	students	will	be	exposed	to	yet	another	
+extension	of	number,	when	the	real	numbers	are	augmented	by	the	imaginary	
+numbers	to	form	the	complex	numbers.	
+With	each	extension	of	number,	the	meanings	of	addition,	subtraction,	
+multiplication,	and	division	are	extended.	In	each	new	number	system—integers,	
+rational	numbers,	real	numbers,	and	complex	numbers—the	four	operations	stay	
+the	same	in	two	important	ways:	They	have	the	commutative,	associative,	and	
+distributive	properties	and	their	new	meanings	are	consistent	with	their	previous	
+meanings.	
+Extending	the	properties	of	whole-number	exponents	leads	to	new	and	productive	
+notation.	For	example,	properties	of	whole-number	exponents	suggest	that	(51/3)3	
+should	be	5(1/3)3	=	51	=	5	and	that	51/3	should	be	the	cube	root	of	5.	
+Calculators,	spreadsheets,	and	computer	algebra	systems	can	provide	ways	for	
+students	to	become	better	acquainted	with	these	new	number	systems	and	their	
+notation.	They	can	be	used	to	generate	data	for	numerical	experiments,	to	help	
+understand	the	workings	of	matrix,	vector,	and	complex	number	algebra,	and	to	
+experiment	with	non-integer	exponents.
+Quantities.	In	real	world	problems,	the	answers	are	usually	not	numbers	but	
+quantities:	numbers	with	units,	which	involves	measurement.	In	their	work	in	
+measurement	up	through	Grade	8,	students	primarily	measure	commonly	used	
+attributes	such	as	length,	area,	and	volume.	In	high	school,	students	encounter	a	
+wider	variety	of	units	in	modeling,	e.g.,	acceleration,	currency	conversions,	derived	
+quantities	such	as	person-hours	and	heating	degree	days,	social	science	rates	such	
+as	per-capita	income,	and	rates	in	everyday	life	such	as	points	scored	per	game	or	
+batting	averages.	They	also	encounter	novel	situations	in	which	they	themselves	
+must	conceive	the	attributes	of	interest.	For	example,	to	find	a	good	measure	of	
+overall	highway	safety,	they	might	propose	measures	such	as	fatalities	per	year,	
+fatalities	per	year	per	driver,	or	fatalities	per	vehicle-mile	traveled.	Such	a	conceptual	
+process	is	sometimes	called	quantification.	Quantification	is	important	for	science,	
+as	when	surface	area	suddenly	“stands	out”	as	an	important	variable	in	evaporation.	
+Quantification	is	also	important	for	companies,	which	must	conceptualize	relevant	
+attributes	and	create	or	choose	suitable	measures	for	them.
+
+Common Core State StandardS for matHematICS
+HIGH SCHool — nUmber and qUantIty   |   59
+The Real Number System
+• extend the properties of exponents to rational 
+exponents
+• Use properties of rational and irrational 
+numbers.
+Quantities
+• reason quantitatively and use units to solve 
+problems
+The Complex Number System
+• Perform arithmetic operations with complex 
+numbers
+• represent complex numbers and their 
+operations on the complex plane
+• Use complex numbers in polynomial identities 
+and equations
+Vector and Matrix Quantities
+• represent and model with vector quantities.
+• Perform operations on vectors.
+• Perform operations on matrices and use 
+matrices in applications.
+mathematical Practices 
+1.	 	 Make	sense	of	problems	and	persevere	in	
+solving	them.
+2.		 Reason	abstractly	and	quantitatively.
+3.		 Construct	viable	arguments	and	critique	
+the	reasoning	of	others.
+4.		 Model	with	mathematics.
+5.		 Use	appropriate	tools	strategically.
+6.		 Attend	to	precision.
+7 .		 Look	for	and	make	use	of	structure.
+8.		 Look	for	and	express	regularity	in	repeated	
+reasoning.
+number and Quantity overview
+
+Common Core State StandardS for matHematICS
+HIGH SCHool — nUmber and qUantIty   |   60
+the real number System  n-rn
+Extend the properties of exponents to rational exponents.
+1.	 Explain	how	the	definition	of	the	meaning	of	rational	exponents	
+follows	from	extending	the	properties	of	integer	exponents	to	
+those	values,	allowing	for	a	notation	for	radicals	in	terms	of	rational	
+exponents.	For example, we define 51/3 to be the cube root of 5 
+because we want (51/3)3 = 5(1/3)3 to hold, so (51/3)3 must equal 5.
+2.	 Rewrite	expressions	involving	radicals	and	rational	exponents	using	
+the	properties	of	exponents.	
+Use properties of rational and irrational numbers.
+3.	 Explain	why	the	sum	or	product	of	two	rational	numbers	is	rational;	
+that	the	sum	of	a	rational	number	and	an	irrational	number	is	irrational;	
+and	that	the	product	of	a	nonzero	rational	number	and	an	irrational	
+number	is	irrational.
+Quantities★  n-Q
+Reason quantitatively and use units to solve problems.
+1.	 Use	units	as	a	way	to	understand	problems	and	to	guide	the	solution	
+of	multi-step	problems;	choose	and	interpret	units	consistently	in	
+formulas;	choose	and	interpret	the	scale	and	the	origin	in	graphs	and	
+data	displays.	
+2.	 Define	appropriate	quantities	for	the	purpose	of	descriptive	modeling.
+3.	 Choose	a	level	of	accuracy	appropriate	to	limitations	on	measurement	
+when	reporting	quantities.	
+the Complex number System  n-Cn
+Perform arithmetic operations with complex numbers.
+1.	 Know	there	is	a	complex	number	i	such	that	i2	=	–1,	and	every	complex	
+number	has	the	form	a +	bi with	a	and	b	real.	
+2.	 Use	the	relation	i2	=	–1	and	the	commutative,	associative,	and	
+distributive	properties	to	add,	subtract,	and	multiply	complex	
+numbers.
+3.	 (+)	Find	the	conjugate	of	a	complex	number;	use	conjugates	to	find	
+moduli	and	quotients	of	complex	numbers.
+Represent complex numbers and their operations on the complex 
+plane.
+4.	 (+)	Represent	complex	numbers	on	the	complex	plane	in	rectangular	
+and	polar	form	(including	real	and	imaginary	numbers),	and	explain	
+why	the	rectangular	and	polar	forms	of	a	given	complex	number	
+represent	the	same	number.
+5.	 (+)	Represent	addition,	subtraction,	multiplication,	and	conjugation	of	
+complex	numbers	geometrically	on	the	complex	plane;	use	properties	
+of	this	representation	for	computation.	For example, (–1	+	√3	i)3	=	8	
+because	(–1	+	√3	i)	has modulus	2	and argument	120°.
+6.	 (+)	Calculate	the	distance	between	numbers	in	the	complex	plane	as	
+the	modulus	of	the	difference,	and	the	midpoint	of	a	segment	as	the	
+average	of	the	numbers	at	its	endpoints.
+Use complex numbers in polynomial identities and equations.
+7 .	 	Solve	quadratic	equations	with	real	coefficients	that	have	complex	
+solutions.
+8.	 (+)	Extend	polynomial	identities	to	the	complex	numbers.	For example, 
+rewrite x2	+	4	as	(x	+	2i)(x	–	2i).
+9.	 (+)	Know	the	Fundamental	Theorem	of	Algebra;	show	that	it	is	true	for	
+quadratic	polynomials.
+
+Common Core State StandardS for matHematICS
+HIGH SCHool — nUmber and qUantIty   |   61
+Vector and matrix Quantities  n-Vm
+Represent and model with vector quantities.
+1.	 (+)	Recognize	vector	quantities	as	having	both	magnitude	and	
+direction.	Represent	vector	quantities	by	directed	line	segments,	and	
+use	appropriate	symbols	for	vectors	and	their	magnitudes	(e.g.,	v,	|v|,	
+||v||,	v).
+2.	 (+)	Find	the	components	of	a	vector	by	subtracting	the	coordinates	of	
+an	initial	point	from	the	coordinates	of	a	terminal	point.	
+3.	 (+)	Solve	problems	involving	velocity	and	other	quantities	that	can	be	
+represented	by	vectors.
+Perform operations on vectors.
+4.	 (+)	Add	and	subtract	vectors.
+a.	 Add	vectors	end-to-end,	component-wise,	and	by	the	
+parallelogram	rule.	Understand	that	the	magnitude	of	a	sum	of	
+two	vectors	is	typically	not	the	sum	of	the	magnitudes.
+b.	 Given	two	vectors	in	magnitude	and	direction	form,	determine	the	
+magnitude	and	direction	of	their	sum.
+c.	 Understand	vector	subtraction	v	–	w	as	v	+	(–w),	where	–w	is	the	
+additive	inverse	of	w,	with	the	same	magnitude	as	w	and	pointing	
+in	the	opposite	direction.	Represent	vector	subtraction	graphically	
+by	connecting	the	tips	in	the	appropriate	order,	and	perform	
+vector	subtraction	component-wise.
+5.	 (+)	Multiply	a	vector	by	a	scalar.
+a.	 Represent	scalar	multiplication	graphically	by	scaling	vectors	and	
+possibly	reversing	their	direction;	perform	scalar	multiplication	
+component-wise,	e.g.,	as	c(vx,	vy)	=	(cvx,	cvy).
+b.	 Compute	the	magnitude	of	a	scalar	multiple	cv	using	||cv||	=	|c|v.	
+Compute	the	direction	of	cv	knowing	that	when	|c|v	≠	0,	the	
+direction	of	cv	is	either	along	v	(for	c	>	0)	or	against	v	(for	c	<	0).
+Perform operations on matrices and use matrices in applications.
+6.	 (+)	Use	matrices	to	represent	and	manipulate	data,	e.g.,	to	represent	
+payoffs	or	incidence	relationships	in	a	network.
+7 .	 (+)	Multiply	matrices	by	scalars	to	produce	new	matrices,	e.g.,	as	when	
+all	of	the	payoffs	in	a	game	are	doubled.	
+8.	 (+)	Add,	subtract,	and	multiply	matrices	of	appropriate	dimensions.	
+9.	 (+)	Understand	that,	unlike	multiplication	of	numbers,	matrix	
+multiplication	for	square	matrices	is	not	a	commutative	operation,	but	
+still	satisfies	the	associative	and	distributive	properties.
+10.	 (+)	Understand	that	the	zero	and	identity	matrices	play	a	role	in	matrix	
+addition	and	multiplication	similar	to	the	role	of	0	and	1	in	the	real	
+numbers.	The	determinant	of	a	square	matrix	is	nonzero	if	and	only	if	
+the	matrix	has	a	multiplicative	inverse.	
+11.	 (+)	Multiply	a	vector	(regarded	as	a	matrix	with	one	column)	by	a	
+matrix	of	suitable	dimensions	to	produce	another	vector.	Work	with	
+matrices	as	transformations	of	vectors.
+12.	 (+)	Work	with	2	×	2	matrices	as	transformations	of	the	plane,	and	
+interpret	the	absolute	value	of	the	determinant	in	terms	of	area.

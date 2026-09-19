@@ -1,0 +1,21 @@
+label,kind,start_page,end_page,page_count,pdf_file,text_file,text_chars,text_extraction
+Front Matter and Table of Contents,toc,1,2,2,00_front-matter-and-toc.pdf,00_front-matter-and-toc.txt,573,native_text_layer
+Introduction,section,3,5,3,01_introduction.pdf,01_introduction.txt,9826,native_text_layer
+Standards for Mathematical Practice,section,6,8,3,02_standards-for-mathematical-practice.pdf,02_standards-for-mathematical-practice.txt,12304,native_text_layer
+Kindergarten,grade,9,12,4,03_kindergarten.pdf,03_kindergarten.txt,7813,native_text_layer
+Grade 1,grade,13,16,4,04_grade-1.pdf,04_grade-1.txt,10595,native_text_layer
+Grade 2,grade,17,20,4,05_grade-2.pdf,05_grade-2.txt,9110,native_text_layer
+Grade 3,grade,21,26,6,06_grade-3.pdf,06_grade-3.txt,15536,native_text_layer
+Grade 4,grade,27,32,6,07_grade-4.pdf,07_grade-4.txt,15411,native_text_layer
+Grade 5,grade,33,38,6,08_grade-5.pdf,08_grade-5.txt,15817,native_text_layer
+Grade 6,grade,39,45,7,09_grade-6.pdf,09_grade-6.txt,18808,native_text_layer
+Grade 7,grade,46,51,6,10_grade-7.pdf,10_grade-7.txt,17166,native_text_layer
+Grade 8,grade,52,56,5,11_grade-8.pdf,11_grade-8.txt,14784,native_text_layer
+High School — Number and Quantity,high-school,57,61,5,12_high-school-number-and-quantity.pdf,12_high-school-number-and-quantity.txt,11929,native_text_layer
+High School — Algebra,high-school,62,66,5,13_high-school-algebra.pdf,13_high-school-algebra.txt,12778,native_text_layer
+High School — Functions,high-school,67,71,5,14_high-school-functions.pdf,14_high-school-functions.txt,12826,native_text_layer
+High School — Modeling,high-school,72,73,2,15_high-school-modeling.pdf,15_high-school-modeling.txt,5336,native_text_layer
+High School — Geometry,high-school,74,78,5,16_high-school-geometry.pdf,16_high-school-geometry.txt,15700,native_text_layer
+High School — Statistics and Probability,high-school,79,84,6,17_high-school-statistics-and-probability.pdf,17_high-school-statistics-and-probability.txt,15357,native_text_layer
+Glossary,reference,85,90,6,18_glossary.pdf,18_glossary.txt,17788,native_text_layer
+Sample of Works Consulted,reference,91,93,3,19_sample-of-works-consulted.pdf,19_sample-of-works-consulted.txt,14987,native_text_layer

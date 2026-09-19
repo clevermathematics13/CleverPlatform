@@ -1,0 +1,230 @@
+{
+  "source_pdf": "docs/standards/ccss-math/Common_Core_State_Standards_for_Mathematics.pdf",
+  "source_url": "https://corestandards.org/wp-content/uploads/2023/09/Math_Standards1.pdf",
+  "publisher": "Common Core State Standards Initiative (NGA Center / CCSSO)",
+  "retrieved_via": "user upload (session network egress policy blocks corestandards.org)",
+  "generated_at": "2026-09-19T19:50:04.402054+00:00",
+  "total_pages": 93,
+  "sections": [
+    {
+      "label": "Front Matter and Table of Contents",
+      "kind": "toc",
+      "start_page": 1,
+      "end_page": 2,
+      "page_count": 2,
+      "pdf_file": "00_front-matter-and-toc.pdf",
+      "text_file": "00_front-matter-and-toc.txt",
+      "text_chars": 573,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Introduction",
+      "kind": "section",
+      "start_page": 3,
+      "end_page": 5,
+      "page_count": 3,
+      "pdf_file": "01_introduction.pdf",
+      "text_file": "01_introduction.txt",
+      "text_chars": 9826,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Standards for Mathematical Practice",
+      "kind": "section",
+      "start_page": 6,
+      "end_page": 8,
+      "page_count": 3,
+      "pdf_file": "02_standards-for-mathematical-practice.pdf",
+      "text_file": "02_standards-for-mathematical-practice.txt",
+      "text_chars": 12304,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Kindergarten",
+      "kind": "grade",
+      "start_page": 9,
+      "end_page": 12,
+      "page_count": 4,
+      "pdf_file": "03_kindergarten.pdf",
+      "text_file": "03_kindergarten.txt",
+      "text_chars": 7813,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Grade 1",
+      "kind": "grade",
+      "start_page": 13,
+      "end_page": 16,
+      "page_count": 4,
+      "pdf_file": "04_grade-1.pdf",
+      "text_file": "04_grade-1.txt",
+      "text_chars": 10595,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Grade 2",
+      "kind": "grade",
+      "start_page": 17,
+      "end_page": 20,
+      "page_count": 4,
+      "pdf_file": "05_grade-2.pdf",
+      "text_file": "05_grade-2.txt",
+      "text_chars": 9110,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Grade 3",
+      "kind": "grade",
+      "start_page": 21,
+      "end_page": 26,
+      "page_count": 6,
+      "pdf_file": "06_grade-3.pdf",
+      "text_file": "06_grade-3.txt",
+      "text_chars": 15536,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Grade 4",
+      "kind": "grade",
+      "start_page": 27,
+      "end_page": 32,
+      "page_count": 6,
+      "pdf_file": "07_grade-4.pdf",
+      "text_file": "07_grade-4.txt",
+      "text_chars": 15411,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Grade 5",
+      "kind": "grade",
+      "start_page": 33,
+      "end_page": 38,
+      "page_count": 6,
+      "pdf_file": "08_grade-5.pdf",
+      "text_file": "08_grade-5.txt",
+      "text_chars": 15817,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Grade 6",
+      "kind": "grade",
+      "start_page": 39,
+      "end_page": 45,
+      "page_count": 7,
+      "pdf_file": "09_grade-6.pdf",
+      "text_file": "09_grade-6.txt",
+      "text_chars": 18808,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Grade 7",
+      "kind": "grade",
+      "start_page": 46,
+      "end_page": 51,
+      "page_count": 6,
+      "pdf_file": "10_grade-7.pdf",
+      "text_file": "10_grade-7.txt",
+      "text_chars": 17166,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Grade 8",
+      "kind": "grade",
+      "start_page": 52,
+      "end_page": 56,
+      "page_count": 5,
+      "pdf_file": "11_grade-8.pdf",
+      "text_file": "11_grade-8.txt",
+      "text_chars": 14784,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "High School \u2014 Number and Quantity",
+      "kind": "high-school",
+      "start_page": 57,
+      "end_page": 61,
+      "page_count": 5,
+      "pdf_file": "12_high-school-number-and-quantity.pdf",
+      "text_file": "12_high-school-number-and-quantity.txt",
+      "text_chars": 11929,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "High School \u2014 Algebra",
+      "kind": "high-school",
+      "start_page": 62,
+      "end_page": 66,
+      "page_count": 5,
+      "pdf_file": "13_high-school-algebra.pdf",
+      "text_file": "13_high-school-algebra.txt",
+      "text_chars": 12778,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "High School \u2014 Functions",
+      "kind": "high-school",
+      "start_page": 67,
+      "end_page": 71,
+      "page_count": 5,
+      "pdf_file": "14_high-school-functions.pdf",
+      "text_file": "14_high-school-functions.txt",
+      "text_chars": 12826,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "High School \u2014 Modeling",
+      "kind": "high-school",
+      "start_page": 72,
+      "end_page": 73,
+      "page_count": 2,
+      "pdf_file": "15_high-school-modeling.pdf",
+      "text_file": "15_high-school-modeling.txt",
+      "text_chars": 5336,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "High School \u2014 Geometry",
+      "kind": "high-school",
+      "start_page": 74,
+      "end_page": 78,
+      "page_count": 5,
+      "pdf_file": "16_high-school-geometry.pdf",
+      "text_file": "16_high-school-geometry.txt",
+      "text_chars": 15700,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "High School \u2014 Statistics and Probability",
+      "kind": "high-school",
+      "start_page": 79,
+      "end_page": 84,
+      "page_count": 6,
+      "pdf_file": "17_high-school-statistics-and-probability.pdf",
+      "text_file": "17_high-school-statistics-and-probability.txt",
+      "text_chars": 15357,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Glossary",
+      "kind": "reference",
+      "start_page": 85,
+      "end_page": 90,
+      "page_count": 6,
+      "pdf_file": "18_glossary.pdf",
+      "text_file": "18_glossary.txt",
+      "text_chars": 17788,
+      "text_extraction": "native_text_layer"
+    },
+    {
+      "label": "Sample of Works Consulted",
+      "kind": "reference",
+      "start_page": 91,
+      "end_page": 93,
+      "page_count": 3,
+      "pdf_file": "19_sample-of-works-consulted.pdf",
+      "text_file": "19_sample-of-works-consulted.txt",
+      "text_chars": 14987,
+      "text_extraction": "native_text_layer"
+    }
+  ]
+}

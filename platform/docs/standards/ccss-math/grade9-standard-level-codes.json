@@ -1,0 +1,118 @@
+{
+  "_comment": "Verbatim text for the CCSS Math codes referenced by platform/lib/fixtures/g9-standard-ka1-unit1.ts and platform/lib/standards-rubric.ts, quoted from the official document stored at docs/standards/ccss-math/Common_Core_State_Standards_for_Mathematics.pdf. Grade/domain page numbers refer to that PDF's own printed page numbers (identical to its PDF page index).",
+  "source_pdf": "docs/standards/ccss-math/Common_Core_State_Standards_for_Mathematics.pdf",
+  "codes": [
+    {
+      "code": "6.EE.A.2c",
+      "grade": "Grade 6",
+      "domain": "Expressions and Equations (6.EE)",
+      "cluster": "Apply and extend previous understandings of arithmetic to algebraic expressions.",
+      "text": "Evaluate expressions at specific values of their variables. Include expressions that arise from formulas used in real-world problems. Perform arithmetic operations, including those involving whole-number exponents, in the conventional order when there are no parentheses to specify a particular order (Order of Operations).",
+      "page": 44
+    },
+    {
+      "code": "7.EE.A.1",
+      "grade": "Grade 7",
+      "domain": "Expressions and Equations (7.EE)",
+      "cluster": "Use properties of operations to generate equivalent expressions.",
+      "text": "Apply properties of operations as strategies to add, subtract, factor, and expand linear expressions with rational coefficients.",
+      "page": 46
+    },
+    {
+      "code": "A-SSE.A.1",
+      "grade": "High School",
+      "domain": "Seeing Structure in Expressions (A-SSE)",
+      "cluster": "Interpret the structure of expressions",
+      "text": "Interpret expressions that represent a quantity in terms of its context.★ a. Interpret parts of an expression, such as terms, factors, and coefficients. b. Interpret complicated expressions by viewing one or more of their parts as a single entity.",
+      "page": 62
+    },
+    {
+      "code": "A-SSE.A.1b",
+      "grade": "High School",
+      "domain": "Seeing Structure in Expressions (A-SSE)",
+      "cluster": "Interpret the structure of expressions",
+      "text": "Interpret complicated expressions by viewing one or more of their parts as a single entity. For example, interpret P(1+r)^n as the product of P and a factor not depending on P.",
+      "page": 62
+    },
+    {
+      "code": "A-SSE.A.2",
+      "grade": "High School",
+      "domain": "Seeing Structure in Expressions (A-SSE)",
+      "cluster": "Interpret the structure of expressions",
+      "text": "Use the structure of an expression to identify ways to rewrite it. For example, see x^4 – y^4 as (x^2)^2 – (y^2)^2, thus recognizing it as a difference of squares that can be factored as (x^2 – y^2)(x^2 + y^2).",
+      "page": 62
+    },
+    {
+      "code": "F-IF.A.3",
+      "grade": "High School",
+      "domain": "Interpreting Functions (F-IF)",
+      "cluster": "Understand the concept of a function and use function notation",
+      "text": "Recognize that sequences are functions, sometimes defined recursively, whose domain is a subset of the integers. For example, the Fibonacci sequence is defined recursively by f(0) = f(1) = 1, f(n+1) = f(n) + f(n-1) for n ≥ 1.",
+      "page": 67
+    },
+    {
+      "code": "F-IF.B.5",
+      "grade": "High School",
+      "domain": "Interpreting Functions (F-IF)",
+      "cluster": "Interpret functions that arise in applications in terms of the context",
+      "text": "Relate the domain of a function to its graph and, where applicable, to the quantitative relationship it describes. For example, if the function h(n) gives the number of person-hours it takes to assemble n engines in a factory, then the positive integers would be an appropriate domain for the function.★",
+      "page": 67
+    },
+    {
+      "code": "F-BF.A.1a",
+      "grade": "High School",
+      "domain": "Building Functions (F-BF)",
+      "cluster": "Build a function that models a relationship between two quantities",
+      "text": "Determine an explicit expression, a recursive process, or steps for calculation from a context.",
+      "page": 68
+    },
+    {
+      "code": "F-BF.A.2",
+      "grade": "High School",
+      "domain": "Building Functions (F-BF)",
+      "cluster": "Build a function that models a relationship between two quantities",
+      "text": "Write arithmetic and geometric sequences both recursively and with an explicit formula, use them to model situations, and translate between the two forms.★",
+      "page": 68
+    },
+    {
+      "code": "F-LE.A.1b",
+      "grade": "High School",
+      "domain": "Linear, Quadratic, and Exponential Models (F-LE)",
+      "cluster": "Construct and compare linear, quadratic, and exponential models and solve problems",
+      "text": "Recognize situations in which one quantity changes at a constant rate per unit interval relative to another.",
+      "page": 68
+    },
+    {
+      "code": "F-LE.A.2",
+      "grade": "High School",
+      "domain": "Linear, Quadratic, and Exponential Models (F-LE)",
+      "cluster": "Construct and compare linear, quadratic, and exponential models and solve problems",
+      "text": "Construct linear and exponential functions, including arithmetic and geometric sequences, given a graph, a description of a relationship, or two input-output pairs (include reading these from a table).",
+      "page": 69
+    },
+    {
+      "code": "F-LE.B.5",
+      "grade": "High School",
+      "domain": "Linear, Quadratic, and Exponential Models (F-LE)",
+      "cluster": "Interpret expressions for functions in terms of the situation they model",
+      "text": "Interpret the parameters in a linear or exponential function in terms of a context.",
+      "page": 69
+    },
+    {
+      "code": "MP3",
+      "grade": "Standards for Mathematical Practice",
+      "domain": "Standards for Mathematical Practice",
+      "cluster": null,
+      "text": "Construct viable arguments and critique the reasoning of others.",
+      "page": 6
+    },
+    {
+      "code": "MP7",
+      "grade": "Standards for Mathematical Practice",
+      "domain": "Standards for Mathematical Practice",
+      "cluster": null,
+      "text": "Look for and make use of structure.",
+      "page": 8
+    }
+  ]
+}

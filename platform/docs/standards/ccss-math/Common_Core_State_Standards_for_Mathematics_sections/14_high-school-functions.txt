@@ -1,0 +1,233 @@
+Common Core State StandardS for matHematICS
+HIGH SCHool — fUnCtIonS   |   67
+mathematics | High School—functions
+Functions	describe	situations	where	one	quantity	determines	another.	For	example,	
+the	return	on	$10,000	invested	at	an	annualized	percentage	rate	of	4.25%	is	a	
+function	of	the	length	of	time	the	money	is	invested.	Because	we	continually	make	
+theories	about	dependencies	between	quantities	in	nature	and	society,	functions	
+are	important	tools	in	the	construction	of	mathematical	models.	
+In	school	mathematics,	functions	usually	have	numerical	inputs	and	outputs	and	are	
+often	defined	by	an	algebraic	expression.	For	example,	the	time	in	hours	it	takes	for	
+a	car	to	drive	100	miles	is	a	function	of	the	car’s	speed	in	miles	per	hour,	v;	the	rule	
+T(v)	=	100/v	expresses	this	relationship	algebraically	and	defines	a	function	whose	
+name	is	T.	
+The	set	of	inputs	to	a	function	is	called	its	domain.	We	often	infer	the	domain	to	be	
+all	inputs	for	which	the	expression	defining	a	function	has	a	value,	or	for	which	the	
+function	makes	sense	in	a	given	context.
+A	function	can	be	described	in	various	ways,	such	as	by	a	graph	(e.g.,	the	trace	of	
+a	seismograph);	by	a	verbal	rule,	as	in,	“I’ll	give	you	a	state,	you	give	me	the	capital	
+city;”	by	an	algebraic	expression	like	f(x)	=	a	+	bx;	or	by	a	recursive	rule.	The	graph	
+of	a	function	is	often	a	useful	way	of	visualizing	the	relationship	of	the	function	
+models,	and	manipulating	a	mathematical	expression	for	a	function	can	throw	light	
+on	the	function’s	properties.
+Functions	presented	as	expressions	can	model	many	important	phenomena.	Two	
+important	families	of	functions	characterized	by	laws	of	growth	are	linear	functions,	
+which	grow	at	a	constant	rate,	and	exponential	functions,	which	grow	at	a	constant	
+percent	rate.	Linear	functions	with	a	constant	term	of	zero	describe	proportional	
+relationships.
+A	graphing	utility	or	a	computer	algebra	system	can	be	used	to	experiment	with	
+properties	of	these	functions	and	their	graphs	and	to	build	computational	models	
+of	functions,	including	recursively	defined	functions.
+Connections to Expressions, Equations, Modeling, and Coordinates.	
+Determining	an	output	value	for	a	particular	input	involves	evaluating	an	expression;	
+finding	inputs	that	yield	a	given	output	involves	solving	an	equation.	Questions	
+about	when	two	functions	have	the	same	value	for	the	same	input	lead	to	
+equations,	whose	solutions	can	be	visualized	from	the	intersection	of	their	graphs.	
+Because	functions	describe	relationships	between	quantities,	they	are	frequently	
+used	in	modeling.	Sometimes	functions	are	defined	by	a	recursive	process,	which	
+can	be	displayed	effectively	using	a	spreadsheet	or	other	technology.
+
+Common Core State StandardS for matHematICS
+HIGH SCHool — fUnCtIonS   |   68
+Interpreting Functions
+• Understand the concept of a function and use 
+function notation
+• Interpret functions that arise in applications in 
+terms of the context
+• analyze functions using different 
+representations
+Building Functions
+• Build a function that models a relationship 
+between two quantities 
+• Build new functions from existing functions
+Linear, Quadratic, and Exponential Models
+• Construct and compare linear, quadratic, and 
+exponential models and solve problems
+• Interpret expressions for functions in terms of 
+the situation they model
+Trigonometric Functions
+• extend the domain of trigonometric functions 
+using the unit circle
+• model periodic phenomena with trigonometric 
+functions
+• Prove and apply trigonometric identities
+mathematical Practices 
+1.	 	 Make	sense	of	problems	and	persevere	in	
+solving	them.
+2.		 Reason	abstractly	and	quantitatively.
+3.		 Construct	viable	arguments	and	critique	
+the	reasoning	of	others.
+4.		 Model	with	mathematics.
+5.		 Use	appropriate	tools	strategically.
+6.		 Attend	to	precision.
+7 .		 Look	for	and	make	use	of	structure.
+8.		 Look	for	and	express	regularity	in	repeated	
+reasoning.
+functions overview
+
+Common Core State StandardS for matHematICS
+HIGH SCHool — fUnCtIonS   |   69
+Interpreting functions   f-If
+Understand the concept of a function and use function notation
+1.	 Understand	that	a	function	from	one	set	(called	the	domain)	to	
+another	set	(called	the	range)	assigns	to	each	element	of	the	domain	
+exactly	one	element	of	the	range.	If	f	is	a	function	and	x	is	an	element	
+of	its	domain,	then	f(x)	denotes	the	output	of	f	corresponding	to	the	
+input	x.	The	graph	of	f	is	the	graph	of	the	equation	y	=	f(x).
+2.	 Use	function	notation,	evaluate	functions	for	inputs	in	their	domains,	
+and	interpret	statements	that	use	function	notation	in	terms	of	a	
+context.
+3.	 Recognize	that	sequences	are	functions,	sometimes	defined	
+recursively,	whose	domain	is	a	subset	of	the	integers.	For example, the 
+Fibonacci sequence is defined recursively by f(0) = f(1) = 1, f(n+1) = f(n) + 
+f(n-1) for n ≥ 1. 
+Interpret functions that arise in applications in terms of the context
+4.	 For	a	function	that	models	a	relationship	between	two	quantities,	
+interpret	key	features	of	graphs	and	tables	in	terms	of	the	quantities,	
+and	sketch	graphs	showing	key	features	given	a	verbal	description	
+of	the	relationship.	Key features include: intercepts; intervals where the 
+function is increasing, decreasing, positive, or negative; relative maximums 
+and minimums; symmetries; end behavior; and periodicity.★	
+5.	 Relate	the	domain	of	a	function	to	its	graph	and,	where	applicable,	to	
+the	quantitative	relationship	it	describes.	For example, if the function 
+h(n) gives the number of person-hours it takes to assemble n engines in a 
+factory, then the positive integers would be an appropriate domain for the 
+function.★
+6.	 Calculate	and	interpret	the	average	rate	of	change	of	a	function	
+(presented	symbolically	or	as	a	table)	over	a	specified	interval.	
+Estimate	the	rate	of	change	from	a	graph.★
+Analyze functions using different representations
+7 .	 Graph	functions	expressed	symbolically	and	show	key	features	of	
+the	graph,	by	hand	in	simple	cases	and	using	technology	for	more	
+complicated	cases.★
+a.	 Graph	linear	and	quadratic	functions	and	show	intercepts,	
+maxima,	and	minima.
+b.	 Graph	square	root,	cube	root,	and	piecewise-defined	functions,	
+including	step	functions	and	absolute	value	functions.
+c.	 Graph	polynomial	functions,	identifying	zeros	when	suitable	
+factorizations	are	available,	and	showing	end	behavior.
+d.	 (+)	Graph	rational	functions,	identifying	zeros	and	asymptotes	
+when	suitable	factorizations	are	available,	and	showing	end	
+behavior.
+e.	 Graph	exponential	and	logarithmic	functions,	showing	intercepts	
+and	end	behavior,	and	trigonometric	functions,	showing	period,	
+midline,	and	amplitude.
+8.	 Write	a	function	defined	by	an	expression	in	different	but	equivalent	
+forms	to	reveal	and	explain	different	properties	of	the	function.
+a.	 Use	the	process	of	factoring	and	completing	the	square	in	a	
+quadratic	function	to	show	zeros,	extreme	values,	and	symmetry	
+of	the	graph,	and	interpret	these	in	terms	of	a	context.
+b.	 Use	the	properties	of	exponents	to	interpret	expressions	for	
+exponential	functions.	For example, identify percent rate of change 
+in functions such as y = (1.02)t, y = (0.97)t, y = (1.01)12t, y = (1.2)t/10, and 
+classify them as representing exponential growth or decay.
+
+Common Core State StandardS for matHematICS
+HIGH SCHool — fUnCtIonS   |   70
+9.	 Compare	properties	of	two	functions	each	represented	in	a	different	
+way	(algebraically,	graphically,	numerically	in	tables,	or	by	verbal	
+descriptions).	For example, given a graph of one quadratic function and 
+an algebraic expression for another, say which has the larger maximum.
+Building functions   f-Bf
+Build a function that models a relationship between two quantities 
+1.	 Write	a	function	that	describes	a	relationship	between	two	quantities.★	
+a.	 Determine	an	explicit	expression,	a	recursive	process,	or	steps	for	
+calculation	from	a	context.	
+b.	 Combine	standard	function	types	using	arithmetic	operations.	For 
+example, build a function that models the temperature of a cooling 
+body by adding a constant function to a decaying exponential, and 
+relate these functions to the model.
+c.	 (+)	Compose	functions. For example, if T(y) is the temperature in 
+the atmosphere as a function of height, and h(t) is the height of a 
+weather balloon as a function of time, then T(h(t)) is the temperature 
+at the location of the weather balloon as a function of time.
+2.	 Write	arithmetic	and	geometric	sequences	both	recursively	and	
+with	an	explicit	formula,	use	them	to	model	situations,	and	translate	
+between	the	two	forms.★
+Build new functions from existing functions
+3.	 Identify	the	effect	on	the	graph	of	replacing	f(x)	by	f(x)	+	k,	k	f(x),	
+f(kx),	and	f(x	+	k)	for	specific	values	of	k	(both	positive	and	negative);	
+find	the	value	of	k	given	the	graphs.	Experiment	with	cases	and	
+illustrate	an	explanation	of	the	effects	on	the	graph	using	technology.	
+Include recognizing even and odd functions from their graphs and 
+algebraic expressions for them.
+4.	 	Find	inverse	functions.
+a.	 Solve	an	equation	of	the	form	f(x)	=	c	for	a	simple	function	f	
+that	has	an	inverse	and	write	an	expression	for	the	inverse.	For 
+example, f(x) =2 x3 or f(x) = (x+1)/(x–1) for x ≠ 1.
+b.	 (+)	Verify	by	composition	that	one	function	is	the	inverse	of	
+another.
+c.	 (+)	Read	values	of	an	inverse	function	from	a	graph	or	a	table,	
+given	that	the	function	has	an	inverse.
+d.	 (+)	Produce	an	invertible	function	from	a	non-invertible	function	
+by	restricting	the	domain.
+5.	 (+)	Understand	the	inverse	relationship	between	exponents	and	
+logarithms	and	use	this	relationship	to	solve	problems	involving	
+logarithms	and	exponents.
+Linear , Quadratic, and exponential models★  f-Le
+Construct and compare linear, quadratic, and exponential models 
+and solve problems
+1.	 Distinguish	between	situations	that	can	be	modeled	with	linear	
+functions	and	with	exponential	functions.
+a.	 Prove	that	linear	functions	grow	by	equal	differences	over	equal	
+intervals,	and	that	exponential	functions	grow	by	equal	factors	
+over	equal	intervals.
+b.	 Recognize	situations	in	which	one	quantity	changes	at	a	constant	
+rate	per	unit	interval	relative	to	another.
+c.	 Recognize	situations	in	which	a	quantity	grows	or	decays	by	a	
+constant	percent	rate	per	unit	interval	relative	to	another.
+
+Common Core State StandardS for matHematICS
+HIGH SCHool — fUnCtIonS   |   71
+2.	 Construct	linear	and	exponential	functions,	including	arithmetic	and	
+geometric	sequences,	given	a	graph,	a	description	of	a	relationship,	or	
+two	input-output	pairs	(include	reading	these	from	a	table).
+3.	 Observe	using	graphs	and	tables	that	a	quantity	increasing	
+exponentially	eventually	exceeds	a	quantity	increasing	linearly,	
+quadratically,	or	(more	generally)	as	a	polynomial	function.
+4.	 For	exponential	models,	express	as	a	logarithm	the	solution	to		
+abct	=	d	where	a,	c,	and	d	are	numbers	and	the	base	b	is	2,	10,	or	e;	
+evaluate	the	logarithm	using	technology.
+Interpret expressions for functions in terms of the situation they 
+model
+5.	 Interpret	the	parameters	in	a	linear	or	exponential	function	in	terms	of	
+a	context.
+trigonometric functions   f-tf
+Extend the domain of trigonometric functions using the unit circle
+1.	 Understand	radian	measure	of	an	angle	as	the	length	of	the	arc	on	the	
+unit	circle	subtended	by	the	angle.
+2.	 Explain	how	the	unit	circle	in	the	coordinate	plane	enables	the	
+extension	of	trigonometric	functions	to	all	real	numbers,	interpreted	as	
+radian	measures	of	angles	traversed	counterclockwise	around	the	unit	
+circle.
+3.	 (+)	Use	special	triangles	to	determine	geometrically	the	values	of	sine,	
+cosine,	tangent	for	π/3,	π/ 4	and	π/6,	and	use	the	unit	circle	to	express	
+the	values	of	sine,	cosine,	and	tangent	for	π–x,	π+x,	and	2π–x	in	terms	
+of	their	values	for	x,	where	x	is	any	real	number.
+4.	 (+)	Use	the	unit	circle	to	explain	symmetry	(odd	and	even)	and	
+periodicity	of	trigonometric	functions.	
+Model periodic phenomena with trigonometric functions
+5.	 Choose	trigonometric	functions	to	model	periodic	phenomena	with	
+specified	amplitude,	frequency,	and	midline.★
+6.	 (+)	Understand	that	restricting	a	trigonometric	function	to	a	domain	
+on	which	it	is	always	increasing	or	always	decreasing	allows	its	inverse	
+to	be	constructed.
+7 .	 (+)	Use	inverse	functions	to	solve	trigonometric	equations	that	arise	
+in	modeling	contexts;	evaluate	the	solutions	using	technology,	and	
+interpret	them	in	terms	of	the	context.★
+Prove and apply trigonometric identities
+8.	 Prove	the	Pythagorean	identity	sin2(θ)	+	cos2(θ)	=	1	and	use	it	to	find	
+sin(θ),	cos(θ),	or	tan(θ)	given	sin(θ),	cos(θ),	or	tan(θ)	and	the	quadrant	
+of	the	angle.
+9.	 (+)	Prove	the	addition	and	subtraction	formulas	for	sine,	cosine,	and	
+tangent	and	use	them	to	solve	problems.
