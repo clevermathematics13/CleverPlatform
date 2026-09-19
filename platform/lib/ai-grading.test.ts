@@ -11,6 +11,7 @@ import {
   buildGradingUserPrompt,
   buildStandardsRubricBlock,
   composeQuestionText,
+  earnedMarks,
   isActivity,
   isStandardsReferenced,
   isAaHlPaper2,
@@ -1221,6 +1222,295 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.warnings).toHaveLength(0);
   });
 
+  // Combined, unsplittable multi-mark tokens (e.g. IB's "A2" for one
+  // 2-mark award with no per-mark breakdown). Real bank examples:
+  // 15M.1.AHL.TZ2.H_13 part (b) is atomic (0 or 2, no partial-credit note)
+  // and is live on the never-graded 27AH [K06] P1 Q9(b); 13M.1.AHL.TZ2.H_11
+  // part (a)(i) has its own tiering ("Award A1 for two correct and A0 for
+  // one correct"). Before this fix, the reconciliation counted every
+  // markBreakdown entry as worth exactly 1 mark regardless of what it
+  // represented.
+  describe("combined multi-mark tokens", () => {
+    it("sums a fully-awarded combined token at its own weight, not as 1", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 2,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [{ token: "A2", awarded: true, marks: 2, note: "both values correct" }],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      // The old `.filter(b => b.awarded).length` arithmetic would have read
+      // this single entry as "1 token awarded" and wrongly corrected a
+      // correct suggestedMarks of 2 down to 1.
+      expect(result.outcome.grades[0].clampedMarks).toBe(2);
+      expect(result.outcome.warnings).toHaveLength(0);
+    });
+
+    it("reconciles a partial-credit combined token via awardedMarks, not just awarded", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 1,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [
+              { token: "A2", awarded: false, marks: 2, awardedMarks: 1, note: "only two of three values correct" },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.outcome.grades[0].clampedMarks).toBe(1);
+      expect(result.outcome.warnings).toHaveLength(0);
+    });
+
+    it("still catches a real disagreement when the model's suggestedMarks undercounts a combined token", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 1,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [{ token: "A2", awarded: true, marks: 2, note: "both values correct" }],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      // No numericCheck/impliedMethodEvidence/intermediateValueCheck attached,
+      // so the grant loop never fires (grantedCount stays 0) -- the raise
+      // ceiling is suggestedMarks itself, and the breakdown disagreeing with
+      // it is exactly the "model disagreeing with itself" case that stays
+      // clamped and flagged rather than silently trusted.
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.outcome.grades[0].clampedMarks).toBe(1);
+      expect(result.outcome.grades[0].confidence).toBe("low");
+      expect(
+        result.outcome.warnings.some((w) => w.includes("breakdown awards 2 token(s)"))
+      ).toBe(true);
+    });
+
+    it("withdraws a combined token's partial credit in full when its numeric claim fails", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 2,
+            confidence: "medium",
+            workFound: true,
+            markBreakdown: [
+              {
+                token: "A2",
+                awarded: true,
+                marks: 2,
+                awardedMarks: 2,
+                note: "both values correct",
+                numericCheck: { reportedValue: "0.81", referenceValue: "0.805084", precisionType: "sf", precisionDigits: 3 },
+              },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const entry = result.outcome.grades[0].item.markBreakdown[0];
+      expect(entry.awarded).toBe(false);
+      expect(entry.awardedMarks).toBeUndefined();
+      expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    });
+
+    it("grants a withheld combined token its full weight, not 1, on a verified numeric claim", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 0,
+            confidence: "medium",
+            workFound: true,
+            markBreakdown: [
+              {
+                token: "A2",
+                awarded: false,
+                marks: 2,
+                note: "8.515 rounds to 8.52, but marked incorrect",
+                numericCheck: { reportedValue: "8.515", referenceValue: "8.51693", precisionType: "sf", precisionDigits: 3 },
+              },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.outcome.grades[0].item.markBreakdown[0].awarded).toBe(true);
+      expect(result.outcome.grades[0].clampedMarks).toBe(2);
+    });
+
+    // The hard isolation gate: Grade 9 and Activity grading each already
+    // have their own policy requiring exactly one mark per token
+    // (g9_standard_level_marking_principles.md section 2,
+    // mathmedic_activity_marking_principles.md section 7) -- this is a
+    // code-level backstop, not just prompt wording, in case the model
+    // emits a multi-mark token there anyway.
+    it("normalizes a multi-mark token back to a single mark on a Grade 9 Standard Level unit", () => {
+      const standardsUnit = unit({
+        maxMarks: 2,
+        standards: { strand: { code: "X", name: "Test strand", standards: [] }, rubric: KA1_UNIT1_RUBRIC },
+      });
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 2,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [{ token: "A2", awarded: true, marks: 3, awardedMarks: 2, note: "" }],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [standardsUnit]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const entry = result.outcome.grades[0].item.markBreakdown[0];
+      expect(entry.marks).toBe(1);
+      expect(entry.awardedMarks).toBeUndefined();
+      expect(result.outcome.warnings.some((w) => w.includes("Grade 9 / Activity"))).toBe(true);
+    });
+
+    it("normalizes a multi-mark token back to a single mark on an Activity unit", () => {
+      const activityUnit = unit({
+        maxMarks: 2,
+        activity: { targets: [{ code: "T1", name: "Test target" }], rubric: EXPLORATION_1_1_RUBRIC },
+      });
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 1,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [{ token: "A2", awarded: false, marks: 2, note: "" }],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [activityUnit]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const entry = result.outcome.grades[0].item.markBreakdown[0];
+      expect(entry.marks).toBe(1);
+      expect(result.outcome.warnings.some((w) => w.includes("Grade 9 / Activity"))).toBe(true);
+    });
+
+    // Anchors the two real bank rows that motivated this feature, using their
+    // literal mark scheme text, so a future change to this reconciliation
+    // logic is checked directly against the cases that are actually live.
+    it("real bank fixture: 15M.1.AHL.TZ2.H_13 part (b) -- atomic A2, no partial-credit note, live on 27AH [K06] P1 Q9(b)", () => {
+      const q13bUnit = unit({
+        maxMarks: 2,
+        questionCode: "15M.1.AHL.TZ2.H_13",
+        partLabel: "b",
+        markscheme: "$$\\sqrt{2}-1=\\frac{1}{\\sqrt{2}+\\sqrt{1}}$$\n\\hfill A2\n\n$$<\\frac{1}{\\sqrt{2}}$$\n\\hfill AG\n\\hfill [2 marks]",
+      });
+      // Only the A2 line is scored (2 marks total on this part, per the
+      // mark scheme's own "[2 marks]"); the AG line is a derivation check,
+      // not a separate scored token -- whether/how AG tokens should count
+      // toward the sum is a separate, pre-existing question outside this
+      // fixture's scope, so it's left out here.
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 2,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [
+              { token: "A2", awarded: true, marks: 2, note: "derivation of 1/(sqrt(2)+1) shown correctly, conclusion follows" },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [q13bUnit]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.outcome.grades[0].clampedMarks).toBe(2);
+      expect(result.outcome.warnings).toHaveLength(0);
+    });
+
+    it("real bank fixture: 13M.1.AHL.TZ2.H_11 part (a)(i) -- A2 with its own partial-credit note", () => {
+      const q11aiUnit = unit({
+        maxMarks: 2,
+        questionCode: "13M.1.AHL.TZ2.H_11",
+        partLabel: "a)(i)",
+        markscheme:
+          "|AB|=sqrt(30), |BC|=sqrt(11), |CA|=sqrt(33)\n\\hfill A2\n\nNote: Award A1 for two correct and A0 for one correct.",
+      });
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 1,
+            confidence: "medium",
+            workFound: true,
+            markBreakdown: [
+              { token: "A2", awarded: false, marks: 2, awardedMarks: 1, note: "only |AB| and |BC| computed correctly; |CA| wrong" },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [q11aiUnit]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.outcome.grades[0].clampedMarks).toBe(1);
+      expect(result.outcome.warnings).toHaveLength(0);
+    });
+  });
+
   // A teacher asked for marks in the review UI to be clearly associated
   // with the sub-part they belong to when one graded unit's own mark
   // scheme spans several (e.g. "a)(i)", "a)(ii)", "b)"). Confirms the
@@ -1611,6 +1901,71 @@ describe("isCustomAssessment", () => {
     expect(isCustomAssessment({ markschemeSource: "custom" })).toBe(true);
     expect(isCustomAssessment({ markschemeSource: "part_latex" })).toBe(false);
     expect(isCustomAssessment({ markschemeSource: "none" })).toBe(false);
+  });
+});
+
+describe("earnedMarks", () => {
+  it("returns 1 for an ordinary awarded token, 0 for an unawarded one (legacy shape, no marks/awardedMarks)", () => {
+    expect(earnedMarks({ awarded: true, marks: 1 })).toBe(1);
+    expect(earnedMarks({ awarded: false, marks: 1 })).toBe(0);
+  });
+
+  it("returns the full weight for a fully-awarded combined token", () => {
+    expect(earnedMarks({ awarded: true, marks: 2 })).toBe(2);
+    expect(earnedMarks({ awarded: false, marks: 2 })).toBe(0);
+  });
+
+  it("prefers awardedMarks when present, for a partially-awarded combined token", () => {
+    expect(earnedMarks({ awarded: false, marks: 2, awardedMarks: 1 })).toBe(1);
+    expect(earnedMarks({ awarded: true, marks: 2, awardedMarks: 0 })).toBe(0);
+  });
+
+  it("never returns more than marks even if awardedMarks is out of range", () => {
+    expect(earnedMarks({ awarded: true, marks: 2, awardedMarks: 5 })).toBe(2);
+  });
+});
+
+describe("MarkBreakdownEntrySchema (via AiGradeResponseSchema)", () => {
+  function responseWith(entry: Record<string, unknown>) {
+    return JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "A1", awarded: true, note: "", ...entry }],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+  }
+
+  it("defaults marks to 1 when omitted (legacy shape)", () => {
+    const result = validateGradeResponse(responseWith({}), [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.grades[0].item.markBreakdown[0].marks).toBe(1);
+  });
+
+  it("accepts an explicit marks value with no awardedMarks", () => {
+    const result = validateGradeResponse(responseWith({ marks: 2 }), [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.grades[0].item.markBreakdown[0].marks).toBe(2);
+  });
+
+  it("accepts awardedMarks within range of marks", () => {
+    const result = validateGradeResponse(responseWith({ marks: 2, awardedMarks: 1 }), [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.grades[0].item.markBreakdown[0].awardedMarks).toBe(1);
+  });
+
+  it("rejects awardedMarks greater than marks", () => {
+    const result = validateGradeResponse(responseWith({ marks: 2, awardedMarks: 3 }), [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(false);
   });
 });
 

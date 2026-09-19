@@ -61,6 +61,15 @@ If no detailed mark allocation is supplied, use one mark as the default
 final numerical-answer mark while preserving credit for demonstrably correct
 method and reasoning.
 
+When you do identify a combined, unsplittable award like the one above,
+represent it in markBreakdown as a single token carrying the mark scheme's
+own weight in its "marks" field (e.g. `"token": "A2", "marks": 2`), decided
+as one judgement against that line's own wording -- not as two independent
+one-mark checks you construct yourself. Use "awardedMarks" only if the mark
+scheme's own note for that token gives its own partial-credit tiering (e.g.
+"award one mark for two correct values, zero for one"); otherwise the token
+is earned in full or not at all, at its full weight.
+
 ## 3. Exact answers
 
 Accept mathematically exact answers under the default rule. Examples

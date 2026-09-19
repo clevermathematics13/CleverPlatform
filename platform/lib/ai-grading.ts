@@ -215,46 +215,106 @@ export const NumericCheckSchema = z.object({
 });
 
 /** A single mark scheme token and whether the student earned it. */
-export const MarkBreakdownEntrySchema = z.object({
-  token: z.string().min(1),
-  awarded: z.boolean(),
-  note: z.string().default(""),
-  /** Only present for a final numeric accuracy mark; see NumericCheckSchema. */
-  numericCheck: NumericCheckSchema.nullable().optional(),
-  /**
-   * Only present on a Method mark awarded because the student's final
-   * numeric answer -- though not precise enough to earn its own accuracy
-   * mark -- is itself evidence the correct method was used (see the
-   * "implied method evidence" rule in GRADING_SYSTEM_PROMPT). Same shape as
-   * NumericCheckSchema, reused for the same reason: it's the same
-   * reported-value-vs-reference-value comparison, just checked for a
-   * different purpose (was this under-precise, not was it correct).
-   */
-  impliedMethodEvidence: NumericCheckSchema.nullable().optional(),
-  /**
-   * Only present on an INTERMEDIATE accuracy mark whose mark scheme value
-   * is a reference (calculator) figure rather than an explicit precision
-   * requirement (see rule 15 in GRADING_SYSTEM_PROMPT) -- e.g. the mark
-   * scheme prints "2.65708" for an (A1) but never says the student must
-   * reproduce 5 decimal places. Same shape as NumericCheckSchema: the
-   * reported value earns the mark when it's an exact rounding of the
-   * reference at the reported value's own digit count, not merely close to
-   * it. Distinct from numericCheck (a real precision requirement, checked
-   * strictly) and from impliedMethodEvidence (a Method mark, not an
-   * Accuracy mark) -- these are three different grading mechanisms and
-   * are not interchangeable.
-   */
-  intermediateValueCheck: NumericCheckSchema.nullable().optional(),
-  /**
-   * Which of this unit's own labeled sub-parts this token belongs to, e.g.
-   * "a)(i)", "a)(ii)", "b)" -- only when a single graded unit's mark scheme
-   * itself covers more than one lettered/numbered sub-part (see
-   * GRADING_SYSTEM_PROMPT's MARK BREAKDOWN step). Lets the review UI show
-   * which marks belong to which sub-part instead of one undifferentiated
-   * row of tokens. Omit for a unit with no internal sub-part structure.
-   */
-  part: z.string().min(1).optional(),
-});
+export const MarkBreakdownEntrySchema = z
+  .object({
+    token: z.string().min(1),
+    /**
+     * Whether the student earned this token IN FULL (all of `marks`). For the
+     * overwhelming majority of tokens `marks` is 1, so this is the whole
+     * story, exactly as before this field existed.
+     */
+    awarded: z.boolean(),
+    /**
+     * How many marks this one token is worth. Defaults to 1 -- every
+     * historical stored result and every ordinary M1/A1/R1/AG token never
+     * sets this, and reads exactly as it always has.
+     *
+     * Set above 1 ONLY when the mark scheme itself prints one combined,
+     * unsplittable award for more than one mark with no per-mark breakdown
+     * of its own (e.g. a bare "A2" line) -- see GRADING_SYSTEM_PROMPT's MARK
+     * BREAKDOWN step and grading_policies/ibdp_math_aa_hl_paper_2_numerical_accuracy.md
+     * section 2. Never used for marks the scheme itself lists separately
+     * (e.g. "A1 A1" stays two ordinary marks:1 entries). Restricted to
+     * ordinary Formative/IB-bank grading -- validateGradeResponse normalizes
+     * this back to 1 on a Grade 9 Standard Level or Activity unit, whose own
+     * policies already require one token per mark (see the isolation check
+     * there).
+     */
+    marks: z.number().int().min(1).max(9).default(1),
+    /**
+     * How many of `marks` were actually earned, for the rare combined token
+     * whose own mark-scheme note gives its own partial-credit tiering (e.g.
+     * "Award A1 for two correct and A0 for one correct" on a 2-mark line).
+     * Omitted for every ordinary token and for a combined token with no such
+     * tiering -- there, `awarded` alone says everything (all of `marks`, or
+     * none). Use earnedMarks() rather than reading this or `awarded`
+     * directly.
+     */
+    awardedMarks: z.number().int().min(0).optional(),
+    note: z.string().default(""),
+    /** Only present for a final numeric accuracy mark; see NumericCheckSchema. */
+    numericCheck: NumericCheckSchema.nullable().optional(),
+    /**
+     * Only present on a Method mark awarded because the student's final
+     * numeric answer -- though not precise enough to earn its own accuracy
+     * mark -- is itself evidence the correct method was used (see the
+     * "implied method evidence" rule in GRADING_SYSTEM_PROMPT). Same shape as
+     * NumericCheckSchema, reused for the same reason: it's the same
+     * reported-value-vs-reference-value comparison, just checked for a
+     * different purpose (was this under-precise, not was it correct).
+     */
+    impliedMethodEvidence: NumericCheckSchema.nullable().optional(),
+    /**
+     * Only present on an INTERMEDIATE accuracy mark whose mark scheme value
+     * is a reference (calculator) figure rather than an explicit precision
+     * requirement (see rule 15 in GRADING_SYSTEM_PROMPT) -- e.g. the mark
+     * scheme prints "2.65708" for an (A1) but never says the student must
+     * reproduce 5 decimal places. Same shape as NumericCheckSchema: the
+     * reported value earns the mark when it's an exact rounding of the
+     * reference at the reported value's own digit count, not merely close to
+     * it. Distinct from numericCheck (a real precision requirement, checked
+     * strictly) and from impliedMethodEvidence (a Method mark, not an
+     * Accuracy mark) -- these are three different grading mechanisms and
+     * are not interchangeable.
+     */
+    intermediateValueCheck: NumericCheckSchema.nullable().optional(),
+    /**
+     * Which of this unit's own labeled sub-parts this token belongs to, e.g.
+     * "a)(i)", "a)(ii)", "b)" -- only when a single graded unit's mark scheme
+     * itself covers more than one lettered/numbered sub-part (see
+     * GRADING_SYSTEM_PROMPT's MARK BREAKDOWN step). Lets the review UI show
+     * which marks belong to which sub-part instead of one undifferentiated
+     * row of tokens. Omit for a unit with no internal sub-part structure.
+     */
+    part: z.string().min(1).optional(),
+  })
+  .superRefine((entry, ctx) => {
+    if (entry.awardedMarks != null && entry.awardedMarks > entry.marks) {
+      ctx.addIssue({
+        code: "custom",
+        message: `awardedMarks (${entry.awardedMarks}) cannot exceed marks (${entry.marks}) for token "${entry.token}"`,
+        path: ["awardedMarks"],
+      });
+    }
+  });
+
+export type MarkBreakdownEntry = z.infer<typeof MarkBreakdownEntrySchema>;
+
+/**
+ * How many marks a markBreakdown entry actually earned -- `marks` (its full
+ * weight, almost always 1) when fully `awarded`, `awardedMarks` when the
+ * entry carries its own partial-credit tiering, or 0 otherwise. The single
+ * place every reconciliation/withdrawal/grant step in validateGradeResponse,
+ * and the review UI, should go through rather than re-deriving `awarded ? 1
+ * : 0` by hand -- that hand-derivation is exactly what undercounted a real
+ * combined multi-mark token as one instead of its true weight.
+ */
+export function earnedMarks(
+  entry: Pick<MarkBreakdownEntry, "awarded" | "marks" | "awardedMarks">
+): number {
+  if (entry.awardedMarks != null) return Math.min(entry.awardedMarks, entry.marks);
+  return entry.awarded ? entry.marks : 0;
+}
 
 /**
  * Where the model saw a part's handwritten work, as a fraction of the full
@@ -405,6 +465,31 @@ export function validateGradeResponse(
     }
     seen.add(item.testItemId);
 
+    // A combined multi-mark token (markBreakdown entry.marks > 1) is only
+    // ever legitimate on ordinary Formative/IB-bank grading -- Grade 9
+    // Standard Level and Activity papers each carry their own policy
+    // requiring exactly one token per mark
+    // (grading_policies/g9_standard_level_marking_principles.md section 2,
+    // grading_policies/mathmedic_activity_marking_principles.md section 7).
+    // Prompt wording alone has not reliably held up elsewhere in this file
+    // (see findExposedDeliberation/findHedgedReading below), so this is
+    // enforced here rather than trusted to the model reading the right
+    // paragraph: a unit those two policies apply to has any multi-mark or
+    // partial-credit token normalized back to a plain single mark before
+    // anything else in this function sees it.
+    if (isStandardsReferenced(unit) || isActivity(unit)) {
+      for (const entry of item.markBreakdown) {
+        if (entry.marks > 1 || entry.awardedMarks != null) {
+          warnings.push(
+            `${unitLabel(unit)}: ${entry.token} was reported as a multi-mark token, but Grade 9 / Activity grading requires exactly one mark per token; normalized to a single mark`
+          );
+          entry.awarded = entry.awardedMarks != null ? entry.awardedMarks >= 1 : entry.awarded;
+          entry.marks = 1;
+          entry.awardedMarks = undefined;
+        }
+      }
+    }
+
     let clampedMarks = item.suggestedMarks;
     let confidence: Confidence = item.confidence;
     if (clampedMarks > unit.maxMarks) {
@@ -444,6 +529,7 @@ export function validateGradeResponse(
       const result = matchesRequiredPrecision(entry.numericCheck);
       if (entry.awarded && !result.ok) {
         entry.awarded = false;
+        entry.awardedMarks = undefined;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
         reasoningCorrections.push(`${entry.token} was withdrawn on deterministic accuracy re-check — ${result.reason}.`);
         warnings.push(
@@ -468,6 +554,7 @@ export function validateGradeResponse(
       const result = classifyUnderPrecision(entry.impliedMethodEvidence);
       if (entry.awarded && result.classification === "numerically_incorrect") {
         entry.awarded = false;
+        entry.awardedMarks = undefined;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
         reasoningCorrections.push(`${entry.token} was withdrawn — the claimed implied-method evidence does not hold: ${result.reason}.`);
         warnings.push(
@@ -499,6 +586,7 @@ export function validateGradeResponse(
       const result = classifyUnderPrecision(entry.intermediateValueCheck);
       if (entry.awarded && result.classification === "numerically_incorrect") {
         entry.awarded = false;
+        entry.awardedMarks = undefined;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
         reasoningCorrections.push(`${entry.token} was withdrawn — the claimed intermediate value is not a valid rounding of the reference: ${result.reason}.`);
         warnings.push(
@@ -525,9 +613,11 @@ export function validateGradeResponse(
     // a real, non-numeric reason (contradicted by working, wrong method)
     // is untouched, since those entries carry no such field to re-verify.
     // Counted because these grants are the one legitimate way the breakdown
-    // may end up awarding MORE than suggestedMarks: each one is a mark this
-    // pass added deterministically, so the consistency rule below must let
-    // the total rise by exactly this many and no further.
+    // may end up awarding MORE than suggestedMarks: each one adds its own
+    // token's mark-weight (almost always 1, but see MarkBreakdownEntrySchema's
+    // `marks` field for the rare combined-token case) this pass granted
+    // deterministically, so the consistency rule below must let the total
+    // rise by exactly that many and no further.
     //
     // A GRANT requires actual proof, unlike a withdrawal above: `result.ok`
     // and a classification other than `numerically_incorrect` are both true
@@ -567,8 +657,9 @@ export function validateGradeResponse(
         }
       }
       if (grant) {
-        grantedCount += 1;
+        grantedCount += entry.marks;
         entry.awarded = true;
+        entry.awardedMarks = undefined;
         entry.note = entry.note ? `${entry.note} (corrected: ${grant})` : `Corrected: ${grant}`;
         reasoningCorrections.push(`${entry.token} was granted on deterministic re-check — ${grant}.`);
         warnings.push(`${unitLabel(unit)}: ${grant} — granted on deterministic re-check`);
@@ -580,9 +671,10 @@ export function validateGradeResponse(
       item.reasoning = item.reasoning ? `${item.reasoning} (Correction: ${addendum})` : `Correction: ${addendum}`;
     }
 
-    // The model is instructed that awarded mark_breakdown tokens must sum to
-    // suggestedMarks (every token here is a single mark — M1/A1/R1/AG, never
-    // M2/A2), but it doesn't always follow its own arithmetic. When it
+    // The model is instructed that the mark-weight earned across
+    // mark_breakdown (almost always one token = one mark; occasionally a
+    // combined token's own `marks` field, via earnedMarks()) must sum to
+    // suggestedMarks, but it doesn't always follow its own arithmetic. When it
     // disagrees with itself the result is always flagged low confidence: an
     // internal inconsistency means something about the grading went wrong
     // regardless of which number was "right".
@@ -609,7 +701,7 @@ export function validateGradeResponse(
     // effect. Any excess beyond that is the model disagreeing with itself:
     // suggestedMarks stands and a human is asked instead.
     if (item.markBreakdown.length > 0) {
-      const awardedCount = item.markBreakdown.filter((b) => b.awarded).length;
+      const awardedCount = item.markBreakdown.reduce((sum, b) => sum + earnedMarks(b), 0);
       const raiseCeiling = Math.min(clampedMarks + grantedCount, unit.maxMarks);
       if (awardedCount < clampedMarks) {
         warnings.push(
@@ -1252,15 +1344,32 @@ judgement calls made in parallel:
    go with which sub-part. Use the sub-part labels exactly as the mark
    scheme itself writes them. Omit "part" entirely for a unit that is
    already a single, undivided part with no such internal structure.
+   Most tokens are worth exactly one mark. Occasionally the mark scheme
+   itself prints ONE combined token worth more than one mark, with no
+   per-mark breakdown given anywhere in the scheme (e.g. a line reading only
+   "A2", not "A1 A1" and not a note splitting it into separate criteria) —
+   that is one unsplittable award, not two marks for you to invent
+   sub-criteria for. Represent it as a single markBreakdown entry and set
+   its "marks" field to the number the mark scheme prints (e.g. "marks": 2);
+   omit "marks" for every ordinary single-mark token, where it defaults to 1.
+   Do not set "marks" above 1 for marks the scheme lists separately (e.g.
+   "A1 A1" is still two ordinary one-mark entries). If the mark scheme's own
+   note for a combined token gives its own partial-credit tiering (e.g.
+   "Award A1 for two correct and A0 for one correct"), set "awardedMarks" to
+   however many of that token's marks were actually earned (0 up to its
+   "marks" value) instead of just deciding "awarded"; otherwise a combined
+   token is all-or-nothing at its full weight, exactly like a one-mark token.
 4. REASONING: briefly explain the itemisation above, in the settled, deliberation-free professional style rule 18 requires — not a record of how you arrived at it.
 5. SUGGESTED MARKS: suggestedMarks is NOT a separate judgement call — it is
-   the count of tokens you just marked awarded in step 3 (every token here
-   is worth exactly one mark; there is no M2 or A2). Compute it by counting,
-   don't estimate it separately from a general impression of the work. If a
-   number you were about to write down doesn't match that count, the count
-   is right and the number is wrong — go back and recheck the breakdown
-   against the mark scheme rather than reporting a total that disagrees
-   with your own itemisation.
+   the sum of the mark-weight you actually earned from every token in step 3
+   (an ordinary one-mark token contributes 1 when awarded and 0 otherwise; a
+   combined token you gave a "marks" field contributes that many when fully
+   awarded, or its "awardedMarks" value when partially awarded). Compute it
+   by summing, don't estimate it separately from a general impression of the
+   work. If a number you were about to write down doesn't match that sum,
+   the sum is right and the number is wrong — go back and recheck the
+   breakdown against the mark scheme rather than reporting a total that
+   disagrees with your own itemisation.
 6. CONFIDENCE: assessed last, since it depends on everything above.
    - "high": the work is legible and maps cleanly onto the mark scheme.
    - "medium": legible but needs a judgement call (alternative method, partial working, follow-through).
@@ -1279,9 +1388,9 @@ generate the JSON in this order too, since suggestedMarks depends on markBreakdo
       "workFound": <boolean>,
       "evidence": "<what the student actually wrote, briefly>",
       "evidenceBox": { "page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61 } | null,
-      "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }] | [{ "token": "A1", "awarded": true, "note": "<brief>", "part": "a)(i)" }, ...] (add "part" only when this unit's own mark scheme covers multiple sub-parts),
+      "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }] | [{ "token": "A1", "awarded": true, "note": "<brief>", "part": "a)(i)" }, ...] (add "part" only when this unit's own mark scheme covers multiple sub-parts) | [{ "token": "A2", "awarded": true, "marks": 2, "note": "<brief>" }] (a combined, unsplittable mark-scheme award worth more than one mark -- see step 3; add "awardedMarks" instead of relying on "awarded" alone only if the scheme's own note tiers partial credit for it),
       "reasoning": "<one or two sentences citing the tokens satisfied or missed>",
-      "suggestedMarks": <the count of markBreakdown entries above with awarded: true>,
+      "suggestedMarks": <the sum of the mark-weight earned across markBreakdown entries above -- 1 per ordinary awarded token, or a combined token's own "marks"/"awardedMarks">,
       "confidence": "high" | "medium" | "low"
     }
   ]

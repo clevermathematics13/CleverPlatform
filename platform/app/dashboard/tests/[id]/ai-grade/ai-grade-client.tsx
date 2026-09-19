@@ -114,6 +114,17 @@ interface MarkBreakdownEntry {
   note: string;
   /** Which of this unit's own labeled sub-parts this token belongs to, e.g. "a)(i)" -- only present when a single graded unit covers more than one. */
   part?: string;
+  /** How many marks this one token is worth. Absent/1 for an ordinary single-mark token; see MarkBreakdownEntrySchema (lib/ai-grading.ts) for the rare combined-token case. */
+  marks?: number;
+  /** How many of `marks` were earned, only present for a combined token whose own mark-scheme note tiers partial credit. */
+  awardedMarks?: number;
+}
+
+/** Mirrors earnedMarks() in lib/ai-grading.ts -- kept in step with it. */
+function earnedMarks(entry: Pick<MarkBreakdownEntry, "awarded" | "marks" | "awardedMarks">): number {
+  const weight = entry.marks ?? 1;
+  if (entry.awardedMarks != null) return Math.min(entry.awardedMarks, weight);
+  return entry.awarded ? weight : 0;
 }
 
 /**
@@ -1319,19 +1330,32 @@ export function AiGradeClient({
                         {group.part && (
                           <span className="text-xs font-semibold text-da-muted">{group.part}</span>
                         )}
-                        {group.entries.map((b, i) => (
-                          <span
-                            key={i}
-                            className={`rounded border px-2 py-0.5 text-xs ${
-                              b.awarded
-                                ? "border-green-400/40 bg-green-500/15 text-green-300"
-                                : "border-da-border bg-da-surface text-da-muted line-through"
-                            }`}
-                            title={b.note}
-                          >
-                            {b.token}
-                          </span>
-                        ))}
+                        {group.entries.map((b, i) => {
+                          const weight = b.marks ?? 1;
+                          const earned = earnedMarks(b);
+                          // A combined token (weight > 1) needs a third,
+                          // partial-credit state a plain awarded/not-awarded
+                          // chip can't show -- e.g. "A2" earning 1 of 2 marks
+                          // via its own mark scheme's partial-credit note.
+                          const partial = weight > 1 && earned > 0 && earned < weight;
+                          const label =
+                            weight > 1 ? `${b.token} (${partial ? `${earned}/${weight}` : weight})` : b.token;
+                          return (
+                            <span
+                              key={i}
+                              className={`rounded border px-2 py-0.5 text-xs ${
+                                partial
+                                  ? "border-amber-400/40 bg-amber-500/15 text-amber-300"
+                                  : earned > 0
+                                  ? "border-green-400/40 bg-green-500/15 text-green-300"
+                                  : "border-da-border bg-da-surface text-da-muted line-through"
+                              }`}
+                              title={b.note}
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
