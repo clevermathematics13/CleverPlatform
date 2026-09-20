@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import Anthropic from "@anthropic-ai/sdk";
+import { recordUsage } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -139,6 +140,7 @@ Recommend a placement per the system instructions.`,
         },
       ],
     });
+    await recordUsage(supabase, { pipeline: "placement_recommend", model: response.model, usage: response.usage });
 
     const text =
       response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim() ?? "";

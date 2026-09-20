@@ -1,6 +1,7 @@
 import { getWritable, FatalError } from "workflow";
 import Anthropic from "@anthropic-ai/sdk";
 import { createClient as createServiceSupabaseClient } from "@supabase/supabase-js";
+import { recordUsage } from "../lib/ai-usage";
 
 /**
  * generateNuancedAnalysis - durable workflow for the AI Activity Generator.
@@ -646,6 +647,8 @@ async function callClaude(
     console.log(
       `[nuanced-analysis-workflow] ${passLabel} stop_reason=${response.stop_reason} blocks=[${blocksSummary}] usage=${JSON.stringify(response.usage)}`,
     );
+
+    await recordUsage(getServiceSupabase(), { pipeline: "na_generate", model: response.model, usage: response.usage });
 
     const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
     return { text: textBlock?.text ?? latestSnapshot, stopReason: response.stop_reason };

@@ -6,7 +6,7 @@ import { markExportsStale } from "@/lib/self-assessment-export";
  * POST /api/tests/[id]/ai-grade/accept
  * Body: {
  *   runId: string,
- *   selections: { resultId: string, marks?: number }[]
+ *   selections: { resultId: string, marks?: number, note?: string }[]
  * }
  *
  * Applies teacher-reviewed AI results to student_marks ("Clev's Marks").
@@ -14,7 +14,12 @@ import { markExportsStale } from "@/lib/self-assessment-export";
  * This is the ONLY path from an AI suggestion to a real mark. Every write is
  * logged to mark_changes with an explicit reason, so an AI-originated mark stays
  * distinguishable from one entered by hand. If the teacher overrode the
- * suggested value, the override is what gets written.
+ * suggested value, the override is what gets written, and a `note` they typed
+ * with it goes into the same reason -- the record of WHY, which until now was
+ * only ever written by an agent session after the fact. A ruling that should
+ * change how the part is marked from now on belongs on the item instead
+ * (test_items.marking_notes, PUT .../items/[itemId]/marking-notes); this note
+ * is the audit trail for this one mark.
  */
 export async function POST(
   request: NextRequest,
@@ -41,7 +46,8 @@ export async function POST(
   }
 
   const overrides = new Map<string, number | null>();
-  for (const sel of body.selections as { resultId?: unknown; marks?: unknown }[]) {
+  const notes = new Map<string, string>();
+  for (const sel of body.selections as { resultId?: unknown; marks?: unknown; note?: unknown }[]) {
     if (typeof sel.resultId !== "string" || !sel.resultId.trim()) {
       return NextResponse.json({ error: "Every selection needs a resultId" }, { status: 400 });
     }
@@ -53,6 +59,9 @@ export async function POST(
       );
     }
     overrides.set(sel.resultId.trim(), marks);
+    if (typeof sel.note === "string" && sel.note.trim()) {
+      notes.set(sel.resultId.trim(), sel.note.trim().slice(0, 500));
+    }
   }
 
   // -- Verify the run belongs to this assessment -----------------------------
@@ -134,9 +143,11 @@ export async function POST(
       changed_by: user.id,
       old_marks: oldMarks,
       new_marks: marks,
-      reason: wasOverridden
-        ? `AI grading run ${runId} suggested ${r.suggested_marks} (${r.confidence} confidence); teacher applied ${marks}`
-        : `AI grading run ${runId}, suggestion accepted as marked (${r.confidence} confidence)`,
+      reason:
+        (wasOverridden
+          ? `AI grading run ${runId} suggested ${r.suggested_marks} (${r.confidence} confidence); teacher applied ${marks}`
+          : `AI grading run ${runId}, suggestion accepted as marked (${r.confidence} confidence)`) +
+        (notes.has(r.id) ? ` -- note: ${notes.get(r.id)}` : ""),
     });
 
     await supabase

@@ -5,6 +5,7 @@ import {
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
   G9_STANDARD_LEVEL_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
+  buildRegradeItemPrompt,
   MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES,
   buildActivityRubricBlock,
   buildGradingSystemPrompt,
@@ -1190,10 +1191,13 @@ describe("validateGradeResponse", () => {
   });
 
   // Hedging is a separate, weaker signal: the model saying it could not read
-  // the handwriting cleanly is honest examiner language, not a defect. It
-  // caps confidence at medium and says so in its own words, so the stronger
-  // deliberation flag keeps its meaning.
-  it("caps confidence at medium for hedged reading, without claiming exposed deliberation", () => {
+  // the handwriting cleanly is honest examiner language, not a defect. It is
+  // reported as a warning in its own words -- so the review panel can prompt a
+  // glance at the crop -- but it no longer lowers confidence. Measured across
+  // every run on 20 Sep 2026, the cap fired mostly on method descriptions
+  // ("appears to have confused the variables") and never on a mark a teacher
+  // went on to change; see the comment in validateGradeResponse.
+  it("keeps the model's confidence for hedged reading and warns, without claiming exposed deliberation", () => {
     const raw = JSON.stringify({
       items: [
         {
@@ -1213,7 +1217,7 @@ describe("validateGradeResponse", () => {
     if (!result.ok) return;
 
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
-    expect(result.outcome.grades[0].confidence).toBe("medium");
+    expect(result.outcome.grades[0].confidence).toBe("high");
     expect(result.outcome.warnings.some((w) => w.includes("hedges on reading"))).toBe(true);
     expect(
       result.outcome.warnings.some((w) => w.includes("exposes internal deliberation"))
@@ -1514,6 +1518,14 @@ describe("buildGradingSystemPrompt", () => {
     expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
   });
 
+  // The confidence definition was rewritten once (20 Sep 2026) and measured
+  // worse at "high", so this pins the wording that IS in production and the
+  // note that says why. See docs/HANDOFF.md section 23.
+  it("keeps the measured confidence definition and the note about the rewrite that was not shipped", () => {
+    expect(GRADING_SYSTEM_PROMPT).toContain('"high": the work is legible and maps cleanly onto the mark scheme.');
+    expect(GRADING_SYSTEM_PROMPT).toContain("was measured on 20 Sep 2026 and not shipped");
+  });
+
   it("appends the numerical-accuracy policy when any unit is AA HL Paper 2", () => {
     const prompt = buildGradingSystemPrompt([
       unit({ testItemId: "item-1", curriculum: ["AA"], level: "SL", paper: 2 }),
@@ -1622,6 +1634,28 @@ describe("Grade 9 Standard Level (standards-referenced) grading", () => {
   it("a unit with no strand context prints no Strand line", () => {
     const prompt = buildGradingUserPrompt([unit()], {});
     expect(prompt).not.toContain("Strand:");
+  });
+
+  it("prints the teacher's marking notes after the mark scheme, and nothing when there are none", () => {
+    const withNotes = buildGradingUserPrompt(
+      [unit({ markingNotes: "M1 is for visible substitution into both expressions; 48(4)+30(6)=192+180 alone earns it." })],
+      {}
+    );
+    const schemeAt = withNotes.indexOf("--- Mark scheme (the authority) ---");
+    const notesAt = withNotes.indexOf("--- Teacher's marking notes for this part");
+    expect(schemeAt).toBeGreaterThan(-1);
+    expect(notesAt).toBeGreaterThan(schemeAt);
+    expect(withNotes).toContain("48(4)+30(6)=192+180 alone earns it.");
+    expect(withNotes).toContain("the notes win");
+
+    const without = buildGradingUserPrompt([unit({ markingNotes: null }), unit({ markingNotes: "   " })], {});
+    expect(without).not.toContain("Teacher's marking notes");
+  });
+
+  it("carries marking notes into the single-part regrade prompt too", () => {
+    const prompt = buildRegradeItemPrompt(unit({ markingNotes: "Accept either route." }), "x = 4");
+    expect(prompt).toContain("--- Teacher's marking notes for this part");
+    expect(prompt).toContain("Accept either route.");
   });
 
   it("the system prompt is identical for every unit order of the same test (cacheable)", () => {

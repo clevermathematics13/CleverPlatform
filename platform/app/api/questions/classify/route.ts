@@ -8,6 +8,7 @@ import {
   probeQuestionPartsColumns,
   omitUnsupportedColumns,
 } from "@/lib/question-parts-compat";
+import { recordUsage } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -181,6 +182,7 @@ export async function POST(request: NextRequest) {
         },
       ],
     });
+    await recordUsage(supabase, { pipeline: "question_classify", model: response.model, usage: response.usage });
     // Claude Sonnet 5 has adaptive thinking on by default and cannot disable it,
     // so response.content[0] is frequently a "thinking" block rather than "text" —
     // find the text block by type instead of assuming it's first.

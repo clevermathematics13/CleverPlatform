@@ -318,6 +318,9 @@ ${
     textBlock,
   ];
 
+  // Not recorded in ai_usage_log: this route runs as the STUDENT (getApiUser),
+  // and the log's insert policy is teacher-only, so recordUsage here would fail
+  // under RLS on every call. Logging it needs a service-role client (20 Sep 2026).
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 4000,

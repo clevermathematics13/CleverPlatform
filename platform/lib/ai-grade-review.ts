@@ -144,3 +144,78 @@ export function partitionByConfidence<T extends ReviewConfidenceRef>(
   }
   return { high, needsLook };
 }
+
+// ---- Why a row is not "high" ------------------------------------------------
+//
+// The validator (lib/ai-grading.ts, validateGradeResponse) records every
+// reason it touched a part's mark or confidence as one string in the run's
+// coverage.warnings, prefixed with the part's label exactly as unitLabel()
+// prints it: "1(b): reasoning hedges on reading ...". The review panel and
+// scripts/confidence-calibration.ts both need to read those back per part, so
+// the label format and the cause classification live here, once, where the
+// browser can import them (lib/ai-grading.ts reads policy files from disk and
+// cannot be bundled for the client).
+
+/** Minimal shape of a test item needed to rebuild its warning label. */
+export interface WarningLabelRef {
+  question_number: number;
+  part_label?: string | null;
+}
+
+/**
+ * The label unitLabel() in lib/ai-grading.ts prints for a part -- "3(b)(ii)",
+ * "5" -- rebuilt from the test_items row the browser has. The two must agree
+ * character for character or a part's warnings are never found; the test
+ * beside this module pins them together.
+ */
+export function partWarningLabel(item: WarningLabelRef): string {
+  const p = (item.part_label ?? "").trim();
+  if (!p) return String(item.question_number);
+  const m = p.match(/^([a-z])(i{1,3}|iv|v)?$/i);
+  if (m) {
+    return m[2]
+      ? `${item.question_number}(${m[1].toLowerCase()})(${m[2].toLowerCase()})`
+      : `${item.question_number}(${m[1].toLowerCase()})`;
+  }
+  return `${item.question_number}(${p})`;
+}
+
+/**
+ * The warnings that belong to one part, with the "label: " prefix removed.
+ * A warning about another part, or one with no part prefix (an assembly
+ * warning about the whole test), is left out.
+ */
+export function warningsForPart(label: string, warnings: readonly string[] | null | undefined): string[] {
+  const prefix = `${label}: `;
+  return (warnings ?? []).filter((w) => w.startsWith(prefix)).map((w) => w.slice(prefix.length));
+}
+
+/**
+ * Why the validator flagged a part, classified from the warning text it
+ * wrote. "none" means every warning on the part is some other kind (or there
+ * are none), so a non-high label is the model's own call.
+ */
+export type CapCause = "hedge" | "deliberation" | "breakdown" | "clamp" | "numeric" | "none";
+
+export function capCauseForPart(label: string, warnings: readonly string[] | null | undefined): CapCause {
+  const own = warningsForPart(label, warnings);
+  // Ordered by how much each says about the MARK: a deliberation or breakdown
+  // flag forces "low" and means the mark itself is suspect, a clamp likewise;
+  // a hedge only asks for a glance at the crop.
+  if (own.some((w) => w.includes("exposes internal deliberation"))) return "deliberation";
+  if (own.some((w) => w.includes("breakdown only awards") || w.includes("breakdown awards"))) return "breakdown";
+  if (own.some((w) => w.includes("clamped to"))) return "clamp";
+  if (own.some((w) => w.includes("hedges on reading"))) return "hedge";
+  if (own.some((w) => w.includes("deterministic"))) return "numeric";
+  return "none";
+}
+
+/** A few words for the row, so a teacher can tell a wording flag from a mark in doubt. */
+export const CAP_CAUSE_SHORT: Record<CapCause, string> = {
+  hedge: "careful wording, glance at the crop",
+  deliberation: "reasoning changed its mind",
+  breakdown: "breakdown disagreed with the total",
+  clamp: "mark exceeded the maximum",
+  numeric: "a mark was re-checked",
+  none: "the marker's own call",
+};

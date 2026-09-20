@@ -1,0 +1,176 @@
+{
+  "ranAt": "2026-09-20T04:18:37.124Z",
+  "test": null,
+  "studentTests": 137,
+  "parts": 4354,
+  "all": {
+    "high|breakdown": {
+      "parts": 4,
+      "accepted": 3,
+      "individual": 3,
+      "acceptAll": 0,
+      "overridden": 0,
+      "correctedLater": 0
+    },
+    "high|hedge": {
+      "parts": 1,
+      "accepted": 0,
+      "individual": 0,
+      "acceptAll": 0,
+      "overridden": 0,
+      "correctedLater": 0
+    },
+    "high|none": {
+      "parts": 3885,
+      "accepted": 1975,
+      "individual": 77,
+      "acceptAll": 1836,
+      "overridden": 3,
+      "correctedLater": 2
+    },
+    "medium|breakdown": {
+      "parts": 1,
+      "accepted": 1,
+      "individual": 1,
+      "acceptAll": 0,
+      "overridden": 1,
+      "correctedLater": 0
+    },
+    "medium|hedge": {
+      "parts": 87,
+      "accepted": 40,
+      "individual": 1,
+      "acceptAll": 39,
+      "overridden": 0,
+      "correctedLater": 0
+    },
+    "medium|none": {
+      "parts": 322,
+      "accepted": 168,
+      "individual": 11,
+      "acceptAll": 133,
+      "overridden": 2,
+      "correctedLater": 8
+    },
+    "low|breakdown": {
+      "parts": 39,
+      "accepted": 22,
+      "individual": 2,
+      "acceptAll": 20,
+      "overridden": 0,
+      "correctedLater": 11
+    },
+    "low|deliberation": {
+      "parts": 5,
+      "accepted": 4,
+      "individual": 2,
+      "acceptAll": 2,
+      "overridden": 0,
+      "correctedLater": 1
+    },
+    "low|hedge": {
+      "parts": 2,
+      "accepted": 0,
+      "individual": 0,
+      "acceptAll": 0,
+      "overridden": 0,
+      "correctedLater": 0
+    },
+    "low|none": {
+      "parts": 8,
+      "accepted": 6,
+      "individual": 0,
+      "acceptAll": 4,
+      "overridden": 0,
+      "correctedLater": 0
+    }
+  },
+  "individuallyReviewed": {
+    "high|breakdown": {
+      "parts": 3,
+      "accepted": 3,
+      "individual": 3,
+      "acceptAll": 0,
+      "overridden": 0,
+      "correctedLater": 0
+    },
+    "high|none": {
+      "parts": 77,
+      "accepted": 76,
+      "individual": 77,
+      "acceptAll": 0,
+      "overridden": 3,
+      "correctedLater": 0
+    },
+    "medium|breakdown": {
+      "parts": 1,
+      "accepted": 1,
+      "individual": 1,
+      "acceptAll": 0,
+      "overridden": 1,
+      "correctedLater": 0
+    },
+    "medium|hedge": {
+      "parts": 1,
+      "accepted": 1,
+      "individual": 1,
+      "acceptAll": 0,
+      "overridden": 0,
+      "correctedLater": 0
+    },
+    "medium|none": {
+      "parts": 11,
+      "accepted": 11,
+      "individual": 11,
+      "acceptAll": 0,
+      "overridden": 2,
+      "correctedLater": 0
+    },
+    "low|breakdown": {
+      "parts": 2,
+      "accepted": 2,
+      "individual": 2,
+      "acceptAll": 0,
+      "overridden": 0,
+      "correctedLater": 0
+    },
+    "low|deliberation": {
+      "parts": 2,
+      "accepted": 2,
+      "individual": 2,
+      "acceptAll": 0,
+      "overridden": 0,
+      "correctedLater": 0
+    }
+  },
+  "clusters": [
+    {
+      "testName": "Formative Assessment 1",
+      "label": "8(a)",
+      "accepted": 51,
+      "disagreed": 18,
+      "sample": "Audit correction: the scheme asks for \"the correctly distributed, unsimplified expression 6k - 12 + 5k - 6\" and this student produced it in their working. The mark was withheld only because the answer line showed the simplified 11k - 18, a requirement neither the question nor the scheme states -- Q7(a) says \"do not simplify further\", Q8(a) does not. 24 classmates with identical work were awarded the mark at high confidence; all 18 withheld were flagged low or medium confidence."
+    },
+    {
+      "testName": "Key Assessment 1",
+      "label": "13(b)",
+      "accepted": 5,
+      "disagreed": 5,
+      "sample": "AI grading run 9162aafc-007d-44c9-b0af-3c5097154a95 suggested 0 (high confidence); teacher applied 1"
+    },
+    {
+      "testName": "Formative Assessment 1",
+      "label": "12(a)",
+      "accepted": 51,
+      "disagreed": 3,
+      "sample": "Teacher ruling on an ambiguous mark scheme: student gave 48m+30n=108 with visible substitution (48+60) and left 78mn blank. The scheme says \"one value alone earns M1A0\" (1 mark) but defines M1 as both expressions evaluated. Resolved in the student's favour: M1 awarded, A0."
+    },
+    {
+      "testName": "Formative Assessment 1",
+      "label": "3(b)",
+      "accepted": 51,
+      "disagreed": 1,
+      "sample": "Audit correction: scheme says \"A1 for both d != 0 AND the product is 1 -- one of the two alone earns 0\". Student wrote d != 0 but gave the product as d^2, and the reciprocal as d/(1/d) rather than 1/d, so neither A1 is earned. The model itself suggested 0; its mark_breakdown wrongly flagged the second A1 awarded, and the breakdown-consistency rule raised 0 to 1."
+    }
+  ]
+}

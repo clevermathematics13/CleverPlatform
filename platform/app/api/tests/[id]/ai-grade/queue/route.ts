@@ -94,11 +94,25 @@ export async function POST(
 
   const { id: testId } = await params;
 
-  let body: { students?: unknown };
+  let body: { students?: unknown; testItemIds?: unknown };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  // Optional: mark only these parts (a re-mark after a marking note on one
+  // part). The run records them (ai_grade_runs.requested_test_item_ids) and
+  // the collect step carries every other part forward from the student's
+  // previous complete run. Output falls to the requested parts' share; the
+  // scan still goes in full, since the model has to find the work.
+  let requestedTestItemIds: string[] | null = null;
+  if (body.testItemIds !== undefined) {
+    if (!Array.isArray(body.testItemIds) || body.testItemIds.some((x) => typeof x !== "string" || !x.trim())) {
+      return NextResponse.json({ error: "testItemIds must be an array of ids" }, { status: 400 });
+    }
+    requestedTestItemIds = [...new Set((body.testItemIds as string[]).map((x) => x.trim()))];
+    if (requestedTestItemIds.length === 0) requestedTestItemIds = null;
   }
 
   if (!Array.isArray(body.students) || body.students.length === 0) {
@@ -179,6 +193,17 @@ export async function POST(
       },
       { status: 422 }
     );
+  }
+  if (requestedTestItemIds) {
+    const known = new Set(gradeable.map((u) => u.testItemId));
+    const unknown = requestedTestItemIds.filter((id) => !known.has(id));
+    if (unknown.length > 0) {
+      return NextResponse.json(
+        { error: `${unknown.length} requested part(s) are not gradeable parts of this assessment` },
+        { status: 400 }
+      );
+    }
+    gradeable = gradeable.filter((u) => requestedTestItemIds!.includes(u.testItemId));
   }
 
   // -- Download as far as the ceilings allow ---------------------------------
@@ -324,6 +349,7 @@ export async function POST(
       source_storage_path: c.storagePath,
       // Set in (e), once there is a batch row to point at.
       pending_message_batch_id: null,
+      requested_test_item_ids: requestedTestItemIds,
     };
   });
 

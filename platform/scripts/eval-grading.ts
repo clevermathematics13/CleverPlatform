@@ -15,8 +15,15 @@
 //   npx tsx scripts/eval-grading.ts --dry                    # list the golden set, no API calls
 //   npx tsx scripts/eval-grading.ts                          # full run, all eligible students
 //   npx tsx scripts/eval-grading.ts --limit 3 --out eval.json
-//   npx tsx scripts/eval-grading.ts --model claude-sonnet-5 --temperature 0
-//   npx tsx scripts/eval-grading.ts --test <test uuid>
+//   npx tsx scripts/eval-grading.ts --model claude-sonnet-5 --effort medium
+//   npx tsx scripts/eval-grading.ts --test <test uuid> --trials 2
+//
+// The request is built by buildGradingRequest (lib/ai-grading-run.ts), the
+// same function the interactive route and the overnight batch use, so this
+// measures the shipping request rather than a copy of it. --model and
+// --effort go through it: a model that takes effort (Opus 5, Sonnet 5) gets
+// output_config.effort and no temperature, Opus 4.5 keeps temperature 0.
+// --trials repeats the whole run so a one-part swing can be told from noise.
 //
 // Needs SUPABASE_SERVICE_ROLE_KEY and ANTHROPIC_API_KEY (or
 // GRADING_ANTHROPIC_API_KEY) in the environment. Each student costs about
@@ -24,18 +31,9 @@
 
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { writeFileSync } from "node:fs";
-import {
-  AiGradeResponseSchema,
-  GRADING_MODEL,
-  SCAN_BUCKET,
-  assembleMarkScheme,
-  buildGradingStudentPrompt,
-  buildGradingSystemPrompt,
-  buildGradingUserPrompt,
-  validateGradeResponse,
-} from "../lib/ai-grading";
+import { GRADING_MODEL, SCAN_BUCKET, assembleMarkScheme, validateGradeResponse } from "../lib/ai-grading";
+import { buildGradingRequest, modelTakesEffort, type GradingEffort } from "../lib/ai-grading-run";
 import { recordUsage } from "../lib/ai-usage";
 
 // -- args -------------------------------------------------------------------
@@ -48,7 +46,10 @@ const opt = (name: string): string | undefined => {
 const DRY = flag("dry");
 const LIMIT = opt("limit") ? Number(opt("limit")) : Infinity;
 const MODEL = opt("model") ?? GRADING_MODEL;
-const TEMPERATURE = opt("temperature") !== undefined ? Number(opt("temperature")) : 0;
+const EFFORT = opt("effort") as GradingEffort | undefined;
+if (EFFORT && !["low", "medium", "high"].includes(EFFORT)) throw new Error("--effort must be low, medium or high");
+if (EFFORT && !modelTakesEffort(MODEL)) throw new Error(`${MODEL} does not take --effort; it runs at temperature 0`);
+const TRIALS = opt("trials") ? Math.max(1, Number(opt("trials"))) : 1;
 const ONLY_TEST = opt("test");
 const OUT = opt("out");
 
@@ -91,10 +92,19 @@ async function loadGoldenSet(): Promise<GoldenStudent[]> {
 
   const byStudent = new Map<string, GoldenStudent>();
   const marksNeeded: { testItemId: string; studentId: string }[] = [];
+  let skippedInvited = 0;
   for (const r of rows ?? []) {
-    const run = r.ai_grade_runs as unknown as { id: string; test_id: string; student_id: string; source_storage_path: string | null; status: string };
+    const run = r.ai_grade_runs as unknown as { id: string; test_id: string; student_id: string | null; source_storage_path: string | null; status: string };
     const item = r.test_items as unknown as { question_number: number; part_label: string | null };
     if (!run.source_storage_path || run.status !== "complete") continue;
+    // A run graded against an invited-but-not-registered student has no
+    // profiles row and its marks sit under invited_student_id; the golden
+    // set is keyed on profiles, so these are counted and left out rather
+    // than crashing the sort on a null name (20 Sep 2026).
+    if (!run.student_id) {
+      skippedInvited += 1;
+      continue;
+    }
     if (ONLY_TEST && run.test_id !== ONLY_TEST) continue;
     const key = `${run.test_id}:${run.student_id}`;
     let s = byStudent.get(key);
@@ -137,6 +147,7 @@ async function loadGoldenSet(): Promise<GoldenStudent[]> {
     s.studentName = profileName.get(s.studentId) ?? s.studentId;
     s.parts.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }
+  if (skippedInvited > 0) console.log(`(${skippedInvited} accepted parts belong to invited students with no profile and are not in the golden set)`);
   return [...byStudent.values()].sort((a, b) => a.testName.localeCompare(b.testName) || a.studentName.localeCompare(b.studentName));
 }
 
@@ -163,23 +174,17 @@ async function gradeStudent(s: GoldenStudent): Promise<StudentResult> {
     if (dlErr || !file) throw new Error(`scan download failed: ${dlErr?.message ?? "not found"}`);
     const scanBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
 
-    const message = await anthropic.messages.parse({
-      model: MODEL,
-      max_tokens: 16384,
-      temperature: TEMPERATURE,
-      system: [{ type: "text", text: buildGradingSystemPrompt(gradeable), cache_control: { type: "ephemeral" } }],
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: buildGradingUserPrompt(gradeable, { testName: s.testName }), cache_control: { type: "ephemeral" } },
-            { type: "document", source: { type: "base64", media_type: "application/pdf", data: scanBase64 } },
-            { type: "text", text: buildGradingStudentPrompt(s.studentName) },
-          ],
-        },
-      ],
-      output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
-    });
+    const message = await anthropic.messages.parse(
+      buildGradingRequest({
+        gradeable,
+        testName: s.testName,
+        studentDisplayName: s.studentName,
+        scanBase64,
+        cacheTtl: "1h",
+        model: MODEL,
+        effort: EFFORT,
+      })
+    );
     usage.input = message.usage.input_tokens;
     usage.cacheWrite = message.usage.cache_creation_input_tokens ?? 0;
     usage.cacheRead = message.usage.cache_read_input_tokens ?? 0;
@@ -232,7 +237,19 @@ function summarise(results: StudentResult[]) {
     b.absErr += Math.abs((p.predicted as number) - p.golden);
     byPart.set(p.label, b);
   }
-  return { n, exact, within1, mae, bias, totalGolden, totalPredicted, cost, byPart, failed: results.filter((r) => r.error).length };
+  // Accuracy by the confidence label the fresh run reported. This is the
+  // check on the label itself: "high" should be exact far more often than
+  // "medium", or the label is not telling the teacher anything.
+  const byConfidence = new Map<string, { n: number; exact: number; absErr: number }>();
+  for (const p of parts) {
+    const key = p.confidence ?? "unknown";
+    const b = byConfidence.get(key) ?? { n: 0, exact: 0, absErr: 0 };
+    b.n += 1;
+    if (p.predicted === p.golden) b.exact += 1;
+    b.absErr += Math.abs((p.predicted as number) - p.golden);
+    byConfidence.set(key, b);
+  }
+  return { n, exact, within1, mae, bias, totalGolden, totalPredicted, cost, byPart, byConfidence, failed: results.filter((r) => r.error).length };
 }
 
 // -- main -------------------------------------------------------------------
@@ -241,29 +258,65 @@ function summarise(results: StudentResult[]) {
   const chosen = golden.slice(0, LIMIT);
   const totalParts = chosen.reduce((s, g) => s + g.parts.length, 0);
   console.log(`Golden set: ${golden.length} student-test(s) with a scan on file, ${golden.reduce((s, g) => s + g.parts.length, 0)} accepted parts.`);
-  console.log(`Running: ${chosen.length} student-test(s), ${totalParts} parts, model=${MODEL}, temperature=${TEMPERATURE}${DRY ? " (DRY RUN, no API calls)" : ""}`);
+  console.log(`Running: ${chosen.length} student-test(s), ${totalParts} parts, model=${MODEL}${EFFORT ? `, effort=${EFFORT}` : ", temperature=0"}, trials=${TRIALS}${DRY ? " (DRY RUN, no API calls)" : ""}`);
   for (const g of chosen) console.log(`  ${g.testName} / ${g.studentName}: ${g.parts.map((p) => `${p.label}=${p.golden}/${p.maxMarks}`).join(" ")}`);
   if (DRY) return;
 
-  const results: StudentResult[] = [];
-  for (const g of chosen) {
-    const r = await gradeStudent(g);
-    results.push(r);
-    const line = r.error
-      ? `FAIL ${r.error}`
-      : r.parts.map((p) => `${p.label} ${p.predicted}/${p.golden}${p.predicted !== p.golden ? "*" : ""}`).join("  ");
-    console.log(`${r.studentName.padEnd(20)} ${line}   $${costUsd(r.usage, MODEL).toFixed(3)}`);
+  const trials: { results: StudentResult[]; summary: ReturnType<typeof summarise> }[] = [];
+  for (let t = 1; t <= TRIALS; t++) {
+    if (TRIALS > 1) console.log(`\n-- trial ${t} of ${TRIALS} --`);
+    const results: StudentResult[] = [];
+    for (const g of chosen) {
+      const r = await gradeStudent(g);
+      results.push(r);
+      const line = r.error
+        ? `FAIL ${r.error}`
+        : r.parts.map((p) => `${p.label} ${p.predicted}/${p.golden}${p.predicted !== p.golden ? "*" : ""}`).join("  ");
+      console.log(`${r.studentName.padEnd(20)} ${line}   $${costUsd(r.usage, MODEL).toFixed(3)}`);
+    }
+    const s = summarise(results);
+    trials.push({ results, summary: s });
+    console.log(`\n== Summary${TRIALS > 1 ? ` (trial ${t})` : ""} ==`);
+    console.log(`parts compared: ${s.n}   exact: ${s.exact} (${((100 * s.exact) / Math.max(1, s.n)).toFixed(0)}%)   within 1 mark: ${s.within1} (${((100 * s.within1) / Math.max(1, s.n)).toFixed(0)}%)`);
+    console.log(`mean abs error: ${s.mae.toFixed(2)} marks   bias (predicted - golden): ${s.bias >= 0 ? "+" : ""}${s.bias.toFixed(2)}   totals: predicted ${s.totalPredicted} vs golden ${s.totalGolden}`);
+    console.log(`failed students: ${s.failed}   cost: $${s.cost.toFixed(2)}   output tokens/student: ${Math.round(results.reduce((a, r) => a + r.usage.output, 0) / Math.max(1, results.length))}`);
+    console.log("by part:", [...s.byPart.entries()].map(([k, v]) => `${k} ${v.exact}/${v.n} exact, MAE ${(v.absErr / v.n).toFixed(2)}`).join(" | "));
+    console.log("by confidence:", ["high", "medium", "low"].filter((k) => s.byConfidence.has(k)).map((k) => { const v = s.byConfidence.get(k)!; return `${k} ${v.exact}/${v.n} exact, MAE ${(v.absErr / v.n).toFixed(2)}`; }).join(" | "));
   }
 
-  const s = summarise(results);
-  console.log("\n== Summary ==");
-  console.log(`parts compared: ${s.n}   exact: ${s.exact} (${((100 * s.exact) / Math.max(1, s.n)).toFixed(0)}%)   within 1 mark: ${s.within1} (${((100 * s.within1) / Math.max(1, s.n)).toFixed(0)}%)`);
-  console.log(`mean abs error: ${s.mae.toFixed(2)} marks   bias (predicted - golden): ${s.bias >= 0 ? "+" : ""}${s.bias.toFixed(2)}   totals: predicted ${s.totalPredicted} vs golden ${s.totalGolden}`);
-  console.log(`failed students: ${s.failed}   cost: $${s.cost.toFixed(2)}`);
-  console.log("by part:", [...s.byPart.entries()].map(([k, v]) => `${k} ${v.exact}/${v.n} exact, MAE ${(v.absErr / v.n).toFixed(2)}`).join(" | "));
+  if (TRIALS > 1) {
+    const stat = (pick: (s: ReturnType<typeof summarise>) => number) => {
+      const xs = trials.map((t) => pick(t.summary));
+      return { mean: xs.reduce((a, b) => a + b, 0) / xs.length, min: Math.min(...xs), max: Math.max(...xs) };
+    };
+    const exact = stat((s) => s.exact);
+    const mae = stat((s) => s.mae);
+    const cost = stat((s) => s.cost);
+    const highExact = stat((s) => { const v = s.byConfidence.get("high"); return v ? v.exact / Math.max(1, v.n) : 0; });
+    console.log(`\n== Across ${TRIALS} trials ==`);
+    console.log(`exact: mean ${exact.mean.toFixed(1)} (${exact.min}-${exact.max})   MAE: mean ${mae.mean.toFixed(3)} (${mae.min.toFixed(3)}-${mae.max.toFixed(3)})   cost/run: $${cost.mean.toFixed(2)}   high-label exact rate: ${(100 * highExact.mean).toFixed(1)}% (${(100 * highExact.min).toFixed(0)}-${(100 * highExact.max).toFixed(0)}%)`);
+  }
 
   if (OUT) {
-    writeFileSync(OUT, JSON.stringify({ ranAt: new Date().toISOString(), model: MODEL, temperature: TEMPERATURE, summary: { ...s, byPart: Object.fromEntries(s.byPart) }, results }, null, 2));
+    const serial = (s: ReturnType<typeof summarise>) => ({ ...s, byPart: Object.fromEntries(s.byPart), byConfidence: Object.fromEntries(s.byConfidence) });
+    const last = trials[trials.length - 1];
+    writeFileSync(
+      OUT,
+      JSON.stringify(
+        {
+          ranAt: new Date().toISOString(),
+          model: MODEL,
+          effort: EFFORT ?? null,
+          temperature: EFFORT ? null : 0,
+          trials: TRIALS,
+          summary: serial(last.summary),
+          results: last.results,
+          ...(TRIALS > 1 ? { trialSummaries: trials.map((t) => serial(t.summary)), trialResults: trials.map((t) => t.results) } : {}),
+        },
+        null,
+        2
+      )
+    );
     console.log(`written ${OUT}`);
   }
 })().catch((e) => {
