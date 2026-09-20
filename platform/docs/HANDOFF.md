@@ -2504,3 +2504,79 @@ options, to delete the demotion and keep the warning.
   it. The drafting model can also decline (`cannotApply`) when the feedback
   would break the scheme's maximum or the policy, and says why.
 
+
+---
+
+## 24. Where the marking money goes, and what was done about it (20 Sep 2026)
+
+The teacher asked what could improve results and cut API cost. The answer
+started with a profile of `ai_usage_log` (2 to 20 Sep, $63.4), because the
+levers that pay are decided by the shape of the bill, not by the list of
+things one could do. **A first pass mis-priced every Haiku line five-fold**
+(the log stores Haiku as `claude-haiku-4-5-20251001`; an exact-match CASE
+fell through to Opus rates), which briefly made orientation and cover-page
+reads look like a third of the bill. They are 9%. The corrected profile:
+
+| Pipeline | Calls | $ | Share |
+|---|---|---|---|
+| ai_grade (interactive, Opus 4.5) | 123 | 32.26 | 51% |
+| ai_grade_batch (overnight, 50% rate) | 62 | 8.60 | 14% |
+| NA assess (Sonnet 4.6, mostly batch) | 684 | 6.31 | 10% |
+| segment (deep read, Opus 4.5) | 33 | 5.06 | 8% |
+| eval | 31 | 4.80 | 8% |
+| cover page + chunk cover (Haiku) | 1202 | 3.72 | 6% |
+| orientation (Haiku) | 109 | 1.89 | 3% |
+
+Inside a marking call, output is 62% of the cost (6.5k tokens per Grade 9
+student; ~10.5k stored characters plus JSON), the uncached scan PDF 32%, and
+the cached prefix 6% -- caching is healthy, nothing to gain there. Half of
+all marking runs were re-marks (126 student-tests, 246 runs), at full price,
+with a tab open. That profile, and the cost-optimisation order from the
+Claude API reference (free wins before tradeoffs, one change per diff, each
+read against the eval), gave the plan below. `docs/eval/` keeps every run;
+`scripts/eval-grading.ts` now builds the request through
+`buildGradingRequest` (it had drifted), takes `--model`, `--effort` and
+`--trials`, and prints output tokens per student.
+
+**Measurement first.** Fourteen call sites never wrote to `ai_usage_log`
+(the packet and NA generators, the question-bank pipelines, classroom
+analysis, placement); each now records under its own pipeline name, so the
+next profile is the whole bill. The mastery route runs as the student and
+cannot insert under the log's teacher-only policy; it says so in a comment.
+The feedback drafter (§23 F) now sends the grader's prompt for the paper as
+a cached first system block, and the cover-page read runs at temperature 0.
+
+**Shipped, free wins:**
+- **Overnight by default.** The batch tab's overnight toggle starts on, and
+  "Re-mark stored scan" on the Individual tab goes through the Message
+  Batches queue at half price, with "Mark now" as the explicit full-price
+  button. The request is byte-identical (`buildGradingRequest`), so the
+  marks are the same. Ceiling: up to half of the 51% line.
+- **Re-mark one part for the whole class.** Beside a part's marking note:
+  the queue route takes `testItemIds`, marks only those parts (the scan
+  still goes in full), and records them on the run
+  (`ai_grade_runs.requested_test_item_ids`, migration `20260920062335`);
+  collect validates against that subset and `persistGradeOutcome` copies
+  every other part's row, crop and acceptance from the previous complete
+  run. This is the follow-through to §23's marking notes: a ruling written
+  once is applied to the class for about a third of a full re-mark.
+
+**Measured and not shipped:** tighter breakdown notes ("one clause, empty
+when the token is earned on plain evidence") -- output tokens 2830 -> 2429
+per BiStats student (-14%), cost -6%, but exact 58 -> 56, MAE 0.12 -> 0.18
+and "high" 5 misses in 59 against 2 in 54
+(`docs/eval/2026-09-20-bistats-notes-tightened.json`). Same shape as the
+step-6 rewrite in §23, which is what prompted a second baseline trial to
+learn the noise floor (below). The prompt is at its measured wording.
+
+**Dropped after the pricing correction:** folding orientation into the
+quick read (3% of the bill; needs a column and a rotate step in split) and a
+cover-page pre-filter in the CV service (6%; CV engineering). The CV service
+itself stays funded: crops, Locate on page, Fix crops and NA packets depend
+on it; marks do not.
+
+**Model x effort sweep** (approved budget $12; results below, appended when
+the runs finish): Opus 4.5 at temperature 0 (current) against Sonnet 5 and
+Opus 5 at low and medium effort, on the BiStats eval. The ship rule: a
+config ships only if exact and the high-label precision hold within the
+noise the second baseline trial shows.
