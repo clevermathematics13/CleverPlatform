@@ -266,6 +266,13 @@ export function AiGradeClient({
   /** Marking-note text being edited per test item, present only while the editor is open. */
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [savingNoteFor, setSavingNoteFor] = useState<string | null>(null);
+  /** Feedback to the grader being typed per test item. */
+  const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>({});
+  const [draftingFor, setDraftingFor] = useState<string | null>(null);
+  /** The last proposal the drafting model returned per item, shown until the note is saved or dismissed. */
+  const [proposals, setProposals] = useState<
+    Record<string, { feedbackId: string; summary: string; caseMarks: number | null; cannotApply: string | null }>
+  >({});
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
   /**
@@ -812,12 +819,20 @@ export function AiGradeClient({
       const { ok, data } = await fetchJson(`/api/tests/${testId}/items/${itemId}/marking-notes`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: notes.trim() === "" ? null : notes }),
+        body: JSON.stringify({
+          notes: notes.trim() === "" ? null : notes,
+          feedbackId: proposals[itemId]?.feedbackId,
+        }),
       });
       if (!ok) {
         setError((data.error as string) ?? "Could not save the marking note.");
         return;
       }
+      setProposals((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
       const saved = (data.marking_notes as string | null) ?? null;
       setTest((prev) =>
         prev
@@ -838,6 +853,45 @@ export function AiGradeClient({
       setError(e instanceof Error ? e.message : "Could not save the marking note.");
     } finally {
       setSavingNoteFor(null);
+    }
+  };
+
+  // -- Feedback to the grader, in the teacher's own words, turned into a
+  // draft ruling by a model (lib/grader-feedback.ts). The draft lands in the
+  // note editor for the teacher to read and save; nothing is written to what
+  // the marker reads until they do. --------------------------------------
+  const draftFromFeedback = async (itemId: string, resultId: string | null) => {
+    const feedback = (feedbackDrafts[itemId] ?? "").trim();
+    if (!feedback) return;
+    setDraftingFor(itemId);
+    setError(null);
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/items/${itemId}/grader-feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback, resultId }),
+      });
+      if (!ok) {
+        setError((data.error as string) ?? "Could not draft a ruling from that feedback.");
+        return;
+      }
+      const proposal = data.proposal as { markingNotes: string | null; summary: string; caseMarks: number | null; cannotApply: string | null };
+      setProposals((prev) => ({
+        ...prev,
+        [itemId]: { feedbackId: data.feedbackId as string, summary: proposal.summary, caseMarks: proposal.caseMarks, cannotApply: proposal.cannotApply },
+      }));
+      if (!proposal.cannotApply && proposal.markingNotes) {
+        setNoteDrafts((prev) => ({ ...prev, [itemId]: proposal.markingNotes ?? "" }));
+        setFeedbackDrafts((prev) => {
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not draft a ruling from that feedback.");
+    } finally {
+      setDraftingFor(null);
     }
   };
 
@@ -1655,6 +1709,49 @@ export function AiGradeClient({
                       &ldquo;M1 is for visible substitution into both expressions; 48(4)+30(6)=192+180 alone
                       earns it.&rdquo; Where it conflicts with the scheme, the note wins.
                     </p>
+
+                    {/* Feedback in the teacher's own words. A model turns it into the
+                        ruling above, with this student's result as the worked case; the
+                        draft is only saved once the teacher has read it. */}
+                    <div className="mt-2 rounded border border-da-border bg-da-bg/60 p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-da-muted">
+                        Feedback to the grader
+                      </p>
+                      <p className="mt-0.5 text-xs text-da-muted">
+                        Say what the grader got wrong or should do differently on this part, in your own
+                        words. It is turned into a precise ruling for the note above, using this
+                        student&apos;s result as the example, for you to check before it is saved.
+                      </p>
+                      <textarea
+                        value={feedbackDrafts[meta.id] ?? ""}
+                        onChange={(e) => setFeedbackDrafts((prev) => ({ ...prev, [meta.id]: e.target.value }))}
+                        rows={2}
+                        maxLength={4000}
+                        placeholder="e.g. A substitution shown but not finished still earns the M mark here."
+                        className="mt-1 w-full rounded border border-da-border p-2 text-xs focus:ring-2 focus:ring-blue-400"
+                      />
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => draftFromFeedback(meta.id, r.id)}
+                          disabled={draftingFor === meta.id || !(feedbackDrafts[meta.id] ?? "").trim()}
+                          className="rounded border border-teal-400/40 px-3 py-1 text-xs font-medium text-teal-300 hover:bg-teal-500/15 disabled:opacity-50"
+                        >
+                          {draftingFor === meta.id ? "Drafting a ruling…" : "Turn into a marking rule"}
+                        </button>
+                        {proposals[meta.id] && (
+                          <span className="text-xs text-da-muted">
+                            {proposals[meta.id].cannotApply
+                              ? `Not applied: ${proposals[meta.id].cannotApply}`
+                              : `${proposals[meta.id].summary}${
+                                  proposals[meta.id].caseMarks !== null
+                                    ? ` This student would score ${proposals[meta.id].caseMarks}/${r.max_marks}.`
+                                    : ""
+                                } Read the draft below, then Save note.`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     {noteDrafts[meta.id] !== undefined ? (
                       <div className="mt-1 space-y-2">
                         <textarea

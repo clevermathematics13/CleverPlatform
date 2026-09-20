@@ -3,7 +3,11 @@ import { getApiTeacher } from "@/lib/auth";
 
 /**
  * PUT /api/tests/[id]/items/[itemId]/marking-notes
- * Body: { notes: string | null }
+ * Body: { notes: string | null, feedbackId?: string }
+ *
+ * feedbackId, when present, is the grader_feedback round whose draft these
+ * notes came from; it is stamped applied_at so a ruling can be traced back to
+ * the feedback that produced it.
  *
  * Saves the teacher's marking notes for one part of one paper
  * (test_items.marking_notes). The AI marker reads them after the part's mark
@@ -25,7 +29,7 @@ export async function PUT(
   const { supabase } = auth;
   const { id: testId, itemId } = await params;
 
-  let body: { notes?: unknown };
+  let body: { notes?: unknown; feedbackId?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -54,6 +58,14 @@ export async function PUT(
     .update({ marking_notes: notes })
     .eq("id", itemId);
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
+
+  if (typeof body.feedbackId === "string" && body.feedbackId.trim()) {
+    await supabase
+      .from("grader_feedback")
+      .update({ applied_at: new Date().toISOString() })
+      .eq("id", body.feedbackId.trim())
+      .eq("test_item_id", itemId);
+  }
 
   return NextResponse.json({ itemId, marking_notes: notes });
 }

@@ -1518,6 +1518,13 @@ describe("buildGradingSystemPrompt", () => {
     expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
   });
 
+  it("defines confidence by the certainty of the mark, so a clear wrong answer is still high", () => {
+    expect(GRADING_SYSTEM_PROMPT).toContain("a clearly wrong answer with legible working is a certain 0 and is \"high\"");
+    expect(GRADING_SYSTEM_PROMPT).toContain("another examiner could reasonably award a different number");
+    expect(GRADING_SYSTEM_PROMPT).toContain("Anything below \"high\" is put in front of the teacher");
+    expect(GRADING_SYSTEM_PROMPT).not.toContain("Anything marked \"low\" is flagged");
+  });
+
   it("appends the numerical-accuracy policy when any unit is AA HL Paper 2", () => {
     const prompt = buildGradingSystemPrompt([
       unit({ testItemId: "item-1", curriculum: ["AA"], level: "SL", paper: 2 }),

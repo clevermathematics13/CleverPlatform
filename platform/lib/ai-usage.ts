@@ -22,6 +22,9 @@ export type UsagePipeline =
   // scripts/eval-grading.ts re-marking accepted scans to measure a prompt or
   // model change. Its own row so an eval run's spend never reads as marking.
   | "ai_grade_eval"
+  // Turning a teacher's feedback on one part into a marking ruling for it
+  // (lib/grader-feedback.ts; one call per piece of feedback, at the desk).
+  | "grader_feedback"
   | "na_assess"
   | "na_assess_wide"
   | "na_assess_batch"

@@ -257,12 +257,13 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 170 files, 170 rows**
+**The migration ledger and the repo agree on versions: 171 files, 171 rows**
 (verified 20 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third and 149/149 on 13 Sep). Two
 rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
 file on any branch until 20 Sep; both were rebuilt from the ledger and verified
-by md5 before the `test_items.marking_notes` migration was added (§23). Read
+by md5 before the `test_items.marking_notes` and `grader_feedback` migrations
+were added (§23). Read
 `platform/supabase/migrations/README.md` before touching anything in that
 directory - it documents the invariant and how to add a migration without
 breaking it.
@@ -2467,4 +2468,21 @@ options, to delete the demotion and keep the warning.
   only "low" is flagged now says anything below high is put in front of the
   teacher and, on a summative, not written by Accept-all. See the eval
   comparison below.
+- **F. Feedback to the grader, in the teacher's own words.** The same Why?
+  panel, on every part of every paper (a Grade 9 formative, Standard Level or
+  activity row as much as an IB one), has a "Feedback to the grader" box. The
+  teacher writes what the marker got wrong or should do differently; "Turn
+  into a marking rule" sends that, with the part's question, mark scheme,
+  current notes and the result in front of the teacher, to
+  `GRADER_FEEDBACK_MODEL` (`claude-opus-5`, adaptive thinking, effort high --
+  the reference's mandated default and the model the standards and activity
+  imports already use for reconciling rubrics; `lib/grader-feedback.ts`),
+  which drafts the part's complete marking notes with the ruling folded in,
+  a one-line summary, and what that student would now score. The draft lands
+  in the note editor; nothing the marker reads changes until the teacher
+  saves it. Every round is kept in `grader_feedback` (migration
+  `20260920043641`) with the feedback, the notes before, the draft, and
+  `applied_at` once saved, so a ruling traces back to the feedback that made
+  it. The drafting model can also decline (`cannotApply`) when the feedback
+  would break the scheme's maximum or the policy, and says why.
 

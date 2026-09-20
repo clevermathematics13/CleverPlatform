@@ -216,9 +216,10 @@ Two rows applied through MCP on 18 Sep (`20260918205816_ka1_unit1_strand_descrip
 branch: 167 files against 169 rows. Both were single-statement MCP applies, so
 `array_to_string(statements, E'\n')` plus one trailing newline reproduced them
 byte for byte (md5 checked against the ledger before committing). Then
-`test_items_marking_notes` was applied the documented way -- MCP first, read
-the assigned version back (`20260920042031`), rename the file to it -- and the
-directory stands at 170/170.
+`test_items_marking_notes` and `grader_feedback` were applied the documented
+way -- MCP first, read the assigned version back (`20260920042031`,
+`20260920043641`), name the file to it, md5 against the ledger -- and the
+directory stands at 171/171.
 
 The lesson is the one above, one more time: an MCP apply is not done until the
 file with the ledger's version is on the branch that will merge.

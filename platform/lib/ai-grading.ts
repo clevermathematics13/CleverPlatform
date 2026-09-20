@@ -1234,11 +1234,11 @@ judgement calls made in parallel:
    is right and the number is wrong — go back and recheck the breakdown
    against the mark scheme rather than reporting a total that disagrees
    with your own itemisation.
-6. CONFIDENCE: assessed last, since it depends on everything above.
-   - "high": the work is legible and maps cleanly onto the mark scheme.
-   - "medium": legible but needs a judgement call (alternative method, partial working, follow-through).
-   - "low": illegible, ambiguous, hard to locate, or a genuinely borderline award.
-   Anything marked "low" is flagged for the teacher to mark by hand. Be honest — an over-confident wrong mark is far more damaging than a flagged uncertain one.
+6. CONFIDENCE: assessed last, since it depends on everything above. It is about the certainty of the MARK, not the quality of the work: a clearly wrong answer with legible working is a certain 0 and is "high".
+   - "high": the work is legible, you can see which tokens are earned and which are not, and another examiner marking to this scheme (and any teacher's marking notes) would award the same number of marks.
+   - "medium": another examiner could reasonably award a different number — a method the scheme does not cover, working that only partly evidences a token, a follow-through you had to reconstruct, or scheme wording that reads two ways. Say which in your reasoning, so the teacher knows what to look at.
+   - "low": you could not read or locate the work with certainty, or the award is genuinely borderline.
+   Anything below "high" is put in front of the teacher, and on a paper that counts it is not written into their marks until they have looked at it. Be honest both ways: an over-confident wrong mark is far more damaging than a flagged uncertain one, and a "medium" on a mark that is not in doubt costs the teacher a look for nothing.
 
 OUTPUT
 Return ONLY a JSON object. No preamble, no markdown fences, no commentary.
@@ -1536,7 +1536,7 @@ ${G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES}`;
  * first hits a cache read instead of re-sending the whole mark scheme.
  */
 /** Build one unit's mark-scheme block: question/context text shared by the batch and single-item prompts. */
-function buildUnitBlock(u: GradingUnit): string {
+export function buildUnitBlock(u: GradingUnit): string {
   const lines = [
     `=== ${unitLabel(u)} ===`,
     `testItemId: ${u.testItemId}`,
