@@ -1518,11 +1518,12 @@ describe("buildGradingSystemPrompt", () => {
     expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
   });
 
-  it("defines confidence by the certainty of the mark, so a clear wrong answer is still high", () => {
-    expect(GRADING_SYSTEM_PROMPT).toContain("a clearly wrong answer with legible working is a certain 0 and is \"high\"");
-    expect(GRADING_SYSTEM_PROMPT).toContain("another examiner could reasonably award a different number");
-    expect(GRADING_SYSTEM_PROMPT).toContain("Anything below \"high\" is put in front of the teacher");
-    expect(GRADING_SYSTEM_PROMPT).not.toContain("Anything marked \"low\" is flagged");
+  // The confidence definition was rewritten once (20 Sep 2026) and measured
+  // worse at "high", so this pins the wording that IS in production and the
+  // note that says why. See docs/HANDOFF.md section 23.
+  it("keeps the measured confidence definition and the note about the rewrite that was not shipped", () => {
+    expect(GRADING_SYSTEM_PROMPT).toContain('"high": the work is legible and maps cleanly onto the mark scheme.');
+    expect(GRADING_SYSTEM_PROMPT).toContain("was measured on 20 Sep 2026 and not shipped");
   });
 
   it("appends the numerical-accuracy policy when any unit is AA HL Paper 2", () => {

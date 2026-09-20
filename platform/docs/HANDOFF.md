@@ -2427,7 +2427,9 @@ options, to delete the demotion and keep the warning.
   `scripts/eval-grading.ts` now reports accuracy **by confidence** (and skips
   runs keyed on an invited student with no profile, which used to crash it).
   Run the calibration after any change to how confidence is set; run the eval
-  before and after any prompt change.
+  before and after any prompt change. Note the golden set has grown to 66
+  student-tests / 869 parts since §11's 9 students, so a full run is about
+  $13 on Opus 4.5; `--test <uuid>` keeps a comparison to one paper.
 - **B. The hedge cap is gone.** Hedging still writes its warning
   (`"1(b): reasoning hedges on reading ... check the crop before accepting"`),
   and the review panel prints it on the row, but the label is the model's own.
@@ -2461,13 +2463,29 @@ options, to delete the demotion and keep the warning.
   mark, which lands in the `mark_changes` reason. This is the loop that was
   missing: a ruling made once on one student settles the same call for the
   rest of the class, and the model can say "high" on it with reason.
-- **E. What "high" means.** WORKING ORDER step 6 of the system prompt now
-  defines the labels by the certainty of the MARK: a clearly wrong answer is
-  still "high"; "medium" means another examiner could reasonably award a
-  different number, and the reasoning must say why; and the stale line saying
-  only "low" is flagged now says anything below high is put in front of the
-  teacher and, on a summative, not written by Accept-all. See the eval
-  comparison below.
+- **E. What "high" means -- measured and NOT shipped.** A rewrite of WORKING
+  ORDER step 6 defined the labels by the certainty of the MARK ("a clearly
+  wrong answer with legible working is a certain 0 and is high"; "medium means
+  another examiner could reasonably award a different number, say which").
+  Gate: the BiStats eval before and after, 11 students, 66 parts, Opus 4.5
+  at temperature 0, ~$1.70 a run:
+
+  | run | exact | within 1 | MAE | high exact | medium exact | low exact |
+  |---|---|---|---|---|---|---|
+  | before (`docs/eval/2026-09-20-bistats-before-step6.json`) | 58 (88%) | 66 | 0.12 | 52/54 | 5/7 | 1/5 |
+  | after (`docs/eval/2026-09-20-bistats-after-step6.json`) | 59 (89%) | 65 | 0.14 | 57/62 | 1/2 | 1/2 |
+
+  It did what it was written to do -- eleven more parts called "high" -- and
+  the cost is in the same row: misses at "high" went from 2 of 54 to 5 of
+  62, and one part moved two marks. The gate was "no new disagreement at
+  high", so the old wording is back in production with a note beside it
+  saying why, and both JSON files are kept. Read the "before" run's
+  by-confidence line as the useful result: the label as it stands IS
+  informative (high 96% exact, medium 71%, low 20%), which is what B relies
+  on. Whoever tries the rewrite again should try only the stale-line fix
+  first ("anything below high is put in front of the teacher") and run the
+  same two evals; the definition change and the stale-line fix were bundled
+  here, so the eval cannot say which of the two moved the labels.
 - **F. Feedback to the grader, in the teacher's own words.** The same Why?
   panel, on every part of every paper (a Grade 9 formative, Standard Level or
   activity row as much as an IB one), has a "Feedback to the grader" box. The
