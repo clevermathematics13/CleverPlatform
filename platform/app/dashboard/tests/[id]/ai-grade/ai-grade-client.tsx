@@ -277,8 +277,8 @@ export function AiGradeClient({
   const [boxEditorError, setBoxEditorError] = useState<string | null>(null);
   /** Which rows have their question image un-minimized — collapsed by default, keyed by result.id. */
   const [questionImageShown, setQuestionImageShown] = useState<Set<string>>(new Set());
-  /** Same, for the student's-work scan crop. */
-  const [evidenceImageShown, setEvidenceImageShown] = useState<Set<string>>(new Set());
+  /** Same, for the student's-work scan crop, but shown by default -- so this tracks which rows have been explicitly minimized, keyed by result.id. */
+  const [evidenceImageHidden, setEvidenceImageHidden] = useState<Set<string>>(new Set());
   /** Same, for the mark scheme source image(s). */
   const [markschemeImageShown, setMarkschemeImageShown] = useState<Set<string>>(new Set());
 
@@ -1003,7 +1003,11 @@ export function AiGradeClient({
         )
       );
       // Make sure the corrected crop is actually visible behind the editor.
-      setEvidenceImageShown((prev) => new Set(prev).add(r.id));
+      setEvidenceImageHidden((prev) => {
+        const next = new Set(prev);
+        next.delete(r.id);
+        return next;
+      });
       setBoxEditor(null);
       setStatusLine("Evidence region updated and the crop re-cut. The mark is unchanged.");
     } catch (e) {
@@ -1091,7 +1095,7 @@ export function AiGradeClient({
     });
 
   const toggleEvidenceImage = (resultId: string) =>
-    setEvidenceImageShown((prev) => {
+    setEvidenceImageHidden((prev) => {
       const next = new Set(prev);
       if (next.has(resultId)) next.delete(resultId);
       else next.add(resultId);
@@ -1356,7 +1360,7 @@ export function AiGradeClient({
                         onClick={() => toggleEvidenceImage(r.id)}
                         className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
                       >
-                        <span>{evidenceImageShown.has(r.id) ? "▾" : "▸"}</span>
+                        <span>{evidenceImageHidden.has(r.id) ? "▸" : "▾"}</span>
                         Student&apos;s work
                       </button>
                     ) : (
@@ -1409,7 +1413,7 @@ export function AiGradeClient({
                     )}
                   </div>
                   <div className="mt-1 space-y-2">
-                    {evidenceImageShown.has(r.id) && r.evidence_image_url && (
+                    {!evidenceImageHidden.has(r.id) && r.evidence_image_url && (
                       <div className="relative inline-block">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
