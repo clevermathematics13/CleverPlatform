@@ -1,0 +1,759 @@
+{
+  "ranAt": "2026-09-20T07:15:29.760Z",
+  "model": "claude-opus-5",
+  "effort": "medium",
+  "temperature": null,
+  "trials": 1,
+  "summary": {
+    "n": 0,
+    "exact": 0,
+    "within1": 0,
+    "mae": 0,
+    "bias": 0,
+    "totalGolden": 0,
+    "totalPredicted": 0,
+    "cost": 0,
+    "byPart": {},
+    "byConfidence": {},
+    "failed": 11
+  },
+  "results": [
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Alejandro Rosell",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 4,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHBTFsffPBrrBufHcL2\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Camilla Cohen",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHBZDoDkdwGvLZPSnjE\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Carlos Rojas",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHBdRK2EjakE4S9zwmg\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Gael Castrillon",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 2,
+          "suggestedThen": 2,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHBhSAHjzoyrcxM2vhF\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Julio Bravo",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 2,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHBmhtBjyfdtm853D25\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Luciana Rojas",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHBqaoQE8yEMxV36n9D\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Minjun Choi",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 4,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHBuaAFZpzGRkvc6osM\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Nicolas Carriquiry",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 1,
+          "suggestedThen": 1,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 2,
+          "suggestedThen": 2,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHByL8VEaZreNknh3X8\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Pedro Costa",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 4,
+          "suggestedThen": 4,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 4,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 2,
+          "suggestedThen": 2,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 1,
+          "suggestedThen": 2,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHC3xC3y1X3DNAYS3LP\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Salim Fellah",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 2,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHC7n8fMtaYF1xAYNhY\"}"
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Seungjun Lee",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 4,
+          "suggestedThen": 4,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 5,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": null,
+          "confidence": null
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": null,
+          "confidence": null
+        }
+      ],
+      "usage": {
+        "input": 0,
+        "cacheWrite": 0,
+        "cacheRead": 0,
+        "output": 0
+      },
+      "error": "400 {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"},\"request_id\":\"req_011CfEHCBe41HvNGtc4bHVFQ\"}"
+    }
+  ]
+}

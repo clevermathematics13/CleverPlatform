@@ -2575,8 +2575,42 @@ cover-page pre-filter in the CV service (6%; CV engineering). The CV service
 itself stays funded: crops, Locate on page, Fix crops and NA packets depend
 on it; marks do not.
 
-**Model x effort sweep** (approved budget $12; results below, appended when
-the runs finish): Opus 4.5 at temperature 0 (current) against Sonnet 5 and
-Opus 5 at low and medium effort, on the BiStats eval. The ship rule: a
-config ships only if exact and the high-label precision hold within the
-noise the second baseline trial shows.
+**The noise floor, measured.** A second trial of the current prompt on the
+same 66 parts (`docs/eval/2026-09-20-bistats-baseline-trial2.json`): exact
+56 against 58 the first time, MAE 0.17 against 0.12, "high" 54/59 exact
+against 52/54. So one run of this eval moves by two exact matches, 0.05 of
+MAE and three misses at "high" on its own, at temperature 0. **That is the
+band both prompt experiments of this day landed in** (§23 step 6: 59 exact,
+57/62 high; the tighter notes above: 56 exact, 54/59 high). Neither was a
+measured regression; neither was a measured gain. The reference's rule
+holds: never keep or revert on a one-case swing. Both are worth two more
+trials each (~$3.40 a pair) before deciding; until then the prompt stays at
+its long-measured wording, and the tighter-notes diff is in this section's
+commit history if the repeat trials favour it.
+
+**Model x effort sweep** (approved budget $12; $7.40 spent, single trials,
+`docs/eval/2026-09-20-bistats-<model>-<effort>.json`):
+
+| Config | Parts | Exact | MAE | High exact | $ / student | Output tok / student |
+|---|---|---|---|---|---|---|
+| Opus 4.5, temperature 0 (current), trial 1 / 2 | 66 | 58 / 56 | 0.12 / 0.17 | 52/54 / 54/59 | 0.153 / 0.156 | 2830 / 2939 |
+| Sonnet 5, effort low | 66 | 51 (77%) | 0.27 | 32/35 | 0.102 | 6652 |
+| Sonnet 5, effort medium | 52 of 66 (14 parts came back unusable) | 34 (65%) | 1.02 | 23/26 | 0.145 | 10970 |
+| Opus 5, effort low (7 of 11 students; the account ran out of credit) | 42 | 33 (79%) | 0.24 | 29/32 | 0.197 | 2651 |
+| Opus 5, effort medium | none: every request failed on credit balance | | | | | |
+
+Read against the noise band: Sonnet 5 at low gives back 5 to 7 exact
+matches and doubles MAE, well outside it, and costs 65% of Opus 4.5 rather
+than the 40% its token price suggests, because adaptive thinking is billed
+as output (6.6k tokens a student against 2.9k). Sonnet 5 at medium is worse
+again and no cheaper. Opus 5 at low, on the seven students it finished, is
+below the band on exact and dearer per student than Opus 4.5. **Opus 4.5 at
+temperature 0 stays**, and the "cheaper model" lever is closed on this
+evidence. Opus 5 at medium is the one config still unmeasured; it costs the
+same as Opus 4.5 per token and would only be a quality candidate. Worth one
+run (~$2) when credit is back, together with the repeat trials above.
+
+**The account ran out of API credit during the sweep** (20 Sep, ~06:45 UTC,
+"Your credit balance is too low to access the Anthropic API"). If the
+deployment's `ANTHROPIC_API_KEY` is on the same account, marking on the site
+fails the same way until it is topped up.
