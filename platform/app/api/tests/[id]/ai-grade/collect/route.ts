@@ -59,6 +59,8 @@ interface OpenBatchRow {
 interface PendingRunRow {
   id: string;
   status: string;
+  /** Parts this run was asked to mark; null means the whole paper (see the queue route). */
+  requested_test_item_ids?: string[] | null;
   student_id: string | null;
   invited_student_id: string | null;
   source_storage_path: string | null;
@@ -562,7 +564,7 @@ export async function POST(
     // lines are skipped without a query, a download or a crop.
     const { data: rawPending, error: pendingErr } = await supabase
       .from("ai_grade_runs")
-      .select("id, status, student_id, invited_student_id, source_storage_path")
+      .select("id, status, student_id, invited_student_id, source_storage_path, requested_test_item_ids")
       .eq("pending_message_batch_id", row.id);
     if (pendingErr) {
       // supabase-js reports a failed select as data null, which is
@@ -656,7 +658,12 @@ export async function POST(
         return;
       }
 
-      const validation = validateGradeResponse(responseText, markScheme.gradeable);
+      // A partial run answered for its requested parts only; validating it
+      // against the whole paper would warn "no grade returned" for every
+      // other part and carry none of them forward.
+      const requestedIds = run.requested_test_item_ids && run.requested_test_item_ids.length > 0 ? new Set(run.requested_test_item_ids) : null;
+      const gradeableForRun = requestedIds ? markScheme.gradeable.filter((u) => requestedIds.has(u.testItemId)) : markScheme.gradeable;
+      const validation = validateGradeResponse(responseText, gradeableForRun);
       if (!validation.ok) {
         // No retry here, unlike the synchronous route: a second attempt would
         // mean a second batch and another night's wait, and the teacher can
@@ -702,6 +709,7 @@ export async function POST(
         assemblyWarnings: markScheme.assemblyWarnings,
         grades: validation.outcome.grades,
         warnings,
+        requestedTestItemIds: requestedIds,
       });
       if (!persisted.ok) {
         await failRun(run.id, persisted.error, "running");

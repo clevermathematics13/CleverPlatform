@@ -495,6 +495,15 @@ export async function persistGradeOutcome(args: {
   assemblyWarnings: string[];
   grades: ValidatedGrade[];
   warnings: string[];
+  /**
+   * Set when the run was asked to mark only these parts
+   * (ai_grade_runs.requested_test_item_ids). Every other gradeable part's row
+   * is copied from the student's previous complete run -- mark, reasoning,
+   * crop and acceptance alike -- so the new run is still a whole paper. A
+   * student with no previous complete run gets only the requested parts,
+   * and a warning says so.
+   */
+  requestedTestItemIds?: Set<string> | null;
 }): Promise<
   | { ok: true; coverage: GradeCoverage; completionRecorded: boolean }
   | { ok: false; error: string }
@@ -512,6 +521,7 @@ export async function persistGradeOutcome(args: {
     grades,
     warnings,
   } = args;
+  const requested = args.requestedTestItemIds ?? null;
 
   // -- Evidence crops (best-effort; never blocks or fails the run) -----------
   const crops = await fetchEvidenceCrops(supabase, testId, scanBase64, grades);
@@ -533,6 +543,8 @@ export async function persistGradeOutcome(args: {
   // parts whose suggestion moved need a fresh look. Scoped to the most recent
   // COMPLETE run before this one, so a failed attempt in between is ignored.
   const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
+  /** The previous complete run's full rows, needed only for a partial re-mark (see requestedTestItemIds). */
+  const priorFullRows: Record<string, unknown>[] = [];
   {
     let priorCompleteQuery = supabase
       .from("ai_grade_runs")
@@ -554,6 +566,15 @@ export async function persistGradeOutcome(args: {
         .eq("run_id", priorRun.id)
         .eq("accepted", true);
       for (const p of priorRows ?? []) priorAccepted.set(p.test_item_id, p);
+      if (requested) {
+        const { data: fullRows } = await supabase
+          .from("ai_grade_results")
+          .select(
+            "test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, evidence_box_source, mark_breakdown, accepted, accepted_at, accepted_by"
+          )
+          .eq("run_id", priorRun.id);
+        for (const r of fullRows ?? []) priorFullRows.push(r as Record<string, unknown>);
+      }
     }
   }
 
@@ -590,21 +611,52 @@ export async function persistGradeOutcome(args: {
     };
   });
 
-  const { error: insertErr } = await supabase.from("ai_grade_results").insert(rows);
+  // -- A partial re-mark carries the rest of the paper forward ----------------
+  // The requested parts were just marked; every other gradeable part keeps
+  // the previous run's row verbatim, acceptance included, under the new run
+  // id. The crop path still points at the previous run's file, which stays
+  // in Storage. A part the previous run never marked is simply absent, the
+  // same as a part the model returned nothing for.
+  let carriedRows: typeof rows = [];
+  let carriedSuggested = 0;
+  const carriedNeedsReview: string[] = [];
+  if (requested) {
+    const marked = new Set(rows.map((r) => r.test_item_id));
+    const unitById = new Map(gradeable.map((u) => [u.testItemId, u]));
+    for (const prior of priorFullRows) {
+      const itemId = prior.test_item_id as string;
+      if (marked.has(itemId) || requested.has(itemId)) continue;
+      const unit = unitById.get(itemId);
+      if (!unit) continue;
+      const { test_item_id: _drop, ...rest } = prior;
+      void _drop;
+      carriedRows.push({ ...(rest as Omit<(typeof rows)[number], "run_id" | "test_item_id">), run_id: runId, test_item_id: itemId } as (typeof rows)[number]);
+      carriedSuggested += prior.suggested_marks as number;
+      if ((prior.confidence as string) !== "high" || prior.work_found === false) carriedNeedsReview.push(unitLabel(unit));
+    }
+    if (priorFullRows.length === 0) {
+      warnings.push(
+        "This run marked only the requested part(s) and found no previous complete run to carry the rest of the paper from; the other parts are not shown until the student is marked in full."
+      );
+    }
+  }
+  const allRows = [...rows, ...carriedRows];
+
+  const { error: insertErr } = await supabase.from("ai_grade_results").insert(allRows);
   if (insertErr) return { ok: false, error: `Could not save results: ${insertErr.message}` };
 
-  const suggestedTotal = grades.reduce((s, g) => s + g.clampedMarks, 0);
+  const suggestedTotal = grades.reduce((s, g) => s + g.clampedMarks, 0) + carriedSuggested;
   // maxTotal covers only parts that had a mark scheme to grade against;
   // testTotalMarks is the assessment's real total, so the UI can show
   // "17/20 of 33" instead of a misleading "17/20" when parts are missing
   // a mark scheme.
   const maxTotal = gradeable.reduce((s, u) => s + u.maxMarks, 0);
   const testTotalMarks = units.reduce((s, u) => s + u.maxMarks, 0);
-  const needsReview = grades.filter(gradeNeedsReview).map((g) => unitLabel(g.unit));
+  const needsReview = [...grades.filter(gradeNeedsReview).map((g) => unitLabel(g.unit)), ...carriedNeedsReview];
 
   const coverage: GradeCoverage = {
     partsInAssessment: units.length,
-    partsGraded: grades.length,
+    partsGraded: grades.length + carriedRows.length,
     partsWithoutMarkscheme: units.length - gradeable.length,
     suggestedTotal,
     maxTotal,

@@ -266,6 +266,8 @@ export function AiGradeClient({
   /** Marking-note text being edited per test item, present only while the editor is open. */
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [savingNoteFor, setSavingNoteFor] = useState<string | null>(null);
+  /** Test item whose class-wide one-part re-mark is being queued. */
+  const [remarkingPartFor, setRemarkingPartFor] = useState<string | null>(null);
   /** Feedback to the grader being typed per test item. */
   const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>({});
   const [draftingFor, setDraftingFor] = useState<string | null>(null);
@@ -719,6 +721,54 @@ export function AiGradeClient({
   };
 
   // -- Run grading (fresh upload or re-use stored scan) --
+  // -- Re-mark a stored scan overnight: the same request as runGrading sends,
+  // through the Message Batches API at half price, collected by this page
+  // when the result lands (usually within the hour). The default for a
+  // re-mark since 20 Sep 2026, because nobody waits on one: half of all
+  // marking runs were re-marks, at full price, with a tab open. -------------
+  const queueRemark = async (studentId: string) => {
+    const currentRun = runsByStudent[studentId];
+    const storagePath = currentRun?.source_storage_path ?? newerAttemptByStudent[studentId]?.source_storage_path;
+    if (!storagePath) {
+      setError("No stored scan to re-mark for this student.");
+      return;
+    }
+    const acceptedCount = currentRun ? acceptanceByRun[currentRun.id]?.accepted ?? 0 : 0;
+    if (acceptedCount > 0) {
+      const ok = window.confirm(
+        `${acceptedCount} part(s) for this student are already accepted into Clev's Marks.\n\n` +
+          "Re-marking runs the model again. Parts whose new suggestion matches the current one stay accepted; " +
+          "any part whose suggestion changes will need to be reviewed and accepted again. Clev's Marks themselves are not changed.\n\n" +
+          "Continue?"
+      );
+      if (!ok) return;
+    }
+    setBusyStudent(studentId);
+    setError(null);
+    setStatusLine("Sending the stored scan to Anthropic for overnight marking…");
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ students: [{ studentId, storagePath }] }),
+      });
+      if (!ok) {
+        setStatusLine(null);
+        setError((data.error as string) ?? "Could not send this scan for overnight marking.");
+        return;
+      }
+      setStatusLine(
+        "Sent for overnight marking at half price. The result appears here when it arrives, usually within the hour; this page checks every 30 seconds. Use 'Mark now' if you need it this minute."
+      );
+      await loadOverview();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send this scan for overnight marking.");
+      setStatusLine(null);
+    } finally {
+      setBusyStudent(null);
+    }
+  };
+
   const runGrading = async (studentId: string, file: File | null) => {
     // A new run replaces the reviewable one. Parts whose new suggestion
     // matches the current one keep their accepted status (the server carries
@@ -892,6 +942,59 @@ export function AiGradeClient({
       setError(e instanceof Error ? e.message : "Could not draft a ruling from that feedback.");
     } finally {
       setDraftingFor(null);
+    }
+  };
+
+  // -- Re-mark ONE part for every student with a stored scan, overnight. The
+  // follow-through to a marking note: the ruling was written once, and the
+  // class is marked to it without paying for the rest of the paper again.
+  // Each request sends the scan and the one part; the collect step carries
+  // every other part forward from the student's previous run. ---------------
+  const remarkPartForClass = async (itemId: string, label: string) => {
+    const targets = students
+      .map((st) => ({ studentId: st.profile_id, storagePath: runsByStudent[st.profile_id]?.source_storage_path ?? null }))
+      .filter((t): t is { studentId: string; storagePath: string } => !!t.storagePath);
+    if (targets.length === 0) {
+      setError("No student has a stored scan to re-mark.");
+      return;
+    }
+    const ok = window.confirm(
+      `Re-mark ${label} for ${targets.length} student(s) overnight, at half price, using the marking note as it is saved now?\n\n` +
+        "Every other part keeps its current mark and acceptance. A student whose suggestion for this part changes will show it for review; one whose suggestion stays the same keeps their acceptance."
+    );
+    if (!ok) return;
+    setRemarkingPartFor(itemId);
+    setError(null);
+    try {
+      // The queue route takes at most 20 students a call and may hand some
+      // back as `remaining` when their scans overflow its byte ceiling, so
+      // this loops until every target has been submitted or reported failed.
+      let sent = 0;
+      let failedCount = 0;
+      const pending = [...targets];
+      let guard = 0;
+      while (pending.length > 0 && guard++ < 50) {
+        const chunk = pending.splice(0, 20);
+        const { ok: okChunk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/queue`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ students: chunk, testItemIds: [itemId] }),
+        });
+        if (!okChunk) throw new Error((data.error as string) ?? "Could not queue the re-mark.");
+        sent += Array.isArray(data.submitted) ? data.submitted.length : 0;
+        failedCount += Array.isArray(data.failed) ? data.failed.length : 0;
+        const remaining = Array.isArray(data.remaining) ? (data.remaining as { studentId: string; storagePath: string }[]) : [];
+        if (remaining.length === chunk.length) throw new Error("The queue accepted none of the remaining students.");
+        pending.unshift(...remaining);
+      }
+      setStatusLine(
+        `Sent ${label} for ${sent} student(s) for overnight re-marking${failedCount > 0 ? ` (${failedCount} could not be sent)` : ""}. Results appear as they arrive, usually within the hour; this page checks every 30 seconds.`
+      );
+      await loadOverview();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not queue the re-mark.");
+    } finally {
+      setRemarkingPartFor(null);
     }
   };
 
@@ -1808,6 +1911,20 @@ export function AiGradeClient({
                         )}
                       </div>
                     )}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => remarkPartForClass(meta.id, label)}
+                        disabled={remarkingPartFor === meta.id}
+                        title="Sends only this part, for every student with a stored scan, to Anthropic's batch tier. Every other part keeps its current mark and acceptance."
+                        className="rounded border border-teal-400/40 px-3 py-1 text-xs font-medium text-teal-300 hover:bg-teal-500/15 disabled:opacity-50"
+                      >
+                        {remarkingPartFor === meta.id ? "Queuing…" : `Re-mark ${label} for the whole class (overnight)`}
+                      </button>
+                      <span className="text-[11px] text-da-muted">
+                        About a third of a full re-mark per student; the rest of each paper is carried forward.
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2269,14 +2386,26 @@ export function AiGradeClient({
                         </button>
 
                         {(run?.source_storage_path || newerAttempt?.source_storage_path) && (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => runGrading(s.profile_id, null)}
-                            className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
-                          >
-                            Re-mark stored scan
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => queueRemark(s.profile_id)}
+                              title="Sends the stored scan to Anthropic's batch tier: the same marking at half price, result usually within the hour, collected by this page."
+                              className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                            >
+                              Re-mark stored scan (overnight, half price)
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => runGrading(s.profile_id, null)}
+                              title="Marks the stored scan right now at full price, with this tab open."
+                              className="rounded border border-da-border px-2 py-1 text-[11px] text-da-muted/80 hover:bg-da-hover disabled:opacity-50"
+                            >
+                              Mark now
+                            </button>
+                          </>
                         )}
 
                         {run?.status === "complete" && (
