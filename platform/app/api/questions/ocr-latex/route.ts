@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { postProcessMathpixLatex, IB_NORMALISE_SYSTEM } from "@/lib/latex-utils";
 import Anthropic from "@anthropic-ai/sdk";
+import { recordUsage } from "@/lib/ai-usage";
 
 export const maxDuration = 120;
 
@@ -338,6 +339,7 @@ Additional rules:
         },
       ],
     });
+    await recordUsage(supabase, { pipeline: "ocr_latex", model: response.model, usage: response.usage });
     // Find the text block by type rather than assuming index 0 — adaptive-thinking
     // models can place a "thinking" block before the "text" block.
     extractedLatex =
@@ -382,6 +384,7 @@ Additional rules:
           },
         ],
       });
+      await recordUsage(supabase, { pipeline: "ocr_latex", model: normResponse.model, usage: normResponse.usage });
       const normalised =
         normResponse.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim() ?? "";
       if (normalised) extractedLatex = normalised;
@@ -431,6 +434,7 @@ ${extractedLatex}`;
           ],
         }],
       });
+      await recordUsage(supabase, { pipeline: "ocr_latex", model: correctionResp.model, usage: correctionResp.usage });
       const corrected = correctionResp.content.find(
         (b): b is Anthropic.TextBlock => b.type === "text",
       )?.text.trim() ?? "";

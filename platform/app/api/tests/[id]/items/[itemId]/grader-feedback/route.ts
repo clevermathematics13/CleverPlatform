@@ -7,7 +7,7 @@ import { assembleMarkScheme, unitLabel } from "@/lib/ai-grading";
 import {
   GRADER_FEEDBACK_MODEL,
   GraderFeedbackResponseSchema,
-  buildGraderFeedbackSystemPrompt,
+  buildGraderFeedbackSystemBlocks,
   buildGraderFeedbackUserPrompt,
   type GraderFeedbackCase,
 } from "@/lib/grader-feedback";
@@ -85,6 +85,7 @@ export async function POST(
 
   const currentNotes: string | null = item.marking_notes?.trim() || null;
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const systemBlocks = buildGraderFeedbackSystemBlocks(unit);
 
   let parsed: ReturnType<typeof GraderFeedbackResponseSchema.parse> | null = null;
   let lastError = "Model returned an empty response";
@@ -98,7 +99,13 @@ export async function POST(
         // ruling is read on every later script.
         thinking: { type: "adaptive" },
         output_config: { effort: "high", format: zodOutputFormat(GraderFeedbackResponseSchema) },
-        system: buildGraderFeedbackSystemPrompt(unit),
+        // Two blocks with the breakpoint on the first: the grader's own prompt
+        // for this paper, which a marking call may have cached minutes ago
+        // (1h TTL on the interactive route), then this call's task block.
+        system: [
+          { type: "text", text: systemBlocks.grading, cache_control: { type: "ephemeral", ttl: "1h" } },
+          { type: "text", text: systemBlocks.task },
+        ],
         messages: [{ role: "user", content: buildGraderFeedbackUserPrompt({ unit, feedback, currentNotes, graded }) }],
       });
       await recordUsage(supabase, {

@@ -4,6 +4,8 @@ import { randomUUID } from "crypto";
 import { PDFDocument } from "pdf-lib";
 import convertHeic from "heic-convert";
 import Anthropic from "@anthropic-ai/sdk";
+import { recordUsage } from "@/lib/ai-usage";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 // File assembly plus a vision pass to read the handwritten name and grade
@@ -49,7 +51,7 @@ function normaliseConfidence(value: unknown): Confidence {
   return value === "high" || value === "medium" || value === "low" ? value : "low";
 }
 
-async function readFrontPage(pdfBase64: string): Promise<FrontPageDetails | null> {
+async function readFrontPage(pdfBase64: string, supabase: SupabaseClient): Promise<FrontPageDetails | null> {
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const response = await anthropic.messages.create({
@@ -72,6 +74,7 @@ async function readFrontPage(pdfBase64: string): Promise<FrontPageDetails | null
         },
       ],
     });
+    await recordUsage(supabase, { pipeline: "placement_upload", model: response.model, usage: response.usage });
 
     const text =
       response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim() ?? "";
@@ -246,7 +249,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Read the name and grade level off the handwritten front page.
-  const front = await readFrontPage(finalPdfBuffer.toString("base64"));
+  const front = await readFrontPage(finalPdfBuffer.toString("base64"), supabase);
 
   // Name: an explicitly-typed name always wins over extraction.
   let studentName: string | null = manualName;

@@ -68,13 +68,26 @@ export interface GraderFeedbackCase {
 export function buildGraderFeedbackSystemPrompt(unit: GradingUnit): string {
   return `${buildGradingSystemPrompt([unit])}
 
-=== YOUR TASK IN THIS CALL ===
+${GRADER_FEEDBACK_TASK_BLOCK}`;
+}
+
+/**
+ * The same prompt as two system blocks, so the route can put a cache
+ * breakpoint after the grader's own prompt: that block is byte-identical to
+ * what a marking call for this paper sends, so a feedback call made while
+ * that entry is warm reads 29-50k characters from cache instead of paying
+ * for them again. The task block stays outside the breakpoint.
+ */
+export function buildGraderFeedbackSystemBlocks(unit: GradingUnit): { grading: string; task: string } {
+  return { grading: buildGradingSystemPrompt([unit]), task: GRADER_FEEDBACK_TASK_BLOCK };
+}
+
+const GRADER_FEEDBACK_TASK_BLOCK = `=== YOUR TASK IN THIS CALL ===
 You are NOT marking a script now. Everything above is the brief the marker works from, given to you so you know it exactly. A teacher has read one of the marker's results for the part below and written feedback about how it should be marked. Turn that feedback into the part's TEACHER'S MARKING NOTES: the rulings the marker will read after the mark scheme on every later script on this paper (rule 20 above).
 
 Write the notes as a second marker would want them: which mark scheme token or descriptor the ruling touches, what earns it and what does not, and any alternative the scheme did not list. Fold the feedback into the existing notes rather than appending a contradiction; keep every existing ruling the feedback does not overturn. Keep the mark scheme's maximum and the marking policy above intact -- if the feedback cannot be honoured without breaking either, or it is about a different part, say so in cannotApply and leave markingNotes as the existing notes unchanged. Do not restate the mark scheme; the notes are read beside it. Write in the teacher's register, plainly, in LaTeX $...$ for any mathematics as the scheme does.
 
 Return ONLY a JSON object with markingNotes, summary, caseMarks and cannotApply.`;
-}
 
 export function buildGraderFeedbackUserPrompt(args: {
   unit: GradingUnit;

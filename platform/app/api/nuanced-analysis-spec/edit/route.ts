@@ -7,6 +7,8 @@ import {
   type NuancedAnalysisSpec,
 } from "@/lib/nuanced-analysis-spec.schema";
 import { compileSpecToChecklist } from "@/lib/nuanced-analysis-spec.compile";
+import { recordUsage } from "@/lib/ai-usage";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 // Opus re-emitting the full spec JSON (plus thinking) can take a while.
@@ -41,6 +43,7 @@ function extractJsonObject(text: string): string | null {
 }
 
 async function callOpus(
+  supabase: SupabaseClient,
   messages: Anthropic.MessageParam[],
 ): Promise<string> {
   // .stream().finalMessage() — the SDK requires streaming above ~21,333
@@ -53,6 +56,7 @@ async function callOpus(
     messages,
   });
   const message = await stream.finalMessage();
+  await recordUsage(supabase, { pipeline: "spec_edit", model: message.model, usage: message.usage });
   if (message.stop_reason === "max_tokens") {
     console.error("[spec-edit] Opus response truncated at max_tokens.", message.usage);
   }
@@ -120,6 +124,7 @@ function changedSections(
 export async function POST(request: Request) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
+  const { supabase } = auth;
 
   try {
     const { instruction, spec } = await request.json();
@@ -151,7 +156,7 @@ export async function POST(request: Request) {
       `Reply with ONLY the complete updated JSON object.`;
 
     // Attempt 1
-    const firstRaw = await callOpus([{ role: "user", content: baseUserMessage }]);
+    const firstRaw = await callOpus(supabase, [{ role: "user", content: baseUserMessage }]);
     let result = parseAndValidate(firstRaw);
 
     // Attempt 2 (only if attempt 1 failed): feed the exact errors back.
@@ -169,7 +174,7 @@ export async function POST(request: Request) {
             `\nFix these problems and reply again with ONLY the complete, valid updated JSON object. Do not change anything else.`,
         },
       ];
-      const secondRaw = await callOpus(retryMessages);
+      const secondRaw = await callOpus(supabase, retryMessages);
       result = parseAndValidate(secondRaw);
     }
 

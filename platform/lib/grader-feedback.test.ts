@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   GRADER_FEEDBACK_MODEL,
   GraderFeedbackResponseSchema,
+  buildGraderFeedbackSystemBlocks,
   buildGraderFeedbackSystemPrompt,
   buildGraderFeedbackUserPrompt,
 } from "./grader-feedback";
@@ -31,6 +32,14 @@ describe("buildGraderFeedbackSystemPrompt", () => {
     expect(prompt).toContain("YOUR TASK IN THIS CALL");
     expect(prompt).toContain("TEACHER'S MARKING NOTES");
     expect(prompt).toContain("cannotApply");
+  });
+
+  it("splits into the grader's own prompt and the task block, so the first can be cached", () => {
+    const blocks = buildGraderFeedbackSystemBlocks(unit());
+    expect(blocks.grading.startsWith(GRADING_SYSTEM_PROMPT)).toBe(true);
+    expect(blocks.grading).not.toContain("YOUR TASK IN THIS CALL");
+    expect(blocks.task).toContain("YOUR TASK IN THIS CALL");
+    expect(`${blocks.grading}\n\n${blocks.task}`).toBe(buildGraderFeedbackSystemPrompt(unit()));
   });
 });
 

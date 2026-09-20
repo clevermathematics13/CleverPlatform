@@ -79,6 +79,9 @@ export async function runCoverPageCheck(opts: RunCoverPageCheckOptions): Promise
   const first = await anthropic.messages.create({
     model: COVER_PAGE_CHECK_MODEL,
     max_tokens: 512,
+    // A cover read is a yes/no plus a name; sampling noise can only make it
+    // less repeatable (the default is 1.0).
+    temperature: 0,
     system: COVER_PAGE_CHECK_SYSTEM_PROMPT,
     messages: [{ role: "user", content: [document, { type: "text", text: buildCoverPageCheckUserPrompt(rosterNames) }] }],
   });

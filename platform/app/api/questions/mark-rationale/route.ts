@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 import { getApiTeacher } from '@/lib/auth';
 import { IB_MARK_RATIONALE_SYSTEM } from '@/lib/latex-utils';
+import { recordUsage } from '@/lib/ai-usage';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -81,6 +82,7 @@ Which of the assigned subtopics does this ${body.token.label} token primarily te
       system: IB_MARK_RATIONALE_SYSTEM,
       messages: [{ role: 'user', content: userMessage }],
     });
+    await recordUsage(supabase, { pipeline: "mark_rationale", model: response.model, usage: response.usage });
 
     // Claude Sonnet 5 has adaptive thinking on by default and cannot disable it,
     // so response.content[0] is frequently a "thinking" block rather than "text".

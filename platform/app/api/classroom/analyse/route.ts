@@ -6,6 +6,7 @@ import {
   fetchAttachment,
   type FetchedAttachment,
 } from "@/lib/google-classroom-work";
+import { recordUsage } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 280;
@@ -54,6 +55,7 @@ interface AnalyseBody {
 export async function POST(request: NextRequest) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
+  const { supabase } = auth;
 
   let body: AnalyseBody;
   try {
@@ -187,6 +189,7 @@ export async function POST(request: NextRequest) {
       system: SYSTEM,
       messages: [{ role: "user", content }],
     });
+    await recordUsage(supabase, { pipeline: "classroom_analyse", model: response.model, usage: response.usage });
 
     const raw =
       response.content

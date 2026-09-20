@@ -1479,7 +1479,7 @@ on the open statuses, which is the collect route's working set), and adds
 call takes at most `MAX_BATCH_REQUESTS` (20) students or `MAX_BATCH_BASE64_BYTES`
 (64MB of base64, ~48MB of PDF -- every scan sits in that invocation's heap at once)
 and returns the rest as `remaining`. One collect call writes at most
-`MAX_RESULTS_PER_CALL` (8) results, because writing one re-downloads the student's PDF
+`MAX_RESULTS_PER_CALL` (5 since the collect budget was re-measured; the code is the reference) results, because writing one re-downloads the student's PDF
 and calls the CV service for evidence crops, the same 10-30s the synchronous route
 spends, and it answers `more: true`. Both are therefore client-driven loops: the batch
 tab posts to queue until `remaining` is empty (and gives up if it stops shrinking),

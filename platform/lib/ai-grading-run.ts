@@ -119,24 +119,46 @@ function cacheControl(ttl: GradingCacheTtl): Anthropic.CacheControlEphemeral {
  * (messages.batches.create takes the same params under a custom_id), which is
  * what keeps the two senders from marking the same scan differently.
  */
+/**
+ * The effort a marking call runs at, on a model that takes one. The current
+ * grader (Opus 4.5) takes none and runs at temperature 0; Opus 5 and Sonnet 5
+ * reject sampling parameters and think adaptively instead, so a request to
+ * one of them must carry effort and no temperature. Kept as a type so the
+ * eval sweep and a future production switch spell it the same way.
+ */
+export type GradingEffort = "low" | "medium" | "high";
+
+/** Models whose requests take `output_config.effort` in place of `temperature`. */
+export function modelTakesEffort(model: string): boolean {
+  return /^claude-(opus-5|sonnet-5|fable-5|opus-4-[678]|sonnet-4-6)/.test(model);
+}
+
 export function buildGradingRequest(args: {
   gradeable: GradingUnit[];
   testName: string;
   studentDisplayName?: string;
   scanBase64: string;
   cacheTtl: GradingCacheTtl;
+  /** Defaults to GRADING_MODEL; the eval sweep passes candidates here. */
+  model?: string;
+  /** Only sent on a model that takes effort (see modelTakesEffort); defaults to the model's own default. */
+  effort?: GradingEffort;
 }): Anthropic.MessageCreateParamsNonStreaming {
   const { gradeable, testName, studentDisplayName, scanBase64, cacheTtl } = args;
+  const model = args.model ?? GRADING_MODEL;
+  const takesEffort = modelTakesEffort(model);
 
   return {
-    model: GRADING_MODEL,
+    model,
     max_tokens: 16384,
     // Marking should be as repeatable as the model allows. At the default
     // temperature (1.0) the same scan re-marked minutes apart moved by 1-3
     // marks on several parts (BiStats, 2 Sep 2026: Q1 5 -> 2 for one
     // student at "high" confidence). 0 does not make it deterministic, but
     // it removes the sampling noise that has nothing to do with the work.
-    temperature: 0,
+    // A model that takes effort rejects the parameter outright (400), so it
+    // is only sent where it is accepted.
+    ...(takesEffort ? {} : { temperature: 0 }),
     // Identical for every student sitting this same test (it only varies by
     // which policies this test's questions require, not by student), so
     // it's still worth caching on a batch upload even though it's no
@@ -174,7 +196,10 @@ export function buildGradingRequest(args: {
     // the JSON itself well-formed, which removes the failure that killed a
     // whole student's grading on 2 Sep 2026 -- a single stray character at
     // position 8267 of an otherwise fine response.
-    output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
+    output_config: {
+      format: zodOutputFormat(AiGradeResponseSchema),
+      ...(takesEffort && args.effort ? { effort: args.effort } : {}),
+    },
   };
 }
 

@@ -40,7 +40,24 @@ export type UsagePipeline =
   // (Opus, one call per activity; app/api/activity-assessments). Its own row
   // rather than sharing standards_import's: these arrive every lesson rather
   // than once a unit, so the running cost is worth seeing separately.
-  | "activity_import";
+  | "activity_import"
+  // Everything below was invisible in this log until 20 Sep 2026: the call
+  // sites existed, none recorded usage, so the marking-side profile was the
+  // whole picture. Each is one teacher-desk call or one generation.
+  | "packet_generate"
+  | "na_generate"
+  | "spec_edit"
+  | "graph_extract"
+  | "graph_lab"
+  | "ocr_latex"
+  | "visual_check"
+  | "question_classify"
+  | "mark_rationale"
+  | "classroom_analyse"
+  | "placement_upload"
+  | "placement_segment"
+  | "placement_grade"
+  | "placement_recommend";
 
 export type UsageRefType = "ai_grade_run" | "ai_grade_result" | "ai_grade_batch" | "na_crop" | "na_scan_batch";
 

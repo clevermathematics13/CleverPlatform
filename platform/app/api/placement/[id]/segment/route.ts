@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { resegmentBlockedReason } from "@/lib/placement-resegment";
 import Anthropic from "@anthropic-ai/sdk";
+import { recordUsage } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
 // Vision + reasoning over a full scanned test can take a while — same
@@ -142,6 +143,7 @@ export async function POST(
         },
       ],
     });
+    await recordUsage(supabase, { pipeline: "placement_segment", model: response.model, usage: response.usage });
 
     const text =
       response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text.trim() ?? "";
