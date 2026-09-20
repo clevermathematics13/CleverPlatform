@@ -19,6 +19,9 @@ export type UsagePipeline =
   // Reading which way up each page of a student scan is, before it is marked
   // (Haiku, one call per scan; lib/scan-orientation.ts).
   | "ai_grade_orientation"
+  // scripts/eval-grading.ts re-marking accepted scans to measure a prompt or
+  // model change. Its own row so an eval run's spend never reads as marking.
+  | "ai_grade_eval"
   | "na_assess"
   | "na_assess_wide"
   | "na_assess_batch"

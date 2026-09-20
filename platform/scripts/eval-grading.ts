@@ -91,10 +91,19 @@ async function loadGoldenSet(): Promise<GoldenStudent[]> {
 
   const byStudent = new Map<string, GoldenStudent>();
   const marksNeeded: { testItemId: string; studentId: string }[] = [];
+  let skippedInvited = 0;
   for (const r of rows ?? []) {
-    const run = r.ai_grade_runs as unknown as { id: string; test_id: string; student_id: string; source_storage_path: string | null; status: string };
+    const run = r.ai_grade_runs as unknown as { id: string; test_id: string; student_id: string | null; source_storage_path: string | null; status: string };
     const item = r.test_items as unknown as { question_number: number; part_label: string | null };
     if (!run.source_storage_path || run.status !== "complete") continue;
+    // A run graded against an invited-but-not-registered student has no
+    // profiles row and its marks sit under invited_student_id; the golden
+    // set is keyed on profiles, so these are counted and left out rather
+    // than crashing the sort on a null name (20 Sep 2026).
+    if (!run.student_id) {
+      skippedInvited += 1;
+      continue;
+    }
     if (ONLY_TEST && run.test_id !== ONLY_TEST) continue;
     const key = `${run.test_id}:${run.student_id}`;
     let s = byStudent.get(key);
@@ -137,6 +146,7 @@ async function loadGoldenSet(): Promise<GoldenStudent[]> {
     s.studentName = profileName.get(s.studentId) ?? s.studentId;
     s.parts.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
   }
+  if (skippedInvited > 0) console.log(`(${skippedInvited} accepted parts belong to invited students with no profile and are not in the golden set)`);
   return [...byStudent.values()].sort((a, b) => a.testName.localeCompare(b.testName) || a.studentName.localeCompare(b.studentName));
 }
 
@@ -232,7 +242,19 @@ function summarise(results: StudentResult[]) {
     b.absErr += Math.abs((p.predicted as number) - p.golden);
     byPart.set(p.label, b);
   }
-  return { n, exact, within1, mae, bias, totalGolden, totalPredicted, cost, byPart, failed: results.filter((r) => r.error).length };
+  // Accuracy by the confidence label the fresh run reported. This is the
+  // check on the label itself: "high" should be exact far more often than
+  // "medium", or the label is not telling the teacher anything.
+  const byConfidence = new Map<string, { n: number; exact: number; absErr: number }>();
+  for (const p of parts) {
+    const key = p.confidence ?? "unknown";
+    const b = byConfidence.get(key) ?? { n: 0, exact: 0, absErr: 0 };
+    b.n += 1;
+    if (p.predicted === p.golden) b.exact += 1;
+    b.absErr += Math.abs((p.predicted as number) - p.golden);
+    byConfidence.set(key, b);
+  }
+  return { n, exact, within1, mae, bias, totalGolden, totalPredicted, cost, byPart, byConfidence, failed: results.filter((r) => r.error).length };
 }
 
 // -- main -------------------------------------------------------------------
@@ -261,9 +283,10 @@ function summarise(results: StudentResult[]) {
   console.log(`mean abs error: ${s.mae.toFixed(2)} marks   bias (predicted - golden): ${s.bias >= 0 ? "+" : ""}${s.bias.toFixed(2)}   totals: predicted ${s.totalPredicted} vs golden ${s.totalGolden}`);
   console.log(`failed students: ${s.failed}   cost: $${s.cost.toFixed(2)}`);
   console.log("by part:", [...s.byPart.entries()].map(([k, v]) => `${k} ${v.exact}/${v.n} exact, MAE ${(v.absErr / v.n).toFixed(2)}`).join(" | "));
+  console.log("by confidence:", ["high", "medium", "low"].filter((k) => s.byConfidence.has(k)).map((k) => { const v = s.byConfidence.get(k)!; return `${k} ${v.exact}/${v.n} exact, MAE ${(v.absErr / v.n).toFixed(2)}`; }).join(" | "));
 
   if (OUT) {
-    writeFileSync(OUT, JSON.stringify({ ranAt: new Date().toISOString(), model: MODEL, temperature: TEMPERATURE, summary: { ...s, byPart: Object.fromEntries(s.byPart) }, results }, null, 2));
+    writeFileSync(OUT, JSON.stringify({ ranAt: new Date().toISOString(), model: MODEL, temperature: TEMPERATURE, summary: { ...s, byPart: Object.fromEntries(s.byPart), byConfidence: Object.fromEntries(s.byConfidence) }, results }, null, 2));
     console.log(`written ${OUT}`);
   }
 })().catch((e) => {

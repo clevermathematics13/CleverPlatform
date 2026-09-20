@@ -257,9 +257,12 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 149 files, 149 rows**
-(verified 13 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
-the second reconciliation and 116/116 after the third). Read
+**The migration ledger and the repo agree on versions: 170 files, 170 rows**
+(verified 20 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
+the second reconciliation, 116/116 after the third and 149/149 on 13 Sep). Two
+rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
+file on any branch until 20 Sep; both were rebuilt from the ledger and verified
+by md5 before the `test_items.marking_notes` migration was added (§23). Read
 `platform/supabase/migrations/README.md` before touching anything in that
 directory - it documents the invariant and how to add a migration without
 breaking it.
@@ -2366,3 +2369,102 @@ the teacher ticks "Show this in the gradebook" on the importer.
 - The AI-grade review panel does not yet show a live target table the way it
   shows a live strand table. `ActivityReportTable` renders without hooks
   specifically so it can, when someone wires it in.
+
+---
+
+## 23. Confidence labels: what Accept teaches the marker, and what now does (20 Sep 2026)
+
+The teacher asked, looking at a Grade 9 review row marked **medium** with
+settled reasoning, whether clicking Accept helps the marker earn more "high"
+labels, and what would. The short answer was no: Accept writes Clev's Marks,
+an audit row in `mark_changes` (which names the run, the suggested mark, the
+confidence label and whether the teacher applied a different number) and the
+`accepted` flag on the result. Nothing read any of that back. The only thing a
+later run took from an accepted row was the flag itself, carried forward when a
+re-mark suggests the same mark (`lib/ai-grading-run.ts`). The eval script used
+accepted rows as its golden set but never reported accuracy by label.
+
+**What the labels were worth.** Measured on the newest complete run per
+student across every test, counting an accepted part as a disagreement when
+the teacher overrode it at accept or changed it by hand afterwards:
+
+| Label and cause | Parts | Accepted | Disagreed |
+|---|---|---|---|
+| high, model's own call | 3888 | 1976 | 4 (0.2%) |
+| medium, model's own call | 326 | 168 | 10 (6%) |
+| medium, hedge-wording cap | 83 | 40 | 0 |
+| low, breakdown/deliberation caps | 31 | 21 | 12 (57%) |
+| low, model's own call | 15 | 11 | 0 |
+
+Read with two caveats. 93% of accepts came through Accept-all, so "not
+corrected afterwards" is a floor on the error rate; on the parts a teacher
+accepted one by one it reads high 2/139, medium 5/21, low 0/7. And every
+disagreement clustered by PART, not by student: 17 of 22 later corrections
+were Formative Assessment 1 Q8(a) (a scheme wording read two ways), all 7
+accept-time overrides were Key Assessment 1 Q13(b). The rulings the teacher
+wrote into `mark_changes.reason` never reached the marker, so every later
+student on the same part was marked the old way and flagged again.
+
+**The row that started it was medium because of a word.** The validator
+(`validateGradeResponse`) used to lower "high" to "medium" whenever the
+reasoning contained "appears to", "seems to", "probably" and the like
+(`lib/examiner-reasoning.ts`, the hedging half). Of 116 parts it had capped,
+91 hedged about the student's METHOD ("appears to have confused the
+variables"; on the row in question, "appears to have gotten 6.5" beside an
+unambiguous transcription and a right mark), not about reading the
+handwriting. The 40 capped parts a teacher had accepted had the same record as
+"high". The teacher chose, after a plain-language walk-through of the
+options, to delete the demotion and keep the warning.
+
+**What changed, in five increments, all in this session:**
+
+- **A. Measurement.** `scripts/confidence-calibration.ts` (DB only, free)
+  prints the table above from live data: by confidence and cap cause, again
+  for parts accepted one by one, and the parts the teacher disagreed on most.
+  Its first output is `docs/eval/2026-09-20-calibration.json`; the SQL that
+  first produced the numbers is `docs/eval/confidence-calibration.sql`.
+  `scripts/eval-grading.ts` now reports accuracy **by confidence** (and skips
+  runs keyed on an invited student with no profile, which used to crash it).
+  Run the calibration after any change to how confidence is set; run the eval
+  before and after any prompt change.
+- **B. The hedge cap is gone.** Hedging still writes its warning
+  (`"1(b): reasoning hedges on reading ... check the crop before accepting"`),
+  and the review panel prints it on the row, but the label is the model's own.
+  Deliberation ("wait,", "let me reconsider") still forces low, the breakdown
+  and clamp checks still force low, and those are the caps that were earning
+  their keep. **Consequence:** `gradeNeedsReview`, `partitionByConfidence` and
+  the summative gate all read the stored label, so on a SUMMATIVE, Accept-all
+  now writes hedge-warned parts it used to hold. Already-graded rows keep
+  their stored label (the pre-cap value was never persisted); a re-mark
+  refreshes them.
+- **C. The row says why.** Every non-high row carries a few words under its
+  badge ("careful wording, glance at the crop" / "breakdown disagreed with the
+  total" / "the marker's own call") with the full warning as a tooltip, and
+  the Why? panel lists the warnings under a Confidence heading.
+  `partWarningLabel`, `warningsForPart` and `capCauseForPart` in
+  `lib/ai-grade-review.ts` are the one place the warning strings are read
+  back, shared with the calibration script; a test pins `partWarningLabel` to
+  `unitLabel()` so the two cannot drift. The MARK SCHEME column, blank on
+  every Grade 9 row because `SOURCE_LABEL` had no `custom` entry, now reads
+  "Teacher's mark scheme".
+- **D. Marking notes the marker reads.** `test_items.marking_notes`
+  (migration `20260920042031`), edited from the Why? panel ("Marking note for
+  Q8(a), every student on this paper"), printed by `buildUnitBlock` after the
+  part's mark scheme under a heading that says the notes win where they
+  conflict, and rule 20 of the system prompt says the same and adds that a
+  judgement the notes settle is not a reason to lower confidence. Every
+  marking path shares `assembleMarkScheme`, so the note reaches the
+  interactive route, the overnight queue (for marks queued after the save),
+  the regrade route and the eval. The accept route also takes an optional
+  `note` per selection, offered as a one-line "why" beside an overridden
+  mark, which lands in the `mark_changes` reason. This is the loop that was
+  missing: a ruling made once on one student settles the same call for the
+  rest of the class, and the model can say "high" on it with reason.
+- **E. What "high" means.** WORKING ORDER step 6 of the system prompt now
+  defines the labels by the certainty of the MARK: a clearly wrong answer is
+  still "high"; "medium" means another examiner could reasonably award a
+  different number, and the reasoning must say why; and the stale line saying
+  only "low" is flagged now says anything below high is put in front of the
+  teacher and, on a summative, not written by Accept-all. See the eval
+  comparison below.
+

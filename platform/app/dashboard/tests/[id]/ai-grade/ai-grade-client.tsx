@@ -11,12 +11,16 @@ import {
   rowsForRun,
   sortReviewRows,
   partitionByConfidence,
+  partWarningLabel,
+  warningsForPart,
+  capCauseForPart,
+  CAP_CAUSE_SHORT,
 } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
 import { StandardsReportTable } from "@/components/StandardsReportTable";
 
-type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "none";
+type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "custom" | "none";
 type Confidence = "high" | "medium" | "low";
 /** "submitted" is an overnight run: with Anthropic's batch API, no result written yet. */
 type RunStatus = "submitted" | "running" | "complete" | "failed";
@@ -43,6 +47,12 @@ interface TestItem {
    * why composeQuestionText gives it to the grader too.
    */
   stem_text: string | null;
+  /**
+   * The teacher's marking notes for this part (test_items.marking_notes):
+   * rulings the marker reads after the mark scheme on every later mark of
+   * this paper. Null when there are none. Edited from the Why? panel.
+   */
+  marking_notes?: string | null;
 }
 
 interface TestDetail {
@@ -177,6 +187,10 @@ const SOURCE_LABEL: Record<MarkschemeSource, string> = {
   part_text: "Part mark scheme (plain text)",
   whole_question: "Whole-question fallback",
   draft: "Draft mark scheme",
+  // A Formative Assessment, Standard Level or activity part: the scheme the
+  // teacher wrote on the item itself. It rendered as a blank cell until this
+  // entry existed, on every Grade 9 row.
+  custom: "Teacher's mark scheme",
   none: "No mark scheme",
 };
 
@@ -247,6 +261,11 @@ export function AiGradeClient({
   const [resultsStudent, setResultsStudent] = useState<string | null>(null);
   const [focusRunId, setFocusRunId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, number>>({}); // keyed by result.id
+  /** A reason typed beside an overridden mark, sent with the accept as its audit note. Keyed by result.id. */
+  const [overrideNotes, setOverrideNotes] = useState<Record<string, string>>({});
+  /** Marking-note text being edited per test item, present only while the editor is open. */
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [savingNoteFor, setSavingNoteFor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
   /**
@@ -782,6 +801,46 @@ export function AiGradeClient({
   };
 
   // -- Accept selected results into Clev's Marks --
+  // -- A marking note on a part: the teacher's ruling, read by the marker on
+  // every later mark of this paper. Saved on the test item, not the result,
+  // because it is about the part, not this one student. --------------------
+  const saveMarkingNote = async (itemId: string) => {
+    const notes = noteDrafts[itemId] ?? "";
+    setSavingNoteFor(itemId);
+    setError(null);
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/items/${itemId}/marking-notes`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notes: notes.trim() === "" ? null : notes }),
+      });
+      if (!ok) {
+        setError((data.error as string) ?? "Could not save the marking note.");
+        return;
+      }
+      const saved = (data.marking_notes as string | null) ?? null;
+      setTest((prev) =>
+        prev
+          ? { ...prev, test_items: prev.test_items.map((it) => (it.id === itemId ? { ...it, marking_notes: saved } : it)) }
+          : prev
+      );
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      setStatusLine(
+        saved
+          ? "Marking note saved. Clev reads it on every mark of this paper started from now on -- re-mark a student to apply it."
+          : "Marking note removed."
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the marking note.");
+    } finally {
+      setSavingNoteFor(null);
+    }
+  };
+
   const acceptSelected = async () => {
     if (!focusRunId || selected.size === 0) return;
     setAccepting(true);
@@ -790,6 +849,7 @@ export function AiGradeClient({
       const selections = [...selected].map((resultId) => ({
         resultId,
         marks: drafts[resultId],
+        note: overrideNotes[resultId]?.trim() || undefined,
       }));
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept`, {
         method: "POST",
@@ -820,7 +880,7 @@ export function AiGradeClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           runId: focusRunId,
-          selections: [{ resultId, marks: drafts[resultId] }],
+          selections: [{ resultId, marks: drafts[resultId], note: overrideNotes[resultId]?.trim() || undefined }],
         }),
       });
       if (!ok) {
@@ -1152,6 +1212,21 @@ export function AiGradeClient({
       meta?.stem_text?.trim() && meta.question_number !== prevMeta?.question_number
         ? meta.stem_text.trim()
         : null;
+    // Why this row is not "high", if it is not. The validator records every
+    // reason it touched a part in the run's warnings, keyed by the part's
+    // label; a non-high row with none of its own is the marker's own call.
+    // Shown on the badge so a teacher can tell a wording flag ("careful
+    // wording") from a mark in doubt ("breakdown disagreed with the total")
+    // without opening the row.
+    const rowLabel = meta ? partWarningLabel(meta) : null;
+    const rowWarnings = rowLabel ? warningsForPart(rowLabel, focusRun?.coverage?.warnings) : [];
+    const rowCause = rowLabel ? capCauseForPart(rowLabel, focusRun?.coverage?.warnings) : "none";
+    const confidenceTitle =
+      r.confidence === "high"
+        ? undefined
+        : rowWarnings.length > 0
+          ? rowWarnings.join("\n")
+          : "The marker's own call: it judged this part a judgement call. Open Why? for its reasoning.";
     return (
       <Fragment key={r.id}>
         <tr className="border-b border-da-border">
@@ -1166,6 +1241,14 @@ export function AiGradeClient({
           <td className="px-2 py-2 font-medium text-da-text">
             <div className="flex items-center gap-2">
               <span>{label}</span>
+              {meta?.marking_notes?.trim() && (
+                <span
+                  title={`Marking note on this part: ${meta.marking_notes.trim()}`}
+                  className="rounded border border-teal-400/40 bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-300"
+                >
+                  note
+                </span>
+              )}
               {/* The question itself, at a glance. It was already in
                   the expanded panel below, but two clicks deep (Why?,
                   then the collapsed Question toggle) -- so marking a
@@ -1242,6 +1325,16 @@ export function AiGradeClient({
               }
               className="w-16 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
             />
+            {(drafts[r.id] ?? r.suggested_marks) !== r.suggested_marks && !r.accepted && (
+              <input
+                type="text"
+                value={overrideNotes[r.id] ?? ""}
+                onChange={(e) => setOverrideNotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                placeholder={`Why ${drafts[r.id]} not ${r.suggested_marks}? (optional, kept with the mark)`}
+                title="Written into the audit trail with this mark. A ruling that should change how this part is marked from now on goes in the marking note under Why?."
+                className="mt-1 block w-56 rounded border border-amber-400/40 bg-transparent px-2 py-0.5 text-xs focus:ring-2 focus:ring-blue-400"
+              />
+            )}
             {previousMarks[r.test_item_id] !== undefined &&
               previousMarks[r.test_item_id] !== r.suggested_marks && (
                 <span
@@ -1255,12 +1348,18 @@ export function AiGradeClient({
           <td className="px-2 py-2 text-da-muted">{r.max_marks}</td>
           <td className="px-2 py-2">
             <span
+              title={confidenceTitle}
               className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
             >
               {r.confidence}
             </span>
             {!r.work_found && (
               <span className="ml-2 text-xs text-da-muted">no attempt found</span>
+            )}
+            {r.confidence !== "high" && r.work_found && (
+              <div className="mt-1 max-w-[12rem] text-[11px] leading-tight text-da-muted" title={confidenceTitle}>
+                {CAP_CAUSE_SHORT[rowCause]}
+              </div>
             )}
           </td>
           <td className="px-2 py-2 text-xs text-da-muted">
@@ -1522,6 +1621,96 @@ export function AiGradeClient({
                     <div className="mt-1 rounded border border-da-border bg-da-surface p-3">
                       <LatexRenderer latex={r.reasoning} />
                     </div>
+                  </div>
+                )}
+
+                {r.confidence !== "high" && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Confidence: {r.confidence}
+                    </p>
+                    {rowWarnings.length > 0 ? (
+                      <ul className="mt-1 space-y-0.5 text-xs text-amber-300">
+                        {rowWarnings.map((w, i) => (
+                          <li key={i}>⚠ {w}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-xs text-da-muted">
+                        The marker&apos;s own call: nothing was corrected after the fact, it judged this
+                        part a judgement call. Its reasoning above says why.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {meta && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Marking note for {label} (every student on this paper)
+                    </p>
+                    <p className="mt-1 text-xs text-da-muted">
+                      Clev reads this after the mark scheme on every mark of this paper started from now on:
+                      a re-mark, the overnight queue, the eval. Use it to settle a judgement call once, e.g.
+                      &ldquo;M1 is for visible substitution into both expressions; 48(4)+30(6)=192+180 alone
+                      earns it.&rdquo; Where it conflicts with the scheme, the note wins.
+                    </p>
+                    {noteDrafts[meta.id] !== undefined ? (
+                      <div className="mt-1 space-y-2">
+                        <textarea
+                          value={noteDrafts[meta.id]}
+                          onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [meta.id]: e.target.value }))}
+                          rows={3}
+                          maxLength={4000}
+                          placeholder="A ruling for this part, in the words you would give a second marker."
+                          className="w-full rounded border border-da-border p-2 text-xs focus:ring-2 focus:ring-blue-400"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => saveMarkingNote(meta.id)}
+                            disabled={savingNoteFor === meta.id}
+                            className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {savingNoteFor === meta.id ? "Saving…" : "Save note"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setNoteDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[meta.id];
+                                return next;
+                              })
+                            }
+                            disabled={savingNoteFor === meta.id}
+                            className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setNoteDrafts((prev) => ({ ...prev, [meta.id]: meta.marking_notes ?? "" }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setNoteDrafts((prev) => ({ ...prev, [meta.id]: meta.marking_notes ?? "" }));
+                          }
+                        }}
+                        title="Click to edit the marking note"
+                        className="mt-1 cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/30"
+                      >
+                        {meta.marking_notes?.trim() ? (
+                          <p className="whitespace-pre-wrap text-xs text-da-text">{meta.marking_notes}</p>
+                        ) : (
+                          <p className="text-xs text-da-muted">No marking note on this part -- click to add one.</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

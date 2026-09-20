@@ -208,3 +208,17 @@ the failure message suggests** unless you have established the migration really
 was reverted. On this class of failure it has not been: the row is applied and
 live, and only its file is missing. Repairing it would tell the ledger a lie
 about production.
+
+## Fourth gap, 20 Sep 2026
+
+Two rows applied through MCP on 18 Sep (`20260918205816_ka1_unit1_strand_descriptors_match_schemes`,
+`20260918210444_ka1_unit1_q8_and_strand_a_to_ledger`) never got a file on any
+branch: 167 files against 169 rows. Both were single-statement MCP applies, so
+`array_to_string(statements, E'\n')` plus one trailing newline reproduced them
+byte for byte (md5 checked against the ledger before committing). Then
+`test_items_marking_notes` was applied the documented way -- MCP first, read
+the assigned version back (`20260920042031`), rename the file to it -- and the
+directory stands at 170/170.
+
+The lesson is the one above, one more time: an MCP apply is not done until the
+file with the ledger's version is on the branch that will merge.
