@@ -2130,7 +2130,16 @@ export function AiGradeClient({
           <p className="mt-1">
             The Anthropic API refused a test call from this deployment&apos;s key, so every marking action on
             this page (and every other AI feature in the app) will fail the same way until it is fixed. The
-            usual cause is the account running out of credit: Anthropic Console → Plans &amp; Billing.
+            usual cause is the account running out of credit:{" "}
+            <a
+              href="https://console.anthropic.com/settings/billing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline hover:text-red-100"
+            >
+              Anthropic Console → Plans &amp; Billing
+            </a>
+            .
           </p>
           <p className="mt-1 break-words font-mono text-xs text-red-300/90">{apiHealthError}</p>
         </div>
