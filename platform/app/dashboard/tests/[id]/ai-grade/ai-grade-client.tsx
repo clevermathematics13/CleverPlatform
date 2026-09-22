@@ -17,6 +17,7 @@ import {
   CAP_CAUSE_SHORT,
 } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
+import { formatQuestionLabel } from "@/lib/assignments";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
 import { StandardsReportTable } from "@/components/StandardsReportTable";
 
@@ -30,6 +31,16 @@ interface TestItem {
   question_number: number;
   part_label: string | null;
   max_marks: number;
+  /**
+   * Insertion order within the test (test_items.sort_order) -- the join key
+   * back to tests.custom_content.sections for a Formative-Assessment-sourced
+   * test, since buildTestItemsFromSections (lib/formative-assessment-bridge.ts)
+   * assigns both in the same single walk of section -> question -> subpart.
+   * Used to print the part the way the paper itself numbers it ("2.3(b)")
+   * instead of the flat, section-blind question_number ("Q5(b)") that
+   * numbering collapses into -- see paperQuestionPrefixes below.
+   */
+  sort_order: number;
   /**
    * The question as the teacher authored it (test_items.question_text), for a
    * test built in the Formative Assessment creator -- null on a test whose
@@ -66,6 +77,13 @@ interface TestDetail {
    * shows the student's strand levels alongside the marks being edited.
    */
   standards_rubric?: unknown;
+  /**
+   * The full authored draft for a Formative-Assessment-creator test
+   * (tests.custom_content) -- the same sections/questions/subparts structure
+   * the printed paper is rendered from. Null for an IB-bank/external test,
+   * whose question_number already is the paper's own number.
+   */
+  custom_content?: unknown;
 }
 
 interface StudentOption {
@@ -224,11 +242,39 @@ const COLLECT_POLL_MS = 30_000;
  */
 const MAX_COLLECT_PASSES = 40;
 
-function itemLabel(item: TestItem | undefined): string {
+/**
+ * Maps each test_items.sort_order to the "<section>.<question>" prefix the
+ * printed paper itself uses (e.g. "2.3"), read from tests.custom_content --
+ * the same authored sections/questions/subparts draft the PDF is rendered
+ * from (formatQuestionLabel, lib/assignments.ts) and buildTestItemsFromSections
+ * (lib/formative-assessment-bridge.ts) walks in the same order to assign
+ * sort_order in the first place, so the two line up. A part_label ("b") is
+ * still read off the row itself; this only replaces the flat "Q5" stem that
+ * discards which Level/section a part belongs to. Empty for an IB-bank test,
+ * whose custom_content is null and whose question_number already is the
+ * paper's own number.
+ */
+function paperQuestionPrefixes(customContent: unknown): Map<number, string> {
+  const prefixes = new Map<number, string>();
+  const sections = (
+    customContent as { sections?: { questions?: { subparts?: unknown[] }[] }[] } | null | undefined
+  )?.sections;
+  if (!Array.isArray(sections)) return prefixes;
+  let sortOrder = 0;
+  sections.forEach((section, sIdx) => {
+    (section.questions ?? []).forEach((question, qIdx) => {
+      const prefix = formatQuestionLabel(sIdx, qIdx, "numeric");
+      const partCount = Array.isArray(question.subparts) && question.subparts.length > 0 ? question.subparts.length : 1;
+      for (let i = 0; i < partCount; i++) prefixes.set(sortOrder++, prefix);
+    });
+  });
+  return prefixes;
+}
+
+function itemLabel(item: TestItem | undefined, paperPrefixes: Map<number, string>): string {
   if (!item) return "—";
-  return item.part_label
-    ? `Q${item.question_number}(${item.part_label})`
-    : `Q${item.question_number}`;
+  const prefix = paperPrefixes.get(item.sort_order) ?? `Q${item.question_number}`;
+  return item.part_label ? `${prefix}(${item.part_label})` : prefix;
 }
 
 export function AiGradeClient({
@@ -374,6 +420,7 @@ export function AiGradeClient({
   const reviewRequestSeq = useRef(0);
 
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
+  const paperPrefixes = paperQuestionPrefixes(test?.custom_content);
 
   // A Standard Level paper's rubric, parsed once per test load. An
   // unreadable one is treated as none here: the test detail page is where
@@ -1380,7 +1427,7 @@ export function AiGradeClient({
   // question's shared stem.
   const renderResultRow = (r: ResultRow, prevRow: ResultRow | undefined) => {
     const meta = itemById.get(r.test_item_id);
-    const label = itemLabel(meta);
+    const label = itemLabel(meta, paperPrefixes);
     const isOpen = expanded === r.id;
     // What Clev's Marks actually holds for this part right now, so an edit
     // after acceptance can tell "nothing changed" from "needs writing".
