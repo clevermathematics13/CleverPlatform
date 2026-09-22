@@ -23,7 +23,7 @@ export { computeDisagreement };
  *  uuid that cannot exist is passed instead. */
 const NO_SUCH_UUID = "00000000-0000-0000-0000-000000000000";
 
-function computeReleaseTimestamp(
+export function computeReleaseTimestamp(
   testDate: string | null,
   examTime: string | null,
   releaseAt: string | null
@@ -36,6 +36,31 @@ function computeReleaseTimestamp(
   const parsed = Date.parse(`${testDate}T${examTime.slice(0, 5)}:00`);
   if (Number.isNaN(parsed)) return null;
   return parsed + 80 * 60 * 1000;
+}
+
+/** `test_course_dates` rows for these tests, keyed on the viewer's OWN
+ *  courses (never the track family): the day one class actually sat a
+ *  shared track test, where that differed from tests.test_date (e.g. 9G
+ *  sitting Key Assessment 1 a day after 9A/9C -- migration
+ *  test_course_dates). Same per-class-only lookup shape as
+ *  applySelfAssessmentOverrides, and for the same reason: widening it to the
+ *  family would apply one class's sitting date to a sibling that sat on a
+ *  different day. */
+async function loadCourseDateOverrides(
+  testIds: string[],
+  courseIds: string[]
+): Promise<Map<string, string>> {
+  if (testIds.length === 0 || courseIds.length === 0) return new Map();
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("test_course_dates")
+    .select("test_id, test_date")
+    .in("test_id", testIds)
+    .in("course_id", courseIds);
+  if (error || !data) return new Map();
+
+  return new Map(data.map((row) => [row.test_id as string, row.test_date as string]));
 }
 
 /** Core of getTestsForStudent/getTestsForInvitedStudent: every test visible
@@ -74,9 +99,14 @@ async function getTestsVisibleToCourses(courseIds: string[]): Promise<Reflection
     }
     throw error;
   }
+  const dateOverrides = await loadCourseDateOverrides(
+    (tests ?? []).map((t) => t.id),
+    courseIds
+  );
   const now = Date.now();
   const visible = ((tests ?? []) as ReflectionTest[]).filter((t) => {
-    const unlockAt = computeReleaseTimestamp(t.test_date, t.exam_time, t.release_at);
+    const effectiveTestDate = dateOverrides.get(t.id) ?? t.test_date;
+    const unlockAt = computeReleaseTimestamp(effectiveTestDate, t.exam_time, t.release_at);
     return unlockAt === null || unlockAt <= now;
   });
   return applySelfAssessmentOverrides(visible, courseIds);
