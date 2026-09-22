@@ -403,6 +403,10 @@ export function AiGradeClient({
   const [accepting, setAccepting] = useState(false);
   const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
   const [acceptingAll, setAcceptingAll] = useState(false);
+  /** Class name currently running its own "accept" batch, or null. */
+  const [acceptingClass, setAcceptingClass] = useState<string | null>(null);
+  /** Class names collapsed in the roster -- toggled by clicking the class heading. */
+  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
 
   /** How many of a run's results are accepted, keyed by run id — drives the roster's status dot. */
   const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
@@ -431,6 +435,17 @@ export function AiGradeClient({
     return parsed.ok ? parsed.rubric : null;
   }, [test?.standards_rubric]);
   const classCount = new Set(students.map((s) => s.class_name ?? "")).size;
+  /** Classes with at least one gradeable run -- the per-class accept button is pointless without one. */
+  const classesWithRuns = new Set(
+    students.filter((s) => runsByStudent[s.profile_id]).map((s) => s.class_name ?? "Other")
+  );
+  const toggleClassCollapsed = (className: string) =>
+    setCollapsedClasses((prev) => {
+      const next = new Set(prev);
+      if (next.has(className)) next.delete(className);
+      else next.add(className);
+      return next;
+    });
 
   // -- Absence: a student who did not sit the test ------------------------------
   // Recorded in test_absences so the roster here and the gradebook show
@@ -1123,23 +1138,30 @@ export function AiGradeClient({
 
   // -- Accept every not-yet-accepted suggested mark, every question, every
   // student's latest completed run -- skips the per-student review entirely,
-  // so it asks for confirmation up front rather than after the fact.
-  const acceptAllForTest = async () => {
+  // so it asks for confirmation up front rather than after the fact. With
+  // `scope`, covers only one class's students (the roster pools every class
+  // in a Grade 9 track onto one test) rather than the whole test.
+  const acceptAll = async (scope?: { studentIds: string[]; label: string }) => {
+    const who = scope ? `${scope.label} student's` : "student's";
+    const about = scope ? ` for ${scope.label}` : "";
     const ok = window.confirm(
       assessmentKind === "summative"
-        ? "This is a summative. It writes only the suggestions Clev was fully confident about, straight into " +
+        ? `This is a summative. It writes only the suggestions Clev was fully confident about${about}, straight into ` +
             "Clev's Marks without opening each student's review. Anything less confident, and anything marked " +
             "with no working found, is left for you to check and accept yourself. Continue?"
-        : "This writes every suggested mark, for every question, for every student's latest completed run straight into " +
+        : `This writes every suggested mark, for every question, for every ${who} latest completed run straight into ` +
             "Clev's Marks -- without opening each student's review first. Already-accepted marks are left as they are. " +
             "Continue?"
     );
     if (!ok) return;
-    setAcceptingAll(true);
+    setAcceptingAll(!scope);
+    if (scope) setAcceptingClass(scope.label);
     setError(null);
     try {
       const { ok: reqOk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept-all`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scope ? { studentIds: scope.studentIds } : {}),
       });
       if (!reqOk) {
         setError((data.error as string) ?? "Could not accept all marks.");
@@ -1152,7 +1174,7 @@ export function AiGradeClient({
       // this exists to prevent.
       const held = (data.message as string | undefined) ?? "";
       setStatusLine(
-        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s) into Clev's Marks.` +
+        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s)${about} into Clev's Marks.` +
           (held ? ` ${held}` : "")
       );
       await loadOverview();
@@ -1161,6 +1183,7 @@ export function AiGradeClient({
       setError(e instanceof Error ? e.message : "Could not accept all marks.");
     } finally {
       setAcceptingAll(false);
+      if (scope) setAcceptingClass(null);
     }
   };
 
@@ -2354,7 +2377,7 @@ export function AiGradeClient({
               {Object.keys(runsByStudent).length > 0 && (
                 <button
                   type="button"
-                  onClick={acceptAllForTest}
+                  onClick={() => acceptAll()}
                   disabled={acceptingAll}
                   title="Accepts every suggested mark for every student's latest completed run, without opening each review individually"
                   className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-2 text-sm font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
@@ -2372,12 +2395,20 @@ export function AiGradeClient({
 
             <ul className="divide-y divide-da-border">
               {students.map((s, i) => {
+                const className = s.class_name ?? "Other";
                 // Class heading above the first student of each class, only
                 // when the roster spans more than one (a pooled Grade 9 track).
                 const classHeading =
                   classCount > 1 && (i === 0 || students[i - 1].class_name !== s.class_name)
-                    ? (s.class_name ?? "Other")
+                    ? className
                     : null;
+                const collapsed = classCount > 1 && collapsedClasses.has(className);
+                // Only ever read from the class-heading row below, so only worth
+                // building there -- but the heading is the first student of the
+                // class, and every one of its classmates shares this exact list.
+                const classStudentIds = classHeading
+                  ? students.filter((st) => (st.class_name ?? "Other") === className).map((st) => st.profile_id)
+                  : [];
                 const busy = busyStudent === s.profile_id;
                 const reviewOpen = focusStudent === s.profile_id;
                 const absent = absentStudents.has(s.profile_id);
@@ -2398,10 +2429,31 @@ export function AiGradeClient({
                 return (
                   <Fragment key={s.profile_id}>
                     {classHeading && (
-                      <li className="bg-da-hover/40 px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
-                        {classHeading}
+                      <li className="flex flex-wrap items-center justify-between gap-3 bg-da-hover/40 px-5 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleClassCollapsed(className)}
+                          aria-expanded={!collapsed}
+                          className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
+                        >
+                          <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+                          {classHeading}
+                        </button>
+                        {classesWithRuns.has(className) && (
+                          <button
+                            type="button"
+                            onClick={() => acceptAll({ studentIds: classStudentIds, label: className })}
+                            disabled={acceptingClass === className}
+                            title={`Accepts every suggested mark for every ${className} student's latest completed run, without opening each review individually`}
+                            className="rounded border border-blue-400/40 px-2 py-0.5 text-[11px] font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
+                          >
+                            {acceptingClass === className ? "Accepting…" : `Accept ${className} into Clev's Marks`}
+                          </button>
+                        )}
                       </li>
                     )}
+                    {!collapsed && (
+                      <>
                     <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
                       <div>
                         <p className="flex items-center gap-2 font-semibold text-da-text">
@@ -2554,6 +2606,8 @@ export function AiGradeClient({
                           <p className="text-xs text-da-muted">Loading this student&apos;s marks…</p>
                         )}
                       </li>
+                    )}
+                    </>
                     )}
                   </Fragment>
                 );
