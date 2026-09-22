@@ -2614,3 +2614,100 @@ run (~$2) when credit is back, together with the repeat trials above.
 "Your credit balance is too low to access the Anthropic API"). If the
 deployment's `ANTHROPIC_API_KEY` is on the same account, marking on the site
 fails the same way until it is topped up.
+
+---
+
+## 25. Teacher stats for a Standard Level paper (22 Sep 2026)
+
+The teacher asked for a 9D view of Key Assessment 1 showing the average score
+per question (grouped) and per part, plus whatever else would help, and for a
+"general Standard Level" scope that can take in students from outside 9D
+because work from other classes is coming.
+
+The standards report (§21) answers "where is each student". Nothing answered
+"where is the class", which is the question asked the moment a paper is handed
+back. `/dashboard/tests/[id]/standards-stats` is that page, with a CSV at
+`/api/tests/[id]/standards-stats/csv`.
+
+### What it shows
+
+Per PART: max, how many students are marked on it, mean, mean %, SD, how the
+marks fell (nothing / some / all, as a three-segment meter), % at full marks,
+% at zero, and a discrimination figure. Per QUESTION, the paper's own
+grouping: the same, over the parts summed, plus median and SD. Per STRAND: the
+rubric's grouping, with the level counts the standards report already prints.
+Above them a paper summary (mean, median, SD, range, level tally) and a "Worth
+a look" panel that names the weakest question and strand, the hardest parts,
+the parts at least half the class scored nothing on, and the parts whose
+discrimination is negative.
+
+**Three rules run through `lib/standards-stats.ts`,** and they are the reason
+the numbers can be trusted rather than merely computed:
+
+1. **A missing mark is not a zero.** An unaccepted part is absent from the
+   student's map and is skipped, so every aggregate carries its own `n` and
+   the page prints it beside the mean.
+2. **An aggregate only counts a student who has all of it.** A question mean
+   is over the students with every one of its parts marked, a strand mean over
+   every part of the strand, the paper over a complete paper. Averaging a
+   half-marked total against a whole one reads as a weak student rather than
+   an unfinished one.
+3. **An absent student is in none of it.** The loader drops them before any
+   arithmetic.
+
+**Discrimination is the corrected item-total correlation** -- the part's mark
+against the REST of the paper, over complete papers only. It is null below
+`MIN_STUDENTS_FOR_DISCRIMINATION` (5) and null when nothing varies, because
+`0` would read as "this part did not sort the class" when the truth is "this
+part cannot". On the live KA1 data it earns its place: Q7(a) and Q7(b) are
+100% and come back null, and Q3(a) and Q3(b) come back NEGATIVE (-0.23,
+-0.11), which is the class's stronger students doing worse on those two parts
+than the weaker ones -- the one signal on the page that points at the mark
+scheme rather than at the students.
+
+### The general Standard Level scope
+
+A scope switcher at the top: the test's own class (9D, the default) or **All
+Standard Level**. The `Grade 9 Standard` track is how another class joins --
+it currently has 9D as its only member, and adding a class to `track_courses`
+is all that the roster, the marker and this page need. **No class was added**:
+track membership is SYMMETRIC, so putting 9A / 9C / 9G in the Standard track
+would also put all 18 9D students on every Extended paper's roster and
+gradebook (§17's `trackFamilyCourseIds`), which is not what anyone wants. The
+teacher chose to leave the track at 9D and widen it when there is a real class
+to widen it to.
+
+So that widening cannot silently lose work in the meantime,
+`loadReportRoster` gained `includeMarkedOutsideRoster`, which the stats loader
+turns on and the two per-student reports deliberately do not: anyone with
+ACCEPTED MARKS on the paper who is on no roster the test's course reaches is
+returned anyway, under their real class. A marked paper missing from the class
+averages would be worse than a stranger's name on a list. It costs two small
+queries and only when such a student exists.
+
+### Where the numbers came from
+
+Verified by running `loadStandardsStatsData` itself against production (the
+skill's §7 rule -- import the real module, never restate its logic) over the
+10 marked 9D papers: mean 24.40/42 (58%), median 21, SD 9.50, range 7-38,
+levels E2 M2 AP5 B1. Strand means sum to the paper mean (5.8 + 8.8 + 6.9 + 2.9
+= 24.4) and both the strand and question maxima sum to 42, which is the check
+that the two groupings partition the paper. **Strand D, Reasoning and
+justification, is at 32% with 7 of 10 students at Beginning** -- the clearest
+teaching signal on the page, and worth a look before Unit 2.
+
+### Deliberately not done
+
+- **The gradebook and the standards report are unchanged.** This is a third
+  view, linked from both, not a replacement for either.
+- **The page is not restricted to Standard Level papers.** A test with no
+  `standards_rubric` renders the question and part tables and says plainly
+  that there are no strands or levels; only the LINKS to it are behind the
+  Standard Level badge. A formative or an IB paper would work if linked.
+- **The "By class" block has not been seen rendered**, because only 9D has
+  marks on any Standard paper so far. Its data is unit-tested
+  (`lib/standards-stats.test.ts`, "the general Standard Level view") and the
+  markup mirrors the strand table beside it, but the first time a second class
+  is marked is the first time anyone looks at it.
+- **Discrimination at n = 10 is soft.** Five is a floor, not a guarantee; the
+  figure is there to point at a part worth re-reading, not to be reported.
