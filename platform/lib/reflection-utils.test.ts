@@ -10,6 +10,7 @@ function item(
     test_item_id: partial.test_item_id ?? "item",
     question_number: 1,
     part_label: "",
+    paper_label: null,
     subtopic_codes: [],
     subtopic_labels: [],
     marks_awarded: null,
