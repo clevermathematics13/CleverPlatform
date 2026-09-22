@@ -2336,6 +2336,9 @@ export function AiGradeClient({
                 Approaching / Beginning.{" "}
                 <a href={`/dashboard/tests/${testId}/standards-report`} className="text-blue-300 hover:underline">
                   Standards report →
+                </a>{" "}
+                <a href={`/dashboard/tests/${testId}/standards-stats`} className="text-blue-300 hover:underline">
+                  Teacher stats →
                 </a>
               </p>
             )}
