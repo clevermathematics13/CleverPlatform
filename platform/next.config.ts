@@ -61,6 +61,17 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      // components/reflection/DocPanel.tsx shows the exam paper/mark scheme
+      // in a same-origin iframe. The blanket X-Frame-Options: DENY above
+      // (last header key wins on a duplicate match, per Next's header
+      // ordering) blocks that too, since DENY refuses framing even from the
+      // same origin -- the browser's "refused to connect" on the embedded
+      // panel is this, not a network error. Narrowed to SAMEORIGIN, and only
+      // for this one route, rather than loosened dashboard-wide.
+      {
+        source: "/api/tests/:id/mark-scheme",
+        headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
+      },
     ];
   },
 };
