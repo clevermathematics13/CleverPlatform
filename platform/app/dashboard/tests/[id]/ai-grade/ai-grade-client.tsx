@@ -180,6 +180,14 @@ interface ResultRow {
   accepted: boolean;
   accepted_at: string | null;
   accepted_by: string | null;
+  /**
+   * What is actually in Clev's Marks (student_marks.marks_awarded) for this
+   * part right now, or null if nothing has been written yet. `suggested_marks`
+   * never changes once the model has spoken -- it is the audit trail's record
+   * of what the model said, and the "was N" comparison between runs depends on
+   * that staying put -- so an accepted row's true value lives here instead.
+   */
+  marks_awarded: number | null;
 }
 
 const SOURCE_LABEL: Record<MarkschemeSource, string> = {
@@ -680,7 +688,20 @@ export function AiGradeClient({
         setFocusRunId(latestRun?.id ?? null);
         setResults(rowsForLatest);
         setResultsStudent(studentId);
-        setDrafts(Object.fromEntries(rowsForLatest.map((r) => [r.id, r.suggested_marks])));
+        // An accepted row's draft starts from what is actually in Clev's
+        // Marks, not the model's original suggestion -- suggested_marks
+        // never moves once the model has spoken, so seeding the draft from
+        // it here reset every accepted override back to the AI's first call
+        // on the next load (e.g. right after accepting it). See marks_awarded
+        // on ResultRow.
+        setDrafts(
+          Object.fromEntries(
+            rowsForLatest.map((r) => [
+              r.id,
+              r.accepted && r.marks_awarded !== null ? r.marks_awarded : r.suggested_marks,
+            ])
+          )
+        );
         setSelected(
           new Set(rowsForLatest.filter((r) => !r.accepted && r.work_found).map((r) => r.id))
         );
@@ -1361,6 +1382,10 @@ export function AiGradeClient({
     const meta = itemById.get(r.test_item_id);
     const label = itemLabel(meta);
     const isOpen = expanded === r.id;
+    // What Clev's Marks actually holds for this part right now, so an edit
+    // after acceptance can tell "nothing changed" from "needs writing".
+    const currentlyAccepted = r.accepted ? (r.marks_awarded ?? r.suggested_marks) : null;
+    const draftDiffersFromAccepted = (drafts[r.id] ?? r.suggested_marks) !== currentlyAccepted;
     // The stem is stored on every part row, so printing it per row would
     // repeat "Look at this expression..." four times down Q1. Print it on the
     // first part of each question only, the way the paper itself reads.
@@ -1482,7 +1507,7 @@ export function AiGradeClient({
               }
               className="w-16 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
             />
-            {(drafts[r.id] ?? r.suggested_marks) !== r.suggested_marks && !r.accepted && (
+            {(drafts[r.id] ?? r.suggested_marks) !== r.suggested_marks && (!r.accepted || draftDiffersFromAccepted) && (
               <input
                 type="text"
                 value={overrideNotes[r.id] ?? ""}
@@ -1523,18 +1548,20 @@ export function AiGradeClient({
             {SOURCE_LABEL[r.markscheme_source]}
           </td>
           <td className="px-2 py-2">
-            {r.accepted ? (
-              <span className="text-xs text-green-300">accepted</span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => acceptOne(r.id)}
-                disabled={acceptingRowId === r.id}
-                className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
-              >
-                {acceptingRowId === r.id ? "Accepting…" : "Accept"}
-              </button>
-            )}
+            <div className="flex flex-col items-start gap-1">
+              {r.accepted && <span className="text-xs text-green-300">accepted</span>}
+              {(!r.accepted || draftDiffersFromAccepted) && (
+                <button
+                  type="button"
+                  onClick={() => acceptOne(r.id)}
+                  disabled={acceptingRowId === r.id}
+                  title={r.accepted ? "Write this edited mark into Clev's Marks" : undefined}
+                  className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
+                >
+                  {acceptingRowId === r.id ? (r.accepted ? "Updating…" : "Accepting…") : r.accepted ? "Update" : "Accept"}
+                </button>
+              )}
+            </div>
           </td>
           <td className="px-2 py-2">
             <button

@@ -156,6 +156,34 @@ export async function GET(
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 
+  // -- What Clev's Marks actually holds right now, per part -------------------
+  // suggested_marks never changes once the model has spoken -- it is the
+  // audit trail's record of what the model said, and the "was N" comparison
+  // between runs depends on it staying put -- so it cannot double as "what
+  // was accepted" once a teacher overrides it. Without this, reopening an
+  // already-accepted row's review showed the model's original number again
+  // instead of the teacher's override, which read as the edit having
+  // reverted even though Clev's Marks itself was correct. Only worth the
+  // extra query for a single student's review pane, not the whole-class
+  // overview, which never shows individual mark inputs.
+  const marksAwardedByTestItem = new Map<string, number>();
+  if (studentId && rows.length > 0) {
+    const subject = parseGradingSubject(studentId);
+    const testItemIds = [...new Set(rows.map((r) => r.test_item_id))];
+    let marksQuery = supabase
+      .from("student_marks")
+      .select("test_item_id, marks_awarded")
+      .in("test_item_id", testItemIds);
+    marksQuery =
+      subject.kind === "invited"
+        ? marksQuery.eq("invited_student_id", subject.id)
+        : marksQuery.eq("student_id", subject.id);
+    const { data: marks } = await marksQuery;
+    for (const m of marks ?? []) {
+      if (typeof m.marks_awarded === "number") marksAwardedByTestItem.set(m.test_item_id, m.marks_awarded);
+    }
+  }
+
   // -- Evidence crop images (private "exam-scans" bucket) ---------------------
   const evidencePaths = [...new Set(rows.map((r) => r.evidence_image_path).filter((p): p is string => !!p))];
   const evidenceUrlByPath = new Map<string, string>();
@@ -204,6 +232,7 @@ export async function GET(
     evidence_image_url: r.evidence_image_path ? evidenceUrlByPath.get(r.evidence_image_path) ?? null : null,
     question_image_urls: questionUrlsByTestItem.get(r.test_item_id) ?? [],
     markscheme_image_urls: markschemeUrlsByTestItem.get(r.test_item_id) ?? [],
+    marks_awarded: marksAwardedByTestItem.get(r.test_item_id) ?? null,
   }));
 
   return NextResponse.json({ runs, results: resultsWithImages });
