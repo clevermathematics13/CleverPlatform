@@ -41,11 +41,11 @@ interface AssessmentContent {
   sections?: StudentMarkSchemeSection[];
 }
 
-export async function GET(req: Request, { params }: { params: Promise<{ testId: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await getApiUser();
   if (!auth.ok) return auth.response;
   const { supabase, profile } = auth;
-  const { testId } = await params;
+  const { id: testId } = await params;
 
   const { data: test, error } = await supabase
     .from("tests")
