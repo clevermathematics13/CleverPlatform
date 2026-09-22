@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import { timingSafeEqual } from "crypto";
 import { randomUUID } from "crypto";
+import { paperQuestionPrefixes } from "@/lib/assignments";
 
 /**
  * POST /api/override/verify
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
   // Fetch the student's current self-scores and test items
   const { data: items } = await supabase
     .from("test_items")
-    .select("id, question_number, part_label, max_marks")
+    .select("id, question_number, part_label, max_marks, sort_order")
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
 
@@ -78,10 +79,17 @@ export async function POST(request: NextRequest) {
     (selfScores ?? []).map((s) => [s.test_item_id, s.self_marks])
   );
 
+  // The "<section>.<question>" prefix the paper itself prints (e.g. "2.3"),
+  // same as the AI-grading review screen and the reflection portal -- see
+  // paperQuestionPrefixes.
+  const { data: testRow } = await supabase.from("tests").select("custom_content").eq("id", testId).maybeSingle();
+  const paperPrefixes = paperQuestionPrefixes(testRow?.custom_content ?? null);
+
   const responseItems = (items ?? []).map((item) => ({
     test_item_id: item.id,
     question_number: item.question_number,
     part_label: item.part_label,
+    paper_label: paperPrefixes.get(item.sort_order) ?? null,
     max_marks: item.max_marks,
     self_marks: selfMap.get(item.id) ?? 0,
   }));

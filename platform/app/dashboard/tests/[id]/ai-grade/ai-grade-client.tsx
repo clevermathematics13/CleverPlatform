@@ -17,7 +17,7 @@ import {
   CAP_CAUSE_SHORT,
 } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
-import { formatQuestionLabel } from "@/lib/assignments";
+import { paperQuestionPrefixes } from "@/lib/assignments";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
 import { StandardsReportTable } from "@/components/StandardsReportTable";
 
@@ -241,35 +241,6 @@ const COLLECT_POLL_MS = 30_000;
  * answered `more: true` still cannot keep one page load posting for ever.
  */
 const MAX_COLLECT_PASSES = 40;
-
-/**
- * Maps each test_items.sort_order to the "<section>.<question>" prefix the
- * printed paper itself uses (e.g. "2.3"), read from tests.custom_content --
- * the same authored sections/questions/subparts draft the PDF is rendered
- * from (formatQuestionLabel, lib/assignments.ts) and buildTestItemsFromSections
- * (lib/formative-assessment-bridge.ts) walks in the same order to assign
- * sort_order in the first place, so the two line up. A part_label ("b") is
- * still read off the row itself; this only replaces the flat "Q5" stem that
- * discards which Level/section a part belongs to. Empty for an IB-bank test,
- * whose custom_content is null and whose question_number already is the
- * paper's own number.
- */
-function paperQuestionPrefixes(customContent: unknown): Map<number, string> {
-  const prefixes = new Map<number, string>();
-  const sections = (
-    customContent as { sections?: { questions?: { subparts?: unknown[] }[] }[] } | null | undefined
-  )?.sections;
-  if (!Array.isArray(sections)) return prefixes;
-  let sortOrder = 0;
-  sections.forEach((section, sIdx) => {
-    (section.questions ?? []).forEach((question, qIdx) => {
-      const prefix = formatQuestionLabel(sIdx, qIdx, "numeric");
-      const partCount = Array.isArray(question.subparts) && question.subparts.length > 0 ? question.subparts.length : 1;
-      for (let i = 0; i < partCount; i++) prefixes.set(sortOrder++, prefix);
-    });
-  });
-  return prefixes;
-}
 
 function itemLabel(item: TestItem | undefined, paperPrefixes: Map<number, string>): string {
   if (!item) return "—";

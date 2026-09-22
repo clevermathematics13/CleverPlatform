@@ -6,6 +6,15 @@ export interface ReflectionItem {
   test_item_id: string;
   question_number: number;
   part_label: string;
+  /**
+   * The "<section>.<question>" prefix the printed paper itself uses (e.g.
+   * "2.3"), from lib/assignments.ts's paperQuestionPrefixes -- null for an
+   * IB-bank test, where question_number already is the paper's own number.
+   * A display-only stand-in for `Q${question_number}` wherever this item's
+   * label is shown; question_number itself is unchanged and still what
+   * everything else (sorting, matching) keys on.
+   */
+  paper_label: string | null;
   max_marks: number;
   subtopic_codes: string[];
   subtopic_labels: string[];
