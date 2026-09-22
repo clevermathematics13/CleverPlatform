@@ -123,7 +123,7 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
                       }
                       className="text-left hover:opacity-80"
                     >
-                      <span className="font-bold text-da-amber">{item.question_number}</span>
+                      <span className="font-bold text-da-amber">{item.paper_label ?? item.question_number}</span>
                       {item.part_label && (
                         <span className="font-bold text-da-muted">({item.part_label})</span>
                       )}

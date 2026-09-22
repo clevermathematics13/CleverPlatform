@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { computeDisagreement } from "@/lib/reflection-utils";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
@@ -5,6 +6,7 @@ import { buildSelfScoreRows, SELF_SCORE_CONFLICT_TARGET } from "@/lib/reflection
 import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { correctionsKey } from "@/lib/storage-keys";
 import { resolveSelfAssessmentRequired } from "@/lib/self-assessment-gate";
+import { paperQuestionPrefixes } from "@/lib/assignments";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
   ReflectionTest,
@@ -22,6 +24,18 @@ export { computeDisagreement };
  *  `in.()`, which is a syntax error rather than a match-nothing filter, so a
  *  uuid that cannot exist is passed instead. */
 const NO_SUCH_UUID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * This test's "<section>.<question>" prefixes, keyed by test_items.sort_order
+ * -- see paperQuestionPrefixes (lib/assignments.ts). Every builder of
+ * ReflectionItem[]/similar in this file reads it to fill in `paper_label`,
+ * rather than shipping the raw draft (tests.custom_content) to the client
+ * just so a component can walk it itself.
+ */
+async function loadPaperPrefixes(supabase: SupabaseClient, testId: string): Promise<Map<number, string>> {
+  const { data } = await supabase.from("tests").select("custom_content").eq("id", testId).maybeSingle();
+  return paperQuestionPrefixes(data?.custom_content ?? null);
+}
 
 function computeReleaseTimestamp(
   testDate: string | null,
@@ -195,7 +209,7 @@ export async function getReflectionItems(
   // Get test items
   const { data: items, error: itemsError } = await supabase
     .from("test_items")
-    .select("id, question_number, part_label, max_marks, subtopic_codes")
+    .select("id, question_number, part_label, max_marks, subtopic_codes, sort_order")
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
 
@@ -223,12 +237,14 @@ export async function getReflectionItems(
   const selfMap = new Map(
     (selfScores ?? []).map((s) => [s.test_item_id, s.self_marks])
   );
+  const paperPrefixes = await loadPaperPrefixes(supabase, testId);
 
   return items.map((item) => ({
     id: item.id,
     test_item_id: item.id,
     question_number: item.question_number,
     part_label: item.part_label,
+    paper_label: paperPrefixes.get(item.sort_order) ?? null,
     max_marks: item.max_marks,
     subtopic_codes: item.subtopic_codes ?? [],
     subtopic_labels: (item.subtopic_codes ?? []).map(
@@ -264,7 +280,7 @@ export async function getReflectionItemsForInvitedStudent(
 
   const { data: items, error: itemsError } = await supabase
     .from("test_items")
-    .select("id, question_number, part_label, max_marks, subtopic_codes")
+    .select("id, question_number, part_label, max_marks, subtopic_codes, sort_order")
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
 
@@ -281,12 +297,14 @@ export async function getReflectionItemsForInvitedStudent(
   const marksMap = new Map(
     (marks ?? []).map((m) => [m.test_item_id, m.marks_awarded])
   );
+  const paperPrefixes = await loadPaperPrefixes(supabase, testId);
 
   return items.map((item) => ({
     id: item.id,
     test_item_id: item.id,
     question_number: item.question_number,
     part_label: item.part_label,
+    paper_label: paperPrefixes.get(item.sort_order) ?? null,
     max_marks: item.max_marks,
     subtopic_codes: item.subtopic_codes ?? [],
     subtopic_labels: (item.subtopic_codes ?? []).map(
@@ -511,7 +529,7 @@ export async function getStudentMastery(
 export async function getClassReflectionData(
   testId: string
 ): Promise<{
-  items: { id: string; question_number: number; part_label: string; max_marks: number; subtopic_codes: string[]; subtopic_labels: string[] }[];
+  items: { id: string; question_number: number; part_label: string; paper_label: string | null; max_marks: number; subtopic_codes: string[]; subtopic_labels: string[] }[];
   rows: StudentReflectionRow[];
   /** tests.total_marks, for the percentage behind each achievement level. */
   totalMarks: number | null;
@@ -524,7 +542,7 @@ export async function getClassReflectionData(
   // Get test items
   const { data: items } = await supabase
     .from("test_items")
-    .select("id, question_number, part_label, max_marks, subtopic_codes")
+    .select("id, question_number, part_label, max_marks, subtopic_codes, sort_order")
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
 
@@ -535,9 +553,11 @@ export async function getClassReflectionData(
   const subtopicMap = new Map(
     (subtopics ?? []).map((s) => [s.code, s.descriptor])
   );
+  const paperPrefixes = await loadPaperPrefixes(supabase, testId);
 
   const itemsWithLabels = (items ?? []).map((item) => ({
     ...item,
+    paper_label: paperPrefixes.get(item.sort_order) ?? null,
     subtopic_codes: item.subtopic_codes ?? [],
     subtopic_labels: (item.subtopic_codes ?? []).map(
       (code: string) => `${code} — ${subtopicMap.get(code) ?? code}`
@@ -699,6 +719,7 @@ export async function getClassReflectionData(
       test_item_id: ri.test_item_id,
       question_number: itemsWithLabels[idx].question_number,
       part_label: itemsWithLabels[idx].part_label,
+      paper_label: itemsWithLabels[idx].paper_label,
       max_marks: itemsWithLabels[idx].max_marks,
       subtopic_codes: itemsWithLabels[idx].subtopic_codes ?? [],
       subtopic_labels: itemsWithLabels[idx].subtopic_labels ?? [],

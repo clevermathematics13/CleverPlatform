@@ -24,7 +24,7 @@ export function OverrideModal({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<
-    { test_item_id: string; question_number: number; part_label: string; max_marks: number; self_marks: number }[]
+    { test_item_id: string; question_number: number; part_label: string; paper_label: string | null; max_marks: number; self_marks: number }[]
   >([]);
 
   const handleVerify = async () => {
@@ -152,7 +152,7 @@ export function OverrideModal({
                 {items.map((item) => (
                   <tr key={item.test_item_id} className="border-b">
                     <td className="px-3 py-2">
-                      Q{item.question_number}
+                      {item.paper_label ?? `Q${item.question_number}`}
                       {item.part_label ? ` (${item.part_label})` : ""}
                     </td>
                     <td className="px-3 py-2 text-center">{item.max_marks}</td>
