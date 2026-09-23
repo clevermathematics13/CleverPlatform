@@ -2711,3 +2711,52 @@ teaching signal on the page, and worth a look before Unit 2.
   is marked is the first time anyone looks at it.
 - **Discrimination at n = 10 is soft.** Five is a floor, not a guarantee; the
   figure is there to point at a part worth re-reading, not to be reported.
+
+## 26. Teacher stats reaches Extended, and learns about no-attempt (23 Sep 2026)
+
+Two follow-ups on §25, both from the same teacher looking at Key Assessment 1
+on the Grade 9 Extended track (9A/9C/9G), which has no standards rubric.
+
+**The links were the only thing rubric-gated.** §25 already said the stats
+page itself renders for any test with items; only the "Teacher stats ->"
+links (tests list, ai-grade page, rubric section) were wrapped in
+`test.standards_rubric != null`. Un-gated all three so any test with parts
+gets the link -- Standards report links are unchanged, since that page is
+still rubric-only. `ALL_CLASSES_LABEL` ("All Standard Level" -> "All
+classes") and its surrounding doc comments were also generic-ised, since the
+scope switcher was never Standard-Level-specific either.
+
+**No attempt is now its own figure, deliberately not folded into Zero.** The
+teacher asked to "keep track of no attempt questions and include them in
+teacher stats, but automatically accept them" -- investigating the second
+half first: on a summative, `lib/summative-grading-gate.ts` already withholds
+a confidently-blank part (`ai_grade_results.work_found = false`) from "Accept
+all" on purpose, precisely so nothing reaches Clev's Marks on a paper that
+counts without a teacher opening it. Auto-accepting no-attempt specifically
+would mean a mis-flagged blank page (rare, but the AI's blank detection is
+not infallible) writes a 0 nobody looked at. Asked, the teacher chose to keep
+requiring accept and just surface the figure -- so nothing about accept-all
+changed.
+
+What did change: `StatsSubject` (`lib/standards-stats.ts`) gained an optional
+`noAttempt: ReadonlySet<string>` of test_item ids, loaded independently of
+`marks` by the new `lib/no-attempt.ts` (`loadNoAttemptFlags`) -- each
+subject's latest COMPLETE run's blank-flagged parts, straight from
+`ai_grade_results`, never from `student_marks`. `PartStat` gained
+`noAttemptCount`/`noAttemptPercent`, counted over every PRESENT subject in
+scope (not over `n`, which only counts marked students) -- rule 4 in the
+module header spells out why this is the one deliberate exception to "a
+missing mark is not a zero": the count is real before a single part is
+accepted, which is the whole point on a summative. A new highlight,
+`mostlyNoAttempt`, names a part half the class or more left blank, distinct
+from `wholeClassStuck` (which only fires once marks are actually accepted as
+zero). The stats page's part table gained a "No attempt" column and the CSV
+gained two columns, between Zero and Discrimination in both.
+
+**Deliberately not done:** no column was added to `student_marks` or
+anywhere persistent -- `noAttempt` is recomputed from `ai_grade_results` on
+every load, the same freshness guarantee the rest of the page already has.
+Accepting a no-attempt part still goes through the ordinary accept /
+accept-all flow; once accepted it becomes a real 0 in `marks` and starts
+counting in the mean/median exactly like any other accepted zero, same as
+before this entry.

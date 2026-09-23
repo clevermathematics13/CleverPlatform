@@ -336,6 +336,23 @@ export default async function StandardsStatsPage({
                   </dd>
                 </div>
               )}
+              {highlights.mostlyNoAttempt.length > 0 && (
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                    Half the class or more left with no attempt
+                  </dt>
+                  <dd className="mt-1 flex flex-wrap gap-1.5">
+                    {highlights.mostlyNoAttempt.map((p) => (
+                      <PartChip key={p.itemId} part={p} figure={`${pct(p.noAttemptPercent)} no attempt`} />
+                    ))}
+                    <span className="w-full text-xs text-da-muted">
+                      From Clev&apos;s own blank detection, before anything is accepted -- not the same
+                      list as &quot;scored nothing&quot; above, which only counts a mark once it is in
+                      Clev&apos;s Marks.
+                    </span>
+                  </dd>
+                </div>
+              )}
               {highlights.negativeDiscrimination.length > 0 && (
                 <div>
                   <dt className="text-xs font-semibold uppercase tracking-wide text-da-muted">
@@ -377,7 +394,7 @@ export default async function StandardsStatsPage({
               </p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[56rem] text-sm">
+              <table className="w-full min-w-[62rem] text-sm">
                 <thead>
                   <tr className="border-b border-da-border">
                     <th className={th}>Question / part</th>
@@ -391,6 +408,12 @@ export default async function StandardsStatsPage({
                     </th>
                     <th className={th}>Full</th>
                     <th className={th}>Zero</th>
+                    <th
+                      className={th}
+                      title="From Clev's own blank detection, over every present student in scope -- not the same denominator as Zero, which only counts a mark once it is accepted."
+                    >
+                      No attempt
+                    </th>
                     <th
                       className={th}
                       title="This part's mark against the rest of the paper. High means the students who did well overall did well here; negative means the opposite, and is worth a look."
@@ -428,7 +451,7 @@ export default async function StandardsStatsPage({
                             <span className="text-xs text-da-muted">—</span>
                           )}
                         </td>
-                        <td className={td} colSpan={4}>
+                        <td className={td} colSpan={5}>
                           <span className="text-xs text-da-muted">
                             {q.n > 0 ? `median ${dp1(q.median)} · SD ${dp1(q.sd)}` : ""}
                           </span>
@@ -472,6 +495,18 @@ export default async function StandardsStatsPage({
                           </td>
                           <td className={`${td} tabular-nums text-da-muted`}>
                             {p.n > 0 ? pct(p.zeroPercent) : "—"}
+                          </td>
+                          <td className={`${td} tabular-nums`}>
+                            {p.noAttemptCount > 0 ? (
+                              <span
+                                className="text-amber-300"
+                                title={`${p.noAttemptCount} of the class left this with no attempt, before any accepting`}
+                              >
+                                {p.noAttemptCount} ({pct(p.noAttemptPercent)})
+                              </span>
+                            ) : (
+                              <span className="text-da-muted">—</span>
+                            )}
                           </td>
                           <td className={`${td} tabular-nums`}>
                             {p.discrimination === null ? (

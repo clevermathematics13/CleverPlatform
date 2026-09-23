@@ -45,6 +45,15 @@ import {
  * 3. AN ABSENT STUDENT IS NOT IN ANY OF IT. They did not sit the paper, so
  *    they are neither a zero nor a small n -- the caller filters them out
  *    before the marks get here.
+ *
+ * 4. NO ATTEMPT IS THE ONE EXCEPTION TO RULE 1, reported on the side rather
+ *    than folded into it. `PartStat.noAttemptCount` comes from the AI
+ *    grader's OWN blank detection (`StatsSubject.noAttempt`), not from
+ *    `marks`, so it is real before a single part is accepted -- which
+ *    matters most on exactly the papers where accept-all withholds a
+ *    confidently-blank part until a teacher opens it. It is counted over
+ *    every present subject, not over `n`, and is not added into any mean,
+ *    median or total: a mark that has not been accepted still is not one.
  * -----------------------------------------------------------------------------
  */
 
@@ -59,6 +68,15 @@ export interface StatsSubject {
   /** "9D", so the general Standard Level view can break the numbers down by class. */
   className: string | null;
   marks: ReadonlyMap<string, number>;
+  /**
+   * Parts (test_items.id) the AI grader's OWN blank detection found no
+   * attempt on, from this subject's latest COMPLETE run -- independent of
+   * `marks`. A summative withholds exactly these from "Accept all"
+   * (lib/summative-grading-gate.ts), so a part can be confidently no-attempt
+   * here well before it is a zero in `marks`. Optional and defaults to
+   * empty so every existing caller (and fixture) still builds.
+   */
+  noAttempt?: ReadonlySet<string>;
 }
 
 /**
@@ -151,6 +169,16 @@ export interface PartStat {
   zeroMarks: number;
   fullPercent: number;
   zeroPercent: number;
+  /**
+   * Students the AI grader flagged as having made no attempt on this part,
+   * from its own blank detection -- counted over every present student in
+   * scope (`noAttemptOf`), not just the `n` who have a mark yet. A summative
+   * can hold these back from Clev's Marks (lib/summative-grading-gate.ts),
+   * so this is often nonzero while `n` still excludes them.
+   */
+  noAttemptCount: number;
+  /** Of every present student in scope, not of `n`. */
+  noAttemptPercent: number;
   /** Counts at each whole mark 0..max. Half marks, if any ever appear, round down into a bucket. */
   distribution: number[];
   /**
@@ -278,6 +306,7 @@ export function buildStandardsStats(args: {
     }
     const fullMarks = marks.filter((m) => m >= item.max_marks).length;
     const zeroMarks = marks.filter((m) => m <= 0).length;
+    const noAttemptCount = subjects.filter((s) => s.noAttempt?.has(item.id)).length;
 
     // Corrected item-total: this part against the rest of the paper, over
     // complete papers only. Subtracting the part is what makes it
@@ -311,6 +340,8 @@ export function buildStandardsStats(args: {
       zeroPercent: marks.length > 0 ? (zeroMarks / marks.length) * 100 : 0,
       distribution,
       discrimination,
+      noAttemptCount,
+      noAttemptPercent: subjects.length > 0 ? (noAttemptCount / subjects.length) * 100 : 0,
     };
   });
 
@@ -437,6 +468,12 @@ export interface StatsHighlights {
   /** Parts at least half the class scored nothing on, hardest first. */
   wholeClassStuck: PartStat[];
   /**
+   * Parts at least half the class left with no attempt at all, worst first --
+   * distinct from `wholeClassStuck`: that one is "graded zero", this one is
+   * "never answered", and it is visible before any accepting happens.
+   */
+  mostlyNoAttempt: PartStat[];
+  /**
    * Parts whose discrimination is negative: the class's stronger students did
    * WORSE here. Worth re-reading the part and its mark scheme before the
    * next paper, which is the whole reason this number is computed.
@@ -461,6 +498,9 @@ export function statsHighlights(stats: StandardsStats, limit = 5): StatsHighligh
     hardestParts: byMeanAsc.slice(0, limit),
     easiestParts: [...byMeanAsc].reverse().slice(0, limit),
     wholeClassStuck: byMeanAsc.filter((p) => p.zeroPercent >= 50),
+    mostlyNoAttempt: stats.parts
+      .filter((p) => p.noAttemptCount >= MIN_STUDENTS_FOR_HIGHLIGHT && p.noAttemptPercent >= 50)
+      .sort((a, b) => b.noAttemptPercent - a.noAttemptPercent || a.ref.localeCompare(b.ref)),
     negativeDiscrimination: usable
       .filter((p) => p.discrimination !== null && p.discrimination < 0)
       .sort((a, b) => (a.discrimination ?? 0) - (b.discrimination ?? 0)),
@@ -553,6 +593,8 @@ export function buildStandardsStatsCsv(
       "% full",
       "Zero",
       "% zero",
+      "No attempt",
+      "% no attempt",
       "Discrimination",
     ])
   );
@@ -571,6 +613,8 @@ export function buildStandardsStatsCsv(
         p.fullPercent,
         p.zeroMarks,
         p.zeroPercent,
+        p.noAttemptCount,
+        p.noAttemptPercent,
         p.discrimination,
       ])
     );

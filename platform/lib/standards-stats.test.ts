@@ -280,6 +280,61 @@ describe("highlights", () => {
   });
 });
 
+describe("no attempt", () => {
+  const item1a = KA1_ITEMS.find((i) => `${i.question_number}${i.part_label}` === "1a")!;
+
+  /** Full marks on every part except 1a, which the AI grader flagged blank and nobody has accepted -- no mark at all on it. */
+  function noAttemptOn1a(name: string): StatsSubject {
+    const s = subject(name, (i) => (i.id === item1a.id ? null : i.max_marks));
+    return { ...s, noAttempt: new Set([item1a.id]) };
+  }
+
+  it("counts over every present subject, not over the students with a mark", () => {
+    const stats = buildStandardsStats({
+      items: KA1_ITEMS,
+      rubric: KA1_UNIT1_RUBRIC,
+      subjects: [noAttemptOn1a("a"), noAttemptOn1a("b"), full("c")],
+    });
+    const q1a = stats.parts.find((p) => p.ref === "1a")!;
+    // a and b are flagged no-attempt on 1a but never got a mark for it (the
+    // batch accept withheld it), so n counts only c while noAttemptCount
+    // counts a and b -- the two are deliberately not the same number.
+    expect(q1a.n).toBe(1);
+    expect(q1a.noAttemptCount).toBe(2);
+    expect(q1a.noAttemptPercent).toBe((2 / 3) * 100);
+  });
+
+  it("does not enter the mean, median or any total", () => {
+    const stats = buildStandardsStats({
+      items: KA1_ITEMS,
+      rubric: KA1_UNIT1_RUBRIC,
+      subjects: [noAttemptOn1a("a"), full("b"), full("c")],
+    });
+    const q1a = stats.parts.find((p) => p.ref === "1a")!;
+    // Only b and c have a mark on 1a, both full marks -- a's flag changes
+    // nothing about the mean, which stays 100%, not two-thirds.
+    expect(q1a.meanPercent).toBe(100);
+    expect(q1a.n).toBe(2);
+  });
+
+  it("is a no-op for a subject with no noAttempt set at all", () => {
+    const stats = buildStandardsStats({ items: KA1_ITEMS, rubric: KA1_UNIT1_RUBRIC, subjects: [full("a")] });
+    expect(stats.parts.every((p) => p.noAttemptCount === 0)).toBe(true);
+  });
+
+  it("surfaces a part most of the class left blank, distinct from wholeClassStuck", () => {
+    const subjects = ["a", "b", "c", "d", "e"].map((n) =>
+      n === "e" ? full(n) : noAttemptOn1a(n)
+    );
+    const stats = buildStandardsStats({ items: KA1_ITEMS, rubric: KA1_UNIT1_RUBRIC, subjects });
+    const highlights = statsHighlights(stats);
+    expect(highlights.mostlyNoAttempt.map((p) => p.ref)).toEqual(["1a"]);
+    // Nobody's mark was ever recorded as a zero on 1a (it was never
+    // accepted), so the graded-zero list does not also name it.
+    expect(highlights.wholeClassStuck.map((p) => p.ref)).not.toContain("1a");
+  });
+});
+
 describe("the general Standard Level view", () => {
   const nineD = ["a", "b"].map((n) => full(n, "9D"));
   const nineA = [blank("c", "9A")];

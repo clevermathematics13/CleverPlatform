@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadReportRoster } from "./report-roster";
+import { loadNoAttemptFlags } from "./no-attempt";
 import { parseStandardsRubric, type RubricItem, type StandardsRubric } from "./standards-rubric";
 import {
   buildStandardsStats,
@@ -146,11 +147,18 @@ export async function loadStandardsStatsData(
     (s) => scope.key === ALL_CLASSES_SCOPE || (s.courseId || UNKNOWN_CLASS_SCOPE) === scope.key
   );
   const present = inScope.filter((s) => !s.absent);
+
+  // Loaded on the side, straight from the AI grader's own blank detection --
+  // see lib/no-attempt.ts for why this cannot come from `marks` (the roster's
+  // accepted-only rule) or from student_marks at all.
+  const noAttemptBySubject = await loadNoAttemptFlags(supabase, testId);
+
   const subjects: StatsSubject[] = present.map((s) => ({
     subjectId: s.subjectId,
     name: s.name,
     className: s.className,
     marks: s.marks,
+    noAttempt: noAttemptBySubject.get(s.subjectId),
   }));
 
   const stats = buildStandardsStats({ items, rubric, subjects });
