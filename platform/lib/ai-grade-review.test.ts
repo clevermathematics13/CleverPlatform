@@ -8,6 +8,9 @@ import {
   partWarningLabel,
   warningsForPart,
   capCauseForPart,
+  summariseSelfAssessment,
+  selfMarkFor,
+  selfMarkDiffers,
 } from "./ai-grade-review";
 import { unitLabel } from "./ai-grading";
 
@@ -272,5 +275,90 @@ describe("warningsForPart / capCauseForPart", () => {
     expect(capCauseForPart("6", warnings)).toBe("numeric");
     expect(capCauseForPart("2", warnings)).toBe("none");
     expect(capCauseForPart("2", undefined)).toBe("none");
+  });
+});
+
+describe("summariseSelfAssessment / selfMarkFor", () => {
+  const Q1A = "item-1a";
+  const Q1B = "item-1b";
+  const Q2 = "item-2";
+  const ADDED_LATER = "item-3";
+
+  it("keeps a failed read apart from a student who has not self-assessed", () => {
+    const failed = summariseSelfAssessment(null);
+    expect(failed.available).toBe(false);
+    expect(failed.assessed).toBe(false);
+
+    const none = summariseSelfAssessment([]);
+    expect(none.available).toBe(true);
+    expect(none.assessed).toBe(false);
+    expect(selfMarkFor(none, Q1A)).toEqual({ kind: "none" });
+  });
+
+  it("reads each part as a claimed mark, a blank, or nothing on file", () => {
+    const summary = summariseSelfAssessment([
+      { test_item_id: Q1A, self_marks: 1 },
+      { test_item_id: Q1B, self_marks: 0 },
+      { test_item_id: Q2, self_marks: null },
+    ]);
+    expect(summary.assessed).toBe(true);
+    expect(selfMarkFor(summary, Q1A)).toEqual({ kind: "marks", marks: 1 });
+    // 0 is "attempted and earned nothing" -- not the same fact as a blank.
+    expect(selfMarkFor(summary, Q1B)).toEqual({ kind: "marks", marks: 0 });
+    expect(selfMarkFor(summary, Q2)).toEqual({ kind: "blank" });
+    expect(selfMarkFor(summary, ADDED_LATER)).toEqual({ kind: "none" });
+  });
+
+  it("totals the claimed marks, a blank adding nothing", () => {
+    const summary = summariseSelfAssessment([
+      { test_item_id: Q1A, self_marks: 2 },
+      { test_item_id: Q1B, self_marks: 3 },
+      { test_item_id: Q2, self_marks: null },
+    ]);
+    expect(summary.total).toBe(5);
+  });
+
+  // The platform's own test for having self-assessed (hasSelfScores): a form
+  // submitted blank end to end is not a self-assessment, so the column must
+  // not print a row of blanks under a heading that says "not self-assessed".
+  it("treats a submission with every box blank as not self-assessed", () => {
+    const summary = summariseSelfAssessment([
+      { test_item_id: Q1A, self_marks: null },
+      { test_item_id: Q2, self_marks: null },
+    ]);
+    expect(summary.available).toBe(true);
+    expect(summary.assessed).toBe(false);
+    expect(summary.total).toBe(0);
+    expect(selfMarkFor(summary, Q1A)).toEqual({ kind: "none" });
+    expect(selfMarkFor(summary, Q2)).toEqual({ kind: "none" });
+  });
+
+  it("reports when the rows were last saved, skipping unreadable timestamps", () => {
+    const summary = summariseSelfAssessment([
+      { test_item_id: Q1A, self_marks: 1, submitted_at: "2026-09-23T13:46:18.821+00:00" },
+      { test_item_id: Q1B, self_marks: 1, submitted_at: "2026-09-24T08:00:00+00:00" },
+      { test_item_id: Q2, self_marks: null, submitted_at: null },
+      { test_item_id: ADDED_LATER, self_marks: 0, submitted_at: "not a date" },
+    ]);
+    expect(summary.lastSavedAt).toBe("2026-09-24T08:00:00+00:00");
+    expect(summariseSelfAssessment([{ test_item_id: Q1A, self_marks: 1 }]).lastSavedAt).toBeNull();
+  });
+});
+
+describe("selfMarkDiffers", () => {
+  it("compares a claimed mark with the mark on screen", () => {
+    expect(selfMarkDiffers({ kind: "marks", marks: 1 }, 1)).toBe(false);
+    expect(selfMarkDiffers({ kind: "marks", marks: 2 }, 1)).toBe(true);
+    expect(selfMarkDiffers({ kind: "marks", marks: 0 }, 1)).toBe(true);
+  });
+
+  it("reads a blank as a claim of 0, as computeDisagreement does", () => {
+    expect(selfMarkDiffers({ kind: "blank" }, 0)).toBe(false);
+    expect(selfMarkDiffers({ kind: "blank" }, 1)).toBe(true);
+  });
+
+  it("never flags a part with nothing on file", () => {
+    expect(selfMarkDiffers({ kind: "none" }, 0)).toBe(false);
+    expect(selfMarkDiffers({ kind: "none" }, 3)).toBe(false);
   });
 });

@@ -2843,3 +2843,46 @@ part's label and marks box.
   than a phone and scrolls sideways inside its own box.
 - The Mark Scheme button stays, for the whole document at once. The page
   carries about 110 kB more for a 26-part paper (the KaTeX HTML).
+
+## 27. The student's self-assessment on the marking screen (23 Sep 2026)
+
+The teacher asked to see each student's self-assessed marks while marking.
+The AI-grade review panel (`app/dashboard/tests/[id]/ai-grade`) now has a
+**Self** column between Suggested and Max, a "Self-assessed total N / M"
+line under the suggested total, and a count of differing parts on the
+high-confidence summary row, so it still says something when folded.
+
+- **Where the data comes from.** `GET /api/tests/[id]/ai-grade?studentId=`
+  returns `self_scores` (`student_self_scores` over every item of the test,
+  not only the graded ones, so the total is the one the student saw on their
+  form). `[]` for an `invited-` subject, who has no account to have
+  self-assessed from; `null` when the read fails, which the panel reports as
+  "could not be loaded" rather than "not self-assessed yet". The whole-class
+  load does not carry it.
+- **Three states per part, as the rest of the platform reads them**
+  (`summariseSelfAssessment` in `lib/ai-grade-review.ts`): a number; a blank
+  row (`self_marks` NULL), shown as "no attempt" and compared as a claim of
+  0, as `computeDisagreement` does; and no row at all (a part added after the
+  student submitted), shown as a dash that never counts as differing. A
+  student with no non-null `self_marks` has not self-assessed -- the same
+  test as `hasSelfScores` -- so a form submitted blank end to end reads as
+  not done, not as a column of blanks.
+- **Amber means "differs from the mark in the box"**, i.e. the draft about to
+  be accepted, so the highlight and both counts follow an edit as it is
+  typed. It is a prompt to look, like the "was N" hint, not a verdict.
+- **The numbers are the latest the student saved, not necessarily their
+  first judgement.** The Compare step lets a student edit their self-marks
+  after seeing Clev's Marks (that is how they reach 0% and unlock Upload
+  Corrections), and each save overwrites `self_marks` and `submitted_at` on
+  every row, so the original is not kept anywhere. The header line's tooltip
+  gives the last-saved time. Rows written through the Override Scores modal
+  (`override_by` set) are shown as they are; none existed on 23 Sep (0 of
+  2,961 rows).
+- **Verified locally, not against production.** The panel was driven in a
+  headless browser against a throwaway page rendering the real
+  `AiGradeClient`, with every `/api` call answered from synthetic fixtures
+  covering each state (matching, over-claim, blank against 1 and against 0,
+  missing row, not self-assessed, failed read, a live edit). No teacher
+  session was minted, so the route itself has not run against the live
+  database; the rows it reads were looked at by SQL instead. Key Assessment
+  1 (`ccfa0456`) had 23 students self-assessed, 828 rows, 75 of them blank.
