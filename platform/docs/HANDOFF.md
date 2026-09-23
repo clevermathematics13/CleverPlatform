@@ -1966,7 +1966,10 @@ generic bands and shows an `~approx` badge (§3). The save route refuses a
 summative that has none; the creator offers a picker. Grade 9 has its own set
 (`cf5ccc24`), separate from the DP progression sets.
 
-**Teacher intervention on anything below high confidence.** `POST
+**Teacher intervention on anything below high confidence.** *(Removed 23 Sep
+2026 at the teacher's request -- Accept all now covers every mark on a
+summative too, and this paragraph and the two after it are history. See
+§26.)* `POST
 .../ai-grade/accept-all` now covers only what the model was fully confident
 about; everything else stays `accepted = false` and waits in the review UI,
 where accepting one IS a teacher looking at it. `lib/summative-grading-gate.ts`
@@ -2437,7 +2440,8 @@ options, to delete the demotion and keep the warning.
   and clamp checks still force low, and those are the caps that were earning
   their keep. **Consequence:** `gradeNeedsReview`, `partitionByConfidence` and
   the summative gate all read the stored label, so on a SUMMATIVE, Accept-all
-  now writes hedge-warned parts it used to hold. Already-graded rows keep
+  now writes hedge-warned parts it used to hold (and since 23 Sep 2026, §26,
+  every other part as well: the summative gate is gone). Already-graded rows keep
   their stored label (the pre-cap value was never persisted); a re-mark
   refreshes them.
 - **C. The row says why.** Every non-high row carries a few words under its
@@ -2711,3 +2715,57 @@ teaching signal on the page, and worth a look before Unit 2.
   is marked is the first time anyone looks at it.
 - **Discrimination at n = 10 is soft.** Five is a floor, not a guarantee; the
   figure is there to point at a part worth re-reading, not to be reported.
+
+---
+
+## 26. Accept all means all, on a summative too (23 Sep 2026)
+
+The teacher clicked Accept all on Key Assessment 1 (Grade 9, a summative,
+`ccfa0456`), opened a student's review and found parts still waiting: every
+"no attempt found" row and every low- or medium-confidence one. That was the
+summative gate from §19 doing what it was built to do. The teacher asked for
+it to go: Accept all should write those too.
+
+When they asked, the gate was holding 150 marks across 33 of KA1's 49 marked
+students (72 "no attempt found", 79 at medium or low, one part both), and
+they were being accepted one click at a time.
+
+**What changed:**
+
+- `POST .../ai-grade/accept-all` writes every not-yet-accepted suggestion on
+  every student's latest complete run, whatever the kind of paper, and flags
+  them accepted by run id again. The by-id path (chunks of 200) existed only
+  for held rows and is gone, as is the read of `tests.assessment_kind`. The
+  per-class "Accept 9X into Clev's Marks" button uses the same route, so it
+  changed too.
+- `lib/summative-grading-gate.ts` and its test are deleted; the route was
+  their only caller. `gradeNeedsReview()` in `lib/ai-grading.ts` is
+  untouched. It still builds a run's `needsReview` list, which flags parts
+  for a look; it just no longer stops Accept all.
+- The confirmation dialog is the same for both kinds and says what it
+  includes: low- and medium-confidence marks, and parts where no attempt was
+  found. It does not say those are written as 0, because not all of them
+  are: KA1 4.2(a) has a marking note awarding 2/2 to every script, blank
+  ones included, so its "no attempt found" rows are suggested at 2/2 and
+  Accept all writes that. The `assessmentKind` prop on `AiGradeClient` went
+  with it.
+- The summative blurb in the creator (`ASSESSMENT_KINDS`) no longer promises
+  that "any AI mark below high confidence waits for you". The header of
+  `lib/assessment-kind.ts` now lists Accept all under "what deliberately does
+  not change", so nobody re-adds the gate thinking it was lost.
+
+**What did not change:**
+
+- Confidence badges, the "why" line under a badge that is not high, the Why?
+  panel, and the review table's split into parts to look at and the folded
+  high-confidence group. All of these show before and after accepting.
+- One student's review still leaves a "no attempt found" row unticked by
+  default (`!r.accepted && r.work_found` in `loadResultsFor`). That is the
+  "Accept N into Clev's Marks" button inside a single review, not Accept all,
+  and the teacher did not ask about it.
+- The audit trail. Each mark's `mark_changes.reason` still records the
+  confidence it was accepted at ("... via batch accept-all (medium
+  confidence)"), and `ai_grade_results.work_found` still marks the blank
+  parts. So the uncertain marks that went in without being opened can be
+  found later. `scripts/confidence-calibration.ts` counts them under
+  `accept_all`, as before.

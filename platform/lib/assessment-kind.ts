@@ -20,10 +20,7 @@
  *      score. Without one the gradebook falls back to generic bands and shows
  *      an "~approx" badge -- fine for a formative, wrong for a paper that
  *      counts.
- *   3. Teacher intervention on every AI-suggested mark the model was not fully
- *      confident about. See lib/summative-grading-gate.ts: batch accept stops
- *      covering those, and they wait for someone to look.
- *   4. Self-assessment before marks are released -- not offered as a choice.
+ *   3. Self-assessment before marks are released -- not offered as a choice.
  *
  * WHAT A SUMMATIVE LEAVES OUT
  *   1. Hints. A formative may print "Hint: try substituting x = 2" beside a
@@ -41,6 +38,11 @@
  *     written and the gradebook already parses "LEVEL n" headings.
  *   - The reteach guide. It lives on the mark scheme, teacher-only, and a
  *     summative is exactly when a teacher needs to know what to go back over.
+ *   - What "Accept all" covers. It writes every suggested mark, low and medium
+ *     confidence and "no attempt found" included. A summative used to hold
+ *     those back for the teacher to open one at a time; the teacher asked on
+ *     23 Sep 2026 for Accept all to cover them too, so that rule is gone, not
+ *     forgotten.
  * -----------------------------------------------------------------------------
  */
 
@@ -57,9 +59,7 @@ export const ASSESSMENT_KINDS: Array<{ value: AssessmentKind; label: string; blu
   {
     value: "summative",
     label: "Summative",
-    blurb:
-      "A paper that counts. Exam conditions printed, no hints, grade boundaries required, " +
-      "and any AI mark below high confidence waits for you.",
+    blurb: "A paper that counts. Exam conditions printed, no hints, grade boundaries required.",
   },
 ];
 

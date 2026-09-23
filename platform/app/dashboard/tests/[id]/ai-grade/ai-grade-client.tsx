@@ -16,7 +16,6 @@ import {
   capCauseForPart,
   CAP_CAUSE_SHORT,
 } from "@/lib/ai-grade-review";
-import type { AssessmentKind } from "@/lib/assessment-kind";
 import { paperQuestionPrefixes } from "@/lib/assignments";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
 import { StandardsReportTable } from "@/components/StandardsReportTable";
@@ -248,14 +247,7 @@ function itemLabel(item: TestItem | undefined, paperPrefixes: Map<number, string
   return item.part_label ? `${prefix}(${item.part_label})` : prefix;
 }
 
-export function AiGradeClient({
-  testId,
-  assessmentKind = "formative",
-}: {
-  testId: string;
-  /** Decides what "Accept all" actually covers -- see lib/summative-grading-gate.ts. */
-  assessmentKind?: AssessmentKind;
-}) {
+export function AiGradeClient({ testId }: { testId: string }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
   /** Result of GET /api/health/anthropic: null until checked; error string when the key cannot complete a call. */
   const [apiHealthError, setApiHealthError] = useState<string | null>(null);
@@ -1116,13 +1108,9 @@ export function AiGradeClient({
     const who = scope ? `${scope.label} student's` : "student's";
     const about = scope ? ` for ${scope.label}` : "";
     const ok = window.confirm(
-      assessmentKind === "summative"
-        ? `This is a summative. It writes only the suggestions Clev was fully confident about${about}, straight into ` +
-            "Clev's Marks without opening each student's review. Anything less confident, and anything marked " +
-            "with no working found, is left for you to check and accept yourself. Continue?"
-        : `This writes every suggested mark, for every question, for every ${who} latest completed run straight into ` +
-            "Clev's Marks -- without opening each student's review first. Already-accepted marks are left as they are. " +
-            "Continue?"
+      `This writes every suggested mark, for every question, for every ${who} latest completed run straight into ` +
+        "Clev's Marks, without opening each student's review first. That includes low- and medium-confidence " +
+        "marks, and parts where no attempt was found. Already-accepted marks are left as they are. Continue?"
     );
     if (!ok) return;
     setAcceptingAll(!scope);
@@ -1138,15 +1126,12 @@ export function AiGradeClient({
         setError((data.error as string) ?? "Could not accept all marks.");
         return;
       }
-      // On a summative the route holds back every suggestion Clev was not
-      // fully confident about and says so in `message`. Appended rather than
-      // swapped in: the count that WAS written still matters, and a batch that
-      // silently covered less than "accept all" says it does is the failure
-      // this exists to prevent.
-      const held = (data.message as string | undefined) ?? "";
+      // `message` only comes back when there was nothing left to accept, and
+      // says so beside the zero rather than leaving it unexplained.
+      const note = (data.message as string | undefined) ?? "";
       setStatusLine(
         `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s)${about} into Clev's Marks.` +
-          (held ? ` ${held}` : "")
+          (note ? ` ${note}` : "")
       );
       await loadOverview();
       if (focusStudent) await loadResultsFor(focusStudent, { afterWrite: true });
