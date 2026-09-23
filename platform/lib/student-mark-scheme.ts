@@ -13,6 +13,12 @@
  * builds a second, separate document from the same source content: the
  * answer and the marking note for each question, in plain language, with
  * the M/A/R shorthand stripped and none of the teacher-only sections.
+ *
+ * Two sources, one page. A paper written in the Formative Assessment creator
+ * has its draft in tests.custom_content (buildStudentMarkSchemeHtml). A paper
+ * that arrived as PDFs -- a Grade 9 Standard Level paper through
+ * lib/standards-import.ts -- has no draft, and its mark scheme is each
+ * part's test_items.markscheme_text (buildStudentMarkSchemeHtmlFromItems).
  */
 
 import { renderMath } from "./document-orchestrator";
@@ -44,6 +50,24 @@ export interface StudentMarkSchemeRequest {
   sections: StudentMarkSchemeSection[];
 }
 
+/** One test_items row, as much of it as a student may see. Deliberately no
+ *  marking_notes: those are the teacher's rulings written to the AI marker
+ *  (buildUnitBlock in lib/ai-grading.ts), in its vocabulary -- confidence
+ *  labels, tokens, the markBreakdown -- and not a mark scheme for a student. */
+export interface StudentMarkSchemeItem {
+  question_number: number;
+  part_label: string | null;
+  max_marks: number;
+  markscheme_text: string | null;
+}
+
+export interface StudentMarkSchemeFromItemsRequest {
+  title: string;
+  subtitle?: string;
+  /** In test_items.sort_order, the order the self-grade form lists them. */
+  items: StudentMarkSchemeItem[];
+}
+
 /** A run of one to four chained M/A/R marking codes (M1, A1, R1, M0A0,
  *  M1M0A0, M0M0A1R1, ...), the internal shorthand a teacher's mark scheme
  *  is written in. Matched greedily with the following "for" so "A1 for 3"
@@ -65,7 +89,7 @@ export function stripMarkCodes(text: string): string {
   return out;
 }
 
-function questionBlockHtml(label: string, q: { prompt: string; marks?: number; answer?: string; markScheme?: string }): string {
+function questionBlockHtml(label: string, q: { marks?: number; answer?: string; markScheme?: string }): string {
   const marksHtml = q.marks !== undefined ? `<span class="sms-marks">[${q.marks} mark${q.marks === 1 ? "" : "s"}]</span>` : "";
   const answerHtml = q.answer
     ? `<div class="sms-answer"><span class="sms-tag">Answer</span>${renderMath(escapeHtml(q.answer))}</div>` : "";
@@ -99,12 +123,41 @@ export function buildStudentMarkSchemeHtml(req: StudentMarkSchemeRequest): strin
     return `<section class="sms-section"><h2>${escapeHtml(section.heading)}</h2>${questionsHtml}</section>`;
   }).join("");
 
+  return pageHtml(req.title, req.subtitle, sectionsHtml);
+}
+
+/** How the self-grade form labels an item when the test has no draft to
+ *  read the paper's own numbering from (components/reflection/NativeForm:
+ *  paper_label ?? question_number, then the part in brackets): "2(d)", "5". */
+function itemLabel(item: Pick<StudentMarkSchemeItem, "question_number" | "part_label">): string {
+  return item.part_label ? `${item.question_number}(${item.part_label})` : String(item.question_number);
+}
+
+/** The same page for a paper with no creator draft, built from its
+ *  test_items: one row per part, in the self-grade form's order and under
+ *  its labels, each carrying the part's markscheme_text -- for a Standard
+ *  Level paper the rubric's "a full-mark response shows ..." line with the
+ *  answer in it. A part with no mark scheme text still gets its row, so the
+ *  page and the form keep the same rows. */
+export function buildStudentMarkSchemeHtmlFromItems(req: StudentMarkSchemeFromItemsRequest): string {
+  const rowsHtml = req.items
+    .map((item) =>
+      questionBlockHtml(itemLabel(item), {
+        marks: item.max_marks,
+        markScheme: item.markscheme_text?.trim() || undefined,
+      }),
+    )
+    .join("");
+  return pageHtml(req.title, req.subtitle, `<section class="sms-section">${rowsHtml}</section>`);
+}
+
+function pageHtml(title: string, subtitle: string | undefined, bodyHtml: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Mark Scheme — ${escapeHtml(req.title)}</title>
+<title>Mark Scheme — ${escapeHtml(title)}</title>
 <link rel="stylesheet" href="/katex/katex.min.css"/>
 <style>
   body { font-family: system-ui, -apple-system, sans-serif; max-width: 860px; margin: 0 auto; padding: 24px 20px 64px; color: #1a1a1a; background: #fff; }
@@ -121,10 +174,10 @@ export function buildStudentMarkSchemeHtml(req: StudentMarkSchemeRequest): strin
 </style>
 </head>
 <body>
-  <h1>${escapeHtml(req.title)}</h1>
-  ${req.subtitle ? `<div class="sms-subtitle">${escapeHtml(req.subtitle)}</div>` : ""}
+  <h1>${escapeHtml(title)}</h1>
+  ${subtitle ? `<div class="sms-subtitle">${escapeHtml(subtitle)}</div>` : ""}
   <div class="sms-banner">Use this to self-grade: check your working against the answer and marking note for each question, then enter the marks you earned on the self-assess page.</div>
-  ${sectionsHtml}
+  ${bodyHtml}
 </body>
 </html>`;
 }
