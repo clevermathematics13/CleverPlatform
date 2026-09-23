@@ -257,7 +257,7 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 174 files, 174 rows**
+**The migration ledger and the repo agree on versions: 175 files, 175 rows**
 (verified 23 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
@@ -2768,15 +2768,27 @@ available yet".
 ### Worth knowing before students use it
 
 - **The page shows the scheme, and the marking notes are more generous in
-  places.** A student following the page will under-claim where a ruling
-  widened the scheme: 2(a) (the notes award the mark for the change of -6
-  alone; the scheme says the first term 88 is needed too) and 6(d) (a bare
-  "k is not a multiple of 3" earns 2 under the notes, 1 under the scheme),
-  and more mildly 3(c) and 9(b), where the notes accept the -1/+4 step and a
-  sketch of 16 tiles. The Compare step will show those as disagreements in
-  the student's favour. Editing those parts' mark scheme text to match is
-  the teacher's call; the marker already follows the notes where the two
-  conflict, so aligning the text would not change how it marks.
+  places.** A student following the page under-claims where a ruling
+  widened the scheme. 2(a) and 6(d) were the clear cases -- the notes award
+  2(a) for the change of -6 alone and give a bare "k is not a multiple of 3"
+  2 marks, where the scheme said the first term was needed too and 1 -- and
+  the teacher had their scheme text rewritten to say what the notes rule
+  (migration `20260923163545_ka1_unit1_2a_6d_schemes_match_rulings`, applied
+  through MCP and guarded by the md5 of the text it replaced; 6(d) keeps its
+  "3 marks: one for ..." line, which is what the grader itemises into
+  R1-R3). Marking is unchanged: the marker already followed the notes where
+  the two conflicted, and the notes were not touched. 6(d)'s note still says
+  "not the 1 the scheme states", now stale wording for the same outcome.
+  3(c) and 9(b) remain milder cases, where the notes accept the -1/+4 step
+  and a sketch of 16 tiles.
+- **`lib/fixtures/g9-standard-ka1-unit1.ts` is no longer the live paper.**
+  Its header calls it the source the seed was written from, and the 18 Sep
+  migration `20260918123826` says it is "kept 1:1" with it, but that edit
+  never reached the fixture: 7(d), 8 and 9(a)-(c) already differed from the
+  live rows, and 2(a) and 6(d) now do too. It is not read at runtime and its
+  tests pin marks and strands, not wording. Never regenerate SQL for this
+  paper from it -- that would quietly revert every fix above. Read the live
+  `test_items` rows instead.
 - **Each 9D submission (re)writes a 9D PowerSchool file for this paper.**
   9D has a stored scores template (from Formative Assessment 1), so
   `/api/gradebook/self-assessment-export` retargets it and fills it -- with
