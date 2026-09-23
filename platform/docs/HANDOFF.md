@@ -257,7 +257,7 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 176 files, 176 rows**
+**The migration ledger and the repo agree on versions: 177 files, 177 rows**
 (verified 23 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
@@ -2781,9 +2781,13 @@ available yet".
   mark now names listing the terms and the -1/+4 step as well as separating
   odd and even positions, and 9(b) says a sketch of Figure 5 showing about
   16 tiles is the explanation. Marking is unchanged throughout: the marker
-  already followed the notes where the two conflicted, and no note was
-  touched. 6(d)'s note still says "not the 1 the scheme states", now stale
-  wording for the same outcome.
+  already followed the notes where the two conflicted, and those migrations
+  touched no note. Last, 6(d)'s note, which still said a bare answer earns 2
+  "not the 1 the scheme states" and that "the scheme's other cap is
+  unchanged", had just those two phrases tidied
+  (`20260923184029_ka1_unit1_6d_note_matches_scheme`, generated from the
+  live note by exact replacement; every other paragraph is byte-identical
+  and every ruling stands).
 - **`lib/fixtures/g9-standard-ka1-unit1.ts` is no longer the live paper.**
   Its header calls it the source the seed was written from, and the 18 Sep
   migration `20260918123826` says it is "kept 1:1" with it, but that edit
