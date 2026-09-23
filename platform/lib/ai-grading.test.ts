@@ -19,6 +19,7 @@ import {
   isCustomAssessment,
   isImpliedToken,
   matchSegmentsToRoster,
+  missingQuestionTextLabels,
   summarizeCoverage,
   validateGradeResponse,
   type GradingUnit,
@@ -1985,6 +1986,11 @@ describe("summarizeCoverage", () => {
       maxTotal: 12,
       testTotalMarks: 12,
       ungradedLabels: [],
+      // The unit() fixture is a bank part (questionCode "Q1") with no
+      // questionLatex, which is exactly the "marker sees only the mark
+      // scheme" case this field exists to count.
+      partsWithoutQuestionText: 2,
+      noQuestionTextLabels: ["1", "2"],
     });
   });
 
@@ -2005,6 +2011,9 @@ describe("summarizeCoverage", () => {
       maxTotal: 4,
       testTotalMarks: 11,
       ungradedLabels: ["6(a)", "6(b)"],
+      // An ungradeable part is reported as ungradeable, not as textless too.
+      partsWithoutQuestionText: 1,
+      noQuestionTextLabels: ["5"],
     });
   });
 
@@ -2015,7 +2024,40 @@ describe("summarizeCoverage", () => {
       maxTotal: 0,
       testTotalMarks: 0,
       ungradedLabels: [],
+      partsWithoutQuestionText: 0,
+      noQuestionTextLabels: [],
     });
+  });
+});
+
+describe("missingQuestionTextLabels", () => {
+  // Live shape, Sep 2026: 27AH [L00] P2 UniStats has question images for
+  // its parts but no stem_latex/content_latex on any of them, so every
+  // student was marked from the mark scheme alone.
+  it("names a gradeable bank part with no question text", () => {
+    const units = [
+      unit({ testItemId: "1", questionNumber: 1, partLabel: "a", questionLatex: "" }),
+      unit({ testItemId: "2", questionNumber: 1, partLabel: "b", questionLatex: "   " }),
+    ];
+    expect(missingQuestionTextLabels(units)).toEqual(["1(a)", "1(b)"]);
+  });
+
+  it("skips a bank part that has question text", () => {
+    expect(
+      missingQuestionTextLabels([unit({ questionNumber: 3, questionLatex: "Find the value of $x$." })])
+    ).toEqual([]);
+  });
+
+  it("skips a custom (teacher-authored) part, whose text lives on the item itself", () => {
+    expect(
+      missingQuestionTextLabels([unit({ questionNumber: 4, questionCode: "", markschemeSource: "custom", questionLatex: "" })])
+    ).toEqual([]);
+  });
+
+  it("skips an ungradeable part, which is already reported as ungradeable", () => {
+    expect(
+      missingQuestionTextLabels([unit({ questionNumber: 6, markschemeSource: "none", questionLatex: "" })])
+    ).toEqual([]);
   });
 });
 

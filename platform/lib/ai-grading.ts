@@ -1076,6 +1076,15 @@ export async function assembleMarkScheme(
         `${label}: using a ${markschemeSource === "draft" ? "draft (unsplit)" : "whole-question"} mark scheme — suggestions here need closer review.`
       );
     }
+    // Only 102 of the bank's 2,095 parts carry any question text (Sep 2026);
+    // the rest are images the model never receives. buildUnitBlock() then
+    // sends the mark scheme alone, and nothing said so: UniStats' 11
+    // students were marked that way and every mark was accepted.
+    if (question && markschemeSource !== "none" && !questionLatex) {
+      warnings.push(
+        `${label}: no question text on file for ${item.ib_question_code} — the marker sees only the mark scheme.`
+      );
+    }
 
     return {
       testItemId: item.id,
@@ -1110,6 +1119,23 @@ export interface MarkSchemeCoverage {
   testTotalMarks: number;
   /** Labels of the units with no usable mark scheme, e.g. ["6(a)", "6(b)"]. */
   ungradedLabels: string[];
+  /** Gradeable bank units the marker gets no question text for -- see missingQuestionTextLabels(). */
+  partsWithoutQuestionText: number;
+  noQuestionTextLabels: string[];
+}
+
+/**
+ * The gradeable PPQ-bank units whose question reaches the marker as nothing
+ * at all: no stem_latex and no content_latex, so buildUnitBlock() emits only
+ * the mark scheme. A custom (teacher-authored) unit carries its own text and
+ * an ungradeable unit is already reported as such, so neither counts here.
+ */
+export function missingQuestionTextLabels(
+  units: Pick<GradingUnit, "questionCode" | "markschemeSource" | "questionLatex" | "questionNumber" | "partLabel">[]
+): string[] {
+  return units
+    .filter((u) => u.questionCode !== "" && u.markschemeSource !== "none" && !u.questionLatex.trim())
+    .map(unitLabel);
 }
 
 /**
@@ -1122,12 +1148,15 @@ export interface MarkSchemeCoverage {
  */
 export function summarizeCoverage(units: GradingUnit[]): MarkSchemeCoverage {
   const ungraded = units.filter((u) => u.markschemeSource === "none");
+  const noQuestionTextLabels = missingQuestionTextLabels(units);
   return {
     partsInAssessment: units.length,
     partsWithoutMarkscheme: ungraded.length,
     maxTotal: units.reduce((s, u) => (u.markschemeSource === "none" ? s : s + u.maxMarks), 0),
     testTotalMarks: units.reduce((s, u) => s + u.maxMarks, 0),
     ungradedLabels: ungraded.map(unitLabel),
+    partsWithoutQuestionText: noQuestionTextLabels.length,
+    noQuestionTextLabels,
   };
 }
 

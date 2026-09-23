@@ -267,6 +267,8 @@ export interface MarkSchemeCoverageSummary {
   maxTotal: number;
   testTotalMarks: number;
   ungradedLabels: string[];
+  partsWithoutQuestionText: number;
+  noQuestionTextLabels: string[];
 }
 
 export function AiGradeClient({
@@ -2269,6 +2271,23 @@ export function AiGradeClient({
             full {coverage.testTotalMarks}, and the gradebook will show the same reduced total against
             the full {coverage.testTotalMarks} it lists for this assessment. Extract the missing mark
             schemes in the PPQ Bank before treating a total here as final.
+          </p>
+        </div>
+      )}
+
+      {coverage && coverage.partsWithoutQuestionText > 0 && (
+        <div
+          role="status"
+          className="rounded-lg border border-da-border bg-da-surface px-4 py-3 text-sm text-da-muted"
+        >
+          <p className="font-semibold text-da-text">
+            No question text on file for {coverage.partsWithoutQuestionText} of{" "}
+            {coverage.partsInAssessment} part{coverage.partsInAssessment === 1 ? "" : "s"}.
+          </p>
+          <p className="mt-1">
+            {coverage.noQuestionTextLabels.join(", ")}: the PPQ bank holds only a picture of the
+            question, which the marker is not shown. It marks these parts from the mark scheme and
+            the scan alone, so read its reasoning against the question yourself before accepting.
           </p>
         </div>
       )}
