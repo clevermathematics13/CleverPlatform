@@ -3,9 +3,13 @@ import {
   stripMarkCodes,
   buildStudentMarkSchemeHtml,
   buildStudentMarkSchemeHtmlFromItems,
+  renderStudentMarkSchemePart,
+  studentMarkSchemeParts,
+  studentMarkSchemePath,
   type StudentMarkSchemeItem,
 } from "./student-mark-scheme";
-import { paperQuestionPrefixes } from "./assignments";
+import { paperQuestionPrefixes, type AssignmentSection } from "./assignments";
+import { buildTestItemsFromSections } from "./formative-assessment-bridge";
 import { KA1_UNIT1_ITEMS, KA1_UNIT1_NAME, KA1_UNIT1_TOTAL_MARKS } from "./fixtures/g9-standard-ka1-unit1";
 
 describe("stripMarkCodes", () => {
@@ -195,5 +199,92 @@ describe("buildStudentMarkSchemeHtmlFromItems", () => {
     expect(labelsOf(html)).toEqual(["1(a)", "1(b)", "2"]);
     expect(html.match(/How it's marked/g)).toHaveLength(1);
     expect(html).toContain(`${LABEL}1(b)</span><span class="sms-marks">[2 marks]</span>`);
+  });
+});
+
+// The same content, part by part, for the self-grade form: each part's scheme
+// sits under its label there instead of in a panel laid over the form.
+describe("studentMarkSchemeParts", () => {
+  const draftSections = [
+    {
+      heading: "LEVEL 1",
+      questions: [
+        { prompt: "Q one.", marks: 1, answer: "5x", markScheme: "A1 for 5x." },
+        {
+          prompt: "Q two.",
+          marks: 2,
+          subparts: [
+            { prompt: "Find x.", marks: 1, answer: "x = 3", markScheme: "A1. Accept 3." },
+            { prompt: "Find y.", marks: 1, answer: "y = 4", markScheme: "M1 for the method." },
+          ],
+        },
+      ],
+    },
+    {
+      heading: "LEVEL 2",
+      questions: [{ prompt: "Q three.", marks: 2, answer: "$\\frac{1}{2}$", markScheme: "R1 for the reason." }],
+    },
+  ];
+
+  it("gives each item of a creator paper its own part's scheme, matched the way the items were built", () => {
+    // The real bridge that writes a creator paper's test_items, so the
+    // pairing is checked against the sort_order it actually assigns.
+    const built = buildTestItemsFromSections("t", draftSections as unknown as AssignmentSection[]);
+    const items = built.map((row, i) => ({ id: `item-${i}`, sort_order: row.sort_order, markscheme_text: row.markscheme_text }));
+    const parts = studentMarkSchemeParts({ sections: draftSections }, items);
+
+    expect(parts.size).toBe(4);
+    expect(parts.get("item-0")?.answer_html).toContain("5x");
+    expect(parts.get("item-1")?.answer_html).toContain("x = 3");
+    expect(parts.get("item-2")?.answer_html).toContain("y = 4");
+    expect(parts.get("item-2")?.how_marked_html).toContain("The method.");
+    expect(parts.get("item-3")?.answer_html).toContain('class="katex"');
+    // No marking codes survive on any of them.
+    for (const part of parts.values()) {
+      expect(part.how_marked_html ?? "").not.toMatch(/\b[MAR]1\b/);
+    }
+  });
+
+  it("uses each item's own mark scheme text when the paper has no draft", () => {
+    const items = KA1_UNIT1_ITEMS.map((item, i) => ({
+      id: `ka1-${i}`,
+      sort_order: i,
+      markscheme_text: item.markschemeText,
+    }));
+    const parts = studentMarkSchemeParts(null, items);
+
+    expect(parts.size).toBe(26);
+    for (const part of parts.values()) {
+      expect(part.answer_html).toBeNull();
+      expect(part.how_marked_html).toContain("full-mark response");
+    }
+    expect(parts.get("ka1-0")?.how_marked_html).toContain('class="katex"');
+  });
+
+  it("leaves out a part with nothing to show", () => {
+    const parts = studentMarkSchemeParts(null, [
+      { id: "a", sort_order: 0, markscheme_text: "Answer: 8." },
+      { id: "b", sort_order: 1, markscheme_text: null },
+      { id: "c", sort_order: 2, markscheme_text: "   " },
+    ]);
+    expect([...parts.keys()]).toEqual(["a"]);
+  });
+
+  it("renders a part the same way the full page does", () => {
+    const part = renderStudentMarkSchemePart({ markScheme: "A full-mark response gives $-12$. Answer: \\$1050." });
+    const page = buildStudentMarkSchemeHtmlFromItems({
+      title: "KA",
+      items: [{ question_number: 1, part_label: "b", max_marks: 1, markscheme_text: "A full-mark response gives $-12$. Answer: \\$1050." }],
+    });
+    expect(part?.how_marked_html).toBeTruthy();
+    expect(page).toContain(part!.how_marked_html!);
+    expect(part?.how_marked_html).toContain("Answer: $1050.");
+  });
+
+  it("names the page a released test points its mark_scheme_url at", () => {
+    // What the two migrations that released a scheme wrote.
+    expect(studentMarkSchemePath("a1c0f4e2-9d00-4b7e-8c21-000000000001")).toBe(
+      "/api/tests/a1c0f4e2-9d00-4b7e-8c21-000000000001/mark-scheme",
+    );
   });
 });

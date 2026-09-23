@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import type { ReflectionItem, SelfScore } from "@/lib/reflection-types";
 import { computeDisagreement } from "@/lib/reflection-utils";
+import { MarkSchemePart } from "./MarkSchemePart";
 
 interface ScoreTableProps {
   items: ReflectionItem[];
@@ -152,11 +153,10 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
                 selfMarksEntered && item.marks_awarded !== null
                   ? (self ?? 0) - item.marks_awarded
                   : null;
+              const rowShade = selfMarksEntered ? getDiffClass(item.marks_awarded, self) : "";
               return (
-                <tr
-                  key={item.test_item_id}
-                  className={`border-b ${selfMarksEntered ? getDiffClass(item.marks_awarded, self) : ""}`}
-                >
+                <Fragment key={item.test_item_id}>
+                <tr className={`${item.mark_scheme ? "" : "border-b"} ${rowShade}`}>
                   <td className="px-3 py-2">
                     <div className="relative inline-block">
                       <button
@@ -251,6 +251,17 @@ export function ScoreTable({ items, editable, onSave, selfMarksEntered = true }:
                     )}
                   </td>
                 </tr>
+                {/* The same per-part mark scheme as the self-grade form, full
+                    width under its part and in the same shade, so a student
+                    changing a mark here to settle a disagreement can see why. */}
+                {item.mark_scheme && (
+                  <tr className={`border-b ${rowShade}`}>
+                    <td colSpan={5} className="px-3 pb-3">
+                      <MarkSchemePart scheme={item.mark_scheme} />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
           </tbody>

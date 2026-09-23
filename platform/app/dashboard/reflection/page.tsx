@@ -7,6 +7,7 @@ import {
   getReflectionItems,
   getReflectionItemsForInvitedStudent,
   getPdfUpload,
+  attachStudentMarkScheme,
 } from "@/lib/exam-service";
 import { resolveViewAs } from "@/lib/view-as";
 import type { ReflectionItem } from "@/lib/reflection-types";
@@ -67,6 +68,10 @@ export default async function ReflectionPage({
           items = items.map((i) => ({ ...i, marks_awarded: null }));
         }
       }
+
+      // Each part's mark scheme beside its self-grade box, exactly as the
+      // student will see it.
+      items = await attachStudentMarkScheme(items, selectedTest);
 
       if (viewAs.hasAccount && viewAs.profileId) {
         pdfUpload = await getPdfUpload(viewAs.profileId, selectedTestId);
@@ -145,6 +150,10 @@ export default async function ReflectionPage({
         items = items.map((i) => ({ ...i, marks_awarded: null }));
       }
     }
+
+    // Each part's mark scheme beside its self-grade box, when the test's
+    // released mark scheme is the platform's own student page.
+    if (items) items = await attachStudentMarkScheme(items, selectedTest);
   }
 
   // Key the client on the data it seeds its state from. After a student

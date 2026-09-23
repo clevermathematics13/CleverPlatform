@@ -23,6 +23,7 @@
 
 import { renderMath } from "./document-orchestrator";
 import { escapeHtml, formatQuestionLabel, subpartLetter } from "./assignments";
+import type { ReflectionMarkScheme } from "./reflection-types";
 
 export interface StudentMarkSchemeSubpart {
   prompt: string;
@@ -89,12 +90,67 @@ export function stripMarkCodes(text: string): string {
   return out;
 }
 
+/** Where the platform serves a test's student mark scheme. A test whose
+ *  tests.mark_scheme_url is exactly this has released THIS page (migrations
+ *  20260922182232 and 20260923152709 set it), which is what lets the
+ *  self-grade form show the same content part by part. */
+export function studentMarkSchemePath(testId: string): string {
+  return `/api/tests/${testId}/mark-scheme`;
+}
+
+/** One part's mark scheme as display HTML: the answer, and the note with its
+ *  marking codes stripped, each escaped and then typeset. The single renderer
+ *  behind both the full page and the copy shown beside each self-grade box,
+ *  so the two cannot say different things. Null when the part has neither. */
+export function renderStudentMarkSchemePart(source: {
+  answer?: string | null;
+  markScheme?: string | null;
+}): ReflectionMarkScheme | null {
+  const answer = source.answer?.trim();
+  const markScheme = source.markScheme?.trim();
+  if (!answer && !markScheme) return null;
+  return {
+    answer_html: answer ? renderMath(escapeHtml(answer)) : null,
+    how_marked_html: markScheme ? renderMath(escapeHtml(stripMarkCodes(markScheme))) : null,
+  };
+}
+
+/** Every part's mark scheme, keyed by test_items.id, from the same source
+ *  the full page uses: the creator draft when the test has one, else each
+ *  item's own markscheme_text. A draft is matched to its items by
+ *  sort_order, which buildTestItemsFromSections
+ *  (lib/formative-assessment-bridge.ts) assigns walking the draft in exactly
+ *  this order -- a question's subparts, or the question itself when it has
+ *  none -- and which paperQuestionPrefixes relies on the same way. A part
+ *  with nothing to show is left out. */
+export function studentMarkSchemeParts(
+  customContent: unknown,
+  items: ReadonlyArray<{ id: string; sort_order: number; markscheme_text: string | null }>,
+): Map<string, ReflectionMarkScheme> {
+  const sections = (customContent as { sections?: StudentMarkSchemeSection[] } | null | undefined)?.sections;
+  const draftParts =
+    Array.isArray(sections) && sections.length > 0
+      ? sections.flatMap((section) =>
+          (section.questions ?? []).flatMap((q) => (q.subparts && q.subparts.length > 0 ? q.subparts : [q])),
+        )
+      : null;
+
+  const parts = new Map<string, ReflectionMarkScheme>();
+  for (const item of items) {
+    const source = draftParts ? draftParts[item.sort_order] : { markScheme: item.markscheme_text };
+    const part = source ? renderStudentMarkSchemePart(source) : null;
+    if (part) parts.set(item.id, part);
+  }
+  return parts;
+}
+
 function questionBlockHtml(label: string, q: { marks?: number; answer?: string; markScheme?: string }): string {
   const marksHtml = q.marks !== undefined ? `<span class="sms-marks">[${q.marks} mark${q.marks === 1 ? "" : "s"}]</span>` : "";
-  const answerHtml = q.answer
-    ? `<div class="sms-answer"><span class="sms-tag">Answer</span>${renderMath(escapeHtml(q.answer))}</div>` : "";
-  const noteHtml = q.markScheme
-    ? `<div class="sms-note"><span class="sms-tag">How it's marked</span>${renderMath(escapeHtml(stripMarkCodes(q.markScheme)))}</div>` : "";
+  const part = renderStudentMarkSchemePart(q);
+  const answerHtml = part?.answer_html
+    ? `<div class="sms-answer"><span class="sms-tag">Answer</span>${part.answer_html}</div>` : "";
+  const noteHtml = part?.how_marked_html
+    ? `<div class="sms-note"><span class="sms-tag">How it's marked</span>${part.how_marked_html}</div>` : "";
   return `<div class="sms-row">
     <div class="sms-head"><span class="sms-label">${escapeHtml(label)}</span>${marksHtml}</div>
     ${answerHtml}

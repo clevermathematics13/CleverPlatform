@@ -2801,3 +2801,30 @@ available yet".
   matching the Extended page. On this paper it would also have shown the
   bracketed marker's note describing the Q9 figures, which the student never
   read.
+
+### The mark scheme on the self-grade form itself (same day)
+
+The teacher then asked that a student see the mark scheme and enter marks on
+the same screen. The Mark Scheme button opens `DocPanel`, a slide-over whose
+backdrop covers the form, so a student closed it to type and reopened it for
+the next part. Now `attachStudentMarkScheme` (`lib/exam-service.ts`) puts each
+part's scheme on its `ReflectionItem` (`mark_scheme`: HTML pre-rendered by
+`renderStudentMarkSchemePart`, the same renderer as the full page), and
+`NativeForm` and `ScoreTable` print it in a full-width row directly under the
+part's label and marks box.
+
+- **Only for a test whose `mark_scheme_url` is exactly
+  `studentMarkSchemePath(test.id)`** -- the platform's own page. Its gates
+  are already met by then: the reflection list only holds tests that are not
+  hidden and past the viewer's class sitting date. A test with no scheme
+  released, or one released as a link elsewhere, is untouched.
+- **One pairing rule for both views** (`studentMarkSchemeParts`: the draft
+  matched to items by `sort_order`, else each item's `markscheme_text`).
+  Checked live: every one of Extended KA1's 36 parts carries its own item's
+  note, and all 26 Standard parts render with no KaTeX errors.
+- **Full width, not inside the Question column,** because a phone left that
+  column a strip a few words wide; and the box is capped at the visible width
+  (`<main>` is `p-8` at every size), because the comparison table is wider
+  than a phone and scrolls sideways inside its own box.
+- The Mark Scheme button stays, for the whole document at once. The page
+  carries about 110 kB more for a 26-part paper (the KaTeX HTML).
