@@ -33,6 +33,7 @@ import {
   buildGradingStudentPrompt,
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
+  followThroughWarnings,
   gradeNeedsReview,
   summarizeCoverage,
   unitLabel,
@@ -545,6 +546,8 @@ export async function persistGradeOutcome(args: {
   // parts whose suggestion moved need a fresh look. Scoped to the most recent
   // COMPLETE run before this one, so a failed attempt in between is ignored.
   const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
+  /** Every part's previous suggestion, accepted or not, to find the ones this run moved. */
+  const priorSuggested = new Map<string, number>();
   /** The previous complete run's full rows, needed only for a partial re-mark (see requestedTestItemIds). */
   const priorFullRows: Record<string, unknown>[] = [];
   {
@@ -564,10 +567,12 @@ export async function persistGradeOutcome(args: {
     if (priorRun) {
       const { data: priorRows } = await supabase
         .from("ai_grade_results")
-        .select("test_item_id, suggested_marks, accepted_at, accepted_by")
-        .eq("run_id", priorRun.id)
-        .eq("accepted", true);
-      for (const p of priorRows ?? []) priorAccepted.set(p.test_item_id, p);
+        .select("test_item_id, suggested_marks, accepted, accepted_at, accepted_by")
+        .eq("run_id", priorRun.id);
+      for (const p of priorRows ?? []) {
+        priorSuggested.set(p.test_item_id, p.suggested_marks);
+        if (p.accepted) priorAccepted.set(p.test_item_id, p);
+      }
       if (requested) {
         const { data: fullRows } = await supabase
           .from("ai_grade_results")
@@ -643,6 +648,31 @@ export async function persistGradeOutcome(args: {
     }
   }
   const allRows = [...rows, ...carriedRows];
+
+  // -- Follow-through: later parts of a question whose earlier part moved --
+  // Nothing re-examines a later part when an earlier part of its question is
+  // re-marked: on a full re-mark it keeps its acceptance if its own number
+  // did not move, on a partial re-mark it is copied verbatim. Either way it
+  // was decided against the old reading of the earlier part, so the later
+  // part's row says so. Acceptance is never changed here -- the teacher
+  // decides (see followThroughWarnings).
+  {
+    const changes = grades.flatMap((g) => {
+      const before = priorSuggested.get(g.unit.testItemId);
+      return before !== undefined && before !== g.clampedMarks
+        ? [{ testItemId: g.unit.testItemId, from: before, to: g.clampedMarks }]
+        : [];
+    });
+    const keptAcceptance = new Set(rows.filter((r) => r.accepted).map((r) => r.test_item_id));
+    const copiedAccepted = new Map(carriedRows.map((r) => [r.test_item_id, r.accepted]));
+    warnings.push(
+      ...followThroughWarnings(units, changes, (id) => {
+        if (keptAcceptance.has(id)) return "accepted";
+        if (copiedAccepted.has(id)) return copiedAccepted.get(id) ? "accepted" : "marked";
+        return null;
+      })
+    );
+  }
 
   const { error: insertErr } = await supabase.from("ai_grade_results").insert(allRows);
   if (insertErr) return { ok: false, error: `Could not save results: ${insertErr.message}` };

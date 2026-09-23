@@ -9,7 +9,9 @@ import {
   assembleMarkScheme,
   buildGradingSystemPrompt,
   buildRegradeItemPrompt,
+  followThroughWarnings,
   gradeNeedsReview,
+  isFollowThroughWarningAbout,
   unitLabel,
   validateGradeResponse,
 } from "@/lib/ai-grading";
@@ -60,7 +62,7 @@ export async function POST(
 
   const { data: result, error: resultErr } = await supabase
     .from("ai_grade_results")
-    .select("id, run_id, test_item_id, evidence, accepted")
+    .select("id, run_id, test_item_id, evidence, accepted, suggested_marks")
     .eq("id", resultId)
     .maybeSingle();
 
@@ -88,6 +90,26 @@ export async function POST(
   if (!unit) {
     return NextResponse.json({ error: "Could not load this part's mark scheme" }, { status: 500 });
   }
+
+  // The run's other rows. The earlier parts of this question go to the model
+  // as follow-through context -- a value carried into this part from one of
+  // them is judged by the method here, which the model cannot do without
+  // seeing them -- and the later parts are what a changed mark leaves stale.
+  const { data: runRows, error: runRowsErr } = await supabase
+    .from("ai_grade_results")
+    .select("test_item_id, suggested_marks, confidence, work_found, accepted, evidence")
+    .eq("run_id", run.id);
+  const rowByItem = new Map((runRowsErr ? [] : runRows ?? []).map((r) => [r.test_item_id, r]));
+  const unitIndex = units.findIndex((u) => u.testItemId === unit.testItemId);
+  const priorParts = units
+    .slice(0, Math.max(0, unitIndex))
+    .filter((u) => u.questionNumber === unit.questionNumber)
+    .flatMap((u) => {
+      const r = rowByItem.get(u.testItemId);
+      return r
+        ? [{ label: unitLabel(u), evidence: r.evidence ?? "", suggestedMarks: r.suggested_marks, maxMarks: u.maxMarks }]
+        : [];
+    });
 
   let updateFields: {
     evidence: string;
@@ -133,7 +155,7 @@ export async function POST(
           temperature: 0, // same reasoning as the main grading route
           system: buildGradingSystemPrompt([unit]),
           messages: [
-            { role: "user", content: buildRegradeItemPrompt(unit, correctedEvidence) },
+            { role: "user", content: buildRegradeItemPrompt(unit, correctedEvidence, priorParts) },
           ],
           output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
         });
@@ -201,18 +223,19 @@ export async function POST(
   if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 });
 
   // Refresh the run's coverage summary (suggestedTotal, needsReview) so the
-  // roster and run header reflect the correction immediately. Everything
-  // else about coverage (part counts, mark scheme warnings) is unaffected
-  // by re-marking one already-gradeable part, so it's left as-is.
-  const { data: allResults, error: allResultsErr } = await supabase
-    .from("ai_grade_results")
-    .select("test_item_id, suggested_marks, confidence, work_found")
-    .eq("run_id", run.id);
-
-  if (!allResultsErr && allResults) {
+  // roster and run header reflect the correction immediately, and when the
+  // mark moved, flag the later parts of this question: they were marked, and
+  // possibly accepted, against the old reading of this part, and nothing
+  // else revisits them. Part counts and mark-scheme warnings are unaffected.
+  if (!runRowsErr && runRows) {
     const unitById = new Map(units.map((u) => [u.testItemId, u]));
-    const suggestedTotal = allResults.reduce((s, r) => s + r.suggested_marks, 0);
-    const needsReview = allResults
+    const current = runRows.map((r) =>
+      r.test_item_id === result.test_item_id
+        ? { ...r, suggested_marks: updateFields.suggested_marks, confidence: updateFields.confidence, work_found: updateFields.work_found }
+        : r
+    );
+    const suggestedTotal = current.reduce((s, r) => s + r.suggested_marks, 0);
+    const needsReview = current
       .filter((r) => gradeNeedsReview({ confidence: r.confidence as "high" | "medium" | "low", item: { workFound: r.work_found } }))
       .map((r) => {
         const u = unitById.get(r.test_item_id);
@@ -220,9 +243,26 @@ export async function POST(
       });
 
     const existingCoverage = (run.coverage ?? {}) as Record<string, unknown>;
+    const existingWarnings = Array.isArray(existingCoverage.warnings)
+      ? (existingCoverage.warnings as string[])
+      : [];
+    let warnings = existingWarnings;
+    if (updateFields.suggested_marks !== result.suggested_marks) {
+      const fresh = followThroughWarnings(
+        units,
+        [{ testItemId: unit.testItemId, from: result.suggested_marks, to: updateFields.suggested_marks }],
+        (id) => {
+          const r = rowByItem.get(id);
+          return r ? (r.accepted ? "accepted" : "marked") : null;
+        }
+      );
+      // A second correction of the same part replaces what the first said.
+      const earlierLabel = unitLabel(unit);
+      warnings = [...existingWarnings.filter((w) => !isFollowThroughWarningAbout(w, earlierLabel)), ...fresh];
+    }
     await supabase
       .from("ai_grade_runs")
-      .update({ coverage: { ...existingCoverage, suggestedTotal, needsReview } })
+      .update({ coverage: { ...existingCoverage, suggestedTotal, needsReview, warnings } })
       .eq("id", run.id);
   }
 

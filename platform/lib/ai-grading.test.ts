@@ -5,12 +5,14 @@ import {
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
   G9_STANDARD_LEVEL_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
-  buildRegradeItemPrompt,
   MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES,
   buildActivityRubricBlock,
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
+  buildRegradeItemPrompt,
   buildStandardsRubricBlock,
+  followThroughWarnings,
+  isFollowThroughWarningAbout,
   composeQuestionText,
   earnedMarks,
   isActivity,
@@ -22,6 +24,7 @@ import {
   matchSegmentsToRoster,
   missingQuestionTextLabels,
   summarizeCoverage,
+  unitLabel,
   validateGradeResponse,
   type GradingUnit,
   type RosterEntry,
@@ -2038,6 +2041,69 @@ describe("summarizeCoverage", () => {
       partsWithoutQuestionText: 0,
       noQuestionTextLabels: [],
     });
+  });
+});
+
+describe("followThroughWarnings", () => {
+  // KA1 Q13, Sep 2026: (a) was re-marked from a corrected transcription while
+  // (b) -- marked with follow-through from the old reading of (a) -- sat
+  // accepted in Clev's Marks, and nothing revisited it.
+  const q13 = [
+    unit({ testItemId: "13a", questionNumber: 13, partLabel: "a" }),
+    unit({ testItemId: "13b", questionNumber: 13, partLabel: "b" }),
+    unit({ testItemId: "13c", questionNumber: 13, partLabel: "c" }),
+    unit({ testItemId: "14", questionNumber: 14, partLabel: "" }),
+  ];
+
+  it("warns on each later part of the same question, naming its state", () => {
+    const warnings = followThroughWarnings(q13, [{ testItemId: "13a", from: 3, to: 1 }], (id) =>
+      id === "13b" ? "accepted" : id === "13c" ? "marked" : null
+    );
+    expect(warnings).toEqual([
+      "13(b): follow-through check — 13(a) was re-marked from 3 to 1; this part was accepted against the old value.",
+      "13(c): follow-through check — 13(a) was re-marked from 3 to 1; this part was marked against the old value.",
+    ]);
+    // Prefixed with the later part's own label, so the review panel can find it.
+    expect(warnings[0].startsWith(`${unitLabel(q13[1])}: `)).toBe(true);
+    expect(isFollowThroughWarningAbout(warnings[0], "13(a)")).toBe(true);
+    expect(isFollowThroughWarningAbout(warnings[0], "13(b)")).toBe(false);
+  });
+
+  it("says nothing when the earlier part's mark did not move", () => {
+    expect(followThroughWarnings(q13, [{ testItemId: "13a", from: 2, to: 2 }], () => "accepted")).toEqual([]);
+  });
+
+  it("never reaches a different question, an earlier part, or a part with no row", () => {
+    const later = followThroughWarnings(q13, [{ testItemId: "13c", from: 2, to: 0 }], () => "accepted");
+    expect(later).toEqual([]);
+    const noRows = followThroughWarnings(q13, [{ testItemId: "13a", from: 3, to: 1 }], () => null);
+    expect(noRows).toEqual([]);
+  });
+
+  it("ignores a change for a part that is not in the assessment", () => {
+    expect(followThroughWarnings(q13, [{ testItemId: "ghost", from: 3, to: 1 }], () => "accepted")).toEqual([]);
+  });
+});
+
+describe("buildRegradeItemPrompt", () => {
+  it("carries no follow-through block for a part with no earlier parts", () => {
+    const prompt = buildRegradeItemPrompt(unit({ questionNumber: 4 }), "x = 7");
+    expect(prompt).not.toContain("Earlier parts of this question");
+    expect(prompt).toContain("--- Teacher-corrected transcription of the student's work for this part ---\nx = 7");
+  });
+
+  it("lists the earlier parts of the question, in order, before the corrected transcription", () => {
+    const prompt = buildRegradeItemPrompt(unit({ questionNumber: 13, partLabel: "c" }), "so k = 5", [
+      { label: "13(a)", evidence: "a = 0.81", suggestedMarks: 1, maxMarks: 2 },
+      { label: "13(b)", evidence: "", suggestedMarks: 0, maxMarks: 1 },
+    ]);
+    const block = prompt.indexOf("--- Earlier parts of this question, already marked");
+    const corrected = prompt.indexOf("--- Teacher-corrected transcription");
+    expect(block).toBeGreaterThan(-1);
+    expect(block).toBeLessThan(corrected);
+    expect(prompt).toContain("13(a) (1/2 marks): a = 0.81");
+    expect(prompt).toContain("13(b) (0/1 marks): (no work found)");
+    expect(prompt.indexOf("13(a) (1/2")).toBeLessThan(prompt.indexOf("13(b) (0/1"));
   });
 });
 

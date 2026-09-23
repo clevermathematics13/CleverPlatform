@@ -1173,6 +1173,58 @@ export function summarizeCoverage(units: GradingUnit[]): MarkSchemeCoverage {
   };
 }
 
+/** One part whose suggested mark moved between two markings of the same student. */
+export interface FollowThroughChange {
+  testItemId: string;
+  from: number;
+  to: number;
+}
+
+const FOLLOW_THROUGH_MARKER = "follow-through check — ";
+
+/**
+ * The warnings owed to the LATER parts of a question when an earlier part of
+ * it is re-marked. IB follow-through (rule 3) means (b) is marked on the
+ * value the student carried out of (a); a re-mark of (a) alone -- a
+ * transcription correction, or a one-part class re-mark -- leaves (b)
+ * marked, and possibly accepted into Clev's Marks, against the old reading,
+ * and nothing else revisits it (FA1 Q9(a), KA1 Q13(a), Sep 2026).
+ *
+ * "Later" is a part of the same question that follows in `units`, which
+ * assembleMarkScheme orders by sort_order. Each warning is prefixed with the
+ * later part's label exactly as unitLabel() prints it, so the review panel
+ * shows it on that row (warningsForPart in lib/ai-grade-review.ts). Nothing
+ * here changes acceptance: the teacher decides.
+ */
+export function followThroughWarnings(
+  units: Pick<GradingUnit, "testItemId" | "questionNumber" | "partLabel">[],
+  changes: FollowThroughChange[],
+  laterState: (testItemId: string) => "accepted" | "marked" | null
+): string[] {
+  const out: string[] = [];
+  for (const change of changes) {
+    if (change.from === change.to) continue;
+    const idx = units.findIndex((u) => u.testItemId === change.testItemId);
+    if (idx === -1) continue;
+    const earlier = units[idx];
+    for (let j = idx + 1; j < units.length; j++) {
+      const later = units[j];
+      if (later.questionNumber !== earlier.questionNumber) continue;
+      const state = laterState(later.testItemId);
+      if (!state) continue;
+      out.push(
+        `${unitLabel(later)}: ${FOLLOW_THROUGH_MARKER}${unitLabel(earlier)} was re-marked from ${change.from} to ${change.to}; this part was ${state} against the old value.`
+      );
+    }
+  }
+  return out;
+}
+
+/** Whether a stored warning is one followThroughWarnings() wrote about `earlierLabel` being re-marked. */
+export function isFollowThroughWarningAbout(warning: string, earlierLabel: string): boolean {
+  return warning.includes(`${FOLLOW_THROUGH_MARKER}${earlierLabel} was re-marked`);
+}
+
 export interface MarkschemeImageRef {
   testItemId: string;
   storagePath: string;
@@ -1822,10 +1874,37 @@ ${blocks.join("\n\n")}`;
  * teacher wouldn't be correcting the transcription of work that doesn't
  * exist).
  */
-export function buildRegradeItemPrompt(unit: GradingUnit, correctedEvidence: string): string {
+/** An earlier part of the same question, as already marked, for follow-through in a regrade. */
+export interface RegradePriorPart {
+  label: string;
+  evidence: string;
+  suggestedMarks: number;
+  maxMarks: number;
+}
+
+export function buildRegradeItemPrompt(
+  unit: GradingUnit,
+  correctedEvidence: string,
+  priorParts: RegradePriorPart[] = []
+): string {
+  // A full marking sees every part of the paper, so follow-through (rule 3)
+  // comes free; a one-part regrade saw only this part, and marked a value
+  // carried in from (a) as if it had appeared from nowhere.
+  const priorBlock =
+    priorParts.length > 0
+      ? `
+
+--- Earlier parts of this question, already marked (follow-through context only) ---
+${priorParts
+  .map((p) => `${p.label} (${p.suggestedMarks}/${p.maxMarks} marks): ${p.evidence.trim() || "(no work found)"}`)
+  .join("\n\n")}
+
+Use these only to apply follow-through: a value carried into this part from one of them is judged by the method in this part, not re-marked here, and the marks above are not yours to change.`
+      : "";
+
   return `A teacher has reviewed the scan directly and corrected the transcription of the student's work for this part, because the original automated transcription was wrong (e.g. a misread digit). Mark this corrected transcription against the mark scheme below -- there is no scan attached this time, so base your marking only on the text given.
 
-${buildUnitBlock(unit)}
+${buildUnitBlock(unit)}${priorBlock}
 
 --- Teacher-corrected transcription of the student's work for this part ---
 ${correctedEvidence}
