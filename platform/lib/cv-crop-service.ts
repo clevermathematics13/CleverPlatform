@@ -62,6 +62,41 @@ function cvHeaders(): Record<string, string> {
 }
 
 /**
+ * A non-2xx reply from the CV service, in words a teacher can act on.
+ *
+ * Every failure the service's own handlers return carries an `error` field
+ * (cv-service/main.py), and that is passed through untouched. A reply without
+ * one never reached those handlers, and used to surface as a bare "Page render
+ * returned status 404" -- which is how Railway having nothing running at
+ * GRAPH_LAB_CV_SERVICE_URL read in the box editor, as though one page of one
+ * scan were missing. Railway's edge answers every path, /health included, with
+ * 404 "Application not found" in that state, and flags the replies it sends
+ * itself with x-railway-fallback, so that case is named outright. Any other
+ * reply still says what it did carry, e.g. FastAPI's own `detail` for a route
+ * the deployed service predates.
+ */
+export function describeCvServiceFailure(
+  what: string,
+  reply: { status: number; body: unknown; railwayFallback: boolean }
+): string {
+  const body = reply.body && typeof reply.body === "object" ? (reply.body as Record<string, unknown>) : {};
+  if (typeof body.error === "string" && body.error.trim()) return body.error;
+  const said = [body.message, body.detail]
+    .find((v): v is string => typeof v === "string" && v.trim() !== "")
+    ?.trim();
+  if (reply.railwayFallback) return `Crop service offline (Railway: ${said ?? `status ${reply.status}`})`;
+  return said ? `${what} returned status ${reply.status}: ${said}` : `${what} returned status ${reply.status}`;
+}
+
+async function describeFailedResponse(what: string, upstream: Response): Promise<string> {
+  return describeCvServiceFailure(what, {
+    status: upstream.status,
+    body: await upstream.json().catch(() => null),
+    railwayFallback: upstream.headers.get("x-railway-fallback") === "true",
+  });
+}
+
+/**
  * Crop one or more regions out of a student's scan.
  *
  * Never throws. Callers differ in what they do with a failure -- the grading
@@ -96,10 +131,7 @@ export async function cropRegions(args: {
       }),
       signal: controller.signal,
     });
-    if (!upstream.ok) {
-      const body = (await upstream.json().catch(() => ({}))) as { error?: string };
-      return { ok: false, error: body.error ?? `Crop service returned status ${upstream.status}` };
-    }
+    if (!upstream.ok) return { ok: false, error: await describeFailedResponse("Crop service", upstream) };
     const data = (await upstream.json()) as { crops?: CvCrop[] };
     return { ok: true, value: data.crops ?? [] };
   } catch (e) {
@@ -167,10 +199,7 @@ export async function renderPageImage(args: {
       }),
       signal: controller.signal,
     });
-    if (!upstream.ok) {
-      const body = (await upstream.json().catch(() => ({}))) as { error?: string };
-      return { ok: false, error: body.error ?? `Page render returned status ${upstream.status}` };
-    }
+    if (!upstream.ok) return { ok: false, error: await describeFailedResponse("Page render", upstream) };
     const body = (await upstream.json()) as { imageBase64?: string };
     if (!body.imageBase64) return { ok: false, error: "Page render returned no image" };
     pngBase64 = body.imageBase64;
