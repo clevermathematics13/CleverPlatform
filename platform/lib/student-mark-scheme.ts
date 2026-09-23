@@ -16,7 +16,7 @@
  */
 
 import { renderMath } from "./document-orchestrator";
-import { escapeHtml } from "./assignments";
+import { escapeHtml, formatQuestionLabel, subpartLetter } from "./assignments";
 
 export interface StudentMarkSchemeSubpart {
   prompt: string;
@@ -78,19 +78,21 @@ function questionBlockHtml(label: string, q: { prompt: string; marks?: number; a
   </div>`;
 }
 
-/** Renders the full student mark-scheme page. Question numbering mirrors
- *  the paper's own (Q1, Q2(a), Q2(b), ...) via the same global-counter
- *  scheme lib/document-orchestrator.ts uses for the teacher version. */
+/** Renders the full student mark-scheme page. Questions are numbered the way
+ *  the printed paper numbers them ("1.2", "2.1(a)"): formatQuestionLabel,
+ *  numeric, which is also what paperQuestionPrefixes (lib/assignments.ts)
+ *  gives the self-grade form's rows. A student reads this page beside that
+ *  form, so the two have to agree row for row. It used to count questions
+ *  across the whole paper instead, as the teacher mark scheme
+ *  (generateMarkSchemeHtml) still does, so the form's "2.1(a)" was "4(a)"
+ *  here. */
 export function buildStudentMarkSchemeHtml(req: StudentMarkSchemeRequest): string {
-  let globalQ = 0;
-
-  const sectionsHtml = req.sections.map((section) => {
-    const questionsHtml = section.questions.map((q) => {
-      globalQ++;
-      const label = String(globalQ);
+  const sectionsHtml = req.sections.map((section, sIdx) => {
+    const questionsHtml = section.questions.map((q, qIdx) => {
+      const label = formatQuestionLabel(sIdx, qIdx, "numeric");
       const own = q.subparts && q.subparts.length > 0 ? "" : questionBlockHtml(label, q);
       const subpartsHtml = (q.subparts ?? [])
-        .map((sp, i) => questionBlockHtml(`${label}(${String.fromCharCode(97 + i)})`, sp))
+        .map((sp, i) => questionBlockHtml(`${label}(${subpartLetter(i)})`, sp))
         .join("");
       return own + subpartsHtml;
     }).join("");
