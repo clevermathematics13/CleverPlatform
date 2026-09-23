@@ -2,10 +2,12 @@
 
 Scope: this policy governs how the AI grader treats rounding, significant
 figures, and exact-vs-decimal answers for IBDP Mathematics: Analysis and
-Approaches HL, Paper 2 (a GDC/calculator paper). It is loaded into the
-grading system prompt automatically whenever at least one part being graded
-belongs to a question tagged AA / AHL / Paper 2 in the PPQ bank — see
-`isAaHlPaper2()` in `lib/ai-grading.ts`.
+Approaches Paper 2 (a GDC/calculator paper), at SL and at HL alike — nothing
+below is HL-specific. It is loaded into the grading system prompt
+automatically whenever at least one part being graded belongs to a question
+tagged AA / Paper 2 in the PPQ bank, whatever its level — see `isAaPaper2()`
+in `lib/ai-grading.ts`. On an assessment that mixes Paper 2 questions with
+Paper 1 ones, the prompt names which parts this policy applies to.
 
 Where this policy is more specific than the general marking rules earlier
 in this prompt, follow this policy for numerical accuracy. It does not

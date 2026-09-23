@@ -16,6 +16,7 @@ import {
   isActivity,
   isStandardsReferenced,
   isAaHlPaper2,
+  isAaPaper2,
   isCustomAssessment,
   isImpliedToken,
   matchSegmentsToRoster,
@@ -1901,6 +1902,16 @@ describe("isAaHlPaper2", () => {
   });
 });
 
+describe("isAaPaper2", () => {
+  it("matches AA paper 2 at either level, and nothing else", () => {
+    expect(isAaPaper2({ curriculum: ["AA"], paper: 2 })).toBe(true);
+    expect(isAaPaper2({ curriculum: ["AA"], paper: 1 })).toBe(false);
+    expect(isAaPaper2({ curriculum: ["AA"], paper: 3 })).toBe(false);
+    expect(isAaPaper2({ curriculum: ["AI"], paper: 2 })).toBe(false);
+    expect(isAaPaper2({ curriculum: [], paper: null })).toBe(false);
+  });
+});
+
 describe("isCustomAssessment", () => {
   it("is true only for markschemeSource 'custom'", () => {
     expect(isCustomAssessment({ markschemeSource: "custom" })).toBe(true);
@@ -2079,8 +2090,8 @@ describe("isImpliedToken", () => {
 });
 
 describe("buildGradingSystemPrompt", () => {
-  it("returns the base prompt unchanged when no unit is AA HL Paper 2", () => {
-    const prompt = buildGradingSystemPrompt([unit({ curriculum: ["AA"], level: "SL", paper: 2 })]);
+  it("returns the base prompt unchanged when no unit is AA Paper 2", () => {
+    const prompt = buildGradingSystemPrompt([unit({ curriculum: ["AA"], level: "SL", paper: 1 })]);
     expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
   });
 
@@ -2100,6 +2111,32 @@ describe("buildGradingSystemPrompt", () => {
     expect(prompt.startsWith(GRADING_SYSTEM_PROMPT)).toBe(true);
     expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
     expect(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY.length).toBeGreaterThan(0);
+  });
+
+  // The gate used to be AHL-only. BiStats and UniStats -- five SL-coded
+  // questions plus one AHL-coded each -- got the policy by luck of that one
+  // question; a Paper 2 test built from SL questions alone was marked with
+  // no accuracy rules at all.
+  it("appends the numerical-accuracy policy for an SL-only AA Paper 2 test", () => {
+    const prompt = buildGradingSystemPrompt([
+      unit({ testItemId: "item-1", curriculum: ["AA"], level: "SL", paper: 2 }),
+      unit({ testItemId: "item-2", curriculum: ["AA"], level: "SL", paper: 2 }),
+    ]);
+    expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
+    expect(prompt).not.toContain("applies to this assessment --");
+  });
+
+  // P01P1's real shape: a Paper 1 whose Q7(c)/(d) come from a Paper 2
+  // question. The calculator-paper policy is loaded for those two parts and
+  // the header says so, instead of governing the whole non-calculator paper.
+  it("names the Paper 2 parts when an assessment mixes papers", () => {
+    const prompt = buildGradingSystemPrompt([
+      unit({ testItemId: "item-1", questionNumber: 1, curriculum: ["AA"], level: "SL", paper: 1 }),
+      unit({ testItemId: "item-2", questionNumber: 7, partLabel: "c", curriculum: ["AA"], level: "AHL", paper: 2 }),
+      unit({ testItemId: "item-3", questionNumber: 7, partLabel: "d", curriculum: ["AA"], level: "AHL", paper: 2 }),
+    ]);
+    expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
+    expect(prompt).toContain("applies to this assessment -- applies to 7(c), 7(d) only");
   });
 
   it("policy content is actually loaded from grading_policies/, not empty", () => {

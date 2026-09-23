@@ -161,7 +161,20 @@ export function isActivity(u: Pick<GradingUnit, "activity">): boolean {
  * ib_questions.level); it is not a typo for "SL".
  */
 export function isAaHlPaper2(u: Pick<GradingUnit, "curriculum" | "level" | "paper">): boolean {
-  return u.curriculum.includes("AA") && u.level === "AHL" && u.paper === 2;
+  return isAaPaper2(u) && u.level === "AHL";
+}
+
+/**
+ * Whether a unit is an IBDP AA Paper 2 question at either level. This is
+ * what actually loads the Paper 2 numerical-accuracy policy: nothing in that
+ * policy is HL-specific, and the SL and HL papers share the calculator/3 s.f.
+ * conventions it encodes. Gating on AHL alone meant a Paper 2 test built
+ * from SL-coded questions was marked with no accuracy rules at all, and
+ * BiStats/UniStats got them only because each happened to include one
+ * AHL-coded question.
+ */
+export function isAaPaper2(u: Pick<GradingUnit, "curriculum" | "paper">): boolean {
+  return u.curriculum.includes("AA") && u.paper === 2;
 }
 
 /**
@@ -1645,12 +1658,22 @@ export function buildActivityRubricBlock(
 export function buildGradingSystemPrompt(units: GradingUnit[]): string {
   let prompt = GRADING_SYSTEM_PROMPT;
 
-  if (units.some(isAaHlPaper2)) {
+  const paper2 = units.filter(isAaPaper2);
+  if (paper2.length > 0) {
+    // On an assessment that mixes Paper 2 questions with others (P01P1 is a
+    // Paper 1 carrying two Paper-2-coded questions), name the parts this
+    // policy governs rather than applying calculator-paper conventions to
+    // the whole paper. Still identical for every student on the test, so
+    // the cached prefix holds; a single-unit regrade call never lists.
+    const scope =
+      paper2.length < units.length
+        ? ` -- applies to ${paper2.map(unitLabel).join(", ")} only, the AA Paper 2 question(s) on this assessment, and not to its other parts`
+        : "";
     prompt += `
 
 ===============================================================================
-ADDITIONAL POLICY -- IBDP Mathematics: Analysis and Approaches HL Paper 2
-Numerical Accuracy (applies to this assessment)
+ADDITIONAL POLICY -- IBDP Mathematics: Analysis and Approaches Paper 2 (SL and HL)
+Numerical Accuracy (applies to this assessment${scope})
 ===============================================================================
 
 ${AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY}`;
