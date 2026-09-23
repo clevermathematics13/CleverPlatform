@@ -9,7 +9,13 @@ import {
   buildGradingUserPrompt,
   type GradingUnit,
 } from "./ai-grading";
-import { buildGradingRequest } from "./ai-grading-run";
+import {
+  MAX_QUESTION_IMAGES_PER_QUESTION,
+  SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS,
+  buildGradingRequest,
+  questionImagesForUnits,
+  type QuestionImage,
+} from "./ai-grading-run";
 
 /**
  * These are the pin on the extraction: the synchronous route used to build
@@ -77,6 +83,32 @@ function comparable(request: Anthropic.MessageCreateParamsNonStreaming) {
   };
 }
 
+describe("questionImagesForUnits", () => {
+  const textless = (questionNumber: number, over: Partial<GradingUnit> = {}): GradingUnit => ({
+    ...GRADEABLE[0],
+    testItemId: `q${questionNumber}`,
+    questionNumber,
+    questionLatex: "",
+    ...over,
+  });
+  const img = (questionNumber: number): QuestionImage => ({
+    questionNumber,
+    storagePath: `q${questionNumber}.png`,
+    mediaType: "image/png",
+    data: "",
+  });
+
+  it("keeps only the images of questions with a textless gradeable bank part", () => {
+    const units = [
+      GRADEABLE[0], // question 1, has text
+      textless(2),
+      textless(3, { markschemeSource: "none" }),
+      textless(4, { questionCode: "", markschemeSource: "custom" }),
+    ];
+    expect(questionImagesForUnits([img(1), img(2), img(3), img(4), img(5)], units)).toEqual([img(2)]);
+  });
+});
+
 describe("buildGradingRequest", () => {
   it("matches the request the synchronous route sent inline, at a 1h TTL", () => {
     const { output_config, ...request } = buildGradingRequest(args());
@@ -139,6 +171,55 @@ describe("buildGradingRequest", () => {
     expect(comparable(fiveMinute)).toEqual(
       comparable(buildGradingRequest(args({ cacheTtl: "1h" })))
     );
+  });
+
+  // A bank part with no question text: the marker sees only its mark scheme
+  // unless the question's picture travels with the request.
+  const TEXTLESS: GradingUnit = { ...GRADEABLE[0], testItemId: "item-2", questionNumber: 2, questionLatex: "" };
+  const image = (questionNumber: number, n = 1): QuestionImage => ({
+    questionNumber,
+    storagePath: `q${questionNumber}/${n}.png`,
+    mediaType: "image/jpeg",
+    data: `img-${questionNumber}-${n}`,
+  });
+
+  it("is byte-identical to today's request when there are no question images", () => {
+    const today = comparable(buildGradingRequest(args()));
+    expect(comparable(buildGradingRequest(args({ questionImages: [] })))).toEqual(today);
+    // Question 1 has text, so an image offered for it changes nothing either.
+    expect(comparable(buildGradingRequest(args({ questionImages: [image(1)] })))).toEqual(today);
+  });
+
+  it("puts a textless question's images ahead of the cached mark-scheme block, and the scan after it", () => {
+    const request = buildGradingRequest(
+      args({ gradeable: [...GRADEABLE, TEXTLESS], questionImages: [image(1), image(2, 1), image(2, 2)] })
+    );
+    const content = request.messages[0].content as Anthropic.ContentBlockParam[];
+
+    expect(content.map((b) => b.type)).toEqual(["text", "image", "text", "image", "text", "document", "text"]);
+    expect((content[0] as Anthropic.TextBlockParam).text).toBe("Question image for question 2 (no question text on file):");
+    expect((content[1] as Anthropic.ImageBlockParam).source).toEqual({
+      type: "base64",
+      media_type: "image/jpeg",
+      data: "img-2-1",
+    });
+    expect((content[3] as Anthropic.ImageBlockParam).source).toMatchObject({ data: "img-2-2" });
+    // Question 1 has text, so its image is not sent even though it was offered.
+    expect(JSON.stringify(content)).not.toContain("img-1-1");
+
+    const markSchemeBlock = content[4] as Anthropic.TextBlockParam;
+    expect(markSchemeBlock.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    expect(markSchemeBlock.text).toBe(
+      buildGradingUserPrompt([...GRADEABLE, TEXTLESS], { testName: TEST_NAME, questionImagesFor: new Set([2]) })
+    );
+    expect(markSchemeBlock.text).toContain('"Question image for question 2"');
+    expect(markSchemeBlock.text).not.toContain('"Question image for question 1"');
+    for (const block of content.slice(0, 4)) expect("cache_control" in block).toBe(false);
+  });
+
+  it("ships with the images switched off", () => {
+    expect(SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS).toBe(false);
+    expect(MAX_QUESTION_IMAGES_PER_QUESTION).toBe(2);
   });
 
   it("still asks for the JSON object when there is no student name", () => {

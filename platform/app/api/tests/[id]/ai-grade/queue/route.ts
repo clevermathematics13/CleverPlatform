@@ -11,8 +11,10 @@ import {
 import type { GradingUnit } from "@/lib/ai-grading";
 import {
   buildGradingRequest,
+  SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS,
   loadGradeableMarkScheme,
   loadStudentDisplayName,
+  type QuestionImage,
 } from "@/lib/ai-grading-run";
 import { uprightScan } from "@/lib/scan-orientation";
 
@@ -175,8 +177,13 @@ export async function POST(
   // they are still looking at the screen.
   let gradeable: GradingUnit[];
   let assemblyWarnings: string[];
+  let questionImages: QuestionImage[];
   try {
-    ({ gradeable, assemblyWarnings } = await loadGradeableMarkScheme(supabase, testId));
+    // Images (when the flag is on) are loaded once here for the whole
+    // batch, not per student: they are identical across its requests.
+    ({ gradeable, assemblyWarnings, questionImages } = await loadGradeableMarkScheme(supabase, testId, {
+      questionImages: SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS,
+    }));
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Mark scheme assembly failed" },
@@ -372,6 +379,7 @@ export async function POST(
       studentDisplayName: collected[i].displayName,
       scanBase64: collected[i].scanBase64,
       cacheTtl: "5m",
+      questionImages,
     }),
   }));
 

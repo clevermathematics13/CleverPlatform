@@ -11,6 +11,7 @@ import {
   buildGradingUserPrompt,
   buildRegradeItemPrompt,
   buildStandardsRubricBlock,
+  buildUnitBlock,
   followThroughWarnings,
   isFollowThroughWarningAbout,
   composeQuestionText,
@@ -2104,6 +2105,47 @@ describe("buildRegradeItemPrompt", () => {
     expect(prompt).toContain("13(a) (1/2 marks): a = 0.81");
     expect(prompt).toContain("13(b) (0/1 marks): (no work found)");
     expect(prompt.indexOf("13(a) (1/2")).toBeLessThan(prompt.indexOf("13(b) (0/1"));
+  });
+});
+
+describe("buildUnitBlock question images", () => {
+  it("points a textless part at its question image when one is attached", () => {
+    const block = buildUnitBlock(unit({ questionNumber: 6, questionLatex: "" }), { questionImageAttached: true });
+    expect(block).toContain(
+      '--- Question ---\n(No text on file: read the question from the image labelled "Question image for question 6" above.)'
+    );
+    expect(block.indexOf("--- Question ---")).toBeLessThan(block.indexOf("--- Mark scheme (the authority) ---"));
+  });
+
+  it("prints nothing about an image for a textless part when none is attached", () => {
+    const block = buildUnitBlock(unit({ questionLatex: "" }));
+    expect(block).not.toContain("--- Question ---");
+    expect(block).not.toContain("Question image");
+  });
+
+  it("keeps the question text, not the pointer, when the part has text", () => {
+    const block = buildUnitBlock(unit({ questionLatex: "Find $x$." }), { questionImageAttached: true });
+    expect(block).toContain("--- Question ---\nFind $x$.");
+    expect(block).not.toContain("Question image");
+  });
+
+  it("puts the pointer only on the parts of the questions whose image is in the request", () => {
+    const prompt = buildGradingUserPrompt(
+      [
+        unit({ testItemId: "1", questionNumber: 1, partLabel: "a", questionLatex: "" }),
+        unit({ testItemId: "2", questionNumber: 2, partLabel: "a", questionLatex: "" }),
+      ],
+      { questionImagesFor: new Set([2]) }
+    );
+    expect(prompt).not.toContain('"Question image for question 1"');
+    expect(prompt).toContain('"Question image for question 2"');
+  });
+
+  it("passes the pointer through to the regrade prompt", () => {
+    const prompt = buildRegradeItemPrompt(unit({ questionNumber: 3, questionLatex: "" }), "x = 1", [], {
+      questionImageAttached: true,
+    });
+    expect(prompt).toContain('"Question image for question 3"');
   });
 });
 

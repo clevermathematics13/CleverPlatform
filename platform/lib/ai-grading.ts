@@ -1800,8 +1800,19 @@ ${G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES}`;
  * cache_control breakpoint to it — on a batch upload, every student after the
  * first hits a cache read instead of re-sending the whole mark scheme.
  */
+/** The label a question's image carries in the request, so a unit block can point at it. */
+export function questionImageLabel(questionNumber: number): string {
+  return `Question image for question ${questionNumber}`;
+}
+
 /** Build one unit's mark-scheme block: question/context text shared by the batch and single-item prompts. */
-export function buildUnitBlock(u: GradingUnit): string {
+export function buildUnitBlock(
+  u: GradingUnit,
+  opts: {
+    /** True when the request carries the bank's picture of this question (see loadQuestionImages in ai-grading-run.ts). */
+    questionImageAttached?: boolean;
+  } = {}
+): string {
   const lines = [
     `=== ${unitLabel(u)} ===`,
     `testItemId: ${u.testItemId}`,
@@ -1831,6 +1842,11 @@ export function buildUnitBlock(u: GradingUnit): string {
     );
   }
   if (u.questionLatex) lines.push(`\n--- Question ---\n${u.questionLatex}`);
+  else if (opts.questionImageAttached) {
+    lines.push(
+      `\n--- Question ---\n(No text on file: read the question from the image labelled "${questionImageLabel(u.questionNumber)}" above.)`
+    );
+  }
   lines.push(`\n--- Mark scheme (the authority) ---\n${u.markscheme}`);
   // The teacher's rulings for this part, after the scheme they refine. See
   // GradingUnit.markingNotes and rule 20 of the system prompt.
@@ -1844,7 +1860,11 @@ export function buildUnitBlock(u: GradingUnit): string {
 
 export function buildGradingUserPrompt(
   units: GradingUnit[],
-  opts: { testName?: string } = {}
+  opts: {
+    testName?: string;
+    /** Question numbers whose bank image precedes this text in the request. */
+    questionImagesFor?: ReadonlySet<number>;
+  } = {}
 ): string {
   const header = [
     opts.testName ? `Assessment: ${opts.testName}` : null,
@@ -1854,7 +1874,9 @@ export function buildGradingUserPrompt(
     .filter(Boolean)
     .join("\n");
 
-  const blocks = units.map(buildUnitBlock);
+  const blocks = units.map((u) =>
+    buildUnitBlock(u, { questionImageAttached: opts.questionImagesFor?.has(u.questionNumber) ?? false })
+  );
 
   return `${header}
 
@@ -1885,7 +1907,8 @@ export interface RegradePriorPart {
 export function buildRegradeItemPrompt(
   unit: GradingUnit,
   correctedEvidence: string,
-  priorParts: RegradePriorPart[] = []
+  priorParts: RegradePriorPart[] = [],
+  opts: { questionImageAttached?: boolean } = {}
 ): string {
   // A full marking sees every part of the paper, so follow-through (rule 3)
   // comes free; a one-part regrade saw only this part, and marked a value
@@ -1904,7 +1927,7 @@ Use these only to apply follow-through: a value carried into this part from one 
 
   return `A teacher has reviewed the scan directly and corrected the transcription of the student's work for this part, because the original automated transcription was wrong (e.g. a misread digit). Mark this corrected transcription against the mark scheme below -- there is no scan attached this time, so base your marking only on the text given.
 
-${buildUnitBlock(unit)}${priorBlock}
+${buildUnitBlock(unit, opts)}${priorBlock}
 
 --- Teacher-corrected transcription of the student's work for this part ---
 ${correctedEvidence}

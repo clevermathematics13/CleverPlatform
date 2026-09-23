@@ -15,6 +15,12 @@ import {
   unitLabel,
   validateGradeResponse,
 } from "@/lib/ai-grading";
+import {
+  SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS,
+  loadQuestionImages,
+  questionImageContentBlocks,
+  questionImagesForUnits,
+} from "@/lib/ai-grading-run";
 
 /**
  * POST /api/tests/[id]/ai-grade/results/[resultId]/regrade
@@ -142,6 +148,16 @@ export async function POST(
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+    // The same question picture the full marking sends for a textless part
+    // (see SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS): nothing else here shows
+    // the model the question when the bank has no text for it.
+    const questionImages = SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS
+      ? questionImagesForUnits(await loadQuestionImages(supabase, testId, [unit]), [unit])
+      : [];
+    const regradePrompt = buildRegradeItemPrompt(unit, correctedEvidence, priorParts, {
+      questionImageAttached: questionImages.length > 0,
+    });
+
     // Structured output plus one retry on a malformed/invalid response --
     // same shape as the main grading route, see the comment there.
     let validation: ReturnType<typeof validateGradeResponse> | null = null;
@@ -155,7 +171,10 @@ export async function POST(
           temperature: 0, // same reasoning as the main grading route
           system: buildGradingSystemPrompt([unit]),
           messages: [
-            { role: "user", content: buildRegradeItemPrompt(unit, correctedEvidence, priorParts) },
+            {
+              role: "user",
+              content: [...questionImageContentBlocks(questionImages), { type: "text", text: regradePrompt }],
+            },
           ],
           output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
         });
