@@ -15,7 +15,11 @@ import {
   warningsForPart,
   capCauseForPart,
   CAP_CAUSE_SHORT,
+  summariseSelfAssessment,
+  selfMarkFor,
+  selfMarkDiffers,
 } from "@/lib/ai-grade-review";
+import type { SelfScoreRef } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
 import { paperQuestionPrefixes } from "@/lib/assignments";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
@@ -284,6 +288,14 @@ export function AiGradeClient({
    * lib/ai-grade-review.ts for the incident this guards against.
    */
   const [resultsStudent, setResultsStudent] = useState<string | null>(null);
+  /**
+   * The self-assessment of the student whose rows are in `results`
+   * (student_self_scores, served with them), for the Self column. Set and
+   * cleared together with `results`, so it can never sit under another
+   * student's name either. Null before a load and when the route could not
+   * read it -- see summariseSelfAssessment.
+   */
+  const [selfScores, setSelfScores] = useState<SelfScoreRef[] | null>(null);
   const [focusRunId, setFocusRunId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, number>>({}); // keyed by result.id
   /** A reason typed beside an overridden mark, sent with the accept as its audit note. Keyed by result.id. */
@@ -642,6 +654,7 @@ export function AiGradeClient({
   const clearReview = useCallback(() => {
     setResults([]);
     setResultsStudent(null);
+    setSelfScores(null);
     setFocusRunId(null);
     setDrafts({});
     setSelected(new Set());
@@ -721,6 +734,7 @@ export function AiGradeClient({
         setFocusRunId(latestRun?.id ?? null);
         setResults(rowsForLatest);
         setResultsStudent(studentId);
+        setSelfScores(Array.isArray(data.self_scores) ? (data.self_scores as SelfScoreRef[]) : null);
         // An accepted row's draft starts from what is actually in Clev's
         // Marks, not the model's original suggestion -- suggested_marks
         // never moves once the model has spoken, so seeding the draft from
@@ -1400,6 +1414,12 @@ export function AiGradeClient({
   const totalItems = test.test_items.length;
   const maxTotal = test.test_items.reduce((s, i) => s + i.max_marks, 0);
   const suggestedTotal = results.reduce((s, r) => s + (drafts[r.id] ?? 0), 0);
+  // What the student under review gave themselves, part by part, compared
+  // against the mark in each row's box -- so an edit re-colours the Self cell
+  // as it is typed, the same way it re-totals the suggestion.
+  const selfAssessment = summariseSelfAssessment(selfScores);
+  const selfDiffersFrom = (r: ResultRow) =>
+    selfMarkDiffers(selfMarkFor(selfAssessment, r.test_item_id), drafts[r.id] ?? 0);
   const focusRun = focusStudent ? runsByStudent[focusStudent] : null;
   // The strand levels the marks on screen would give, recomputed as the
   // teacher edits them -- so a change to one part shows what it does to the
@@ -1450,6 +1470,17 @@ export function AiGradeClient({
         : rowWarnings.length > 0
           ? rowWarnings.join("\n")
           : "The marker's own call: it judged this part a judgement call. Open Why? for its reasoning.";
+    const self = selfMarkFor(selfAssessment, r.test_item_id);
+    const selfDiffers = selfDiffersFrom(r);
+    const selfTitle =
+      self.kind === "none"
+        ? selfAssessment.assessed
+          ? "Nothing on file for this part in the student's self-assessment."
+          : undefined
+        : (self.kind === "blank"
+            ? "Left blank on the self-assessment: the student's form records that as no attempt, a claim of 0"
+            : `The student gave themselves ${self.marks} of ${r.max_marks} on the self-assessment`) +
+          (selfDiffers ? `; the mark here is ${drafts[r.id] ?? 0}.` : ".");
     return (
       <Fragment key={r.id}>
         <tr className="border-b border-da-border">
@@ -1568,6 +1599,27 @@ export function AiGradeClient({
                 </span>
               )}
           </td>
+          <td className="px-2 py-2">
+            {/* The student's own mark, beside the one about to be accepted.
+                Amber where the two differ, like the "was N" hint: not wrong,
+                just worth a second look. */}
+            {self.kind === "none" ? (
+              <span className="text-da-muted" title={selfTitle}>
+                —
+              </span>
+            ) : (
+              <span
+                title={selfTitle}
+                className={`whitespace-nowrap ${self.kind === "blank" ? "text-xs" : ""} ${
+                  selfDiffers
+                    ? "rounded border border-amber-400/40 bg-amber-500/15 px-1.5 py-0.5 text-amber-300"
+                    : "text-da-text"
+                }`}
+              >
+                {self.kind === "blank" ? "no attempt" : self.marks}
+              </span>
+            )}
+          </td>
           <td className="px-2 py-2 text-da-muted">{r.max_marks}</td>
           <td className="px-2 py-2">
             <span
@@ -1617,7 +1669,7 @@ export function AiGradeClient({
 
         {isOpen && (
           <tr className="bg-da-hover">
-            <td colSpan={8} className="px-6 py-4">
+            <td colSpan={9} className="px-6 py-4">
               <div className="space-y-3">
                 {r.mark_breakdown.length > 0 && (
                   <div className="space-y-1.5">
@@ -2022,6 +2074,11 @@ export function AiGradeClient({
         previousMarks[r.test_item_id] !== r.suggested_marks
     ).length;
     const highAccepted = high.filter((r) => r.accepted).length;
+    // Parts where the student's own mark is not the one on screen: over the
+    // whole paper for the heading, and over the confident parts for their
+    // summary row, which can be folded shut with them inside it.
+    const selfDiffCount = ordered.filter(selfDiffersFrom).length;
+    const highSelfDiffers = high.filter(selfDiffersFrom).length;
     // The summary row's own checkbox covers the confident parts not yet in
     // Clev's Marks -- the ones it is hiding that an accept would still act on.
     const highPending = high.filter((r) => !r.accepted);
@@ -2038,6 +2095,38 @@ export function AiGradeClient({
               {needsLook.length === 0 &&
                 high.length > 0 &&
                 " Every part came back high confidence — nothing is flagged for a look."}
+            </p>
+            <p
+              className="mt-0.5 text-xs text-da-muted"
+              title={
+                selfAssessment.lastSavedAt
+                  ? `Last saved ${new Date(selfAssessment.lastSavedAt).toLocaleString()}. ` +
+                    "A student can change these on the Compare step after seeing Clev's Marks."
+                  : undefined
+              }
+            >
+              {!selfAssessment.available ? (
+                "The student's self-assessment could not be loaded."
+              ) : !selfAssessment.assessed ? (
+                "Not self-assessed yet."
+              ) : (
+                <>
+                  Self-assessed total {selfAssessment.total} / {maxTotal}
+                  {selfDiffCount > 0 ? (
+                    <>
+                      {" — "}
+                      <span className="text-amber-300">
+                        {selfDiffCount === 1
+                          ? "1 part differs from the mark here"
+                          : `${selfDiffCount} parts differ from the marks here`}
+                      </span>
+                      , highlighted in the Self column.
+                    </>
+                  ) : (
+                    " — no part differs from the marks here."
+                  )}
+                </>
+              )}
             </p>
             {focusStudent && newerAttemptByStudent[focusStudent] && (
               <p className="mt-1 text-xs text-amber-300">
@@ -2101,6 +2190,12 @@ export function AiGradeClient({
                 </th>
                 <th className="px-2 py-2 font-semibold">Question</th>
                 <th className="px-2 py-2 font-semibold">Suggested</th>
+                <th
+                  className="px-2 py-2 font-semibold"
+                  title="What the student gave themselves on the self-assessment"
+                >
+                  Self
+                </th>
                 <th className="px-2 py-2 font-semibold">Max</th>
                 <th className="px-2 py-2 font-semibold">Confidence</th>
                 <th className="px-2 py-2 font-semibold">Mark scheme</th>
@@ -2137,7 +2232,7 @@ export function AiGradeClient({
                         aria-label="Accept every high-confidence part not yet in Clev's Marks"
                       />
                     </td>
-                    <td colSpan={7} className="px-2 py-2">
+                    <td colSpan={8} className="px-2 py-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
@@ -2172,6 +2267,14 @@ export function AiGradeClient({
                             title="The previous completed run suggested a different mark for these parts. Expand to see which."
                           >
                             · {highChanged} changed since the last run
+                          </span>
+                        )}
+                        {highSelfDiffers > 0 && (
+                          <span
+                            className="text-xs text-amber-300"
+                            title="The student's self-assessment gives a different mark for these parts. Expand to see which."
+                          >
+                            · {highSelfDiffers} differ{highSelfDiffers === 1 ? "s" : ""} from the self-assessment
                           </span>
                         )}
                       </div>

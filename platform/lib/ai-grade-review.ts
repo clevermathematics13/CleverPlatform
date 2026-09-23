@@ -219,3 +219,90 @@ export const CAP_CAUSE_SHORT: Record<CapCause, string> = {
   numeric: "a mark was re-checked",
   none: "the marker's own call",
 };
+
+// ---- The student's own self-assessment --------------------------------------
+//
+// student_self_scores holds what a student judged they earned on each part,
+// entered on the reflection page's self-grade form. The review panel prints
+// it beside the suggested mark, so a teacher can see where the student's
+// judgement and the marker's part ways before accepting either.
+//
+// Each part has one of three states, and they are different facts about the
+// student (migration 20260907152544_student_self_scores_allow_unattempted):
+//
+//   a number   the marks the student claimed
+//   blank      a row whose self_marks is NULL: the form's "no attempt", which
+//              computeDisagreement reads as a claim of 0
+//   no row     nothing on file for the part (e.g. added after they submitted)
+//
+// A student has self-assessed the test only if at least one self_marks is
+// non-null. That is the platform's own test (hasSelfScores in
+// reflection-client, and the self-assessment export): a form submitted blank
+// end to end still reads as not done, so every part then reads as "none"
+// rather than as a column of blanks under a heading that says otherwise.
+
+/** One student_self_scores row, as the review route serves it. */
+export interface SelfScoreRef {
+  test_item_id: string;
+  self_marks: number | null;
+  submitted_at?: string | null;
+}
+
+/** What the Self column shows for one part. */
+export type SelfMark = { kind: "none" } | { kind: "blank" } | { kind: "marks"; marks: number };
+
+export interface SelfAssessmentSummary {
+  /** False when the self-scores could not be read -- which says nothing about the student. */
+  available: boolean;
+  /** At least one part carries a claimed mark. */
+  assessed: boolean;
+  /** self_marks per test_item_id, blanks included as null. Empty unless assessed. */
+  byItem: Map<string, number | null>;
+  /** The claimed total over every part on file; a blank adds nothing, as on the student's own form. */
+  total: number;
+  /** When the rows were last written. The Compare step lets a student revise them after seeing Clev's Marks. */
+  lastSavedAt: string | null;
+}
+
+/**
+ * Summarises one student's self-assessment of one test. `rows` is null when
+ * the route could not read them, which the panel must not report as "has not
+ * self-assessed" -- a failed query is not evidence about the student.
+ */
+export function summariseSelfAssessment(rows: readonly SelfScoreRef[] | null | undefined): SelfAssessmentSummary {
+  if (!rows) return { available: false, assessed: false, byItem: new Map(), total: 0, lastSavedAt: null };
+  const assessed = rows.some((r) => typeof r.self_marks === "number");
+  if (!assessed) return { available: true, assessed: false, byItem: new Map(), total: 0, lastSavedAt: null };
+  const byItem = new Map<string, number | null>();
+  let total = 0;
+  let lastSavedAt: string | null = null;
+  let lastSavedMs = -Infinity;
+  for (const r of rows) {
+    const marks = typeof r.self_marks === "number" ? r.self_marks : null;
+    byItem.set(r.test_item_id, marks);
+    total += marks ?? 0;
+    const ms = r.submitted_at ? Date.parse(r.submitted_at) : NaN;
+    if (!Number.isNaN(ms) && ms > lastSavedMs) {
+      lastSavedMs = ms;
+      lastSavedAt = r.submitted_at ?? null;
+    }
+  }
+  return { available: true, assessed, byItem, total, lastSavedAt };
+}
+
+/** The student's own mark for one part. */
+export function selfMarkFor(summary: SelfAssessmentSummary, testItemId: string): SelfMark {
+  if (!summary.assessed || !summary.byItem.has(testItemId)) return { kind: "none" };
+  const marks = summary.byItem.get(testItemId);
+  return typeof marks === "number" ? { kind: "marks", marks } : { kind: "blank" };
+}
+
+/**
+ * Whether the student claimed something other than `mark`. A blank is a claim
+ * of 0, the way computeDisagreement reads it once the student has
+ * self-assessed; a part with nothing on file has no claim to differ.
+ */
+export function selfMarkDiffers(self: SelfMark, mark: number): boolean {
+  if (self.kind === "none") return false;
+  return (self.kind === "marks" ? self.marks : 0) !== mark;
+}

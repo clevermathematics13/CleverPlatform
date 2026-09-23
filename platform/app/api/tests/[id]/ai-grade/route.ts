@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getApiTeacher } from "@/lib/auth";
+import type { ApiAuthOk } from "@/lib/auth";
 import { recordUsage } from "@/lib/ai-usage";
 import {
   GRADING_MODEL,
@@ -70,7 +71,9 @@ interface ResultRow {
 
 /**
  * GET /api/tests/[id]/ai-grade?studentId=...
- * Returns grading runs and their results, for the review UI.
+ * Returns grading runs and their results, for the review UI. With a
+ * studentId, also that student's self-assessment of the test as
+ * `self_scores` (see loadSelfScores below).
  */
 export async function GET(
   request: NextRequest,
@@ -82,6 +85,10 @@ export async function GET(
 
   const { id: testId } = await params;
   const studentId = request.nextUrl.searchParams.get("studentId");
+
+  // Started now and awaited at the end, so the Self column costs no extra
+  // round trip on a single student's review load.
+  const selfScoresPromise = studentId ? loadSelfScores(supabase, testId, studentId) : null;
 
   // Built fresh per call so each .range() page starts from an untouched
   // builder, the same shape the results query below uses.
@@ -131,7 +138,13 @@ export async function GET(
     ...r,
     student_id: formatGradingSubject(r),
   }));
-  if (runs.length === 0) return NextResponse.json({ runs: [], results: [] });
+  if (runs.length === 0) {
+    return NextResponse.json({
+      runs: [],
+      results: [],
+      ...(selfScoresPromise ? { self_scores: await selfScoresPromise } : {}),
+    });
+  }
 
   // A whole class's runs carry well over PostgREST's 1000-row cap (60 runs x
   // ~39 items = 2,337 rows on 5 Sep 2026), and a single .in() query returns
@@ -235,7 +248,54 @@ export async function GET(
     marks_awarded: marksAwardedByTestItem.get(r.test_item_id) ?? null,
   }));
 
-  return NextResponse.json({ runs, results: resultsWithImages });
+  return NextResponse.json({
+    runs,
+    results: resultsWithImages,
+    ...(selfScoresPromise ? { self_scores: await selfScoresPromise } : {}),
+  });
+}
+
+/**
+ * One student's self-assessment of this test (student_self_scores): what they
+ * gave themselves on each part on the reflection page's self-grade form, for
+ * the review panel's Self column. Read over every part of the test rather
+ * than only the parts in these runs, so the self-assessed total is the one
+ * the student saw on their own form.
+ *
+ * [] for an invited subject: a student who has never signed in has no account
+ * to have self-assessed from (see getReflectionItemsForInvitedStudent in
+ * lib/exam-service.ts). null when a read fails, so the panel says it could
+ * not load them instead of reporting that the student has not self-assessed
+ * on the strength of a failed query. Never throws -- it is awaited after the
+ * rest of the review has loaded, and must not be able to fail that.
+ */
+async function loadSelfScores(
+  supabase: ApiAuthOk["supabase"],
+  testId: string,
+  studentId: string
+): Promise<{ test_item_id: string; self_marks: number | null; submitted_at: string | null }[] | null> {
+  const subject = parseGradingSubject(studentId);
+  if (subject.kind === "invited") return [];
+  try {
+    const { data: items, error: itemsError } = await supabase
+      .from("test_items")
+      .select("id")
+      .eq("test_id", testId);
+    if (itemsError) return null;
+    const itemIds = (items ?? []).map((i) => i.id as string);
+    if (itemIds.length === 0) return [];
+    // One row per part at most (unique on test_item_id, student_id), so a
+    // paper's worth sits far below PostgREST's 1000-row cap.
+    const { data, error } = await supabase
+      .from("student_self_scores")
+      .select("test_item_id, self_marks, submitted_at")
+      .eq("student_id", subject.id)
+      .in("test_item_id", itemIds);
+    if (error) return null;
+    return data ?? [];
+  } catch {
+    return null;
+  }
 }
 
 /**
