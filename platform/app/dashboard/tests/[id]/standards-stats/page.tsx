@@ -13,17 +13,20 @@ import { PERFORMANCE_LEVELS } from "@/lib/standards-rubric";
 import { DistributionMeter, ScoreMeter } from "@/components/StandardsStatsMeters";
 
 /**
- * Class statistics for a Grade 9 Standard Level assessment.
+ * Class statistics for an assessment. Not restricted to Standard Level
+ * papers -- a test with no standards rubric renders the same question and
+ * part tables, just without a strand/level breakdown (see the "not required"
+ * note in lib/standards-stats-data.ts).
  *
  * The standards report next door answers "where is each student"; this page
  * answers "where is the CLASS" -- the average for each question, for each
- * part inside it, and for each strand, plus the handful of parts worth
- * looking at before the next lesson.
+ * part inside it, and for each strand (when there is a rubric), plus the
+ * handful of parts worth looking at before the next lesson.
  *
- * The scope switcher at the top is the general Standard Level view: 9D on
- * its own is the default (it is the class the paper hangs off), and "All
- * Standard Level" pools every class that sat it, including any whose work
- * was marked without that class being on the paper's track.
+ * The scope switcher at the top is the general view: the test's own class is
+ * the default (it is the class the paper hangs off), and "All classes" pools
+ * every class that sat it, including any whose work was marked without that
+ * class being on the paper's track.
  *
  * Everything is from Clev's Marks -- accepted marks only -- and a part
  * nobody has accepted yet is absent from the averages rather than counted

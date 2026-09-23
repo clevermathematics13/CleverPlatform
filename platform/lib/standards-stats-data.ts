@@ -10,7 +10,9 @@ import {
 } from "./standards-stats";
 
 /**
- * The class statistics for one Standard Level paper, at a chosen scope.
+ * The class statistics for one paper, at a chosen scope. Works for any test
+ * with items -- a standards rubric adds the strand/level breakdown but is
+ * not required (see the "not required" note below).
  *
  * Shared by the stats page and its CSV route so the two cannot disagree,
  * exactly as lib/standards-report-data.ts is shared by the report and its
@@ -18,12 +20,13 @@ import {
  * the AI grader's rule -- with one addition the per-student report does not
  * make: `includeMarkedOutsideRoster`, so a paper marked for a student from a
  * class the test's track does not reach still counts here. The general
- * Standard Level scope exists for exactly those students, and a marked paper
- * missing from the averages would be worse than a stranger's name on a list.
+ * ("All classes") scope exists for exactly those students, and a marked
+ * paper missing from the averages would be worse than a stranger's name on a
+ * list.
  *
  * SCOPE is one of:
- *   "all"       every class that sat the paper -- the general Standard Level view
- *   <courseId>  one class, which is how the teacher reads 9D on its own
+ *   "all"       every class that sat the paper -- the general view
+ *   <courseId>  one class, which is how the teacher reads a single class on its own
  *   "unknown"   marked students whose class could not be resolved at all
  *
  * Absentees are dropped before any arithmetic: they did not sit it, so they
@@ -32,7 +35,13 @@ import {
 
 /** The general scope's key in a URL, and in the scope option list. */
 export const ALL_CLASSES_SCOPE = "all";
-export const ALL_CLASSES_LABEL = "All Standard Level";
+/**
+ * Generic on purpose: this page and its scope switcher are not restricted to
+ * Standard Level papers (see the "Deliberately not done" note in
+ * platform/docs/HANDOFF.md #25), so a label naming that track would be wrong
+ * on an Extended or formative paper that reaches the same code path.
+ */
+export const ALL_CLASSES_LABEL = "All classes";
 /** A marked student with no resolvable class. Rare, and never silently dropped. */
 export const UNKNOWN_CLASS_SCOPE = "unknown";
 
@@ -53,7 +62,7 @@ export interface StandardsStatsData {
   stats: StandardsStats;
   highlights: StatsHighlights;
   scope: StatsScopeOption;
-  /** "All Standard Level" first, then one per class with students on the roster. */
+  /** "All classes" first, then one per class with students on the roster. */
   scopeOptions: StatsScopeOption[];
   /** Counted at the chosen scope. */
   roster: { total: number; absent: number; marked: number; complete: number };

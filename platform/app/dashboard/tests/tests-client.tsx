@@ -494,10 +494,6 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                         <a href={`/dashboard/tests/${test.id}/standards-report`} className="text-blue-300 hover:underline">
                           Standards report →
                         </a>
-                        {" · "}
-                        <a href={`/dashboard/tests/${test.id}/standards-stats`} className="text-blue-300 hover:underline">
-                          Teacher stats →
-                        </a>
                       </>
                     )}
                     {test.activity_rubric != null && (
@@ -511,6 +507,14 @@ export function TestsClient({ initialTests, courses }: TestsClientProps) {
                         </span>{" "}
                         <a href={`/dashboard/tests/${test.id}/activity-report`} className="text-blue-300 hover:underline">
                           Activity report →
+                        </a>
+                      </>
+                    )}
+                    {test.test_items.length > 0 && (
+                      <>
+                        {" · "}
+                        <a href={`/dashboard/tests/${test.id}/standards-stats`} className="text-blue-300 hover:underline">
+                          Teacher stats →
                         </a>
                       </>
                     )}

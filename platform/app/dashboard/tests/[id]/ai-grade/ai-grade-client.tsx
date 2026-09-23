@@ -2336,7 +2336,11 @@ export function AiGradeClient({
                 Approaching / Beginning.{" "}
                 <a href={`/dashboard/tests/${testId}/standards-report`} className="text-blue-300 hover:underline">
                   Standards report →
-                </a>{" "}
+                </a>
+              </p>
+            )}
+            {totalItems > 0 && (
+              <p className="mt-2 text-sm text-da-muted">
                 <a href={`/dashboard/tests/${testId}/standards-stats`} className="text-blue-300 hover:underline">
                   Teacher stats →
                 </a>

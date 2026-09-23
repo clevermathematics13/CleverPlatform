@@ -120,16 +120,16 @@ export function StandardsRubricSection({
             </span>
           )}
         </h2>
-        {saved && (
-          <span className="flex flex-wrap gap-3">
+        <span className="flex flex-wrap gap-3">
+          {saved && (
             <a href={`/dashboard/tests/${testId}/standards-report`} className="text-xs text-blue-300 hover:underline">
               Standards report →
             </a>
-            <a href={`/dashboard/tests/${testId}/standards-stats`} className="text-xs text-blue-300 hover:underline">
-              Teacher stats →
-            </a>
-          </span>
-        )}
+          )}
+          <a href={`/dashboard/tests/${testId}/standards-stats`} className="text-xs text-blue-300 hover:underline">
+            Teacher stats →
+          </a>
+        </span>
       </div>
 
       {saved ? (
