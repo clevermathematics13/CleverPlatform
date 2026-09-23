@@ -5,6 +5,7 @@ import {
   partSortKey,
   sortReviewRows,
   partitionByConfidence,
+  shouldPreselect,
   partWarningLabel,
   warningsForPart,
   capCauseForPart,
@@ -221,6 +222,39 @@ describe("partitionByConfidence", () => {
     ];
     partitionByConfidence(rows);
     expect(rows.map((r) => r.id)).toEqual(["1", "2"]);
+  });
+});
+
+describe("shouldPreselect", () => {
+  const row = (overrides: Partial<Parameters<typeof shouldPreselect>[0]> = {}) => ({
+    accepted: false,
+    work_found: true,
+    confidence: "high",
+    ...overrides,
+  });
+
+  it("preselects a not-yet-accepted, high-confidence row with work found", () => {
+    expect(shouldPreselect(row())).toBe(true);
+  });
+
+  // The bug this guards: "not accepted and work_found" alone pre-ticked
+  // medium/low confidence rows the same as high-confidence ones, so a
+  // teacher trusting the pre-ticked state could bulk-accept a suggestion the
+  // model itself flagged as needing a look.
+  it("does not preselect a medium-confidence row", () => {
+    expect(shouldPreselect(row({ confidence: "medium" }))).toBe(false);
+  });
+
+  it("does not preselect a low-confidence row", () => {
+    expect(shouldPreselect(row({ confidence: "low" }))).toBe(false);
+  });
+
+  it("does not preselect a row with no work found, even at high confidence", () => {
+    expect(shouldPreselect(row({ work_found: false }))).toBe(false);
+  });
+
+  it("does not preselect a row already accepted", () => {
+    expect(shouldPreselect(row({ accepted: true }))).toBe(false);
   });
 });
 

@@ -242,13 +242,28 @@ describe("matchesRequiredPrecision", () => {
     expect(right.ok).toBe(true);
   });
 
-  it("defers (ok: true) rather than fails when a value can't be parsed deterministically", () => {
+  it("defers (ok: true, verified: false) rather than fails when a value can't be parsed deterministically", () => {
     const result = matchesRequiredPrecision({
       reportedValue: "pi/4",
       referenceValue: "0.7853981...",
       precisionType: "exact",
     });
     expect(result.ok).toBe(true);
+    // Deferring to the model is not the same claim as a verified match --
+    // a caller deciding whether to GRANT a mark on this result must check
+    // both. See the regression coverage in ai-grading.test.ts for why.
+    expect(result.verified).toBe(false);
+  });
+
+  it("marks a genuine match as verified, distinguishing it from an unparseable deferral", () => {
+    const result = matchesRequiredPrecision({
+      reportedValue: "8.52",
+      referenceValue: "8.51693",
+      precisionType: "sf",
+      precisionDigits: 3,
+    });
+    expect(result.ok).toBe(true);
+    expect(result.verified).toBe(true);
   });
 
   // The Luciana Q4(b)/Q4(c) regression: a mark scheme accepts two different

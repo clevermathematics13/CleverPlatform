@@ -15,9 +15,11 @@ import {
 import type { GradingUnit } from "@/lib/ai-grading";
 import {
   buildGradingRequest,
+  SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS,
   loadGradeableMarkScheme,
   loadStudentDisplayName,
   persistGradeOutcome,
+  type QuestionImage,
 } from "@/lib/ai-grading-run";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { uprightScan } from "@/lib/scan-orientation";
@@ -307,8 +309,11 @@ export async function POST(
   let units: GradingUnit[];
   let gradeable: GradingUnit[];
   let assemblyWarnings: string[];
+  let questionImages: QuestionImage[];
   try {
-    ({ units, gradeable, assemblyWarnings } = await loadGradeableMarkScheme(supabase, testId));
+    ({ units, gradeable, assemblyWarnings, questionImages } = await loadGradeableMarkScheme(supabase, testId, {
+      questionImages: SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS,
+    }));
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Mark scheme assembly failed" },
@@ -480,6 +485,7 @@ export async function POST(
     studentDisplayName,
     scanBase64,
     cacheTtl: "1h",
+    questionImages,
   });
 
   let validation: ReturnType<typeof validateGradeResponse> | null = null;

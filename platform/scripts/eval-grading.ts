@@ -17,6 +17,7 @@
 //   npx tsx scripts/eval-grading.ts --limit 3 --out eval.json
 //   npx tsx scripts/eval-grading.ts --model claude-sonnet-5 --effort medium
 //   npx tsx scripts/eval-grading.ts --test <test uuid> --trials 2
+//   npx tsx scripts/eval-grading.ts --question-images --limit 3 # measure the question-image flag
 //
 // The request is built by buildGradingRequest (lib/ai-grading-run.ts), the
 // same function the interactive route and the overnight batch use, so this
@@ -32,8 +33,14 @@
 import { createClient } from "@supabase/supabase-js";
 import Anthropic from "@anthropic-ai/sdk";
 import { writeFileSync } from "node:fs";
-import { GRADING_MODEL, SCAN_BUCKET, assembleMarkScheme, validateGradeResponse } from "../lib/ai-grading";
-import { buildGradingRequest, modelTakesEffort, type GradingEffort } from "../lib/ai-grading-run";
+import { GRADING_MODEL, SCAN_BUCKET, validateGradeResponse } from "../lib/ai-grading";
+import {
+  SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS,
+  buildGradingRequest,
+  loadGradeableMarkScheme,
+  modelTakesEffort,
+  type GradingEffort,
+} from "../lib/ai-grading-run";
 import { recordUsage } from "../lib/ai-usage";
 
 // -- args -------------------------------------------------------------------
@@ -44,6 +51,10 @@ const opt = (name: string): string | undefined => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 const DRY = flag("dry");
+// --question-images sends the bank's picture of each textless question, as
+// the routes will once SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS is on; run the
+// same students with and without it to measure what the images cost.
+const QUESTION_IMAGES = flag("question-images") || SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS;
 const LIMIT = opt("limit") ? Number(opt("limit")) : Infinity;
 const MODEL = opt("model") ?? GRADING_MODEL;
 const EFFORT = opt("effort") as GradingEffort | undefined;
@@ -168,8 +179,9 @@ async function gradeStudent(s: GoldenStudent): Promise<StudentResult> {
   const usage = { input: 0, cacheWrite: 0, cacheRead: 0, output: 0 };
   const result: StudentResult = { testName: s.testName, studentName: s.studentName, parts: s.parts.map((p) => ({ ...p, predicted: null, confidence: null })), usage };
   try {
-    const { units } = await assembleMarkScheme(supabase, s.testId);
-    const gradeable = units.filter((u) => u.markschemeSource !== "none");
+    const { gradeable, questionImages } = await loadGradeableMarkScheme(supabase, s.testId, {
+      questionImages: QUESTION_IMAGES,
+    });
     const { data: file, error: dlErr } = await supabase.storage.from(SCAN_BUCKET).download(s.scanPath);
     if (dlErr || !file) throw new Error(`scan download failed: ${dlErr?.message ?? "not found"}`);
     const scanBase64 = Buffer.from(await file.arrayBuffer()).toString("base64");
@@ -183,6 +195,7 @@ async function gradeStudent(s: GoldenStudent): Promise<StudentResult> {
         cacheTtl: "1h",
         model: MODEL,
         effort: EFFORT,
+        questionImages,
       })
     );
     usage.input = message.usage.input_tokens;

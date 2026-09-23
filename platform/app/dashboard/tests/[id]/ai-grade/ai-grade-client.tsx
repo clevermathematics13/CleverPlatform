@@ -11,6 +11,7 @@ import {
   rowsForRun,
   sortReviewRows,
   partitionByConfidence,
+  shouldPreselect,
   partWarningLabel,
   warningsForPart,
   capCauseForPart,
@@ -141,6 +142,17 @@ interface MarkBreakdownEntry {
   note: string;
   /** Which of this unit's own labeled sub-parts this token belongs to, e.g. "a)(i)" -- only present when a single graded unit covers more than one. */
   part?: string;
+  /** How many marks this one token is worth. Absent/1 for an ordinary single-mark token; see MarkBreakdownEntrySchema (lib/ai-grading.ts) for the rare combined-token case. */
+  marks?: number;
+  /** How many of `marks` were earned, only present for a combined token whose own mark-scheme note tiers partial credit. */
+  awardedMarks?: number;
+}
+
+/** Mirrors earnedMarks() in lib/ai-grading.ts -- kept in step with it. */
+function earnedMarks(entry: Pick<MarkBreakdownEntry, "awarded" | "marks" | "awardedMarks">): number {
+  const weight = entry.marks ?? 1;
+  if (entry.awardedMarks != null) return Math.min(entry.awardedMarks, weight);
+  return entry.awarded ? weight : 0;
 }
 
 /**
@@ -248,13 +260,42 @@ function itemLabel(item: TestItem | undefined, paperPrefixes: Map<number, string
   return item.part_label ? `${prefix}(${item.part_label})` : prefix;
 }
 
+/** Mirrors lib/ai-grading.ts's MarkSchemeCoverage -- only the fields this page renders. */
+export interface MarkSchemeCoverageSummary {
+  partsInAssessment: number;
+  partsWithoutMarkscheme: number;
+  maxTotal: number;
+  testTotalMarks: number;
+  ungradedLabels: string[];
+  partsWithoutQuestionText: number;
+  noQuestionTextLabels: string[];
+}
+
 export function AiGradeClient({
   testId,
   assessmentKind = "formative",
+  coverage = null,
+  bankQuestionText = {},
 }: {
   testId: string;
   /** Decides what "Accept all" actually covers -- see lib/summative-grading-gate.ts. */
   assessmentKind?: AssessmentKind;
+  /**
+   * The PPQ bank's coverage of this assessment's mark scheme, computed once
+   * server-side (app/dashboard/tests/[id]/ai-grade/page.tsx) from the same
+   * assembleMarkScheme() join a grading run itself uses. null only when that
+   * assembly failed outright -- the grading route will report the same error
+   * the moment a teacher tries to grade.
+   */
+  coverage?: MarkSchemeCoverageSummary | null;
+  /**
+   * Question text (stem + part, LaTeX) per test_item_id for the PPQ-bank
+   * parts that have any, from the same server-side assembly as `coverage`.
+   * A custom part's text is on the item itself (question_text); a bank
+   * part's only ever lived in the bank, and until this prop the marking
+   * screen showed it only as an image, or not at all.
+   */
+  bankQuestionText?: Record<string, string>;
 }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
   /** Result of GET /api/health/anthropic: null until checked; error string when the key cannot complete a call. */
@@ -735,9 +776,7 @@ export function AiGradeClient({
             ])
           )
         );
-        setSelected(
-          new Set(rowsForLatest.filter((r) => !r.accepted && r.work_found).map((r) => r.id))
-        );
+        setSelected(new Set(rowsForLatest.filter(shouldPreselect).map((r) => r.id)));
         if (latestRun) {
           setRunsByStudent((prev) => ({ ...prev, [studentId]: latestRun }));
           setAcceptanceByRun((prev) => ({
@@ -1503,12 +1542,13 @@ export function AiGradeClient({
                   )}
                 </button>
               ) : (
-                (stem || meta?.question_text?.trim()) && (
+                (stem || meta?.question_text?.trim() || bankQuestionText[r.test_item_id]) && (
                   // A teacher-authored part has no image anywhere -- not in
                   // the PPQ bank, and a Grade 9 paper has no locked layout to
                   // cut one from -- so the question itself is the text.
                   // Clamped to two lines, with the full wording on hover, so
-                  // a long stem cannot stretch the row.
+                  // a long stem cannot stretch the row. A bank part with
+                  // text but no image shows that text the same way.
                   <span className="max-w-md text-xs font-normal">
                     {stem && (
                       <span
@@ -1524,6 +1564,14 @@ export function AiGradeClient({
                         className="line-clamp-2 text-da-muted"
                       >
                         <LatexRenderer latex={meta.question_text} />
+                      </span>
+                    )}
+                    {!meta?.question_text?.trim() && bankQuestionText[r.test_item_id] && (
+                      <span
+                        title={bankQuestionText[r.test_item_id]}
+                        className="line-clamp-2 text-da-muted"
+                      >
+                        <LatexRenderer latex={bankQuestionText[r.test_item_id]} />
                       </span>
                     )}
                   </span>
@@ -1626,19 +1674,32 @@ export function AiGradeClient({
                         {group.part && (
                           <span className="text-xs font-semibold text-da-muted">{group.part}</span>
                         )}
-                        {group.entries.map((b, i) => (
-                          <span
-                            key={i}
-                            className={`rounded border px-2 py-0.5 text-xs ${
-                              b.awarded
-                                ? "border-green-400/40 bg-green-500/15 text-green-300"
-                                : "border-da-border bg-da-surface text-da-muted line-through"
-                            }`}
-                            title={b.note}
-                          >
-                            {b.token}
-                          </span>
-                        ))}
+                        {group.entries.map((b, i) => {
+                          const weight = b.marks ?? 1;
+                          const earned = earnedMarks(b);
+                          // A combined token (weight > 1) needs a third,
+                          // partial-credit state a plain awarded/not-awarded
+                          // chip can't show -- e.g. "A2" earning 1 of 2 marks
+                          // via its own mark scheme's partial-credit note.
+                          const partial = weight > 1 && earned > 0 && earned < weight;
+                          const label =
+                            weight > 1 ? `${b.token} (${partial ? `${earned}/${weight}` : weight})` : b.token;
+                          return (
+                            <span
+                              key={i}
+                              className={`rounded border px-2 py-0.5 text-xs ${
+                                partial
+                                  ? "border-amber-400/40 bg-amber-500/15 text-amber-300"
+                                  : earned > 0
+                                  ? "border-green-400/40 bg-green-500/15 text-green-300"
+                                  : "border-da-border bg-da-surface text-da-muted line-through"
+                              }`}
+                              title={b.note}
+                            >
+                              {label}
+                            </span>
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
@@ -1669,6 +1730,17 @@ export function AiGradeClient({
                         ))}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {bankQuestionText[r.test_item_id] && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Question text
+                    </p>
+                    <div className="mt-1 max-w-3xl text-sm text-da-text/90">
+                      <LatexRenderer latex={bankQuestionText[r.test_item_id]} />
+                    </div>
                   </div>
                 )}
 
@@ -2210,6 +2282,42 @@ export function AiGradeClient({
             .
           </p>
           <p className="mt-1 break-words font-mono text-xs text-red-300/90">{apiHealthError}</p>
+        </div>
+      )}
+
+      {coverage && coverage.partsWithoutMarkscheme > 0 && (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-400/60 bg-amber-500/15 px-4 py-3 text-sm text-amber-200"
+        >
+          <p className="font-semibold">
+            Incomplete mark scheme: {coverage.partsWithoutMarkscheme} of {coverage.partsInAssessment}{" "}
+            part{coverage.partsInAssessment === 1 ? "" : "s"} cannot be graded.
+          </p>
+          <p className="mt-1">
+            {coverage.ungradedLabels.join(", ")} have no mark scheme in the PPQ bank. Grading will
+            skip them: suggested totals below will be out of {coverage.maxTotal}, not this paper&apos;s
+            full {coverage.testTotalMarks}, and the gradebook will show the same reduced total against
+            the full {coverage.testTotalMarks} it lists for this assessment. Extract the missing mark
+            schemes in the PPQ Bank before treating a total here as final.
+          </p>
+        </div>
+      )}
+
+      {coverage && coverage.partsWithoutQuestionText > 0 && (
+        <div
+          role="status"
+          className="rounded-lg border border-da-border bg-da-surface px-4 py-3 text-sm text-da-muted"
+        >
+          <p className="font-semibold text-da-text">
+            No question text on file for {coverage.partsWithoutQuestionText} of{" "}
+            {coverage.partsInAssessment} part{coverage.partsInAssessment === 1 ? "" : "s"}.
+          </p>
+          <p className="mt-1">
+            {coverage.noQuestionTextLabels.join(", ")}: the PPQ bank holds only a picture of the
+            question, which the marker is not shown. It marks these parts from the mark scheme and
+            the scan alone, so read its reasoning against the question yourself before accepting.
+          </p>
         </div>
       )}
 

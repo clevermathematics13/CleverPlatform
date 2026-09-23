@@ -2,10 +2,12 @@
 
 Scope: this policy governs how the AI grader treats rounding, significant
 figures, and exact-vs-decimal answers for IBDP Mathematics: Analysis and
-Approaches HL, Paper 2 (a GDC/calculator paper). It is loaded into the
-grading system prompt automatically whenever at least one part being graded
-belongs to a question tagged AA / AHL / Paper 2 in the PPQ bank — see
-`isAaHlPaper2()` in `lib/ai-grading.ts`.
+Approaches Paper 2 (a GDC/calculator paper), at SL and at HL alike — nothing
+below is HL-specific. It is loaded into the grading system prompt
+automatically whenever at least one part being graded belongs to a question
+tagged AA / Paper 2 in the PPQ bank, whatever its level — see `isAaPaper2()`
+in `lib/ai-grading.ts`. On an assessment that mixes Paper 2 questions with
+Paper 1 ones, the prompt names which parts this policy applies to.
 
 Where this policy is more specific than the general marking rules earlier
 in this prompt, follow this policy for numerical accuracy. It does not
@@ -60,6 +62,15 @@ If a subpart has:
 If no detailed mark allocation is supplied, use one mark as the default
 final numerical-answer mark while preserving credit for demonstrably correct
 method and reasoning.
+
+When you do identify a combined, unsplittable award like the one above,
+represent it in markBreakdown as a single token carrying the mark scheme's
+own weight in its "marks" field (e.g. `"token": "A2", "marks": 2`), decided
+as one judgement against that line's own wording -- not as two independent
+one-mark checks you construct yourself. Use "awardedMarks" only if the mark
+scheme's own note for that token gives its own partial-credit tiering (e.g.
+"award one mark for two correct values, zero for one"); otherwise the token
+is earned in full or not at all, at its full weight.
 
 ## 3. Exact answers
 

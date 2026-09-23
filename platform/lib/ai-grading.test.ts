@@ -5,19 +5,27 @@ import {
   G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES,
   G9_STANDARD_LEVEL_MARKING_PRINCIPLES,
   GRADING_SYSTEM_PROMPT,
-  buildRegradeItemPrompt,
   MATHMEDIC_ACTIVITY_MARKING_PRINCIPLES,
   buildActivityRubricBlock,
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
+  buildRegradeItemPrompt,
   buildStandardsRubricBlock,
+  buildUnitBlock,
+  followThroughWarnings,
+  isFollowThroughWarningAbout,
   composeQuestionText,
+  earnedMarks,
   isActivity,
   isStandardsReferenced,
   isAaHlPaper2,
+  isAaPaper2,
   isCustomAssessment,
   isImpliedToken,
   matchSegmentsToRoster,
+  missingQuestionTextLabels,
+  summarizeCoverage,
+  unitLabel,
   validateGradeResponse,
   type GradingUnit,
   type RosterEntry,
@@ -1037,6 +1045,51 @@ describe("validateGradeResponse", () => {
     expect(result.outcome.grades[0].item.reasoning).toBe("0.81 is insufficiently precise, so A0.");
   });
 
+  // The deterministic grant-loop bug: matchesRequiredPrecision() returns
+  // `ok: true` both when a value is genuinely verified correct AND when it
+  // could not be parsed at all (deferring to the model). Gating the grant on
+  // `ok` alone -- as this loop used to -- would treat "could not check" the
+  // same as "checked and correct" and hand the model a mark it withheld for
+  // an unparseable, symbolic reported value. Confirmed unreproduced in
+  // production (0 of 5 real grants ever hit this branch) before this test
+  // was added; it exists so it never gets the chance to.
+  it("does not grant a withheld mark whose numericCheck cannot be verified deterministically", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "pi/4 is a symbolic exact form, cannot confirm it equals the decimal reference",
+              numericCheck: {
+                reportedValue: "pi/4",
+                referenceValue: "0.785398",
+                precisionType: "sf",
+                precisionDigits: 3,
+              },
+            },
+          ],
+          reasoning: "Could not confirm pi/4 numerically, so A0.",
+          evidence: "pi/4",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const grade = result.outcome.grades[0];
+    expect(grade.clampedMarks).toBe(0);
+    expect(grade.item.markBreakdown[0].awarded).toBe(false);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
   it("grants a withheld Method mark whose own impliedMethodEvidence actually supports it", () => {
     const raw = JSON.stringify({
       items: [
@@ -1076,6 +1129,47 @@ describe("validateGradeResponse", () => {
     ).toBe(true);
   });
 
+  // Same grant-loop bug as the numericCheck case above, for
+  // impliedMethodEvidence: classifyUnderPrecision() returns "cannot_determine"
+  // (not "numerically_incorrect") for an exact-precision claim, since an
+  // exact requirement has no under-precise variant to check. The old
+  // `classification !== "numerically_incorrect"` grant condition treated
+  // that the same as a genuine "correct_but_under_precise" finding.
+  it("does not grant a withheld Method mark whose impliedMethodEvidence cannot be classified", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "(M1)",
+              awarded: false,
+              note: "Cannot confirm this exact-value claim supports the method",
+              impliedMethodEvidence: {
+                reportedValue: "8",
+                referenceValue: "8.0001",
+                precisionType: "exact",
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(result.outcome.grades[0].item.markBreakdown[0].awarded).toBe(false);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
   it("does not touch an ordinary intermediate accuracy mark with no intermediateValueCheck attached", () => {
     const raw = JSON.stringify({
       items: [
@@ -1097,6 +1191,331 @@ describe("validateGradeResponse", () => {
 
     expect(result.outcome.grades[0].clampedMarks).toBe(1);
     expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  // Same grant-loop bug once more, for intermediateValueCheck.
+  it("does not grant a withheld intermediate accuracy mark whose intermediateValueCheck cannot be classified", () => {
+    const raw = JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 0,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [
+            {
+              token: "A1",
+              awarded: false,
+              note: "Cannot confirm this exact-value intermediate claim",
+              intermediateValueCheck: {
+                reportedValue: "8",
+                referenceValue: "8.0001",
+                precisionType: "exact",
+              },
+            },
+          ],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+
+    const result = validateGradeResponse(raw, [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    expect(result.outcome.grades[0].item.markBreakdown[0].awarded).toBe(false);
+    expect(result.outcome.warnings).toHaveLength(0);
+  });
+
+  // Combined, unsplittable multi-mark tokens (e.g. IB's "A2" for one
+  // 2-mark award with no per-mark breakdown). Real bank examples:
+  // 15M.1.AHL.TZ2.H_13 part (b) is atomic (0 or 2, no partial-credit note)
+  // and is live on the never-graded 27AH [K06] P1 Q9(b); 13M.1.AHL.TZ2.H_11
+  // part (a)(i) has its own tiering ("Award A1 for two correct and A0 for
+  // one correct"). Before this fix, the reconciliation counted every
+  // markBreakdown entry as worth exactly 1 mark regardless of what it
+  // represented.
+  describe("combined multi-mark tokens", () => {
+    it("sums a fully-awarded combined token at its own weight, not as 1", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 2,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [{ token: "A2", awarded: true, marks: 2, note: "both values correct" }],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      // The old `.filter(b => b.awarded).length` arithmetic would have read
+      // this single entry as "1 token awarded" and wrongly corrected a
+      // correct suggestedMarks of 2 down to 1.
+      expect(result.outcome.grades[0].clampedMarks).toBe(2);
+      expect(result.outcome.warnings).toHaveLength(0);
+    });
+
+    it("reconciles a partial-credit combined token via awardedMarks, not just awarded", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 1,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [
+              { token: "A2", awarded: false, marks: 2, awardedMarks: 1, note: "only two of three values correct" },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.outcome.grades[0].clampedMarks).toBe(1);
+      expect(result.outcome.warnings).toHaveLength(0);
+    });
+
+    it("still catches a real disagreement when the model's suggestedMarks undercounts a combined token", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 1,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [{ token: "A2", awarded: true, marks: 2, note: "both values correct" }],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      // No numericCheck/impliedMethodEvidence/intermediateValueCheck attached,
+      // so the grant loop never fires (grantedCount stays 0) -- the raise
+      // ceiling is suggestedMarks itself, and the breakdown disagreeing with
+      // it is exactly the "model disagreeing with itself" case that stays
+      // clamped and flagged rather than silently trusted.
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.outcome.grades[0].clampedMarks).toBe(1);
+      expect(result.outcome.grades[0].confidence).toBe("low");
+      expect(
+        result.outcome.warnings.some((w) => w.includes("breakdown awards 2 token(s)"))
+      ).toBe(true);
+    });
+
+    it("withdraws a combined token's partial credit in full when its numeric claim fails", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 2,
+            confidence: "medium",
+            workFound: true,
+            markBreakdown: [
+              {
+                token: "A2",
+                awarded: true,
+                marks: 2,
+                awardedMarks: 2,
+                note: "both values correct",
+                numericCheck: { reportedValue: "0.81", referenceValue: "0.805084", precisionType: "sf", precisionDigits: 3 },
+              },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const entry = result.outcome.grades[0].item.markBreakdown[0];
+      expect(entry.awarded).toBe(false);
+      expect(entry.awardedMarks).toBeUndefined();
+      expect(result.outcome.grades[0].clampedMarks).toBe(0);
+    });
+
+    it("grants a withheld combined token its full weight, not 1, on a verified numeric claim", () => {
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 0,
+            confidence: "medium",
+            workFound: true,
+            markBreakdown: [
+              {
+                token: "A2",
+                awarded: false,
+                marks: 2,
+                note: "8.515 rounds to 8.52, but marked incorrect",
+                numericCheck: { reportedValue: "8.515", referenceValue: "8.51693", precisionType: "sf", precisionDigits: 3 },
+              },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [unit({ maxMarks: 2 })]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      expect(result.outcome.grades[0].item.markBreakdown[0].awarded).toBe(true);
+      expect(result.outcome.grades[0].clampedMarks).toBe(2);
+    });
+
+    // The hard isolation gate: Grade 9 and Activity grading each already
+    // have their own policy requiring exactly one mark per token
+    // (g9_standard_level_marking_principles.md section 2,
+    // mathmedic_activity_marking_principles.md section 7) -- this is a
+    // code-level backstop, not just prompt wording, in case the model
+    // emits a multi-mark token there anyway.
+    it("normalizes a multi-mark token back to a single mark on a Grade 9 Standard Level unit", () => {
+      const standardsUnit = unit({
+        maxMarks: 2,
+        standards: { strand: { code: "X", name: "Test strand", standards: [] }, rubric: KA1_UNIT1_RUBRIC },
+      });
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 2,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [{ token: "A2", awarded: true, marks: 3, awardedMarks: 2, note: "" }],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [standardsUnit]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const entry = result.outcome.grades[0].item.markBreakdown[0];
+      expect(entry.marks).toBe(1);
+      expect(entry.awardedMarks).toBeUndefined();
+      expect(result.outcome.warnings.some((w) => w.includes("Grade 9 / Activity"))).toBe(true);
+    });
+
+    it("normalizes a multi-mark token back to a single mark on an Activity unit", () => {
+      const activityUnit = unit({
+        maxMarks: 2,
+        activity: { targets: [{ code: "T1", name: "Test target" }], rubric: EXPLORATION_1_1_RUBRIC },
+      });
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 1,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [{ token: "A2", awarded: false, marks: 2, note: "" }],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [activityUnit]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+
+      const entry = result.outcome.grades[0].item.markBreakdown[0];
+      expect(entry.marks).toBe(1);
+      expect(result.outcome.warnings.some((w) => w.includes("Grade 9 / Activity"))).toBe(true);
+    });
+
+    // Anchors the two real bank rows that motivated this feature, using their
+    // literal mark scheme text, so a future change to this reconciliation
+    // logic is checked directly against the cases that are actually live.
+    it("real bank fixture: 15M.1.AHL.TZ2.H_13 part (b) -- atomic A2, no partial-credit note, live on 27AH [K06] P1 Q9(b)", () => {
+      const q13bUnit = unit({
+        maxMarks: 2,
+        questionCode: "15M.1.AHL.TZ2.H_13",
+        partLabel: "b",
+        markscheme: "$$\\sqrt{2}-1=\\frac{1}{\\sqrt{2}+\\sqrt{1}}$$\n\\hfill A2\n\n$$<\\frac{1}{\\sqrt{2}}$$\n\\hfill AG\n\\hfill [2 marks]",
+      });
+      // Only the A2 line is scored (2 marks total on this part, per the
+      // mark scheme's own "[2 marks]"); the AG line is a derivation check,
+      // not a separate scored token -- whether/how AG tokens should count
+      // toward the sum is a separate, pre-existing question outside this
+      // fixture's scope, so it's left out here.
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 2,
+            confidence: "high",
+            workFound: true,
+            markBreakdown: [
+              { token: "A2", awarded: true, marks: 2, note: "derivation of 1/(sqrt(2)+1) shown correctly, conclusion follows" },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [q13bUnit]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.outcome.grades[0].clampedMarks).toBe(2);
+      expect(result.outcome.warnings).toHaveLength(0);
+    });
+
+    it("real bank fixture: 13M.1.AHL.TZ2.H_11 part (a)(i) -- A2 with its own partial-credit note", () => {
+      const q11aiUnit = unit({
+        maxMarks: 2,
+        questionCode: "13M.1.AHL.TZ2.H_11",
+        partLabel: "a)(i)",
+        markscheme:
+          "|AB|=sqrt(30), |BC|=sqrt(11), |CA|=sqrt(33)\n\\hfill A2\n\nNote: Award A1 for two correct and A0 for one correct.",
+      });
+      const raw = JSON.stringify({
+        items: [
+          {
+            testItemId: "item-1",
+            suggestedMarks: 1,
+            confidence: "medium",
+            workFound: true,
+            markBreakdown: [
+              { token: "A2", awarded: false, marks: 2, awardedMarks: 1, note: "only |AB| and |BC| computed correctly; |CA| wrong" },
+            ],
+            reasoning: "",
+            evidence: "",
+          },
+        ],
+      });
+
+      const result = validateGradeResponse(raw, [q11aiUnit]);
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.outcome.grades[0].clampedMarks).toBe(1);
+      expect(result.outcome.warnings).toHaveLength(0);
+    });
   });
 
   // A teacher asked for marks in the review UI to be clearly associated
@@ -1487,11 +1906,277 @@ describe("isAaHlPaper2", () => {
   });
 });
 
+describe("isAaPaper2", () => {
+  it("matches AA paper 2 at either level, and nothing else", () => {
+    expect(isAaPaper2({ curriculum: ["AA"], paper: 2 })).toBe(true);
+    expect(isAaPaper2({ curriculum: ["AA"], paper: 1 })).toBe(false);
+    expect(isAaPaper2({ curriculum: ["AA"], paper: 3 })).toBe(false);
+    expect(isAaPaper2({ curriculum: ["AI"], paper: 2 })).toBe(false);
+    expect(isAaPaper2({ curriculum: [], paper: null })).toBe(false);
+  });
+});
+
 describe("isCustomAssessment", () => {
   it("is true only for markschemeSource 'custom'", () => {
     expect(isCustomAssessment({ markschemeSource: "custom" })).toBe(true);
     expect(isCustomAssessment({ markschemeSource: "part_latex" })).toBe(false);
     expect(isCustomAssessment({ markschemeSource: "none" })).toBe(false);
+  });
+});
+
+describe("earnedMarks", () => {
+  it("returns 1 for an ordinary awarded token, 0 for an unawarded one (legacy shape, no marks/awardedMarks)", () => {
+    expect(earnedMarks({ awarded: true, marks: 1 })).toBe(1);
+    expect(earnedMarks({ awarded: false, marks: 1 })).toBe(0);
+  });
+
+  it("returns the full weight for a fully-awarded combined token", () => {
+    expect(earnedMarks({ awarded: true, marks: 2 })).toBe(2);
+    expect(earnedMarks({ awarded: false, marks: 2 })).toBe(0);
+  });
+
+  it("prefers awardedMarks when present, for a partially-awarded combined token", () => {
+    expect(earnedMarks({ awarded: false, marks: 2, awardedMarks: 1 })).toBe(1);
+    expect(earnedMarks({ awarded: true, marks: 2, awardedMarks: 0 })).toBe(0);
+  });
+
+  it("never returns more than marks even if awardedMarks is out of range", () => {
+    expect(earnedMarks({ awarded: true, marks: 2, awardedMarks: 5 })).toBe(2);
+  });
+});
+
+describe("MarkBreakdownEntrySchema (via AiGradeResponseSchema)", () => {
+  function responseWith(entry: Record<string, unknown>) {
+    return JSON.stringify({
+      items: [
+        {
+          testItemId: "item-1",
+          suggestedMarks: 1,
+          confidence: "high",
+          workFound: true,
+          markBreakdown: [{ token: "A1", awarded: true, note: "", ...entry }],
+          reasoning: "",
+          evidence: "",
+        },
+      ],
+    });
+  }
+
+  it("defaults marks to 1 when omitted (legacy shape)", () => {
+    const result = validateGradeResponse(responseWith({}), [unit({ maxMarks: 1 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.grades[0].item.markBreakdown[0].marks).toBe(1);
+  });
+
+  it("accepts an explicit marks value with no awardedMarks", () => {
+    const result = validateGradeResponse(responseWith({ marks: 2 }), [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.grades[0].item.markBreakdown[0].marks).toBe(2);
+  });
+
+  it("accepts awardedMarks within range of marks", () => {
+    const result = validateGradeResponse(responseWith({ marks: 2, awardedMarks: 1 }), [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.outcome.grades[0].item.markBreakdown[0].awardedMarks).toBe(1);
+  });
+
+  it("rejects awardedMarks greater than marks", () => {
+    const result = validateGradeResponse(responseWith({ marks: 2, awardedMarks: 3 }), [unit({ maxMarks: 2 })]);
+    expect(result.ok).toBe(false);
+  });
+});
+
+describe("summarizeCoverage", () => {
+  it("reports full coverage when every unit has a mark scheme", () => {
+    const units = [
+      unit({ testItemId: "1", questionNumber: 1, maxMarks: 7 }),
+      unit({ testItemId: "2", questionNumber: 2, maxMarks: 5, markschemeSource: "whole_question" }),
+    ];
+    expect(summarizeCoverage(units)).toEqual({
+      partsInAssessment: 2,
+      partsWithoutMarkscheme: 0,
+      maxTotal: 12,
+      testTotalMarks: 12,
+      ungradedLabels: [],
+      // The unit() fixture is a bank part (questionCode "Q1") with no
+      // questionLatex, which is exactly the "marker sees only the mark
+      // scheme" case this field exists to count.
+      partsWithoutQuestionText: 2,
+      noQuestionTextLabels: ["1", "2"],
+    });
+  });
+
+  it("excludes markschemeSource 'none' units from maxTotal but keeps them in testTotalMarks", () => {
+    // K06P1's real shape, 27 Aug audit reproduced live: Q6(a)/Q6(b) matched a
+    // question in the bank but no part, whole-question or draft mark scheme --
+    // the case the gradebook and PowerSchool export were silently treating as
+    // "these 7 marks were not earned" rather than "these 7 marks cannot be
+    // earned at all".
+    const units = [
+      unit({ testItemId: "1", questionNumber: 5, partLabel: "", maxMarks: 4 }),
+      unit({ testItemId: "2", questionNumber: 6, partLabel: "a", maxMarks: 3, markschemeSource: "none" }),
+      unit({ testItemId: "3", questionNumber: 6, partLabel: "b", maxMarks: 4, markschemeSource: "none" }),
+    ];
+    expect(summarizeCoverage(units)).toEqual({
+      partsInAssessment: 3,
+      partsWithoutMarkscheme: 2,
+      maxTotal: 4,
+      testTotalMarks: 11,
+      ungradedLabels: ["6(a)", "6(b)"],
+      // An ungradeable part is reported as ungradeable, not as textless too.
+      partsWithoutQuestionText: 1,
+      noQuestionTextLabels: ["5"],
+    });
+  });
+
+  it("returns zeroed totals for an empty assessment", () => {
+    expect(summarizeCoverage([])).toEqual({
+      partsInAssessment: 0,
+      partsWithoutMarkscheme: 0,
+      maxTotal: 0,
+      testTotalMarks: 0,
+      ungradedLabels: [],
+      partsWithoutQuestionText: 0,
+      noQuestionTextLabels: [],
+    });
+  });
+});
+
+describe("followThroughWarnings", () => {
+  // KA1 Q13, Sep 2026: (a) was re-marked from a corrected transcription while
+  // (b) -- marked with follow-through from the old reading of (a) -- sat
+  // accepted in Clev's Marks, and nothing revisited it.
+  const q13 = [
+    unit({ testItemId: "13a", questionNumber: 13, partLabel: "a" }),
+    unit({ testItemId: "13b", questionNumber: 13, partLabel: "b" }),
+    unit({ testItemId: "13c", questionNumber: 13, partLabel: "c" }),
+    unit({ testItemId: "14", questionNumber: 14, partLabel: "" }),
+  ];
+
+  it("warns on each later part of the same question, naming its state", () => {
+    const warnings = followThroughWarnings(q13, [{ testItemId: "13a", from: 3, to: 1 }], (id) =>
+      id === "13b" ? "accepted" : id === "13c" ? "marked" : null
+    );
+    expect(warnings).toEqual([
+      "13(b): follow-through check — 13(a) was re-marked from 3 to 1; this part was accepted against the old value.",
+      "13(c): follow-through check — 13(a) was re-marked from 3 to 1; this part was marked against the old value.",
+    ]);
+    // Prefixed with the later part's own label, so the review panel can find it.
+    expect(warnings[0].startsWith(`${unitLabel(q13[1])}: `)).toBe(true);
+    expect(isFollowThroughWarningAbout(warnings[0], "13(a)")).toBe(true);
+    expect(isFollowThroughWarningAbout(warnings[0], "13(b)")).toBe(false);
+  });
+
+  it("says nothing when the earlier part's mark did not move", () => {
+    expect(followThroughWarnings(q13, [{ testItemId: "13a", from: 2, to: 2 }], () => "accepted")).toEqual([]);
+  });
+
+  it("never reaches a different question, an earlier part, or a part with no row", () => {
+    const later = followThroughWarnings(q13, [{ testItemId: "13c", from: 2, to: 0 }], () => "accepted");
+    expect(later).toEqual([]);
+    const noRows = followThroughWarnings(q13, [{ testItemId: "13a", from: 3, to: 1 }], () => null);
+    expect(noRows).toEqual([]);
+  });
+
+  it("ignores a change for a part that is not in the assessment", () => {
+    expect(followThroughWarnings(q13, [{ testItemId: "ghost", from: 3, to: 1 }], () => "accepted")).toEqual([]);
+  });
+});
+
+describe("buildRegradeItemPrompt", () => {
+  it("carries no follow-through block for a part with no earlier parts", () => {
+    const prompt = buildRegradeItemPrompt(unit({ questionNumber: 4 }), "x = 7");
+    expect(prompt).not.toContain("Earlier parts of this question");
+    expect(prompt).toContain("--- Teacher-corrected transcription of the student's work for this part ---\nx = 7");
+  });
+
+  it("lists the earlier parts of the question, in order, before the corrected transcription", () => {
+    const prompt = buildRegradeItemPrompt(unit({ questionNumber: 13, partLabel: "c" }), "so k = 5", [
+      { label: "13(a)", evidence: "a = 0.81", suggestedMarks: 1, maxMarks: 2 },
+      { label: "13(b)", evidence: "", suggestedMarks: 0, maxMarks: 1 },
+    ]);
+    const block = prompt.indexOf("--- Earlier parts of this question, already marked");
+    const corrected = prompt.indexOf("--- Teacher-corrected transcription");
+    expect(block).toBeGreaterThan(-1);
+    expect(block).toBeLessThan(corrected);
+    expect(prompt).toContain("13(a) (1/2 marks): a = 0.81");
+    expect(prompt).toContain("13(b) (0/1 marks): (no work found)");
+    expect(prompt.indexOf("13(a) (1/2")).toBeLessThan(prompt.indexOf("13(b) (0/1"));
+  });
+});
+
+describe("buildUnitBlock question images", () => {
+  it("points a textless part at its question image when one is attached", () => {
+    const block = buildUnitBlock(unit({ questionNumber: 6, questionLatex: "" }), { questionImageAttached: true });
+    expect(block).toContain(
+      '--- Question ---\n(No text on file: read the question from the image labelled "Question image for question 6" above.)'
+    );
+    expect(block.indexOf("--- Question ---")).toBeLessThan(block.indexOf("--- Mark scheme (the authority) ---"));
+  });
+
+  it("prints nothing about an image for a textless part when none is attached", () => {
+    const block = buildUnitBlock(unit({ questionLatex: "" }));
+    expect(block).not.toContain("--- Question ---");
+    expect(block).not.toContain("Question image");
+  });
+
+  it("keeps the question text, not the pointer, when the part has text", () => {
+    const block = buildUnitBlock(unit({ questionLatex: "Find $x$." }), { questionImageAttached: true });
+    expect(block).toContain("--- Question ---\nFind $x$.");
+    expect(block).not.toContain("Question image");
+  });
+
+  it("puts the pointer only on the parts of the questions whose image is in the request", () => {
+    const prompt = buildGradingUserPrompt(
+      [
+        unit({ testItemId: "1", questionNumber: 1, partLabel: "a", questionLatex: "" }),
+        unit({ testItemId: "2", questionNumber: 2, partLabel: "a", questionLatex: "" }),
+      ],
+      { questionImagesFor: new Set([2]) }
+    );
+    expect(prompt).not.toContain('"Question image for question 1"');
+    expect(prompt).toContain('"Question image for question 2"');
+  });
+
+  it("passes the pointer through to the regrade prompt", () => {
+    const prompt = buildRegradeItemPrompt(unit({ questionNumber: 3, questionLatex: "" }), "x = 1", [], {
+      questionImageAttached: true,
+    });
+    expect(prompt).toContain('"Question image for question 3"');
+  });
+});
+
+describe("missingQuestionTextLabels", () => {
+  // Live shape, Sep 2026: 27AH [L00] P2 UniStats has question images for
+  // its parts but no stem_latex/content_latex on any of them, so every
+  // student was marked from the mark scheme alone.
+  it("names a gradeable bank part with no question text", () => {
+    const units = [
+      unit({ testItemId: "1", questionNumber: 1, partLabel: "a", questionLatex: "" }),
+      unit({ testItemId: "2", questionNumber: 1, partLabel: "b", questionLatex: "   " }),
+    ];
+    expect(missingQuestionTextLabels(units)).toEqual(["1(a)", "1(b)"]);
+  });
+
+  it("skips a bank part that has question text", () => {
+    expect(
+      missingQuestionTextLabels([unit({ questionNumber: 3, questionLatex: "Find the value of $x$." })])
+    ).toEqual([]);
+  });
+
+  it("skips a custom (teacher-authored) part, whose text lives on the item itself", () => {
+    expect(
+      missingQuestionTextLabels([unit({ questionNumber: 4, questionCode: "", markschemeSource: "custom", questionLatex: "" })])
+    ).toEqual([]);
+  });
+
+  it("skips an ungradeable part, which is already reported as ungradeable", () => {
+    expect(
+      missingQuestionTextLabels([unit({ questionNumber: 6, markschemeSource: "none", questionLatex: "" })])
+    ).toEqual([]);
   });
 });
 
@@ -1513,8 +2198,8 @@ describe("isImpliedToken", () => {
 });
 
 describe("buildGradingSystemPrompt", () => {
-  it("returns the base prompt unchanged when no unit is AA HL Paper 2", () => {
-    const prompt = buildGradingSystemPrompt([unit({ curriculum: ["AA"], level: "SL", paper: 2 })]);
+  it("returns the base prompt unchanged when no unit is AA Paper 2", () => {
+    const prompt = buildGradingSystemPrompt([unit({ curriculum: ["AA"], level: "SL", paper: 1 })]);
     expect(prompt).toBe(GRADING_SYSTEM_PROMPT);
   });
 
@@ -1534,6 +2219,32 @@ describe("buildGradingSystemPrompt", () => {
     expect(prompt.startsWith(GRADING_SYSTEM_PROMPT)).toBe(true);
     expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
     expect(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY.length).toBeGreaterThan(0);
+  });
+
+  // The gate used to be AHL-only. BiStats and UniStats -- five SL-coded
+  // questions plus one AHL-coded each -- got the policy by luck of that one
+  // question; a Paper 2 test built from SL questions alone was marked with
+  // no accuracy rules at all.
+  it("appends the numerical-accuracy policy for an SL-only AA Paper 2 test", () => {
+    const prompt = buildGradingSystemPrompt([
+      unit({ testItemId: "item-1", curriculum: ["AA"], level: "SL", paper: 2 }),
+      unit({ testItemId: "item-2", curriculum: ["AA"], level: "SL", paper: 2 }),
+    ]);
+    expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
+    expect(prompt).not.toContain("applies to this assessment --");
+  });
+
+  // P01P1's real shape: a Paper 1 whose Q7(c)/(d) come from a Paper 2
+  // question. The calculator-paper policy is loaded for those two parts and
+  // the header says so, instead of governing the whole non-calculator paper.
+  it("names the Paper 2 parts when an assessment mixes papers", () => {
+    const prompt = buildGradingSystemPrompt([
+      unit({ testItemId: "item-1", questionNumber: 1, curriculum: ["AA"], level: "SL", paper: 1 }),
+      unit({ testItemId: "item-2", questionNumber: 7, partLabel: "c", curriculum: ["AA"], level: "AHL", paper: 2 }),
+      unit({ testItemId: "item-3", questionNumber: 7, partLabel: "d", curriculum: ["AA"], level: "AHL", paper: 2 }),
+    ]);
+    expect(prompt).toContain(AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY);
+    expect(prompt).toContain("applies to this assessment -- applies to 7(c), 7(d) only");
   });
 
   it("policy content is actually loaded from grading_policies/, not empty", () => {

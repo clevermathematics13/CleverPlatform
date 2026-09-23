@@ -161,7 +161,20 @@ export function isActivity(u: Pick<GradingUnit, "activity">): boolean {
  * ib_questions.level); it is not a typo for "SL".
  */
 export function isAaHlPaper2(u: Pick<GradingUnit, "curriculum" | "level" | "paper">): boolean {
-  return u.curriculum.includes("AA") && u.level === "AHL" && u.paper === 2;
+  return isAaPaper2(u) && u.level === "AHL";
+}
+
+/**
+ * Whether a unit is an IBDP AA Paper 2 question at either level. This is
+ * what actually loads the Paper 2 numerical-accuracy policy: nothing in that
+ * policy is HL-specific, and the SL and HL papers share the calculator/3 s.f.
+ * conventions it encodes. Gating on AHL alone meant a Paper 2 test built
+ * from SL-coded questions was marked with no accuracy rules at all, and
+ * BiStats/UniStats got them only because each happened to include one
+ * AHL-coded question.
+ */
+export function isAaPaper2(u: Pick<GradingUnit, "curriculum" | "paper">): boolean {
+  return u.curriculum.includes("AA") && u.paper === 2;
 }
 
 /**
@@ -223,46 +236,106 @@ export const NumericCheckSchema = z.object({
 });
 
 /** A single mark scheme token and whether the student earned it. */
-export const MarkBreakdownEntrySchema = z.object({
-  token: z.string().min(1),
-  awarded: z.boolean(),
-  note: z.string().default(""),
-  /** Only present for a final numeric accuracy mark; see NumericCheckSchema. */
-  numericCheck: NumericCheckSchema.nullable().optional(),
-  /**
-   * Only present on a Method mark awarded because the student's final
-   * numeric answer -- though not precise enough to earn its own accuracy
-   * mark -- is itself evidence the correct method was used (see the
-   * "implied method evidence" rule in GRADING_SYSTEM_PROMPT). Same shape as
-   * NumericCheckSchema, reused for the same reason: it's the same
-   * reported-value-vs-reference-value comparison, just checked for a
-   * different purpose (was this under-precise, not was it correct).
-   */
-  impliedMethodEvidence: NumericCheckSchema.nullable().optional(),
-  /**
-   * Only present on an INTERMEDIATE accuracy mark whose mark scheme value
-   * is a reference (calculator) figure rather than an explicit precision
-   * requirement (see rule 15 in GRADING_SYSTEM_PROMPT) -- e.g. the mark
-   * scheme prints "2.65708" for an (A1) but never says the student must
-   * reproduce 5 decimal places. Same shape as NumericCheckSchema: the
-   * reported value earns the mark when it's an exact rounding of the
-   * reference at the reported value's own digit count, not merely close to
-   * it. Distinct from numericCheck (a real precision requirement, checked
-   * strictly) and from impliedMethodEvidence (a Method mark, not an
-   * Accuracy mark) -- these are three different grading mechanisms and
-   * are not interchangeable.
-   */
-  intermediateValueCheck: NumericCheckSchema.nullable().optional(),
-  /**
-   * Which of this unit's own labeled sub-parts this token belongs to, e.g.
-   * "a)(i)", "a)(ii)", "b)" -- only when a single graded unit's mark scheme
-   * itself covers more than one lettered/numbered sub-part (see
-   * GRADING_SYSTEM_PROMPT's MARK BREAKDOWN step). Lets the review UI show
-   * which marks belong to which sub-part instead of one undifferentiated
-   * row of tokens. Omit for a unit with no internal sub-part structure.
-   */
-  part: z.string().min(1).optional(),
-});
+export const MarkBreakdownEntrySchema = z
+  .object({
+    token: z.string().min(1),
+    /**
+     * Whether the student earned this token IN FULL (all of `marks`). For the
+     * overwhelming majority of tokens `marks` is 1, so this is the whole
+     * story, exactly as before this field existed.
+     */
+    awarded: z.boolean(),
+    /**
+     * How many marks this one token is worth. Defaults to 1 -- every
+     * historical stored result and every ordinary M1/A1/R1/AG token never
+     * sets this, and reads exactly as it always has.
+     *
+     * Set above 1 ONLY when the mark scheme itself prints one combined,
+     * unsplittable award for more than one mark with no per-mark breakdown
+     * of its own (e.g. a bare "A2" line) -- see GRADING_SYSTEM_PROMPT's MARK
+     * BREAKDOWN step and grading_policies/ibdp_math_aa_hl_paper_2_numerical_accuracy.md
+     * section 2. Never used for marks the scheme itself lists separately
+     * (e.g. "A1 A1" stays two ordinary marks:1 entries). Restricted to
+     * ordinary Formative/IB-bank grading -- validateGradeResponse normalizes
+     * this back to 1 on a Grade 9 Standard Level or Activity unit, whose own
+     * policies already require one token per mark (see the isolation check
+     * there).
+     */
+    marks: z.number().int().min(1).max(9).default(1),
+    /**
+     * How many of `marks` were actually earned, for the rare combined token
+     * whose own mark-scheme note gives its own partial-credit tiering (e.g.
+     * "Award A1 for two correct and A0 for one correct" on a 2-mark line).
+     * Omitted for every ordinary token and for a combined token with no such
+     * tiering -- there, `awarded` alone says everything (all of `marks`, or
+     * none). Use earnedMarks() rather than reading this or `awarded`
+     * directly.
+     */
+    awardedMarks: z.number().int().min(0).optional(),
+    note: z.string().default(""),
+    /** Only present for a final numeric accuracy mark; see NumericCheckSchema. */
+    numericCheck: NumericCheckSchema.nullable().optional(),
+    /**
+     * Only present on a Method mark awarded because the student's final
+     * numeric answer -- though not precise enough to earn its own accuracy
+     * mark -- is itself evidence the correct method was used (see the
+     * "implied method evidence" rule in GRADING_SYSTEM_PROMPT). Same shape as
+     * NumericCheckSchema, reused for the same reason: it's the same
+     * reported-value-vs-reference-value comparison, just checked for a
+     * different purpose (was this under-precise, not was it correct).
+     */
+    impliedMethodEvidence: NumericCheckSchema.nullable().optional(),
+    /**
+     * Only present on an INTERMEDIATE accuracy mark whose mark scheme value
+     * is a reference (calculator) figure rather than an explicit precision
+     * requirement (see rule 15 in GRADING_SYSTEM_PROMPT) -- e.g. the mark
+     * scheme prints "2.65708" for an (A1) but never says the student must
+     * reproduce 5 decimal places. Same shape as NumericCheckSchema: the
+     * reported value earns the mark when it's an exact rounding of the
+     * reference at the reported value's own digit count, not merely close to
+     * it. Distinct from numericCheck (a real precision requirement, checked
+     * strictly) and from impliedMethodEvidence (a Method mark, not an
+     * Accuracy mark) -- these are three different grading mechanisms and
+     * are not interchangeable.
+     */
+    intermediateValueCheck: NumericCheckSchema.nullable().optional(),
+    /**
+     * Which of this unit's own labeled sub-parts this token belongs to, e.g.
+     * "a)(i)", "a)(ii)", "b)" -- only when a single graded unit's mark scheme
+     * itself covers more than one lettered/numbered sub-part (see
+     * GRADING_SYSTEM_PROMPT's MARK BREAKDOWN step). Lets the review UI show
+     * which marks belong to which sub-part instead of one undifferentiated
+     * row of tokens. Omit for a unit with no internal sub-part structure.
+     */
+    part: z.string().min(1).optional(),
+  })
+  .superRefine((entry, ctx) => {
+    if (entry.awardedMarks != null && entry.awardedMarks > entry.marks) {
+      ctx.addIssue({
+        code: "custom",
+        message: `awardedMarks (${entry.awardedMarks}) cannot exceed marks (${entry.marks}) for token "${entry.token}"`,
+        path: ["awardedMarks"],
+      });
+    }
+  });
+
+export type MarkBreakdownEntry = z.infer<typeof MarkBreakdownEntrySchema>;
+
+/**
+ * How many marks a markBreakdown entry actually earned -- `marks` (its full
+ * weight, almost always 1) when fully `awarded`, `awardedMarks` when the
+ * entry carries its own partial-credit tiering, or 0 otherwise. The single
+ * place every reconciliation/withdrawal/grant step in validateGradeResponse,
+ * and the review UI, should go through rather than re-deriving `awarded ? 1
+ * : 0` by hand -- that hand-derivation is exactly what undercounted a real
+ * combined multi-mark token as one instead of its true weight.
+ */
+export function earnedMarks(
+  entry: Pick<MarkBreakdownEntry, "awarded" | "marks" | "awardedMarks">
+): number {
+  if (entry.awardedMarks != null) return Math.min(entry.awardedMarks, entry.marks);
+  return entry.awarded ? entry.marks : 0;
+}
 
 /**
  * Where the model saw a part's handwritten work, as a fraction of the full
@@ -413,6 +486,31 @@ export function validateGradeResponse(
     }
     seen.add(item.testItemId);
 
+    // A combined multi-mark token (markBreakdown entry.marks > 1) is only
+    // ever legitimate on ordinary Formative/IB-bank grading -- Grade 9
+    // Standard Level and Activity papers each carry their own policy
+    // requiring exactly one token per mark
+    // (grading_policies/g9_standard_level_marking_principles.md section 2,
+    // grading_policies/mathmedic_activity_marking_principles.md section 7).
+    // Prompt wording alone has not reliably held up elsewhere in this file
+    // (see findExposedDeliberation/findHedgedReading below), so this is
+    // enforced here rather than trusted to the model reading the right
+    // paragraph: a unit those two policies apply to has any multi-mark or
+    // partial-credit token normalized back to a plain single mark before
+    // anything else in this function sees it.
+    if (isStandardsReferenced(unit) || isActivity(unit)) {
+      for (const entry of item.markBreakdown) {
+        if (entry.marks > 1 || entry.awardedMarks != null) {
+          warnings.push(
+            `${unitLabel(unit)}: ${entry.token} was reported as a multi-mark token, but Grade 9 / Activity grading requires exactly one mark per token; normalized to a single mark`
+          );
+          entry.awarded = entry.awardedMarks != null ? entry.awardedMarks >= 1 : entry.awarded;
+          entry.marks = 1;
+          entry.awardedMarks = undefined;
+        }
+      }
+    }
+
     let clampedMarks = item.suggestedMarks;
     let confidence: Confidence = item.confidence;
     if (clampedMarks > unit.maxMarks) {
@@ -452,6 +550,7 @@ export function validateGradeResponse(
       const result = matchesRequiredPrecision(entry.numericCheck);
       if (entry.awarded && !result.ok) {
         entry.awarded = false;
+        entry.awardedMarks = undefined;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
         reasoningCorrections.push(`${entry.token} was withdrawn on deterministic accuracy re-check — ${result.reason}.`);
         warnings.push(
@@ -476,6 +575,7 @@ export function validateGradeResponse(
       const result = classifyUnderPrecision(entry.impliedMethodEvidence);
       if (entry.awarded && result.classification === "numerically_incorrect") {
         entry.awarded = false;
+        entry.awardedMarks = undefined;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
         reasoningCorrections.push(`${entry.token} was withdrawn — the claimed implied-method evidence does not hold: ${result.reason}.`);
         warnings.push(
@@ -507,6 +607,7 @@ export function validateGradeResponse(
       const result = classifyUnderPrecision(entry.intermediateValueCheck);
       if (entry.awarded && result.classification === "numerically_incorrect") {
         entry.awarded = false;
+        entry.awardedMarks = undefined;
         entry.note = entry.note ? `${entry.note} (corrected: ${result.reason})` : `Corrected: ${result.reason}`;
         reasoningCorrections.push(`${entry.token} was withdrawn — the claimed intermediate value is not a valid rounding of the reference: ${result.reason}.`);
         warnings.push(
@@ -533,30 +634,53 @@ export function validateGradeResponse(
     // a real, non-numeric reason (contradicted by working, wrong method)
     // is untouched, since those entries carry no such field to re-verify.
     // Counted because these grants are the one legitimate way the breakdown
-    // may end up awarding MORE than suggestedMarks: each one is a mark this
-    // pass added deterministically, so the consistency rule below must let
-    // the total rise by exactly this many and no further.
+    // may end up awarding MORE than suggestedMarks: each one adds its own
+    // token's mark-weight (almost always 1, but see MarkBreakdownEntrySchema's
+    // `marks` field for the rare combined-token case) this pass granted
+    // deterministically, so the consistency rule below must let the total
+    // rise by exactly that many and no further.
+    //
+    // A GRANT requires actual proof, unlike a withdrawal above: `result.ok`
+    // and a classification other than `numerically_incorrect` are both true
+    // when the check genuinely matched AND when it couldn't be run at all
+    // (an unparseable value defers to the model as `ok: true` /
+    // `cannot_determine` -- see numerical-accuracy.ts). Withdrawing on that
+    // is safe (it only ever leaves a claimed award standing); granting on it
+    // is not -- it would hand a mark to "could not check" as if it were
+    // "checked and correct". `result.verified` and an explicit
+    // `correct_at_required_precision` / `correct_but_under_precise`
+    // classification are the only two things that mean the value was
+    // actually shown correct.
     let grantedCount = 0;
     for (const entry of item.markBreakdown) {
       if (entry.awarded) continue;
       let grant: string | null = null;
       if (entry.numericCheck) {
         const result = matchesRequiredPrecision(entry.numericCheck);
-        if (result.ok) grant = `${entry.token}'s own reported numericCheck indicates the value satisfies the required precision (${result.reason})`;
+        if (result.ok && result.verified) {
+          grant = `${entry.token}'s own reported numericCheck indicates the value satisfies the required precision (${result.reason})`;
+        }
       } else if (entry.impliedMethodEvidence) {
         const result = classifyUnderPrecision(entry.impliedMethodEvidence);
-        if (result.classification !== "numerically_incorrect") {
+        if (
+          result.classification === "correct_at_required_precision" ||
+          result.classification === "correct_but_under_precise"
+        ) {
           grant = `${entry.token}'s own reported impliedMethodEvidence indicates the value does support the implied method (${result.reason})`;
         }
       } else if (entry.intermediateValueCheck) {
         const result = classifyUnderPrecision(entry.intermediateValueCheck);
-        if (result.classification !== "numerically_incorrect") {
+        if (
+          result.classification === "correct_at_required_precision" ||
+          result.classification === "correct_but_under_precise"
+        ) {
           grant = `${entry.token}'s own reported intermediateValueCheck indicates the value is a valid rounding of the reference (${result.reason})`;
         }
       }
       if (grant) {
-        grantedCount += 1;
+        grantedCount += entry.marks;
         entry.awarded = true;
+        entry.awardedMarks = undefined;
         entry.note = entry.note ? `${entry.note} (corrected: ${grant})` : `Corrected: ${grant}`;
         reasoningCorrections.push(`${entry.token} was granted on deterministic re-check — ${grant}.`);
         warnings.push(`${unitLabel(unit)}: ${grant} — granted on deterministic re-check`);
@@ -568,9 +692,10 @@ export function validateGradeResponse(
       item.reasoning = item.reasoning ? `${item.reasoning} (Correction: ${addendum})` : `Correction: ${addendum}`;
     }
 
-    // The model is instructed that awarded mark_breakdown tokens must sum to
-    // suggestedMarks (every token here is a single mark — M1/A1/R1/AG, never
-    // M2/A2), but it doesn't always follow its own arithmetic. When it
+    // The model is instructed that the mark-weight earned across
+    // mark_breakdown (almost always one token = one mark; occasionally a
+    // combined token's own `marks` field, via earnedMarks()) must sum to
+    // suggestedMarks, but it doesn't always follow its own arithmetic. When it
     // disagrees with itself the result is always flagged low confidence: an
     // internal inconsistency means something about the grading went wrong
     // regardless of which number was "right".
@@ -597,7 +722,7 @@ export function validateGradeResponse(
     // effect. Any excess beyond that is the model disagreeing with itself:
     // suggestedMarks stands and a human is asked instead.
     if (item.markBreakdown.length > 0) {
-      const awardedCount = item.markBreakdown.filter((b) => b.awarded).length;
+      const awardedCount = item.markBreakdown.reduce((sum, b) => sum + earnedMarks(b), 0);
       const raiseCeiling = Math.min(clampedMarks + grantedCount, unit.maxMarks);
       if (awardedCount < clampedMarks) {
         warnings.push(
@@ -964,6 +1089,15 @@ export async function assembleMarkScheme(
         `${label}: using a ${markschemeSource === "draft" ? "draft (unsplit)" : "whole-question"} mark scheme — suggestions here need closer review.`
       );
     }
+    // Only 102 of the bank's 2,095 parts carry any question text (Sep 2026);
+    // the rest are images the model never receives. buildUnitBlock() then
+    // sends the mark scheme alone, and nothing said so: UniStats' 11
+    // students were marked that way and every mark was accepted.
+    if (question && markschemeSource !== "none" && !questionLatex) {
+      warnings.push(
+        `${label}: no question text on file for ${item.ib_question_code} — the marker sees only the mark scheme.`
+      );
+    }
 
     return {
       testItemId: item.id,
@@ -986,6 +1120,109 @@ export async function assembleMarkScheme(
   });
 
   return { units, warnings };
+}
+
+/** How much of an assessment's mark scheme is actually gradeable, and what is missing. */
+export interface MarkSchemeCoverage {
+  partsInAssessment: number;
+  partsWithoutMarkscheme: number;
+  /** Sum of maxMarks over gradeable units only -- the ceiling a grading run can actually reach. */
+  maxTotal: number;
+  /** Sum of maxMarks over every unit -- the assessment's real, printed total. */
+  testTotalMarks: number;
+  /** Labels of the units with no usable mark scheme, e.g. ["6(a)", "6(b)"]. */
+  ungradedLabels: string[];
+  /** Gradeable bank units the marker gets no question text for -- see missingQuestionTextLabels(). */
+  partsWithoutQuestionText: number;
+  noQuestionTextLabels: string[];
+}
+
+/**
+ * The gradeable PPQ-bank units whose question reaches the marker as nothing
+ * at all: no stem_latex and no content_latex, so buildUnitBlock() emits only
+ * the mark scheme. A custom (teacher-authored) unit carries its own text and
+ * an ungradeable unit is already reported as such, so neither counts here.
+ */
+export function missingQuestionTextLabels(
+  units: Pick<GradingUnit, "questionCode" | "markschemeSource" | "questionLatex" | "questionNumber" | "partLabel">[]
+): string[] {
+  return units
+    .filter((u) => u.questionCode !== "" && u.markschemeSource !== "none" && !u.questionLatex.trim())
+    .map(unitLabel);
+}
+
+/**
+ * Summarise assembleMarkScheme()'s output into the numbers a teacher needs to
+ * judge whether an assessment can be graded in full, before or after a run.
+ *
+ * Pulled out of persistGradeOutcome (lib/ai-grading-run.ts) so a pre-flight
+ * check on the ai-grade page and the post-run coverage banner read the exact
+ * same arithmetic instead of two hand-copies that can drift.
+ */
+export function summarizeCoverage(units: GradingUnit[]): MarkSchemeCoverage {
+  const ungraded = units.filter((u) => u.markschemeSource === "none");
+  const noQuestionTextLabels = missingQuestionTextLabels(units);
+  return {
+    partsInAssessment: units.length,
+    partsWithoutMarkscheme: ungraded.length,
+    maxTotal: units.reduce((s, u) => (u.markschemeSource === "none" ? s : s + u.maxMarks), 0),
+    testTotalMarks: units.reduce((s, u) => s + u.maxMarks, 0),
+    ungradedLabels: ungraded.map(unitLabel),
+    partsWithoutQuestionText: noQuestionTextLabels.length,
+    noQuestionTextLabels,
+  };
+}
+
+/** One part whose suggested mark moved between two markings of the same student. */
+export interface FollowThroughChange {
+  testItemId: string;
+  from: number;
+  to: number;
+}
+
+const FOLLOW_THROUGH_MARKER = "follow-through check — ";
+
+/**
+ * The warnings owed to the LATER parts of a question when an earlier part of
+ * it is re-marked. IB follow-through (rule 3) means (b) is marked on the
+ * value the student carried out of (a); a re-mark of (a) alone -- a
+ * transcription correction, or a one-part class re-mark -- leaves (b)
+ * marked, and possibly accepted into Clev's Marks, against the old reading,
+ * and nothing else revisits it (FA1 Q9(a), KA1 Q13(a), Sep 2026).
+ *
+ * "Later" is a part of the same question that follows in `units`, which
+ * assembleMarkScheme orders by sort_order. Each warning is prefixed with the
+ * later part's label exactly as unitLabel() prints it, so the review panel
+ * shows it on that row (warningsForPart in lib/ai-grade-review.ts). Nothing
+ * here changes acceptance: the teacher decides.
+ */
+export function followThroughWarnings(
+  units: Pick<GradingUnit, "testItemId" | "questionNumber" | "partLabel">[],
+  changes: FollowThroughChange[],
+  laterState: (testItemId: string) => "accepted" | "marked" | null
+): string[] {
+  const out: string[] = [];
+  for (const change of changes) {
+    if (change.from === change.to) continue;
+    const idx = units.findIndex((u) => u.testItemId === change.testItemId);
+    if (idx === -1) continue;
+    const earlier = units[idx];
+    for (let j = idx + 1; j < units.length; j++) {
+      const later = units[j];
+      if (later.questionNumber !== earlier.questionNumber) continue;
+      const state = laterState(later.testItemId);
+      if (!state) continue;
+      out.push(
+        `${unitLabel(later)}: ${FOLLOW_THROUGH_MARKER}${unitLabel(earlier)} was re-marked from ${change.from} to ${change.to}; this part was ${state} against the old value.`
+      );
+    }
+  }
+  return out;
+}
+
+/** Whether a stored warning is one followThroughWarnings() wrote about `earlierLabel` being re-marked. */
+export function isFollowThroughWarningAbout(warning: string, earlierLabel: string): boolean {
+  return warning.includes(`${FOLLOW_THROUGH_MARKER}${earlierLabel} was re-marked`);
 }
 
 export interface MarkschemeImageRef {
@@ -1225,15 +1462,32 @@ judgement calls made in parallel:
    go with which sub-part. Use the sub-part labels exactly as the mark
    scheme itself writes them. Omit "part" entirely for a unit that is
    already a single, undivided part with no such internal structure.
+   Most tokens are worth exactly one mark. Occasionally the mark scheme
+   itself prints ONE combined token worth more than one mark, with no
+   per-mark breakdown given anywhere in the scheme (e.g. a line reading only
+   "A2", not "A1 A1" and not a note splitting it into separate criteria) —
+   that is one unsplittable award, not two marks for you to invent
+   sub-criteria for. Represent it as a single markBreakdown entry and set
+   its "marks" field to the number the mark scheme prints (e.g. "marks": 2);
+   omit "marks" for every ordinary single-mark token, where it defaults to 1.
+   Do not set "marks" above 1 for marks the scheme lists separately (e.g.
+   "A1 A1" is still two ordinary one-mark entries). If the mark scheme's own
+   note for a combined token gives its own partial-credit tiering (e.g.
+   "Award A1 for two correct and A0 for one correct"), set "awardedMarks" to
+   however many of that token's marks were actually earned (0 up to its
+   "marks" value) instead of just deciding "awarded"; otherwise a combined
+   token is all-or-nothing at its full weight, exactly like a one-mark token.
 4. REASONING: briefly explain the itemisation above, in the settled, deliberation-free professional style rule 18 requires — not a record of how you arrived at it.
 5. SUGGESTED MARKS: suggestedMarks is NOT a separate judgement call — it is
-   the count of tokens you just marked awarded in step 3 (every token here
-   is worth exactly one mark; there is no M2 or A2). Compute it by counting,
-   don't estimate it separately from a general impression of the work. If a
-   number you were about to write down doesn't match that count, the count
-   is right and the number is wrong — go back and recheck the breakdown
-   against the mark scheme rather than reporting a total that disagrees
-   with your own itemisation.
+   the sum of the mark-weight you actually earned from every token in step 3
+   (an ordinary one-mark token contributes 1 when awarded and 0 otherwise; a
+   combined token you gave a "marks" field contributes that many when fully
+   awarded, or its "awardedMarks" value when partially awarded). Compute it
+   by summing, don't estimate it separately from a general impression of the
+   work. If a number you were about to write down doesn't match that sum,
+   the sum is right and the number is wrong — go back and recheck the
+   breakdown against the mark scheme rather than reporting a total that
+   disagrees with your own itemisation.
 6. CONFIDENCE: assessed last, since it depends on everything above.
    - "high": the work is legible and maps cleanly onto the mark scheme.
    - "medium": legible but needs a judgement call (alternative method, partial working, follow-through).
@@ -1253,9 +1507,9 @@ generate the JSON in this order too, since suggestedMarks depends on markBreakdo
       "workFound": <boolean>,
       "evidence": "<what the student actually wrote, briefly>",
       "evidenceBox": { "page": 3, "x0": 0.08, "y0": 0.42, "x1": 0.95, "y1": 0.61 } | null,
-      "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }] | [{ "token": "A1", "awarded": true, "note": "<brief>", "part": "a)(i)" }, ...] (add "part" only when this unit's own mark scheme covers multiple sub-parts),
+      "markBreakdown": [{ "token": "M1", "awarded": true, "note": "<brief>" }] | [{ "token": "A1", "awarded": true, "note": "<brief>", "part": "a)(i)" }, ...] (add "part" only when this unit's own mark scheme covers multiple sub-parts) | [{ "token": "A2", "awarded": true, "marks": 2, "note": "<brief>" }] (a combined, unsplittable mark-scheme award worth more than one mark -- see step 3; add "awardedMarks" instead of relying on "awarded" alone only if the scheme's own note tiers partial credit for it),
       "reasoning": "<one or two sentences citing the tokens satisfied or missed>",
-      "suggestedMarks": <the count of markBreakdown entries above with awarded: true>,
+      "suggestedMarks": <the sum of the mark-weight earned across markBreakdown entries above -- 1 per ordinary awarded token, or a combined token's own "marks"/"awardedMarks">,
       "confidence": "high" | "medium" | "low"
     }
   ]
@@ -1456,12 +1710,22 @@ export function buildActivityRubricBlock(
 export function buildGradingSystemPrompt(units: GradingUnit[]): string {
   let prompt = GRADING_SYSTEM_PROMPT;
 
-  if (units.some(isAaHlPaper2)) {
+  const paper2 = units.filter(isAaPaper2);
+  if (paper2.length > 0) {
+    // On an assessment that mixes Paper 2 questions with others (P01P1 is a
+    // Paper 1 carrying two Paper-2-coded questions), name the parts this
+    // policy governs rather than applying calculator-paper conventions to
+    // the whole paper. Still identical for every student on the test, so
+    // the cached prefix holds; a single-unit regrade call never lists.
+    const scope =
+      paper2.length < units.length
+        ? ` -- applies to ${paper2.map(unitLabel).join(", ")} only, the AA Paper 2 question(s) on this assessment, and not to its other parts`
+        : "";
     prompt += `
 
 ===============================================================================
-ADDITIONAL POLICY -- IBDP Mathematics: Analysis and Approaches HL Paper 2
-Numerical Accuracy (applies to this assessment)
+ADDITIONAL POLICY -- IBDP Mathematics: Analysis and Approaches Paper 2 (SL and HL)
+Numerical Accuracy (applies to this assessment${scope})
 ===============================================================================
 
 ${AA_HL_PAPER_2_NUMERICAL_ACCURACY_POLICY}`;
@@ -1536,8 +1800,19 @@ ${G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES}`;
  * cache_control breakpoint to it — on a batch upload, every student after the
  * first hits a cache read instead of re-sending the whole mark scheme.
  */
+/** The label a question's image carries in the request, so a unit block can point at it. */
+export function questionImageLabel(questionNumber: number): string {
+  return `Question image for question ${questionNumber}`;
+}
+
 /** Build one unit's mark-scheme block: question/context text shared by the batch and single-item prompts. */
-export function buildUnitBlock(u: GradingUnit): string {
+export function buildUnitBlock(
+  u: GradingUnit,
+  opts: {
+    /** True when the request carries the bank's picture of this question (see loadQuestionImages in ai-grading-run.ts). */
+    questionImageAttached?: boolean;
+  } = {}
+): string {
   const lines = [
     `=== ${unitLabel(u)} ===`,
     `testItemId: ${u.testItemId}`,
@@ -1567,6 +1842,11 @@ export function buildUnitBlock(u: GradingUnit): string {
     );
   }
   if (u.questionLatex) lines.push(`\n--- Question ---\n${u.questionLatex}`);
+  else if (opts.questionImageAttached) {
+    lines.push(
+      `\n--- Question ---\n(No text on file: read the question from the image labelled "${questionImageLabel(u.questionNumber)}" above.)`
+    );
+  }
   lines.push(`\n--- Mark scheme (the authority) ---\n${u.markscheme}`);
   // The teacher's rulings for this part, after the scheme they refine. See
   // GradingUnit.markingNotes and rule 20 of the system prompt.
@@ -1580,7 +1860,11 @@ export function buildUnitBlock(u: GradingUnit): string {
 
 export function buildGradingUserPrompt(
   units: GradingUnit[],
-  opts: { testName?: string } = {}
+  opts: {
+    testName?: string;
+    /** Question numbers whose bank image precedes this text in the request. */
+    questionImagesFor?: ReadonlySet<number>;
+  } = {}
 ): string {
   const header = [
     opts.testName ? `Assessment: ${opts.testName}` : null,
@@ -1590,7 +1874,9 @@ export function buildGradingUserPrompt(
     .filter(Boolean)
     .join("\n");
 
-  const blocks = units.map(buildUnitBlock);
+  const blocks = units.map((u) =>
+    buildUnitBlock(u, { questionImageAttached: opts.questionImagesFor?.has(u.questionNumber) ?? false })
+  );
 
   return `${header}
 
@@ -1610,10 +1896,38 @@ ${blocks.join("\n\n")}`;
  * teacher wouldn't be correcting the transcription of work that doesn't
  * exist).
  */
-export function buildRegradeItemPrompt(unit: GradingUnit, correctedEvidence: string): string {
+/** An earlier part of the same question, as already marked, for follow-through in a regrade. */
+export interface RegradePriorPart {
+  label: string;
+  evidence: string;
+  suggestedMarks: number;
+  maxMarks: number;
+}
+
+export function buildRegradeItemPrompt(
+  unit: GradingUnit,
+  correctedEvidence: string,
+  priorParts: RegradePriorPart[] = [],
+  opts: { questionImageAttached?: boolean } = {}
+): string {
+  // A full marking sees every part of the paper, so follow-through (rule 3)
+  // comes free; a one-part regrade saw only this part, and marked a value
+  // carried in from (a) as if it had appeared from nowhere.
+  const priorBlock =
+    priorParts.length > 0
+      ? `
+
+--- Earlier parts of this question, already marked (follow-through context only) ---
+${priorParts
+  .map((p) => `${p.label} (${p.suggestedMarks}/${p.maxMarks} marks): ${p.evidence.trim() || "(no work found)"}`)
+  .join("\n\n")}
+
+Use these only to apply follow-through: a value carried into this part from one of them is judged by the method in this part, not re-marked here, and the marks above are not yours to change.`
+      : "";
+
   return `A teacher has reviewed the scan directly and corrected the transcription of the student's work for this part, because the original automated transcription was wrong (e.g. a misread digit). Mark this corrected transcription against the mark scheme below -- there is no scan attached this time, so base your marking only on the text given.
 
-${buildUnitBlock(unit)}
+${buildUnitBlock(unit, opts)}${priorBlock}
 
 --- Teacher-corrected transcription of the student's work for this part ---
 ${correctedEvidence}

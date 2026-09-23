@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { GradebookGrid, type GeneratedFile, type TestSection } from "./GradebookGrid";
 import { CoursePicker } from "./CoursePicker";
 import { NewScoresButton } from "./NewScoresButton";
-import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
+import { INVITED_SUBJECT_PREFIX, assembleMarkScheme, summarizeCoverage } from "@/lib/ai-grading";
 import { fetchAllRows, loadInvitedRoster } from "@/lib/na-scanning";
 import { loadTrackLinks, trackFamilyCourseIds } from "@/lib/track-courses";
 
@@ -153,6 +153,26 @@ export default async function GradebookCoursePage({
 
   const testList = rawTests ?? [];
   const testIds = testList.map((t) => t.id);
+
+  // PPQ bank coverage per test, for the incomplete-mark-scheme badge. Reuses
+  // the exact join a grading run itself does (assembleMarkScheme), so a
+  // teacher never sees this gradebook disagree with what a grading run finds.
+  // A handful of tests per course, run in parallel; a failed assembly reads
+  // as "fully covered" here since the AI-grade page reports the real error.
+  const coverageByTest = new Map<
+    string,
+    { partsWithoutMarkscheme: number; maxTotal: number; ungradedLabels: string[] }
+  >();
+  await Promise.all(
+    testIds.map(async (testId) => {
+      try {
+        const { units } = await assembleMarkScheme(supabase, testId);
+        coverageByTest.set(testId, summarizeCoverage(units));
+      } catch {
+        // Left unset -- treated as fully covered below.
+      }
+    })
+  );
 
   // Test items (question parts)
   let allItems: {
@@ -310,6 +330,7 @@ export default async function GradebookCoursePage({
       boundary_set_id: setId,
       boundary_set_name: setId ? (setNameById[setId] ?? null) : null,
       boundaries: setId ? (boundariesBySetId[setId] ?? null) : null,
+      coverage: coverageByTest.get(t.id) ?? null,
       sections: sectionsFromCustomContent(t.custom_content) ?? IB_SECTIONS,
       items: (itemsByTest[t.id] ?? []).map((item) => ({
         id: item.id,

@@ -30,10 +30,14 @@ import {
   GRADING_MODEL,
   SCAN_BUCKET,
   assembleMarkScheme,
+  assembleQuestionImages,
   buildGradingStudentPrompt,
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
+  followThroughWarnings,
   gradeNeedsReview,
+  questionImageLabel,
+  summarizeCoverage,
   unitLabel,
   type GradingSubject,
   type GradingUnit,
@@ -143,10 +147,19 @@ export function buildGradingRequest(args: {
   model?: string;
   /** Only sent on a model that takes effort (see modelTakesEffort); defaults to the model's own default. */
   effort?: GradingEffort;
+  /**
+   * The bank's pictures of the questions that have no text on file (see
+   * loadQuestionImages). Only the ones for a textless gradeable part are
+   * sent; the rest are dropped here, so a caller may pass a whole test's
+   * images against a subset of its parts.
+   */
+  questionImages?: QuestionImage[];
 }): Anthropic.MessageCreateParamsNonStreaming {
   const { gradeable, testName, studentDisplayName, scanBase64, cacheTtl } = args;
   const model = args.model ?? GRADING_MODEL;
   const takesEffort = modelTakesEffort(model);
+  const images = questionImagesForUnits(args.questionImages ?? [], gradeable);
+  const questionImagesFor = new Set(images.map((img) => img.questionNumber));
 
   return {
     model,
@@ -174,11 +187,15 @@ export function buildGradingRequest(args: {
       {
         role: "user",
         content: [
+          // The question pictures, when sent, sit ahead of the cached text
+          // block: they are the same for every student on the test, so the
+          // breakpoint on that block caches them along with the mark scheme.
+          ...questionImageContentBlocks(images),
           {
             // Identical for every student on this test — cached so a batch
             // upload only pays full price for the first student's call.
             type: "text",
-            text: buildGradingUserPrompt(gradeable, { testName }),
+            text: buildGradingUserPrompt(gradeable, { testName, questionImagesFor }),
             cache_control: cacheControl(cacheTtl),
           },
           {
@@ -216,14 +233,174 @@ export function buildGradingRequest(args: {
  */
 export async function loadGradeableMarkScheme(
   supabase: SupabaseClient,
-  testId: string
-): Promise<{ units: GradingUnit[]; gradeable: GradingUnit[]; assemblyWarnings: string[] }> {
+  testId: string,
+  opts: {
+    /**
+     * Also load the bank's question images for the textless parts, for a
+     * request that is about to be built (see loadQuestionImages). The
+     * routes pass SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS; the eval passes
+     * its own switch to measure the flag before it is turned on. Off by
+     * default so a caller that only needs the units (the collect route)
+     * never pays for the downloads.
+     */
+    questionImages?: boolean;
+  } = {}
+): Promise<{
+  units: GradingUnit[];
+  gradeable: GradingUnit[];
+  assemblyWarnings: string[];
+  questionImages: QuestionImage[];
+}> {
   const assembled = await assembleMarkScheme(supabase, testId);
+  const gradeable = assembled.units.filter((u) => u.markschemeSource !== "none");
+  const questionImages = opts.questionImages ? await loadQuestionImages(supabase, testId, gradeable) : [];
   return {
     units: assembled.units,
-    gradeable: assembled.units.filter((u) => u.markschemeSource !== "none"),
+    gradeable,
     assemblyWarnings: assembled.warnings,
+    questionImages,
   };
+}
+
+// -----------------------------------------------------------------------------
+// Question images for textless parts
+// -----------------------------------------------------------------------------
+
+/**
+ * Whether the marker is shown the bank's picture of a question whose text
+ * was never transcribed. Most bank parts have no text (102 of 2,095 when
+ * this was written), so today the marker sees only the mark scheme for
+ * them and has to infer the question from it and from the student's work.
+ * The bank's question images exist for nearly every question, but were
+ * only ever shown to the teacher.
+ *
+ * Off until the owner has seen the cost. Measured on the bank's own crops
+ * (23 Sep 2026): a question image resized to QUESTION_IMAGE_MAX_WIDTH_PX
+ * came to 1200 x 450-520 px, about 700-850 input tokens each (roughly width
+ * x height / 750), and it sits in the cached prefix with the mark scheme,
+ * so after the first student of a test it is read at a tenth of the price.
+ * scripts/eval-grading.ts --question-images re-measures it end to end.
+ */
+export const SEND_QUESTION_IMAGES_FOR_TEXTLESS_PARTS = false;
+
+/** Shared (part_id null) images repeat per part; a question rarely needs more than its first two. */
+export const MAX_QUESTION_IMAGES_PER_QUESTION = 2;
+
+/** An upper bound on what one request carries, whatever the paper's length. */
+export const MAX_QUESTION_IMAGES_PER_REQUEST = 20;
+
+/** Bank scans are letter/A4 crops; this keeps a page-wide crop readable without sending print resolution. */
+export const QUESTION_IMAGE_MAX_WIDTH_PX = 1200;
+const QUESTION_IMAGE_JPEG_QUALITY = 80;
+
+/** The API's own per-image limit, which an un-resized original could exceed. */
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+/** One bank image of a question, resized and encoded for the request. */
+export interface QuestionImage {
+  questionNumber: number;
+  storagePath: string;
+  mediaType: "image/jpeg" | "image/png";
+  data: string;
+}
+
+/** A unit the marker cannot read the question of from text alone. */
+function needsQuestionImage(u: GradingUnit): boolean {
+  return u.questionCode !== "" && u.markschemeSource !== "none" && !u.questionLatex.trim();
+}
+
+/**
+ * The images worth sending against these units: one set per question that
+ * has a textless gradeable part, in the units' order. A question whose
+ * every part has text needs none.
+ */
+export function questionImagesForUnits(images: QuestionImage[], units: GradingUnit[]): QuestionImage[] {
+  const wanted = new Set(units.filter(needsQuestionImage).map((u) => u.questionNumber));
+  return images.filter((img) => wanted.has(img.questionNumber));
+}
+
+/** The content blocks that carry the images, each labelled so a unit block can refer to it. */
+export function questionImageContentBlocks(images: QuestionImage[]): Anthropic.ContentBlockParam[] {
+  return images.flatMap((img): Anthropic.ContentBlockParam[] => [
+    { type: "text", text: `${questionImageLabel(img.questionNumber)} (no question text on file):` },
+    { type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } },
+  ]);
+}
+
+/**
+ * Downloads and resizes the bank's question images for the textless parts
+ * among `units`, at most MAX_QUESTION_IMAGES_PER_QUESTION per question and
+ * MAX_QUESTION_IMAGES_PER_REQUEST in all, ordered as the units are. Shared
+ * images (part_id null) are listed once per part by assembleQuestionImages
+ * and sent once here. Best-effort: an image that cannot be fetched or
+ * resized to within the API's size limit is left out rather than failing
+ * the grading, since the part is still markable from its mark scheme.
+ */
+export async function loadQuestionImages(
+  supabase: SupabaseClient,
+  testId: string,
+  units: GradingUnit[]
+): Promise<QuestionImage[]> {
+  const unitById = new Map(units.map((u) => [u.testItemId, u]));
+  const questionOrder = new Map<number, number>();
+  for (const u of units) if (!questionOrder.has(u.questionNumber)) questionOrder.set(u.questionNumber, questionOrder.size);
+
+  let refs: { testItemId: string; storagePath: string }[];
+  try {
+    refs = await assembleQuestionImages(supabase, testId);
+  } catch {
+    return [];
+  }
+
+  // Which paths each question needs, first come first kept.
+  const pathsByQuestion = new Map<number, string[]>();
+  for (const ref of refs) {
+    const u = unitById.get(ref.testItemId);
+    if (!u || !needsQuestionImage(u)) continue;
+    const list = pathsByQuestion.get(u.questionNumber) ?? [];
+    if (list.includes(ref.storagePath) || list.length >= MAX_QUESTION_IMAGES_PER_QUESTION) continue;
+    list.push(ref.storagePath);
+    pathsByQuestion.set(u.questionNumber, list);
+  }
+  const wanted = [...pathsByQuestion.entries()]
+    .sort(([a], [b]) => (questionOrder.get(a) ?? 0) - (questionOrder.get(b) ?? 0))
+    .flatMap(([questionNumber, paths]) => paths.map((storagePath) => ({ questionNumber, storagePath })))
+    .slice(0, MAX_QUESTION_IMAGES_PER_REQUEST);
+
+  const out: QuestionImage[] = [];
+  for (const { questionNumber, storagePath } of wanted) {
+    const encoded = await downloadQuestionImage(supabase, storagePath);
+    if (encoded) out.push({ questionNumber, storagePath, ...encoded });
+  }
+  return out;
+}
+
+async function downloadQuestionImage(
+  supabase: SupabaseClient,
+  storagePath: string
+): Promise<{ mediaType: QuestionImage["mediaType"]; data: string } | null> {
+  const { data: file, error } = await supabase.storage.from("question-images").download(storagePath);
+  if (error || !file) return null;
+  const original = Buffer.from(await file.arrayBuffer());
+
+  // Sharp is imported lazily and its absence falls back to the original
+  // bytes, as lib/cv-crop-service.ts does; the fallback still respects the
+  // API's size limit, which is the one thing an un-resized scan can break.
+  try {
+    const sharp = (await import("sharp")).default;
+    const resized = await sharp(original)
+      .resize({ width: QUESTION_IMAGE_MAX_WIDTH_PX, withoutEnlargement: true })
+      .jpeg({ quality: QUESTION_IMAGE_JPEG_QUALITY, mozjpeg: true })
+      .toBuffer();
+    if (resized.length > MAX_IMAGE_BYTES) return null;
+    return { mediaType: "image/jpeg", data: resized.toString("base64") };
+  } catch {
+    if (original.length > MAX_IMAGE_BYTES) return null;
+    const isPng = original.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const isJpeg = original[0] === 0xff && original[1] === 0xd8;
+    if (!isPng && !isJpeg) return null;
+    return { mediaType: isPng ? "image/png" : "image/jpeg", data: original.toString("base64") };
+  }
 }
 
 /**
@@ -491,6 +668,7 @@ export async function persistGradeOutcome(args: {
   runId: string;
   scanBase64: string;
   units: GradingUnit[];
+  /** The subset of `units` with a mark scheme -- what a partial re-mark carries the rest of the paper from. */
   gradeable: GradingUnit[];
   assemblyWarnings: string[];
   grades: ValidatedGrade[];
@@ -543,6 +721,8 @@ export async function persistGradeOutcome(args: {
   // parts whose suggestion moved need a fresh look. Scoped to the most recent
   // COMPLETE run before this one, so a failed attempt in between is ignored.
   const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
+  /** Every part's previous suggestion, accepted or not, to find the ones this run moved. */
+  const priorSuggested = new Map<string, number>();
   /** The previous complete run's full rows, needed only for a partial re-mark (see requestedTestItemIds). */
   const priorFullRows: Record<string, unknown>[] = [];
   {
@@ -562,10 +742,12 @@ export async function persistGradeOutcome(args: {
     if (priorRun) {
       const { data: priorRows } = await supabase
         .from("ai_grade_results")
-        .select("test_item_id, suggested_marks, accepted_at, accepted_by")
-        .eq("run_id", priorRun.id)
-        .eq("accepted", true);
-      for (const p of priorRows ?? []) priorAccepted.set(p.test_item_id, p);
+        .select("test_item_id, suggested_marks, accepted, accepted_at, accepted_by")
+        .eq("run_id", priorRun.id);
+      for (const p of priorRows ?? []) {
+        priorSuggested.set(p.test_item_id, p.suggested_marks);
+        if (p.accepted) priorAccepted.set(p.test_item_id, p);
+      }
       if (requested) {
         const { data: fullRows } = await supabase
           .from("ai_grade_results")
@@ -642,6 +824,31 @@ export async function persistGradeOutcome(args: {
   }
   const allRows = [...rows, ...carriedRows];
 
+  // -- Follow-through: later parts of a question whose earlier part moved --
+  // Nothing re-examines a later part when an earlier part of its question is
+  // re-marked: on a full re-mark it keeps its acceptance if its own number
+  // did not move, on a partial re-mark it is copied verbatim. Either way it
+  // was decided against the old reading of the earlier part, so the later
+  // part's row says so. Acceptance is never changed here -- the teacher
+  // decides (see followThroughWarnings).
+  {
+    const changes = grades.flatMap((g) => {
+      const before = priorSuggested.get(g.unit.testItemId);
+      return before !== undefined && before !== g.clampedMarks
+        ? [{ testItemId: g.unit.testItemId, from: before, to: g.clampedMarks }]
+        : [];
+    });
+    const keptAcceptance = new Set(rows.filter((r) => r.accepted).map((r) => r.test_item_id));
+    const copiedAccepted = new Map(carriedRows.map((r) => [r.test_item_id, r.accepted]));
+    warnings.push(
+      ...followThroughWarnings(units, changes, (id) => {
+        if (keptAcceptance.has(id)) return "accepted";
+        if (copiedAccepted.has(id)) return copiedAccepted.get(id) ? "accepted" : "marked";
+        return null;
+      })
+    );
+  }
+
   const { error: insertErr } = await supabase.from("ai_grade_results").insert(allRows);
   if (insertErr) return { ok: false, error: `Could not save results: ${insertErr.message}` };
 
@@ -650,14 +857,14 @@ export async function persistGradeOutcome(args: {
   // testTotalMarks is the assessment's real total, so the UI can show
   // "17/20 of 33" instead of a misleading "17/20" when parts are missing
   // a mark scheme.
-  const maxTotal = gradeable.reduce((s, u) => s + u.maxMarks, 0);
-  const testTotalMarks = units.reduce((s, u) => s + u.maxMarks, 0);
+  const { partsInAssessment, partsWithoutMarkscheme, maxTotal, testTotalMarks } =
+    summarizeCoverage(units);
   const needsReview = [...grades.filter(gradeNeedsReview).map((g) => unitLabel(g.unit)), ...carriedNeedsReview];
 
   const coverage: GradeCoverage = {
-    partsInAssessment: units.length,
+    partsInAssessment,
     partsGraded: grades.length + carriedRows.length,
-    partsWithoutMarkscheme: units.length - gradeable.length,
+    partsWithoutMarkscheme,
     suggestedTotal,
     maxTotal,
     testTotalMarks,
