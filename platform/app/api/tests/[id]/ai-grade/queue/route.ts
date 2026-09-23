@@ -14,7 +14,7 @@ import {
   loadGradeableMarkScheme,
   loadStudentDisplayName,
 } from "@/lib/ai-grading-run";
-import { uprightScan } from "@/lib/scan-orientation";
+import { findScansMarkedBefore, uprightScan } from "@/lib/scan-orientation";
 
 export const maxDuration = 300;
 
@@ -294,9 +294,20 @@ export async function POST(
   // readings and reviewed against inverted crops. Done here, before the runs
   // are opened, so a scan that cannot be checked is still submitted as it is.
   // The stored scan is replaced in place, so `storagePath` stays valid.
+  // Only a stored file's FIRST marking is checked. A re-mark -- including
+  // "re-mark this part for the whole class", which sends every student's
+  // whole scan -- keeps the orientation that first check settled, because
+  // checking again can flip a page back (see "ONCE PER STORED SCAN" in
+  // lib/scan-orientation.ts). No run is open yet, so there is none to exclude.
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  for (let start = 0; start < collected.length; start += ORIENTATION_CHECK_CONCURRENCY) {
-    const slice = collected.slice(start, start + ORIENTATION_CHECK_CONCURRENCY);
+  const markedBefore = await findScansMarkedBefore(
+    supabase,
+    testId,
+    collected.map((c) => c.storagePath)
+  );
+  const toCheck = collected.filter((c) => !markedBefore.has(c.storagePath));
+  for (let start = 0; start < toCheck.length; start += ORIENTATION_CHECK_CONCURRENCY) {
+    const slice = toCheck.slice(start, start + ORIENTATION_CHECK_CONCURRENCY);
     await Promise.all(
       slice.map(async (c) => {
         const upright = await uprightScan({

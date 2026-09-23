@@ -21,7 +21,7 @@ import {
   persistGradeOutcome,
 } from "@/lib/ai-grading-run";
 import { fetchAllRows } from "@/lib/na-scanning";
-import { uprightScan } from "@/lib/scan-orientation";
+import { findScansMarkedBefore, uprightScan } from "@/lib/scan-orientation";
 
 export const maxDuration = 300;
 
@@ -511,16 +511,24 @@ export async function POST(
   // the orientation first, rotate what needs it, and replace the stored scan
   // so the crop service and "Locate on page" agree with what was marked.
   // Best-effort: on any failure the scan is graded as it is (see the module).
-  const upright = await uprightScan({
-    anthropic,
-    supabase,
-    bucket: SCAN_BUCKET,
-    storagePath: scanStoragePath,
-    buffer: Buffer.from(scanBase64, "base64"),
-    usageRef: { type: "ai_grade_run", id: run.id },
-  });
-  if (upright.warning) console.warn(`[ai-grade] run ${run.id}: ${upright.warning}`);
-  scanBase64 = upright.base64;
+  // Only on the stored file's FIRST marking: a re-mark of the same file keeps
+  // the orientation that first check settled, because checking again can
+  // flip a page back (see "ONCE PER STORED SCAN" in lib/scan-orientation.ts).
+  const markedBefore = await findScansMarkedBefore(supabase, testId, [scanStoragePath], run.id);
+  if (markedBefore.has(scanStoragePath)) {
+    console.info(`[ai-grade] run ${run.id}: orientation already settled by an earlier run; marking the stored scan as it is`);
+  } else {
+    const upright = await uprightScan({
+      anthropic,
+      supabase,
+      bucket: SCAN_BUCKET,
+      storagePath: scanStoragePath,
+      buffer: Buffer.from(scanBase64, "base64"),
+      usageRef: { type: "ai_grade_run", id: run.id },
+    });
+    if (upright.warning) console.warn(`[ai-grade] run ${run.id}: ${upright.warning}`);
+    scanBase64 = upright.base64;
+  }
 
   // -- Grade -----------------------------------------------------------------
   // The request is built once and may be sent twice: a response that comes
