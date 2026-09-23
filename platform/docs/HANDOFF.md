@@ -257,9 +257,13 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 149 files, 149 rows**
-(verified 13 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
-the second reconciliation and 116/116 after the third). Read
+**The migration ledger and the repo agree on versions: 171 files, 171 rows**
+(verified 20 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
+the second reconciliation, 116/116 after the third and 149/149 on 13 Sep). Two
+rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
+file on any branch until 20 Sep; both were rebuilt from the ledger and verified
+by md5 before the `test_items.marking_notes` and `grader_feedback` migrations
+were added (§23). Read
 `platform/supabase/migrations/README.md` before touching anything in that
 directory - it documents the invariant and how to add a migration without
 breaking it.
@@ -1475,7 +1479,7 @@ on the open statuses, which is the collect route's working set), and adds
 call takes at most `MAX_BATCH_REQUESTS` (20) students or `MAX_BATCH_BASE64_BYTES`
 (64MB of base64, ~48MB of PDF -- every scan sits in that invocation's heap at once)
 and returns the rest as `remaining`. One collect call writes at most
-`MAX_RESULTS_PER_CALL` (8) results, because writing one re-downloads the student's PDF
+`MAX_RESULTS_PER_CALL` (5 since the collect budget was re-measured; the code is the reference) results, because writing one re-downloads the student's PDF
 and calls the CV service for evidence crops, the same 10-30s the synchronous route
 spends, and it answers `more: true`. Both are therefore client-driven loops: the batch
 tab posts to queue until `remaining` is empty (and gives up if it stops shrinking),
@@ -2366,3 +2370,344 @@ the teacher ticks "Show this in the gradebook" on the importer.
 - The AI-grade review panel does not yet show a live target table the way it
   shows a live strand table. `ActivityReportTable` renders without hooks
   specifically so it can, when someone wires it in.
+
+---
+
+## 23. Confidence labels: what Accept teaches the marker, and what now does (20 Sep 2026)
+
+The teacher asked, looking at a Grade 9 review row marked **medium** with
+settled reasoning, whether clicking Accept helps the marker earn more "high"
+labels, and what would. The short answer was no: Accept writes Clev's Marks,
+an audit row in `mark_changes` (which names the run, the suggested mark, the
+confidence label and whether the teacher applied a different number) and the
+`accepted` flag on the result. Nothing read any of that back. The only thing a
+later run took from an accepted row was the flag itself, carried forward when a
+re-mark suggests the same mark (`lib/ai-grading-run.ts`). The eval script used
+accepted rows as its golden set but never reported accuracy by label.
+
+**What the labels were worth.** Measured on the newest complete run per
+student across every test, counting an accepted part as a disagreement when
+the teacher overrode it at accept or changed it by hand afterwards:
+
+| Label and cause | Parts | Accepted | Disagreed |
+|---|---|---|---|
+| high, model's own call | 3888 | 1976 | 4 (0.2%) |
+| medium, model's own call | 326 | 168 | 10 (6%) |
+| medium, hedge-wording cap | 83 | 40 | 0 |
+| low, breakdown/deliberation caps | 31 | 21 | 12 (57%) |
+| low, model's own call | 15 | 11 | 0 |
+
+Read with two caveats. 93% of accepts came through Accept-all, so "not
+corrected afterwards" is a floor on the error rate; on the parts a teacher
+accepted one by one it reads high 2/139, medium 5/21, low 0/7. And every
+disagreement clustered by PART, not by student: 17 of 22 later corrections
+were Formative Assessment 1 Q8(a) (a scheme wording read two ways), all 7
+accept-time overrides were Key Assessment 1 Q13(b). The rulings the teacher
+wrote into `mark_changes.reason` never reached the marker, so every later
+student on the same part was marked the old way and flagged again.
+
+**The row that started it was medium because of a word.** The validator
+(`validateGradeResponse`) used to lower "high" to "medium" whenever the
+reasoning contained "appears to", "seems to", "probably" and the like
+(`lib/examiner-reasoning.ts`, the hedging half). Of 116 parts it had capped,
+91 hedged about the student's METHOD ("appears to have confused the
+variables"; on the row in question, "appears to have gotten 6.5" beside an
+unambiguous transcription and a right mark), not about reading the
+handwriting. The 40 capped parts a teacher had accepted had the same record as
+"high". The teacher chose, after a plain-language walk-through of the
+options, to delete the demotion and keep the warning.
+
+**What changed, in five increments, all in this session:**
+
+- **A. Measurement.** `scripts/confidence-calibration.ts` (DB only, free)
+  prints the table above from live data: by confidence and cap cause, again
+  for parts accepted one by one, and the parts the teacher disagreed on most.
+  Its first output is `docs/eval/2026-09-20-calibration.json`; the SQL that
+  first produced the numbers is `docs/eval/confidence-calibration.sql`.
+  `scripts/eval-grading.ts` now reports accuracy **by confidence** (and skips
+  runs keyed on an invited student with no profile, which used to crash it).
+  Run the calibration after any change to how confidence is set; run the eval
+  before and after any prompt change. Note the golden set has grown to 66
+  student-tests / 869 parts since §11's 9 students, so a full run is about
+  $13 on Opus 4.5; `--test <uuid>` keeps a comparison to one paper.
+- **B. The hedge cap is gone.** Hedging still writes its warning
+  (`"1(b): reasoning hedges on reading ... check the crop before accepting"`),
+  and the review panel prints it on the row, but the label is the model's own.
+  Deliberation ("wait,", "let me reconsider") still forces low, the breakdown
+  and clamp checks still force low, and those are the caps that were earning
+  their keep. **Consequence:** `gradeNeedsReview`, `partitionByConfidence` and
+  the summative gate all read the stored label, so on a SUMMATIVE, Accept-all
+  now writes hedge-warned parts it used to hold. Already-graded rows keep
+  their stored label (the pre-cap value was never persisted); a re-mark
+  refreshes them.
+- **C. The row says why.** Every non-high row carries a few words under its
+  badge ("careful wording, glance at the crop" / "breakdown disagreed with the
+  total" / "the marker's own call") with the full warning as a tooltip, and
+  the Why? panel lists the warnings under a Confidence heading.
+  `partWarningLabel`, `warningsForPart` and `capCauseForPart` in
+  `lib/ai-grade-review.ts` are the one place the warning strings are read
+  back, shared with the calibration script; a test pins `partWarningLabel` to
+  `unitLabel()` so the two cannot drift. The MARK SCHEME column, blank on
+  every Grade 9 row because `SOURCE_LABEL` had no `custom` entry, now reads
+  "Teacher's mark scheme".
+- **D. Marking notes the marker reads.** `test_items.marking_notes`
+  (migration `20260920042031`), edited from the Why? panel ("Marking note for
+  Q8(a), every student on this paper"), printed by `buildUnitBlock` after the
+  part's mark scheme under a heading that says the notes win where they
+  conflict, and rule 20 of the system prompt says the same and adds that a
+  judgement the notes settle is not a reason to lower confidence. Every
+  marking path shares `assembleMarkScheme`, so the note reaches the
+  interactive route, the overnight queue (for marks queued after the save),
+  the regrade route and the eval. The accept route also takes an optional
+  `note` per selection, offered as a one-line "why" beside an overridden
+  mark, which lands in the `mark_changes` reason. This is the loop that was
+  missing: a ruling made once on one student settles the same call for the
+  rest of the class, and the model can say "high" on it with reason.
+- **E. What "high" means -- measured and NOT shipped.** A rewrite of WORKING
+  ORDER step 6 defined the labels by the certainty of the MARK ("a clearly
+  wrong answer with legible working is a certain 0 and is high"; "medium means
+  another examiner could reasonably award a different number, say which").
+  Gate: the BiStats eval before and after, 11 students, 66 parts, Opus 4.5
+  at temperature 0, ~$1.70 a run:
+
+  | run | exact | within 1 | MAE | high exact | medium exact | low exact |
+  |---|---|---|---|---|---|---|
+  | before (`docs/eval/2026-09-20-bistats-before-step6.json`) | 58 (88%) | 66 | 0.12 | 52/54 | 5/7 | 1/5 |
+  | after (`docs/eval/2026-09-20-bistats-after-step6.json`) | 59 (89%) | 65 | 0.14 | 57/62 | 1/2 | 1/2 |
+
+  It did what it was written to do -- eleven more parts called "high" -- and
+  the cost is in the same row: misses at "high" went from 2 of 54 to 5 of
+  62, and one part moved two marks. The gate was "no new disagreement at
+  high", so the old wording is back in production with a note beside it
+  saying why, and both JSON files are kept. Read the "before" run's
+  by-confidence line as the useful result: the label as it stands IS
+  informative (high 96% exact, medium 71%, low 20%), which is what B relies
+  on. Whoever tries the rewrite again should try only the stale-line fix
+  first ("anything below high is put in front of the teacher") and run the
+  same two evals; the definition change and the stale-line fix were bundled
+  here, so the eval cannot say which of the two moved the labels.
+- **F. Feedback to the grader, in the teacher's own words.** The same Why?
+  panel, on every part of every paper (a Grade 9 formative, Standard Level or
+  activity row as much as an IB one), has a "Feedback to the grader" box. The
+  teacher writes what the marker got wrong or should do differently; "Turn
+  into a marking rule" sends that, with the part's question, mark scheme,
+  current notes and the result in front of the teacher, to
+  `GRADER_FEEDBACK_MODEL` (`claude-opus-5`, adaptive thinking, effort high --
+  the reference's mandated default and the model the standards and activity
+  imports already use for reconciling rubrics; `lib/grader-feedback.ts`),
+  which drafts the part's complete marking notes with the ruling folded in,
+  a one-line summary, and what that student would now score. The draft lands
+  in the note editor; nothing the marker reads changes until the teacher
+  saves it. Every round is kept in `grader_feedback` (migration
+  `20260920043641`) with the feedback, the notes before, the draft, and
+  `applied_at` once saved, so a ruling traces back to the feedback that made
+  it. The drafting model can also decline (`cannotApply`) when the feedback
+  would break the scheme's maximum or the policy, and says why.
+
+
+---
+
+## 24. Where the marking money goes, and what was done about it (20 Sep 2026)
+
+The teacher asked what could improve results and cut API cost. The answer
+started with a profile of `ai_usage_log` (2 to 20 Sep, $63.4), because the
+levers that pay are decided by the shape of the bill, not by the list of
+things one could do. **A first pass mis-priced every Haiku line five-fold**
+(the log stores Haiku as `claude-haiku-4-5-20251001`; an exact-match CASE
+fell through to Opus rates), which briefly made orientation and cover-page
+reads look like a third of the bill. They are 9%. The corrected profile:
+
+| Pipeline | Calls | $ | Share |
+|---|---|---|---|
+| ai_grade (interactive, Opus 4.5) | 123 | 32.26 | 51% |
+| ai_grade_batch (overnight, 50% rate) | 62 | 8.60 | 14% |
+| NA assess (Sonnet 4.6, mostly batch) | 684 | 6.31 | 10% |
+| segment (deep read, Opus 4.5) | 33 | 5.06 | 8% |
+| eval | 31 | 4.80 | 8% |
+| cover page + chunk cover (Haiku) | 1202 | 3.72 | 6% |
+| orientation (Haiku) | 109 | 1.89 | 3% |
+
+Inside a marking call, output is 62% of the cost (6.5k tokens per Grade 9
+student; ~10.5k stored characters plus JSON), the uncached scan PDF 32%, and
+the cached prefix 6% -- caching is healthy, nothing to gain there. Half of
+all marking runs were re-marks (126 student-tests, 246 runs), at full price,
+with a tab open. That profile, and the cost-optimisation order from the
+Claude API reference (free wins before tradeoffs, one change per diff, each
+read against the eval), gave the plan below. `docs/eval/` keeps every run;
+`scripts/eval-grading.ts` now builds the request through
+`buildGradingRequest` (it had drifted), takes `--model`, `--effort` and
+`--trials`, and prints output tokens per student.
+
+**Measurement first.** Fourteen call sites never wrote to `ai_usage_log`
+(the packet and NA generators, the question-bank pipelines, classroom
+analysis, placement); each now records under its own pipeline name, so the
+next profile is the whole bill. The mastery route runs as the student and
+cannot insert under the log's teacher-only policy; it says so in a comment.
+The feedback drafter (§23 F) now sends the grader's prompt for the paper as
+a cached first system block, and the cover-page read runs at temperature 0.
+
+**Shipped, free wins:**
+- **Overnight by default.** The batch tab's overnight toggle starts on, and
+  "Re-mark stored scan" on the Individual tab goes through the Message
+  Batches queue at half price, with "Mark now" as the explicit full-price
+  button. The request is byte-identical (`buildGradingRequest`), so the
+  marks are the same. Ceiling: up to half of the 51% line.
+- **Re-mark one part for the whole class.** Beside a part's marking note:
+  the queue route takes `testItemIds`, marks only those parts (the scan
+  still goes in full), and records them on the run
+  (`ai_grade_runs.requested_test_item_ids`, migration `20260920062335`);
+  collect validates against that subset and `persistGradeOutcome` copies
+  every other part's row, crop and acceptance from the previous complete
+  run. This is the follow-through to §23's marking notes: a ruling written
+  once is applied to the class for about a third of a full re-mark.
+
+**Measured and not shipped:** tighter breakdown notes ("one clause, empty
+when the token is earned on plain evidence") -- output tokens 2830 -> 2429
+per BiStats student (-14%), cost -6%, but exact 58 -> 56, MAE 0.12 -> 0.18
+and "high" 5 misses in 59 against 2 in 54
+(`docs/eval/2026-09-20-bistats-notes-tightened.json`). Same shape as the
+step-6 rewrite in §23, which is what prompted a second baseline trial to
+learn the noise floor (below). The prompt is at its measured wording.
+
+**Dropped after the pricing correction:** folding orientation into the
+quick read (3% of the bill; needs a column and a rotate step in split) and a
+cover-page pre-filter in the CV service (6%; CV engineering). The CV service
+itself stays funded: crops, Locate on page, Fix crops and NA packets depend
+on it; marks do not.
+
+**The noise floor, measured.** A second trial of the current prompt on the
+same 66 parts (`docs/eval/2026-09-20-bistats-baseline-trial2.json`): exact
+56 against 58 the first time, MAE 0.17 against 0.12, "high" 54/59 exact
+against 52/54. So one run of this eval moves by two exact matches, 0.05 of
+MAE and three misses at "high" on its own, at temperature 0. **That is the
+band both prompt experiments of this day landed in** (§23 step 6: 59 exact,
+57/62 high; the tighter notes above: 56 exact, 54/59 high). Neither was a
+measured regression; neither was a measured gain. The reference's rule
+holds: never keep or revert on a one-case swing. Both are worth two more
+trials each (~$3.40 a pair) before deciding; until then the prompt stays at
+its long-measured wording, and the tighter-notes diff is in this section's
+commit history if the repeat trials favour it.
+
+**Model x effort sweep** (approved budget $12; $7.40 spent, single trials,
+`docs/eval/2026-09-20-bistats-<model>-<effort>.json`):
+
+| Config | Parts | Exact | MAE | High exact | $ / student | Output tok / student |
+|---|---|---|---|---|---|---|
+| Opus 4.5, temperature 0 (current), trial 1 / 2 | 66 | 58 / 56 | 0.12 / 0.17 | 52/54 / 54/59 | 0.153 / 0.156 | 2830 / 2939 |
+| Sonnet 5, effort low | 66 | 51 (77%) | 0.27 | 32/35 | 0.102 | 6652 |
+| Sonnet 5, effort medium | 52 of 66 (14 parts came back unusable) | 34 (65%) | 1.02 | 23/26 | 0.145 | 10970 |
+| Opus 5, effort low (7 of 11 students; the account ran out of credit) | 42 | 33 (79%) | 0.24 | 29/32 | 0.197 | 2651 |
+| Opus 5, effort medium | none: every request failed on credit balance | | | | | |
+
+Read against the noise band: Sonnet 5 at low gives back 5 to 7 exact
+matches and doubles MAE, well outside it, and costs 65% of Opus 4.5 rather
+than the 40% its token price suggests, because adaptive thinking is billed
+as output (6.6k tokens a student against 2.9k). Sonnet 5 at medium is worse
+again and no cheaper. Opus 5 at low, on the seven students it finished, is
+below the band on exact and dearer per student than Opus 4.5. **Opus 4.5 at
+temperature 0 stays**, and the "cheaper model" lever is closed on this
+evidence. Opus 5 at medium is the one config still unmeasured; it costs the
+same as Opus 4.5 per token and would only be a quality candidate. Worth one
+run (~$2) when credit is back, together with the repeat trials above.
+
+**The account ran out of API credit during the sweep** (20 Sep, ~06:45 UTC,
+"Your credit balance is too low to access the Anthropic API"). If the
+deployment's `ANTHROPIC_API_KEY` is on the same account, marking on the site
+fails the same way until it is topped up.
+
+---
+
+## 25. Teacher stats for a Standard Level paper (22 Sep 2026)
+
+The teacher asked for a 9D view of Key Assessment 1 showing the average score
+per question (grouped) and per part, plus whatever else would help, and for a
+"general Standard Level" scope that can take in students from outside 9D
+because work from other classes is coming.
+
+The standards report (§21) answers "where is each student". Nothing answered
+"where is the class", which is the question asked the moment a paper is handed
+back. `/dashboard/tests/[id]/standards-stats` is that page, with a CSV at
+`/api/tests/[id]/standards-stats/csv`.
+
+### What it shows
+
+Per PART: max, how many students are marked on it, mean, mean %, SD, how the
+marks fell (nothing / some / all, as a three-segment meter), % at full marks,
+% at zero, and a discrimination figure. Per QUESTION, the paper's own
+grouping: the same, over the parts summed, plus median and SD. Per STRAND: the
+rubric's grouping, with the level counts the standards report already prints.
+Above them a paper summary (mean, median, SD, range, level tally) and a "Worth
+a look" panel that names the weakest question and strand, the hardest parts,
+the parts at least half the class scored nothing on, and the parts whose
+discrimination is negative.
+
+**Three rules run through `lib/standards-stats.ts`,** and they are the reason
+the numbers can be trusted rather than merely computed:
+
+1. **A missing mark is not a zero.** An unaccepted part is absent from the
+   student's map and is skipped, so every aggregate carries its own `n` and
+   the page prints it beside the mean.
+2. **An aggregate only counts a student who has all of it.** A question mean
+   is over the students with every one of its parts marked, a strand mean over
+   every part of the strand, the paper over a complete paper. Averaging a
+   half-marked total against a whole one reads as a weak student rather than
+   an unfinished one.
+3. **An absent student is in none of it.** The loader drops them before any
+   arithmetic.
+
+**Discrimination is the corrected item-total correlation** -- the part's mark
+against the REST of the paper, over complete papers only. It is null below
+`MIN_STUDENTS_FOR_DISCRIMINATION` (5) and null when nothing varies, because
+`0` would read as "this part did not sort the class" when the truth is "this
+part cannot". On the live KA1 data it earns its place: Q7(a) and Q7(b) are
+100% and come back null, and Q3(a) and Q3(b) come back NEGATIVE (-0.23,
+-0.11), which is the class's stronger students doing worse on those two parts
+than the weaker ones -- the one signal on the page that points at the mark
+scheme rather than at the students.
+
+### The general Standard Level scope
+
+A scope switcher at the top: the test's own class (9D, the default) or **All
+Standard Level**. The `Grade 9 Standard` track is how another class joins --
+it currently has 9D as its only member, and adding a class to `track_courses`
+is all that the roster, the marker and this page need. **No class was added**:
+track membership is SYMMETRIC, so putting 9A / 9C / 9G in the Standard track
+would also put all 18 9D students on every Extended paper's roster and
+gradebook (§17's `trackFamilyCourseIds`), which is not what anyone wants. The
+teacher chose to leave the track at 9D and widen it when there is a real class
+to widen it to.
+
+So that widening cannot silently lose work in the meantime,
+`loadReportRoster` gained `includeMarkedOutsideRoster`, which the stats loader
+turns on and the two per-student reports deliberately do not: anyone with
+ACCEPTED MARKS on the paper who is on no roster the test's course reaches is
+returned anyway, under their real class. A marked paper missing from the class
+averages would be worse than a stranger's name on a list. It costs two small
+queries and only when such a student exists.
+
+### Where the numbers came from
+
+Verified by running `loadStandardsStatsData` itself against production (the
+skill's §7 rule -- import the real module, never restate its logic) over the
+10 marked 9D papers: mean 24.40/42 (58%), median 21, SD 9.50, range 7-38,
+levels E2 M2 AP5 B1. Strand means sum to the paper mean (5.8 + 8.8 + 6.9 + 2.9
+= 24.4) and both the strand and question maxima sum to 42, which is the check
+that the two groupings partition the paper. **Strand D, Reasoning and
+justification, is at 32% with 7 of 10 students at Beginning** -- the clearest
+teaching signal on the page, and worth a look before Unit 2.
+
+### Deliberately not done
+
+- **The gradebook and the standards report are unchanged.** This is a third
+  view, linked from both, not a replacement for either.
+- **The page is not restricted to Standard Level papers.** A test with no
+  `standards_rubric` renders the question and part tables and says plainly
+  that there are no strands or levels; only the LINKS to it are behind the
+  Standard Level badge. A formative or an IB paper would work if linked.
+- **The "By class" block has not been seen rendered**, because only 9D has
+  marks on any Standard paper so far. Its data is unit-tested
+  (`lib/standards-stats.test.ts`, "the general Standard Level view") and the
+  markup mirrors the strand table beside it, but the first time a second class
+  is marked is the first time anyone looks at it.
+- **Discrimination at n = 10 is soft.** Five is a floor, not a guarantee; the
+  figure is there to point at a part worth re-reading, not to be reported.

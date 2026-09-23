@@ -6,7 +6,11 @@ import {
   sortReviewRows,
   partitionByConfidence,
   shouldPreselect,
+  partWarningLabel,
+  warningsForPart,
+  capCauseForPart,
 } from "./ai-grade-review";
+import { unitLabel } from "./ai-grading";
 
 const LUCIANA = "42d4dd74-a367-4776-b45b-c1702989dbe8";
 const SALIM = "183fbc20-4984-4ee9-bfa0-425a410e4499";
@@ -251,5 +255,56 @@ describe("shouldPreselect", () => {
 
   it("does not preselect a row already accepted", () => {
     expect(shouldPreselect(row({ accepted: true }))).toBe(false);
+  });
+});
+
+describe("partWarningLabel", () => {
+  it("prints the same label as unitLabel for every part shape", () => {
+    const cases: { question_number: number; part_label: string | null }[] = [
+      { question_number: 1, part_label: null },
+      { question_number: 1, part_label: "" },
+      { question_number: 3, part_label: "b" },
+      { question_number: 3, part_label: "B" },
+      { question_number: 3, part_label: "bii" },
+      { question_number: 4, part_label: "iv" },
+      { question_number: 7, part_label: "d " },
+      { question_number: 9, part_label: "ab" },
+    ];
+    for (const c of cases) {
+      expect(partWarningLabel(c)).toBe(
+        unitLabel({ questionNumber: c.question_number, partLabel: c.part_label ?? "" })
+      );
+    }
+  });
+});
+
+describe("warningsForPart / capCauseForPart", () => {
+  const warnings = [
+    "1(b): reasoning hedges on reading the student's work (\"appears to\") — check the crop before accepting",
+    "1(c): model reported 2 mark(s) but its own breakdown only awards 1 token(s); corrected to 1 and flagged low confidence",
+    "4(a): examiner reasoning exposes internal deliberation (\"wait,\") — flagged for teacher review",
+    "4(a): reasoning hedges on reading the student's work (\"seems to\") — check the crop before accepting",
+    "5: model awarded 4 of a possible 3; clamped to 3 and flagged low confidence",
+    "6: A1 withheld on deterministic accuracy re-check — 0.81 is 2 s.f.",
+    "This test's standards rubric could not be read and was ignored: bad json",
+  ];
+
+  it("returns only the named part's warnings, prefix stripped", () => {
+    expect(warningsForPart("1(b)", warnings)).toEqual([
+      "reasoning hedges on reading the student's work (\"appears to\") — check the crop before accepting",
+    ]);
+    expect(warningsForPart("1(bii)", warnings)).toEqual([]);
+    expect(warningsForPart("1", warnings)).toEqual([]);
+    expect(warningsForPart("1(b)", null)).toEqual([]);
+  });
+
+  it("classifies the cause, preferring the one that says most about the mark", () => {
+    expect(capCauseForPart("1(b)", warnings)).toBe("hedge");
+    expect(capCauseForPart("1(c)", warnings)).toBe("breakdown");
+    expect(capCauseForPart("4(a)", warnings)).toBe("deliberation");
+    expect(capCauseForPart("5", warnings)).toBe("clamp");
+    expect(capCauseForPart("6", warnings)).toBe("numeric");
+    expect(capCauseForPart("2", warnings)).toBe("none");
+    expect(capCauseForPart("2", undefined)).toBe("none");
   });
 });

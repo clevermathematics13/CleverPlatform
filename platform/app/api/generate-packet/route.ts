@@ -5,6 +5,7 @@ import { getApiTeacher } from "@/lib/auth";
 import { sanitizeJsonBackslashes } from "@/lib/json-repair";
 import { compileSpecToSystemPrompt } from "@/lib/nuanced-analysis-spec.compile";
 import { loadCanonicalSpecForGeneration } from "@/lib/nuanced-analysis-spec.load";
+import { recordUsage } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
 // A full Nuanced Analysis packet at max_tokens: 32000 with adaptive thinking can
@@ -73,6 +74,7 @@ export async function POST(request: Request) {
       ],
     });
     const message = await stream.finalMessage();
+    await recordUsage(supabase, { pipeline: "packet_generate", model: message.model, usage: message.usage });
 
     if (message.stop_reason === "max_tokens") {
       console.error(

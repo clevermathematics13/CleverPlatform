@@ -1,0 +1,795 @@
+{
+  "ranAt": "2026-09-20T06:48:32.328Z",
+  "model": "claude-sonnet-5",
+  "effort": "low",
+  "temperature": null,
+  "trials": 1,
+  "summary": {
+    "n": 66,
+    "exact": 51,
+    "within1": 63,
+    "mae": 0.2727272727272727,
+    "bias": -0.030303030303030304,
+    "totalGolden": 269,
+    "totalPredicted": 267,
+    "cost": 1.120982,
+    "byPart": {
+      "Q1": {
+        "n": 11,
+        "exact": 7,
+        "absErr": 4
+      },
+      "Q2": {
+        "n": 11,
+        "exact": 7,
+        "absErr": 6
+      },
+      "Q3": {
+        "n": 11,
+        "exact": 9,
+        "absErr": 2
+      },
+      "Q4(a)": {
+        "n": 11,
+        "exact": 10,
+        "absErr": 1
+      },
+      "Q4(b)": {
+        "n": 11,
+        "exact": 11,
+        "absErr": 0
+      },
+      "Q4(c)": {
+        "n": 11,
+        "exact": 7,
+        "absErr": 5
+      }
+    },
+    "byConfidence": {
+      "medium": {
+        "n": 28,
+        "exact": 19,
+        "absErr": 12
+      },
+      "high": {
+        "n": 35,
+        "exact": 32,
+        "absErr": 3
+      },
+      "low": {
+        "n": 3,
+        "exact": 0,
+        "absErr": 3
+      }
+    },
+    "failed": 0
+  },
+  "results": [
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Alejandro Rosell",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 6,
+          "predicted": 4,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 4,
+          "suggestedThen": 5,
+          "predicted": 5,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": 0,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": 0,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": 0,
+          "confidence": "high"
+        }
+      ],
+      "usage": {
+        "input": 12661,
+        "cacheWrite": 24616,
+        "cacheRead": 0,
+        "output": 4898
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Camilla Cohen",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": 6,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": 7,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": 1,
+          "confidence": "medium"
+        }
+      ],
+      "usage": {
+        "input": 12660,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 6511
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Carlos Rojas",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": 5,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 7,
+          "confidence": "low"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 7,
+          "confidence": "high"
+        }
+      ],
+      "usage": {
+        "input": 12660,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 5446
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Gael Castrillon",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 2,
+          "suggestedThen": 2,
+          "predicted": 2,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": 5,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": 6,
+          "confidence": "low"
+        }
+      ],
+      "usage": {
+        "input": 12660,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 5467
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Julio Bravo",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 2,
+          "suggestedThen": 5,
+          "predicted": 1,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "low"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": 7,
+          "confidence": "high"
+        }
+      ],
+      "usage": {
+        "input": 12659,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 6283
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Luciana Rojas",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": 5,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": 5,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": 7,
+          "confidence": "high"
+        }
+      ],
+      "usage": {
+        "input": 9512,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 6451
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Minjun Choi",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 7,
+          "predicted": 7,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 4,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 4,
+          "suggestedThen": 5,
+          "predicted": 4,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 7,
+          "predicted": 6,
+          "confidence": "medium"
+        }
+      ],
+      "usage": {
+        "input": 12659,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 7267
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Nicolas Carriquiry",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 1,
+          "suggestedThen": 1,
+          "predicted": 0,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 2,
+          "suggestedThen": 2,
+          "predicted": 2,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 5,
+          "suggestedThen": 5,
+          "predicted": 7,
+          "confidence": "medium"
+        }
+      ],
+      "usage": {
+        "input": 15811,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 11133
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Pedro Costa",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 4,
+          "suggestedThen": 4,
+          "predicted": 4,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 4,
+          "suggestedThen": 3,
+          "predicted": 4,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 2,
+          "suggestedThen": 2,
+          "predicted": 2,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": 0,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 1,
+          "suggestedThen": 2,
+          "predicted": 1,
+          "confidence": "medium"
+        }
+      ],
+      "usage": {
+        "input": 12659,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 9423
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Salim Fellah",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": 7,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": 7,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 6,
+          "predicted": 6,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 2,
+          "suggestedThen": 3,
+          "predicted": 2,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": 0,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": 0,
+          "confidence": "high"
+        }
+      ],
+      "usage": {
+        "input": 12659,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 3226
+      }
+    },
+    {
+      "testName": "27AH [L00] P2 BiStats",
+      "studentName": "Seungjun Lee",
+      "parts": [
+        {
+          "testItemId": "3abfd7f0-ff30-4345-94e6-787f376d31ff",
+          "label": "Q1",
+          "maxMarks": 7,
+          "golden": 4,
+          "suggestedThen": 4,
+          "predicted": 4,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "d93ce3c3-0ab8-439c-bbc5-9e1f523d307b",
+          "label": "Q2",
+          "maxMarks": 7,
+          "golden": 6,
+          "suggestedThen": 7,
+          "predicted": 6,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "e88aeccf-4b5d-4db1-965f-62247319d8b5",
+          "label": "Q3",
+          "maxMarks": 6,
+          "golden": 6,
+          "suggestedThen": 5,
+          "predicted": 5,
+          "confidence": "medium"
+        },
+        {
+          "testItemId": "8ea0293f-edda-45dd-a086-76d5096f7911",
+          "label": "Q4(a)",
+          "maxMarks": 3,
+          "golden": 3,
+          "suggestedThen": 3,
+          "predicted": 3,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "168e3d74-0455-4533-b64e-fce3defb26a5",
+          "label": "Q4(b)",
+          "maxMarks": 3,
+          "golden": 0,
+          "suggestedThen": 0,
+          "predicted": 0,
+          "confidence": "high"
+        },
+        {
+          "testItemId": "a2fb8643-04ea-4d4e-8a1e-055d3f1e14d6",
+          "label": "Q4(c)",
+          "maxMarks": 7,
+          "golden": 7,
+          "suggestedThen": 7,
+          "predicted": 7,
+          "confidence": "high"
+        }
+      ],
+      "usage": {
+        "input": 12660,
+        "cacheWrite": 0,
+        "cacheRead": 24616,
+        "output": 7064
+      }
+    }
+  ]
+}

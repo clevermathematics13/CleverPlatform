@@ -111,6 +111,14 @@ export interface GradingUnit {
    * shows more than one learning target.
    */
   activity?: UnitActivity | null;
+  /**
+   * The teacher's marking notes for this part (test_items.marking_notes):
+   * rulings made while reviewing earlier scripts on this paper. Printed after
+   * the mark scheme by buildUnitBlock, so every sender that builds through it
+   * (interactive, overnight, regrade, eval) marks the way the teacher ruled.
+   * Optional so the fixtures that build units by hand need not carry it.
+   */
+  markingNotes?: string | null;
 }
 
 /** See GradingUnit.standards. The rubric object is shared by every unit of a test. */
@@ -750,13 +758,24 @@ export function validateGradeResponse(
           .join(", ")}) — flagged for teacher review`
       );
     }
-    // Hedging is a weaker signal than deliberation: the model is saying it
-    // could not read the scan cleanly, which is honest and often correct on
-    // handwriting. Worth the teacher's eye on the crop, not a reason to
-    // distrust the mark -- so it caps confidence at medium rather than
-    // forcing low, and never overrides a low set by a real defect above.
+    // Hedging is a weaker signal than deliberation, and it no longer touches
+    // confidence at all. It used to cap "high" at "medium" on the theory that
+    // "appears to" meant the model could not read the scan cleanly. Measured
+    // on 20 Sep 2026 across every complete run: the cap had fired on 116
+    // parts, and 91 of them hedged about the student's METHOD ("appears to
+    // have confused the variables", "appears to have gotten 6.5" beside an
+    // unambiguous transcription), not about reading. Of the 40 capped parts a
+    // teacher had accepted, none was later corrected -- the same record as
+    // "high" itself -- while the parts a teacher actually opened one by one
+    // were all in the model's OWN medium/low calls. A cap on ordinary examiner
+    // English was costing a look per part for nothing, and on a summative it
+    // held marks that were not in doubt out of Accept-all. The warning stays:
+    // the review panel prints it on the row, so a glance at the crop is still
+    // prompted, and scripts/confidence-calibration.ts is the standing check
+    // that hedge-worded "high" marks keep their record. If that check ever
+    // shows otherwise, reinstate a NARROW cap for hedges about the reading
+    // itself, not this blanket one.
     if (hedgingHits.size > 0) {
-      if (confidence === "high") confidence = "medium";
       warnings.push(
         `${unitLabel(unit)}: reasoning hedges on reading the student's work (${[...hedgingHits]
           .map((h) => `"${h}"`)
@@ -804,6 +823,7 @@ interface TestItemRow {
   question_text: string | null;
   markscheme_text: string | null;
   source: string;
+  marking_notes?: string | null;
 }
 
 /**
@@ -873,7 +893,7 @@ export async function assembleMarkScheme(
   const { data: itemRows, error: itemsError } = await supabase
     .from("test_items")
     .select(
-      "id, question_number, part_label, max_marks, ib_question_code, subtopic_codes, sort_order, stem_text, question_text, markscheme_text, source"
+      "id, question_number, part_label, max_marks, ib_question_code, subtopic_codes, sort_order, stem_text, question_text, markscheme_text, source, marking_notes"
     )
     .eq("test_id", testId)
     .order("sort_order", { ascending: true });
@@ -1002,6 +1022,7 @@ export async function assembleMarkScheme(
         paper: null,
         standards: standardsFor(item),
         activity: activityFor(item),
+        markingNotes: item.marking_notes?.trim() || null,
       };
     }
 
@@ -1072,6 +1093,7 @@ export async function assembleMarkScheme(
       paper: question?.paper ?? null,
       standards: standardsFor(item),
       activity: activityFor(item),
+      markingNotes: item.marking_notes?.trim() || null,
     };
   });
 
@@ -1292,6 +1314,8 @@ MARKING RULES
     "8.515 is consistent with substituting x = 7 into the accepted equation y = 0.805x + 2.88, so the implied method mark is awarded. This is consistent with the required answer 8.52 to 3 significant figures, so A1 is awarded."
 19. Treat a CONSTANT TERM separately from the COEFFICIENTS of variable terms. For a polynomial such as 3x^2 - 5x + 7, the coefficients are 3 and -5 (of x^2 and x); 7 is the constant term. Although a constant can technically be viewed as the coefficient of x^0 under a broader algebraic convention, do not apply that convention, and do not penalize a student for not applying it, unless the question or mark scheme explicitly defines coefficients to include the x^0 term. When a question asks for "the coefficients and the constant term" (or similar wording that names both), expect and accept the constant to be given separately from the list of coefficients — a student who separates them has followed the standard convention the question itself uses, not made an error.
 
+20. A part may carry TEACHER'S MARKING NOTES after its mark scheme: rulings the teacher made while reviewing earlier scripts on this same paper (which of two readings of the scheme applies, what a partial answer is worth, an alternative the scheme did not list). Apply them as the authority for that part, above the scheme's own wording where the two conflict. A judgement call the notes settle is settled: mark it as the notes say and do not lower your confidence for it.
+
 WORKING ORDER — follow these steps in sequence for each part, because the later
 fields in OUTPUT below are DERIVED from the earlier ones, not independent
 judgement calls made in parallel:
@@ -1375,6 +1399,7 @@ judgement calls made in parallel:
    - "medium": legible but needs a judgement call (alternative method, partial working, follow-through).
    - "low": illegible, ambiguous, hard to locate, or a genuinely borderline award.
    Anything marked "low" is flagged for the teacher to mark by hand. Be honest — an over-confident wrong mark is far more damaging than a flagged uncertain one.
+   (A rewrite of this step that defined the labels by the certainty of the MARK -- "a clearly wrong answer is still high", "medium means another examiner could award a different number" -- was measured on 20 Sep 2026 and not shipped: it moved eleven more parts to "high" and the misses at "high" went from 2 of 54 to 5 of 62. See docs/HANDOFF.md section 23 before trying again.)
 
 OUTPUT
 Return ONLY a JSON object. No preamble, no markdown fences, no commentary.
@@ -1672,7 +1697,7 @@ ${G9_FORMATIVE_ASSESSMENT_MARKING_PRINCIPLES}`;
  * first hits a cache read instead of re-sending the whole mark scheme.
  */
 /** Build one unit's mark-scheme block: question/context text shared by the batch and single-item prompts. */
-function buildUnitBlock(u: GradingUnit): string {
+export function buildUnitBlock(u: GradingUnit): string {
   const lines = [
     `=== ${unitLabel(u)} ===`,
     `testItemId: ${u.testItemId}`,
@@ -1703,6 +1728,13 @@ function buildUnitBlock(u: GradingUnit): string {
   }
   if (u.questionLatex) lines.push(`\n--- Question ---\n${u.questionLatex}`);
   lines.push(`\n--- Mark scheme (the authority) ---\n${u.markscheme}`);
+  // The teacher's rulings for this part, after the scheme they refine. See
+  // GradingUnit.markingNotes and rule 20 of the system prompt.
+  if (u.markingNotes?.trim()) {
+    lines.push(
+      `\n--- Teacher's marking notes for this part (rulings made while reviewing earlier scripts on this paper; where they and the mark scheme above conflict, the notes win) ---\n${u.markingNotes.trim()}`
+    );
+  }
   return lines.join("\n");
 }
 

@@ -29,7 +29,7 @@ export async function GET(
       id, name, short_name, test_date, exam_time, release_at, total_marks, course_id, hidden, hidden_from_gradebook, custom_content, require_self_assessment,
       boundary_set_id, paper_url, mark_scheme_url, assessment_kind, standards_rubric,
       courses!tests_course_id_fkey(name),
-      test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order, stem_text, question_text)
+      test_items(id, question_number, part_label, max_marks, subtopic_codes, sort_order, stem_text, question_text, marking_notes)
     `)
     .eq("id", id)
     .single();

@@ -44,6 +44,22 @@ export interface ReportRoster {
   classCount: number;
 }
 
+export interface LoadReportRosterOptions {
+  /**
+   * Also return anyone who has ACCEPTED MARKS on this test but is on no
+   * roster the test's course reaches -- a student from a class that sat the
+   * paper without being a member of its track.
+   *
+   * Off by default, because the standards and activity reports are about a
+   * class and a blank row for a stranger would be noise. The general
+   * Standard Level view turns it on, where the opposite is true: a paper
+   * that has been marked and then silently left out of the class averages is
+   * the one failure that view exists to prevent. Costs two small queries,
+   * and only when such a student exists.
+   */
+  includeMarkedOutsideRoster?: boolean;
+}
+
 export type ReportRosterLoad =
   | { ok: true; data: ReportRoster }
   | { ok: false; status: 500; error: string };
@@ -55,9 +71,14 @@ function lastName(n: string): string {
 
 export async function loadReportRoster(
   supabase: SupabaseClient,
-  args: { testId: string; courseId: string | null; itemIds: string[]; showHidden: boolean }
+  args: {
+    testId: string;
+    courseId: string | null;
+    itemIds: string[];
+    showHidden: boolean;
+  } & LoadReportRosterOptions
 ): Promise<ReportRosterLoad> {
-  const { testId, courseId, itemIds, showHidden } = args;
+  const { testId, courseId, itemIds, showHidden, includeMarkedOutsideRoster = false } = args;
 
   // ---- Roster -------------------------------------------------------------
   let sourceCourseIds: string[] = [];
@@ -138,6 +159,76 @@ export async function loadReportRoster(
   for (const a of absences ?? []) {
     const subjectId = a.profile_id ?? (a.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${a.invited_student_id}` : null);
     if (subjectId) absent.add(subjectId);
+  }
+
+  // ---- Students with marks who are on no roster this test reaches ---------
+  // Their class is whatever class they really belong to, so the general view
+  // groups and averages them under it rather than under the test's own.
+  if (includeMarkedOutsideRoster && marksBySubject.size > 0) {
+    const known = new Set(students.map((s) => s.subjectId));
+    const strangers = [...marksBySubject.keys()].filter((id) => !known.has(id));
+    const profileIds = strangers.filter((id) => !id.startsWith(INVITED_SUBJECT_PREFIX));
+    const invitedIds = strangers
+      .filter((id) => id.startsWith(INVITED_SUBJECT_PREFIX))
+      .map((id) => id.slice(INVITED_SUBJECT_PREFIX.length));
+
+    const extraCourseIds = new Set<string>();
+    const extras: { subjectId: string; name: string; courseId: string }[] = [];
+
+    if (profileIds.length > 0) {
+      const { data: rows } = await supabase
+        .from("students")
+        .select("profile_id, course_id, profiles:profile_id(display_name)")
+        .in("profile_id", profileIds);
+      const byProfile = new Map<string, { name: string; courseId: string }>();
+      for (const r of rows ?? []) {
+        const pid = r.profile_id as string | null;
+        if (!pid || byProfile.has(pid)) continue;
+        const prof = r.profiles as unknown;
+        const displayName =
+          prof && typeof prof === "object" && !Array.isArray(prof)
+            ? (prof as { display_name: string | null }).display_name
+            : Array.isArray(prof) && prof.length > 0
+              ? (prof[0] as { display_name: string | null }).display_name
+              : null;
+        byProfile.set(pid, { name: displayName ?? "Unknown", courseId: r.course_id as string });
+      }
+      for (const pid of profileIds) {
+        const hit = byProfile.get(pid);
+        // No students row at all: keep them rather than drop the marks, under
+        // a null class, which the view prints as "Other".
+        extras.push({ subjectId: pid, name: hit?.name ?? "Unknown", courseId: hit?.courseId ?? "" });
+        if (hit?.courseId) extraCourseIds.add(hit.courseId);
+      }
+    }
+
+    if (invitedIds.length > 0) {
+      const { data: rows } = await supabase
+        .from("invited_students")
+        .select("id, full_name, course_id")
+        .in("id", invitedIds);
+      for (const r of rows ?? []) {
+        const cid = (r.course_id as string | null) ?? "";
+        extras.push({
+          subjectId: `${INVITED_SUBJECT_PREFIX}${r.id as string}`,
+          name: (r.full_name as string) ?? "Unknown",
+          courseId: cid,
+        });
+        if (cid) extraCourseIds.add(cid);
+      }
+    }
+
+    const unnamed = [...extraCourseIds].filter((id) => !(id in courseNames));
+    if (unnamed.length > 0) {
+      const { data: rows } = await supabase.from("courses").select("id, name").in("id", unnamed);
+      for (const c of rows ?? []) courseNames[c.id as string] = (c.name as string) ?? "";
+    }
+
+    // The test's own classes stay first; a stranger's class sorts after them.
+    for (const e of extras) {
+      students.push(e);
+      if (e.courseId && !sourceCourseIds.includes(e.courseId)) sourceCourseIds.push(e.courseId);
+    }
   }
 
   const classIndex = new Map(sourceCourseIds.map((id, i) => [id, i]));

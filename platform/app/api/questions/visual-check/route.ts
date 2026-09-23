@@ -14,6 +14,7 @@ import {
   RENDER_WIDTH_PX,
   type Discrepancy,
 } from "@/lib/latex-visual-check";
+import { recordUsage } from "@/lib/ai-usage";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -288,6 +289,7 @@ export async function POST(request: NextRequest) {
       system: LATEX_VISUAL_CHECK_SYSTEM,
       messages: [{ role: "user", content: compareContent }],
     });
+    await recordUsage(supabase, { pipeline: "visual_check", model: compareResponse.model, usage: compareResponse.usage });
     compareStopReason = compareResponse.stop_reason;
     compareRawText = textOf(compareResponse);
     comparison = parseComparisonResponse(compareRawText);
@@ -349,6 +351,7 @@ export async function POST(request: NextRequest) {
           },
         ],
       });
+      await recordUsage(supabase, { pipeline: "visual_check", model: correctionResponse.model, usage: correctionResponse.usage });
       const corrected = cleanCorrectedLatex(textOf(correctionResponse));
       if (corrected && corrected !== originalLatex) proposedLatex = corrected;
     } catch {

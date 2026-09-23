@@ -16,6 +16,7 @@ interface ClassData {
     id: string;
     question_number: number;
     part_label: string;
+    paper_label: string | null;
     max_marks: number;
     subtopic_codes: string[];
     subtopic_labels: string[];
@@ -58,7 +59,7 @@ function earnedTotal(row: StudentReflectionRow): number {
 
 /** Student-rows × question-part-columns matrix of teacher marks, as a 2D array. */
 function buildMarksMatrix(data: ClassData, rows: StudentReflectionRow[]): string[][] {
-  const header = ["Student", ...data.items.map((it) => `Q${it.question_number}${it.part_label}`), "Total"];
+  const header = ["Student", ...data.items.map((it) => `${it.paper_label ?? `Q${it.question_number}`}${it.part_label}`), "Total"];
   const body = rows.map((row) => {
     const cells = data.items.map((item) => {
       const cell = row.items.find((c) => c.test_item_id === item.id);
@@ -377,7 +378,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
                 </th>
                 {data.items.map((item) => (
                   <th key={item.id} className="px-3 py-2 text-center font-bold text-da-amber whitespace-nowrap">
-                    Q{item.question_number}{item.part_label}
+                    {item.paper_label ?? `Q${item.question_number}`}{item.part_label}
                     <span className="block text-xs font-normal text-da-muted">/{item.max_marks}</span>
                     {item.subtopic_labels.length > 0 && (
                       <span className="block text-[10px] font-normal text-da-muted">[{item.subtopic_labels.join(", ")}]</span>
@@ -612,6 +613,7 @@ export function TeacherDashboard({ tests }: TeacherDashboardProps) {
             test_item_id: item.id,
             question_number: item.question_number,
             part_label: item.part_label,
+            paper_label: item.paper_label,
             max_marks: item.max_marks,
             subtopic_codes: item.subtopic_codes ?? [],
             subtopic_labels: item.subtopic_labels ?? [],

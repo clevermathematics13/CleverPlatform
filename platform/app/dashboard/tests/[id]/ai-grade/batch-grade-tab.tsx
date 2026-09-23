@@ -348,7 +348,12 @@ export function BatchGradeTab({
    * one student at a time. Half price on every token, and nothing depends on
    * this tab staying open -- see the queue route and the collect pass.
    */
-  const [overnight, setOvernight] = useState(false);
+  // On by default since 20 Sep 2026: a class marked here at full price with
+  // the tab open was the single largest line of the bill (51%), and the
+  // overnight request is byte-identical to the immediate one -- same marks,
+  // half the price, results usually within the hour. Unticking it is the
+  // "mark now" option.
+  const [overnight, setOvernight] = useState(true);
   const [panelStatus, setPanelStatus] = useState<Record<string, PanelStatus>>({});
   const [gradingAll, setGradingAll] = useState(false);
   const [allStatusLine, setAllStatusLine] = useState<string | null>(null);

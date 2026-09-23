@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { rasterRefineHorizontalSegmentsFromBase64, rasterSnapVerticesFromBase64 } from "@/lib/graph-raster-snap";
+import { recordUsage } from "@/lib/ai-usage";
 
 export const maxDuration = 180;
 
@@ -702,6 +703,7 @@ Be thorough: include all curves, asymptotes, intercepts, labeled points, guide l
       },
     ],
   });
+  await recordUsage(supabase, { pipeline: "graph_extract", model: pass1Response.model, usage: pass1Response.usage });
 
   const pass1Block = pass1Response.content[0];
   const pass1Text = pass1Block.type === "text" ? (pass1Block as unknown as { text: string }).text : "";
@@ -755,6 +757,7 @@ and list any warnings about discrepancies.`,
           },
         ],
       });
+      await recordUsage(supabase, { pipeline: "graph_extract", model: pass2Response.model, usage: pass2Response.usage });
 
       const pass2Block = pass2Response.content[0];
       const pass2Text = pass2Block.type === "text" ? (pass2Block as unknown as { text: string }).text : "";
@@ -803,6 +806,7 @@ and list any warnings about discrepancies.`,
         },
       ],
     });
+    await recordUsage(supabase, { pipeline: "graph_extract", model: auditResponse.model, usage: auditResponse.usage });
 
     const auditBlock = auditResponse.content[0];
     const auditRaw = auditBlock.type === "text" ? (auditBlock as unknown as { text: string }).text : "";
@@ -976,6 +980,7 @@ Return ONLY JSON in the verify format (graphSpec, graphMeta, warnings).`,
           },
         ],
       });
+      await recordUsage(supabase, { pipeline: "graph_extract", model: repairResponse.model, usage: repairResponse.usage });
 
       const repairBlock = repairResponse.content[0];
       const repairText = repairBlock.type === "text" ? (repairBlock as unknown as { text: string }).text : "";

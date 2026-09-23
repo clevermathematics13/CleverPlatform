@@ -50,12 +50,17 @@ function identityFor(r: RunRow): Identity {
 
 /**
  * POST /api/tests/[id]/ai-grade/accept-all
+ * Body (optional): { studentIds?: string[] }
  *
  * Accepts every not-yet-accepted suggested mark, for every question, for
  * every student's most recent COMPLETE run on this assessment -- one click
  * instead of opening each student's review individually. Applies the exact
  * same student_marks / mark_changes writes as POST .../accept, just batched
  * across the whole class rather than one run's selections at a time.
+ *
+ * With `studentIds`, only those students' runs are covered -- the review
+ * page uses this to offer "accept" per roster class (a Grade 9 test pools
+ * every class in its track) rather than only for the whole test.
  *
  * On a SUMMATIVE this does not cover everything. Only the suggestions Clev
  * was fully confident about are written; the rest stay unaccepted and wait for
@@ -70,7 +75,7 @@ function identityFor(r: RunRow): Identity {
  * the two groups are upserted separately.
  */
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const auth = await getApiTeacher();
@@ -78,6 +83,21 @@ export async function POST(
   const { supabase, user } = auth;
 
   const { id: testId } = await params;
+
+  // Optional { studentIds: string[] }, each the opaque subject id
+  // formatGradingSubject produces (a bare profiles.id, or
+  // "invited-<invited_students.id>") -- scopes the batch to one class
+  // instead of the whole test. No body, or a body with no studentIds, covers
+  // every student, unchanged from before this parameter existed.
+  let studentIds: string[] | null = null;
+  try {
+    const body = await request.json();
+    if (Array.isArray(body?.studentIds)) {
+      studentIds = body.studentIds.filter((s: unknown): s is string => typeof s === "string" && s.length > 0);
+    }
+  } catch {
+    // No body (or invalid JSON) -- treat as "every student", same as before.
+  }
 
   // Read before the runs: what this batch is allowed to cover depends on it,
   // and a test that cannot be read is not one to start writing marks against.
@@ -107,7 +127,10 @@ export async function POST(
     if (!latestBySubject.has(key)) latestBySubject.set(key, r);
   }
 
-  const runs = [...latestBySubject.values()];
+  const wanted = studentIds ? new Set(studentIds) : null;
+  const runs = [...latestBySubject.entries()]
+    .filter(([key]) => !wanted || wanted.has(key))
+    .map(([, r]) => r);
   if (runs.length === 0) {
     return NextResponse.json(
       { error: "No completed runs to accept.", appliedCount: 0, studentsProcessed: 0 },

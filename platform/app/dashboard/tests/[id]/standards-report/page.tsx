@@ -97,6 +97,12 @@ export default async function StandardsReportPage({
             Download CSV
           </a>
           <a
+            href={`/dashboard/tests/${test.id}/standards-stats`}
+            className="rounded border border-teal-400/40 bg-teal-500/15 px-3 py-1.5 text-xs text-teal-300 hover:bg-teal-500/25"
+          >
+            Teacher stats →
+          </a>
+          <a
             href={`/dashboard/tests/${test.id}/ai-grade`}
             className="rounded border border-purple-400/40 bg-purple-500/15 px-3 py-1.5 text-xs text-purple-300 hover:bg-purple-500/25"
           >

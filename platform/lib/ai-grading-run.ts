@@ -120,24 +120,46 @@ function cacheControl(ttl: GradingCacheTtl): Anthropic.CacheControlEphemeral {
  * (messages.batches.create takes the same params under a custom_id), which is
  * what keeps the two senders from marking the same scan differently.
  */
+/**
+ * The effort a marking call runs at, on a model that takes one. The current
+ * grader (Opus 4.5) takes none and runs at temperature 0; Opus 5 and Sonnet 5
+ * reject sampling parameters and think adaptively instead, so a request to
+ * one of them must carry effort and no temperature. Kept as a type so the
+ * eval sweep and a future production switch spell it the same way.
+ */
+export type GradingEffort = "low" | "medium" | "high";
+
+/** Models whose requests take `output_config.effort` in place of `temperature`. */
+export function modelTakesEffort(model: string): boolean {
+  return /^claude-(opus-5|sonnet-5|fable-5|opus-4-[678]|sonnet-4-6)/.test(model);
+}
+
 export function buildGradingRequest(args: {
   gradeable: GradingUnit[];
   testName: string;
   studentDisplayName?: string;
   scanBase64: string;
   cacheTtl: GradingCacheTtl;
+  /** Defaults to GRADING_MODEL; the eval sweep passes candidates here. */
+  model?: string;
+  /** Only sent on a model that takes effort (see modelTakesEffort); defaults to the model's own default. */
+  effort?: GradingEffort;
 }): Anthropic.MessageCreateParamsNonStreaming {
   const { gradeable, testName, studentDisplayName, scanBase64, cacheTtl } = args;
+  const model = args.model ?? GRADING_MODEL;
+  const takesEffort = modelTakesEffort(model);
 
   return {
-    model: GRADING_MODEL,
+    model,
     max_tokens: 16384,
     // Marking should be as repeatable as the model allows. At the default
     // temperature (1.0) the same scan re-marked minutes apart moved by 1-3
     // marks on several parts (BiStats, 2 Sep 2026: Q1 5 -> 2 for one
     // student at "high" confidence). 0 does not make it deterministic, but
     // it removes the sampling noise that has nothing to do with the work.
-    temperature: 0,
+    // A model that takes effort rejects the parameter outright (400), so it
+    // is only sent where it is accepted.
+    ...(takesEffort ? {} : { temperature: 0 }),
     // Identical for every student sitting this same test (it only varies by
     // which policies this test's questions require, not by student), so
     // it's still worth caching on a batch upload even though it's no
@@ -175,7 +197,10 @@ export function buildGradingRequest(args: {
     // the JSON itself well-formed, which removes the failure that killed a
     // whole student's grading on 2 Sep 2026 -- a single stray character at
     // position 8267 of an otherwise fine response.
-    output_config: { format: zodOutputFormat(AiGradeResponseSchema) },
+    output_config: {
+      format: zodOutputFormat(AiGradeResponseSchema),
+      ...(takesEffort && args.effort ? { effort: args.effort } : {}),
+    },
   };
 }
 
@@ -467,9 +492,20 @@ export async function persistGradeOutcome(args: {
   runId: string;
   scanBase64: string;
   units: GradingUnit[];
+  /** The subset of `units` with a mark scheme -- what a partial re-mark carries the rest of the paper from. */
+  gradeable: GradingUnit[];
   assemblyWarnings: string[];
   grades: ValidatedGrade[];
   warnings: string[];
+  /**
+   * Set when the run was asked to mark only these parts
+   * (ai_grade_runs.requested_test_item_ids). Every other gradeable part's row
+   * is copied from the student's previous complete run -- mark, reasoning,
+   * crop and acceptance alike -- so the new run is still a whole paper. A
+   * student with no previous complete run gets only the requested parts,
+   * and a warning says so.
+   */
+  requestedTestItemIds?: Set<string> | null;
 }): Promise<
   | { ok: true; coverage: GradeCoverage; completionRecorded: boolean }
   | { ok: false; error: string }
@@ -482,10 +518,12 @@ export async function persistGradeOutcome(args: {
     runId,
     scanBase64,
     units,
+    gradeable,
     assemblyWarnings,
     grades,
     warnings,
   } = args;
+  const requested = args.requestedTestItemIds ?? null;
 
   // -- Evidence crops (best-effort; never blocks or fails the run) -----------
   const crops = await fetchEvidenceCrops(supabase, testId, scanBase64, grades);
@@ -507,6 +545,8 @@ export async function persistGradeOutcome(args: {
   // parts whose suggestion moved need a fresh look. Scoped to the most recent
   // COMPLETE run before this one, so a failed attempt in between is ignored.
   const priorAccepted = new Map<string, { suggested_marks: number; accepted_at: string | null; accepted_by: string | null }>();
+  /** The previous complete run's full rows, needed only for a partial re-mark (see requestedTestItemIds). */
+  const priorFullRows: Record<string, unknown>[] = [];
   {
     let priorCompleteQuery = supabase
       .from("ai_grade_runs")
@@ -528,6 +568,15 @@ export async function persistGradeOutcome(args: {
         .eq("run_id", priorRun.id)
         .eq("accepted", true);
       for (const p of priorRows ?? []) priorAccepted.set(p.test_item_id, p);
+      if (requested) {
+        const { data: fullRows } = await supabase
+          .from("ai_grade_results")
+          .select(
+            "test_item_id, suggested_marks, max_marks, confidence, markscheme_source, work_found, reasoning, evidence, evidence_image_path, evidence_box, evidence_box_source, mark_breakdown, accepted, accepted_at, accepted_by"
+          )
+          .eq("run_id", priorRun.id);
+        for (const r of fullRows ?? []) priorFullRows.push(r as Record<string, unknown>);
+      }
     }
   }
 
@@ -564,21 +613,52 @@ export async function persistGradeOutcome(args: {
     };
   });
 
-  const { error: insertErr } = await supabase.from("ai_grade_results").insert(rows);
+  // -- A partial re-mark carries the rest of the paper forward ----------------
+  // The requested parts were just marked; every other gradeable part keeps
+  // the previous run's row verbatim, acceptance included, under the new run
+  // id. The crop path still points at the previous run's file, which stays
+  // in Storage. A part the previous run never marked is simply absent, the
+  // same as a part the model returned nothing for.
+  let carriedRows: typeof rows = [];
+  let carriedSuggested = 0;
+  const carriedNeedsReview: string[] = [];
+  if (requested) {
+    const marked = new Set(rows.map((r) => r.test_item_id));
+    const unitById = new Map(gradeable.map((u) => [u.testItemId, u]));
+    for (const prior of priorFullRows) {
+      const itemId = prior.test_item_id as string;
+      if (marked.has(itemId) || requested.has(itemId)) continue;
+      const unit = unitById.get(itemId);
+      if (!unit) continue;
+      const { test_item_id: _drop, ...rest } = prior;
+      void _drop;
+      carriedRows.push({ ...(rest as Omit<(typeof rows)[number], "run_id" | "test_item_id">), run_id: runId, test_item_id: itemId } as (typeof rows)[number]);
+      carriedSuggested += prior.suggested_marks as number;
+      if ((prior.confidence as string) !== "high" || prior.work_found === false) carriedNeedsReview.push(unitLabel(unit));
+    }
+    if (priorFullRows.length === 0) {
+      warnings.push(
+        "This run marked only the requested part(s) and found no previous complete run to carry the rest of the paper from; the other parts are not shown until the student is marked in full."
+      );
+    }
+  }
+  const allRows = [...rows, ...carriedRows];
+
+  const { error: insertErr } = await supabase.from("ai_grade_results").insert(allRows);
   if (insertErr) return { ok: false, error: `Could not save results: ${insertErr.message}` };
 
-  const suggestedTotal = grades.reduce((s, g) => s + g.clampedMarks, 0);
+  const suggestedTotal = grades.reduce((s, g) => s + g.clampedMarks, 0) + carriedSuggested;
   // maxTotal covers only parts that had a mark scheme to grade against;
   // testTotalMarks is the assessment's real total, so the UI can show
   // "17/20 of 33" instead of a misleading "17/20" when parts are missing
   // a mark scheme.
   const { partsInAssessment, partsWithoutMarkscheme, maxTotal, testTotalMarks } =
     summarizeCoverage(units);
-  const needsReview = grades.filter(gradeNeedsReview).map((g) => unitLabel(g.unit));
+  const needsReview = [...grades.filter(gradeNeedsReview).map((g) => unitLabel(g.unit)), ...carriedNeedsReview];
 
   const coverage: GradeCoverage = {
     partsInAssessment,
-    partsGraded: grades.length,
+    partsGraded: grades.length + carriedRows.length,
     partsWithoutMarkscheme,
     suggestedTotal,
     maxTotal,

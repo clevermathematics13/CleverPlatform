@@ -12,12 +12,17 @@ import {
   sortReviewRows,
   partitionByConfidence,
   shouldPreselect,
+  partWarningLabel,
+  warningsForPart,
+  capCauseForPart,
+  CAP_CAUSE_SHORT,
 } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
+import { paperQuestionPrefixes } from "@/lib/assignments";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
 import { StandardsReportTable } from "@/components/StandardsReportTable";
 
-type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "none";
+type MarkschemeSource = "part_latex" | "part_text" | "whole_question" | "draft" | "custom" | "none";
 type Confidence = "high" | "medium" | "low";
 /** "submitted" is an overnight run: with Anthropic's batch API, no result written yet. */
 type RunStatus = "submitted" | "running" | "complete" | "failed";
@@ -27,6 +32,16 @@ interface TestItem {
   question_number: number;
   part_label: string | null;
   max_marks: number;
+  /**
+   * Insertion order within the test (test_items.sort_order) -- the join key
+   * back to tests.custom_content.sections for a Formative-Assessment-sourced
+   * test, since buildTestItemsFromSections (lib/formative-assessment-bridge.ts)
+   * assigns both in the same single walk of section -> question -> subpart.
+   * Used to print the part the way the paper itself numbers it ("2.3(b)")
+   * instead of the flat, section-blind question_number ("Q5(b)") that
+   * numbering collapses into -- see paperQuestionPrefixes below.
+   */
+  sort_order: number;
   /**
    * The question as the teacher authored it (test_items.question_text), for a
    * test built in the Formative Assessment creator -- null on a test whose
@@ -44,6 +59,12 @@ interface TestItem {
    * why composeQuestionText gives it to the grader too.
    */
   stem_text: string | null;
+  /**
+   * The teacher's marking notes for this part (test_items.marking_notes):
+   * rulings the marker reads after the mark scheme on every later mark of
+   * this paper. Null when there are none. Edited from the Why? panel.
+   */
+  marking_notes?: string | null;
 }
 
 interface TestDetail {
@@ -57,6 +78,13 @@ interface TestDetail {
    * shows the student's strand levels alongside the marks being edited.
    */
   standards_rubric?: unknown;
+  /**
+   * The full authored draft for a Formative-Assessment-creator test
+   * (tests.custom_content) -- the same sections/questions/subparts structure
+   * the printed paper is rendered from. Null for an IB-bank/external test,
+   * whose question_number already is the paper's own number.
+   */
+  custom_content?: unknown;
 }
 
 interface StudentOption {
@@ -182,6 +210,14 @@ interface ResultRow {
   accepted: boolean;
   accepted_at: string | null;
   accepted_by: string | null;
+  /**
+   * What is actually in Clev's Marks (student_marks.marks_awarded) for this
+   * part right now, or null if nothing has been written yet. `suggested_marks`
+   * never changes once the model has spoken -- it is the audit trail's record
+   * of what the model said, and the "was N" comparison between runs depends on
+   * that staying put -- so an accepted row's true value lives here instead.
+   */
+  marks_awarded: number | null;
 }
 
 const SOURCE_LABEL: Record<MarkschemeSource, string> = {
@@ -189,6 +225,10 @@ const SOURCE_LABEL: Record<MarkschemeSource, string> = {
   part_text: "Part mark scheme (plain text)",
   whole_question: "Whole-question fallback",
   draft: "Draft mark scheme",
+  // A Formative Assessment, Standard Level or activity part: the scheme the
+  // teacher wrote on the item itself. It rendered as a blank cell until this
+  // entry existed, on every Grade 9 row.
+  custom: "Teacher's mark scheme",
   none: "No mark scheme",
 };
 
@@ -214,11 +254,10 @@ const COLLECT_POLL_MS = 30_000;
  */
 const MAX_COLLECT_PASSES = 40;
 
-function itemLabel(item: TestItem | undefined): string {
+function itemLabel(item: TestItem | undefined, paperPrefixes: Map<number, string>): string {
   if (!item) return "—";
-  return item.part_label
-    ? `Q${item.question_number}(${item.part_label})`
-    : `Q${item.question_number}`;
+  const prefix = paperPrefixes.get(item.sort_order) ?? `Q${item.question_number}`;
+  return item.part_label ? `${prefix}(${item.part_label})` : prefix;
 }
 
 /** Mirrors lib/ai-grading.ts's MarkSchemeCoverage -- only the fields this page renders. */
@@ -277,6 +316,20 @@ export function AiGradeClient({
   const [resultsStudent, setResultsStudent] = useState<string | null>(null);
   const [focusRunId, setFocusRunId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, number>>({}); // keyed by result.id
+  /** A reason typed beside an overridden mark, sent with the accept as its audit note. Keyed by result.id. */
+  const [overrideNotes, setOverrideNotes] = useState<Record<string, string>>({});
+  /** Marking-note text being edited per test item, present only while the editor is open. */
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [savingNoteFor, setSavingNoteFor] = useState<string | null>(null);
+  /** Test item whose class-wide one-part re-mark is being queued. */
+  const [remarkingPartFor, setRemarkingPartFor] = useState<string | null>(null);
+  /** Feedback to the grader being typed per test item. */
+  const [feedbackDrafts, setFeedbackDrafts] = useState<Record<string, string>>({});
+  const [draftingFor, setDraftingFor] = useState<string | null>(null);
+  /** The last proposal the drafting model returned per item, shown until the note is saved or dismissed. */
+  const [proposals, setProposals] = useState<
+    Record<string, { feedbackId: string; summary: string; caseMarks: number | null; cannotApply: string | null }>
+  >({});
   const [selected, setSelected] = useState<Set<string>>(new Set()); // result ids
   const [expanded, setExpanded] = useState<string | null>(null);
   /**
@@ -351,6 +404,10 @@ export function AiGradeClient({
   const [accepting, setAccepting] = useState(false);
   const [acceptingRowId, setAcceptingRowId] = useState<string | null>(null);
   const [acceptingAll, setAcceptingAll] = useState(false);
+  /** Class name currently running its own "accept" batch, or null. */
+  const [acceptingClass, setAcceptingClass] = useState<string | null>(null);
+  /** Class names collapsed in the roster -- toggled by clicking the class heading. */
+  const [collapsedClasses, setCollapsedClasses] = useState<Set<string>>(new Set());
 
   /** How many of a run's results are accepted, keyed by run id — drives the roster's status dot. */
   const [acceptanceByRun, setAcceptanceByRun] = useState<Record<string, { accepted: number; total: number }>>(
@@ -368,6 +425,7 @@ export function AiGradeClient({
   const reviewRequestSeq = useRef(0);
 
   const itemById = new Map((test?.test_items ?? []).map((i) => [i.id, i]));
+  const paperPrefixes = paperQuestionPrefixes(test?.custom_content);
 
   // A Standard Level paper's rubric, parsed once per test load. An
   // unreadable one is treated as none here: the test detail page is where
@@ -378,6 +436,17 @@ export function AiGradeClient({
     return parsed.ok ? parsed.rubric : null;
   }, [test?.standards_rubric]);
   const classCount = new Set(students.map((s) => s.class_name ?? "")).size;
+  /** Classes with at least one gradeable run -- the per-class accept button is pointless without one. */
+  const classesWithRuns = new Set(
+    students.filter((s) => runsByStudent[s.profile_id]).map((s) => s.class_name ?? "Other")
+  );
+  const toggleClassCollapsed = (className: string) =>
+    setCollapsedClasses((prev) => {
+      const next = new Set(prev);
+      if (next.has(className)) next.delete(className);
+      else next.add(className);
+      return next;
+    });
 
   // -- Absence: a student who did not sit the test ------------------------------
   // Recorded in test_absences so the roster here and the gradebook show
@@ -682,7 +751,20 @@ export function AiGradeClient({
         setFocusRunId(latestRun?.id ?? null);
         setResults(rowsForLatest);
         setResultsStudent(studentId);
-        setDrafts(Object.fromEntries(rowsForLatest.map((r) => [r.id, r.suggested_marks])));
+        // An accepted row's draft starts from what is actually in Clev's
+        // Marks, not the model's original suggestion -- suggested_marks
+        // never moves once the model has spoken, so seeding the draft from
+        // it here reset every accepted override back to the AI's first call
+        // on the next load (e.g. right after accepting it). See marks_awarded
+        // on ResultRow.
+        setDrafts(
+          Object.fromEntries(
+            rowsForLatest.map((r) => [
+              r.id,
+              r.accepted && r.marks_awarded !== null ? r.marks_awarded : r.suggested_marks,
+            ])
+          )
+        );
         setSelected(new Set(rowsForLatest.filter(shouldPreselect).map((r) => r.id)));
         if (latestRun) {
           setRunsByStudent((prev) => ({ ...prev, [studentId]: latestRun }));
@@ -721,6 +803,54 @@ export function AiGradeClient({
   };
 
   // -- Run grading (fresh upload or re-use stored scan) --
+  // -- Re-mark a stored scan overnight: the same request as runGrading sends,
+  // through the Message Batches API at half price, collected by this page
+  // when the result lands (usually within the hour). The default for a
+  // re-mark since 20 Sep 2026, because nobody waits on one: half of all
+  // marking runs were re-marks, at full price, with a tab open. -------------
+  const queueRemark = async (studentId: string) => {
+    const currentRun = runsByStudent[studentId];
+    const storagePath = currentRun?.source_storage_path ?? newerAttemptByStudent[studentId]?.source_storage_path;
+    if (!storagePath) {
+      setError("No stored scan to re-mark for this student.");
+      return;
+    }
+    const acceptedCount = currentRun ? acceptanceByRun[currentRun.id]?.accepted ?? 0 : 0;
+    if (acceptedCount > 0) {
+      const ok = window.confirm(
+        `${acceptedCount} part(s) for this student are already accepted into Clev's Marks.\n\n` +
+          "Re-marking runs the model again. Parts whose new suggestion matches the current one stay accepted; " +
+          "any part whose suggestion changes will need to be reviewed and accepted again. Clev's Marks themselves are not changed.\n\n" +
+          "Continue?"
+      );
+      if (!ok) return;
+    }
+    setBusyStudent(studentId);
+    setError(null);
+    setStatusLine("Sending the stored scan to Anthropic for overnight marking…");
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/queue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ students: [{ studentId, storagePath }] }),
+      });
+      if (!ok) {
+        setStatusLine(null);
+        setError((data.error as string) ?? "Could not send this scan for overnight marking.");
+        return;
+      }
+      setStatusLine(
+        "Sent for overnight marking at half price. The result appears here when it arrives, usually within the hour; this page checks every 30 seconds. Use 'Mark now' if you need it this minute."
+      );
+      await loadOverview();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not send this scan for overnight marking.");
+      setStatusLine(null);
+    } finally {
+      setBusyStudent(null);
+    }
+  };
+
   const runGrading = async (studentId: string, file: File | null) => {
     // A new run replaces the reviewable one. Parts whose new suggestion
     // matches the current one keep their accepted status (the server carries
@@ -810,6 +940,146 @@ export function AiGradeClient({
   };
 
   // -- Accept selected results into Clev's Marks --
+  // -- A marking note on a part: the teacher's ruling, read by the marker on
+  // every later mark of this paper. Saved on the test item, not the result,
+  // because it is about the part, not this one student. --------------------
+  const saveMarkingNote = async (itemId: string) => {
+    const notes = noteDrafts[itemId] ?? "";
+    setSavingNoteFor(itemId);
+    setError(null);
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/items/${itemId}/marking-notes`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notes: notes.trim() === "" ? null : notes,
+          feedbackId: proposals[itemId]?.feedbackId,
+        }),
+      });
+      if (!ok) {
+        setError((data.error as string) ?? "Could not save the marking note.");
+        return;
+      }
+      setProposals((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      const saved = (data.marking_notes as string | null) ?? null;
+      setTest((prev) =>
+        prev
+          ? { ...prev, test_items: prev.test_items.map((it) => (it.id === itemId ? { ...it, marking_notes: saved } : it)) }
+          : prev
+      );
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[itemId];
+        return next;
+      });
+      setStatusLine(
+        saved
+          ? "Marking note saved. Clev reads it on every mark of this paper started from now on -- re-mark a student to apply it."
+          : "Marking note removed."
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save the marking note.");
+    } finally {
+      setSavingNoteFor(null);
+    }
+  };
+
+  // -- Feedback to the grader, in the teacher's own words, turned into a
+  // draft ruling by a model (lib/grader-feedback.ts). The draft lands in the
+  // note editor for the teacher to read and save; nothing is written to what
+  // the marker reads until they do. --------------------------------------
+  const draftFromFeedback = async (itemId: string, resultId: string | null) => {
+    const feedback = (feedbackDrafts[itemId] ?? "").trim();
+    if (!feedback) return;
+    setDraftingFor(itemId);
+    setError(null);
+    try {
+      const { ok, data } = await fetchJson(`/api/tests/${testId}/items/${itemId}/grader-feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ feedback, resultId }),
+      });
+      if (!ok) {
+        setError((data.error as string) ?? "Could not draft a ruling from that feedback.");
+        return;
+      }
+      const proposal = data.proposal as { markingNotes: string | null; summary: string; caseMarks: number | null; cannotApply: string | null };
+      setProposals((prev) => ({
+        ...prev,
+        [itemId]: { feedbackId: data.feedbackId as string, summary: proposal.summary, caseMarks: proposal.caseMarks, cannotApply: proposal.cannotApply },
+      }));
+      if (!proposal.cannotApply && proposal.markingNotes) {
+        setNoteDrafts((prev) => ({ ...prev, [itemId]: proposal.markingNotes ?? "" }));
+        setFeedbackDrafts((prev) => {
+          const next = { ...prev };
+          delete next[itemId];
+          return next;
+        });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not draft a ruling from that feedback.");
+    } finally {
+      setDraftingFor(null);
+    }
+  };
+
+  // -- Re-mark ONE part for every student with a stored scan, overnight. The
+  // follow-through to a marking note: the ruling was written once, and the
+  // class is marked to it without paying for the rest of the paper again.
+  // Each request sends the scan and the one part; the collect step carries
+  // every other part forward from the student's previous run. ---------------
+  const remarkPartForClass = async (itemId: string, label: string) => {
+    const targets = students
+      .map((st) => ({ studentId: st.profile_id, storagePath: runsByStudent[st.profile_id]?.source_storage_path ?? null }))
+      .filter((t): t is { studentId: string; storagePath: string } => !!t.storagePath);
+    if (targets.length === 0) {
+      setError("No student has a stored scan to re-mark.");
+      return;
+    }
+    const ok = window.confirm(
+      `Re-mark ${label} for ${targets.length} student(s) overnight, at half price, using the marking note as it is saved now?\n\n` +
+        "Every other part keeps its current mark and acceptance. A student whose suggestion for this part changes will show it for review; one whose suggestion stays the same keeps their acceptance."
+    );
+    if (!ok) return;
+    setRemarkingPartFor(itemId);
+    setError(null);
+    try {
+      // The queue route takes at most 20 students a call and may hand some
+      // back as `remaining` when their scans overflow its byte ceiling, so
+      // this loops until every target has been submitted or reported failed.
+      let sent = 0;
+      let failedCount = 0;
+      const pending = [...targets];
+      let guard = 0;
+      while (pending.length > 0 && guard++ < 50) {
+        const chunk = pending.splice(0, 20);
+        const { ok: okChunk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/queue`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ students: chunk, testItemIds: [itemId] }),
+        });
+        if (!okChunk) throw new Error((data.error as string) ?? "Could not queue the re-mark.");
+        sent += Array.isArray(data.submitted) ? data.submitted.length : 0;
+        failedCount += Array.isArray(data.failed) ? data.failed.length : 0;
+        const remaining = Array.isArray(data.remaining) ? (data.remaining as { studentId: string; storagePath: string }[]) : [];
+        if (remaining.length === chunk.length) throw new Error("The queue accepted none of the remaining students.");
+        pending.unshift(...remaining);
+      }
+      setStatusLine(
+        `Sent ${label} for ${sent} student(s) for overnight re-marking${failedCount > 0 ? ` (${failedCount} could not be sent)` : ""}. Results appear as they arrive, usually within the hour; this page checks every 30 seconds.`
+      );
+      await loadOverview();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not queue the re-mark.");
+    } finally {
+      setRemarkingPartFor(null);
+    }
+  };
+
   const acceptSelected = async () => {
     if (!focusRunId || selected.size === 0) return;
     setAccepting(true);
@@ -818,6 +1088,7 @@ export function AiGradeClient({
       const selections = [...selected].map((resultId) => ({
         resultId,
         marks: drafts[resultId],
+        note: overrideNotes[resultId]?.trim() || undefined,
       }));
       const { ok, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept`, {
         method: "POST",
@@ -848,7 +1119,7 @@ export function AiGradeClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           runId: focusRunId,
-          selections: [{ resultId, marks: drafts[resultId] }],
+          selections: [{ resultId, marks: drafts[resultId], note: overrideNotes[resultId]?.trim() || undefined }],
         }),
       });
       if (!ok) {
@@ -866,23 +1137,30 @@ export function AiGradeClient({
 
   // -- Accept every not-yet-accepted suggested mark, every question, every
   // student's latest completed run -- skips the per-student review entirely,
-  // so it asks for confirmation up front rather than after the fact.
-  const acceptAllForTest = async () => {
+  // so it asks for confirmation up front rather than after the fact. With
+  // `scope`, covers only one class's students (the roster pools every class
+  // in a Grade 9 track onto one test) rather than the whole test.
+  const acceptAll = async (scope?: { studentIds: string[]; label: string }) => {
+    const who = scope ? `${scope.label} student's` : "student's";
+    const about = scope ? ` for ${scope.label}` : "";
     const ok = window.confirm(
       assessmentKind === "summative"
-        ? "This is a summative. It writes only the suggestions Clev was fully confident about, straight into " +
+        ? `This is a summative. It writes only the suggestions Clev was fully confident about${about}, straight into ` +
             "Clev's Marks without opening each student's review. Anything less confident, and anything marked " +
             "with no working found, is left for you to check and accept yourself. Continue?"
-        : "This writes every suggested mark, for every question, for every student's latest completed run straight into " +
+        : `This writes every suggested mark, for every question, for every ${who} latest completed run straight into ` +
             "Clev's Marks -- without opening each student's review first. Already-accepted marks are left as they are. " +
             "Continue?"
     );
     if (!ok) return;
-    setAcceptingAll(true);
+    setAcceptingAll(!scope);
+    if (scope) setAcceptingClass(scope.label);
     setError(null);
     try {
       const { ok: reqOk, data } = await fetchJson(`/api/tests/${testId}/ai-grade/accept-all`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scope ? { studentIds: scope.studentIds } : {}),
       });
       if (!reqOk) {
         setError((data.error as string) ?? "Could not accept all marks.");
@@ -895,7 +1173,7 @@ export function AiGradeClient({
       // this exists to prevent.
       const held = (data.message as string | undefined) ?? "";
       setStatusLine(
-        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s) into Clev's Marks.` +
+        `Accepted ${data.appliedCount ?? 0} mark(s) across ${data.studentsProcessed ?? 0} student(s)${about} into Clev's Marks.` +
           (held ? ` ${held}` : "")
       );
       await loadOverview();
@@ -904,6 +1182,7 @@ export function AiGradeClient({
       setError(e instanceof Error ? e.message : "Could not accept all marks.");
     } finally {
       setAcceptingAll(false);
+      if (scope) setAcceptingClass(null);
     }
   };
 
@@ -1170,8 +1449,12 @@ export function AiGradeClient({
   // question's shared stem.
   const renderResultRow = (r: ResultRow, prevRow: ResultRow | undefined) => {
     const meta = itemById.get(r.test_item_id);
-    const label = itemLabel(meta);
+    const label = itemLabel(meta, paperPrefixes);
     const isOpen = expanded === r.id;
+    // What Clev's Marks actually holds for this part right now, so an edit
+    // after acceptance can tell "nothing changed" from "needs writing".
+    const currentlyAccepted = r.accepted ? (r.marks_awarded ?? r.suggested_marks) : null;
+    const draftDiffersFromAccepted = (drafts[r.id] ?? r.suggested_marks) !== currentlyAccepted;
     // The stem is stored on every part row, so printing it per row would
     // repeat "Look at this expression..." four times down Q1. Print it on the
     // first part of each question only, the way the paper itself reads.
@@ -1180,6 +1463,21 @@ export function AiGradeClient({
       meta?.stem_text?.trim() && meta.question_number !== prevMeta?.question_number
         ? meta.stem_text.trim()
         : null;
+    // Why this row is not "high", if it is not. The validator records every
+    // reason it touched a part in the run's warnings, keyed by the part's
+    // label; a non-high row with none of its own is the marker's own call.
+    // Shown on the badge so a teacher can tell a wording flag ("careful
+    // wording") from a mark in doubt ("breakdown disagreed with the total")
+    // without opening the row.
+    const rowLabel = meta ? partWarningLabel(meta) : null;
+    const rowWarnings = rowLabel ? warningsForPart(rowLabel, focusRun?.coverage?.warnings) : [];
+    const rowCause = rowLabel ? capCauseForPart(rowLabel, focusRun?.coverage?.warnings) : "none";
+    const confidenceTitle =
+      r.confidence === "high"
+        ? undefined
+        : rowWarnings.length > 0
+          ? rowWarnings.join("\n")
+          : "The marker's own call: it judged this part a judgement call. Open Why? for its reasoning.";
     return (
       <Fragment key={r.id}>
         <tr className="border-b border-da-border">
@@ -1194,6 +1492,14 @@ export function AiGradeClient({
           <td className="px-2 py-2 font-medium text-da-text">
             <div className="flex items-center gap-2">
               <span>{label}</span>
+              {meta?.marking_notes?.trim() && (
+                <span
+                  title={`Marking note on this part: ${meta.marking_notes.trim()}`}
+                  className="rounded border border-teal-400/40 bg-teal-500/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-teal-300"
+                >
+                  note
+                </span>
+              )}
               {/* The question itself, at a glance. It was already in
                   the expanded panel below, but two clicks deep (Why?,
                   then the collapsed Question toggle) -- so marking a
@@ -1270,6 +1576,16 @@ export function AiGradeClient({
               }
               className="w-16 rounded border border-da-border px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400"
             />
+            {(drafts[r.id] ?? r.suggested_marks) !== r.suggested_marks && (!r.accepted || draftDiffersFromAccepted) && (
+              <input
+                type="text"
+                value={overrideNotes[r.id] ?? ""}
+                onChange={(e) => setOverrideNotes((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                placeholder={`Why ${drafts[r.id]} not ${r.suggested_marks}? (optional, kept with the mark)`}
+                title="Written into the audit trail with this mark. A ruling that should change how this part is marked from now on goes in the marking note under Why?."
+                className="mt-1 block w-56 rounded border border-amber-400/40 bg-transparent px-2 py-0.5 text-xs focus:ring-2 focus:ring-blue-400"
+              />
+            )}
             {previousMarks[r.test_item_id] !== undefined &&
               previousMarks[r.test_item_id] !== r.suggested_marks && (
                 <span
@@ -1283,6 +1599,7 @@ export function AiGradeClient({
           <td className="px-2 py-2 text-da-muted">{r.max_marks}</td>
           <td className="px-2 py-2">
             <span
+              title={confidenceTitle}
               className={`rounded border px-2 py-0.5 text-xs font-medium ${CONFIDENCE_STYLE[r.confidence]}`}
             >
               {r.confidence}
@@ -1290,23 +1607,30 @@ export function AiGradeClient({
             {!r.work_found && (
               <span className="ml-2 text-xs text-da-muted">no attempt found</span>
             )}
+            {r.confidence !== "high" && r.work_found && (
+              <div className="mt-1 max-w-[12rem] text-[11px] leading-tight text-da-muted" title={confidenceTitle}>
+                {CAP_CAUSE_SHORT[rowCause]}
+              </div>
+            )}
           </td>
           <td className="px-2 py-2 text-xs text-da-muted">
             {SOURCE_LABEL[r.markscheme_source]}
           </td>
           <td className="px-2 py-2">
-            {r.accepted ? (
-              <span className="text-xs text-green-300">accepted</span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => acceptOne(r.id)}
-                disabled={acceptingRowId === r.id}
-                className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
-              >
-                {acceptingRowId === r.id ? "Accepting…" : "Accept"}
-              </button>
-            )}
+            <div className="flex flex-col items-start gap-1">
+              {r.accepted && <span className="text-xs text-green-300">accepted</span>}
+              {(!r.accepted || draftDiffersFromAccepted) && (
+                <button
+                  type="button"
+                  onClick={() => acceptOne(r.id)}
+                  disabled={acceptingRowId === r.id}
+                  title={r.accepted ? "Write this edited mark into Clev's Marks" : undefined}
+                  className="rounded border border-blue-400/40 px-2 py-0.5 text-xs font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
+                >
+                  {acceptingRowId === r.id ? (r.accepted ? "Updating…" : "Accepting…") : r.accepted ? "Update" : "Accept"}
+                </button>
+              )}
+            </div>
           </td>
           <td className="px-2 py-2">
             <button
@@ -1565,6 +1889,153 @@ export function AiGradeClient({
                     </div>
                   </div>
                 )}
+
+                {r.confidence !== "high" && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Confidence: {r.confidence}
+                    </p>
+                    {rowWarnings.length > 0 ? (
+                      <ul className="mt-1 space-y-0.5 text-xs text-amber-300">
+                        {rowWarnings.map((w, i) => (
+                          <li key={i}>⚠ {w}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="mt-1 text-xs text-da-muted">
+                        The marker&apos;s own call: nothing was corrected after the fact, it judged this
+                        part a judgement call. Its reasoning above says why.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {meta && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Marking note for {label} (every student on this paper)
+                    </p>
+                    <p className="mt-1 text-xs text-da-muted">
+                      Clev reads this after the mark scheme on every mark of this paper started from now on:
+                      a re-mark, the overnight queue, the eval. Use it to settle a judgement call once, e.g.
+                      &ldquo;M1 is for visible substitution into both expressions; 48(4)+30(6)=192+180 alone
+                      earns it.&rdquo; Where it conflicts with the scheme, the note wins.
+                    </p>
+
+                    {/* Feedback in the teacher's own words. A model turns it into the
+                        ruling above, with this student's result as the worked case; the
+                        draft is only saved once the teacher has read it. */}
+                    <div className="mt-2 rounded border border-da-border bg-da-bg/60 p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-da-muted">
+                        Feedback to the grader
+                      </p>
+                      <p className="mt-0.5 text-xs text-da-muted">
+                        Say what the grader got wrong or should do differently on this part, in your own
+                        words. It is turned into a precise ruling for the note above, using this
+                        student&apos;s result as the example, for you to check before it is saved.
+                      </p>
+                      <textarea
+                        value={feedbackDrafts[meta.id] ?? ""}
+                        onChange={(e) => setFeedbackDrafts((prev) => ({ ...prev, [meta.id]: e.target.value }))}
+                        rows={2}
+                        maxLength={4000}
+                        placeholder="e.g. A substitution shown but not finished still earns the M mark here."
+                        className="mt-1 w-full rounded border border-da-border p-2 text-xs focus:ring-2 focus:ring-blue-400"
+                      />
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => draftFromFeedback(meta.id, r.id)}
+                          disabled={draftingFor === meta.id || !(feedbackDrafts[meta.id] ?? "").trim()}
+                          className="rounded border border-teal-400/40 px-3 py-1 text-xs font-medium text-teal-300 hover:bg-teal-500/15 disabled:opacity-50"
+                        >
+                          {draftingFor === meta.id ? "Drafting a ruling…" : "Turn into a marking rule"}
+                        </button>
+                        {proposals[meta.id] && (
+                          <span className="text-xs text-da-muted">
+                            {proposals[meta.id].cannotApply
+                              ? `Not applied: ${proposals[meta.id].cannotApply}`
+                              : `${proposals[meta.id].summary}${
+                                  proposals[meta.id].caseMarks !== null
+                                    ? ` This student would score ${proposals[meta.id].caseMarks}/${r.max_marks}.`
+                                    : ""
+                                } Read the draft below, then Save note.`}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {noteDrafts[meta.id] !== undefined ? (
+                      <div className="mt-1 space-y-2">
+                        <textarea
+                          value={noteDrafts[meta.id]}
+                          onChange={(e) => setNoteDrafts((prev) => ({ ...prev, [meta.id]: e.target.value }))}
+                          rows={3}
+                          maxLength={4000}
+                          placeholder="A ruling for this part, in the words you would give a second marker."
+                          className="w-full rounded border border-da-border p-2 text-xs focus:ring-2 focus:ring-blue-400"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => saveMarkingNote(meta.id)}
+                            disabled={savingNoteFor === meta.id}
+                            className="rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {savingNoteFor === meta.id ? "Saving…" : "Save note"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setNoteDrafts((prev) => {
+                                const next = { ...prev };
+                                delete next[meta.id];
+                                return next;
+                              })
+                            }
+                            disabled={savingNoteFor === meta.id}
+                            className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setNoteDrafts((prev) => ({ ...prev, [meta.id]: meta.marking_notes ?? "" }))}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setNoteDrafts((prev) => ({ ...prev, [meta.id]: meta.marking_notes ?? "" }));
+                          }
+                        }}
+                        title="Click to edit the marking note"
+                        className="mt-1 cursor-text rounded border border-da-border bg-da-surface p-3 hover:border-blue-400 hover:bg-blue-500/30"
+                      >
+                        {meta.marking_notes?.trim() ? (
+                          <p className="whitespace-pre-wrap text-xs text-da-text">{meta.marking_notes}</p>
+                        ) : (
+                          <p className="text-xs text-da-muted">No marking note on this part -- click to add one.</p>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => remarkPartForClass(meta.id, label)}
+                        disabled={remarkingPartFor === meta.id}
+                        title="Sends only this part, for every student with a stored scan, to Anthropic's batch tier. Every other part keeps its current mark and acceptance."
+                        className="rounded border border-teal-400/40 px-3 py-1 text-xs font-medium text-teal-300 hover:bg-teal-500/15 disabled:opacity-50"
+                      >
+                        {remarkingPartFor === meta.id ? "Queuing…" : `Re-mark ${label} for the whole class (overnight)`}
+                      </button>
+                      <span className="text-[11px] text-da-muted">
+                        About a third of a full re-mark per student; the rest of each paper is carried forward.
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </td>
           </tr>
@@ -1768,7 +2239,16 @@ export function AiGradeClient({
           <p className="mt-1">
             The Anthropic API refused a test call from this deployment&apos;s key, so every marking action on
             this page (and every other AI feature in the app) will fail the same way until it is fixed. The
-            usual cause is the account running out of credit: Anthropic Console → Plans &amp; Billing.
+            usual cause is the account running out of credit:{" "}
+            <a
+              href="https://console.anthropic.com/settings/billing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-medium underline hover:text-red-100"
+            >
+              Anthropic Console → Plans &amp; Billing
+            </a>
+            .
           </p>
           <p className="mt-1 break-words font-mono text-xs text-red-300/90">{apiHealthError}</p>
         </div>
@@ -1916,6 +2396,9 @@ export function AiGradeClient({
                 Approaching / Beginning.{" "}
                 <a href={`/dashboard/tests/${testId}/standards-report`} className="text-blue-300 hover:underline">
                   Standards report →
+                </a>{" "}
+                <a href={`/dashboard/tests/${testId}/standards-stats`} className="text-blue-300 hover:underline">
+                  Teacher stats →
                 </a>
               </p>
             )}
@@ -1928,7 +2411,7 @@ export function AiGradeClient({
               {Object.keys(runsByStudent).length > 0 && (
                 <button
                   type="button"
-                  onClick={acceptAllForTest}
+                  onClick={() => acceptAll()}
                   disabled={acceptingAll}
                   title="Accepts every suggested mark for every student's latest completed run, without opening each review individually"
                   className="rounded-lg border border-blue-400/40 bg-blue-500/15 px-4 py-2 text-sm font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
@@ -1946,12 +2429,20 @@ export function AiGradeClient({
 
             <ul className="divide-y divide-da-border">
               {students.map((s, i) => {
+                const className = s.class_name ?? "Other";
                 // Class heading above the first student of each class, only
                 // when the roster spans more than one (a pooled Grade 9 track).
                 const classHeading =
                   classCount > 1 && (i === 0 || students[i - 1].class_name !== s.class_name)
-                    ? (s.class_name ?? "Other")
+                    ? className
                     : null;
+                const collapsed = classCount > 1 && collapsedClasses.has(className);
+                // Only ever read from the class-heading row below, so only worth
+                // building there -- but the heading is the first student of the
+                // class, and every one of its classmates shares this exact list.
+                const classStudentIds = classHeading
+                  ? students.filter((st) => (st.class_name ?? "Other") === className).map((st) => st.profile_id)
+                  : [];
                 const busy = busyStudent === s.profile_id;
                 const reviewOpen = focusStudent === s.profile_id;
                 const absent = absentStudents.has(s.profile_id);
@@ -1972,10 +2463,31 @@ export function AiGradeClient({
                 return (
                   <Fragment key={s.profile_id}>
                     {classHeading && (
-                      <li className="bg-da-hover/40 px-5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-da-muted">
-                        {classHeading}
+                      <li className="flex flex-wrap items-center justify-between gap-3 bg-da-hover/40 px-5 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleClassCollapsed(className)}
+                          aria-expanded={!collapsed}
+                          className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-da-muted hover:text-da-text"
+                        >
+                          <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
+                          {classHeading}
+                        </button>
+                        {classesWithRuns.has(className) && (
+                          <button
+                            type="button"
+                            onClick={() => acceptAll({ studentIds: classStudentIds, label: className })}
+                            disabled={acceptingClass === className}
+                            title={`Accepts every suggested mark for every ${className} student's latest completed run, without opening each review individually`}
+                            className="rounded border border-blue-400/40 px-2 py-0.5 text-[11px] font-medium text-blue-300 hover:bg-blue-500/25 disabled:opacity-50"
+                          >
+                            {acceptingClass === className ? "Accepting…" : `Accept ${className} into Clev's Marks`}
+                          </button>
+                        )}
                       </li>
                     )}
+                    {!collapsed && (
+                      <>
                     <li className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
                       <div>
                         <p className="flex items-center gap-2 font-semibold text-da-text">
@@ -2043,14 +2555,26 @@ export function AiGradeClient({
                         </button>
 
                         {(run?.source_storage_path || newerAttempt?.source_storage_path) && (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => runGrading(s.profile_id, null)}
-                            className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
-                          >
-                            Re-mark stored scan
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => queueRemark(s.profile_id)}
+                              title="Sends the stored scan to Anthropic's batch tier: the same marking at half price, result usually within the hour, collected by this page."
+                              className="rounded border border-da-border px-3 py-1 text-xs text-da-muted hover:bg-da-hover disabled:opacity-50"
+                            >
+                              Re-mark stored scan (overnight, half price)
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => runGrading(s.profile_id, null)}
+                              title="Marks the stored scan right now at full price, with this tab open."
+                              className="rounded border border-da-border px-2 py-1 text-[11px] text-da-muted/80 hover:bg-da-hover disabled:opacity-50"
+                            >
+                              Mark now
+                            </button>
+                          </>
                         )}
 
                         {run?.status === "complete" && (
@@ -2116,6 +2640,8 @@ export function AiGradeClient({
                           <p className="text-xs text-da-muted">Loading this student&apos;s marks…</p>
                         )}
                       </li>
+                    )}
+                    </>
                     )}
                   </Fragment>
                 );
