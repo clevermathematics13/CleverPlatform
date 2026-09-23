@@ -15,7 +15,7 @@ export default async function AiGradePage({
   const supabase = await createClient();
   const { data: test } = await supabase
     .from("tests")
-    .select("id, name, test_date, assessment_kind")
+    .select("id, name, test_date, assessment_kind, course_id")
     .eq("id", id)
     .maybeSingle();
 
@@ -53,6 +53,9 @@ export default async function AiGradePage({
 
       <AiGradeClient
         testId={test.id as string}
+        // Lets the roster request start alongside the test detail instead of
+        // waiting for it to name the course (see loadOverview).
+        courseId={(test.course_id as string | null) ?? null}
         assessmentKind={parseAssessmentKind(test.assessment_kind)}
       />
     </div>
