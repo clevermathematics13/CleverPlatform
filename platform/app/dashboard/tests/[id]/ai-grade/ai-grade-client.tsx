@@ -275,6 +275,7 @@ export function AiGradeClient({
   testId,
   assessmentKind = "formative",
   coverage = null,
+  bankQuestionText = {},
 }: {
   testId: string;
   /** Decides what "Accept all" actually covers -- see lib/summative-grading-gate.ts. */
@@ -287,6 +288,14 @@ export function AiGradeClient({
    * the moment a teacher tries to grade.
    */
   coverage?: MarkSchemeCoverageSummary | null;
+  /**
+   * Question text (stem + part, LaTeX) per test_item_id for the PPQ-bank
+   * parts that have any, from the same server-side assembly as `coverage`.
+   * A custom part's text is on the item itself (question_text); a bank
+   * part's only ever lived in the bank, and until this prop the marking
+   * screen showed it only as an image, or not at all.
+   */
+  bankQuestionText?: Record<string, string>;
 }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
   /** Result of GET /api/health/anthropic: null until checked; error string when the key cannot complete a call. */
@@ -1533,12 +1542,13 @@ export function AiGradeClient({
                   )}
                 </button>
               ) : (
-                (stem || meta?.question_text?.trim()) && (
+                (stem || meta?.question_text?.trim() || bankQuestionText[r.test_item_id]) && (
                   // A teacher-authored part has no image anywhere -- not in
                   // the PPQ bank, and a Grade 9 paper has no locked layout to
                   // cut one from -- so the question itself is the text.
                   // Clamped to two lines, with the full wording on hover, so
-                  // a long stem cannot stretch the row.
+                  // a long stem cannot stretch the row. A bank part with
+                  // text but no image shows that text the same way.
                   <span className="max-w-md text-xs font-normal">
                     {stem && (
                       <span
@@ -1554,6 +1564,14 @@ export function AiGradeClient({
                         className="line-clamp-2 text-da-muted"
                       >
                         <LatexRenderer latex={meta.question_text} />
+                      </span>
+                    )}
+                    {!meta?.question_text?.trim() && bankQuestionText[r.test_item_id] && (
+                      <span
+                        title={bankQuestionText[r.test_item_id]}
+                        className="line-clamp-2 text-da-muted"
+                      >
+                        <LatexRenderer latex={bankQuestionText[r.test_item_id]} />
                       </span>
                     )}
                   </span>
@@ -1712,6 +1730,17 @@ export function AiGradeClient({
                         ))}
                       </div>
                     )}
+                  </div>
+                )}
+
+                {bankQuestionText[r.test_item_id] && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">
+                      Question text
+                    </p>
+                    <div className="mt-1 max-w-3xl text-sm text-da-text/90">
+                      <LatexRenderer latex={bankQuestionText[r.test_item_id]} />
+                    </div>
                   </div>
                 )}
 

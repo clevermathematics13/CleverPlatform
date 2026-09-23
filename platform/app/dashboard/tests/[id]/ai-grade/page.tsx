@@ -27,9 +27,18 @@ export default async function AiGradePage({
   // exact same join assembleMarkScheme() runs at grading time, so this can
   // never disagree with what a run actually does.
   let coverage = null;
+  // A bank part's question text (stem + part, as LaTeX) for the review rows.
+  // The client otherwise only has test_items.question_text, which a bank
+  // part never carries -- the same assembly already ran, so this is free.
+  let bankQuestionText: Record<string, string> = {};
   try {
     const { units } = await assembleMarkScheme(supabase, id);
     coverage = summarizeCoverage(units);
+    bankQuestionText = Object.fromEntries(
+      units
+        .filter((u) => u.questionCode !== "" && u.questionLatex.trim() !== "")
+        .map((u) => [u.testItemId, u.questionLatex])
+    );
   } catch {
     // A broken assembly is reported once the teacher tries to grade (the
     // route already surfaces that error); the page itself still renders.
@@ -69,6 +78,7 @@ export default async function AiGradePage({
         testId={test.id as string}
         assessmentKind={parseAssessmentKind(test.assessment_kind)}
         coverage={coverage}
+        bankQuestionText={bankQuestionText}
       />
     </div>
   );
