@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { PDFDocument } from "pdf-lib";
 import {
   AiGradeResponseSchema,
   GRADING_MODEL,
@@ -8,8 +10,10 @@ import {
   buildGradingSystemPrompt,
   buildGradingUserPrompt,
   type GradingUnit,
+  type ValidatedGrade,
 } from "./ai-grading";
-import { buildGradingRequest } from "./ai-grading-run";
+import { warningsForPart } from "./ai-grade-review";
+import { buildGradingRequest, evidenceCropWarnings, fetchEvidenceCrops } from "./ai-grading-run";
 
 /**
  * These are the pin on the extraction: the synchronous route used to build
@@ -149,5 +153,113 @@ describe("buildGradingRequest", () => {
     expect(perStudent.type).toBe("text");
     expect(perStudent.text.endsWith("Return the JSON object now.")).toBe(true);
     expect(perStudent.text).not.toContain("Student:");
+  });
+});
+
+describe("evidenceCropWarnings", () => {
+  it("says nothing when every crop was cut and saved", () => {
+    expect(evidenceCropWarnings({ cutFailure: null, unsaved: 0, saveError: null })).toEqual([]);
+  });
+
+  it("says why no crop was cut, and how to get them back", () => {
+    expect(
+      evidenceCropWarnings({
+        cutFailure: "Crop service offline (Railway: Application not found)",
+        unsaved: 0,
+        saveError: null,
+      })
+    ).toEqual([
+      "Evidence crops unavailable: Crop service offline (Railway: Application not found). Once that is fixed, re-mark this student or use Locate on page on each part to get them back.",
+    ]);
+  });
+
+  it("does not double the full stop on a reason that already ends in one", () => {
+    const [warning] = evidenceCropWarnings({ cutFailure: "Could not read student PDF.", unsaved: 0, saveError: null });
+    expect(warning).toContain("Evidence crops unavailable: Could not read student PDF. Once that is fixed");
+  });
+
+  it("counts crops that were cut but could not be saved", () => {
+    expect(evidenceCropWarnings({ cutFailure: null, unsaved: 3, saveError: "Bucket not found" })).toEqual([
+      "Evidence crops unavailable for 3 part(s): they were cut but could not be saved (Bucket not found).",
+    ]);
+  });
+
+  it("is never filed under one part by the review panel", () => {
+    // The panel reads a part's warnings by its "3(b): " prefix, and these are
+    // about the whole run.
+    const warnings = evidenceCropWarnings({ cutFailure: "Cropping timed out", unsaved: 2, saveError: null });
+    expect(warnings).toHaveLength(2);
+    for (const label of ["1", "3(b)", "12(a)(ii)"]) expect(warningsForPart(label, warnings)).toEqual([]);
+  });
+});
+
+describe("fetchEvidenceCrops reports a run that got no crops", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  // A paper with no locked layout, so every region comes from the model's box.
+  const noLockedLayout = {
+    from: () => {
+      const query = { select: () => query, eq: () => query, maybeSingle: async () => ({ data: null, error: null }) };
+      return query;
+    },
+  } as unknown as SupabaseClient;
+
+  const LOCATED: ValidatedGrade[] = [
+    {
+      unit: GRADEABLE[0],
+      item: { workFound: true, evidenceBox: { page: 1, x0: 0.1, y0: 0.2, x1: 0.9, y1: 0.4 } },
+      clampedMarks: 3,
+      confidence: "high",
+    } as unknown as ValidatedGrade,
+  ];
+
+  async function onePageScan(): Promise<string> {
+    const pdf = await PDFDocument.create();
+    pdf.addPage([595, 842]);
+    return Buffer.from(await pdf.save()).toString("base64");
+  }
+
+  it("with the crop service's reason when the service is down", async () => {
+    vi.stubEnv("GRAPH_LAB_CV_SERVICE_URL", "https://cv.example.test");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ status: "error", code: 404, message: "Application not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json", "x-railway-fallback": "true" },
+          })
+      )
+    );
+    const { crops, failure } = await fetchEvidenceCrops(noLockedLayout, "test-1", await onePageScan(), LOCATED);
+    expect(crops.size).toBe(0);
+    expect(failure).toBe("Crop service offline (Railway: Application not found)");
+  });
+
+  it("when the scan cannot be opened", async () => {
+    vi.stubEnv("GRAPH_LAB_CV_SERVICE_URL", "https://cv.example.test");
+    const { failure } = await fetchEvidenceCrops(
+      noLockedLayout,
+      "test-1",
+      Buffer.from("not a pdf").toString("base64"),
+      LOCATED
+    );
+    expect(failure).toMatch(/^the scan could not be read \(/);
+  });
+
+  it("but not when cropping is simply not configured, which is most local environments", async () => {
+    vi.stubEnv("GRAPH_LAB_CV_SERVICE_URL", "");
+    const { crops, failure } = await fetchEvidenceCrops(noLockedLayout, "test-1", await onePageScan(), LOCATED);
+    expect(crops.size).toBe(0);
+    expect(failure).toBeNull();
+  });
+
+  it("and not a second time for a missing scan, which the collect route already reports", async () => {
+    vi.stubEnv("GRAPH_LAB_CV_SERVICE_URL", "https://cv.example.test");
+    const { failure } = await fetchEvidenceCrops(noLockedLayout, "test-1", "", LOCATED);
+    expect(failure).toBeNull();
   });
 });

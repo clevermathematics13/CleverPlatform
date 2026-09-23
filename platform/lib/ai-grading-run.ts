@@ -311,19 +311,27 @@ async function loadLockedLayout(
  * for it falls back to the model's box on its own, so a partly-drawn layout
  * degrades part by part instead of failing the whole scan.
  *
- * Never throws: a crop is a nice-to-have alongside the suggested grade, not
- * something worth failing (or even warning on) a whole grading run over.
- * Returns an empty map on any failure, including GRAPH_LAB_CV_SERVICE_URL
- * being unset (most local/dev environments).
+ * Never throws, and never fails the run: a crop is a nice-to-have alongside
+ * the suggested grade. But a run that should have had crops and got none says
+ * why in `failure`, which persistGradeOutcome turns into a coverage warning.
+ * That used to be silent, so a class marked while the crop service was down
+ * would have come back with no student work beside any mark and nothing on
+ * the page to say why -- or that the crops do not reappear by themselves once
+ * the service is back. GRAPH_LAB_CV_SERVICE_URL being unset is not a failure:
+ * it is how most local/dev environments run, and gives no crops and no
+ * warning.
  */
 export async function fetchEvidenceCrops(
   supabase: SupabaseClient,
   testId: string,
   scanBase64: string,
   grades: ValidatedGrade[]
-): Promise<Map<string, EvidenceCrop>> {
+): Promise<{ crops: Map<string, EvidenceCrop>; failure: string | null }> {
   const byTestItemId = new Map<string, EvidenceCrop>();
-  if (!cvServiceEndpoint("/crop")) return byTestItemId;
+  if (!cvServiceEndpoint("/crop")) return { crops: byTestItemId, failure: null };
+  // No scan at all is the caller's to explain -- the collect route warns when
+  // it cannot re-read one -- so it is not reported a second time here.
+  if (!scanBase64) return { crops: byTestItemId, failure: null };
 
   let pageCount: number;
   const pageSizePt: PageSizePt[] = [];
@@ -333,8 +341,11 @@ export async function fetchEvidenceCrops(
     for (const page of pdfDoc.getPages()) {
       pageSizePt.push({ widthPt: page.getWidth(), heightPt: page.getHeight() });
     }
-  } catch {
-    return byTestItemId;
+  } catch (e) {
+    return {
+      crops: byTestItemId,
+      failure: `the scan could not be read (${e instanceof Error ? e.message : String(e)})`,
+    };
   }
 
   const locked = await loadLockedLayout(supabase, testId);
@@ -444,7 +455,7 @@ export async function fetchEvidenceCrops(
     expectedPageCount: pageCount,
     regions,
   });
-  if (!cropped.ok) return byTestItemId;
+  if (!cropped.ok) return { crops: byTestItemId, failure: cropped.error };
 
   for (const crop of cropped.value) {
     const box = boxByQid.get(crop.qid);
@@ -453,12 +464,42 @@ export async function fetchEvidenceCrops(
       byTestItemId.set(crop.qid, { buffer: Buffer.from(crop.imageBase64, "base64"), box, source });
     }
   }
-  return byTestItemId;
+  return { crops: byTestItemId, failure: null };
 }
 
 // -----------------------------------------------------------------------------
 // Persistence
 // -----------------------------------------------------------------------------
+
+/**
+ * The coverage warnings for evidence crops a run should have had and did not:
+ * none cut at all (the scan would not open, or the crop service failed), or
+ * some cut and then not saved. Empty when nothing was lost. They carry no
+ * part-label prefix on purpose -- they are about the whole run, and
+ * warningsForPart (lib/ai-grade-review.ts) files a "3(b): ..." warning under
+ * that part.
+ *
+ * The advice matters as much as the reason: a run's crops are cut once, when
+ * it is written, so nothing brings them back when the service recovers.
+ */
+export function evidenceCropWarnings(args: {
+  cutFailure: string | null;
+  unsaved: number;
+  saveError: string | null;
+}): string[] {
+  const warnings: string[] = [];
+  if (args.cutFailure) {
+    warnings.push(
+      `Evidence crops unavailable: ${args.cutFailure.replace(/\.+$/, "")}. Once that is fixed, re-mark this student or use Locate on page on each part to get them back.`
+    );
+  }
+  if (args.unsaved > 0) {
+    warnings.push(
+      `Evidence crops unavailable for ${args.unsaved} part(s): they were cut but could not be saved${args.saveError ? ` (${args.saveError})` : ""}.`
+    );
+  }
+  return warnings;
+}
 
 /** ai_grade_runs.coverage, as the review UI and both senders' responses read it. */
 export type GradeCoverage = {
@@ -524,15 +565,24 @@ export async function persistGradeOutcome(args: {
   const requested = args.requestedTestItemIds ?? null;
 
   // -- Evidence crops (best-effort; never blocks or fails the run) -----------
-  const crops = await fetchEvidenceCrops(supabase, testId, scanBase64, grades);
+  // ...but never silently either: whatever is lost is said in the warnings.
+  const { crops, failure: cutFailure } = await fetchEvidenceCrops(supabase, testId, scanBase64, grades);
   const evidenceImagePathByTestItemId = new Map<string, string>();
+  let unsaved = 0;
+  let saveError: string | null = null;
   for (const [testItemId, crop] of crops) {
     const storagePath = `${testId}/${studentId}/evidence/${runId}/${testItemId}.png`;
     const { error: cropUploadErr } = await supabase.storage
       .from(SCAN_BUCKET)
       .upload(storagePath, crop.buffer, { contentType: "image/png", upsert: true });
-    if (!cropUploadErr) evidenceImagePathByTestItemId.set(testItemId, storagePath);
+    if (cropUploadErr) {
+      unsaved += 1;
+      saveError ??= cropUploadErr.message;
+    } else {
+      evidenceImagePathByTestItemId.set(testItemId, storagePath);
+    }
   }
+  warnings.push(...evidenceCropWarnings({ cutFailure, unsaved, saveError }));
 
   // -- Carry forward acceptance for parts whose suggestion did not change ----
   // A re-mark used to start every part at accepted=false, so re-marking a
