@@ -257,7 +257,7 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 175 files, 175 rows**
+**The migration ledger and the repo agree on versions: 176 files, 176 rows**
 (verified 23 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
 the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
 171/171 on 20 Sep). Two
@@ -2776,19 +2776,22 @@ available yet".
   (migration `20260923163545_ka1_unit1_2a_6d_schemes_match_rulings`, applied
   through MCP and guarded by the md5 of the text it replaced; 6(d) keeps its
   "3 marks: one for ..." line, which is what the grader itemises into
-  R1-R3). Marking is unchanged: the marker already followed the notes where
-  the two conflicted, and the notes were not touched. 6(d)'s note still says
-  "not the 1 the scheme states", now stale wording for the same outcome.
-  3(c) and 9(b) remain milder cases, where the notes accept the -1/+4 step
-  and a sketch of 16 tiles.
+  R1-R3). Then the two milder cases the same way
+  (`20260923164639_ka1_unit1_3c_9b_schemes_match_rulings`): 3(c)'s structure
+  mark now names listing the terms and the -1/+4 step as well as separating
+  odd and even positions, and 9(b) says a sketch of Figure 5 showing about
+  16 tiles is the explanation. Marking is unchanged throughout: the marker
+  already followed the notes where the two conflicted, and no note was
+  touched. 6(d)'s note still says "not the 1 the scheme states", now stale
+  wording for the same outcome.
 - **`lib/fixtures/g9-standard-ka1-unit1.ts` is no longer the live paper.**
   Its header calls it the source the seed was written from, and the 18 Sep
   migration `20260918123826` says it is "kept 1:1" with it, but that edit
   never reached the fixture: 7(d), 8 and 9(a)-(c) already differed from the
-  live rows, and 2(a) and 6(d) now do too. It is not read at runtime and its
-  tests pin marks and strands, not wording. Never regenerate SQL for this
-  paper from it -- that would quietly revert every fix above. Read the live
-  `test_items` rows instead.
+  live rows, and 2(a), 3(c), 6(d) and 9(b) now do too. It is not read at
+  runtime and its tests pin marks and strands, not wording. Never regenerate
+  SQL for this paper from it -- that would quietly revert every fix above.
+  Read the live `test_items` rows instead.
 - **Each 9D submission (re)writes a 9D PowerSchool file for this paper.**
   9D has a stored scores template (from Formative Assessment 1), so
   `/api/gradebook/self-assessment-export` retargets it and fills it -- with
