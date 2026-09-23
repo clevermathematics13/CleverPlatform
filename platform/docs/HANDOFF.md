@@ -257,9 +257,10 @@ must exercise Server Actions.
 
 ## 4. Database and migrations
 
-**The migration ledger and the repo agree on versions: 171 files, 171 rows**
-(verified 20 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
-the second reconciliation, 116/116 after the third and 149/149 on 13 Sep). Two
+**The migration ledger and the repo agree on versions: 174 files, 174 rows**
+(verified 23 Sep 2026; it read 83/83 when this handoff was written, 95/95 after
+the second reconciliation, 116/116 after the third, 149/149 on 13 Sep and
+171/171 on 20 Sep). Two
 rows applied through MCP on 18 Sep (`20260918205816`, `20260918210444`) had no
 file on any branch until 20 Sep; both were rebuilt from the ledger and verified
 by md5 before the `test_items.marking_notes` and `grader_feedback` migrations
@@ -2711,3 +2712,92 @@ teaching signal on the page, and worth a look before Unit 2.
   is marked is the first time anyone looks at it.
 - **Discrimination at n = 10 is soft.** Five is a floor, not a guarantee; the
   figure is there to point at a part worth re-reading, not to be reported.
+
+## 26. Self-assessing a Standard Level paper, and the student mark scheme (23 Sep 2026)
+
+The teacher asked for Grade 9 Standard Level Key Assessment 1 (§21) to be
+available for students to self-assess. Three things stood in the way: the
+test was still `hidden = true` from its seed, it had no `mark_scheme_url`
+(the field that puts a "Mark Scheme" button on the self-grade form), and the
+student mark-scheme route added for Grade 9 Extended the day before
+(`app/api/tests/[id]/mark-scheme`, `lib/student-mark-scheme.ts`) could only
+build a page from `tests.custom_content` -- the Formative Assessment
+creator's draft -- which an imported Standard paper does not have.
+
+### What was built
+
+- **A second source for the student mark scheme.** With no draft, the route
+  builds the page from the test's `test_items` (`buildStudentMarkSchemeHtmlFromItems`):
+  one row per part, in `sort_order`, labelled the way the self-grade form
+  labels a test with no draft (`2(d)`, `5`), carrying the part's
+  `markscheme_text` -- for this paper the rubric's "a full-mark response
+  shows ..." line with the answer in it. **Never `marking_notes`**: those are
+  rulings written to the AI marker, in its vocabulary (confidence labels,
+  tokens, the markBreakdown). The route does not even select them, and a
+  test pins that the builder ignores them if a row carries them. Checked on
+  the live rows: 26 parts, 42 marks, every formula typeset, no marking-note
+  wording on the page.
+- **A release gate.** Anyone but the teacher now gets a 403 unless the test
+  is not hidden AND has a `mark_scheme_url`. Before this the route served
+  any test in a student's track family to whoever typed its URL; once it
+  could build from `test_items`, that would have reached every imported
+  paper, not just the one the teacher released. (Formative Assessment 1,
+  which has a draft but no `mark_scheme_url`, stopped being reachable that
+  way too. Nothing linked to it.)
+- **The Extended mark scheme's numbering was fixed** in its own commit. It
+  counted questions across the whole paper (1 ... 14) like the teacher mark
+  scheme; the printed paper and the self-grade form both restart in every
+  section (`1.1`, `2.1(a)`), so the form's `2.1(a)` was `4(a)` on the page
+  beside it. Verified against the live KA1 draft: all 36 rows now agree.
+
+### Released, and in what order
+
+Migration `20260923152709_standard_ka1_student_mark_scheme` (applied
+through MCP, file md5-checked against the ledger) sets the Standard KA1
+`mark_scheme_url` and deliberately leaves the test **hidden**. Unhiding
+before the route above is deployed would put the paper in 9D's list with a
+Mark Scheme button that fails, and submitting a self-assessment is what
+reveals Clev's Marks -- a student who self-graded without the scheme could
+not then do it properly. So the release is the last step, after the deploy:
+the "Hide this exam from student reflection dropdown" checkbox on the Tests
+page, or `update tests set hidden = false where id =
+'a1c0f4e2-9d00-4b7e-8c21-000000000001'`. It is the only test in 9D's track
+family, so until then a 9D student's reflection page reads "No tests
+available yet".
+
+### Worth knowing before students use it
+
+- **The page shows the scheme, and the marking notes are more generous in
+  places.** A student following the page will under-claim where a ruling
+  widened the scheme: 2(a) (the notes award the mark for the change of -6
+  alone; the scheme says the first term 88 is needed too) and 6(d) (a bare
+  "k is not a multiple of 3" earns 2 under the notes, 1 under the scheme),
+  and more mildly 3(c) and 9(b), where the notes accept the -1/+4 step and a
+  sketch of 16 tiles. The Compare step will show those as disagreements in
+  the student's favour. Editing those parts' mark scheme text to match is
+  the teacher's call; the marker already follows the notes where the two
+  conflict, so aligning the text would not change how it marks.
+- **Each 9D submission (re)writes a 9D PowerSchool file for this paper.**
+  9D has a stored scores template (from Formative Assessment 1), so
+  `/api/gradebook/self-assessment-export` retargets it and fills it -- with
+  a 1-7 level from the generic fallback bands, because a Standard paper has
+  no boundary set (§21: mapping E/M/AP/B onto 1-7 is the teacher's call).
+  The teacher's Drive mirror is on, so it lands in that folder like any
+  other. Do not import it as a Standard Level result without deciding that
+  mapping.
+
+### Deliberately not done
+
+- **Students can already read every mark scheme in their track family.**
+  The student SELECT policies on `tests` and `test_items` check the track
+  family only, not `hidden`, and `authenticated` holds SELECT on every
+  column -- so `custom_content`, `markscheme_text` and `marking_notes` are
+  readable through PostgREST with a student's own session, including for a
+  paper not yet sat. Teachers share the `authenticated` role, so a column
+  REVOKE is not the fix. Left alone here; it predates this work. If it is
+  closed, this route's `test_items` read (made under the student's session,
+  after its own gates) will need the service role.
+- The question text is not shown on the student page, for either source,
+  matching the Extended page. On this paper it would also have shown the
+  bracketed marker's note describing the Q9 figures, which the student never
+  read.
