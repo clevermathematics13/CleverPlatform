@@ -3,6 +3,7 @@ import { PDFDocument, degrees } from "pdf-lib";
 import {
   buildOrientationCheckUserPrompt,
   rotatePagesUpright,
+  scanPathsMarkedBefore,
   validateOrientationCheck,
 } from "./scan-orientation";
 
@@ -104,5 +105,45 @@ describe("rotatePagesUpright", () => {
   it("ignores an index past the last page", async () => {
     const out = await rotatePagesUpright(await threePagePdf(), [7]);
     expect(await rotationsOf(out)).toEqual([0, 0, 0]);
+  });
+});
+
+describe("scanPathsMarkedBefore", () => {
+  // The re-mark that re-ran the check on Key Assessment 1's 17 Sep batch:
+  // the same stored file on an earlier run means the check already settled
+  // its orientation and must not run again.
+  const scan = "test/student/1789614040016-batch.pdf";
+  const other = "test/student2/1789614008544-batch.pdf";
+
+  it("returns a stored scan an earlier run already marked", () => {
+    const rows = [{ id: "run-17-sep", source_storage_path: scan }];
+    expect(scanPathsMarkedBefore(rows, [scan])).toEqual(new Set([scan]));
+  });
+
+  it("does not count the run being marked now", () => {
+    const rows = [{ id: "run-now", source_storage_path: scan }];
+    expect(scanPathsMarkedBefore(rows, [scan], "run-now")).toEqual(new Set());
+  });
+
+  it("still counts an earlier run beside the one being marked now", () => {
+    const rows = [
+      { id: "run-now", source_storage_path: scan },
+      { id: "run-17-sep", source_storage_path: scan },
+    ];
+    expect(scanPathsMarkedBefore(rows, [scan], "run-now")).toEqual(new Set([scan]));
+  });
+
+  it("leaves a scan no run has used, so a new upload is checked once", () => {
+    const rows = [{ id: "run-17-sep", source_storage_path: other }];
+    expect(scanPathsMarkedBefore(rows, [scan])).toEqual(new Set());
+  });
+
+  it("ignores runs without a stored scan and paths nobody asked about", () => {
+    const rows = [
+      { id: "no-scan", source_storage_path: null },
+      { id: "run-17-sep", source_storage_path: other },
+    ];
+    expect(scanPathsMarkedBefore(rows, [scan, other])).toEqual(new Set([other]));
+    expect(scanPathsMarkedBefore(rows, [])).toEqual(new Set());
   });
 });

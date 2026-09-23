@@ -37,6 +37,21 @@
  * number of pages, the scan is graded as it is, which is what happened
  * before this module existed. The failure is reported in the return value so
  * a sender can log it, never raised.
+ *
+ * ONCE PER STORED SCAN, NEVER AGAIN. Both senders ask findScansMarkedBefore()
+ * first and skip the check for a stored file an earlier run already used.
+ * The rotation is ADDITIVE (+180 on whatever the page carries) and the stored
+ * file is overwritten, so a check that changes its mind about a page between
+ * runs flips it back and forth -- and every re-mark used to run it again,
+ * including a one-part re-mark, which sends the whole scan. Found 23 Sep 2026
+ * on Key Assessment 1's 17 Sep batch: seven scans whose pages 7-10 the check
+ * inverted and restored across the 21-22 Sep "re-mark this part for the
+ * whole class" runs, leaving 54 crops cut from inverted pages (the
+ * marker read those pages inverted too) and their evidence boxes measured in
+ * the inverted frame, while the stored pages had since come back upright. A
+ * second opinion can only repeat the first decision or reverse it, so the
+ * first one stands; a teacher who needs a page turned re-uploads the scan,
+ * which is a new storage path and is checked once in its turn.
  * -----------------------------------------------------------------------------
  */
 
@@ -151,6 +166,64 @@ export async function rotatePagesUpright(
     page.setRotation(degrees((page.getRotation().angle + 180) % 360));
   }
   return doc.save();
+}
+
+/**
+ * Of `paths`, the stored scans some run other than `excludeRunId` already
+ * marked -- the ones whose orientation was settled by that run's check and
+ * must not be checked again (see the module header). Pure, so the rule is
+ * unit-tested apart from the query that feeds it.
+ */
+export function scanPathsMarkedBefore(
+  rows: readonly { id: string; source_storage_path: string | null }[],
+  paths: readonly string[],
+  excludeRunId?: string
+): Set<string> {
+  const wanted = new Set(paths);
+  const marked = new Set<string>();
+  for (const row of rows) {
+    if (row.id === excludeRunId || !row.source_storage_path) continue;
+    if (wanted.has(row.source_storage_path)) marked.add(row.source_storage_path);
+  }
+  return marked;
+}
+
+/**
+ * Paths per lookup. The list rides in the request URL and each path is well
+ * over 100 characters once encoded, so a whole class in one `in (...)` would
+ * make a URL long enough for the API gateway to refuse -- and a refused lookup
+ * silently falls back to checking every scan again.
+ */
+const PATHS_PER_LOOKUP = 20;
+
+/**
+ * The stored scans among `paths` that an earlier run on this test already
+ * marked. A failed lookup leaves its scans out of the set, so they are checked
+ * as they were before this rule existed -- the status quo, never a reason to
+ * refuse.
+ */
+export async function findScansMarkedBefore(
+  supabase: SupabaseClient,
+  testId: string,
+  paths: readonly string[],
+  excludeRunId?: string
+): Promise<Set<string>> {
+  const unique = [...new Set(paths)].filter(Boolean);
+  const rows: { id: string; source_storage_path: string | null }[] = [];
+  for (let i = 0; i < unique.length; i += PATHS_PER_LOOKUP) {
+    const chunk = unique.slice(i, i + PATHS_PER_LOOKUP);
+    const { data, error } = await supabase
+      .from("ai_grade_runs")
+      .select("id, source_storage_path")
+      .eq("test_id", testId)
+      .in("source_storage_path", chunk);
+    if (error) {
+      console.warn(`[scan-orientation] could not look up earlier runs for ${chunk.length} scan(s); checking them: ${error.message}`);
+      continue;
+    }
+    rows.push(...(data ?? []));
+  }
+  return scanPathsMarkedBefore(rows, unique, excludeRunId);
 }
 
 export type UprightScanResult = {

@@ -388,7 +388,9 @@ top and its bottom when it carried that content once.
 
 **Partly no longer true for the TEST AI-grading path, 16 Sep 2026.** The
 synchronous grade route and the overnight queue route now run
-`lib/scan-orientation.ts` on every student scan before it is marked: one Haiku
+`lib/scan-orientation.ts` on a student scan before it is marked (since 23 Sep,
+only on a stored file's FIRST marking -- re-running it on every re-mark
+flipped pages back and forth, see section 28): one Haiku
 call reads which way up each page's printed text is, pdf-lib writes /Rotate 180
 onto the inverted pages (what Acrobat writes), and the corrected PDF replaces
 the stored one at the same path, so the crop service and "Locate on page" read
@@ -2890,3 +2892,51 @@ high-confidence summary row, so it still says something when folded.
   session was minted, so the route itself has not run against the live
   database; the rows it reads were looked at by SQL instead. Key Assessment
   1 (`ccfa0456`) had 23 students self-assessed, 828 rows, 75 of them blank.
+
+## 28. The orientation check flipped Key Assessment 1 pages back and forth (23 Sep 2026)
+
+The teacher found four 3.2(b) crops upside down in the review panel. The
+cause was the section 5 orientation check itself, re-run where it should not
+be.
+
+- **What happened.** `uprightScan` (`lib/scan-orientation.ts`) ran on every
+  marking run, including every one-part re-mark ("re-mark this part for the
+  whole class" still sends each student's whole scan). Each time it wrote
+  +180 onto every page Haiku called upside down and overwrote the stored
+  file. On the 17 Sep Key Assessment 1 batch Haiku's verdict on pages 7-10
+  changed from run to run, so across the seven re-mark rounds of 21-22 Sep
+  those pages were inverted and restored repeatedly. A crop -- and the
+  marker's reading -- follows whatever orientation the page had in the run
+  that produced it, and a one-part re-mark copies every other part's crop
+  forward, so crops cut while a page was wrongly inverted stayed that way.
+- **Measured.** Only Key Assessment 1 was affected, and only seven scans,
+  all from that batch: no other test has a scan rewritten after its crops
+  were cut (compared on `storage.objects` timestamps). Each crop was matched
+  against the current upright page as it is and turned 180 degrees: 54
+  crops on six scans were upside down, and their `evidence_box` had been
+  measured on the inverted page, so "Locate on page" outlined the mirrored
+  spot. Those 54 marks were read from inverted pages; 3.2(b) was re-checked
+  by hand for four of the students and was right, the other parts were not
+  re-verified. One scan also had its handwritten extra sheet inverted by the
+  check, and carries an unrelated page that was scanned upside down.
+- **Code fix.** Both senders now call `findScansMarkedBefore()` and run the
+  check only on a stored file's FIRST marking; a re-mark of the same file is
+  marked as it is (module header, "ONCE PER STORED SCAN";
+  `scanPathsMarkedBefore` is unit-tested). A corrected re-upload is a new
+  storage path, so it is still checked once.
+- **Data repair.** The 54 crops were turned 180 degrees into new keys
+  (`...--upright-20260923.png`; the originals are kept) and their boxes
+  mirrored into the upright frame (`x0 = 1 - x1`, `y0 = 1 - y1`, and so on),
+  then verified by matching each against the upright page. The extra sheet's
+  /Rotate was set back to 0 and the stray page's to 180. No mark, reasoning
+  or acceptance was touched. Undo data, one row per crop with its old path
+  and box: `exam-scans/_repairs/2026-09-23-ka1-orientation/snapshot.json`
+  (private bucket -- the repo is public).
+- **Worth knowing.** Four of the repaired crops show blank paper: the box the
+  marker gave while reading an inverted page missed the work. Redraw them
+  from the review panel if they matter. The fix stops the check from
+  re-deciding; it does not make the first decision right, so a page the first
+  check wrongly inverts has to be turned by hand (as above) or re-uploaded.
+  And reading a stored file straight after overwriting it can return the
+  storage CDN's cached copy for a while; a `?cb=` query on the
+  `/object/authenticated/` endpoint returns the new one.
