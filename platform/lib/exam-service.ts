@@ -7,6 +7,7 @@ import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { correctionsKey } from "@/lib/storage-keys";
 import { resolveSelfAssessmentRequired } from "@/lib/self-assessment-gate";
 import { paperQuestionPrefixes } from "@/lib/assignments";
+import { studentMarkSchemePath, studentMarkSchemeParts } from "@/lib/student-mark-scheme";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
   ReflectionTest,
@@ -343,6 +344,39 @@ export async function getReflectionItemsForInvitedStudent(
     marks_awarded: marksMap.get(item.id) ?? null,
     self_marks: null,
   }));
+}
+
+/**
+ * Put each part's mark scheme on its row of the self-grade form, so a student
+ * reads the scheme and enters the mark in one place instead of opening the
+ * Mark Scheme panel over the form, closing it to type, and opening it again.
+ *
+ * Only when the mark scheme the teacher released for this test IS the
+ * platform's own student page (tests.mark_scheme_url equal to
+ * studentMarkSchemePath): that page's release gate is then already met --
+ * the test reached this viewer's list, so it is not hidden and their class's
+ * sitting date has passed -- and the content is the same, rendered by the
+ * same function. A test with no mark scheme released, or one released as a
+ * link somewhere else, is returned untouched.
+ *
+ * Read under the viewer's own session, like the route: RLS on tests and
+ * test_items is what lets a student read either.
+ */
+export async function attachStudentMarkScheme(
+  items: ReflectionItem[],
+  test: Pick<ReflectionTest, "id" | "mark_scheme_url"> | null | undefined
+): Promise<ReflectionItem[]> {
+  if (!test || items.length === 0 || test.mark_scheme_url !== studentMarkSchemePath(test.id)) return items;
+  const supabase = await createClient();
+
+  const [{ data: row }, { data: testItems }] = await Promise.all([
+    supabase.from("tests").select("custom_content").eq("id", test.id).maybeSingle(),
+    supabase.from("test_items").select("id, sort_order, markscheme_text").eq("test_id", test.id),
+  ]);
+  const parts = studentMarkSchemeParts(row?.custom_content ?? null, testItems ?? []);
+  if (parts.size === 0) return items;
+
+  return items.map((item) => ({ ...item, mark_scheme: parts.get(item.test_item_id) ?? null }));
 }
 
 /** Submit student self-assessment scores.

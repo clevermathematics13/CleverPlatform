@@ -20,6 +20,25 @@ export interface ReflectionItem {
   subtopic_labels: string[];
   marks_awarded: number | null; // teacher mark from student_marks
   self_marks: number | null;    // student self-assessment
+  /**
+   * This part's mark scheme, shown under its label on the self-grade form
+   * and the comparison table so a student can read it and enter the mark in
+   * the same place. Set only when the test's released mark scheme is the
+   * platform's own student page (attachStudentMarkScheme in
+   * lib/exam-service.ts); absent everywhere else.
+   */
+  mark_scheme?: ReflectionMarkScheme | null;
+}
+
+/**
+ * One part's student mark scheme, rendered on the server by
+ * renderStudentMarkSchemePart (lib/student-mark-scheme.ts): escaped, marking
+ * codes stripped, maths typeset -- the same renderer as the full
+ * mark-scheme page. Either half may be null, never both.
+ */
+export interface ReflectionMarkScheme {
+  answer_html: string | null;
+  how_marked_html: string | null;
 }
 
 /** A test in the reflection context */

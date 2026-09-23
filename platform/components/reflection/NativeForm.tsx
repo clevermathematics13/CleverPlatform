@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { Fragment, useState, useRef } from "react";
 import type { ReflectionItem, SelfScore } from "@/lib/reflection-types";
+import { MarkSchemePart } from "./MarkSchemePart";
 
 interface NativeFormProps {
   items: ReflectionItem[];
@@ -28,6 +29,9 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openQuestionMenuFor, setOpenQuestionMenuFor] = useState<string | null>(null);
+  // Each part's mark scheme sits under its label (attachStudentMarkScheme in
+  // lib/exam-service.ts), so the student never has to leave the form for it.
+  const schemeInline = items.some((item) => item.mark_scheme);
 
   const handleChange = (testItemId: string, raw: string, max: number) => {
     if (raw === "") {
@@ -91,8 +95,9 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
       )}
 
       <p className="text-base text-da-text">
-        For each question, enter the marks you think you earned based on the
-        mark scheme.
+        {schemeInline
+          ? "The mark scheme for each question is shown under it. Check your work against it, then enter the marks you think you earned."
+          : "For each question, enter the marks you think you earned based on the mark scheme."}
       </p>
 
       <p className="rounded-lg border border-da-border/40 bg-da-surface px-3 py-2 text-sm text-da-muted">
@@ -105,13 +110,14 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
           <thead>
             <tr className="border-b border-da-border/40 bg-da-surface">
               <th className="px-3 py-2 text-left font-bold text-da-amber">Question</th>
-              <th className="px-3 py-2 text-center font-bold text-da-amber">Max</th>
-              <th className="px-3 py-2 text-center font-bold text-da-amber">Your Marks</th>
+              <th className="w-16 px-3 py-2 text-center font-bold text-da-amber">Max</th>
+              <th className="w-28 px-3 py-2 text-center font-bold text-da-amber">Your Marks</th>
             </tr>
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.test_item_id} className="border-b border-da-border/25">
+              <Fragment key={item.test_item_id}>
+              <tr className={item.mark_scheme ? "" : "border-b border-da-border/25"}>
                 <td className="px-3 py-2">
                   <div className="relative inline-block">
                     <button
@@ -168,6 +174,18 @@ export function NativeForm({ items, onSubmit, paperUrl, markSchemeUrl, onOpenDoc
                   />
                 </td>
               </tr>
+              {/* The part's mark scheme on its own full-width row, straight
+                  under the label and the box it is marked in. Full width
+                  because inside the Question column a phone leaves it a
+                  strip a few words wide. */}
+              {item.mark_scheme && (
+                <tr className="border-b border-da-border/25">
+                  <td colSpan={3} className="px-3 pb-3">
+                    <MarkSchemePart scheme={item.mark_scheme} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
