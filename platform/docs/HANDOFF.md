@@ -2994,13 +2994,14 @@ Assessment 1 sat on "Loading this assessment…" for about 43 s.
   sandbox's Node with `UND_ERR_HEADERS_OVERFLOW` (the reply's headers passed
   Node's 16 KB default) until `--max-http-header-size` was raised; production
   answered 200, so it did not bite there. The new query sends one id per
-  student. What remains of the load: Vercel functions run in iad1 and the
-  database is in sa-east-1, so every database round trip is about 120 ms and
-  every API call spends about three of them on authentication; `/api/students`
-  (about 3 s) is now the slowest of the four. Moving the function region, or
-  lighter auth checks, would cut that for every page; neither was done here.
-  `BatchGradeTab` still mounts, hidden, on every visit and fetches
-  `/ai-grade/batch`.
+  student. What remains of the load: Vercel functions ran in iad1 and the
+  database is in sa-east-1, so every database round trip was about 120 ms and
+  every API call spent two of them on sign-in (`getApiTeacher`; the proxy is
+  not registered in production, see section 31). The first production load
+  after this change (24 Sep 02:09 UTC) took about 8 s: about 4 s before the
+  four requests started, then about 4 s for them together. Section 31 moves
+  the functions to São Paulo. `BatchGradeTab` still mounts, hidden, on every
+  visit and fetches `/ai-grade/batch`.
 ## 30. The Expand panel shows the question, and Grade 9 papers get a stem (24 Sep 2026)
 
 The teacher, marking KA1 Q3(b), asked for the row's "Why?" toggle to read
@@ -3058,3 +3059,48 @@ box); not touched here.
   3(c), 6(d), 7(d), 8, 9(a), 9(b), 9(c), i.e. every scheme the 18 and 23 Sep
   migrations rewrote without touching the fixture. All 26 items now compare
   equal to the database on stem, question and scheme.
+
+## 31. Functions run in São Paulo, next to the database (24 Sep 2026)
+
+- **What changed.** `vercel.json` now sets `"regions": ["gru1"]`. Until now
+  every function ran in iad1 (Washington), while Supabase is in sa-east-1 (São
+  Paulo) and the users are in Lima (`appsscript.json` time zone). Every
+  database round trip crossed the continent, about 120 ms each (section 29).
+  Requests make those round trips one after another:
+  - every API route makes two for sign-in (`getApiTeacher`), then 1-9
+    queries;
+  - the dashboard layout makes at least four on every page render;
+  - grading makes one Storage upload per graded part.
+- **Before, for comparison.** Key Assessment 1's marking page on 24 Sep at
+  02:09 UTC, after section 29: page request 02:09:47, the four data requests
+  02:09:51, roster 02:09:55 -- about 8 s. Compare the same timeline in the
+  Vercel runtime log after this change.
+- **What ends up farther away:**
+  - the Railway CV service, whose region is recorded nowhere: one `/crop` per
+    scan, and one `/page-image` per page viewed, which can be about 10 MB of
+    base64, so "Locate on page" views may get slower if Railway is in the US;
+  - Anthropic, which takes one long call per job, so the extra distance is
+    negligible;
+  - Vercel Workflow's queue. The installed `@workflow/world-vercel` 4.5.1
+    hardcodes `iad1` (`dist/queue.js`), which still works at the cost of a
+    few cross-continent calls per step.
+  - Nothing in the code assumes a region: no `VERCEL_REGION`, no
+    `preferredRegion`, no edge runtime, no crons.
+- **Pricing and rollback.** Vercel prices compute per region, so check the
+  rate for gru1. To roll back, delete the line; the next deploy returns to
+  iad1.
+- **Found while checking: `platform/src/proxy.ts` is not registered in
+  production builds.**
+  - Next 16 takes `proxy.ts` only from beside `app/`, and from `src/` only when
+    the app lives in `src/app`
+    (`node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md:23`).
+    Here `app/` is at the top of `platform/`.
+  - A local production build writes an empty
+    `.next/server/middleware-manifest.json` and prints no "Proxy (Middleware)"
+    line.
+  - Pages (`requireTeacher`/`getProfile`) and API routes (`getApiTeacher`)
+    check sign-in themselves, so nothing is exposed. But the proxy's session
+    refresh and /login redirect do not run in production, and API routes do
+    not pay its extra `getUser` call.
+  - `CLAUDE.md` forbids renaming the file, so this is left for the owner to
+    decide.
