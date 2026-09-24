@@ -111,6 +111,22 @@ export function ActivityImportClient({ courses }: { courses: { id: string; name:
   const update = (patch: Partial<ActivityDraft>) => setDraft((d) => (d ? { ...d, ...patch } : d));
   const updateItem = (index: number, patch: Partial<ActivityDraft["items"][number]>) =>
     setDraft((d) => (d ? { ...d, items: d.items.map((it, i) => (i === index ? { ...it, ...patch } : it)) } : d));
+  // The stem is one text per question, stored on every part row (that is the
+  // shape test_items.stem_text takes), so editing it on any part edits it on
+  // all of them. An empty box is null, not "".
+  const updateStem = (questionNumber: number, value: string) =>
+    setDraft((d) =>
+      d
+        ? {
+            ...d,
+            items: d.items.map((it) =>
+              it.questionNumber === questionNumber && it.partLabel
+                ? { ...it, stemText: value.trim() ? value : null }
+                : it
+            ),
+          }
+        : d
+    );
   const removeItem = (index: number) =>
     setDraft((d) => (d ? { ...d, items: d.items.filter((_, i) => i !== index) } : d));
   const addItem = () =>
@@ -124,6 +140,7 @@ export function ActivityImportClient({ courses }: { courses: { id: string; name:
                 questionNumber: (d.items[d.items.length - 1]?.questionNumber ?? 0) + 1,
                 partLabel: "",
                 maxMarks: 1,
+                stemText: null,
                 questionText: "",
                 markschemeText: "",
               },
@@ -367,8 +384,20 @@ export function ActivityImportClient({ courses }: { courses: { id: string; name:
                     </button>
                     {openItem === i && (
                       <div className="mt-2 space-y-2">
+                        {it.partLabel && (
+                          <label className="flex flex-col gap-1">
+                            <span className={labelText}>Stem (shared by every part of Q{it.questionNumber})</span>
+                            <textarea
+                              rows={2}
+                              value={it.stemText ?? ""}
+                              placeholder="The scenario, formula or sequence the parts refer to; leave empty if there is none"
+                              onChange={(e) => updateStem(it.questionNumber, e.target.value)}
+                              className={field}
+                            />
+                          </label>
+                        )}
                         <label className="flex flex-col gap-1">
-                          <span className={labelText}>Question</span>
+                          <span className={labelText}>{it.partLabel ? "Part" : "Question"}</span>
                           <textarea
                             rows={4}
                             value={it.questionText}
