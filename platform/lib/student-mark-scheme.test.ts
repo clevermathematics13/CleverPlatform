@@ -14,30 +14,117 @@ import { buildTestItemsFromSections } from "./formative-assessment-bridge";
 import { KA1_UNIT1_ITEMS, KA1_UNIT1_NAME, KA1_UNIT1_TOTAL_MARKS } from "./fixtures/g9-standard-ka1-unit1";
 
 describe("stripMarkCodes", () => {
-  it("removes a leading code with 'for' and capitalises what follows", () => {
-    expect(stripMarkCodes("A1 for 3 (accept '3 terms').")).toBe("3 (accept '3 terms').");
-  });
-
-  it("removes a leading reasoning code", () => {
+  it("names the mark a leading code is for", () => {
+    expect(stripMarkCodes("A1 for 3 (accept '3 terms').")).toBe("Answer mark for 3 (accept '3 terms').");
     expect(stripMarkCodes("R1 for naming addition AND linking it to the distinction.")).toBe(
-      "Naming addition AND linking it to the distinction."
+      "Reasoning mark for naming addition AND linking it to the distinction."
     );
+    expect(stripMarkCodes("M1A1 for x = 3.")).toBe("Method mark and answer mark for x = 3.");
+    expect(stripMarkCodes("M1 A1 for x = 3.")).toBe("Method mark and answer mark for x = 3.");
+    expect(stripMarkCodes("For reference: M1 for the factors.")).toBe("For reference: method mark for the factors.");
   });
 
-  it("removes chained codes with no 'for'", () => {
+  it("puts a code used as a noun into words instead of leaving a hole", () => {
     expect(stripMarkCodes("A correct x=6 with no working scores M0M0A1.")).toBe(
-      "A correct x=6 with no working scores"
+      "A correct x=6 with no working scores the answer mark only."
+    );
+    expect(stripMarkCodes("Multiplying only some terms earns M0 for that line, but FT through the rest.")).toBe(
+      "Multiplying only some terms earns no method mark for that line, but follow-through applies to the rest."
+    );
+    expect(stripMarkCodes("'96/6 - v' earns M0A0 -- the grouping was not formed.")).toBe(
+      "'96/6 - v' earns no marks -- the grouping was not formed."
+    );
+    expect(stripMarkCodes("Award M1A0 for '96 - v / 6' written without brackets.")).toBe(
+      "Award the method mark only for '96 - v / 6' written without brackets."
+    );
+    expect(stripMarkCodes("Two correct lines earn M1M1A0.")).toBe("Two correct lines earn both method marks only.");
+  });
+
+  // Key Assessment 1, 3.3(a), as its students read it before this: "X =" for
+  // the teacher's "x =", and two sentences run together where "earns M1M0A0."
+  // and "earns A1 only" lost their objects.
+  it("reads a real multi-mark scheme as the teacher wrote it", () => {
+    const scheme =
+      "M1 for collecting the x-terms on one side and the constants on the other: px - rx = s - q. " +
+      "M1 for factoring x out: x(p - r) = s - q. A1 for x = (s - q)/(p - r). " +
+      "Accept the equivalent x = (q - s)/(r - p). Dividing by p or by r alone, without factoring, earns M1M0A0. " +
+      "A bare 'x = (s - q)/(p - r)' with no working earns A1 only: the command term requires visible steps, " +
+      "so the two method marks are not available retrospectively.";
+    expect(stripMarkCodes(scheme)).toBe(
+      "Method mark for collecting the x-terms on one side and the constants on the other: px - rx = s - q. " +
+        "Method mark for factoring x out: x(p - r) = s - q. Answer mark for x = (s - q)/(p - r). " +
+        "Accept the equivalent x = (q - s)/(r - p). Dividing by p or by r alone, without factoring, earns the first method mark only. " +
+        "A bare 'x = (s - q)/(p - r)' with no working earns the answer mark only: the command term requires visible steps, " +
+        "so the two method marks are not available retrospectively."
     );
   });
 
-  it("removes an inline bare code mid-sentence", () => {
-    expect(stripMarkCodes("Multiplying only some terms earns M0 for that line, but FT through the rest.")).toBe(
-      "Multiplying only some terms earns that line, but FT through the rest."
+  it("names a mark after a determiner, and chooses the article by how many the note labels", () => {
+    expect(
+      stripMarkCodes(
+        "M1 for collecting. R1 for a stated conclusion (the R1 is for the conclusion -- " +
+          "no closing statement earns M1R0)."
+      )
+    ).toBe(
+      "Method mark for collecting. Reasoning mark for a stated conclusion (the reasoning mark is for the conclusion -- " +
+        "no closing statement earns the method mark only)."
     );
+    expect(stripMarkCodes("M1 for one step. M1 for another. A1 for 5. A slip earns M1; a bare 5 earns A1.")).toBe(
+      "Method mark for one step. Method mark for another. Answer mark for 5. " +
+        "A slip earns a method mark; a bare 5 earns the answer mark."
+    );
+    expect(stripMarkCodes("A1 for 6. A chain without = signs forfeits the second M.")).toBe(
+      "Answer mark for 6. A chain without = signs forfeits the second method mark."
+    );
+    expect(stripMarkCodes("Withhold the A mark; keep any M marks. An R mark needs a reason. A mark is lost for units.")).toBe(
+      "Withhold the answer mark; keep any method marks. A reasoning mark needs a reason. A mark is lost for units."
+    );
+    expect(stripMarkCodes("Any valid method earns an M1, and a correct value an A1.")).toBe(
+      "Any valid method earns a method mark, and a correct value an answer mark."
+    );
+  });
+
+  it("drops a code that only labels the part, and never recapitalises the teacher's words", () => {
+    expect(stripMarkCodes("A1. The sign is part of the answer.")).toBe("The sign is part of the answer.");
+    // A variable stays the variable it is.
+    expect(stripMarkCodes("A1. u^2 - v^2 or (u-v)*2 earns 0.")).toBe("u^2 - v^2 or (u-v)*2 earns 0.");
+    expect(stripMarkCodes("M1 for 2A = bh. A1 for h = 2A/b. Accept any valid order, e.g. dividing by b first.")).toBe(
+      "Method mark for 2A = bh. Answer mark for h = 2A/b. Accept any valid order, e.g. dividing by b first."
+    );
+    expect(stripMarkCodes("M1 for testing j=0,1,2,... and rejecting non-integer cases.")).toBe(
+      "Method mark for testing j=0,1,2,... and rejecting non-integer cases."
+    );
+    // A label the sentence carries on from: its first plain word is capitalised.
+    expect(stripMarkCodes("A1 -- the whole expression is a sum of 14q and 9(q+5).")).toBe(
+      "The whole expression is a sum of 14q and 9(q+5)."
+    );
+    expect(stripMarkCodes("A1.")).toBe("");
+  });
+
+  it("puts follow-through into words", () => {
+    expect(stripMarkCodes("A bare '$69' earns 0. FT applies: substitution into an incorrect (a).")).toBe(
+      "A bare '$69' earns 0. Follow-through applies: substitution into an incorrect (a)."
+    );
+    expect(stripMarkCodes("A1. Requires the student's own (b). FT: a wrong (b) still earns the mark.")).toBe(
+      "Requires the student's own (b). Follow-through: a wrong (b) still earns the mark."
+    );
+    expect(stripMarkCodes("-- 0 for (a), but FT through (b).")).toBe("-- 0 for (a), but follow-through applies to (b).");
   });
 
   it("leaves plain prose with no codes unchanged", () => {
     expect(stripMarkCodes("Accept any equivalent correct form.")).toBe("Accept any equivalent correct form.");
+    expect(stripMarkCodes("A full-mark response shows the structure. A mark is lost for units.")).toBe(
+      "A full-mark response shows the structure. A mark is lost for units."
+    );
+  });
+});
+
+describe("renderStudentMarkSchemePart", () => {
+  it("shows no empty box for a note that was only a label", () => {
+    expect(renderStudentMarkSchemePart({ markScheme: "A1." })).toBeNull();
+    const part = renderStudentMarkSchemePart({ answer: "$-9$", markScheme: "A1." });
+    expect(part?.answer_html).toContain('class="katex"');
+    expect(part?.how_marked_html).toBeNull();
   });
 });
 
@@ -238,7 +325,7 @@ describe("studentMarkSchemeParts", () => {
     expect(parts.get("item-0")?.answer_html).toContain("5x");
     expect(parts.get("item-1")?.answer_html).toContain("x = 3");
     expect(parts.get("item-2")?.answer_html).toContain("y = 4");
-    expect(parts.get("item-2")?.how_marked_html).toContain("The method.");
+    expect(parts.get("item-2")?.how_marked_html).toContain("Method mark for the method.");
     expect(parts.get("item-3")?.answer_html).toContain('class="katex"');
     // No marking codes survive on any of them.
     for (const part of parts.values()) {
