@@ -98,6 +98,16 @@ export function studentMarkSchemePath(testId: string): string {
   return `/api/tests/${testId}/mark-scheme`;
 }
 
+/** Whether a test's students are shown this platform's mark scheme: the full
+ *  page, and each part's scheme on its row of the self-grade form
+ *  (attachStudentMarkScheme in lib/exam-service.ts). A test whose scheme was
+ *  released as a link somewhere else, or not released at all, shows them
+ *  none of it. The teacher's Re-mark Requests page asks the same question,
+ *  so it never says a student saw a scheme they were not shown. */
+export function releasesStudentMarkScheme(test: { id: string; mark_scheme_url: string | null }): boolean {
+  return test.mark_scheme_url === studentMarkSchemePath(test.id);
+}
+
 /** One part's mark scheme as display HTML: the answer, and the note with its
  *  marking codes stripped, each escaped and then typeset. The single renderer
  *  behind both the full page and the copy shown beside each self-grade box,

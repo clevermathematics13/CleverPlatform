@@ -91,7 +91,9 @@ export function RemarkRequestsClient({ waiting, resolved, schemes, resolvedWindo
                     {scheme && (
                       <details className="mt-1">
                         <summary className="cursor-pointer text-xs text-da-muted hover:text-da-text">
-                          Mark scheme (as the student sees it)
+                          {first.markSchemeReleased
+                            ? "Mark scheme (as the student sees it)"
+                            : "Mark scheme (not released to students)"}
                         </summary>
                         <MarkSchemePart scheme={scheme} />
                       </details>

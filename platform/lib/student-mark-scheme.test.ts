@@ -4,6 +4,7 @@ import {
   buildStudentMarkSchemeHtml,
   buildStudentMarkSchemeHtmlFromItems,
   renderStudentMarkSchemePart,
+  releasesStudentMarkScheme,
   studentMarkSchemeParts,
   studentMarkSchemePath,
   type StudentMarkSchemeItem,
@@ -294,5 +295,25 @@ describe("studentMarkSchemeParts", () => {
     expect(studentMarkSchemePath("a1c0f4e2-9d00-4b7e-8c21-000000000001")).toBe(
       "/api/tests/a1c0f4e2-9d00-4b7e-8c21-000000000001/mark-scheme",
     );
+  });
+});
+
+describe("releasesStudentMarkScheme", () => {
+  const id = "ccfa0456-a7f7-4835-81d4-7983df021022";
+
+  it("is true when the test's released mark scheme is this platform's own page", () => {
+    expect(releasesStudentMarkScheme({ id, mark_scheme_url: studentMarkSchemePath(id) })).toBe(true);
+  });
+
+  it("is false when no mark scheme is released", () => {
+    // Formative Assessment 1: a draft with a full mark scheme, never released.
+    expect(releasesStudentMarkScheme({ id, mark_scheme_url: null })).toBe(false);
+  });
+
+  it("is false for another test's page, or a mark scheme released as a link elsewhere", () => {
+    expect(
+      releasesStudentMarkScheme({ id, mark_scheme_url: studentMarkSchemePath("a1c0f4e2-9d00-4b7e-8c21-000000000001") }),
+    ).toBe(false);
+    expect(releasesStudentMarkScheme({ id, mark_scheme_url: "https://drive.google.com/file/d/abc/view" })).toBe(false);
   });
 });

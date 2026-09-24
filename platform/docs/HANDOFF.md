@@ -3652,7 +3652,12 @@ in `platform/CLAUDE.md`.
   the dashboard): waiting requests across every test, grouped by test and
   then by part in paper order, oldest first, each part's mark scheme printed
   once as the student saw it (`studentMarkSchemeParts`, never
-  `marking_notes`). Each request: the student's words, ClevMarks and their
+  `marking_notes`). Its toggle says "as the student sees it" only for a test
+  whose scheme is released to students (`releasesStudentMarkScheme` in
+  `lib/student-mark-scheme.ts`, the same gate `attachStudentMarkScheme`
+  uses); otherwise it reads "not released to students" -- Formative
+  Assessment 1 has a full scheme in its draft that students were never
+  shown. Each request: the student's words, ClevMarks and their
   self mark now, badges for "was N when asked" / "their mark now agrees" /
   "corrections uploaded", links to the student's view and the marking
   screen, and **Mark stands** / **Mark changed** with an optional note.

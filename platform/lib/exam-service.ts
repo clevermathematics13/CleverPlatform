@@ -7,7 +7,7 @@ import { INVITED_SUBJECT_PREFIX } from "@/lib/ai-grading";
 import { correctionsKey } from "@/lib/storage-keys";
 import { resolveSelfAssessmentRequired } from "@/lib/self-assessment-gate";
 import { paperQuestionPrefixes } from "@/lib/assignments";
-import { studentMarkSchemePath, studentMarkSchemeParts } from "@/lib/student-mark-scheme";
+import { releasesStudentMarkScheme, studentMarkSchemeParts } from "@/lib/student-mark-scheme";
 import { REMARK_STUDENT_COLUMNS, toReflectionRemark } from "@/lib/remark-requests";
 import type { GradeBoundary } from "@/lib/grade-bands";
 import type {
@@ -353,8 +353,8 @@ export async function getReflectionItemsForInvitedStudent(
  * Mark Scheme panel over the form, closing it to type, and opening it again.
  *
  * Only when the mark scheme the teacher released for this test IS the
- * platform's own student page (tests.mark_scheme_url equal to
- * studentMarkSchemePath): that page's release gate is then already met --
+ * platform's own student page (releasesStudentMarkScheme: tests.mark_scheme_url
+ * equal to studentMarkSchemePath): that page's release gate is then already met --
  * the test reached this viewer's list, so it is not hidden and their class's
  * sitting date has passed -- and the content is the same, rendered by the
  * same function. A test with no mark scheme released, or one released as a
@@ -367,7 +367,7 @@ export async function attachStudentMarkScheme(
   items: ReflectionItem[],
   test: Pick<ReflectionTest, "id" | "mark_scheme_url"> | null | undefined
 ): Promise<ReflectionItem[]> {
-  if (!test || items.length === 0 || test.mark_scheme_url !== studentMarkSchemePath(test.id)) return items;
+  if (!test || items.length === 0 || !releasesStudentMarkScheme(test)) return items;
   const supabase = await createClient();
 
   const [{ data: row }, { data: testItems }] = await Promise.all([
