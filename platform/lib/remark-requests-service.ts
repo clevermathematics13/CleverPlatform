@@ -12,7 +12,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { paperQuestionPrefixes } from "@/lib/paper-labels";
-import { studentMarkSchemeParts } from "@/lib/student-mark-scheme";
+import { releasesStudentMarkScheme, studentMarkSchemeParts } from "@/lib/student-mark-scheme";
 import type { ReflectionMarkScheme, RemarkStatus } from "@/lib/reflection-types";
 import type { RemarkQueueEntry } from "@/lib/remark-requests";
 
@@ -21,6 +21,9 @@ export const RESOLVED_WINDOW_DAYS = 30;
 
 export interface TeacherRemarkEntry extends RemarkQueueEntry {
   testHidden: boolean;
+  /** The test's students are shown its mark scheme (releasesStudentMarkScheme),
+   *  so the scheme printed above the request is the one the student had. */
+  markSchemeReleased: boolean;
   /** The part's label: the paper's own "2.1(a)" where the draft numbers its
    *  sections (as the student's page shows it), else "Q1(a)". */
   partLabel: string;
@@ -41,7 +44,9 @@ export interface TeacherRemarkEntry extends RemarkQueueEntry {
 export interface TeacherRemarkQueue {
   waiting: TeacherRemarkEntry[];
   resolved: TeacherRemarkEntry[];
-  /** Each part's mark scheme, as the student saw it, keyed by test_items.id. */
+  /** Each part's mark scheme as the student's page renders it, keyed by
+   *  test_items.id -- including a test whose scheme is not released, where
+   *  the student was shown none of it (markSchemeReleased). */
   schemes: Record<string, ReflectionMarkScheme>;
   /** Set when the queue could not be read at all. */
   error: string | null;
@@ -145,7 +150,7 @@ export async function loadTeacherRemarkQueue(supabase: SupabaseClient): Promise<
   }
 
   const [testsRes, profilesRes, uploadsRes] = await Promise.all([
-    supabase.from("tests").select("id, name, hidden, custom_content").in("id", orNone(testIds)),
+    supabase.from("tests").select("id, name, hidden, custom_content, mark_scheme_url").in("id", orNone(testIds)),
     supabase.from("profiles").select("id, display_name").in("id", orNone(studentIds)),
     supabase
       .from("pdf_uploads")
@@ -198,6 +203,10 @@ export async function loadTeacherRemarkQueue(supabase: SupabaseClient): Promise<
       testId,
       testName: (test?.name as string | undefined) ?? "Test",
       testHidden: !!test?.hidden,
+      markSchemeReleased: releasesStudentMarkScheme({
+        id: testId,
+        mark_scheme_url: (test?.mark_scheme_url as string | null | undefined) ?? null,
+      }),
       testItemId: r.test_item_id,
       sortOrder: item.sort_order as number,
       partLabel,
