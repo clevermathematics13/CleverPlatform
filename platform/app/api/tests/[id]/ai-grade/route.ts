@@ -20,35 +20,12 @@ import {
   loadStudentDisplayName,
   persistGradeOutcome,
 } from "@/lib/ai-grading-run";
-import { latestRunsByStudent } from "@/lib/ai-grade-review";
-import type { AcceptanceRef } from "@/lib/ai-grade-review";
+import { AI_GRADE_RUN_COLUMNS, loadAiGradeOverview } from "@/lib/ai-grade-overview";
+import type { AiGradeRunRow } from "@/lib/ai-grade-overview";
 import { fetchAllRows } from "@/lib/na-scanning";
 import { findScansMarkedBefore, uprightScan } from "@/lib/scan-orientation";
 
 export const maxDuration = 300;
-
-/** One ai_grade_runs row as the review UI reads it (GET below). */
-interface RunRow {
-  id: string;
-  test_id: string;
-  student_id: string | null;
-  invited_student_id: string | null;
-  status: string;
-  model: string | null;
-  source_storage_path: string | null;
-  coverage: unknown;
-  error: string | null;
-  created_at: string;
-  completed_at: string | null;
-  /**
-   * The Anthropic message batch a run is still tied to, or null once it is
-   * settled. Served to the review UI because a 'running' run that still
-   * carries one is a run the collect route left for a later sweep to promote
-   * (its results were written, its own status update was lost) -- the page
-   * has to keep polling collect for it, and 'running' alone cannot say so.
-   */
-  pending_message_batch_id: string | null;
-}
 
 /** One ai_grade_results row as the review UI reads it (GET below). */
 interface ResultRow {
@@ -93,98 +70,47 @@ export async function GET(
   const { id: testId } = await params;
   const studentId = request.nextUrl.searchParams.get("studentId");
 
+  // -- The whole-class load: acceptance counts and nothing else --------------
+  // Built in lib/ai-grade-overview.ts (see there for why it is shaped this
+  // way), which the AI-grade page also calls to render its roster on the
+  // server. Same keys as ever, so a tab still running an older page reads
+  // the response unchanged.
+  if (!studentId) {
+    const overview = await loadAiGradeOverview(supabase, testId);
+    if (!overview.ok) return NextResponse.json({ error: overview.error }, { status: overview.status });
+    return NextResponse.json({ runs: overview.runs, results: overview.results });
+  }
+
   // Started now and awaited at the end, so the Self column costs no extra
   // round trip on a single student's review load.
-  const selfScoresPromise = studentId ? loadSelfScores(supabase, testId, studentId) : null;
+  const selfScoresPromise = loadSelfScores(supabase, testId, studentId);
 
-  // Built fresh per call so each .range() page starts from an untouched
-  // builder, the same shape the results query below uses.
-  const runQuery = () => {
-    const q = supabase
-      .from("ai_grade_runs")
-      .select(
-        "id, test_id, student_id, invited_student_id, status, model, source_storage_path, coverage, error, created_at, completed_at, pending_message_batch_id"
-      )
-      .eq("test_id", testId)
-      // id breaks created_at ties: one overnight submission inserts a whole
-      // class in a single statement, so those runs share a created_at to the
-      // microsecond and paging on it alone would repeat and skip rows.
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: true });
-    if (!studentId) return q;
-    const subject = parseGradingSubject(studentId);
-    return subject.kind === "invited"
-      ? q.eq("invited_student_id", subject.id)
-      : q.eq("student_id", subject.id);
-  };
-
-  let rawRuns: RunRow[];
-  if (studentId) {
-    // One student's own history: the review UI shows the last few attempts,
-    // so this cap is the feature, not a limit to page around.
-    const { data, error } = await runQuery().limit(5);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    rawRuns = (data ?? []) as RunRow[];
-  } else {
-    // No cap on the whole-test load. Overnight marking creates one run per
-    // student on every click, so a class that has been re-marked a few times
-    // passes 100 runs within a term (60 on one test already, 5 Sep 2026) --
-    // and .limit(100) dropped the oldest ones with no error, so those
-    // students read as never graded on the page that is the only record of
-    // their marking. Page it like the results query below.
-    try {
-      rawRuns = await fetchAllRows<RunRow>((from, to) => runQuery().range(from, to));
-    } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
-    }
-  }
+  // One student's own history: the review UI shows the last few attempts,
+  // so this cap is the feature, not a limit to page around.
+  const subject = parseGradingSubject(studentId);
+  const runQuery = supabase
+    .from("ai_grade_runs")
+    .select(AI_GRADE_RUN_COLUMNS)
+    .eq("test_id", testId)
+    // id breaks created_at ties: one overnight submission inserts a whole
+    // class in a single statement, so those runs share a created_at to the
+    // microsecond.
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: true });
+  const { data, error } = await (subject.kind === "invited"
+    ? runQuery.eq("invited_student_id", subject.id)
+    : runQuery.eq("student_id", subject.id)
+  ).limit(5);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   // Collapse student_id/invited_student_id back into the one opaque subject
-  // id every caller already keys its state by (see parseGradingSubject) —
+  // id every caller already keys its state by (see parseGradingSubject) --
   // the review UI never needs to know which column a run's identity lives in.
-  const runs = rawRuns.map((r) => ({
+  const runs = ((data ?? []) as AiGradeRunRow[]).map((r) => ({
     ...r,
     student_id: formatGradingSubject(r),
   }));
   if (runs.length === 0) {
-    return NextResponse.json({
-      runs: [],
-      results: [],
-      ...(selfScoresPromise ? { self_scores: await selfScoresPromise } : {}),
-    });
-  }
-
-  // -- The whole-class load: acceptance counts and nothing else --------------
-  // From this call the roster reads one thing per student: how many parts of
-  // their newest complete run are accepted into Clev's Marks (the status dot,
-  // and the "already accepted" warning before a re-mark). It used to receive
-  // every result row of every run the test had ever had, crops signed and
-  // PPQ images attached, and count run_id/accepted over a fraction of them.
-  // On Key Assessment 1 (23 Sep 2026) that was 18,119 rows in a 20 MB
-  // response to count 1,752, and the page sat on "Loading this assessment..."
-  // for over half a minute. So count only the runs the page will show --
-  // chosen by the same function the page uses -- and send only those two
-  // columns, under the same keys, so a tab still running the old page reads
-  // them unchanged. One student's review (?studentId=) is what needs full
-  // rows, and it still gets them below.
-  if (!studentId) {
-    const latestIds = Object.values(latestRunsByStudent(runs).latestComplete).map((r) => r.id);
-    if (latestIds.length === 0) return NextResponse.json({ runs, results: [] });
-    let acceptance: AcceptanceRef[];
-    try {
-      // Still paged: the newest runs alone pass PostgREST's 1000-row cap on
-      // a big class (49 runs x 36 parts on Key Assessment 1).
-      acceptance = await fetchAllRows<AcceptanceRef>((from, to) =>
-        supabase
-          .from("ai_grade_results")
-          .select("run_id, accepted")
-          .in("run_id", latestIds)
-          .order("id", { ascending: true })
-          .range(from, to)
-      );
-    } catch (e) {
-      return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
-    }
-    return NextResponse.json({ runs, results: acceptance });
+    return NextResponse.json({ runs: [], results: [], self_scores: await selfScoresPromise });
   }
 
   // Only a single student's review gets here, and their last few runs sit
@@ -292,7 +218,7 @@ export async function GET(
   return NextResponse.json({
     runs,
     results: resultsWithImages,
-    ...(selfScoresPromise ? { self_scores: await selfScoresPromise } : {}),
+    self_scores: await selfScoresPromise,
   });
 }
 

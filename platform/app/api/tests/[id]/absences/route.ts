@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiTeacher } from "@/lib/auth";
-import { INVITED_SUBJECT_PREFIX, parseGradingSubject } from "@/lib/ai-grading";
+import { parseGradingSubject } from "@/lib/ai-grading";
+import { loadTestAbsences } from "@/lib/ai-grade-overview";
 
 /**
  * Absences for one test (table test_absences).
@@ -16,33 +17,17 @@ import { INVITED_SUBJECT_PREFIX, parseGradingSubject } from "@/lib/ai-grading";
  * of an empty row that looks like "not graded yet".
  */
 
-interface AbsenceRow {
-  profile_id: string | null;
-  invited_student_id: string | null;
-  note: string | null;
-  created_at: string;
-}
-
-function subjectOf(row: AbsenceRow): string | null {
-  return row.profile_id ?? (row.invited_student_id ? `${INVITED_SUBJECT_PREFIX}${row.invited_student_id}` : null);
-}
-
 export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await getApiTeacher();
   if (!auth.ok) return auth.response;
   const { supabase } = auth;
   const { id: testId } = await params;
 
-  const { data, error } = await supabase
-    .from("test_absences")
-    .select("profile_id, invited_student_id, note, created_at")
-    .eq("test_id", testId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-  const absences = ((data ?? []) as AbsenceRow[])
-    .map((r) => ({ studentId: subjectOf(r), note: r.note, created_at: r.created_at }))
-    .filter((r): r is { studentId: string; note: string | null; created_at: string } => !!r.studentId);
-  return NextResponse.json({ absences });
+  // Shared with the AI-grade page, which loads absences on the server so its
+  // roster is in the first HTML (lib/ai-grade-overview.ts).
+  const result = await loadTestAbsences(supabase, testId);
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  return NextResponse.json({ absences: result.absences });
 }
 
 async function readSubject(request: NextRequest): Promise<{ studentId: string; note: string | null } | null> {
