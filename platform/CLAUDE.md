@@ -22,7 +22,13 @@ Design docs (read before any NA content or PDF layout work):
 - ASCII dashes only in comments (---- not Unicode box-drawing chars).
 - Build + test before every push: npm run build && npm test
 - main = production. No staging environment. Real student data.
-- "Clev's Marks" in all UI copy for grading/scores.
+- "ClevMarks" in all UI copy for grading/scores (renamed from "Clev's
+  Marks" on 24 Sep 2026; older comments and printed packets still say that).
+- Never "AI" (or a model name such as Claude) anywhere a student can see it:
+  student page copy, URLs and API paths a student's browser calls, JSON
+  field names it receives, error messages. Teacher pages may say AI.
+  Components shared with the student bundle (e.g. TeacherDashboard.tsx,
+  which reflection-client.tsx imports) count as student-facing.
 - Migrations: platform/supabase/migrations must stay 1:1 with the live ledger.
   Read platform/supabase/migrations/README.md before adding one.
 - AI-grading numerical-accuracy policy (IBDP AA HL Paper 2) lives in

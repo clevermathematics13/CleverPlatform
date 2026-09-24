@@ -331,9 +331,9 @@ function NuancedAnalysisPanel({
 
         {files.length > 0 && (
           <p className="mt-1.5 text-[11px] text-indigo-400/80">
-            ✦ {files.length} file{files.length > 1 ? "s" : ""} attached — Claude will read{" "}
-            {files.some((f) => f.type === "application/pdf") ? "the PDFs" : "the images"}{" "}
-            when generating the packet.
+            ✦ {files.length} file{files.length > 1 ? "s" : ""} attached —{" "}
+            {files.some((f) => f.type === "application/pdf") ? "the PDFs" : "the images"} will be read
+            when the packet is generated.
           </p>
         )}
       </div>
@@ -393,7 +393,7 @@ function SubtopicRow({ m, studentId, accent }: { m: SubtopicMastery; studentId?:
             {pct > 0 && <div className={`absolute inset-y-0 left-0 rounded-full ${accent.bar} transition-all duration-500`} style={{ width: `${Math.min(100, pct)}%` }} aria-hidden />}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-da-muted">
-            <span>Teacher: <span className="text-da-text font-semibold">{m.marks_awarded}/{m.total_marks}</span> Clev&apos;s Marks</span>
+            <span>ClevMarks: <span className="text-da-text font-semibold">{m.marks_awarded}/{m.total_marks}</span></span>
             {m.self_marks > 0 && (<><span className="text-da-border">·</span><span>Self: <span className="text-da-amber font-semibold">{m.self_marks}/{m.total_marks}</span></span></>)}
           </div>
         </div>
@@ -446,7 +446,7 @@ function OverallStrip({ mastery }: { mastery: SubtopicMastery[] }) {
       <div className="min-w-[90px]">
         <p className="text-xs font-semibold uppercase tracking-wide text-da-muted">Overall</p>
         <p className={`mt-0.5 font-serif text-3xl font-bold ${tierColor(overallPct)}`}>{overallPct}%</p>
-        <p className="text-[11px] text-da-muted">{totalAw}/{totalTot} Clev&apos;s Marks</p>
+        <p className="text-[11px] text-da-muted">{totalAw}/{totalTot} ClevMarks</p>
       </div>
       <div className="flex-1 min-w-[180px] grid grid-cols-5 gap-2">
         {[1, 2, 3, 4, 5].map((sec) => {
@@ -468,7 +468,7 @@ function OverallStrip({ mastery }: { mastery: SubtopicMastery[] }) {
         })}
       </div>
       <div className="flex flex-col gap-1 text-[11px] text-da-muted shrink-0">
-        <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-1.5 rounded-full bg-da-accent" />Teacher marks</div>
+        <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-1.5 rounded-full bg-da-accent" />ClevMarks</div>
         <div className="flex items-center gap-1.5"><span className="inline-block w-3 h-1.5 rounded-full bg-da-amber/40" />Self-assessed</div>
       </div>
     </div>

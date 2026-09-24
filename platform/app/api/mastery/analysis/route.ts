@@ -332,7 +332,8 @@ ${
     response.content[0].type === "text" ? response.content[0].text.trim() : "";
 
   if (!analysisText) {
-    return NextResponse.json({ error: "Empty response from AI" }, { status: 500 });
+    // Students call this route, so its message is student copy: no "AI".
+    return NextResponse.json({ error: "The packet came back empty. Please try again." }, { status: 500 });
   }
 
   // -- 7. Upsert to mastery_analyses -----------------------------------------
