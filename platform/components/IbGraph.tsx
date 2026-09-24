@@ -407,21 +407,11 @@ export function IbGraphPreview({ spec }: { spec: IbGraphSpec }) {
   return <IbGraph spec={{ ...spec, height: 220 }} />;
 }
 
-// --- JSON ↔ base64 helpers (used by LatexRenderer & editor) -----------------
+// --- JSON <-> base64 helpers --------------------------------------------------
+// Defined in ib-graph-spec.ts so LatexRenderer can use them without importing
+// this module (and mafs) -- see that file. Re-exported for existing callers.
 
-export const GRAPH_MARKER_RE = /\[\[GRAPH_JSON:([A-Za-z0-9+/=]+)\]\]/g;
-
-export function encodeGraphSpec(spec: IbGraphSpec): string {
-  return `[[GRAPH_JSON:${btoa(JSON.stringify(spec))}]]`;
-}
-
-export function decodeGraphSpec(b64: string): IbGraphSpec | null {
-  try {
-    return JSON.parse(atob(b64)) as IbGraphSpec;
-  } catch {
-    return null;
-  }
-}
+export { GRAPH_MARKER_RE, encodeGraphSpec, decodeGraphSpec } from "./ib-graph-spec";
 
 // --- Example spec (for editor placeholder) -----------------------------------
 

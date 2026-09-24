@@ -2,10 +2,21 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import LatexRenderer from "@/components/LatexRenderer";
+import dynamic from "next/dynamic";
 import EvidenceBoxEditor from "@/components/EvidenceBoxEditor";
-import { BatchGradeTab } from "./batch-grade-tab";
 import { fetchJson, SESSION_EXPIRED_MESSAGE } from "./fetch-json";
+
+// Loaded on demand rather than with the page. The maths renderer (KaTeX,
+// about 256 KB) is only needed once a review is open, and the batch tab only
+// once it is picked; shipping both up front made the roster wait on code it
+// never used. The renderer's chunk is fetched as soon as the page is idle
+// (see the effect after the health check), so a review still opens at once.
+const LatexRenderer = dynamic(() => import("@/components/LatexRenderer"), {
+  loading: () => <span className="text-da-muted">…</span>,
+});
+const BatchGradeTab = dynamic(() => import("./batch-grade-tab").then((m) => m.BatchGradeTab), {
+  loading: () => <p className="text-sm text-da-muted">Loading batch upload…</p>,
+});
 import {
   runsForStudent,
   rowsForRun,
@@ -23,7 +34,8 @@ import {
 } from "@/lib/ai-grade-review";
 import type { AcceptanceRef, SelfScoreRef } from "@/lib/ai-grade-review";
 import type { AssessmentKind } from "@/lib/assessment-kind";
-import { paperQuestionPrefixes } from "@/lib/assignments";
+// Not "@/lib/assignments": that module carries the AI prompt builders too.
+import { paperQuestionPrefixes } from "@/lib/paper-labels";
 import { buildStandardsReport, parseStandardsRubric } from "@/lib/standards-rubric";
 import { StandardsReportTable } from "@/components/StandardsReportTable";
 
@@ -280,6 +292,13 @@ export function AiGradeClient({
   assessmentKind?: AssessmentKind;
 }) {
   const [tab, setTab] = useState<"individual" | "batch">("individual");
+  /**
+   * Whether the batch tab has been opened on this visit. It mounts the first
+   * time it is picked and then stays mounted (hidden) -- see the tab bar --
+   * so its restore fetch and blank-page checks no longer run on every visit
+   * to the individual roster.
+   */
+  const [batchTabOpened, setBatchTabOpened] = useState(false);
   /** Result of GET /api/health/anthropic: null until checked; error string when the key cannot complete a call. */
   const [apiHealthError, setApiHealthError] = useState<string | null>(null);
 
@@ -707,6 +726,19 @@ export function AiGradeClient({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Fetch the maths renderer's chunk once the roster is up and the browser is
+  // idle, so the first review a teacher opens does not wait on it. The
+  // import's result is not needed here: next/dynamic reuses the loaded module.
+  useEffect(() => {
+    const warm = () => void import("@/components/LatexRenderer");
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(warm, { timeout: 5000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = window.setTimeout(warm, 2000);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // -- Load one student's results for review --
@@ -2395,7 +2427,10 @@ export function AiGradeClient({
         </button>
         <button
           type="button"
-          onClick={() => setTab("batch")}
+          onClick={() => {
+            setTab("batch");
+            setBatchTabOpened(true);
+          }}
           className={`rounded-md px-4 py-1.5 text-sm font-medium transition-colors ${
             tab === "batch" ? "bg-da-surface text-da-text shadow-sm" : "text-da-muted hover:text-da-text"
           }`}
@@ -2439,13 +2474,17 @@ export function AiGradeClient({
         </div>
       )}
 
-      {/* Kept mounted (not conditionally rendered) so switching to Individual
-          and back doesn't wipe BatchGradeTab's own state — its matched rows
-          and grading progress live in that component, not here, and a
-          conditional render would unmount and reset it on every tab switch. */}
-      <div className={tab === "batch" ? undefined : "hidden"}>
-        <BatchGradeTab testId={testId} students={students} />
-      </div>
+      {/* Mounted the first time the tab is picked, then kept mounted (hidden)
+          so switching to Individual and back doesn't wipe BatchGradeTab's own
+          state -- its matched rows and grading progress live in that
+          component, not here, and unmounting would reset them on every tab
+          switch. Unfinished batches are restored from the server when it
+          mounts, so waiting for the first click loses nothing. */}
+      {batchTabOpened && (
+        <div className={tab === "batch" ? undefined : "hidden"}>
+          <BatchGradeTab testId={testId} students={students} />
+        </div>
+      )}
 
       {tab === "individual" && (
         <>

@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { useState, useRef, useCallback, useEffect } from "react";
-import { encodeGraphSpec, type IbGraphSpec } from "@/components/IbGraph";
+import type { IbGraphSpec } from "@/components/IbGraph";
+import { encodeGraphSpec } from "@/components/ib-graph-spec";
 
 const IbGraph = dynamic(() => import("@/components/IbGraph"), { ssr: false });
 const GRAPH_LAB_IMAGES_STORAGE_KEY = "graph-lab:images:v1";
